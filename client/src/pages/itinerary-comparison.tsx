@@ -587,7 +587,15 @@ function ProposalColumnContainer({
 
   return (
     <div className="flex flex-col gap-2">
-      {showPreview && <ProposalPreviewStrip preview={preview} variantId={boardId} />}
+      {isBaselineColumn ? (
+        <div
+          className="min-h-6"
+          aria-hidden="true"
+          data-testid="proposal-preview-strip-baseline"
+        />
+      ) : showPreview ? (
+        <ProposalPreviewStrip preview={preview} variantId={boardId} />
+      ) : null}
     <PlanCard
       stage="proposal"
       trip={{
@@ -620,9 +628,10 @@ function ProposalColumnContainer({
           startTime: it.startTime || it.timeSlot || null,
           name: it.name,
           price: it.price ?? null,
+           isNew: it.isReplacement,
         })),
         legsSummary,
-         applyLabel: isBaselineColumn ? "Keep this plan" : `Apply ${variant.name}`,
+          applyLabel: isBaselineColumn ? "Keep this plan" : "Select this plan",
         onApply,
         applying,
       }}
@@ -649,42 +658,81 @@ function ProposalPreviewStrip({
   const { money, driveTime } = preview;
   return (
     <div
-      className="flex flex-wrap items-center gap-2 text-xs"
+      className="flex min-h-6 flex-wrap items-center gap-2 text-xs"
       data-testid={`proposal-preview-${variantId}`}
     >
       {money && money.direction !== "same" && (
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium",
-            money.direction === "saves"
-              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
+            money.direction === "saves" ? "review-chip--save" : "review-chip--caution",
           )}
-          data-testid={`proposal-preview-money-${variantId}`}
+          data-testid="proposal-preview-money"
         >
-          <DollarSign className="w-3 h-3" />
-          {money.direction === "saves"
-            ? `Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
-            : `Costs $${money.amountUsd.toLocaleString()} more`}
+          <span data-testid={`proposal-preview-money-${variantId}`}>
+            <DollarSign className="inline h-3 w-3" />
+            {money.direction === "saves"
+              ? ` Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
+              : ` Costs $${money.amountUsd.toLocaleString()} more`}
+          </span>
         </span>
       )}
       {driveTime && driveTime.direction !== "same" && (
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium",
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
             driveTime.direction === "saves"
-              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+              ? "review-chip--save"
+              : "review-chip--caution",
           )}
-          data-testid={`proposal-preview-drivetime-${variantId}`}
+          data-testid="proposal-preview-drivetime"
         >
-          <Clock className="w-3 h-3" />
-          {driveTime.direction === "saves"
-            ? `${formatMinutes(driveTime.minutes)} less travel`
-            : `${formatMinutes(driveTime.minutes)} more travel`}
+          <span data-testid={`proposal-preview-drivetime-${variantId}`}>
+            <Clock className="inline h-3 w-3" />
+            {driveTime.direction === "saves"
+              ? ` ${formatMinutes(driveTime.minutes)} less travel`
+              : ` ${formatMinutes(driveTime.minutes)} more travel`}
+          </span>
         </span>
       )}
     </div>
+  );
+}
+
+function ReviewHonestyLegend() {
+  const rules = [
+    ["save", "Money saved", "Baseline vs proposal total; shown only with a real positive baseline."],
+    ["caution", "Costs more, said plainly", "A pricier proposal shows “Costs $40 more” beside its time saving."],
+    ["save", "Shorter drive time", "Sum of located transport-leg minutes; time only — distance is never a headline."],
+    ["omit", "Omitted when unknown", "A stop not located ⇒ no drive-time chip; baseline shows no chips."],
+    ["recommended", "Trending & in season", "Live signals; each line disappears when empty."],
+    ["recommended", "You confirm — nothing auto-applies", "One deliberate click via apply-to-trip; original preserved, nothing charged."],
+  ] as const;
+
+  return (
+    <section
+      className="mb-6 rounded-xl border p-4 review-panel"
+      data-testid="compare-honesty-legend"
+      aria-labelledby="compare-honesty-heading"
+    >
+      <h2 id="compare-honesty-heading" className="mb-3 font-semibold">
+        How the preview stays honest
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rules.map(([tone, title, copy]) => (
+          <div key={title} className="flex items-start gap-2 text-xs text-muted-foreground">
+            <span
+              className={`review-legend-dot--${tone} mt-1.5 h-2 w-2 shrink-0 rounded-full`}
+              aria-hidden="true"
+            />
+            <p>
+              <strong className="font-medium text-foreground">{title}</strong>
+              <span className="block mt-0.5">{copy}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1270,13 +1318,20 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
+    <div className={cn(
+      "itinerary-comparison-page max-w-7xl mx-auto p-6",
+      slipTripId && "review-board",
+    )}>
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            {slipTripId && <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary mb-1">Optimization · Review before applying</p>}
+            {slipTripId && (
+              <p className="review-eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.16em]">
+                Optimization · Review before applying
+              </p>
+            )}
             <h1 className="text-2xl md:text-3xl font-bold" data-testid={slipTripId ? "review-title" : undefined}>
               {slipTripId ? `Three ways to sharpen your ${primaryCity || data?.comparison?.destination || "trip"} plan` : (data?.comparison?.title || "Itinerary Comparison")}
             </h1>
@@ -1610,8 +1665,8 @@ export default function ItineraryComparisonPage() {
                 footer sentence. NO routing actions, NO per-item apply, NO save-for-later. ── */}
             {slipTripId && (
               <>
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4" data-testid="compare-header">
-                  <p className="font-mono text-sm text-muted-foreground">
+                <div className="review-panel flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4 rounded-xl border p-4" data-testid="compare-header">
+                  <p className="review-mono text-sm text-muted-foreground" data-testid="review-slip-line">
                     {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
                     {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
                     {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
@@ -1622,16 +1677,16 @@ export default function ItineraryComparisonPage() {
                         <p className="flex items-center gap-1.5 md:justify-end">
                           <Anchor className="w-3.5 h-3.5" />
                           {anchoredItems.length === 1
-                            ? `${anchoredItems[0].name} pinned in all`
+                            ? "1 purchased item pinned in all"
                             : `${anchoredItems.length} purchased items pinned in all`}
                         </p>
                       )}
                       {withExpertRows.length > 0 && (
                         <p data-testid="compare-exclusion-note">
                           {withExpertRows.length === 1
-                            ? `${withExpertRows[0].a.name} excluded`
+                            ? "1 item excluded"
                             : `${withExpertRows.length} items excluded`}{" "}
-                          ({slipExpertFirstName ? `with ${slipExpertFirstName}` : "with your expert"})
+                          ({slipExpertFirstName ? `with ${slipExpertFirstName}, your expert` : "with your expert"})
                         </p>
                       )}
                     </div>
@@ -1654,12 +1709,12 @@ export default function ItineraryComparisonPage() {
                   if (trending.length === 0 && !seasonal) return null;
                   return (
                     <div
-                      className="mb-4 rounded-lg border bg-muted/40 p-3 space-y-2"
+                      className="review-panel mb-4 space-y-2 rounded-xl border p-3"
                       data-testid="slip-optimize-preview-context"
                     >
                       {trending.length > 0 && (
                         <div className="flex items-start gap-2 text-sm" data-testid="preview-trending-now">
-                          <TrendingUp className="w-4 h-4 mt-0.5 text-green-600 shrink-0" />
+                          <TrendingUp className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-green-ink)" }} />
                           <p>
                             <span className="font-medium">
                               Trending now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
@@ -1670,7 +1725,7 @@ export default function ItineraryComparisonPage() {
                       )}
                       {seasonal && (
                         <div className="flex items-start gap-2 text-sm" data-testid="preview-seasonal">
-                          <Calendar className="w-4 h-4 mt-0.5 text-purple-600 shrink-0" />
+                          <Calendar className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-teal-ink)" }} />
                           <p>
                             <span className="font-medium">Popular around your travel dates: </span>
                             {seasonal}
@@ -1728,10 +1783,10 @@ export default function ItineraryComparisonPage() {
                 </div>
 
                 {/* Verbatim, load-bearing copy (§4 Spec C). */}
-                <p className="text-sm text-muted-foreground text-center mb-6" data-testid="compare-footer">
-                  Applying a variant updates the slip in place — the other two are discarded.
-                  Nothing is purchased by applying.
+                <p className="review-footer mb-6 pt-4 text-center text-sm" data-testid="compare-footer">
+                  Each version works best taken whole; your original is preserved; nothing is purchased by applying.
                 </p>
+                <ReviewHonestyLegend />
                 {applyError && (
                   <div
                     className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"

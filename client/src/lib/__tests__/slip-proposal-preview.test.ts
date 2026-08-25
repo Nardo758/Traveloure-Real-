@@ -196,11 +196,11 @@ describe("formatAnchorLine — honest anchor metadata", () => {
   it("uses the human label for neighborhood and activity anchors", () => {
     assert.strictEqual(
       formatAnchorLine({ anchorType: "neighborhood", anchorName: "Gion", anchorMedianMeters: "720" }),
-      "Neighborhood · Gion · 9 min median",
+      "Neighborhood · Gion · 9 min median · stay anywhere in-area",
     );
     assert.strictEqual(
       formatAnchorLine({ anchorType: "activity", anchorName: "Tea ceremony", anchorMedianMeters: 0 }),
-      "Activity · Tea ceremony · 0 min median",
+      "Activity · Tea ceremony · 0 min median · the day pivots on it",
     );
   });
 

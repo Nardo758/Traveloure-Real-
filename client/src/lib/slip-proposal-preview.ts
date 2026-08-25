@@ -92,6 +92,12 @@ export function formatAnchorLine(input: AnchorLineInputs): string | null {
     parts.push(`${Math.max(0, Math.round(estWalkMinutes(medianMeters)))} min median`);
   }
 
+  if (input.anchorType?.trim().toLowerCase() === "neighborhood") {
+    parts.push("stay anywhere in-area");
+  } else if (input.anchorType?.trim().toLowerCase() === "activity") {
+    parts.push("the day pivots on it");
+  }
+
   const within15MinCount = input.within15MinCount;
   const locatedStops = input.locatedStops;
   if (
