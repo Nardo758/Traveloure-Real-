@@ -407,16 +407,16 @@ function Router() {
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
       </Route>
-      {/* Public earner storefront — the mockup's /s/{handle} "one link that books and pays".
-          /p/:handle remains a legacy-compatible entry point for existing shared links. */}
+      {/* Public earner storefront — one canonical path for experts and providers.
+          /p/:handle remains a legacy-compatible SPA entry point while the server redirects it. */}
       <Route path="/s/:handle">
         {() => <StorefrontPage />}
       </Route>
       <Route path="/p/:handle">
         {() => <StorefrontPage />}
       </Route>
-      {/* Public directory of provider BUSINESSES — links into each business's own
-          storefront above (/p/:handle). Separate from /services (individual listings). */}
+      {/* Public directory of provider BUSINESSES — links into each business's canonical
+          storefront above (/s/:handle). Separate from /services (individual listings). */}
       <Route path="/providers">
         <Layout><ProvidersDirectoryPage /></Layout>
       </Route>

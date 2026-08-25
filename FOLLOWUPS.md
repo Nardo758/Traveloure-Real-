@@ -163,3 +163,46 @@ Lower risk because they mirror reviewed in-file copy, but **not confirmed by a n
 a native check before treating as final. Gate now at full parity (289/289).
 
 2026-08-23-optimizer-three-variants flag 'PR #563 built V1+V2 only' is stale — the grid renders up to 3 as of 9d3f8ab; ledger note to close it.
+
+### FU — Lane 2 (experts-services-polish) base + branch
+Lane 2 (SPEC §3.7–3.11) was restarted from `origin/main` HEAD **`b28be54`** after Lane 1 merged
+(PRs #579–583), on the same session branch `claude/new-session-i39ogn` (the discover-polish alias
+above; Replit fetches by that name). Executed from Claude Code in **unattended mode** — Phases 1–5 run
+consecutively behind the draft PR's CI, HALT on the dispatch triggers, never merge/mark-ready/push-main.
+
+### FU — §3.10 storefront attribution sidebar deferred (needs a server field)
+The role-agnostic storefront deliberately still omits the "Came from a provider link?" sidebar:
+`/api/storefront/:handle` returns no attribution/fee fields and §3.10 forbids computing them client-side
+(§13/§14). **FOLLOWUP:** add a read-only `resolveStorefrontAttribution(viewerId, ownerId)` that returns
+`{ travelerFeeStatus, repeatRate }` from the session acquisition reference and the repeat-pair check,
+without returning amounts. `acquired_via_provider_id` does not exist; current attribution is the
+acquisition reference plus `rails-attribution.service.ts`. The sidebar may render only when both strings
+exist. This is a new read model, not a change to fee math or checkout resolution.
+
+### FU — §3.11 /providers market facet
+Phase 5 renders the honest total ("Providers · N") with name/handle search only — **no `?market=`
+filter or per-market count**, because `/api/provider-storefronts` carries no market/location facet
+(the page's own §13 note). Empty state reads "No providers yet" without a market name. Deferred per
+decision-maker (Phase 0). **FOLLOWUP:** a market facet on `/api/provider-storefronts` — `location` is
+already on the row, so a server-side `?market=` is likely one `WHERE`.
+
+### FU — discover-tabs `/ready-made` flake LEFT FOR BASE (decision-maker, Lane 2 session)
+The `discover-tabs-smoke` gate (`discover-tabs.spec.ts:103`) is red on Lane 2's PR: on
+`/ready-made`, when the CI seed produces no `expert_templates` and `/api/expert-templates`
+hasn't settled within the 5s window, neither the `card-template-*` cards nor the empty-state
+CTA `button-become-expert-packages` are in the DOM → timeout. It is a **seed/timing flake in
+Lane 1 code** (`discover.tsx` / `discover-tabs.spec.ts`), byte-identical on base `b28be54`,
+reproducing across every Lane 2 commit; Lane 2's diff (experts/expert-detail/storefront/
+providers/nav) never touches the Marketplace surfaces the spec tests. Decision-maker ruled
+**leave it for base** — Lane 2 does not touch `discover-tabs.spec.ts` or `discover.tsx` (both
+outside Lane 2 write targets), and the PR simply is not all-green on that one gate. **Fix when
+taken up on main:** wait for the `/ready-made` templates query to settle before the branch, and
+accept the Lane-1 `rm-shelf-card-*` cards as populated evidence (not only legacy
+`card-template-*`).
+
+### FU — §3.9 expert-detail DTO fields (responds / since / consultation)
+Phase 3 applies §13 omit-on-absent: the hardcoded `responseTime || "< 24 hours"` fallback is removed,
+and the "since" and consultation-kv facts are omitted until a real field exists (no fabrication).
+Deferred per decision-maker (Phase 0). **FOLLOWUP:** add `responseTimeMinutes`, `memberSince`, and
+consultation fields to the expert DTO — all three exist as data somewhere (message timestamps,
+`users.created_at`, consultation scheduling), so this is wiring, not new tracking.

@@ -55,6 +55,7 @@ const NOT_FOUND_HEADING = '404 - Lost at Sea?';
 // is visitable. Add entries here whenever a new param name is introduced.
 const SEGMENT_PLACEHOLDERS: Record<string, string> = {
   id: '1',
+  handle: 'kansai-bizlang',
   token: 'preview-token',
   slug: 'tokyo',
   city: 'tokyo',
@@ -62,6 +63,8 @@ const SEGMENT_PLACEHOLDERS: Record<string, string> = {
   tripId: '1',
   contentType: 'blog',
 };
+
+const HANDLE_ROUTE_FIXTURES = ['kansai-bizlang', 'kyoto-interpreter'] as const;
 
 function substituteParams(routePath: string): string {
   return routePath.replace(/:([a-zA-Z]+)/g, (_match, name: string) => {
@@ -123,8 +126,13 @@ const APP_ROUTES = extractAppRoutes();
 
 test.describe('App route coverage — no broken routes', () => {
   for (const href of APP_ROUTES) {
-    test(`${href} does not render NotFound`, async ({ page }) => {
-      await page.goto(`${BASE_URL}${href}`, {
+    const coverageHrefs = href === '/s/kansai-bizlang'
+      ? HANDLE_ROUTE_FIXTURES.map((handle) => `/s/${handle}`)
+      : [href];
+
+    for (const coverageHref of coverageHrefs) {
+    test(`${coverageHref} does not render NotFound`, async ({ page }) => {
+      await page.goto(`${BASE_URL}${coverageHref}`, {
         waitUntil: 'domcontentloaded',
         timeout: 30_000,
       });
@@ -140,23 +148,24 @@ test.describe('App route coverage — no broken routes', () => {
       });
       await expect(
         notFoundHeading,
-        `Expected ${href} NOT to render the 404 page`,
+          `Expected ${coverageHref} NOT to render the 404 page`,
       ).not.toBeVisible({ timeout: 1_000 });
 
       // Detect whether the page redirected away from the requested href.
       // Auth-gated routes bounce to "/" — skip the content check for those
       // since the destination (landing page) already has rich content.
       const currentPath = new URL(page.url()).pathname;
-      const redirected = currentPath !== href;
+      const redirected = currentPath !== coverageHref;
 
       if (!redirected) {
-        await assertMeaningfulContent(page, href);
+        await assertMeaningfulContent(page, coverageHref);
       }
 
       console.log(
-        `[app-routes] PASS ${href}` +
+          `[app-routes] PASS ${coverageHref}` +
           (redirected ? ` → redirected to ${currentPath}` : ''),
       );
     });
+    }
   }
 });

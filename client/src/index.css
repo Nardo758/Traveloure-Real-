@@ -500,12 +500,12 @@
 
 .itinerary-comparison-page.review-board .review-apply {
   background: var(--earn-green);
-  color: #12352b;
+  color: var(--earn-green-ink);
 }
 
 .itinerary-comparison-page.review-board .review-apply:hover {
   background: var(--earn-green-ink);
-  color: #ffffff;
+  color: var(--earn-ground);
 }
 
 .itinerary-comparison-page.review-board .review-legend-dot--save {
