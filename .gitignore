@@ -34,3 +34,6 @@ journey-out/
 
 # Claude Code agent scratch (session-local: isolated agent worktrees, local settings) — never commit
 .claude/
+
+# Raw pasted dispatch prompts are session inputs, not repository assets.
+attached_assets/Pasted-*
