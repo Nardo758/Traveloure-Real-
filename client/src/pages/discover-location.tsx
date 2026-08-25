@@ -25,6 +25,11 @@ import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-stub";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
+import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
+import { ExpertCard } from "@/components/expert-card";
+import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
+import { FeedEarnCard } from "@/components/feed/earn-card";
+import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { useAskExpert } from "@/lib/use-ask-expert";
@@ -399,549 +404,13 @@ const SPINE_CHIPS = [
   { id: "vibe", label: "Vibe" },
 ];
 
-// ─── Injected cards (feed-composition layer) ─────────────────────────────────
-
-/** Featured lead expert — placed once, near the top, by composeFeedStream. */
-function LeadExpertCard({ expert }: { expert: any }) {
-  const packagesCount = Number(expert.packagesCount ?? 0);
-  return (
-    <div
-      className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 h-full"
-      data-testid="section-lead-expert"
-    >
-      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-        <UserCheck className="w-5 h-5 text-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-foreground truncate">
-          {expert.displayName ?? (`${expert.firstName ?? expert.first_name ?? ""} ${expert.lastName ?? expert.last_name ?? ""}`.trim() || "Local Expert")}
-        </p>
-        <p className="text-[11px] text-muted-foreground truncate">
-          {expert.headline ?? expert.bio?.slice(0, 60) ?? "Featured local expert"}
-        </p>
-        {packagesCount > 0 && (
-          <p className="text-[11px] text-muted-foreground truncate" data-testid="lead-expert-packages">
-            📔 {packagesCount} {packagesCount === 1 ? "trip" : "trips"}
-          </p>
-        )}
-      </div>
-      <a
-        href={`/experts/${expert.id}`}
-        className="flex items-center gap-1 text-[11px] font-semibold text-primary whitespace-nowrap"
-        data-testid="link-lead-expert-profile"
-      >
-        View profile <ChevronRight className="w-3 h-3" />
-      </a>
-    </div>
-  );
-}
-
-/** Recruitment slot — capped and spaced by composeFeedStream (no walls of "Apply"). */
-function WantedSlotCard({ item }: { item: FeedItem }) {
-  const { offeringLabel, neighborhoodName, city: slotCity, demandCount, dateContext, neighborhoodId } = item.data as WantedSlotData;
-  const isHighDemand = (demandCount ?? 0) >= 5;
-  return (
-    <div
-      className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-3 h-full"
-      data-testid={`section-recruitment-${neighborhoodId}`}
-    >
-      <div className="min-w-0">
-        {isHighDemand && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-50 rounded-full px-2 py-0.5 mb-1" data-testid="badge-high-demand">
-            🔥 High demand
-          </span>
-        )}
-        <p className="text-xs font-semibold text-primary truncate">
-          {offeringLabel} wanted in {neighborhoodName}
-        </p>
-        <p className="text-[11px] text-muted-foreground truncate">
-          {demandCount && demandCount > 0
-            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
-            : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
-        </p>
-      </div>
-      <a
-        href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offering=${encodeURIComponent(offeringLabel)}`}
-        className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary whitespace-nowrap flex-shrink-0"
-        data-testid="link-wanted-apply"
-      >
-        Apply <ChevronRight className="w-3 h-3" />
-      </a>
-    </div>
-  );
-}
-
-/** Ways-to-Earn card — injected exactly once per feed (after composition, insert-only). */
-function EarnCard({ city }: { city: string }) {
-  const displayCity = toTitleCase(city);
-  return (
-    <div
-      className="rounded-xl border border-primary/40 bg-primary/5 p-3 flex flex-col gap-1.5 h-full"
-      data-testid="feed-card-earn"
-    >
-      <span className="text-[10px] text-primary font-semibold uppercase tracking-widest">
-        EARN ON TRAVELOURE
-      </span>
-      <h3 className="font-semibold text-[15px] leading-tight tracking-tight">
-        Know {displayCity} like a local? Offer a service here?
-      </h3>
-      <p className="text-[12px] text-muted-foreground">
-        Local experts share their knowledge; providers list bookable services — both earn on Traveloure.
-      </p>
-      <div className="flex gap-1.5 pt-1 flex-wrap mt-auto">
-        <Button size="sm" className="h-7 text-xs px-3" asChild data-testid="btn-earn-expert">
-          <a href="/earn">Become an expert</a>
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs px-3" asChild data-testid="btn-earn-provider">
-          <a href="/earn">List a service</a>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Package (expert itinerary template) feed card — data from the already-gated
- * public GET /api/expert-templates (approved+published, teaser-redacted).
- * Works in both column and marquee/row form like RecommendationCard.
- */
-function PackageCard({
-  template,
-  layout = "column",
-}: {
-  template: any;
-  layout?: "column" | "row";
-}) {
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const isRow = layout === "row";
-
-  const priceNum = Number(template.price);
-  const priceDisplay = !isNaN(priceNum)
-    ? `$${priceNum % 1 === 0 ? priceNum : priceNum.toFixed(2)}`
-    : null;
-
-  // §13 honesty: real rating only when reviewCount > 0 — otherwise "New", never a fake number.
-  const reviewCount = Number(template.reviewCount ?? 0);
-  const rating = reviewCount > 0 && template.averageRating ? Number(template.averageRating) : null;
-  const salesCount = Number(template.salesCount ?? 0);
-
-  // The teaser payload carries no expert name — show destination · duration instead.
-  const expertName = template.expertName ?? null;
-  const destDuration = [template.destination, template.duration ? `${template.duration} days` : null]
-    .filter(Boolean)
-    .join(" · ");
-  const byline = expertName ? `by ${expertName}` : destDuration;
-
-  const photoArea = (
-    <div
-      className={cn(
-        "relative overflow-hidden flex-shrink-0 flex items-center justify-center bg-muted text-muted-foreground",
-        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
-      )}
-    >
-      {template.coverImage ? (
-        <img
-          src={template.coverImage}
-          alt={template.title}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn(
-            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-            imgLoaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-      ) : (
-        <span className="text-2xl">📔</span>
-      )}
-    </div>
-  );
-
-  const cardBody = (
-    <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-primary/10 text-primary">
-          Trip
-        </span>
-        {rating === null && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-muted text-muted-foreground">
-            New
-          </span>
-        )}
-      </div>
-
-      <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
-        {template.title}
-      </h3>
-
-      {byline && <p className="text-[12px] text-muted-foreground line-clamp-1">{byline}</p>}
-
-      <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
-        {priceDisplay && <span className="text-sm font-bold text-foreground">{priceDisplay}</span>}
-        {rating !== null && (
-          <span data-testid={`package-rating-${template.id}`}>
-            ★ {rating.toFixed(1)} ({reviewCount})
-          </span>
-        )}
-        {salesCount > 0 && <span data-testid={`package-sold-${template.id}`}>{salesCount} sold</span>}
-      </div>
-
-      <div className="flex gap-1.5 pt-0.5 flex-wrap mt-auto">
-        <Button size="sm" className="h-7 text-xs px-3" asChild data-testid={`btn-view-package-${template.id}`}>
-          <a href={`/expert-templates/${template.id}`}>View itinerary</a>
-        </Button>
-
-        {/* D9: More info modal — additive, "View itinerary" above is untouched.
-            Shows the TEASER day list only (itineraryPreview: day + title from
-            the server's content gate) — full content stays purchase-gated. */}
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              data-testid={`button-more-info-package-${template.id}`}
-            >
-              <Info className="w-3 h-3 mr-1" />
-              More info
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{template.title}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {destDuration && <p className="text-sm text-muted-foreground">{destDuration}</p>}
-              {expertName && <p className="text-xs text-muted-foreground">by {expertName}</p>}
-
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {priceDisplay && (
-                  <span className="text-base font-bold text-foreground">{priceDisplay}</span>
-                )}
-                {/* §13: real rating only when review-backed; otherwise an honest "New" */}
-                {rating !== null ? (
-                  <span data-testid={`modal-package-rating-${template.id}`}>
-                    ★ {rating.toFixed(1)} ({reviewCount})
-                  </span>
-                ) : (
-                  <span className="font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                    New
-                  </span>
-                )}
-                {salesCount > 0 && <span>{salesCount} sold</span>}
-              </div>
-
-              {Array.isArray(template.itineraryPreview) && template.itineraryPreview.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium mb-1">What's inside (preview)</p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {template.itineraryPreview.map((d: any, i: number) => (
-                      <div key={i} className="flex items-baseline gap-2 text-xs">
-                        <span className="text-muted-foreground flex-shrink-0 font-medium">
-                          Day {d.day ?? i + 1}
-                        </span>
-                        <span className="truncate">{d.title ?? "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1.5">
-                    Full day-by-day details unlock after purchase.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button size="sm" asChild data-testid={`modal-view-itinerary-${template.id}`}>
-                  <a href={`/expert-templates/${template.id}`}>View itinerary</a>
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </div>
-  );
-
-  return (
-    <div
-      className={cn(
-        "rounded-xl overflow-hidden border border-primary/40 bg-card shadow-sm hover:shadow-md transition-shadow h-full",
-        isRow ? "flex flex-row" : "flex flex-col",
-      )}
-      data-testid={`feed-card-package-${template.id}`}
-    >
-      {photoArea}
-      {cardBody}
-    </div>
-  );
-}
-
-// ─── Inline recommendation card (with impression tracking) ─────────────────
-
-function RecommendationCard({
-  candidate,
-  city,
-  position,
-  scheduledDate,
-  onAdd,
-  onBook,
-  recommendedLabel = "Recommended",
-  affiliateLabel = "Paid partner",
-  layout = "column",
-  cardPosition,
-}: {
-  candidate: any;
-  city: string;
-  position: number;
-  scheduledDate?: string | null;
-  onAdd?: (item: any) => void;
-  onBook?: (c: { offeringId: string; categoryKey: string }) => void;
-  recommendedLabel?: string;
-  affiliateLabel?: string;
-  layout?: "column" | "row";
-  cardPosition?: number;
-}) {
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const askExpert = useAskExpert();
-  const name = candidate.displayName || candidate.categoryKey?.replace(/_/g, " ");
-  const isAffiliate = candidate.sourceType === "affiliate";
-  const isRow = layout === "row";
-  const impressionFiredRef = useRef(false);
-
-  useEffect(() => {
-    if (!impressionFiredRef.current) {
-      impressionFiredRef.current = true;
-      // Repointed: /api/feed/impression never existed (all rec impressions were silently
-      // discarded). /api/upsell/impression is the real endpoint; it expects
-      // { surface, offeringIds } — the engine's own impression ledger.
-      // D1: in date mode the candidates came from the discover_date surface, so
-      // the impression ref must carry the same surface the ranking ran on.
-      fetch("/api/upsell/impression", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          surface: scheduledDate ? "discover_date" : "discover_location",
-          offeringIds: [candidate.offeringId],
-        }),
-      }).catch(() => {});
-    }
-  }, [candidate.offeringId, position, city, candidate.sourceType]);
-
-  const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
-
-  const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add";
-
-  const meta = (() => {
-    const k = `${candidate.categoryKey} ${candidate.displayName}`.toLowerCase();
-    if (/photo/.test(k)) return { emoji: "📷", phBg: "bg-teal-50", phText: "text-teal-600" };
-    if (/chef|food|culinary|dining|restaurant|tasting/.test(k))
-      return { emoji: "🍵", phBg: "bg-pink-50", phText: "text-pink-600" };
-    if (/transport|driver|transfer|car/.test(k))
-      return { emoji: "🚗", phBg: "bg-blue-50", phText: "text-blue-600" };
-    if (/event|ticket|show|concert|festival/.test(k))
-      return { emoji: "🎫", phBg: "bg-pink-50", phText: "text-pink-600" };
-    if (/wellness|spa|massage|yoga/.test(k))
-      return { emoji: "🧘", phBg: "bg-teal-50", phText: "text-teal-600" };
-    if (/tour|guide|walk|experience|activit/.test(k))
-      return { emoji: "🧭", phBg: "bg-amber-50", phText: "text-amber-700" };
-    return { emoji: "✨", phBg: "bg-amber-50", phText: "text-amber-700" };
-  })();
-
-  const photoArea = (
-    <div
-      className={cn(
-        "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
-        meta.phBg,
-        meta.phText,
-        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
-      )}
-    >
-      {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
-      {!loading && photoUrl && (
-        <img
-          src={photoUrl}
-          alt={name}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn(
-            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-            imgLoaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-      )}
-      {!loading && !photoUrl && <span className="text-2xl">{meta.emoji}</span>}
-    </div>
-  );
-
-  const cardBody = (
-    <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase whitespace-nowrap",
-            isAffiliate ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700",
-          )}
-        >
-          <Sparkles className="w-2.5 h-2.5" />
-          {isAffiliate ? affiliateLabel : recommendedLabel}
-        </span>
-      </div>
-
-      <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
-        {name}
-      </h3>
-
-      {candidate.tagline && (
-        <p className="text-[12px] text-muted-foreground line-clamp-2">{candidate.tagline}</p>
-      )}
-
-      {candidate.reason && (
-        <p className="text-[10px] text-muted-foreground/70 italic truncate">{candidate.reason}</p>
-      )}
-
-      <div className="flex gap-1.5 pt-0.5 flex-wrap">
-        {onBook && (
-          <Button
-            size="sm"
-            className="h-7 text-xs px-3"
-            onClick={() => onBook(candidate)}
-            data-testid={`btn-book-rec-${position}`}
-          >
-            Book
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs px-3"
-          onClick={() =>
-            onAdd?.({
-              title: name,
-              description: candidate.tagline,
-              city,
-              type: "recommendation",
-              scheduledDate,
-            })
-          }
-          data-testid={`btn-add-rec-${position}`}
-        >
-          <Plus className="w-3 h-3 mr-1" />
-          {addLabel}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs px-2.5"
-          onClick={() => askExpert({ city, subject: name })}
-          data-testid={`btn-ask-rec-${position}`}
-        >
-          💬 Ask
-        </Button>
-
-        {/* D9: More info modal — additive; Book/Add/Ask above are untouched.
-            "Why recommended" is built ONLY from fields actually on the wire
-            candidate (offeringId/categoryKey/displayName/tagline/reason/
-            sourceType/expertEndorsed): the server's own `reason` string
-            (which encodes template REQ/REC, neighborhood/date proximity and
-            endorsement) plus the `expertEndorsed` boolean. templateStrength/
-            matchType/price never reach the client, so they are not shown —
-            §13: real data or nothing. */}
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              data-testid={`button-more-info-rec-${position}`}
-            >
-              <Info className="w-3 h-3 mr-1" />
-              More info
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{name}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {/* The engine-source disclosure stays visible in the dialog —
-                  affiliate candidates keep their "Paid partner" label here too. */}
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
-                  isAffiliate ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700",
-                )}
-              >
-                <Sparkles className="w-2.5 h-2.5" />
-                {isAffiliate ? affiliateLabel : recommendedLabel}
-              </span>
-
-              {candidate.tagline && (
-                <p className="text-sm text-muted-foreground">{candidate.tagline}</p>
-              )}
-
-              {(candidate.reason || candidate.expertEndorsed) && (
-                <div className="p-2 rounded-lg bg-muted/50 border border-muted">
-                  <p className="text-xs font-medium mb-1">Why you're seeing this</p>
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    {candidate.reason && <p data-testid={`modal-rec-reason-${position}`}>{candidate.reason}</p>}
-                    {candidate.expertEndorsed === true && (
-                      <p data-testid={`modal-rec-endorsed-${position}`}>✓ Endorsed by a local expert</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Same handlers as the card's existing Book/Add buttons */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                {onBook && (
-                  <Button
-                    size="sm"
-                    onClick={() => onBook(candidate)}
-                    data-testid={`modal-book-rec-${position}`}
-                  >
-                    Book
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onAdd?.({
-                      title: name,
-                      description: candidate.tagline,
-                      city,
-                      type: "recommendation",
-                      scheduledDate,
-                    })
-                  }
-                  data-testid={`modal-add-rec-${position}`}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  {addLabel}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </div>
-  );
-
-  return (
-    <div
-      className={cn(
-        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full",
-        isRow ? "flex flex-row" : "flex flex-col",
-      )}
-      data-testid={`feed-card-rec-${position}`}
-    >
-      {photoArea}
-      {cardBody}
-    </div>
-  );
-}
-
+// ─── Injected cards ─────────────────────────────────────────────────────────
+// The former inline LeadExpertCard / WantedSlotCard / EarnCard / PackageCard /
+// RecommendationCard have been converged onto the card family + feed/* panels
+// (city-feed bento, Phase 2): recommendation → CityFeedCardRecommendation,
+// package → FeedReadyMadeCard, wanted-slot → FeedWantedSlotCard, earn →
+// FeedEarnCard, lead-expert → ExpertCard variant="anchor". BentoTile below
+// dispatches to them; the anchor treatment is chosen by the bento renderer.
 // ─── Filler card (non-neighborhood) ──────────────────────────────────────────
 
 interface RecLabels {
@@ -949,11 +418,18 @@ interface RecLabels {
   affiliateLabel: string;
 }
 
-function FillerCard({
+/**
+ * Renders ONE bento tile. Dispatches by feed kind onto the converged card
+ * family + feed/* panels. `isAnchor` renders the lead treatment for the tile
+ * that heads a neighbourhood bento (an expert → the dark-gradient ExpertCard
+ * anchor; anything else → its normal family card, span-emphasised by the grid).
+ */
+function BentoTile({
   item,
   city,
   scheduledDate,
   onAdd,
+  isAnchor,
   isMarquee,
   cardPosition,
   onBookRec,
@@ -963,11 +439,19 @@ function FillerCard({
   city: string;
   scheduledDate: string | null;
   onAdd: (item: any) => void;
+  isAnchor?: boolean;
   isMarquee?: boolean;
   cardPosition?: number;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
+  // Anchor expert → the dark-gradient ExpertCard anchor treatment (col-span-2
+  // row-span-2 lead of the neighbourhood bento). Otherwise experts keep their
+  // compact feed card.
+  if (isAnchor && (item.kind === "lead-expert" || item.kind === "expert")) {
+    return <ExpertCard expert={item.data} variant="anchor" />;
+  }
+
   switch (item.kind) {
     case "loose-gem":
       return (
@@ -981,6 +465,7 @@ function FillerCard({
         />
       );
     case "expert":
+    case "lead-expert":
       return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} />;
     case "event":
       return (
@@ -1014,13 +499,13 @@ function FillerCard({
       );
     case "recommendation":
       return (
-        <RecommendationCard
+        <CityFeedCardRecommendation
           candidate={item.data.candidate}
           city={city}
           position={item.data.recIndex}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
-          onBook={onBookRec}
+          onBook={onBookRec ? (c) => onBookRec(c) : undefined}
           recommendedLabel={recLabels?.recommendedLabel}
           affiliateLabel={recLabels?.affiliateLabel}
           layout={isMarquee ? "row" : "column"}
@@ -1028,13 +513,11 @@ function FillerCard({
         />
       );
     case "wanted-slot":
-      return <WantedSlotCard item={item} />;
-    case "lead-expert":
-      return <LeadExpertCard expert={item.data} />;
+      return <FeedWantedSlotCard item={item} />;
     case "earn-card":
-      return <EarnCard city={city} />;
+      return <FeedEarnCard city={city} />;
     case "package":
-      return <PackageCard template={item.data} layout={isMarquee ? "row" : "column"} />;
+      return <FeedReadyMadeCard template={item.data} layout={isMarquee ? "row" : "column"} />;
     case "external-stub":
       return <CityFeedCardExternalStub stub={item.data} city={city} />;
     default:
@@ -1042,7 +525,7 @@ function FillerCard({
   }
 }
 
-/** The kinds FillerCard can actually render — grid math must only see these (F1: no empty cells). */
+/** The kinds a bento tile can actually render — grid math must only see these (F1: no empty cells). */
 const FILLER_KINDS = new Set<FeedItem["kind"]>([
   "loose-gem",
   "expert",
@@ -1058,12 +541,219 @@ const FILLER_KINDS = new Set<FeedItem["kind"]>([
   "external-stub",
 ]);
 
+// ─── Bento span algorithm ─────────────────────────────────────────────────────
+
+/** Which desktop col-span class a tile carries (min-[900px] = the 4-col bento). */
+const COL_SPAN_CLASS: Record<number, string> = {
+  1: "",
+  2: "min-[900px]:col-span-2",
+  3: "min-[900px]:col-span-3",
+  4: "min-[900px]:col-span-4",
+};
+
+/** A tile placed in the bento, carrying its resolved desktop column span. */
+interface PlacedTile {
+  item: FeedItem;
+  /** Original position in the neighbourhood's stream run (order-preservation proof). */
+  order: number;
+  colSpan: number;
+  isAnchor: boolean;
+}
+
+/**
+ * Assign column spans over a 4-wide grid so that every visual row sums to
+ * EXACTLY 4 — no orphan cell, no straddle hole. The anchor is col-span-2; a
+ * designated wide ready-made (the first non-anchor package) is col-span-2; all
+ * others start at 1. A greedy width-4 packer then widens the last tile of any
+ * short row to fill it. Computed purely from the tile sequence (never re-ranked).
+ */
+function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: boolean }[]): PlacedTile[] {
+  const n = tiles.length;
+  if (n === 0) return [];
+
+  const base = tiles.map((t) => {
+    let colSpan = 1;
+    if (t.isAnchor) colSpan = 2;
+    return colSpan;
+  });
+  // First non-anchor package becomes the one col-span-2 ready-made.
+  const wideIdx = tiles.findIndex((t, i) => !t.isAnchor && t.item.kind === "package");
+  if (wideIdx >= 0) base[wideIdx] = 2;
+
+  // Greedy width-4 packing into rows (a col-span-2 never straddles a boundary).
+  const rows: number[][] = [];
+  let row: number[] = [];
+  let used = 0;
+  for (let i = 0; i < n; i++) {
+    const s = Math.min(base[i], 4);
+    if (used + s > 4) {
+      rows.push(row);
+      row = [];
+      used = 0;
+    }
+    row.push(i);
+    used += s;
+    if (used === 4) {
+      rows.push(row);
+      row = [];
+      used = 0;
+    }
+  }
+  if (row.length) rows.push(row);
+
+  // Widen the last tile of any row that is short, so every row sums to 4 (F1/F3).
+  for (const r of rows) {
+    const sum = r.reduce((a, i) => a + Math.min(base[i], 4), 0);
+    if (sum < 4) base[r[r.length - 1]] += 4 - sum;
+  }
+
+  return tiles.map((t, i) => ({ item: t.item, order: t.order, colSpan: base[i], isAnchor: t.isAnchor }));
+}
+
+/**
+ * Build the ordered tile list for a neighbourhood bento. ORDER IS PRESERVED:
+ * tiles keep their stream order (each tagged with its original `order` index).
+ * The ONLY exception is the anchor — the run's lead local expert if it has one,
+ * else the top ready-made, else the first tile — which the bento floats to the
+ * visual lead (col-span-2 row-span-2). Every other tile stays in stream order.
+ */
+function buildBentoTiles(run: FeedItem[]): PlacedTile[] {
+  const tagged = run.map((item, order) => ({ item, order, isAnchor: false }));
+  if (tagged.length === 0) return [];
+
+  let anchorIdx = tagged.findIndex((t) => t.item.kind === "lead-expert" || t.item.kind === "expert");
+  if (anchorIdx < 0) anchorIdx = tagged.findIndex((t) => t.item.kind === "package");
+  if (anchorIdx < 0) anchorIdx = 0;
+
+  tagged[anchorIdx].isAnchor = true;
+  const anchor = tagged[anchorIdx];
+  const rest = tagged.filter((_, i) => i !== anchorIdx);
+  return assignBentoSpans([anchor, ...rest]);
+}
+
+// ─── Neighbourhood bento group ────────────────────────────────────────────────
+
+/**
+ * One bento group: the coral eyebrow / editorial Fraunces heading / "See all"
+ * link (when the group belongs to a neighbourhood), then the 4-col bento grid
+ * (grid-cols-4 auto-rows-[172px] gap-[14px] on desktop; 2-col ≤900px, 1-col
+ * ≤560px). Membership and order come straight from the composed stream — the
+ * grid only assigns spans and floats the anchor.
+ */
+function BentoGroup({
+  run,
+  neighbourhood,
+  city,
+  scheduledDate,
+  onAdd,
+  onBookRec,
+  recLabels,
+}: {
+  run: FeedItem[];
+  neighbourhood: any | null;
+  city: string;
+  scheduledDate: string | null;
+  onAdd: (item: any) => void;
+  onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
+  recLabels?: RecLabels;
+}) {
+  const placed = buildBentoTiles(run);
+  if (placed.length === 0) return null;
+
+  const nbName: string | null = neighbourhood
+    ? (neighbourhood.name ?? neighbourhood.neighborhood_name ?? neighbourhood.neighborhoodName ?? null)
+    : null;
+  const nbSlug: string | null = neighbourhood
+    ? String(neighbourhood.slug ?? neighbourhood.id ?? nbName ?? "")
+    : null;
+  const heading: string | null = neighbourhood
+    ? (neighbourhood.editorialTitle ?? neighbourhood.headline ?? neighbourhood.tagline ?? nbName ?? null)
+    : null;
+
+  return (
+    <section
+      data-testid={nbSlug ? `bento-section-${nbSlug}` : "bento-intro"}
+      data-bento-neighbourhood={nbSlug ?? ""}
+    >
+      {neighbourhood && nbName && (
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div
+              className="text-[10.5px] font-semibold uppercase tracking-[0.12em]"
+              style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
+              data-testid={`bento-eyebrow-${nbSlug}`}
+            >
+              {nbName.toUpperCase()} · {placed.length}
+            </div>
+            <h3
+              className="text-[22px] font-semibold leading-tight"
+              style={{ color: "var(--earn-navy)", fontFamily: FRAUNCES }}
+            >
+              {heading}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                document
+                  .querySelector(`[data-testid="neighborhood-container-${nbSlug}"]`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              } catch {
+                /* best-effort scroll */
+              }
+            }}
+            className="shrink-0 whitespace-nowrap text-[12px] font-semibold"
+            style={{ color: "var(--earn-coral-ink)" }}
+            data-testid={`bento-see-all-${nbSlug}`}
+          >
+            See all in {nbName} →
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:auto-rows-[172px] gap-[14px]">
+        {placed.map((tile) => (
+          <div
+            key={tile.item.id}
+            className={cn(
+              "h-full min-w-0 overflow-hidden min-[900px]:row-span-2",
+              COL_SPAN_CLASS[tile.colSpan] ?? "",
+            )}
+            data-testid={`bento-tile-${tile.item.id}`}
+            data-bento-role={tile.isAnchor ? "anchor" : "tile"}
+            data-order={tile.order}
+            data-col-span={tile.colSpan}
+          >
+            <BentoTile
+              item={tile.item}
+              city={city}
+              scheduledDate={scheduledDate}
+              onAdd={onAdd}
+              isAnchor={tile.isAnchor}
+              isMarquee={tile.colSpan >= 2}
+              cardPosition={tile.order}
+              onBookRec={onBookRec}
+              recLabels={recLabels}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ─── Bento feed renderer ──────────────────────────────────────────────────────
 
 /**
- * Groups consecutive filler items into 2-column bento grids.
- * First item in each group = span-2 row layout (marquee).
- * Rhythm: [bento] [neighborhood] [bento] [neighborhood] …
+ * Blended-feed renderer (city-feed bento, Phase 2).
+ *
+ * Walks the ALREADY-COMPOSED stream in order — it NEVER re-orders or drops.
+ * Neighbourhood markers render the existing NeighborhoodContainer (its gems,
+ * local-expert row and events, testids intact); each maximal run of filler
+ * that follows a neighbourhood renders as that neighbourhood's bento (headed by
+ * the coral eyebrow / Fraunces heading / See-all). A run before the first
+ * neighbourhood is the intro bento (no heading). city-separators are preserved.
  */
 function FeedRenderer({
   items,
@@ -1084,7 +774,7 @@ function FeedRenderer({
 }) {
   // F1: grid math must only see renderable items — an unrenderable kind would
   // occupy a bento cell and render as an empty hole. Neighborhoods and
-  // city-separators are section-level (not FillerCard) kinds, so they stay.
+  // city-separators are section-level kinds, so they stay.
   const renderableItems = items.filter(
     (item) =>
       item.kind === "neighborhood" ||
@@ -1102,15 +792,18 @@ function FeedRenderer({
 
   type Section =
     | { type: "neighborhood"; item: FeedItem }
-    | { type: "group"; items: FeedItem[] }
+    | { type: "group"; items: FeedItem[]; neighbourhood: any | null }
     | { type: "city-separator"; item: FeedItem };
 
   const sections: Section[] = [];
   let currentGroup: FeedItem[] = [];
+  // The most recent neighbourhood — a trailing filler run belongs to it (its
+  // bento gets that neighbourhood's header). A run before the first is intro.
+  let lastNeighbourhood: any | null = null;
 
   const flushGroup = () => {
     if (currentGroup.length > 0) {
-      sections.push({ type: "group", items: [...currentGroup] });
+      sections.push({ type: "group", items: [...currentGroup], neighbourhood: lastNeighbourhood });
       currentGroup = [];
     }
   };
@@ -1119,15 +812,11 @@ function FeedRenderer({
     if (item.kind === "neighborhood") {
       flushGroup();
       sections.push({ type: "neighborhood", item });
+      lastNeighbourhood = item.data;
     } else if (item.kind === "city-separator") {
       flushGroup();
       sections.push({ type: "city-separator", item });
-    } else if (item.kind === "package") {
-      // Packages always render as full-width marquee rows: each is its own
-      // single-item group (the approved mockup treatment). Order is preserved —
-      // this only affects visual arrangement, never composition.
-      flushGroup();
-      sections.push({ type: "group", items: [item] });
+      lastNeighbourhood = null;
     } else {
       currentGroup.push(item);
     }
@@ -1135,7 +824,7 @@ function FeedRenderer({
   flushGroup();
 
   return (
-    <div className="space-y-5" data-testid="city-feed">
+    <div className="space-y-6" data-testid="city-feed">
       {sections.map((section, si) => {
         if (section.type === "neighborhood") {
           return (
@@ -1166,41 +855,23 @@ function FeedRenderer({
           );
         }
 
-        // Bento group: first item is span-2 (marquee), rest pair into half-width cells.
-        // All items — including lead-expert and wanted-slot — participate in the
-        // 2-col grid so the rhythm stays intact. Odd-tail rule (F3): of the items
-        // AFTER the marquee, an odd count means the LAST one also spans the full
-        // row so groups always end flush. Single column on mobile (F10), order preserved.
-        const restCount = section.items.length - 1;
-        const oddTailIdx = restCount > 0 && restCount % 2 === 1 ? section.items.length - 1 : -1;
         return (
-          <div key={`group-${si}`} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {section.items.map((item, itemIdx) => {
-              const isMarquee = itemIdx === 0 || itemIdx === oddTailIdx;
-              return (
-                <div
-                  key={item.id}
-                  className={cn("h-full", isMarquee && "sm:col-span-2")}
-                >
-                  <FillerCard
-                    item={item}
-                    city={city}
-                    scheduledDate={scheduledDate}
-                    onAdd={onAdd}
-                    isMarquee={isMarquee}
-                    cardPosition={itemIdx}
-                    onBookRec={onBookRec}
-                    recLabels={recLabels}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          <BentoGroup
+            key={`group-${si}`}
+            run={section.items}
+            neighbourhood={section.neighbourhood}
+            city={city}
+            scheduledDate={scheduledDate}
+            onAdd={onAdd}
+            onBookRec={onBookRec}
+            recLabels={recLabels}
+          />
         );
       })}
     </div>
   );
 }
+
 
 // ─── Flat filtered feed ───────────────────────────────────────────────────────
 
@@ -1229,7 +900,7 @@ function FlatFilteredFeed({
     <div className="grid grid-cols-2 gap-3" data-testid="city-feed-flat">
       {items.map((item, idx) => (
         <div key={item.id} className={idx === 0 ? "col-span-2" : ""}>
-          <FillerCard
+          <BentoTile
             item={item}
             city={city}
             scheduledDate={scheduledDate}

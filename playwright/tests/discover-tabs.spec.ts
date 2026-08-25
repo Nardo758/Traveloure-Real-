@@ -355,3 +355,175 @@ test.describe('Marketplace surfaces — mobile viewport (375 px)', () => {
     });
   }
 });
+
+// ── 7. City-feed bento — /discover/location (fixture-mocked, city-feed-bento) ─
+//
+// Phase 2 of the city-feed bento lane. Fully page.route-mocked (no DB seed):
+// a committed LocationViewPayload fixture with exactly two neighbourhoods —
+// 'gion' WITH a lead local expert, 'arashiyama' WITHOUT — plus a partner
+// external stub, a wanted slot (via offering-types + a deterministic
+// composition config), gems, services and a ready-made so spans exercise.
+//
+// The bento only groups by neighbourhood and assigns visual spans; it must
+// never reorder the composed stream. Each bento tile carries data-order (its
+// position in the neighbourhood's stream run), data-bento-role (anchor|tile)
+// and data-col-span so these invariants are checkable without re-implementing
+// the composition engine.
+import { readFileSync } from 'fs';
+
+const BENTO_FIX = JSON.parse(
+  readFileSync(new URL('./fixtures/discover-location-kyoto.json', import.meta.url), 'utf-8'),
+);
+
+async function mockBentoEndpoints(page: import('@playwright/test').Page) {
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  });
+
+  // Location view payload (the page's primary query).
+  await page.route('**/api/discover/location/kyoto**', (route) => route.fulfill(json(BENTO_FIX.locationView)));
+  // Admin-configurable composition knobs — pinned so the interleave is deterministic.
+  await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
+  // Wanted-slot vocabulary.
+  await page.route('**/api/offering-types/experts', (route) => route.fulfill(json(BENTO_FIX.offeringTypes)));
+  // Experts for the market (the lead-expert source).
+  await page.route('**/api/experts?location=**', (route) => route.fulfill(json(BENTO_FIX.experts)));
+  // Ready-made trips (retag source for the expert_package candidate).
+  await page.route('**/api/expert-templates**', (route) => route.fulfill(json(BENTO_FIX.packages)));
+  // Engine slate (POST): one platform rec (stays a rec tile) + one expert_package (retags to a ready-made).
+  await page.route('**/api/upsell/discover-location', (route) =>
+    route.fulfill(json({ candidates: BENTO_FIX.candidates, suppressed: [] })),
+  );
+  // Demand + attribution + media — inert 200s so nothing hangs or errors.
+  await page.route('**/api/services/demand**', (route) => route.fulfill(json({})));
+  await page.route('**/api/upsell/impression', (route) => route.fulfill(json({ ok: true })));
+  await page.route('**/api/upsell/click', (route) => route.fulfill(json({ ok: true })));
+  await page.route('**/api/tracking/impression', (route) => route.fulfill(json({ ok: true })));
+  await page.route('**/api/affiliates/track', (route) => route.fulfill(json({ ok: true })));
+  await page.route('**/api/services/request', (route) => route.fulfill(json({ ok: true })));
+  await page.route('**/api/media/place-photo**', (route) => route.fulfill(json({ url: null })));
+}
+
+/** Collect a neighbourhood bento's tiles in DOM (render) order with their span metadata. */
+async function bentoTiles(page: import('@playwright/test').Page, slug: string) {
+  const loc = page.locator(`[data-testid="bento-section-${slug}"] [data-testid^="bento-tile-"]`);
+  const n = await loc.count();
+  const tiles: { testid: string; order: number; role: string; colSpan: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const el = loc.nth(i);
+    tiles.push({
+      testid: (await el.getAttribute('data-testid')) ?? '',
+      order: Number(await el.getAttribute('data-order')),
+      role: (await el.getAttribute('data-bento-role')) ?? '',
+      colSpan: Number(await el.getAttribute('data-col-span')),
+    });
+  }
+  return tiles;
+}
+
+/** True when a column-span sequence packs into complete width-4 rows (no orphan, no straddle). */
+function rowsAreComplete(colSpans: number[]): boolean {
+  let used = 0;
+  for (const raw of colSpans) {
+    const s = Math.min(raw, 4);
+    if (used + s > 4) {
+      if (used !== 0) return false; // a col-span straddled a row boundary → hole
+    }
+    used += s;
+    if (used > 4) return false;
+    if (used === 4) used = 0;
+  }
+  return used === 0;
+}
+
+test.describe('city-feed bento — /discover/location', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockBentoEndpoints(page);
+    await page.goto(`${BASE_URL}/discover/location/kyoto`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
+  });
+
+  test('1. order preserved — non-anchor tiles render in ascending stream order per neighbourhood', async ({ page }) => {
+    for (const slug of ['gion', 'arashiyama']) {
+      const tiles = await bentoTiles(page, slug);
+      expect(tiles.length).toBeGreaterThan(0);
+      // Exactly one anchor per section.
+      expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(1);
+      // Every non-anchor tile keeps its stream position: strictly increasing data-order.
+      const nonAnchorOrders = tiles.filter((t) => t.role === 'tile').map((t) => t.order);
+      const sorted = [...nonAnchorOrders].sort((a, b) => a - b);
+      expect(nonAnchorOrders).toEqual(sorted);
+      // No duplicate orders — membership is 1:1 with the run.
+      expect(new Set(tiles.map((t) => t.order)).size).toBe(tiles.length);
+    }
+  });
+
+  test('2. rec tiles stay keyed on their engine position (feed-card-rec-N unchanged)', async ({ page }) => {
+    // The one platform recommendation candidate is engine index 0 → feed-card-rec-0,
+    // living in Gion's bento; the bento never renumbers it.
+    const rec = page.locator('[data-testid^="feed-card-rec-"]');
+    await expect(rec).toHaveCount(1);
+    await expect(page.getByTestId('feed-card-rec-0')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
+    ).toHaveCount(1);
+  });
+
+  test('3. anchor rule — expert anchors the neighbourhood that has one; ready-made anchors the one that does not', async ({ page }) => {
+    // Gion HAS a lead local expert → the anchor tile is the dark-gradient ExpertCard.
+    const gionAnchor = page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]');
+    await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
+    await expect(gionAnchor.locator('[data-expert-variant="anchor"]')).toHaveCount(1);
+
+    // Arashiyama has NO lead expert → the anchor is the top ready-made tile.
+    const araAnchor = page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]');
+    await expect(araAnchor.locator('[data-testid^="feed-card-package-"]')).toHaveCount(1);
+    await expect(araAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(0);
+  });
+
+  test('4. partner tile has no storefront link (only a partner label)', async ({ page }) => {
+    const partner = page.getByTestId('external-stub-stub-1');
+    await expect(partner).toBeVisible();
+    // No /s/ storefront and no /experts/ profile anchor on a partner tile.
+    await expect(partner.locator('a[href^="/s/"]')).toHaveCount(0);
+    await expect(partner.locator('a[href^="/experts/"]')).toHaveCount(0);
+    // It carries the honest inventory-class label instead of a booking link.
+    await expect(partner).toContainText('From the web');
+  });
+
+  test('5. no orphan tile — every bento row fills to a complete width of 4', async ({ page }) => {
+    for (const slug of ['gion', 'arashiyama']) {
+      const tiles = await bentoTiles(page, slug);
+      const colSpans = tiles.map((t) => t.colSpan);
+      // Structural: total area is a multiple of 4 AND the greedy pack leaves no gap.
+      const total = colSpans.reduce((a, b) => a + b, 0);
+      expect(total % 4).toBe(0);
+      expect(rowsAreComplete(colSpans)).toBe(true);
+    }
+  });
+
+  test('6. Phase-1 preserved testids still present under the fixture', async ({ page }) => {
+    await expect(page.getByTestId('section-hero')).toBeVisible();
+    await expect(page.getByTestId('stats-row')).toBeVisible();
+    await expect(page.getByTestId('input-search')).toBeVisible();
+    await expect(page.getByTestId('input-location')).toBeVisible();
+    await expect(page.getByTestId('city-feed')).toBeVisible();
+    // Converged / extracted panels keep their testids.
+    await expect(page.getByTestId('feed-card-earn')).toBeVisible();
+    await expect(page.getByTestId('section-recruitment-gion')).toBeVisible();
+    await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
+    await expect(page.getByTestId('feed-card-package-tmpl-1')).toBeVisible();
+    // Neighbourhood container (gems + scroll target) is untouched.
+    await expect(page.getByTestId('neighborhood-container-gion')).toBeAttached();
+    // Trip complements + request footer still render.
+    await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
+    await expect(page.getByTestId('section-service-request')).toBeVisible();
+  });
+});

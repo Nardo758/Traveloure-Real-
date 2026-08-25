@@ -1,0 +1,64 @@
+/**
+ * Feed panel — Ways-to-Earn concierge card (extracted from discover-location.tsx
+ * inline `EarnCard` for the city-feed bento, Phase 2).
+ *
+ * Restyled per the bento dispatch: `--earn-ground` background, coral primary
+ * CTA. ADDITIVE — behaviour and testids preserved verbatim:
+ *   - wrapper testid `feed-card-earn`
+ *   - `btn-earn-expert` (Become an expert → /earn)
+ *   - `btn-earn-provider` (List a service → /earn)
+ * The primary CTA is coral-filled (the "single coral CTA" of the spec); the
+ * secondary keeps its outline treatment so no existing testid is lost.
+ */
+import { Button } from "@/components/ui/button";
+
+const FRAUNCES = "'Fraunces', Georgia, serif";
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function toTitleCase(str: string): string {
+  return str
+    .split(/[\s-]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+export function FeedEarnCard({ city }: { city: string }) {
+  const displayCity = toTitleCase(city);
+  return (
+    <div
+      className="flex h-full flex-col gap-1.5 rounded-xl border p-3.5"
+      style={{ background: "var(--earn-ground)", borderColor: "var(--earn-border)" }}
+      data-testid="feed-card-earn"
+    >
+      <span
+        className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+        style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
+      >
+        Earn on Traveloure
+      </span>
+      <h3
+        className="text-[16px] font-semibold leading-tight"
+        style={{ color: "var(--earn-navy)", fontFamily: FRAUNCES }}
+      >
+        Know {displayCity} like a local? Offer a service here?
+      </h3>
+      <p className="text-[12px]" style={{ color: "var(--earn-muted)" }}>
+        Local experts share their knowledge; providers list bookable services — both earn on Traveloure.
+      </p>
+      <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
+        <Button
+          size="sm"
+          className="h-7 border-none px-3 text-xs text-white"
+          style={{ background: "var(--earn-coral-ink)" }}
+          asChild
+          data-testid="btn-earn-expert"
+        >
+          <a href="/earn">Become an expert</a>
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 px-3 text-xs" asChild data-testid="btn-earn-provider">
+          <a href="/earn">List a service</a>
+        </Button>
+      </div>
+    </div>
+  );
+}

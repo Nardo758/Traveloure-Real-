@@ -1,0 +1,143 @@
+{
+  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. Two neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert), 'arashiyama' WITHOUT (its anchor is the top ready-made). Includes a partner/affiliate external stub, a wanted slot (via offering-types + composition config), gems and services so spans exercise. Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1).",
+
+  "locationView": {
+    "city": "Kyoto",
+    "country": null,
+    "generatedAt": "2026-08-25T00:00:00.000Z",
+    "hero": { "data": { "city": { "currentHighlight": null, "pulseScore": 72, "crowdLevel": "moderate", "aiSeasonalHighlights": [] } }, "error": null },
+    "recommendations": { "data": { "hotels": [], "activities": [] }, "error": null },
+    "events": { "data": { "events": [] }, "error": null },
+    "neighborhoods": {
+      "data": [
+        {
+          "id": "gion",
+          "slug": "gion",
+          "name": "Gion",
+          "editorialTitle": "Lantern-lit lanes after dark",
+          "description": "Geisha districts, teahouses and stone-paved alleys.",
+          "gemCount": 2,
+          "serviceCount": 0,
+          "localExpert": null,
+          "gems": [
+            { "id": "g-gion-1", "placeName": "Hanamikoji Street", "placeType": "viewpoint", "neighborhood": "gion", "gemScore": 8.7, "imageUrl": null, "whyLocalsLoveIt": "Golden-hour lanterns before the crowds arrive.", "bestFor": ["photography", "evening walk"] },
+            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 8.1, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." }
+          ]
+        },
+        {
+          "id": "arashiyama",
+          "slug": "arashiyama",
+          "name": "Arashiyama",
+          "editorialTitle": "Bamboo light at the city's edge",
+          "description": "Groves, riverside temples and the Togetsukyo bridge.",
+          "gemCount": 2,
+          "serviceCount": 0,
+          "localExpert": null,
+          "gems": [
+            { "id": "g-ara-1", "placeName": "Bamboo Grove Path", "placeType": "viewpoint", "neighborhood": "arashiyama", "gemScore": 8.9, "imageUrl": null, "whyLocalsLoveIt": "Dawn is the only time it is truly still." },
+            { "id": "g-ara-2", "placeName": "Okochi Sanso Garden", "placeType": "attraction", "neighborhood": "arashiyama", "gemScore": 7.8, "imageUrl": null, "whyLocalsLoveIt": "A silent hillside garden most visitors skip." }
+          ]
+        }
+      ],
+      "error": null
+    },
+    "gems": { "data": [], "error": null },
+    "services": {
+      "data": [
+        { "id": "svc-1", "serviceName": "Kyoto Tea Ceremony", "price": "85", "shortDescription": "A private matcha ceremony with a certified host.", "categoryName": "Culture", "averageRating": "4.8", "whatIncluded": ["Sweets", "Matcha"] },
+        { "id": "svc-2", "serviceName": "Nishiki Market Food Walk", "price": "60", "shortDescription": "Taste your way through Kyoto's kitchen.", "categoryName": "Food", "averageRating": "4.9" }
+      ],
+      "error": null
+    },
+    "externalStubs": {
+      "data": {
+        "trendContext": null,
+        "stubs": [
+          {
+            "id": "stub-1",
+            "inventoryClass": "external",
+            "resolutionClass": "external",
+            "name": "Kyoto City Official Visitor Guide",
+            "city": "Kyoto",
+            "country": "Japan",
+            "neighborhood": null,
+            "contentType": "guide",
+            "shortDescription": "Facts and opening hours from the city's tourism board.",
+            "primaryImageUrl": null,
+            "sourceUrl": "https://example.com/kyoto-guide",
+            "sourcePageTitle": "Kyoto Guide",
+            "license": "OpenStreetMap / ODbL",
+            "places": [],
+            "placeCount": 0
+          }
+        ]
+      },
+      "error": null
+    }
+  },
+
+  "experts": [
+    {
+      "id": "exp-gion-1",
+      "role": "local_expert",
+      "firstName": "Aiko",
+      "lastName": "Tanaka",
+      "headline": "Gion-born guide for teahouse evenings and hidden shrines.",
+      "bio": "Third-generation Gion local. I open doors that maps do not.",
+      "specialties": ["Nightlife", "Culture"],
+      "profileImageUrl": null,
+      "packagesCount": 3,
+      "averageRating": 4.9,
+      "reviewCount": 24,
+      "selectedServices": [{ "offering": { "name": "Evening walk", "price": "120" } }]
+    }
+  ],
+
+  "packages": [
+    {
+      "id": "tmpl-1",
+      "title": "Kyoto in Five Unhurried Days",
+      "price": "149",
+      "coverImage": null,
+      "destination": "Kyoto",
+      "duration": 5,
+      "reviewCount": 12,
+      "averageRating": 4.7,
+      "salesCount": 30,
+      "itineraryPreview": [{ "day": 1, "title": "Arrival and Gion at dusk" }, { "day": 2, "title": "Arashiyama at dawn" }]
+    }
+  ],
+
+  "offeringTypes": [
+    { "offering_type_key": "guide", "display_name": "Local guide", "service_tier": "local" },
+    { "offering_type_key": "photographer", "display_name": "Photographer", "service_tier": "local" }
+  ],
+
+  "candidates": [
+    {
+      "offeringId": "off-guide-1",
+      "categoryKey": "guided_tour",
+      "displayName": "Private Gion Night Walk",
+      "tagline": "See the lanes light up with a local at your side.",
+      "reason": "Endorsed by a Gion local for your dates.",
+      "expertEndorsed": true,
+      "sourceType": "platform_provider"
+    },
+    {
+      "offeringId": "tmpl-1",
+      "categoryKey": "itinerary",
+      "displayName": "Kyoto in Five Unhurried Days",
+      "tagline": "A ready-made five-day plan.",
+      "reason": "A ready-made trip for Kyoto.",
+      "sourceType": "expert_package"
+    }
+  ],
+
+  "feedConfig": {
+    "recCadence": 2,
+    "wantedSlotMax": 1,
+    "wantedSlotSpacing": 2,
+    "recommendedLabel": "Recommended",
+    "affiliateLabel": "Paid partner"
+  }
+}
