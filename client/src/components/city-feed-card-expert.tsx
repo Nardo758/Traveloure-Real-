@@ -1,27 +1,31 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Star, MapPin, MessageCircle, UserCircle, Info } from "lucide-react";
+import { Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAskExpert } from "@/lib/use-ask-expert";
+
+// Family-card grammar (2026-08-25-card-family): mono facts/source rows share the
+// per-file local const pattern used across the earn family.
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 interface CityFeedCardExpertProps {
   expert: any;
   city: string;
   className?: string;
   cardPosition?: number;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
 /**
- * Photo-led card for a local expert in the city feed.
+ * Photo-led card for a local expert in the city feed, on the family grammar:
+ * photo band (gradient + initials fallback, no grey box) · title · meta ·
+ * three-column mono facts row · source row · action row (View profile navy /
+ * Ask an expert outline). The CARD is the link (the expert's profile) — no
+ * "More info" text link or modal.
  */
-export function CityFeedCardExpert({ expert, city, className, cardPosition }: CityFeedCardExpertProps) {
+export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full" }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
@@ -37,8 +41,14 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
   // reviewCount and read ONLY averageRating — never a stale `expert.rating` fallback.
   const reviewCount = Number(expert.reviewCount ?? 0);
   const rating = reviewCount > 0 && expert.averageRating != null ? Number(expert.averageRating) : null;
-  const dialogReviewCount = reviewCount;
-  const dialogRating = rating;
+
+  // Lowest real starting price across the expert's offerings, or null (§13).
+  const fromPrice: number | null = (() => {
+    const prices = (expert.selectedServices ?? [])
+      .map((s: any) => parseFloat(s?.offering?.price ?? ""))
+      .filter((n: number) => !isNaN(n) && n > 0);
+    return prices.length > 0 ? Math.min(...prices) : null;
+  })();
 
   // Initials for the no-photo avatar (first letters of first/last name)
   const initials = [expert.firstName, expert.lastName]
@@ -46,16 +56,122 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
     .map((n: string) => n.charAt(0).toUpperCase())
     .join("") || name.charAt(0).toUpperCase();
 
+  // Source-link ruling (2026-08-25-card-source-link): /s/:handle when a claimed
+  // handle exists on the payload, else the id-based /experts/:id fallback.
+  const profileHref = expert.handle ? `/s/${expert.handle}` : `/experts/${expert.id}`;
+
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // One mono meta line: from-price / ★rating(count), each omitted when absent
+  // (§13); the whole line is omitted when neither is real. Keeps View profile /
+  // Ask, the Expert corner tag, and the card-as-link navigation.
+  if (density === "compact") {
+    const metaText = [
+      fromPrice !== null ? `from $${fromPrice}` : null,
+      rating !== null ? `★ ${rating.toFixed(1)} (${reviewCount})` : null,
+    ]
+      .filter((p) => p && String(p).trim().length > 0)
+      .join(" · ");
+    return (
+      <div
+        className={cn(
+          "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+          className,
+        )}
+        data-testid={`feed-card-expert-${expert.id}`}
+        role="link"
+        tabIndex={0}
+        aria-label={`${name} profile`}
+        onClick={() => (window.location.href = profileHref)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            window.location.href = profileHref;
+          }
+        }}
+      >
+        {/* Compact photo band — 84px; gradient + initials fallback, Expert tag. */}
+        <div className="relative h-[84px] overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-100 to-teal-200/70 flex items-center justify-center flex-shrink-0">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={name}
+              loading="lazy"
+              onLoad={() => setImgLoaded(true)}
+              className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+            />
+          ) : (
+            <div
+              className="w-12 h-12 rounded-full bg-white/70 flex items-center justify-center text-base font-semibold text-teal-700"
+              data-testid={`expert-initials-${expert.id}`}
+            >
+              {initials}
+            </div>
+          )}
+          <span
+            className="absolute top-2 left-2 text-white text-[10px] font-medium rounded-full px-2 py-0.5"
+            style={{ background: "var(--earn-navy)" }}
+          >
+            Expert
+          </span>
+        </div>
+        <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+          <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{name}</h3>
+          {metaText && (
+            <div className="text-[11px] text-muted-foreground truncate" style={{ fontFamily: EARN_MONO }} data-testid={`expert-facts-${expert.id}`}>
+              {metaText}
+            </div>
+          )}
+          <div className="flex gap-1.5 mt-auto pt-0.5">
+            <Button
+              size="sm"
+              className="flex-1 h-7 text-xs"
+              style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.location.href = profileHref;
+              }}
+              data-testid={`btn-contact-expert-${expert.id}`}
+            >
+              View {expert.firstName || "Expert"}'s profile
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({ expertId: expert.id, city, subject: expertCity || city });
+              }}
+              data-testid={`btn-ask-expert-${expert.id}`}
+            >
+              Ask an expert
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
-        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
+        "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
         className,
       )}
       data-testid={`feed-card-expert-${expert.id}`}
+      role="link"
+      tabIndex={0}
+      aria-label={`${name} profile`}
+      onClick={() => (window.location.href = profileHref)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          window.location.href = profileHref;
+        }
+      }}
     >
-      {/* Photo band — same fixed height as the other column cards; initials avatar when no photo */}
-      <div className="relative h-[104px] overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+      {/* Photo band — gradient + initials fallback (family grammar, no grey box) */}
+      <div className="relative h-[104px] overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-100 to-teal-200/70 flex items-center justify-center flex-shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -69,13 +185,16 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
           />
         ) : (
           <div
-            className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-lg font-semibold text-primary"
+            className="w-14 h-14 rounded-full bg-white/70 flex items-center justify-center text-lg font-semibold text-teal-700"
             data-testid={`expert-initials-${expert.id}`}
           >
             {initials}
           </div>
         )}
-        <span className="absolute top-2 left-2 bg-primary/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
+        <span
+          className="absolute top-2 left-2 text-white text-[10px] font-medium rounded-full px-2 py-0.5"
+          style={{ background: "var(--earn-navy)" }}
+        >
           Expert
         </span>
       </div>
@@ -96,111 +215,95 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
 
         <p className="text-xs text-muted-foreground line-clamp-1">{specialty}</p>
 
-        {packagesCount > 0 && (
-          <p className="text-xs text-muted-foreground" data-testid={`expert-packages-${expert.id}`}>
-            📔 {packagesCount} {packagesCount === 1 ? "package" : "packages"}
-          </p>
-        )}
-
-        {expert.expertForm?.city && (
+        {expertCity && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="w-3 h-3" />
-            <span>{expert.expertForm.city}</span>
+            <span>{expertCity}</span>
           </div>
         )}
 
-        <div className="flex gap-1.5 mt-auto">
+        {/* Facts row (family grammar) — 3 mono columns, §13 real fields only */}
+        {(fromPrice !== null || rating !== null || packagesCount > 0) && (
+          <div className="grid grid-cols-3 gap-2 border-t border-border pt-2" data-testid={`expert-facts-${expert.id}`}>
+            {fromPrice !== null && (
+              <div className="min-w-0">
+                <div className="text-[12.5px] font-semibold leading-none truncate" style={{ fontFamily: EARN_MONO }}>
+                  ${fromPrice}
+                </div>
+                <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+                  from
+                </div>
+              </div>
+            )}
+            {rating !== null && (
+              <div className="min-w-0">
+                <div className="text-[12.5px] font-semibold leading-none truncate" style={{ fontFamily: EARN_MONO }}>
+                  {rating.toFixed(1)} ({reviewCount})
+                </div>
+                <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+                  rating
+                </div>
+              </div>
+            )}
+            {packagesCount > 0 && (
+              <div className="min-w-0">
+                <div
+                  className="text-[12.5px] font-semibold leading-none truncate"
+                  style={{ fontFamily: EARN_MONO }}
+                  data-testid={`expert-packages-${expert.id}`}
+                >
+                  {packagesCount}
+                </div>
+                <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+                  {packagesCount === 1 ? "package" : "packages"}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Source row — /s/:handle when claimed, else /experts/:id (id fallback) */}
+        <div
+          className="flex items-center text-[11px] text-muted-foreground"
+          style={{ fontFamily: EARN_MONO }}
+          data-testid={`expert-source-${expert.id}`}
+        >
+          <a
+            href={profileHref}
+            className="inline-flex items-center gap-1 min-w-0 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MapPin className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate">{expert.handle ? `@${expert.handle}` : name}</span>
+          </a>
+        </div>
+
+        <div className="flex gap-1.5 mt-auto pt-0.5">
           <Button
             size="sm"
             className="flex-1 h-7 text-xs"
-            onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
+            style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.href = profileHref;
+            }}
             data-testid={`btn-contact-expert-${expert.id}`}
           >
-            <MessageCircle className="w-3 h-3 mr-1" />
             {/* Honest label: this navigates to the expert's profile (chat starts there) */}
             View {expert.firstName || "Expert"}'s profile
           </Button>
-
-          {/* D9: More info modal — additive, the profile button above is untouched.
-              Same shadcn Dialog pattern as the calendar city cards (GlobalCalendar). */}
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2"
-                data-testid={`button-more-info-expert-${expert.id}`}
-              >
-                <Info className="w-3 h-3 mr-1" />
-                More info
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>{name}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  {imageUrl ? (
-                    <img
-                      src={imageUrl}
-                      alt={name}
-                      className="w-14 h-14 rounded-full object-cover flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-lg font-semibold text-primary flex-shrink-0">
-                      {initials}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{specialty}</p>
-                    {expertCity && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {expertCity}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  {packagesCount > 0 && (
-                    <span data-testid={`modal-expert-packages-${expert.id}`}>
-                      📔 {packagesCount} {packagesCount === 1 ? "package" : "packages"}
-                    </span>
-                  )}
-                  {/* §13: rating rendered only when review-backed (see dialogRating above) */}
-                  {dialogRating !== null && (
-                    <span className="flex items-center gap-0.5" data-testid={`modal-expert-rating-${expert.id}`}>
-                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                      {dialogRating.toFixed(1)} ({dialogReviewCount})
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {/* Same destination as the existing card button */}
-                  <Button
-                    size="sm"
-                    onClick={() => (window.location.href = `/local-experts/${expert.id}`)}
-                    data-testid={`modal-view-profile-${expert.id}`}
-                  >
-                    View profile
-                  </Button>
-                  {/* "Ask" goes straight into chat with this expert, pre-filled with the city */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => askExpert({ expertId: expert.id, city, subject: expertCity || city })}
-                    data-testid={`modal-ask-expert-${expert.id}`}
-                  >
-                    <MessageCircle className="w-3 h-3 mr-1" />
-                    Ask
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2.5"
+            onClick={(e) => {
+              e.stopPropagation();
+              askExpert({ expertId: expert.id, city, subject: expertCity || city });
+            }}
+            data-testid={`btn-ask-expert-${expert.id}`}
+          >
+            Ask an expert
+          </Button>
         </div>
       </div>
     </div>
