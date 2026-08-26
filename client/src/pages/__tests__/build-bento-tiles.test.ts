@@ -24,6 +24,30 @@ describe("buildBentoTiles — §3.2 ready-made float + §8 explicit-sort gate", 
     assert.equal(placed[0].item.id, "pkg-1");
   });
 
+  it("§3.2: with an anchor present, the first ready-made is still pulled to sit right beside it (columns 3–4 row 1) — not left behind 1×1 tiles that preceded it in the stream", () => {
+    const neighbourhood = { slug: "gion" };
+    // Stream order: two 1×1 gems BEFORE the package, then the eligible local
+    // expert. A naive "just move the anchor, leave everything else in place"
+    // implementation would leave gem-1/gem-2 filling the two cells beside the
+    // anchor and push pkg-1 to a later row — this asserts the ready-made
+    // still lands immediately after the anchor instead.
+    const run = [
+      tagged(gem("gem-1"), 0),
+      tagged(gem("gem-2"), 1),
+      tagged(pkg("pkg-1", "149"), 2),
+      tagged(localExpert("exp-1", "gion"), 3),
+    ];
+    const placed = buildBentoTiles(run, true, neighbourhood, "Kyoto");
+
+    assert.deepEqual(
+      placed.map((p) => p.item.id),
+      ["exp-1", "pkg-1", "gem-1", "gem-2"],
+    );
+    assert.equal(placed[0].isAnchor, true);
+    assert.equal(placed[1].colSpan, 2);
+    assert.equal(placed[1].rowSpan, 1);
+  });
+
   it("§8: an explicit sort (floatAnchor=false) leaves a ready-made in its sorted position — it is never pulled to the front", () => {
     // Already price-sorted by the caller (sortTaggedRunByPrice): cheapest first.
     // A buggy "find the first package and float it" step would reorder this to

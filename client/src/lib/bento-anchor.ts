@@ -4,11 +4,19 @@ export type BentoAnchorPriority = "neighborhood-local" | "city-local" | "planner
 
 type TaggedBentoItem = { item: FeedItem; order: number; isAnchor: boolean };
 
+// Mirrors normalizeNeighborhoodKey (server/services/location-view.service.ts)
+// exactly: real seeded neighbourhood display names carry arbitrary punctuation
+// ("Fort / Kala Ghoda"), and slugs mix hyphens/underscores
+// ("kawaramachi-sanjo" vs "fushimi_inari"). Collapsing every non-alphanumeric
+// run to a single "_" on both sides is what lets a client-only anchor lookup
+// agree with the server's neighbourhood join instead of silently downgrading
+// a neighbourhood-local expert to city-local.
 function normalizeToken(value: unknown): string {
   return String(value ?? "")
-    .trim()
     .toLowerCase()
-    .replace(/[\s_]+/g, "-");
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function scopedTokens(value: unknown): string[] {
@@ -58,12 +66,12 @@ export function bentoAnchorPriority(
 
   const data = item.data ?? {};
   const role = expertRole(data);
-  if (role === "event-planner" || role === "eventplanner") return null;
+  if (role === "event_planner" || role === "eventplanner") return null;
 
   // The public /api/experts route explicitly folds the legacy generic
   // `expert` stored role into the Trip Planners lane (no separate generic-
   // expert tab exists), so it must rank as a planner here too — never local.
-  const localRole = role === "local-expert" || role === "";
+  const localRole = role === "local_expert" || role === "";
   if (localRole) {
     const neighbourhoodTokens = [
       neighbourhood?.slug,
@@ -94,8 +102,8 @@ export function bentoAnchorPriority(
   }
 
   if (
-    role === "travel-expert" ||
-    role === "trip-planner" ||
+    role === "travel_expert" ||
+    role === "trip_planner" ||
     role === "planner" ||
     role === "expert"
   ) {

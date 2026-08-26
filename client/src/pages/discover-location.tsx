@@ -783,6 +783,18 @@ export function buildBentoTiles(
     withAnchor[anchorIdx].isAnchor = true;
     const anchor = withAnchor[anchorIdx];
     const rest = withAnchor.filter((_, i) => i !== anchorIdx);
+    // §3.2: the first ready-made is pulled as its own assembly step, right
+    // after the anchor — not left wherever it fell in the stream. With the
+    // (always tall, 2-row) expert anchor placed first, assignBentoSpans packs
+    // whatever comes next into the two free cells beside it, so putting the
+    // ready-made immediately after the anchor lands it at columns 3–4 row 1
+    // exactly when no 1×1s already occupy that slot.
+    const readyMadeIdx = rest.findIndex((t) => t.item.kind === "package");
+    if (readyMadeIdx >= 0) {
+      const readyMade = rest[readyMadeIdx];
+      const remainder = rest.filter((_, i) => i !== readyMadeIdx);
+      return assignBentoSpans([anchor, readyMade, ...remainder]);
+    }
     return assignBentoSpans([anchor, ...rest]);
   }
 

@@ -451,10 +451,13 @@ test.describe('city-feed bento — /discover/location', () => {
       // eligible expert and starts with its ready-made 2×1 tile.
       const expectedAnchors = slug === 'gion' ? 1 : 0;
       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
-      // §3.2 may pull one ready-made to the leading slot in an anchorless
-      // section. Every other non-anchor tile keeps its stream position.
+      // §3.2 pulls one ready-made out of stream order as its own assembly
+      // step: to index 0 when the section has no anchor, or to the slot
+      // immediately beside the anchor (index 1) when it does. Every other
+      // non-anchor tile keeps its stream position.
+      const readyMadeFloatIndex = expectedAnchors; // 0 (no anchor) or 1 (anchor at index 0)
       const nonAnchorOrders = tiles
-        .filter((t, index) => t.role === 'tile' && !(index === 0 && t.testid.includes('package-')))
+        .filter((t, index) => t.role === 'tile' && !(index === readyMadeFloatIndex && t.testid.includes('package-')))
         .map((t) => t.order);
       const sorted = [...nonAnchorOrders].sort((a, b) => a - b);
       expect(nonAnchorOrders).toEqual(sorted);

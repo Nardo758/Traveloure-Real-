@@ -208,6 +208,20 @@ describe("bento anchor priority (§2)", () => {
     assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
   });
 
+  it("matches a neighbourhood-local expert against a punctuated display name, mirroring the server's normalizeNeighborhoodKey", () => {
+    // Real seeded neighbourhood display names carry punctuation ("Fort / Kala
+    // Ghoda") while the expert's own neighbourhood field may be a plain slug
+    // ("fort_kala_ghoda") or a hyphenated one ("fort-kala-ghoda") — all three
+    // must collapse to the same key the way the server-side join does.
+    const fortKalaGhoda = { id: "fort-kala-ghoda", slug: null, name: "Fort / Kala Ghoda" };
+    const entry = tagged(
+      expert("fort-local", "local_expert", { expertForm: { neighborhoods: ["fort_kala_ghoda"] } }),
+      0,
+    );
+
+    assert.equal(bentoAnchorPriority(entry.item, fortKalaGhoda, "Mumbai"), "neighborhood-local");
+  });
+
   it("classifies the legacy generic 'expert' role as a planner, not a local — it must never outrank a genuine city-local expert", () => {
     // Mirrors server/routes.ts: "the legacy generic `expert` stored role
     // belongs in the Trip Planners browse lane" — there is no separate
