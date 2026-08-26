@@ -1275,4 +1275,7 @@ export const MIGRATION_FILES = [
   // the plans baseline on a clean database, reconciles pre-existing plan rows, widens fee-band
   // value types, and inserts missing shared pricing rows without rewriting existing values.
   "258_plans_reconcile.sql",
+  // 259: production recorded the original fee-band seed but is missing all four provider
+  // commission bands. Insert only absent ratified rows; existing admin configuration wins.
+  "259_provider_fee_bands_reconcile.sql",
 ] as const;
