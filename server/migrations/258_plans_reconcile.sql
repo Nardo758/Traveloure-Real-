@@ -22,10 +22,17 @@ CREATE TABLE IF NOT EXISTS plans (
   allowances jsonb NOT NULL DEFAULT '{}'::jsonb,
   active boolean NOT NULL DEFAULT true,
   effective_from date NOT NULL,
-  beta_free_until date,
   created_at timestamp NOT NULL DEFAULT now(),
-  updated_at timestamp NOT NULL DEFAULT now()
+  updated_at timestamp NOT NULL DEFAULT now(),
+  -- Kept last so a clean create has the same ordinal shape as an existing
+  -- plans table upgraded by the ADD COLUMN below.
+  beta_free_until date
 );
+
+-- Dev received the abandoned table shape without this column. A CREATE TABLE
+-- no-op cannot reconcile that shape, so add the missing ratified column
+-- explicitly before inserts or updates name it.
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS beta_free_until date;
 
 INSERT INTO plans (key, name, price_cents, interval, allowances, active, effective_from, beta_free_until)
 VALUES
