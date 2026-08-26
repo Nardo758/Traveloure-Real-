@@ -129,6 +129,12 @@ export function CityFeedCardRecommendation({
   const name = resolveRecommendationName(candidate);
   const meta = recVisualMeta(candidate);
   const isAffiliate = candidate.sourceType === "affiliate";
+  const bookLabel = isAffiliate ? "Book on partner" : "Book now";
+  const bookStyle = {
+    background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",
+    color: "#fff",
+    border: "none",
+  };
   const isRow = layout === "row";
 
   // Impression ledger (converged from the inline RecommendationCard): the engine's
@@ -216,14 +222,14 @@ export function CityFeedCardRecommendation({
           <Button
             size="sm"
             className="h-7 text-xs px-3"
-            style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+            style={bookStyle}
             onClick={(e) => {
               e.stopPropagation();
               onBook(candidate);
             }}
             data-testid={`btn-book-rec-${position}`}
           >
-            Book now
+            {bookLabel}
           </Button>
         )}
         <Button
@@ -298,11 +304,11 @@ export function CityFeedCardRecommendation({
                 {onBook && (
                   <Button
                     size="sm"
-                    style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+                    style={bookStyle}
                     onClick={() => onBook(candidate)}
                     data-testid={`modal-book-rec-${position}`}
                   >
-                    Book now
+                    {bookLabel}
                   </Button>
                 )}
                 <Button
@@ -387,14 +393,14 @@ export function CityFeedCardRecommendation({
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
-                style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+                style={bookStyle}
                 onClick={(e) => {
                   e.stopPropagation();
                   onBook(candidate);
                 }}
                 data-testid={`btn-book-rec-${position}`}
               >
-                Book now
+                {bookLabel}
               </Button>
             )}
             <Button
@@ -471,11 +477,11 @@ export function CityFeedCardRecommendation({
                 {onBook && (
                   <Button
                     size="sm"
-                    style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+                    style={bookStyle}
                     onClick={() => onBook(candidate)}
                     data-testid={`modal-book-rec-${position}`}
                   >
-                    Book now
+                    {bookLabel}
                   </Button>
                 )}
                 <Button

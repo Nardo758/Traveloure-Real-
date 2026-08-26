@@ -11,6 +11,7 @@ import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { normalizeGemScore } from "@/lib/gem-score";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -810,7 +811,8 @@ export function CityFeedCardGem({
     (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
     platformPath;
   const typeMeta = gemTypeMeta(gem.placeType);
-  const isTrending = gem.gemScore !== undefined && Number(gem.gemScore) >= 8.5;
+  const gemScore = normalizeGemScore(gem.gemScore);
+  const isTrending = gemScore !== null && gemScore >= 85;
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
@@ -935,7 +937,7 @@ export function CityFeedCardGem({
       {!compact && (
         <FactsRow
           facts={[
-            { value: gem.gemScore !== undefined && gem.gemScore !== null ? Number(gem.gemScore).toFixed(1) : "", label: "gem score" },
+            { value: gemScore !== null ? String(gemScore) : "", label: "gem score" },
             { value: gemAreaName(gem) ?? "", label: "area" },
             { value: bestForFace[0] ?? "", label: "best for" },
           ]}
@@ -1015,8 +1017,7 @@ export function CityFeedCardGem({
   // the link (opens the same details sheet). §13: score/best-for/area each omitted
   // when absent.
   if (density === "compact") {
-    const gemScoreStr =
-      gem.gemScore !== undefined && gem.gemScore !== null ? Number(gem.gemScore).toFixed(1) : null;
+    const gemScoreStr = gemScore !== null ? String(gemScore) : null;
     const metaText = joinMeta(
       gemScoreStr,
       bestForFace[0] ? `best for ${bestForFace[0]}` : null,
