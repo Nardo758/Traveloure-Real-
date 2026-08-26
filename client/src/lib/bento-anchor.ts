@@ -4,11 +4,20 @@ export type BentoAnchorPriority = "neighborhood-local" | "city-local" | "planner
 
 type TaggedBentoItem = { item: FeedItem; order: number; isAnchor: boolean };
 
+// Mirrors normalizeNeighborhoodKey (server/services/location-view.service.ts)
+// exactly: real seeded neighbourhood display names carry arbitrary punctuation
+// ("Fort / Kala Ghoda"), so a lone hyphen/underscore/whitespace normalizer can
+// leave stray punctuation in one of the two compared tokens. Collapsing every
+// non-alphanumeric run to a single "_" on both sides removes that gap. This
+// changes no outcome for today's real data (both sides already normalized the
+// same raw string the same way), it only removes the coincidental dependency
+// on that symmetry — see 2026-08-27-neighbourhood-slug-match in DECISIONS.md.
 function normalizeToken(value: unknown): string {
   return String(value ?? "")
-    .trim()
     .toLowerCase()
-    .replace(/[\s_]+/g, "-");
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function scopedTokens(value: unknown): string[] {
@@ -58,9 +67,14 @@ export function bentoAnchorPriority(
 
   const data = item.data ?? {};
   const role = expertRole(data);
-  if (role === "event-planner" || role === "eventplanner") return null;
+  if (role === "event_planner" || role === "eventplanner") return null;
 
-  const localRole = role === "local-expert" || role === "expert" || role === "";
+  // The stored `expert` role has no neighbourhood-blind meaning of its own —
+  // real accounts using it (e.g. Raj Patel, Mumbai) carry a real
+  // expertForm.neighborhoods list, so it is evaluated as a local-expert
+  // candidate here exactly like local_expert; it only falls through to the
+  // planner bucket below when it has no local-expert match.
+  const localRole = role === "local_expert" || role === "expert" || role === "";
   if (localRole) {
     const neighbourhoodTokens = [
       neighbourhood?.slug,
@@ -90,7 +104,7 @@ export function bentoAnchorPriority(
     return null;
   }
 
-  if (role === "travel-expert" || role === "trip-planner" || role === "planner") {
+  if (role === "travel_expert" || role === "trip_planner" || role === "planner") {
     return "planner";
   }
 

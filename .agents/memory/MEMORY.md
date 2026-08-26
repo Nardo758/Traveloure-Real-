@@ -54,3 +54,4 @@
 - [Earn demo market constraint](earn-demo-market-constraint.md) — ready-made listings are currently Kyoto-only; count non-Kyoto skips until a ruling and migration widen the contract.
 - [Neighbourhood slug matching](neighbourhood-slug-matching.md) — free-text neighbourhood joins must normalize both sides or a mismatch silently drops the whole neighbourhood (and its chrome) from the feed.
 - [Lane branch HEAD reset risk](lane-branch-head-reset-risk.md) — an unrelated task-agent merge elsewhere can silently move this workspace's git HEAD off a lane branch back to main mid-session; push lane branches to origin early.
+- [Foreign commits on a lane branch](shared-workspace-foreign-commits.md) — an unrelated task's completion-review can append real, plausible code commits onto a checked-out lane branch; verify pushed-vs-not and diff claims against real data before trusting or keeping them.

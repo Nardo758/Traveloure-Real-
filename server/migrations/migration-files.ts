@@ -1271,4 +1271,8 @@ export const MIGRATION_FILES = [
   // slip resolver (rung 02: catalog → affiliate → DMO); declared in shared/schema.ts.
   "256_itinerary_item_affiliate_grounding.sql",
   "257_itinerary_variant_anchor.sql",
+  // 258: data-only UPDATE (no schema change) — clears the migration-042 leftover
+  // centroid-placeholder string from city_neighborhoods.description across all 8
+  // seeded cities. See 2026-08-27-neighbourhood-slug-match in DECISIONS.md.
+  "258_null_placeholder_neighborhood_descriptions.sql",
 ] as const;

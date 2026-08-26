@@ -11,7 +11,7 @@ import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 import { useAskExpert } from "@/lib/use-ask-expert";
-import { normalizeGemScore } from "@/lib/gem-score";
+import { normalizeGemScore, gemScoreMetaFragment } from "@/lib/gem-score";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -1017,9 +1017,8 @@ export function CityFeedCardGem({
   // the link (opens the same details sheet). §13: score/best-for/area each omitted
   // when absent.
   if (density === "compact") {
-    const gemScoreStr = gemScore !== null ? String(gemScore) : null;
     const metaText = joinMeta(
-      gemScoreStr,
+      gemScoreMetaFragment(gem.gemScore),
       bestForFace[0] ? `best for ${bestForFace[0]}` : null,
       gemAreaName(gem),
     );
