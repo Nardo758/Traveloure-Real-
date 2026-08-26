@@ -52,5 +52,6 @@
 - [Local Playwright Chromium runtime](playwright-chromium-nix-runtime.md) — CLI Chromium cannot launch without libglib; use the managed browser verifier unless Nix dependencies change.
 - [Server Vitest under client-root Vite](server-vitest-client-root.md) — server Vitest suites need an explicit repo-root config with aliases; fail on zero tests.
 - [Earn demo market constraint](earn-demo-market-constraint.md) — ready-made listings are currently Kyoto-only; count non-Kyoto skips until a ruling and migration widen the contract.
+- [Completion review bundling](completion-review-bundling.md) — a completion rebase can bundle unrelated ahead-of-target commits into one review; fix real flagged bugs rather than dispute scope.
 - [Neighbourhood slug matching](neighbourhood-slug-matching.md) — free-text neighbourhood joins must normalize both sides or a mismatch silently drops the whole neighbourhood (and its chrome) from the feed.
 - [Lane branch HEAD reset risk](lane-branch-head-reset-risk.md) — an unrelated task-agent merge elsewhere can silently move this workspace's git HEAD off a lane branch back to main mid-session; push lane branches to origin early.
