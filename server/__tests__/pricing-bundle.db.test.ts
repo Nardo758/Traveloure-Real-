@@ -95,6 +95,21 @@ test("the bundle is composed entirely from live plans/fee_bands/optimization_fee
   assert.equal(body.proMonthly.key, "pro_monthly");
 });
 
+test("all provider commission bands resolve as active percent bands at their ratified rates", async () => {
+  const expectedRates = {
+    limited: 0.12,
+    moderate: 0.08,
+    commercial: 0.06,
+    premium: 0.04,
+  };
+
+  for (const [bandKey, expectedRate] of Object.entries(expectedRates)) {
+    const band = await requireBand(bandKey);
+    assert.equal(band.rateType, "percent", `${bandKey} must be percent-typed`);
+    assert.equal(band.rate, expectedRate, `${bandKey} must retain its ratified rate`);
+  }
+});
+
 test("a plan-row price change reaches the response immediately, no code touched", async () => {
   const before = await callHandler();
   const bumped = before.body.tripPass.priceCents + 500;
