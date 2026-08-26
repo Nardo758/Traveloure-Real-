@@ -1,5 +1,5 @@
 {
-  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. Two neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert) AND a ready-made tile, 'arashiyama' WITHOUT an expert (its anchor is the top ready-made). GION LAYOUT (Phase 2f, the mock's Gion frame): expert anchor (col-span-2 row-span-2) + four 1×1 gems over the two beside-anchor rows, then a full row of [1×1 · ready-made(col-span-2) · 1×1] — the ready-made (tmpl-2, @yuki-flowers) stays col-span-2 even though the section has the tall expert anchor (the packer never demotes a ready-made to 1×1). COMPOSITION CONSTRAINT: with two neighbourhoods and the lead-expert-anchors-Gion rule, Gion's stream window holds exactly ONE injected tile (a second would force intro filler that steals the expert anchor). So both injection slots are ready-mades (Gion tile tmpl-2 + Arashiyama anchor tmpl-1) and the platform-recommendation candidate is intentionally absent here — the CityFeedCardRecommendation render+impression is a real-data matrix row. CHIP-FILTER DIFFERENTIAL: gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant) and arashiyama NONE, so the Eat chip proves filter + drop-out. COMPACT SOURCE/PRICE (Phase 2f): svc-1 carries durationMinutes 240 + providerHandle 'norisato' (compact meta '4 hrs · @norisato' linked to /s/norisato, price $85 as a band pill); svc-2 carries durationMinutes 90 + providerName 'Aya S.' (compact meta '90 min · Aya S.', price $60 pill). Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1).",
+  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. THREE neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert) AND a ready-made tile, 'arashiyama' WITHOUT an expert (its anchor is the top ready-made), and 'nishiki' (Phase 2g) whose window carries the PLATFORM-RECOMMENDATION tile. GION LAYOUT (Phase 2f, the mock's Gion frame): expert anchor (col-span-2 row-span-2) + four 1×1 gems over the two beside-anchor rows, then a full row of [1×1 · ready-made(col-span-2) · 1×1] — the ready-made (tmpl-2, @yuki-flowers) stays col-span-2 even though the section has the tall expert anchor (the packer never demotes a ready-made to 1×1). COMPOSITION / one-injected-tile-per-window: each neighbourhood's stream window holds exactly ONE injected tile. The three candidates land one per window IN RANKED ORDER at the recCadence-2 injection points: rec-0 tmpl-2 → Gion (retagged to a ready-made beside the expert anchor), rec-1 tmpl-1 → Arashiyama (its ready-made anchor), rec-2 off-nishiki-1 (sourceType 'platform_provider', NOT retagged) → Nishiki, where it renders as feed-card-rec-2 (CityFeedCardRecommendation). svc-3 is the trailing filler that homes into Nishiki's window and provides the organic item after the Nishiki marker that lets the third rec inject there (without it the last candidate falls short of cadence and is dropped). This restores the recommendation render + impression-POST-once (money-adjacent side effect) as FIXTURE-PROVABLE (test 9 + test 10), no longer a real-data-only matrix row. CHIP-FILTER DIFFERENTIAL: gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant); arashiyama and nishiki carry NONE, so the Eat chip proves filter + drop-out (both drop, only gion survives). COMPACT SOURCE/PRICE: svc-1 durationMinutes 240 + providerHandle 'norisato' (compact meta '4 hrs · @norisato' linked /s/norisato, price $85 band pill); svc-2 durationMinutes 90 + providerName 'Aya S.' ('90 min · Aya S.', $60 pill); svc-3 durationMinutes 120 + providerHandle 'kyoto-crafts' ('2 hrs · @kyoto-crafts', $70 pill). Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1); the single wanted slot (gion) re-homes to Gion's section.",
 
   "locationView": {
     "city": "Kyoto",
@@ -39,6 +39,21 @@
             { "id": "g-ara-1", "placeName": "Bamboo Grove Path", "placeType": "viewpoint", "neighborhood": "arashiyama", "gemScore": 8.9, "imageUrl": null, "whyLocalsLoveIt": "Dawn is the only time it is truly still." },
             { "id": "g-ara-2", "placeName": "Okochi Sanso Garden", "placeType": "attraction", "neighborhood": "arashiyama", "gemScore": 7.8, "imageUrl": null, "whyLocalsLoveIt": "A silent hillside garden most visitors skip." }
           ]
+        },
+        {
+          "id": "nishiki",
+          "slug": "nishiki",
+          "name": "Nishiki",
+          "editorialTitle": "The narrow arcade that feeds the city",
+          "description": "Five centuries of stalls, craft shops and shrines under one roof.",
+          "gemCount": 3,
+          "serviceCount": 0,
+          "localExpert": null,
+          "gems": [
+            { "id": "g-nish-1", "placeName": "Nishiki Tenmangu Shrine", "placeType": "shrine", "neighborhood": "nishiki", "gemScore": 8.2, "imageUrl": null, "whyLocalsLoveIt": "A lantern-lined shrine tucked at the arcade's end.", "bestFor": ["temples"] },
+            { "id": "g-nish-2", "placeName": "Aritsugu Knife Workshop", "placeType": "attraction", "neighborhood": "nishiki", "gemScore": 8.6, "imageUrl": null, "whyLocalsLoveIt": "Chefs' blades hand-finished while you watch." },
+            { "id": "g-nish-3", "placeName": "Teramachi Arcade", "placeType": "viewpoint", "neighborhood": "nishiki", "gemScore": 7.9, "imageUrl": null, "whyLocalsLoveIt": "Covered lanes of old bookshops and tea sellers." }
+          ]
         }
       ],
       "error": null
@@ -47,7 +62,8 @@
     "services": {
       "data": [
         { "id": "svc-1", "serviceName": "Kyoto Tea Ceremony", "price": "85", "shortDescription": "A private matcha ceremony with a certified host.", "categoryName": "Culture", "averageRating": "4.8", "whatIncluded": ["Sweets", "Matcha"], "durationMinutes": 240, "providerHandle": "norisato" },
-        { "id": "svc-2", "serviceName": "Nishiki Market Food Walk", "price": "60", "shortDescription": "Taste your way through Kyoto's kitchen.", "categoryName": "Food", "averageRating": "4.9", "durationMinutes": 90, "providerName": "Aya S." }
+        { "id": "svc-2", "serviceName": "Nishiki Market Food Walk", "price": "60", "shortDescription": "Taste your way through Kyoto's kitchen.", "categoryName": "Food", "averageRating": "4.9", "durationMinutes": 90, "providerName": "Aya S." },
+        { "id": "svc-3", "serviceName": "Knife-Sharpening Craft Session", "price": "70", "shortDescription": "Learn to hone a blade with a Nishiki smith.", "categoryName": "Culture", "averageRating": "4.7", "durationMinutes": 120, "providerHandle": "kyoto-crafts" }
       ],
       "error": null
     },
@@ -145,6 +161,14 @@
       "tagline": "A ready-made five-day plan.",
       "reason": "A ready-made trip for Kyoto.",
       "sourceType": "expert_package"
+    },
+    {
+      "offeringId": "off-nishiki-1",
+      "categoryKey": "photographer",
+      "displayName": "Nishiki Market Photo Walk",
+      "tagline": "A guided hour with a market photographer.",
+      "reason": "A platform provider covering Nishiki.",
+      "sourceType": "platform_provider"
     }
   ],
 
