@@ -28,7 +28,6 @@ import {
   Bell,
   Activity,
   Calendar,
-  Plane,
   Plus,
   Check,
   Wand2,
@@ -186,6 +185,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
         primaryLabel="Take me Here"
         onPrimary={() => setDialogOpen(true)}
         onCardClick={onClick}
+        primaryTestId={`button-plan-now-${citySlug}`}
         testId={`card-city-${citySlug}`}
       />
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

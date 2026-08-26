@@ -119,6 +119,16 @@ const roleLabels: Record<string, string> = {
   event_planner: "Event Planners",
 };
 
+function expertFacetValues(expert: any, facet: "specialties" | "neighborhoods"): string[] {
+  const values =
+    facet === "specialties"
+      ? expert.expertForm?.specialties || expert.specialties || expert.specializations
+      : expert.expertForm?.neighborhoods;
+  return Array.isArray(values)
+    ? values.filter((value: unknown): value is string => typeof value === "string" && value.trim() !== "")
+    : [];
+}
+
 export default function ExpertsPage() {
   const [location, navigate] = useLocation();
   const searchString = useSearch();
@@ -267,19 +277,53 @@ export default function ExpertsPage() {
   // Filter experts by search and language (destination + neighbourhood are handled server-side)
   const filteredExperts = apiExperts.filter((expert: any) => {
     const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
-    const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+    const neighbourhoods = expertFacetValues(expert, "neighborhoods");
+    const expertSpecialties = expertFacetValues(expert, "specialties");
+    const query = searchQuery.toLowerCase();
     const matchesSearch =
       searchQuery === "" ||
-      fullName.includes(searchQuery.toLowerCase()) ||
+      fullName.includes(query) ||
       expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      neighbourhoods.some((n: string) => n.toLowerCase().includes(searchQuery.toLowerCase()));
+      expertSpecialties.some((specialty) => specialty.toLowerCase().includes(query)) ||
+      neighbourhoods.some((n) => n.toLowerCase().includes(query));
 
     const matchesLanguage =
       selectedLanguage === "All Languages" ||
       expert.expertForm?.languages?.includes(selectedLanguage);
 
-    return matchesSearch && matchesLanguage;
+    const matchesSpecialty =
+      selectedSpecialty === "All Specialties" ||
+      expertSpecialties.some((specialty) => specialty.toLowerCase() === selectedSpecialty.toLowerCase());
+
+    return matchesSearch && matchesLanguage && matchesSpecialty;
   });
+
+  const specialtyCounts = new Map<string, number>();
+  const neighbourhoodCounts = new Map<string, number>();
+  // These counts describe the loaded, search/language-filtered result set rather
+  // than the full database. The UI labels that scope explicitly.
+  apiExperts
+    .filter((expert: any) => {
+      const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
+      const neighbourhoods = expertFacetValues(expert, "neighborhoods");
+      const expertSpecialties = expertFacetValues(expert, "specialties");
+      const query = searchQuery.trim().toLowerCase();
+      return (
+        (query === "" ||
+          fullName.includes(query) ||
+          expertSpecialties.some((specialty) => specialty.toLowerCase().includes(query)) ||
+          neighbourhoods.some((neighbourhood) => neighbourhood.toLowerCase().includes(query))) &&
+        (selectedLanguage === "All Languages" || expert.expertForm?.languages?.includes(selectedLanguage))
+      );
+    })
+    .forEach((expert: any) => {
+      expertFacetValues(expert, "specialties").forEach((specialty) => {
+        specialtyCounts.set(specialty, (specialtyCounts.get(specialty) || 0) + 1);
+      });
+      expertFacetValues(expert, "neighborhoods").forEach((neighbourhood) => {
+        neighbourhoodCounts.set(neighbourhood, (neighbourhoodCounts.get(neighbourhood) || 0) + 1);
+      });
+    });
 
   const sortedExperts = [...filteredExperts].sort((a: any, b: any) => {
     switch (sortBy) {
@@ -586,6 +630,72 @@ export default function ExpertsPage() {
             </div>
           )}
 
+          {(specialtyCounts.size > 0 || neighbourhoodCounts.size > 0) && (
+            <div className="mb-5 space-y-2" data-testid="expert-facet-chips">
+              {specialtyCounts.size > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className="mr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-muted)]"
+                    style={{ fontFamily: EARN_MONO }}
+                  >
+                    Specialties
+                  </span>
+                  {Array.from(specialtyCounts.entries()).map(([specialty, count]) => {
+                    const active = selectedSpecialty.toLowerCase() === specialty.toLowerCase();
+                    const slug = specialty.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                    return (
+                      <button
+                        key={specialty}
+                        type="button"
+                        onClick={() => setSelectedSpecialty(active ? "All Specialties" : specialty)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          active
+                            ? "border-[color:var(--earn-teal-ink)] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                            : "border-[color:var(--earn-border)] bg-white text-[color:var(--earn-muted)] hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]",
+                        )}
+                        data-testid={`chip-specialty-${slug}`}
+                        aria-pressed={active}
+                      >
+                        {specialty} <span className="tabular-nums">({count})</span>
+                      </button>
+                    );
+                  })}
+                  <span className="ml-1 text-[10px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+                    within these results
+                  </span>
+                </div>
+              )}
+              {neighbourhoodCounts.size > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className="mr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-muted)]"
+                    style={{ fontFamily: EARN_MONO }}
+                  >
+                    Neighborhoods
+                  </span>
+                  {Array.from(neighbourhoodCounts.entries()).map(([neighbourhood, count]) => {
+                    const slug = neighbourhood.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                    return (
+                      <button
+                        key={neighbourhood}
+                        type="button"
+                        onClick={() => handleNeighbourhoodChipClick(neighbourhood)}
+                        className="rounded-full border border-[color:var(--earn-border)] bg-white px-2.5 py-1 text-[11px] font-medium text-[color:var(--earn-muted)] transition-colors hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]"
+                        data-testid={`chip-neighborhood-${slug}`}
+                      >
+                        {neighbourhood} <span className="tabular-nums">({count})</span>
+                      </button>
+                    );
+                  })}
+                  <span className="ml-1 text-[10px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+                    within these results
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Section heading — continuity's eyebrow + count grammar
               (ProviderStorefrontContinuity's tc-section-heading). */}
           {!isLoadingExperts && sortedExperts.length > 0 && (
@@ -654,11 +764,22 @@ export default function ExpertsPage() {
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
               </div>
               <h3 className="text-lg font-semibold" style={{ color: "#111827" }}>
-                No experts found
+                {selectedRole === "event_planner" ? "No event planners found" : "No experts found"}
               </h3>
               <p className="text-muted-foreground">
-                Try adjusting your filters or search terms
+                {selectedRole === "event_planner"
+                  ? "Try a trip planner instead, or adjust your filters."
+                  : "Try adjusting your filters or search terms"}
               </p>
+              {selectedRole === "event_planner" && (
+                <Link
+                  href={buildRoleHref("travel_expert")}
+                  className="rounded-md px-4 py-2 text-sm font-bold text-[color:var(--earn-coral-ink)] hover:underline"
+                  data-testid="link-trip-planners-fallback"
+                >
+                  Browse trip planners
+                </Link>
+              )}
               <button
                 className="mt-1 rounded-md px-4 py-2 text-sm font-bold"
                 style={{ color: "#d92d55" }}
