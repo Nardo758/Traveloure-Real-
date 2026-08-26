@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traveloure landing — Phase 1 frame</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --ground:#FAFAF8; --card:#FFFFFF; --border:#E7E4DD; --dash:#D5D0C8;
+      --teal:#2E8B8B; --teal-ink:#226B6B; --teal-wash:rgba(46,139,139,.10);
+      --gold:#E8B339; --gold-ink:#8A6414; --gold-wash:rgba(232,179,57,.15);
+      --green:#5DCAA5; --green-ink:#2F7D63;
+      --coral:#E85D55; --coral-bg:#FFF4F4; --coral-border:#FCCACA;
+      --navy:#1E3A5F; --ink:#1F2733; --muted:#6A7480; --faint:#B0AAA0; --chip:#F6F5F1;
+      --display:'Fraunces',Georgia,serif; --body:'Inter',system-ui,sans-serif; --mono:'Geist Mono',ui-monospace,monospace;
+      --shadow:0 1px 2px rgba(31,39,51,.06),0 8px 24px rgba(31,39,51,.06);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#EFEDE8;color:var(--ink);font:15px/1.5 var(--body)}
+    a{color:inherit;text-decoration:none}
+    button{font:inherit}
+    .doc{max-width:1240px;margin:0 auto;padding:46px 24px 96px}
+    .eyebrow{font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--coral)}
+    .doc h1{font:600 42px/1.08 var(--display);color:var(--navy);margin:9px 0 14px;letter-spacing:-.02em}
+    .lede{max-width:760px;color:var(--muted);font-size:16px}
+    .frame{margin-top:52px}
+    .frame-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:7px}
+    .frame-head b{font:600 23px var(--display);color:var(--ink)}
+    .frame-head span{font-size:13px;color:var(--muted)}
+    .frame-sub{margin:0 0 15px;color:var(--muted);font-size:14px}
+    .browser{overflow:hidden;background:var(--ground);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow)}
+    .urlbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)}
+    .urlbar i{width:10px;height:10px;border-radius:50%;background:var(--dash)}
+    .urlbar code{flex:1;margin-left:8px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--chip);color:var(--muted);font:12px var(--mono)}
+    .product{background:var(--ground)}
+    .nav{display:flex;align-items:center;gap:18px;padding:13px 26px;background:#fff;border-bottom:1px solid var(--border)}
+    .logo{display:flex;align-items:center;gap:8px;color:#485960;font-size:13px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
+    .logo-mark{display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:var(--coral);color:white;font-size:14px;transform:rotate(-8deg)}
+    .beta{padding:2px 8px;border:1px solid var(--coral-border);border-radius:999px;background:var(--coral-bg);color:var(--coral);font:700 10px var(--mono)}
+    .nav-links{display:flex;gap:20px;flex:1;color:#3C4652;font-size:13px}
+    .nav-links span{white-space:nowrap}
+    .nav-actions{display:flex;align-items:center;gap:8px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--ink);font-size:13px;font-weight:600;line-height:1;white-space:nowrap}
+    .btn.primary{border-color:var(--coral);background:var(--coral);color:#fff}
+    .btn.teal{border-color:var(--teal);background:var(--teal);color:#fff}
+    .btn.outline-coral{border:2px solid var(--coral);color:var(--coral);background:#fff}
+    .btn.ghost{background:transparent}
+    .hero{position:relative;overflow:hidden;padding:74px 30px 62px;background:
+      radial-gradient(circle at 80% 18%,rgba(255,255,255,.25),transparent 25%),
+      linear-gradient(120deg,#193B59 0%,#275C70 47%,#D67B69 140%);color:#fff}
+    .hero:before,.hero:after{position:absolute;content:"";border:1px solid rgba(255,255,255,.18);border-radius:50%;pointer-events:none}
+    .hero:before{width:480px;height:480px;right:-165px;top:-220px}
+    .hero:after{width:300px;height:300px;right:50px;bottom:-215px}
+    .hero-inner{position:relative;z-index:1;max-width:1030px;margin:0 auto}
+    .hero-copy{max-width:650px}
+    .hero-kicker{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(255,255,255,.12);font:600 10px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+    .pulse{width:7px;height:7px;border-radius:50%;background:#9EE5BF}
+    .hero h2{max-width:690px;margin:18px 0 13px;font:600 clamp(37px,5vw,64px)/1.02 var(--display);letter-spacing:-.025em}
+    .hero h2 em{font-style:normal;color:#FFB09B}
+    .hero p{max-width:610px;margin:0;color:rgba(255,255,255,.87);font-size:17px;line-height:1.55}
+    .hero-actions{display:flex;align-items:center;gap:10px;margin-top:25px;flex-wrap:wrap}
+    .hero .btn.primary{padding:13px 20px;box-shadow:0 10px 22px rgba(30,20,30,.18)}
+    .hero .btn.outline-coral{border-color:#fff;background:rgba(255,255,255,.08);color:#fff}
+    .browse{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr auto;gap:9px;max-width:760px;margin:42px auto 0;padding:9px;border:1px solid rgba(255,255,255,.24);border-radius:12px;background:rgba(10,27,43,.38);backdrop-filter:blur(12px)}
+    .field{display:flex;align-items:center;gap:9px;min-height:43px;padding:9px 12px;border:1px solid rgba(255,255,255,.22);border-radius:8px;background:rgba(255,255,255,.95);color:var(--muted);font-size:12px}
+    .field strong{display:block;color:var(--ink);font-size:13px;font-weight:600}
+    .field .glyph{display:grid;place-items:center;width:23px;height:23px;border-radius:7px;background:var(--teal-wash);color:var(--teal-ink);font-weight:700}
+    .browse .btn{min-height:43px}
+    .section{padding:46px 30px;background:var(--ground)}
+    .section.alt{background:#F1F4F2}
+    .section.white{background:#fff}
+    .wrap{max-width:1080px;margin:0 auto}
+    .section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:20px}
+    .section-head h3{margin:0;color:var(--navy);font:600 30px/1.1 var(--display)}
+    .section-head p{max-width:530px;margin:6px 0 0;color:var(--muted);font-size:13px}
+    .section-head .eyebrow{margin-bottom:6px;color:var(--teal-ink)}
+    .entry-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:9px}
+    .entry{display:flex;flex-direction:column;align-items:center;gap:7px;padding:13px 6px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--ink);font-size:11px;font-weight:600;text-align:center}
+    .entry .icon{display:grid;place-items:center;width:33px;height:33px;border-radius:10px;background:var(--teal-wash);color:var(--teal-ink);font-size:16px}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
+    .experience{overflow:hidden;border:1px solid var(--border);border-radius:13px;background:#fff}
+    .experience-art{height:104px;padding:13px;display:flex;align-items:flex-end;background:linear-gradient(135deg,#A4C0D3,#31576D);color:white}
+    .experience:nth-child(2) .experience-art{background:linear-gradient(135deg,#DFB8A9,#8B4D60)}
+    .experience:nth-child(3) .experience-art{background:linear-gradient(135deg,#D2C0E2,#74568F)}
+    .experience:nth-child(4) .experience-art{background:linear-gradient(135deg,#EBCB99,#A66A39)}
+    .experience:nth-child(5) .experience-art{background:linear-gradient(135deg,#D7B6C8,#834A63)}
+    .experience:nth-child(6) .experience-art{background:linear-gradient(135deg,#B5C2CA,#465866)}
+    .experience-art b{font:600 22px var(--display)}
+    .experience-body{padding:12px 13px 14px}
+    .experience-body p{margin:0 0 10px;color:var(--muted);font-size:12px}
+    .chips{display:flex;gap:5px;flex-wrap:wrap}
+    .chip{padding:3px 8px;border:1px solid var(--border);border-radius:999px;background:var(--chip);color:#3C4652;font-size:10px}
+    .city-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .city{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:#fff}
+    .city-photo{position:relative;height:94px;padding:10px;background:linear-gradient(135deg,#BBD0D7,#417183);color:#fff}
+    .city:nth-child(2) .city-photo{background:linear-gradient(135deg,#D8BE99,#9D633C)}
+    .city:nth-child(3) .city-photo{background:linear-gradient(135deg,#C7B9D8,#655D88)}
+    .city:nth-child(4) .city-photo{background:linear-gradient(135deg,#D8B1AE,#8F5962)}
+    .city:nth-child(5) .city-photo{background:linear-gradient(135deg,#B9D6C4,#4F816F)}
+    .city:nth-child(6) .city-photo{background:linear-gradient(135deg,#C9D1DC,#5E708F)}
+    .city:nth-child(7) .city-photo{background:linear-gradient(135deg,#E3C89E,#AB713A)}
+    .city:nth-child(8) .city-photo{background:linear-gradient(135deg,#BCC9D1,#54687D)}
+    .score{position:absolute;top:9px;right:9px;padding:4px 7px;border-radius:7px;background:rgba(255,255,255,.95);color:var(--teal-ink);font:700 11px var(--mono)}
+    .city-photo b{position:absolute;bottom:9px;left:10px;font:600 20px var(--display)}
+    .city-photo small{position:absolute;bottom:6px;left:10px;transform:translateY(100%);font-size:10px;color:rgba(255,255,255,.85)}
+    .city-body{display:flex;flex-direction:column;gap:7px;padding:11px}
+    .city-highlight{color:var(--teal-ink);font-size:11px;font-weight:600;line-height:1.25}
+    .city .chips{min-height:19px}
+    .city .chip{font-size:9px;padding:2px 6px}
+    .facts{display:flex;gap:7px;padding-top:7px;border-top:1px solid var(--border);color:var(--muted);font:10px var(--mono)}
+    .facts span{flex:1}
+    .source{display:flex;align-items:center;gap:5px;color:var(--teal-ink);font-size:10px;font-weight:600}
+    .city .btn{width:100%;margin-top:2px;padding:8px 7px;background:var(--teal-wash);border-color:transparent;color:var(--teal-ink);font-size:11px}
+    .process{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .step{position:relative;padding:17px 14px;border:1px solid var(--border);border-radius:12px;background:#fff}
+    .step-no{display:grid;place-items:center;width:27px;height:27px;margin-bottom:12px;border-radius:50%;background:var(--teal-wash);color:var(--teal-ink);font:600 11px var(--mono)}
+    .step h4{margin:0 0 5px;color:var(--navy);font:600 18px var(--display)}
+    .step p{margin:0;color:var(--muted);font-size:12px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .stat{padding:17px;border:1px solid var(--border);border-radius:12px;background:#fff}
+    .stat-value{margin-bottom:4px;color:var(--teal-ink);font:600 28px var(--mono)}
+    .stat b{display:block;color:var(--ink);font-size:12px}
+    .stat span{display:block;margin-top:5px;color:var(--muted);font-size:10px;line-height:1.35}
+    .empty{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px dashed var(--dash);border-radius:10px;background:#fff;color:var(--muted);font-size:12px}
+    .empty strong{color:var(--ink)}
+    .empty .empty-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--chip);color:var(--faint)}
+    .earn{padding:48px 30px;background:linear-gradient(135deg,#17665F,#1F805F);color:#fff}
+    .earn h3{margin:0 0 7px;text-align:center;font:600 32px var(--display)}
+    .earn-lede{max-width:540px;margin:0 auto 21px;color:#D6F3E6;text-align:center;font-size:13px}
+    .earn-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;max-width:740px;margin:0 auto}
+    .earn-card{padding:17px;border:1px solid rgba(255,255,255,.22);border-radius:13px;background:rgba(255,255,255,.10)}
+    .earn-card .role{display:inline-block;margin-bottom:11px;padding:3px 7px;border-radius:5px;background:rgba(255,255,255,.15);color:#D6F3E6;font:10px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+    .earn-card h4{margin:0 0 5px;font:600 22px var(--display)}
+    .earn-card p{min-height:40px;margin:0 0 12px;color:#D6F3E6;font-size:12px}
+    .earn-card a{color:#fff;font-size:12px;font-weight:600;text-decoration:underline;text-decoration-color:rgba(255,255,255,.45);text-underline-offset:3px}
+    .final{padding:55px 30px;background:linear-gradient(120deg,#E85D55,#F28B64);color:#fff;text-align:center}
+    .final h3{margin:0 0 8px;font:600 37px var(--display)}
+    .final p{margin:0 auto 19px;color:rgba(255,255,255,.88);font-size:14px}
+    .final .btn{margin:0 3px}
+    .final .btn.primary{border-color:#fff;background:#fff;color:var(--coral)}
+    .final .btn.outline-coral{border-color:#fff;background:transparent;color:#fff}
+    .note{margin-top:15px;padding:12px 14px;border:1px solid #EAD9B0;border-radius:10px;background:#FFF9EE;color:#6B5620;font-size:13px}
+    .note b{color:#4E3E12}
+    .note.rule{border-color:#BFDCDC;background:var(--teal-wash);color:var(--teal-ink)}
+    .note.rule b{color:var(--teal-ink)}
+    .note.stop{border-color:var(--coral-border);background:var(--coral-bg);color:#9B2F29}
+    .contract-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+    .contract{padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff;font-size:12px}
+    .contract b{display:block;margin-bottom:4px;color:var(--navy)}
+    .contract code{font:11px var(--mono);color:var(--teal-ink)}
+    @media(max-width:900px){
+      .nav-links{display:none}.entry-grid{grid-template-columns:repeat(4,1fr)}
+      .browse{grid-template-columns:1fr 1fr}.browse .btn{grid-column:1/-1}
+      .city-grid{grid-template-columns:repeat(2,1fr)}.process,.stats{grid-template-columns:repeat(2,1fr)}
+    }
+    @media(max-width:600px){
+      .doc{padding:30px 12px 70px}.doc h1{font-size:34px}.nav{padding:12px 15px}
+      .nav-actions .btn.ghost{display:none}.hero{padding:47px 18px 34px}.hero h2{font-size:43px}
+      .hero p{font-size:15px}.browse{grid-template-columns:1fr;margin-top:30px}
+      .section,.earn,.final{padding:36px 16px}.section-head{display:block}.section-head h3{font-size:27px}
+      .entry-grid{grid-template-columns:repeat(2,1fr)}.cards,.earn-grid,.contract-grid{grid-template-columns:1fr}
+      .city-grid{grid-template-columns:1fr 1fr;gap:8px}.city-photo{height:84px}
+      .city-photo b{font-size:17px}.city-body{padding:9px}.city .btn{font-size:10px}
+      .process,.stats{grid-template-columns:1fr 1fr}.final h3{font-size:32px}
+    }
+  </style>
+</head>
+<body>
+  <main class="doc">
+    <div class="eyebrow">Traveloure · landing dispatch · phase 1</div>
+    <h1>Landing page frame</h1>
+    <p class="lede">A ratifiable visual frame for the home-page replacement. The product frame follows the earn-grammar system while keeping the existing planning, browse, route, and honest-empty contracts visible to review.</p>
+
+    <section class="frame">
+      <div class="frame-head">
+        <b>Home — proposed frame</b>
+        <span>static review artifact · `/` · no production component changes</span>
+      </div>
+      <p class="frame-sub">The hero is the thesis: plan with AI first, browse live destinations beside it, then choose whether to work with experts or explore the marketplace.</p>
+
+      <div class="browser">
+        <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/</code></div>
+        <div class="product">
+          <div class="nav">
+            <div class="logo"><span class="logo-mark">✦</span>TRAVELOURE</div>
+            <span class="beta">BETA</span>
+            <div class="nav-links"><span>Marketplace⌄</span><span>Find help⌄</span><span>How it works</span><span>Ways to earn</span></div>
+            <div class="nav-actions"><a class="btn ghost" href="/login">Sign in</a><a class="btn primary" href="/experiences/travel">Start planning</a></div>
+          </div>
+
+          <section class="hero">
+            <div class="hero-inner">
+              <div class="hero-copy">
+                <span class="hero-kicker"><span class="pulse"></span>Beta in 8 operating markets</span>
+                <h2>Plan your next <em>great experience.</em></h2>
+                <p>Build a thoughtful trip with AI, browse what's live in the places you care about, or find a local expert to help you make it happen.</p>
+                <div class="hero-actions">
+                  <button class="btn primary" type="button" data-action="open-enhanced-planning-modal">✦&nbsp; Plan my trip</button>
+                  <a class="btn outline-coral" href="/experts?role=local_expert">Browse local experts</a>
+                </div>
+              </div>
+
+              <div class="browse" aria-label="Browse services">
+                <div class="field"><span class="glyph">⌕</span><span><strong>What do you need help with?</strong> Browse services, trips, and ideas</span></div>
+                <div class="field"><span class="glyph">⌖</span><span><strong>Where are you going?</strong> Choose a destination</span></div>
+                <a class="btn teal" href="/services" data-action="browse-services">Browse</a>
+              </div>
+            </div>
+          </section>
+
+          <section class="section white">
+            <div class="wrap">
+              <div class="section-head">
+                <div><div class="eyebrow">Start with a direction</div><h3>What are you planning?</h3><p>Choose a starting point. You can change the details as your plan takes shape.</p></div>
+              </div>
+                <div class="entry-grid">
+                <a class="entry" href="/destinations"><span class="icon">♧</span>Destinations</a>
+                <a class="entry" href="/ready-made"><span class="icon">◇</span>Ready-Made</a>
+                <a class="entry" href="/events"><span class="icon">▣</span>Events</a>
+                <a class="entry" href="/services"><span class="icon">♙</span>Services</a>
+                <a class="entry" href="/providers"><span class="icon">▤</span>Providers</a>
+                <a class="entry" href="/experts?role=local_expert"><span class="icon">⌂</span>Local Experts</a>
+                <a class="entry" href="/experts?role=travel_expert"><span class="icon">⌁</span>Trip Planners</a>
+                <a class="entry" href="/experts?role=event_planner"><span class="icon">♢</span>Event Planners</a>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="wrap">
+              <div class="section-head">
+                <div><div class="eyebrow">Curated starting points</div><h3>Popular experiences</h3><p>Browse a few of the ways people use Traveloure to turn an idea into a plan.</p></div>
+                <a class="btn ghost" href="/experiences">See all experiences →</a>
+              </div>
+              <div class="cards">
+                <a class="experience" href="/experiences/travel"><div class="experience-art"><b>Travel</b></div><div class="experience-body"><p>Plan your next adventure with room for the unexpected.</p><div class="chips"><span class="chip">Adventure</span><span class="chip">Culture</span><span class="chip">Foodie</span></div></div></a>
+                <a class="experience" href="/experiences/wedding"><div class="experience-art"><b>Weddings</b></div><div class="experience-body"><p>Bring the big day together with specialist local help.</p><div class="chips"><span class="chip">Romantic</span><span class="chip">Luxury</span><span class="chip">Planning</span></div></div></a>
+                <a class="experience" href="/experiences/proposal"><div class="experience-art"><b>Proposals</b></div><div class="experience-body"><p>Make the moment personal, surprising, and unforgettable.</p><div class="chips"><span class="chip">Romantic</span><span class="chip">Surprise</span><span class="chip">Luxury</span></div></div></a>
+                <a class="experience" href="/experiences/celebrations"><div class="experience-art"><b>Celebrations</b></div><div class="experience-body"><p>Find the right places and people for a milestone.</p><div class="chips"><span class="chip">Party</span><span class="chip">Fun</span><span class="chip">Social</span></div></div></a>
+                <a class="experience" href="/experiences/date-night"><div class="experience-art"><b>Date nights</b></div><div class="experience-body"><p>Make ordinary time together feel worth remembering.</p><div class="chips"><span class="chip">Romantic</span><span class="chip">Foodie</span><span class="chip">Fun</span></div></div></a>
+                <a class="experience" href="/experiences/corporate-events"><div class="experience-art"><b>Corporate</b></div><div class="experience-body"><p>Plan a focused team experience from start to finish.</p><div class="chips"><span class="chip">Business</span><span class="chip">Team building</span><span class="chip">Networking</span></div></div></a>
+              </div>
+            </div>
+          </section>
+
+          <section class="section alt">
+            <div class="wrap">
+              <div class="section-head">
+                <div><div class="eyebrow">TravelPulse · updated daily</div><h3>Trending cities</h3><p>See what is active now, then take a destination into its live marketplace.</p></div>
+                <a class="btn ghost" href="/destinations">Explore all in TravelPulse →</a>
+              </div>
+              <div class="city-grid">
+                <article class="city"><div class="city-photo"><span class="score">86</span><b>Kyoto</b><small>Japan</small></div><div class="city-body"><div class="city-highlight">Slow mornings, hidden lanes</div><div class="chips"><span class="chip">Culture</span><span class="chip">Food</span></div><div class="facts"><span>Pulse 86</span><span>12 trending</span><span>8 gems</span></div><div class="source">♧ 4 local experts</div><a class="btn" href="/discover/location/Kyoto?country=Japan">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">79</span><b>Goa</b><small>India</small></div><div class="city-body"><div class="city-highlight">Coastal days, local tables</div><div class="chips"><span class="chip">Beach</span><span class="chip">Food</span></div><div class="facts"><span>Pulse 79</span><span>9 trending</span><span>5 gems</span></div><div class="source">♧ 2 local experts</div><a class="btn" href="/discover/location/Goa?country=India">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">74</span><b>Porto</b><small>Portugal</small></div><div class="city-body"><div class="city-highlight">River light and late dinners</div><div class="chips"><span class="chip">Walkable</span><span class="chip">Culture</span></div><div class="facts"><span>Pulse 74</span><span>7 trending</span><span>4 gems</span></div><div class="source">♧ 3 local experts</div><a class="btn" href="/discover/location/Porto?country=Portugal">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">71</span><b>Edinburgh</b><small>United Kingdom</small></div><div class="city-body"><div class="city-highlight">Old streets, new stories</div><div class="chips"><span class="chip">History</span><span class="chip">Walkable</span></div><div class="facts"><span>Pulse 71</span><span>6 trending</span><span>3 gems</span></div><div class="source">♧ 1 local expert</div><a class="btn" href="/discover/location/Edinburgh?country=United%20Kingdom">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">68</span><b>Mumbai</b><small>India</small></div><div class="city-body"><div class="city-highlight">A city that stays awake</div><div class="chips"><span class="chip">Food</span><span class="chip">Nightlife</span></div><div class="facts"><span>Pulse 68</span><span>5 trending</span><span>7 gems</span></div><div class="source">♧ 3 local experts</div><a class="btn" href="/discover/location/Mumbai?country=India">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">65</span><b>Jaipur</b><small>India</small></div><div class="city-body"><div class="city-highlight">Craft, color, and courtyards</div><div class="chips"><span class="chip">Design</span><span class="chip">History</span></div><div class="facts"><span>Pulse 65</span><span>4 trending</span><span>6 gems</span></div><div class="source">♧ 2 local experts</div><a class="btn" href="/discover/location/Jaipur?country=India">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">62</span><b>Bogotá</b><small>Colombia</small></div><div class="city-body"><div class="city-highlight">High-altitude creative energy</div><div class="chips"><span class="chip">Art</span><span class="chip">Food</span></div><div class="facts"><span>Pulse 62</span><span>4 trending</span><span>2 gems</span></div><div class="source">♧ 1 local expert</div><a class="btn" href="/discover/location/Bogot%C3%A1?country=Colombia">Plan this destination →</a></div></article>
+                <article class="city"><div class="city-photo"><span class="score">59</span><b>Cartagena</b><small>Colombia</small></div><div class="city-body"><div class="city-highlight">Warm nights by the water</div><div class="chips"><span class="chip">Coastal</span><span class="chip">History</span></div><div class="facts"><span>Pulse 59</span><span>3 trending</span><span>4 gems</span></div><div class="source">♧ 2 local experts</div><a class="btn" href="/discover/location/Cartagena?country=Colombia">Plan this destination →</a></div></article>
+              </div>
+            </div>
+          </section>
+
+          <section class="section white">
+            <div class="wrap">
+              <div class="section-head"><div><div class="eyebrow">A simple path</div><h3>How it works</h3><p>From a first idea to a plan you can actually use.</p></div><a class="btn primary" href="/ai-assistant">Start with AI →</a></div>
+              <div class="process">
+                <div class="step"><div class="step-no">01</div><h4>Share your vision</h4><p>Tell us the destination, dates, budget, and preferences that matter.</p></div>
+                <div class="step"><div class="step-no">02</div><h4>Get matched</h4><p>Find verified local experts who know the kind of experience you want.</p></div>
+                <div class="step"><div class="step-no">03</div><h4>Plan together</h4><p>Use AI tools, local knowledge, and live intelligence in one place.</p></div>
+                <div class="step"><div class="step-no">04</div><h4>Experience it</h4><p>Take the plan with you and get support when you need it.</p></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="wrap">
+              <div class="section-head"><div><div class="eyebrow">Platform intelligence</div><h3>Useful numbers, honestly shown</h3><p>Values come from the platform; the frame never fills an unknown with a claim.</p></div><span class="chip">Updated from live data</span></div>
+              <div class="stats">
+                <div class="stat"><div class="stat-value">—</div><b>Trips planned</b><span>Itineraries planned on Traveloure.</span></div>
+                <div class="stat"><div class="stat-value">—</div><b>Reviews</b><span>Reviews from completed bookings.</span></div>
+                <div class="stat"><div class="stat-value">—</div><b>Local experts</b><span>Reviewed and approved to advise travelers.</span></div>
+                <div class="stat"><div class="stat-value">—</div><b>Countries</b><span>Where experts and providers are active.</span></div>
+              </div>
+              <div class="empty" style="margin-top:12px"><span class="empty-mark">☆</span><span><strong>No featured testimonials yet.</strong> Production keeps the testimonial section hidden until admin-curated review data exists.</span></div>
+            </div>
+          </section>
+
+          <section class="earn">
+            <div class="wrap">
+              <h3>Know a city well? Get paid for it.</h3>
+              <p class="earn-lede">Turn what you know into useful experiences for travelers. Choose the role that fits how you want to work.</p>
+              <div class="earn-grid">
+                <div class="earn-card"><span class="role">service provider</span><h4>Offer local services</h4><p>Give travelers tours, transport, photography, food, and other on-the-ground help.</p><a href="/earn?track=provider">See service provider offerings →</a></div>
+                <div class="earn-card"><span class="role">trip planner</span><h4>Plan trips for others</h4><p>Advise travelers, review plans, and coordinate logistics remotely or in person.</p><a href="/earn?track=expert">See trip planner offerings →</a></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="final">
+            <div class="wrap">
+              <h3>Ready to plan your experience?</h3>
+              <p>Start with AI, find a local expert, or browse what is already live.</p>
+              <button class="btn primary" type="button" data-action="open-enhanced-planning-modal">Plan my trip</button>
+              <a class="btn outline-coral" href="/experts?role=local_expert">Browse local experts</a>
+              <a class="btn outline-coral" href="/pricing">See pricing</a>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="contract-grid">
+        <div class="contract"><b>Primary action</b><code>setPlanningOpen(true)</code><br>Opens the existing EnhancedPlanningModal; it does not enter Quick Start.</div>
+        <div class="contract"><b>Browse action</b><code>/services</code><br>Two fields filter the browse surface only. They never write trip state.</div>
+        <div class="contract"><b>Destination action</b><code>Plan this destination</code><br>Uses the shared compact pulse CityCard and preserves encoded city navigation.</div>
+      </div>
+      <div class="note rule"><b>Frame decision.</b> The coral hero action reads <b>Plan my trip</b> and remains the in-place AI-itinerary → comparison flow. The outline action reads <b>Browse local experts</b> and resolves to `/experts?role=local_expert`. The earn cards display the roles their unchanged `?track=` aliases resolve to.</div>
+      <div class="note"><b>Data boundary.</b> City cards, stats, and testimonials are shown as data-shaped states. The compact city examples are visual content for review, not claims about current database rows; production continues to source them from the existing APIs.</div>
+      <div class="note stop"><b>Hard stop at the frame.</b> This is a static design artifact. Do not build the landing component, modify `TrendingCities`/`CityCard`, change handlers or test IDs, add photos or inventory, or update tests until this frame and `LANDING_SPEC.md` are reviewed and the next gate is authorized.</div>
+    </section>
+  </main>
+</body>
+</html>
