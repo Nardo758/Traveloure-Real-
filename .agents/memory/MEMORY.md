@@ -55,3 +55,5 @@
 - [Neighbourhood slug matching](neighbourhood-slug-matching.md) — free-text neighbourhood joins must normalize both sides or a mismatch silently drops the whole neighbourhood (and its chrome) from the feed.
 - [Lane branch HEAD reset risk](lane-branch-head-reset-risk.md) — an unrelated task-agent merge elsewhere can silently move this workspace's git HEAD off a lane branch back to main mid-session; push lane branches to origin early.
 - [Foreign commits on a lane branch](shared-workspace-foreign-commits.md) — an unrelated task's completion-review can append real, plausible code commits onto a checked-out lane branch; verify pushed-vs-not and diff claims against real data before trusting or keeping them.
+- [fee_bands rate_type units](fee-bands-rate-type-units.md) — rate_type is CHECK-constrained; 'flat'=dollars not cents; new units need a new rate_type + constraint migration, not overloading 'flat'.
+- [Price-shown-vs-charged safety](price-shown-vs-charged-safety.md) — never swap a one-click charge-driving display value for a new price source; add new prices additively and fail soft.

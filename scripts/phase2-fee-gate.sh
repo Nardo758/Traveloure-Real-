@@ -43,13 +43,30 @@ debt_only() { grep -viE '/(seed|seeds|fixtures|migrations|config)/' | grep -v 'f
 
 # ── Pass A: known fee VALUES anywhere in logic ──────────────────────────────────
 # Optimize prices ($5.99 / $19.99) + deprecated subscription / review-tier values.
-VALUE_RE='(^|[^0-9.])(5\.99|9\.99|14\.99|29\.99|39\.99|49\.99|19\.99)([^0-9]|$)'
+# Pricing ledger Lane 1 (Task 1669) added 4.99 (optimizer:run) / 2.99 (concierge:ai_task) /
+# 40.00 (concierge:booking_cap_cents) / 19.00 (plans trip_pass) — all verified collision-free
+# against the current tree. 25.00 (plus_annual) and 29.00 (pro_monthly) were tried and DROPPED:
+# 25.00 collides with shared/schema.ts's pre-existing "$25.00 per booking" traveler-fee-cap
+# comment, and 29.00 collides with server/routes.ts's unrelated "Quick Consultation" price
+# ("29.00"). Both amounts are still caught if hardcoded in logic via Pass B's fee-context
+# predicate (e.g. `planPrice = 2900`); see the CENTS_RE note below for the same reasoning.
+VALUE_RE='(^|[^0-9.])(5\.99|9\.99|14\.99|29\.99|39\.99|49\.99|19\.99|4\.99|2\.99|40\.00|19\.00)([^0-9]|$)'
 A_HITS=$(grep -rnE "$VALUE_RE" "${ROOTS[@]}" "${COMMON_EXCLUDES[@]}" 2>/dev/null | post_filter)
 
 # ── Pass C: cents-form fee values (backend stores fees in cents) ─────────────────
 # 599 = $5.99, 1999 = $19.99, 4999 = $49.99, 900 = $9, 4500 = $45, 19900 = $199,
 # 49900 = $499, 499900 = $4999. Catches DEFAULT_FEE_CENTS = 599 and similar.
-CENTS_RE='(^|[^0-9])(599|1999|4999|900|4500|19900|49900|499900)([^0-9]|$)'
+# Pricing ledger Lane 1 (Task 1669) added 299 (concierge:ai_task $2.99) / 1900 (plans trip_pass)
+# / 2900 (plans pro_monthly) — verified collision-free. 499 (optimizer:run $4.99) and 4000
+# (concierge:booking_cap_cents $40.00) and 2500 (plans plus_annual) were tried and DROPPED as
+# bare values: 499 collides with the PRE-EXISTING, unrelated $499 coordination-fee floor
+# (server/services/optimization-fee.service.ts, expert/workspace.tsx, pricing.tsx,
+# how-it-works.tsx, concierge.routes.ts) which this gate already had to tolerate before Lane 1;
+# 4000 collides with unrelated `max_tokens: 4000` LLM-call literals and phone-number digit runs;
+# 2500 collides with an unrelated UI toast `duration: 2500`. All three remain caught if hardcoded
+# against a fee-ish identifier via Pass B (e.g. `bookingCapCents = 4000`), which is a real,
+# adjacent-identifier-anchored predicate rather than a bare-value one.
+CENTS_RE='(^|[^0-9])(599|1999|4999|900|4500|19900|49900|499900|299|1900|2900)([^0-9]|$)'
 C_HITS=$(grep -rnE "$CENTS_RE" "${ROOTS[@]}" "${COMMON_EXCLUDES[@]}" 2>/dev/null | post_filter)
 
 # ── Pass B: fee-CONTEXT numeric assignments ─────────────────────────────────────

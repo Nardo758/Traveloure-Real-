@@ -25,6 +25,7 @@ import {
   complexityTier,
 } from "../services/smart-sequencing.service";
 import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
+import { getOptimizerRunFeeCents } from "../services/fee-resolution.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
@@ -71,6 +72,19 @@ router.post("/api/optimization-preview", async (req, res) => {
     const tier = complexityTier(eventType);
     const { priceCents, currency, isDisabled, creditTowardCoordination } = await getFee(eventType, tier);
 
+    // Pricing ledger Lane 1 (Task 1669): an ADDITIVE ledger-priced teaser only — sourced from the
+    // new optimizer:run fee_bands row. This is deliberately NOT the value that drives feeCents
+    // below (the real tiered optimization_fees charge, resolved via getFee() above, stays the
+    // sole source for the amount that is actually charged in the payment step). Fails soft to
+    // null: this teaser must never be able to break the preview endpoint that the real charge
+    // flow depends on. See docs/pricing/PRICING_LEDGER_LANE1_FINDINGS.md.
+    let ledgerTeaserFeeCents: number | null = null;
+    try {
+      ledgerTeaserFeeCents = await getOptimizerRunFeeCents();
+    } catch (teaserErr: any) {
+      console.error("[optimization-preview] optimizer:run teaser resolution failed (non-fatal):", teaserErr.message);
+    }
+
     // Estimate improvement potential:
     // overallScore is 0–100; lower score means more room to improve.
     const improvementRoom = Math.max(0, 100 - metrics.overallScore);
@@ -111,6 +125,8 @@ router.post("/api/optimization-preview", async (req, res) => {
       currency,
       freeRerun,
       aiDisabled: isDisabled,
+      // Additive-only ledger teaser (Task 1669) — see comment above. NOT the charged amount.
+      ledgerTeaserFeeCents,
       creditTowardCoordination, // Phase 2: Event branch optimizers credit toward coordination fee
       metrics: {
         balanceScore: Math.round(metrics.balanceScore),

@@ -1275,4 +1275,11 @@ export const MIGRATION_FILES = [
   // centroid-placeholder string from city_neighborhoods.description across all 8
   // seeded cities. See 2026-08-27-neighbourhood-slug-match in DECISIONS.md.
   "258_null_placeholder_neighborhood_descriptions.sql",
+  // 259: Pricing ledger Lane 1 (Task 1669) — additive-nullable as_of_date/review_date columns on
+  //   fee_bands, 8 new namespaced fee_bands rows (optimizer:run, concierge:ai_task,
+  //   concierge:booking_pct, concierge:booking_cap_cents, concierge:done_for_you_deposit_pct,
+  //   ready_made:platform_band, provider:pro_band_step, plans:plus_task_allowance), and a new
+  //   minimal `plans` table (3 rows: trip_pass/plus_annual/pro_monthly). No existing fee_bands
+  //   row's value changes. See docs/pricing/PRICING_LEDGER_LANE1_FINDINGS.md.
+  "259_pricing_ledger_lane1_fee_bands_and_plans.sql",
 ] as const;

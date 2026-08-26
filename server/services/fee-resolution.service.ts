@@ -244,3 +244,107 @@ export async function resolveTravelerServiceFee(
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// PRICING LEDGER LANE 1 (Task 1669) — new namespaced fee_bands keys + typed accessors.
+//
+// These rows introduce three new `rate_type`s alongside the existing 'percent'/'flat':
+//   'flat_cents' — integer cents (NOT dollars — see migration 259's header for why 'flat' was
+//                  deliberately not reused).
+//   'count'      — a unitless integer (a step or an allowance), never a currency amount.
+//   'rule'       — a non-numeric governance value; default_rate is a sentinel 0, the real value
+//                  lives in the band's `description`.
+// `requireBand()` above only ever accepts 'percent', so none of these can be silently misread by
+// the existing fail-loud path — they are read exclusively through the accessors below.
+//
+// Wiring status (Phase 0 findings — see docs/pricing/PRICING_LEDGER_LANE1_FINDINGS.md):
+//   optimizer:run                        — WIRED (cart.tsx Optimize step teaser price).
+//   concierge:ai_task                     — NOT wired. No real "feed concierge panel" surface
+//                                            exists in the client; the one AI Concierge price
+//                                            surface found (DeliveryOptions.tsx) already sources
+//                                            from optimization_fees via getFee(), not fee_bands.
+//   concierge:booking_pct                 — NOT wired. Filed for a later lane.
+//   concierge:booking_cap_cents           — NOT wired. Filed for a later lane.
+//   concierge:done_for_you_deposit_pct    — NOT wired. Filed for a later lane.
+//   ready_made:platform_band              — NOT wired. Filed for a later lane.
+//   provider:pro_band_step                — NOT wired. Filed for a later lane.
+//   plans:plus_task_allowance             — NOT wired. Filed for a later lane.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+export const OPTIMIZER_RUN_BAND = "optimizer:run";
+export const CONCIERGE_AI_TASK_BAND = "concierge:ai_task";
+export const CONCIERGE_BOOKING_PCT_BAND = "concierge:booking_pct";
+export const CONCIERGE_BOOKING_CAP_CENTS_BAND = "concierge:booking_cap_cents";
+export const CONCIERGE_DONE_FOR_YOU_DEPOSIT_PCT_BAND = "concierge:done_for_you_deposit_pct";
+export const READY_MADE_PLATFORM_BAND_KEY = "ready_made:platform_band";
+export const PROVIDER_PRO_BAND_STEP_BAND = "provider:pro_band_step";
+export const PLANS_PLUS_TASK_ALLOWANCE_BAND = "plans:plus_task_allowance";
+
+/**
+ * Read a band and assert its `rate_type`, or throw (Lane 1's version of `requireBand`'s fail-loud
+ * contract, generalized past 'percent' for the new rate_types this lane introduces).
+ */
+async function requireBandOfType(bandKey: string, expectedType: string): Promise<BandRow> {
+  const band = await readBand(bandKey);
+  if (!band) throw new BandResolutionError(bandKey, "no active row in fee_bands");
+  if (band.rateType !== expectedType) {
+    throw new BandResolutionError(bandKey, `rate_type='${band.rateType}', expected '${expectedType}'`);
+  }
+  return band;
+}
+
+/** optimizer:run — one-time AI optimizer run fee, in CENTS. WIRED to the cart.tsx Optimize teaser. */
+export async function getOptimizerRunFeeCents(): Promise<number> {
+  const band = await requireBandOfType(OPTIMIZER_RUN_BAND, "flat_cents");
+  return Math.round(band.rate);
+}
+
+/** concierge:ai_task — per-task AI Concierge fee, in CENTS. Not wired — no consuming surface (see header note). */
+export async function getConciergeAiTaskFeeCents(): Promise<number> {
+  const band = await requireBandOfType(CONCIERGE_AI_TASK_BAND, "flat_cents");
+  return Math.round(band.rate);
+}
+
+/** concierge:booking_pct — concierge booking commission fraction. Not yet wired. */
+export async function getConciergeBookingPct(): Promise<number> {
+  const band = await requireBandOfType(CONCIERGE_BOOKING_PCT_BAND, "percent");
+  return band.rate;
+}
+
+/** concierge:booking_cap_cents — per-booking cap pairing with concierge:booking_pct, in CENTS. Not yet wired. */
+export async function getConciergeBookingCapCents(): Promise<number> {
+  const band = await requireBandOfType(CONCIERGE_BOOKING_CAP_CENTS_BAND, "flat_cents");
+  return Math.round(band.rate);
+}
+
+/** concierge:done_for_you_deposit_pct — deposit fraction for done-for-you concierge bookings. Not yet wired. */
+export async function getConciergeDoneForYouDepositPct(): Promise<number> {
+  const band = await requireBandOfType(CONCIERGE_DONE_FOR_YOU_DEPOSIT_PCT_BAND, "percent");
+  return band.rate;
+}
+
+/**
+ * ready_made:platform_band — a RULE, not a rate. Returns the rule string (e.g. "inherit_expert")
+ * carried in the band's `description`. Not yet wired to a call site.
+ */
+export async function getReadyMadePlatformBandRule(): Promise<string> {
+  await requireBandOfType(READY_MADE_PLATFORM_BAND_KEY, "rule");
+  const result = await db.execute(sql`
+    SELECT description FROM fee_bands WHERE band_key = ${READY_MADE_PLATFORM_BAND_KEY} AND is_active = true LIMIT 1
+  `);
+  const rule = (result.rows?.[0] as { description: string | null } | undefined)?.description;
+  if (!rule) throw new BandResolutionError(READY_MADE_PLATFORM_BAND_KEY, "rule row has no description/rule value");
+  return rule;
+}
+
+/** provider:pro_band_step — unitless integer step for provider Pro-tier band progression. Not yet wired. */
+export async function getProviderProBandStep(): Promise<number> {
+  const band = await requireBandOfType(PROVIDER_PRO_BAND_STEP_BAND, "count");
+  return Math.round(band.rate);
+}
+
+/** plans:plus_task_allowance — unitless integer allowance (count of AI tasks) for plus_annual. Not yet wired. */
+export async function getPlansPlusTaskAllowance(): Promise<number> {
+  const band = await requireBandOfType(PLANS_PLUS_TASK_ALLOWANCE_BAND, "count");
+  return Math.round(band.rate);
+}
