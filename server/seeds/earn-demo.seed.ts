@@ -198,9 +198,11 @@ async function upsertById(
   }
 }
 
-async function neighborhoodsFor(conn: Connection, market: Market): Promise<string[]> {
+type SeedNeighborhood = { name: string; slug: string };
+
+async function neighborhoodsFor(conn: Connection, market: Market): Promise<SeedNeighborhood[]> {
   const rows = await conn
-    .select({ name: cityNeighborhoods.name })
+    .select({ name: cityNeighborhoods.name, slug: cityNeighborhoods.slug })
     .from(cityNeighborhoods)
     .where(eq(cityNeighborhoods.city, market.city))
     .orderBy(cityNeighborhoods.name)
@@ -208,7 +210,7 @@ async function neighborhoodsFor(conn: Connection, market: Market): Promise<strin
   if (rows.length < 3) {
     throw new Error(`[earn-demo-seed] ${market.city} needs at least three city_neighborhoods rows.`);
   }
-  return rows.map((row: { name: string }) => row.name);
+  return rows;
 }
 
 async function upsertExpertForm(
@@ -284,7 +286,10 @@ async function upsertServices(
       durationMinutes: method === "pdf" ? 0 : method === "video" ? 60 : 150,
       location: market.city,
       city: market.city,
-      neighborhood: method === "in_person" ? (await neighborhoodsFor(conn, market))[index % 3] : null,
+      // 2026-08-27-neighbourhood-slug-match: store the slug (join key), not the
+      // display name — location-view.service.ts matches provider services to a
+      // neighbourhood by this value.
+      neighborhood: method === "in_person" ? (await neighborhoodsFor(conn, market))[index % 3].slug : null,
       meetingPoint: method === "in_person" ? `${market.city} central meeting point` : null,
       serviceImage: image(index + market.slug.length),
       galleryImages: [image(index + 1), image(index + 2)],
@@ -453,31 +458,35 @@ async function upsertReviews(
 async function upsertGems(
   conn: Connection,
   market: Market,
-  neighborhoods: string[],
+  neighborhoods: SeedNeighborhood[],
   curatorId: string,
   counter: Counter,
 ): Promise<void> {
   for (let neighborhoodIndex = 0; neighborhoodIndex < 2; neighborhoodIndex += 1) {
+    const nb = neighborhoods[neighborhoodIndex];
     for (let gemIndex = 0; gemIndex < 3; gemIndex += 1) {
       const score = [78, 87, 92][gemIndex];
       await upsertById(conn, travelPulseHiddenGems, {
         id: `earn-demo-${market.slug}-gem-${neighborhoodIndex + 1}-${gemIndex + 1}`,
         city: market.city,
         country: market.country,
-        placeName: `${neighborhoods[neighborhoodIndex]} ${["Kitchen", "Corner", "Garden"][gemIndex]}`,
+        placeName: `${nb.name} ${["Kitchen", "Corner", "Garden"][gemIndex]}`,
         placeType: ["restaurant", "cafe", "gallery"][gemIndex],
-        address: `${neighborhoods[neighborhoodIndex]}, ${market.city}`,
+        address: `${nb.name}, ${market.city}`,
         localRating: "4.7",
         localMentions: 42 - gemIndex * 5,
         touristMentions: 4 + gemIndex,
         gemScore: score,
         discoveryStatus: score >= 85 ? "emerging" : "hidden",
-        description: `A low-key favorite in ${neighborhoods[neighborhoodIndex]}.`,
+        description: `A low-key favorite in ${nb.name}.`,
         whyLocalsLoveIt: "Warm service, strong character, and a reason to linger.",
         bestFor: ["slow mornings", "curious travelers"],
         priceRange: "$$",
         imageUrl: image(gemIndex + neighborhoodIndex + market.slug.length),
-        neighborhood: neighborhoods[neighborhoodIndex],
+        // 2026-08-27-neighbourhood-slug-match: store the slug (join key), not
+        // the display name — location-view.service.ts matches gems to a
+        // neighbourhood by this value.
+        neighborhood: nb.slug,
         curatedByExpertId: curatorId,
       }, counter, "gems");
     }
@@ -571,7 +580,7 @@ async function seedEarnDemo(): Promise<void> {
         bio: `Local ${market.city} guide for thoughtful food, culture, and neighborhood days.`,
         profileImageUrl: image(market.slug.length),
       }, result);
-      await upsertExpertForm(tx, market, localId, "local_expert", neighborhoods, result);
+      await upsertExpertForm(tx, market, localId, "local_expert", neighborhoods.map((n) => n.name), result);
       await upsertServices(tx, market, localId, "local", 3, result);
       await upsertTemplate(tx, market, localId, "local", result);
       await upsertReadyMade(tx, market, localId, "local", result);
