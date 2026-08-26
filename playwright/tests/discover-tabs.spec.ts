@@ -450,15 +450,26 @@ test.describe('city-feed bento — /discover/location', () => {
     }
   });
 
-  test('2. rec tiles stay keyed on their engine position (feed-card-rec-N unchanged)', async ({ page }) => {
-    // The one platform recommendation candidate is engine index 0 → feed-card-rec-0,
-    // living in Gion's bento; the bento never renumbers it.
-    const rec = page.locator('[data-testid^="feed-card-rec-"]');
-    await expect(rec).toHaveCount(1);
-    await expect(page.getByTestId('feed-card-rec-0')).toBeVisible();
-    await expect(
-      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
-    ).toHaveCount(1);
+  test('2. packer keeps a ready-made 2×1 beside a lead expert — the Gion layout (Phase 2f)', async ({ page }) => {
+    // Gion carries BOTH a lead local expert (its anchor) AND a ready-made
+    // (tmpl-2, @yuki-flowers). The expert anchors the section (col-span-2,
+    // row-span-2); the ready-made stays a col-span-2 tile (row-span-1) — the
+    // packer never DEMOTES a ready-made to 1×1, even when it is not the anchor.
+    // Until Phase 2f the package span was only ever exercised as Arashiyama's
+    // fallback anchor; this proves the beside-a-lead-expert path.
+    const gionAnchor = page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]');
+    await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
+    await expect(gionAnchor).toHaveAttribute('data-col-span', '2');
+    await expect(gionAnchor).toHaveAttribute('data-row-span', '2');
+
+    // The Gion ready-made tile: a NON-anchor col-span-2, row-span-1 package.
+    const pkgTile = page.locator(
+      '[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-2"])',
+    );
+    await expect(pkgTile).toHaveCount(1);
+    await expect(pkgTile).toHaveAttribute('data-bento-role', 'tile');
+    await expect(pkgTile).toHaveAttribute('data-col-span', '2');
+    await expect(pkgTile).toHaveAttribute('data-row-span', '1');
   });
 
   test('3. anchor rule — expert anchors the neighbourhood that has one; ready-made anchors the one that does not', async ({ page }) => {
@@ -632,9 +643,10 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
     // Two-field search NEVER writes trip context: the where field is read-only.
     await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
-    // The one rendered rec tile — the impression POST path is exercised on mount
-    // (fires-once is asserted by the real-data row).
-    await expect(page.getByTestId('feed-card-rec-0')).toBeVisible();
+    // Phase 2f: the fixture's two injection slots are BOTH ready-mades (Gion tile
+    // tmpl-2 + Arashiyama anchor tmpl-1), so no platform-recommendation tile renders
+    // here — the CityFeedCardRecommendation render + POST-once is a real-data matrix
+    // row. The ready-made destination shape is asserted above (btn-view-package-tmpl-1).
 
     // Card-is-link vs button propagation: clicking the card BODY opens the gem's
     // details sheet; clicking a button STOPS propagation, so only that button's
