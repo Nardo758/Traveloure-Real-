@@ -60,7 +60,10 @@ export function bentoAnchorPriority(
   const role = expertRole(data);
   if (role === "event-planner" || role === "eventplanner") return null;
 
-  const localRole = role === "local-expert" || role === "expert" || role === "";
+  // The public /api/experts route explicitly folds the legacy generic
+  // `expert` stored role into the Trip Planners lane (no separate generic-
+  // expert tab exists), so it must rank as a planner here too — never local.
+  const localRole = role === "local-expert" || role === "";
   if (localRole) {
     const neighbourhoodTokens = [
       neighbourhood?.slug,
@@ -90,7 +93,12 @@ export function bentoAnchorPriority(
     return null;
   }
 
-  if (role === "travel-expert" || role === "trip-planner" || role === "planner") {
+  if (
+    role === "travel-expert" ||
+    role === "trip-planner" ||
+    role === "planner" ||
+    role === "expert"
+  ) {
     return "planner";
   }
 
@@ -104,8 +112,12 @@ export function bentoAnchorPriority(
  * rated expert, never above, so an unrated expert cannot out-rank a rated one.
  */
 function expertRankingStats(data: any): { rating: number; offerings: number } {
-  const reviewCount = Number(data?.reviewCount ?? 0);
-  const averageRating = data?.averageRating;
+  // The live /api/experts route attaches the real aggregate as expertRating /
+  // expertReviewCount (expertRating is explicit null, not undefined, when
+  // there are no approved reviews). averageRating / reviewCount are kept as a
+  // fallback for fixtures and any other caller still using the legacy names.
+  const reviewCount = Number(data?.expertReviewCount ?? data?.reviewCount ?? 0);
+  const averageRating = data?.expertRating ?? data?.averageRating;
   const rating = reviewCount > 0 && averageRating != null ? Number(averageRating) : -1;
   const servicesCount = Number(data?.servicesCount ?? 0);
   const packagesCount = Number(data?.packagesCount ?? 0);

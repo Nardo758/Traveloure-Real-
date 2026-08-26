@@ -53,7 +53,35 @@ describe("bento anchor priority (§2)", () => {
     assert.equal(bentoAnchorPriority(entry.item, neighbourhood, "Kyoto"), null);
   });
 
-  it("within a priority bucket, ranks the highest-rated eligible expert first", () => {
+  it("within a priority bucket, ranks the highest-rated eligible expert first (live /api/experts field names)", () => {
+    // expertRating / expertReviewCount are the real fields the live
+    // /api/experts route attaches (server/routes.ts) — the ranking must read
+    // those, not just the legacy averageRating / reviewCount names.
+    const entries = [
+      tagged(
+        expert("nb-local-low-rated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          expertReviewCount: 12,
+          expertRating: 4.1,
+        }),
+        0,
+      ),
+      tagged(
+        expert("nb-local-high-rated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          expertReviewCount: 30,
+          expertRating: 4.9,
+        }),
+        1,
+      ),
+    ];
+
+    // The second (higher-rated) expert wins even though it appears later in
+    // the stream — rating outranks stream order within the same §2 bucket.
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
+  });
+
+  it("falls back to legacy averageRating / reviewCount when expertRating is absent (fixtures, other callers)", () => {
     const entries = [
       tagged(
         expert("nb-local-low-rated", "local_expert", {
@@ -73,8 +101,33 @@ describe("bento anchor priority (§2)", () => {
       ),
     ];
 
-    // The second (higher-rated) expert wins even though it appears later in
-    // the stream — rating outranks stream order within the same §2 bucket.
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
+  });
+
+  it("treats an explicit null expertRating (no approved reviews yet) as unrated, not a fallback to averageRating", () => {
+    const entries = [
+      tagged(
+        expert("nb-local-null-rating-with-legacy", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          expertReviewCount: 0,
+          expertRating: null,
+          // A stale/unrelated legacy field must not leak through once the
+          // live field is present (even as an explicit null).
+          reviewCount: 5,
+          averageRating: 4.9,
+        }),
+        0,
+      ),
+      tagged(
+        expert("nb-local-rated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          expertReviewCount: 3,
+          expertRating: 3.2,
+        }),
+        1,
+      ),
+    ];
+
     assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
   });
 
@@ -83,8 +136,8 @@ describe("bento anchor priority (§2)", () => {
       tagged(
         expert("nb-local-fewer-offerings", "local_expert", {
           expertForm: { neighborhoods: ["gion"] },
-          reviewCount: 20,
-          averageRating: 4.7,
+          expertReviewCount: 20,
+          expertRating: 4.7,
           servicesCount: 1,
           packagesCount: 0,
         }),
@@ -93,8 +146,8 @@ describe("bento anchor priority (§2)", () => {
       tagged(
         expert("nb-local-more-offerings", "local_expert", {
           expertForm: { neighborhoods: ["gion"] },
-          reviewCount: 20,
-          averageRating: 4.7,
+          expertReviewCount: 20,
+          expertRating: 4.7,
           servicesCount: 2,
           packagesCount: 3,
         }),
@@ -110,8 +163,8 @@ describe("bento anchor priority (§2)", () => {
       tagged(
         expert("nb-local-first", "local_expert", {
           expertForm: { neighborhoods: ["gion"] },
-          reviewCount: 20,
-          averageRating: 4.7,
+          expertReviewCount: 20,
+          expertRating: 4.7,
           servicesCount: 2,
           packagesCount: 1,
         }),
@@ -120,8 +173,8 @@ describe("bento anchor priority (§2)", () => {
       tagged(
         expert("nb-local-second", "local_expert", {
           expertForm: { neighborhoods: ["gion"] },
-          reviewCount: 20,
-          averageRating: 4.7,
+          expertReviewCount: 20,
+          expertRating: 4.7,
           servicesCount: 2,
           packagesCount: 1,
         }),
@@ -145,13 +198,41 @@ describe("bento anchor priority (§2)", () => {
       tagged(
         expert("nb-local-rated", "local_expert", {
           expertForm: { neighborhoods: ["gion"] },
-          reviewCount: 3,
-          averageRating: 3.2,
+          expertReviewCount: 3,
+          expertRating: 3.2,
         }),
         1,
       ),
     ];
 
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
+  });
+
+  it("classifies the legacy generic 'expert' role as a planner, not a local — it must never outrank a genuine city-local expert", () => {
+    // Mirrors server/routes.ts: "the legacy generic `expert` stored role
+    // belongs in the Trip Planners browse lane" — there is no separate
+    // generic-expert tab, so it cannot count as neighbourhood/city local here.
+    const entries = [
+      tagged(
+        expert("generic-expert", "expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          expertReviewCount: 50,
+          expertRating: 5.0,
+        }),
+        0,
+      ),
+      tagged(
+        expert("city-local", "local_expert", {
+          expertReviewCount: 1,
+          expertRating: 3.0,
+        }),
+        1,
+      ),
+    ];
+
+    assert.equal(bentoAnchorPriority(entries[0].item, neighbourhood, "Kyoto"), "planner");
+    // The genuine city-local expert wins even with a far lower rating, because
+    // priority bucket is compared before rating.
     assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
   });
 });
