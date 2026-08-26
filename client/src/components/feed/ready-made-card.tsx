@@ -44,6 +44,7 @@ export function FeedReadyMadeCard({
   const salesCount = Number(template.salesCount ?? 0);
 
   const expertName = template.expertName ?? null;
+  const cityWideLabel = typeof template.cityWideLabel === "string" ? template.cityWideLabel : null;
   const destDuration = [template.destination, template.duration ? `${template.duration} days` : null]
     .filter(Boolean)
     .join(" · ");
@@ -98,6 +99,15 @@ export function FeedReadyMadeCard({
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 self-start">
             Ready-made
           </span>
+           {cityWideLabel && (
+             <div
+               className="text-[10px] text-muted-foreground truncate"
+               style={{ fontFamily: EARN_MONO }}
+               data-testid={`package-city-wide-${template.id}`}
+             >
+               {cityWideLabel}
+             </div>
+           )}
           <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
             {template.title}
           </h3>
@@ -165,6 +175,15 @@ export function FeedReadyMadeCard({
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700">
             Ready-made
           </span>
+          {cityWideLabel && (
+            <span
+              className="text-[10px] text-muted-foreground"
+              style={{ fontFamily: EARN_MONO }}
+              data-testid={`package-city-wide-${template.id}`}
+            >
+              {cityWideLabel}
+            </span>
+          )}
           {rating === null && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-muted text-muted-foreground">
               New
