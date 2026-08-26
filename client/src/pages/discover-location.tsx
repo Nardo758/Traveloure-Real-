@@ -1772,7 +1772,12 @@ export default function DiscoverLocationPage() {
 
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
-    navigate(`/services?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
+    // Carry the FEED's city into the services surface as `location` (the param the
+    // /services page filters on — discover.tsx:772). Without it, Book-now dropped
+    // which city the traveller was browsing and landed on an un-scoped catalog.
+    navigate(
+      `/services?categoryKey=${encodeURIComponent(c.categoryKey)}&location=${encodeURIComponent(city)}&upsellSource=${upsellSurface}`,
+    );
   };
 
   // ── Injected-element payloads for the composition layer ────────────────

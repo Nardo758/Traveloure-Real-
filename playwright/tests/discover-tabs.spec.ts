@@ -387,7 +387,10 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   });
 
   // Location view payload (the page's primary query).
-  await page.route('**/api/discover/location/kyoto**', (route) => route.fulfill(json(BENTO_FIX.locationView)));
+  // Case-insensitive: the city-match fix 301s a mis-cased page URL to the canonical
+  // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
+  // route matches either casing, keeping this suite independent of the redirect.
+  await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
   // Admin-configurable composition knobs — pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.
@@ -430,7 +433,8 @@ async function bentoTiles(page: import('@playwright/test').Page, slug: string) {
 test.describe('city-feed bento — /discover/location', () => {
   test.beforeEach(async ({ page }) => {
     await mockBentoEndpoints(page);
-    await page.goto(`${BASE_URL}/discover/location/kyoto`, {
+    // Canonical casing so the city-match 301 does not fire mid-suite (kept hermetic).
+    await page.goto(`${BASE_URL}/discover/location/Kyoto`, {
       waitUntil: 'domcontentloaded',
       timeout: 30_000,
     });
@@ -702,5 +706,19 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
     expect(impressions).toBe(afterMount);
+  });
+
+  test('11. rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
+    // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
+    // the services surface opens scoped to where the traveller was browsing, not a
+    // bare catalog. It navigates to /services?categoryKey=…&location=<city>&upsellSource=…
+    // The click also fires the (now-validating) upsell click beacon, mocked in
+    // mockBentoEndpoints so it never 400s the test.
+    await page.getByTestId('btn-book-rec-2').click();
+    await expect.poll(() => page.url(), { timeout: 10_000 }).toContain('/services?');
+    const url = new URL(page.url());
+    expect(url.searchParams.get('location')).toBe('Kyoto');
+    expect(url.searchParams.get('categoryKey')).toBeTruthy();
+    expect(url.searchParams.get('upsellSource')).toBe('discover_location');
   });
 });
