@@ -206,3 +206,26 @@ and the "since" and consultation-kv facts are omitted until a real field exists 
 Deferred per decision-maker (Phase 0). **FOLLOWUP:** add `responseTimeMinutes`, `memberSince`, and
 consultation fields to the expert DTO — all three exist as data somewhere (message timestamps,
 `users.created_at`, consultation scheduling), so this is wiring, not new tracking.
+
+### FU — Lane 4 city-feed bento (draft PR `city-feed-bento`)
+Phase 2 landed the bento + family-card convergence. **Follow-up commit (decision-maker ruling)
+resolved three of these:** (a) the §13 three-state action row — the vendor-service card now gates
+`Book`/`Reserve` on one `resolveBookability` value that also feeds the single inline badge, so a
+"Not bookable" badge can never sit beside a live `Book` button; (b) the tile-height metric is now
+documented as two-tracks-per-1×1 / anchor-four (accepted as-is — see ledger
+`2026-08-26-city-feed-bento-landed` and SPEC §3.13); (c) the band is full-bleed, lifted to a
+`Layout`-level sibling. Remaining deferred, non-blocking:
+- **Source-link `/s/:handle` on feed tiles.** Tiles use the ruled id-based fallbacks
+  (`/experts/:id`, `/services/:id`) because the `handle` field is not on the
+  `/api/discover/location/:city` payload. Server DTO followup: surface `handle`; tiles switch
+  to `/s/:handle` with no structural change (`2026-08-25-card-source-link`).
+- **Editorial neighbourhood headings.** The bento heading reads
+  `neighbourhood.editorialTitle ?? headline ?? tagline`, falling back to the plain name when the
+  payload populates none. Author per-neighbourhood copy (or a dedicated copy field) so headings
+  aren't the bare name.
+- **Lead-expert on the city row (Lane 3).** If Lane 3 surfaces a lead-local-expert per
+  neighbourhood on the row, wire it into the anchor selection to improve the anchor beyond
+  "first expert in the run".
+- **Inline-card props with no family-card home.** None found blocking during convergence; if one
+  surfaces (e.g. an engine-only field on the recommendation candidate), add it additively rather
+  than dropping it.
