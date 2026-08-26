@@ -447,12 +447,15 @@ test.describe('city-feed bento — /discover/location', () => {
     for (const slug of ['gion', 'arashiyama']) {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
-       // Gion has an eligible local anchor; Arashiyama deliberately has no
-       // eligible expert and starts with its ready-made 2×1 tile.
-       const expectedAnchors = slug === 'gion' ? 1 : 0;
-       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
-      // Every non-anchor tile keeps its stream position: strictly increasing data-order.
-      const nonAnchorOrders = tiles.filter((t) => t.role === 'tile').map((t) => t.order);
+      // Gion has an eligible local anchor; Arashiyama deliberately has no
+      // eligible expert and starts with its ready-made 2×1 tile.
+      const expectedAnchors = slug === 'gion' ? 1 : 0;
+      expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
+      // §3.2 may pull one ready-made to the leading slot in an anchorless
+      // section. Every other non-anchor tile keeps its stream position.
+      const nonAnchorOrders = tiles
+        .filter((t, index) => t.role === 'tile' && !(index === 0 && t.testid.includes('package-')))
+        .map((t) => t.order);
       const sorted = [...nonAnchorOrders].sort((a, b) => a - b);
       expect(nonAnchorOrders).toEqual(sorted);
       // No duplicate orders — membership is 1:1 with the run.
@@ -503,7 +506,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // planner, so it must render as a normal expert tile. The existing Gion
     // ready-made becomes the leading 2×1 tile with zero bento anchors.
     await page.route('**/api/experts?location=**', (route) =>
-      route.fulfill(json([{
+      route.fulfill({ json: [{
         id: 'exp-event-only',
         role: 'event_planner',
         firstName: 'Rhea',
@@ -514,7 +517,7 @@ test.describe('city-feed bento — /discover/location', () => {
         averageRating: 4.8,
         reviewCount: 8,
         selectedServices: [],
-      }])),
+      }] }),
     );
     await page.reload();
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
@@ -527,7 +530,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(readyMadeLead).toHaveAttribute('data-col-span', '2');
     await expect(readyMadeLead).toHaveAttribute('data-row-span', '1');
     await expect(
-      gion.locator('[data-testid^="bento-tile-"]:has([data-testid^="card-expert-exp-event-only"])'),
+      gion.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-expert-exp-event-only"])'),
     ).toHaveAttribute('data-bento-role', 'tile');
   });
 
@@ -573,14 +576,14 @@ test.describe('city-feed bento — /discover/location', () => {
         if (rowSpan === 2) expect(role).toBe('anchor');
       }
     }
-     // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead);
-     // Arashiyama has no anchor; its leading ready-made stays 2×1.
+    // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead);
+    // Arashiyama has no anchor; its leading ready-made stays 2×1.
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
     ).toHaveAttribute('data-row-span', '2');
-     await expect(
-       page.locator('[data-testid="bento-section-arashiyama"] [data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'),
-     ).toHaveAttribute('data-row-span', '1');
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'),
+    ).toHaveAttribute('data-row-span', '1');
   });
 
   test('6. preserved testids + Phase 2c/2d surface — single rendering, chip rail, jump list', async ({ page }) => {
