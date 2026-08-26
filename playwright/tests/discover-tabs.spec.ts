@@ -387,7 +387,10 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   });
 
   // Location view payload (the page's primary query).
-  await page.route('**/api/discover/location/kyoto**', (route) => route.fulfill(json(BENTO_FIX.locationView)));
+  // Case-insensitive: the city-match fix 301s a mis-cased page URL to the canonical
+  // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
+  // route matches either casing, keeping this suite independent of the redirect.
+  await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
   // Admin-configurable composition knobs — pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.
@@ -430,7 +433,8 @@ async function bentoTiles(page: import('@playwright/test').Page, slug: string) {
 test.describe('city-feed bento — /discover/location', () => {
   test.beforeEach(async ({ page }) => {
     await mockBentoEndpoints(page);
-    await page.goto(`${BASE_URL}/discover/location/kyoto`, {
+    // Canonical casing so the city-match 301 does not fire mid-suite (kept hermetic).
+    await page.goto(`${BASE_URL}/discover/location/Kyoto`, {
       waitUntil: 'domcontentloaded',
       timeout: 30_000,
     });
