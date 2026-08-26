@@ -57,3 +57,4 @@
 - [Foreign commits on a lane branch](shared-workspace-foreign-commits.md) — an unrelated task's completion-review can append real, plausible code commits onto a checked-out lane branch; verify pushed-vs-not and diff claims against real data before trusting or keeping them.
 - [fee_bands rate_type units](fee-bands-rate-type-units.md) — rate_type is CHECK-constrained; 'flat'=dollars not cents; new units need a new rate_type + constraint migration, not overloading 'flat'.
 - [Price-shown-vs-charged safety](price-shown-vs-charged-safety.md) — never swap a one-click charge-driving display value for a new price source; add new prices additively and fail soft.
+- [Two coexisting cart/trip add paths](cart-two-add-paths.md) — direct-add-to-cart vs itinerary-item-first (in_planning→projection) both live; which runs depends on entry point, not content type; prod has zero projected rows.

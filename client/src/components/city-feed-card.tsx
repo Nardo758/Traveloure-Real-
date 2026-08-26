@@ -1467,6 +1467,44 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
 
 // ─── Vendor Service card ──────────────────────────────────────────────────────
 
+/**
+ * Add-to-trip payload for a vendor-service card action. Exported and shared between the
+ * compact and full-density variants (was a literal duplicated in both render branches —
+ * exactly the shape of bug that lets a fix land in one copy and not the other).
+ *
+ * Bug fix (finding docs/findings/CART_SLIP_DELTA.md, item 2): the previous `type: "service"`
+ * had no handler in AddToExperienceDialog's `ExperienceItem["type"]` union (gem | neighborhood |
+ * hotel | activity | event | recommendation) and is not in the `/api/cart` CART_CONTENT_TYPES
+ * allow-list — "Add to my trip cart" 400'd, and the specific-trip path landed an uncategorized
+ * `itemType: "service"` on the created itinerary item. "activity" is the correct category: a
+ * vendor service is a bookable, schedulable experience — the same bucket "recommendation" cards
+ * already collapse to in add-to-experience-dialog.tsx's cart-add mutation.
+ */
+export function buildVendorServiceAddPayload(
+  service: { id: string | number; serviceName?: string | null; shortDescription?: string | null },
+  city: string,
+  scheduledDate: string | null | undefined,
+  sourceImpressionId: string | null,
+): {
+  title: string;
+  description?: string | null;
+  city: string;
+  type: "activity";
+  scheduledDate?: string | null;
+  sourceImpressionId: string | null;
+  sourceContentId: string;
+} {
+  return {
+    title: service.serviceName ?? "",
+    description: service.shortDescription,
+    city,
+    type: "activity",
+    scheduledDate,
+    sourceImpressionId,
+    sourceContentId: String(service.id),
+  };
+}
+
 interface CityFeedCardVendorServiceProps {
   service: any;
   city: string;
@@ -1608,15 +1646,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                   style={ADD_BTN_STYLE}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAdd({
-                      title: service.serviceName,
-                      description: service.shortDescription,
-                      city,
-                      type: "service",
-                      scheduledDate,
-                      sourceImpressionId: getImpIdVendor(),
-                      sourceContentId: String(service.id),
-                    });
+                    onAdd(buildVendorServiceAddPayload(service, city, scheduledDate, getImpIdVendor()));
                   }}
                   data-testid={`btn-add-svc-${service.id}`}
                 >
@@ -1736,15 +1766,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 style={ADD_BTN_STYLE}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onAdd({
-                    title: service.serviceName,
-                    description: service.shortDescription,
-                    city,
-                    type: "service",
-                    scheduledDate,
-                    sourceImpressionId: getImpIdVendor(),
-                    sourceContentId: String(service.id),
-                  });
+                  onAdd(buildVendorServiceAddPayload(service, city, scheduledDate, getImpIdVendor()));
                 }}
                 data-testid={`btn-add-svc-${service.id}`}
               >
