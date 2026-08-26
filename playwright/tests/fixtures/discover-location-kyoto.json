@@ -20,10 +20,10 @@
           "serviceCount": 0,
           "localExpert": null,
           "gems": [
-            { "id": "g-gion-1", "placeName": "Hanamikoji Street", "placeType": "viewpoint", "neighborhood": "gion", "gemScore": 8.7, "imageUrl": null, "whyLocalsLoveIt": "Golden-hour lanterns before the crowds arrive.", "bestFor": ["photography", "evening walk"] },
-            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 8.1, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." },
-            { "id": "g-gion-3", "placeName": "Izuju Sushi Counter", "placeType": "restaurant", "neighborhood": "gion", "gemScore": 8.4, "imageUrl": null, "whyLocalsLoveIt": "Kyoto-style pressed sushi beside the shrine gates.", "bestFor": ["lunch"] },
-            { "id": "g-gion-4", "placeName": "Yasaka Shrine", "placeType": "shrine", "neighborhood": "gion", "gemScore": 8.0, "imageUrl": null, "whyLocalsLoveIt": "Lantern-lit at night, quiet at dawn.", "bestFor": ["temples"] }
+            { "id": "g-gion-1", "placeName": "Hanamikoji Street", "placeType": "viewpoint", "neighborhood": "gion", "gemScore": 87, "imageUrl": null, "whyLocalsLoveIt": "Golden-hour lanterns before the crowds arrive.", "bestFor": ["photography", "evening walk"] },
+            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 81, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." },
+            { "id": "g-gion-3", "placeName": "Izuju Sushi Counter", "placeType": "restaurant", "neighborhood": "gion", "gemScore": 84, "imageUrl": null, "whyLocalsLoveIt": "Kyoto-style pressed sushi beside the shrine gates.", "bestFor": ["lunch"] },
+            { "id": "g-gion-4", "placeName": "Yasaka Shrine", "placeType": "shrine", "neighborhood": "gion", "gemScore": 80, "imageUrl": null, "whyLocalsLoveIt": "Lantern-lit at night, quiet at dawn.", "bestFor": ["temples"] }
           ]
         },
         {
@@ -36,8 +36,8 @@
           "serviceCount": 0,
           "localExpert": null,
           "gems": [
-            { "id": "g-ara-1", "placeName": "Bamboo Grove Path", "placeType": "viewpoint", "neighborhood": "arashiyama", "gemScore": 8.9, "imageUrl": null, "whyLocalsLoveIt": "Dawn is the only time it is truly still." },
-            { "id": "g-ara-2", "placeName": "Okochi Sanso Garden", "placeType": "attraction", "neighborhood": "arashiyama", "gemScore": 7.8, "imageUrl": null, "whyLocalsLoveIt": "A silent hillside garden most visitors skip." }
+            { "id": "g-ara-1", "placeName": "Bamboo Grove Path", "placeType": "viewpoint", "neighborhood": "arashiyama", "gemScore": 89, "imageUrl": null, "whyLocalsLoveIt": "Dawn is the only time it is truly still." },
+            { "id": "g-ara-2", "placeName": "Okochi Sanso Garden", "placeType": "attraction", "neighborhood": "arashiyama", "gemScore": 78, "imageUrl": null, "whyLocalsLoveIt": "A silent hillside garden most visitors skip." }
           ]
         },
         {
@@ -50,9 +50,9 @@
           "serviceCount": 0,
           "localExpert": null,
           "gems": [
-            { "id": "g-nish-1", "placeName": "Nishiki Tenmangu Shrine", "placeType": "shrine", "neighborhood": "nishiki", "gemScore": 8.2, "imageUrl": null, "whyLocalsLoveIt": "A lantern-lined shrine tucked at the arcade's end.", "bestFor": ["temples"] },
-            { "id": "g-nish-2", "placeName": "Aritsugu Knife Workshop", "placeType": "attraction", "neighborhood": "nishiki", "gemScore": 8.6, "imageUrl": null, "whyLocalsLoveIt": "Chefs' blades hand-finished while you watch." },
-            { "id": "g-nish-3", "placeName": "Teramachi Arcade", "placeType": "viewpoint", "neighborhood": "nishiki", "gemScore": 7.9, "imageUrl": null, "whyLocalsLoveIt": "Covered lanes of old bookshops and tea sellers." }
+            { "id": "g-nish-1", "placeName": "Nishiki Tenmangu Shrine", "placeType": "shrine", "neighborhood": "nishiki", "gemScore": 82, "imageUrl": null, "whyLocalsLoveIt": "A lantern-lined shrine tucked at the arcade's end.", "bestFor": ["temples"] },
+            { "id": "g-nish-2", "placeName": "Aritsugu Knife Workshop", "placeType": "attraction", "neighborhood": "nishiki", "gemScore": 86, "imageUrl": null, "whyLocalsLoveIt": "Chefs' blades hand-finished while you watch." },
+            { "id": "g-nish-3", "placeName": "Teramachi Arcade", "placeType": "viewpoint", "neighborhood": "nishiki", "gemScore": 79, "imageUrl": null, "whyLocalsLoveIt": "Covered lanes of old bookshops and tea sellers." }
           ]
         }
       ],
