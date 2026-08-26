@@ -24,6 +24,7 @@ import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { appendCityWideReadyMadeFill } from "@/lib/feed-composition";
+import { selectBentoAnchorIndex } from "@/lib/bento-anchor";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   composeDiscoverFeed,
@@ -761,29 +762,39 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
  * Build the ordered tile list for a neighbourhood bento from an already-TAGGED
  * run ({item, order} — order = the tile's position in the neighbourhood's
  * merged stream run, assigned BEFORE any chip/price filtering so it stays the
- * order-preservation proof). The ONLY reorder is the anchor — the run's lead
- * local expert if it has one, else the top ready-made, else the first tile —
- * floated to the visual lead. Under an explicit price sort the user's sort IS
- * the order, so the float is disabled and the first tile anchors naturally.
+ * order-preservation proof). The only expert reorder is the §2-priority
+ * anchor. Without an eligible expert, the first ready-made leads as a normal
+ * 2×1 tile; otherwise stream order is unchanged. Under an explicit price sort
+ * the user's sort is the order, so every tile stays in place.
  */
 function buildBentoTiles(
   tagged: { item: FeedItem; order: number }[],
   floatAnchor: boolean = true,
+  neighbourhood: any | null = null,
+  city: string = "",
 ): PlacedTile[] {
   if (tagged.length === 0) return [];
   const withAnchor = tagged.map((t) => ({ ...t, isAnchor: false }));
 
-  let anchorIdx = 0;
-  if (floatAnchor) {
-    anchorIdx = withAnchor.findIndex((t) => t.item.kind === "lead-expert" || t.item.kind === "expert");
-    if (anchorIdx < 0) anchorIdx = withAnchor.findIndex((t) => t.item.kind === "package");
-    if (anchorIdx < 0) anchorIdx = 0;
+  const anchorIdx = floatAnchor
+    ? selectBentoAnchorIndex(withAnchor, neighbourhood, city)
+    : -1;
+  if (anchorIdx >= 0) {
+    withAnchor[anchorIdx].isAnchor = true;
+    const anchor = withAnchor[anchorIdx];
+    const rest = withAnchor.filter((_, i) => i !== anchorIdx);
+    return assignBentoSpans([anchor, ...rest]);
   }
 
-  withAnchor[anchorIdx].isAnchor = true;
-  const anchor = withAnchor[anchorIdx];
-  const rest = withAnchor.filter((_, i) => i !== anchorIdx);
-  return assignBentoSpans([anchor, ...rest]);
+  // §3.2: a ready-made can lead an anchorless section, but remains a 2×1 tile.
+  const readyMadeIdx = withAnchor.findIndex((t) => t.item.kind === "package");
+  if (readyMadeIdx >= 0) {
+    const readyMade = withAnchor[readyMadeIdx];
+    const rest = withAnchor.filter((_, i) => i !== readyMadeIdx);
+    return assignBentoSpans([readyMade, ...rest]);
+  }
+
+  return assignBentoSpans(withAnchor);
 }
 
 // ─── Neighbourhood bento group ────────────────────────────────────────────────
@@ -819,7 +830,7 @@ function BentoGroup({
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
-  const placed = buildBentoTiles(taggedRun, floatAnchor);
+  const placed = buildBentoTiles(taggedRun, floatAnchor, neighbourhood, city);
   if (placed.length === 0) return null;
 
   const nbName: string | null = neighbourhood
@@ -853,6 +864,7 @@ function BentoGroup({
             <h3
               className="text-[22px] font-semibold leading-tight"
               style={{ color: "var(--earn-navy)", fontFamily: FRAUNCES }}
+              data-testid={`bento-heading-${nbSlug}`}
             >
               {heading}
             </h3>
