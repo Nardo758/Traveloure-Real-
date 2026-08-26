@@ -7351,7 +7351,19 @@ export const plans = pgTable("plans", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 export type Plan = typeof plans.$inferSelect;
-export const insertPlanSchema = createInsertSchema(plans).omit({ id: true, createdAt: true, updatedAt: true });
+// #PS18 (ruling 46, §19): new insert schemas must be .pick()-based allowlists,
+// never .omit()-based denylists — the omit-schema-ratchet guard fails any net-new
+// denylist call site. This lists every client-writable column explicitly.
+export const insertPlanSchema = createInsertSchema(plans).pick({
+  key: true,
+  name: true,
+  priceCents: true,
+  interval: true,
+  allowances: true,
+  active: true,
+  effectiveFrom: true,
+  betaFreeUntil: true,
+});
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
 
 // platform_settings: key/value rows for cross-cutting flags.
