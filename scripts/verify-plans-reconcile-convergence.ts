@@ -40,6 +40,11 @@ async function probe(schema: string, devShaped: boolean) {
 
     if (devShaped) {
       await client.query(`
+        ALTER TABLE fee_bands DROP CONSTRAINT fee_bands_rate_type_check;
+        ALTER TABLE fee_bands ADD CONSTRAINT fee_bands_rate_type_check
+          CHECK (rate_type IN ('percent', 'flat', 'flat_cents', 'count', 'rule'));
+      `);
+      await client.query(`
         CREATE TABLE plans (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           key varchar(64) NOT NULL UNIQUE,
