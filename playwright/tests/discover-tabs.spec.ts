@@ -703,4 +703,31 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.waitForTimeout(500);
     expect(impressions).toBe(afterMount);
   });
+
+  test('11. recommendation Book now stays in its city and sends its bento context', async ({ page }) => {
+    const clickPayloads: Record<string, unknown>[] = [];
+    await page.route('**/api/upsell/click', async (route) => {
+      clickPayloads.push(route.request().postDataJSON());
+      await route.fulfill(json({ ok: true }));
+    });
+
+    await page.getByTestId('btn-book-rec-2').click();
+
+    await expect(page).toHaveURL(/\/services\?/);
+    const target = new URL(page.url());
+    expect(target.searchParams.get('categoryKey')).toBe('photographer');
+    expect(target.searchParams.get('upsellSource')).toBe('discover_location');
+    expect(target.searchParams.get('location')).toBe('Kyoto');
+    expect(target.searchParams.get('neighborhood')).toBe('nishiki');
+    expect(target.searchParams.get('location')).not.toBe('Mumbai');
+
+    await expect.poll(() => clickPayloads.length).toBe(1);
+    expect(clickPayloads[0]).toMatchObject({
+      surface: 'discover_location',
+      offeringId: 'off-nishiki-1',
+      city: 'Kyoto',
+      neighborhoodId: 'nishiki',
+    });
+    expect(clickPayloads[0].tripId).toBeUndefined();
+  });
 });

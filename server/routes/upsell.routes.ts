@@ -59,6 +59,7 @@ import {
   FEED_CONFIG_DEFAULTS,
   resolveTemplateKey,
 } from "../services/upsell-query.service";
+import { upsellClickBodySchema } from "./upsell-click-context";
 
 const router = Router();
 
@@ -956,16 +957,10 @@ router.post("/api/upsell/impression", async (req, res) => {
  * Marks ONLY the single most-recent matching impression — flipping every row in a
  * window would inflate click-through, the exact metric this instruments.
  */
-const clickBodySchema = z.object({
-  tripId: z.string(),
-  surface: z.string(),
-  offeringId: z.string(),
-});
-
 router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
   try {
-    const { tripId, surface, offeringId } = clickBodySchema.parse(req.body);
-    await markImpressionClicked(tripId, surface, offeringId);
+    const { tripId, surface, offeringId } = upsellClickBodySchema.parse(req.body);
+    await markImpressionClicked(tripId ?? null, surface, offeringId);
     res.json({ ok: true });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });

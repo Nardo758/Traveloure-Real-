@@ -32,6 +32,10 @@ import {
   type WantedSlotData,
 } from "@/lib/feed-composition";
 import { useUpsellSlot } from "@/components/UpsellSlot";
+import {
+  buildCityFeedRecommendationBookingUrl,
+  type CityFeedRecommendationContext,
+} from "@/lib/city-feed-recommendation-booking";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -531,6 +535,11 @@ interface RecLabels {
   affiliateLabel: string;
 }
 
+type BookRecommendation = (
+  candidate: { offeringId: string; categoryKey: string },
+  context: CityFeedRecommendationContext,
+) => void;
+
 /**
  * Renders ONE bento tile. Dispatches by feed kind onto the converged card
  * family + feed/* panels. `isAnchor` renders the lead treatment for the tile
@@ -545,6 +554,7 @@ function BentoTile({
   isAnchor,
   isMarquee,
   cardPosition,
+  neighborhoodId,
   onBookRec,
   recLabels,
 }: {
@@ -555,7 +565,8 @@ function BentoTile({
   isAnchor?: boolean;
   isMarquee?: boolean;
   cardPosition?: number;
-  onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
+  neighborhoodId?: string;
+  onBookRec?: BookRecommendation;
   recLabels?: RecLabels;
 }) {
   // Anchor expert → the dark-gradient ExpertCard anchor treatment (col-span-2
@@ -625,7 +636,7 @@ function BentoTile({
           position={item.data.recIndex}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
-          onBook={onBookRec ? (c) => onBookRec(c) : undefined}
+          onBook={onBookRec ? (c) => onBookRec(c, { city, neighborhoodId }) : undefined}
           recommendedLabel={recLabels?.recommendedLabel}
           affiliateLabel={recLabels?.affiliateLabel}
           layout={isMarquee ? "row" : "column"}
@@ -815,7 +826,7 @@ function BentoGroup({
   seeAllHref?: (slug: string) => string;
   onSeeAll?: (slug: string) => void;
   onAdd: (item: any) => void;
-  onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
+  onBookRec?: BookRecommendation;
   recLabels?: RecLabels;
 }) {
   const placed = buildBentoTiles(taggedRun, floatAnchor);
@@ -906,6 +917,7 @@ function BentoGroup({
               isAnchor={tile.isAnchor}
               isMarquee={tile.colSpan >= 2}
               cardPosition={tile.order}
+              neighborhoodId={nbSlug ?? undefined}
               onBookRec={onBookRec}
               recLabels={recLabels}
             />
@@ -970,7 +982,7 @@ function FeedRenderer({
   onNeighbourhoodFilter?: (slug: string | null) => void;
   neighbourhoodHref?: (slug: string | null) => string;
   onAdd: (item: any) => void;
-  onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
+  onBookRec?: BookRecommendation;
   recLabels?: RecLabels;
 }) {
   // F1: grid math must only see renderable items — an unrenderable kind would
@@ -1770,9 +1782,13 @@ export default function DiscoverLocationPage() {
     enabled: !!data,
   });
 
-  const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
-    discoverySlotResult.logClick(c.offeringId);
-    navigate(`/services?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
+  const handleBookRecommendation: BookRecommendation = (candidate, context) => {
+    const marketContext = {
+      city: displayCity,
+      ...(context.neighborhoodId ? { neighborhoodId: context.neighborhoodId } : {}),
+    };
+    discoverySlotResult.logClick(candidate.offeringId, marketContext);
+    navigate(buildCityFeedRecommendationBookingUrl(candidate, upsellSurface, marketContext));
   };
 
   // ── Injected-element payloads for the composition layer ────────────────

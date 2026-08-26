@@ -636,7 +636,7 @@ export async function insertImpression(
 }
 
 export async function markImpressionClicked(
-  tripId: string,
+  tripId: string | null,
   surface: string,
   offeringId: string,
 ): Promise<void> {
@@ -644,7 +644,9 @@ export async function markImpressionClicked(
     UPDATE upsell_impressions SET clicked = true
     WHERE id = (
       SELECT id FROM upsell_impressions
-      WHERE trip_id = ${tripId} AND surface = ${surface} AND offering_id = ${offeringId}
+      WHERE trip_id IS NOT DISTINCT FROM ${tripId}
+        AND surface = ${surface}
+        AND offering_id = ${offeringId}
       ORDER BY shown_at DESC
       LIMIT 1
     )

@@ -116,7 +116,13 @@ export interface UseUpsellSlotResult {
   /** True once the server has responded (even with an empty slate). */
   isResolved: boolean;
   /** Fire-and-forget click attribution for a candidate. */
-  logClick: (offeringId: string) => void;
+  logClick: (offeringId: string, context?: UpsellClickContext) => void;
+}
+
+/** Context for discover clicks that are not attached to a trip yet. */
+export interface UpsellClickContext {
+  city?: string;
+  neighborhoodId?: string;
 }
 
 /**
@@ -147,8 +153,13 @@ export function useUpsellSlot(
   });
 
   const logClick = useMutation({
-    mutationFn: (offeringId: string) =>
-      apiRequest("POST", "/api/upsell/click", { surface, offeringId, tripId }),
+    mutationFn: ({ offeringId, context }: { offeringId: string; context?: UpsellClickContext }) =>
+      apiRequest("POST", "/api/upsell/click", {
+        surface,
+        offeringId,
+        ...(tripId ? { tripId } : {}),
+        ...(context ?? {}),
+      }),
   });
 
   const logImpression = useMutation({
@@ -170,7 +181,8 @@ export function useUpsellSlot(
     candidates,
     suppressed: data?.suppressed ?? [],
     isResolved: data !== undefined,
-    logClick: (offeringId: string) => logClick.mutate(offeringId),
+    logClick: (offeringId: string, context?: UpsellClickContext) =>
+      logClick.mutate({ offeringId, context }),
   };
 }
 
