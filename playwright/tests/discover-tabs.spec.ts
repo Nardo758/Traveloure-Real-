@@ -251,7 +251,7 @@ test.describe('/services — filters', () => {
     } else {
       await page.getByTestId('button-quick-cat-all').click();
       await page.waitForTimeout(800);
-      const serviceCards = page.locator('[data-testid^="card-service-"]');
+    const serviceCards = page.locator('[data-testid^="card-service-"]');
       if ((await serviceCards.count()) > 0) {
         await expect(serviceCards.first()).toBeVisible();
       } else {
@@ -493,7 +493,7 @@ test.describe('city-feed bento — /discover/location', () => {
 
     // Arashiyama has NO eligible expert → there is no anchor; the appended
     // city-wide ready-made is pulled to the leading 2×1 slot as a normal tile.
-    const ara = page.getByTestId('bento-section-arashiyama');
+    const ara = page.locator('[data-testid="bento-section-arashiyama"]');
     await expect(ara.locator('[data-bento-role="anchor"]')).toHaveCount(0);
     const araLead = ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])');
     await expect(araLead).toHaveAttribute('data-bento-role', 'tile');
@@ -506,7 +506,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // planner, so it must render as a normal expert tile. The existing Gion
     // ready-made becomes the leading 2×1 tile with zero bento anchors.
     await page.route('**/api/experts?location=**', (route) =>
-      route.fulfill({ json: [{
+      route.fulfill(json([{
         id: 'exp-event-only',
         role: 'event_planner',
         firstName: 'Rhea',
@@ -517,7 +517,7 @@ test.describe('city-feed bento — /discover/location', () => {
         averageRating: 4.8,
         reviewCount: 8,
         selectedServices: [],
-      }] }),
+      }])),
     );
     await page.reload();
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
