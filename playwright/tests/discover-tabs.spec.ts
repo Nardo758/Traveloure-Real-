@@ -707,4 +707,18 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.waitForTimeout(500);
     expect(impressions).toBe(afterMount);
   });
+
+  test('11. rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
+    // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
+    // the services surface opens scoped to where the traveller was browsing, not a
+    // bare catalog. It navigates to /services?categoryKey=…&location=<city>&upsellSource=…
+    // The click also fires the (now-validating) upsell click beacon, mocked in
+    // mockBentoEndpoints so it never 400s the test.
+    await page.getByTestId('btn-book-rec-2').click();
+    await expect.poll(() => page.url(), { timeout: 10_000 }).toContain('/services?');
+    const url = new URL(page.url());
+    expect(url.searchParams.get('location')).toBe('Kyoto');
+    expect(url.searchParams.get('categoryKey')).toBeTruthy();
+    expect(url.searchParams.get('upsellSource')).toBe('discover_location');
+  });
 });
