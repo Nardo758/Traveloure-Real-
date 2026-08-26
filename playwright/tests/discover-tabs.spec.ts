@@ -486,13 +486,27 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
     await expect(gionAnchor.locator('[data-expert-variant="anchor"]')).toHaveCount(1);
 
-    // Arashiyama has NO lead expert → the anchor is the top ready-made tile.
+    // Arashiyama has NO lead expert → the anchor is the appended city-wide ready-made tile.
     const araAnchor = page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]');
     await expect(araAnchor.locator('[data-testid^="feed-card-package-"]')).toHaveCount(1);
     await expect(araAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(0);
   });
 
-  test('4. partner tile has no storefront link (only a partner label)', async ({ page }) => {
+  test('4. city-scoped ready-made fills one package-less neighbourhood as a 2×1 tile', async ({ page }) => {
+    const ara = page.locator('[data-testid="bento-section-arashiyama"]');
+    await expect(ara.getByTestId('feed-card-package-tmpl-1')).toHaveCount(1);
+    await expect(ara.getByTestId('package-city-wide-tmpl-1')).toHaveText('Kyoto-wide');
+    await expect(ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'))
+      .toHaveAttribute('data-col-span', '2');
+    await expect(ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'))
+      .toHaveAttribute('data-row-span', '1');
+    // The same city-wide listing is not copied into another neighbourhood.
+    await expect(page.locator('[data-testid="feed-card-package-tmpl-1"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="bento-section-gion"] [data-testid="package-city-wide-tmpl-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="bento-section-nishiki"] [data-testid="package-city-wide-tmpl-1"]')).toHaveCount(0);
+  });
+
+  test('5. partner tile has no storefront link (only a partner label)', async ({ page }) => {
     const partner = page.getByTestId('external-stub-stub-1');
     await expect(partner).toBeVisible();
     // No /s/ storefront and no /experts/ profile anchor on a partner tile.

@@ -23,6 +23,7 @@ import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
 import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
+import { appendCityWideReadyMadeFill } from "@/lib/feed-composition";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   composeDiscoverFeed,
@@ -948,6 +949,7 @@ function nestedGemItems(neighbourhood: any): FeedItem[] {
 function FeedRenderer({
   items,
   city,
+  cityWideReadyMade,
   scheduledDate,
   activeFilter = "all",
   priceFilter = "any",
@@ -961,6 +963,7 @@ function FeedRenderer({
 }: {
   items: FeedItem[];
   city: string;
+  cityWideReadyMade?: any | null;
   scheduledDate: string | null;
   activeFilter?: string;
   priceFilter?: string;
@@ -1048,6 +1051,12 @@ function FeedRenderer({
     }
     s.items = keep;
   }
+
+  // The sanctioned membership addition: use the already-fetched public city
+  // query to append one city-wide Ready-Made tile to the first eligible
+  // neighbourhood. This runs before order tagging so the added tile receives
+  // the next order number; all composed items retain their original sequence.
+  appendCityWideReadyMadeFill(sections, cityWideReadyMade, toTitleCase(city));
 
   // Tag stream orders FIRST (the order-preservation proof), then filter per
   // section — a filtered-out tile leaves a gap in the order sequence, never a
@@ -1912,6 +1921,12 @@ export default function DiscoverLocationPage() {
   // package data. A candidate with no matching package is dropped (never render a raw id).
   // This SUPERSEDES the old fixed 4/16 package splice + the #205 client-side ranking.
   const packageById = new Map((packagesData ?? []).map((p: any) => [String(p.id), p]));
+  // The public query is already destination-scoped. A neighborhood field, when
+  // present in fixture or future payloads, identifies a neighborhood listing;
+  // the first unscoped result is the city-wide fallback.
+  const cityWideReadyMade = (packagesData ?? []).find(
+    (p: any) => !p.neighborhood && !p.neighborhoodSlug && !p.neighborhood_name,
+  ) ?? null;
   const retagged: FeedItem[] = composedItems
     .map((it: any) => {
       if (it.kind === "recommendation" && it.data?.candidate?.sourceType === "expert_package") {
@@ -2173,6 +2188,7 @@ export default function DiscoverLocationPage() {
             <FeedRenderer
               items={visibleItems}
               city={city}
+              cityWideReadyMade={cityWideReadyMade}
               scheduledDate={scheduledDate}
               activeFilter={activeFilter}
               priceFilter={priceFilter}
