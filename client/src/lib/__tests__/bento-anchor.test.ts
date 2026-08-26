@@ -52,4 +52,106 @@ describe("bento anchor priority (§2)", () => {
     assert.equal(selectBentoAnchorIndex([entry], neighbourhood, "Kyoto"), -1);
     assert.equal(bentoAnchorPriority(entry.item, neighbourhood, "Kyoto"), null);
   });
+
+  it("within a priority bucket, ranks the highest-rated eligible expert first", () => {
+    const entries = [
+      tagged(
+        expert("nb-local-low-rated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 12,
+          averageRating: 4.1,
+        }),
+        0,
+      ),
+      tagged(
+        expert("nb-local-high-rated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 30,
+          averageRating: 4.9,
+        }),
+        1,
+      ),
+    ];
+
+    // The second (higher-rated) expert wins even though it appears later in
+    // the stream — rating outranks stream order within the same §2 bucket.
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
+  });
+
+  it("breaks a rating tie by the most offerings (servicesCount + packagesCount)", () => {
+    const entries = [
+      tagged(
+        expert("nb-local-fewer-offerings", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 20,
+          averageRating: 4.7,
+          servicesCount: 1,
+          packagesCount: 0,
+        }),
+        0,
+      ),
+      tagged(
+        expert("nb-local-more-offerings", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 20,
+          averageRating: 4.7,
+          servicesCount: 2,
+          packagesCount: 3,
+        }),
+        1,
+      ),
+    ];
+
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
+  });
+
+  it("falls back to stream order when rating and offerings are both tied", () => {
+    const entries = [
+      tagged(
+        expert("nb-local-first", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 20,
+          averageRating: 4.7,
+          servicesCount: 2,
+          packagesCount: 1,
+        }),
+        0,
+      ),
+      tagged(
+        expert("nb-local-second", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 20,
+          averageRating: 4.7,
+          servicesCount: 2,
+          packagesCount: 1,
+        }),
+        1,
+      ),
+    ];
+
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 0);
+  });
+
+  it("never lets an unrated expert outrank a review-backed one in the same bucket", () => {
+    const entries = [
+      tagged(
+        expert("nb-local-unrated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          servicesCount: 9,
+          packagesCount: 9,
+        }),
+        0,
+      ),
+      tagged(
+        expert("nb-local-rated", "local_expert", {
+          expertForm: { neighborhoods: ["gion"] },
+          reviewCount: 3,
+          averageRating: 3.2,
+        }),
+        1,
+      ),
+    ];
+
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 1);
+  });
 });

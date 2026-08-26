@@ -679,7 +679,7 @@ const COL_SPAN_CLASS: Record<number, string> = {
 };
 
 /** A tile placed in the bento, carrying its resolved desktop spans. */
-interface PlacedTile {
+export interface PlacedTile {
   item: FeedItem;
   /** Original position in the neighbourhood's stream run (order-preservation proof). */
   order: number;
@@ -767,7 +767,7 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
  * 2×1 tile; otherwise stream order is unchanged. Under an explicit price sort
  * the user's sort is the order, so every tile stays in place.
  */
-function buildBentoTiles(
+export function buildBentoTiles(
   tagged: { item: FeedItem; order: number }[],
   floatAnchor: boolean = true,
   neighbourhood: any | null = null,
@@ -786,12 +786,16 @@ function buildBentoTiles(
     return assignBentoSpans([anchor, ...rest]);
   }
 
-  // §3.2: a ready-made can lead an anchorless section, but remains a 2×1 tile.
-  const readyMadeIdx = withAnchor.findIndex((t) => t.item.kind === "package");
-  if (readyMadeIdx >= 0) {
-    const readyMade = withAnchor[readyMadeIdx];
-    const rest = withAnchor.filter((_, i) => i !== readyMadeIdx);
-    return assignBentoSpans([readyMade, ...rest]);
+  // §3.2/§8: the ready-made lead is part of the anchor float. Under an
+  // explicit sort (floatAnchor=false) every tile — anchor and ready-made
+  // alike — stays exactly in the caller's sorted order.
+  if (floatAnchor) {
+    const readyMadeIdx = withAnchor.findIndex((t) => t.item.kind === "package");
+    if (readyMadeIdx >= 0) {
+      const readyMade = withAnchor[readyMadeIdx];
+      const rest = withAnchor.filter((_, i) => i !== readyMadeIdx);
+      return assignBentoSpans([readyMade, ...rest]);
+    }
   }
 
   return assignBentoSpans(withAnchor);

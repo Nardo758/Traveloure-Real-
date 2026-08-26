@@ -98,9 +98,27 @@ export function bentoAnchorPriority(
 }
 
 /**
- * Find the first eligible expert according to §2. A null result is deliberate:
- * the section has no anchor, and the bento may still pull its first ready-made
- * into the leading 2×1 slot.
+ * §2 ranking stats for tie-breaking within a priority bucket: highest rating
+ * wins, ties go to the expert with the most offerings. An expert with no
+ * review-backed rating (§13 honesty — never a fabricated 0) ranks below every
+ * rated expert, never above, so an unrated expert cannot out-rank a rated one.
+ */
+function expertRankingStats(data: any): { rating: number; offerings: number } {
+  const reviewCount = Number(data?.reviewCount ?? 0);
+  const averageRating = data?.averageRating;
+  const rating = reviewCount > 0 && averageRating != null ? Number(averageRating) : -1;
+  const servicesCount = Number(data?.servicesCount ?? 0);
+  const packagesCount = Number(data?.packagesCount ?? 0);
+  return { rating, offerings: servicesCount + packagesCount };
+}
+
+/**
+ * Find the highest-priority, highest-ranked eligible expert according to §2:
+ * priority bucket first (neighbourhood-local, then city-local, then planner),
+ * then within a bucket the highest rating, ties → most offerings, ties →
+ * earliest stream order. A null result is deliberate: the section has no
+ * anchor, and the bento may still pull its first ready-made into the leading
+ * 2×1 slot.
  */
 export function selectBentoAnchorIndex(
   tagged: TaggedBentoItem[],
@@ -109,6 +127,8 @@ export function selectBentoAnchorIndex(
 ): number {
   let selectedIndex = -1;
   let selectedPriority = Number.POSITIVE_INFINITY;
+  let selectedRating = Number.NEGATIVE_INFINITY;
+  let selectedOfferings = Number.NEGATIVE_INFINITY;
   const priority: Record<BentoAnchorPriority, number> = {
     "neighborhood-local": 0,
     "city-local": 1,
@@ -117,9 +137,20 @@ export function selectBentoAnchorIndex(
 
   tagged.forEach((entry, index) => {
     const candidatePriority = bentoAnchorPriority(entry.item, neighbourhood, city);
-    if (candidatePriority !== null && priority[candidatePriority] < selectedPriority) {
+    if (candidatePriority === null) return;
+    const candidatePriorityRank = priority[candidatePriority];
+    const { rating, offerings } = expertRankingStats(entry.item.data ?? {});
+
+    const isBetter =
+      candidatePriorityRank < selectedPriority ||
+      (candidatePriorityRank === selectedPriority &&
+        (rating > selectedRating || (rating === selectedRating && offerings > selectedOfferings)));
+
+    if (isBetter) {
       selectedIndex = index;
-      selectedPriority = priority[candidatePriority];
+      selectedPriority = candidatePriorityRank;
+      selectedRating = rating;
+      selectedOfferings = offerings;
     }
   });
 

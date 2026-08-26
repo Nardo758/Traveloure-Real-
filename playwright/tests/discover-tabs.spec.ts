@@ -506,7 +506,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // planner, so it must render as a normal expert tile. The existing Gion
     // ready-made becomes the leading 2×1 tile with zero bento anchors.
     await page.route('**/api/experts?location=**', (route) =>
-      route.fulfill(json([{
+      route.fulfill({ json: [{
         id: 'exp-event-only',
         role: 'event_planner',
         firstName: 'Rhea',
@@ -517,7 +517,7 @@ test.describe('city-feed bento — /discover/location', () => {
         averageRating: 4.8,
         reviewCount: 8,
         selectedServices: [],
-      }])),
+      }] }),
     );
     await page.reload();
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
