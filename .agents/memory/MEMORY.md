@@ -1,6 +1,7 @@
 // hint: Logic changed on both sides. Requires understanding intent of each change.
 - [Migration chain root cause](migration-chain-root-cause.md) — null-id + missing-column bugs in 033/034/042 blocked all migrations 034-050; fixed with ALTER TABLE SET DEFAULT + VALUES column fixes
 - [Partial migration retries](partial-migration-retries.md) — multi-statement migrations can leave DDL applied without a ledger row; guard non-idempotent constraints and repair data before retrying
+- [Shared-checkout lane isolation](shared-checkout-lane-isolation.md) — completion review diffs the checked-out branch; cherry-pick onto a branch from the remote base, then reset the shared branch, rather than branching from a HEAD carrying another lane's unpushed commits
 - [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link
 - [Phase 1b neighborhood system](phase-1b-neighborhoods.md) — cityNeighborhoods table + neighborhood columns on gems/services; backfill is Haversine proximity; verify check [B] is a false-negative on empty dev DB.
 - [Optimization fee gate](optimization-fee-gate.md) — G3+G4: preview endpoint + Stripe payment gate before full LLM optimizer; complexity tier drives fee; 24h free-rerun via optimized_at on itinerary_comparisons.
