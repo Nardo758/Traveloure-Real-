@@ -99,6 +99,43 @@ describe("requestOptimizationGate — sheet path (no saved card)", () => {
   });
 });
 
+describe("requestOptimizationGate — server-owned fee", () => {
+  it("never includes a client-supplied price in the payment request body", async () => {
+    const priceLikeFields = [
+      "amount",
+      "amountCents",
+      "fee",
+      "feeCents",
+      "price",
+      "priceCents",
+    ];
+
+    for (const useSavedCard of [false, true]) {
+      const { fetchImpl, calls } = mockFetch(
+        200,
+        useSavedCard
+          ? { oneClick: true, status: "succeeded", paymentIntentId: "pi_saved" }
+          : { clientSecret: "cs_1", paymentIntentId: "pi_1", feeCents: 1500, currency: "USD" },
+      );
+      await requestOptimizationGate({
+        tripId: "t",
+        destination: "Kyoto",
+        useSavedCard,
+        fetchImpl,
+      });
+
+      assert.equal(calls.length, 1);
+      for (const field of priceLikeFields) {
+        assert.equal(
+          field in calls[0].body,
+          false,
+          `optimizer payment request must not send client-owned ${field}`,
+        );
+      }
+    }
+  });
+});
+
 describe("requestOptimizationGate — saved-card (FP-2 one-click) path", () => {
   it("sends useSavedCard:true and returns paid when the off-session charge succeeded", async () => {
     const { fetchImpl, calls } = mockFetch(200, {
