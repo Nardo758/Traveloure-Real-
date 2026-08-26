@@ -447,10 +447,15 @@ test.describe('city-feed bento — /discover/location', () => {
     for (const slug of ['gion', 'arashiyama']) {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
-      // Exactly one anchor per section.
-      expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(1);
-      // Every non-anchor tile keeps its stream position: strictly increasing data-order.
-      const nonAnchorOrders = tiles.filter((t) => t.role === 'tile').map((t) => t.order);
+      // Gion has an eligible local anchor; Arashiyama deliberately has no
+      // eligible expert and starts with its ready-made 2×1 tile.
+      const expectedAnchors = slug === 'gion' ? 1 : 0;
+      expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
+      // §3.2 may pull one ready-made to the leading slot in an anchorless
+      // section. Every other non-anchor tile keeps its stream position.
+      const nonAnchorOrders = tiles
+        .filter((t, index) => t.role === 'tile' && !(index === 0 && t.testid.includes('package-')))
+        .map((t) => t.order);
       const sorted = [...nonAnchorOrders].sort((a, b) => a - b);
       expect(nonAnchorOrders).toEqual(sorted);
       // No duplicate orders — membership is 1:1 with the run.
@@ -480,16 +485,53 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(pkgTile).toHaveAttribute('data-row-span', '1');
   });
 
-  test('3. anchor rule — expert anchors the neighbourhood that has one; ready-made anchors the one that does not', async ({ page }) => {
+  test('3. anchor rule — expert anchors its section; no eligible expert leaves the ready-made as a leading tile', async ({ page }) => {
     // Gion HAS a lead local expert → the anchor tile is the dark-gradient ExpertCard.
     const gionAnchor = page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]');
     await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
     await expect(gionAnchor.locator('[data-expert-variant="anchor"]')).toHaveCount(1);
 
-    // Arashiyama has NO lead expert → the anchor is the appended city-wide ready-made tile.
-    const araAnchor = page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]');
-    await expect(araAnchor.locator('[data-testid^="feed-card-package-"]')).toHaveCount(1);
-    await expect(araAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(0);
+    // Arashiyama has NO eligible expert → there is no anchor; the appended
+    // city-wide ready-made is pulled to the leading 2×1 slot as a normal tile.
+    const ara = page.getByTestId('bento-section-arashiyama');
+    await expect(ara.locator('[data-bento-role="anchor"]')).toHaveCount(0);
+    const araLead = ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])');
+    await expect(araLead).toHaveAttribute('data-bento-role', 'tile');
+    await expect(araLead).toHaveAttribute('data-col-span', '2');
+    await expect(araLead).toHaveAttribute('data-row-span', '1');
+  });
+
+  test('3a. §2 case (d) — event planner only is never an anchor; ready-made leads 2×1', async ({ page }) => {
+    // This is the explicit §10 fixture case (d): the only expert is an event
+    // planner, so it must render as a normal expert tile. The existing Gion
+    // ready-made becomes the leading 2×1 tile with zero bento anchors.
+    await page.route('**/api/experts?location=**', (route) =>
+      route.fulfill({ json: [{
+        id: 'exp-event-only',
+        role: 'event_planner',
+        firstName: 'Rhea',
+        lastName: 'Desai',
+        bio: 'Event planner for Kyoto celebrations.',
+        specialties: ['Events'],
+        packagesCount: 0,
+        averageRating: 4.8,
+        reviewCount: 8,
+        selectedServices: [],
+      }] }),
+    );
+    await page.reload();
+    await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
+    const gion = page.getByTestId('bento-section-gion');
+    await expect(gion.locator('[data-bento-role="anchor"]')).toHaveCount(0);
+    const readyMadeLead = gion.locator(
+      '[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-2"])',
+    );
+    await expect(readyMadeLead).toHaveAttribute('data-bento-role', 'tile');
+    await expect(readyMadeLead).toHaveAttribute('data-col-span', '2');
+    await expect(readyMadeLead).toHaveAttribute('data-row-span', '1');
+    await expect(
+      gion.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-expert-exp-event-only"])'),
+    ).toHaveAttribute('data-bento-role', 'tile');
   });
 
   test('3b. one city-wide ready-made fills only the first package-less neighbourhood as a 2×1 tile', async ({ page }) => {
@@ -535,12 +577,12 @@ test.describe('city-feed bento — /discover/location', () => {
       }
     }
     // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead);
-    // Arashiyama's fallback ready-made anchor stays 2×1.
+    // Arashiyama has no anchor; its leading ready-made stays 2×1.
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
     ).toHaveAttribute('data-row-span', '2');
     await expect(
-      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+      page.locator('[data-testid="bento-section-arashiyama"] [data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'),
     ).toHaveAttribute('data-row-span', '1');
   });
 
