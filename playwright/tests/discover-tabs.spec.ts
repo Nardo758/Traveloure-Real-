@@ -486,10 +486,25 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
     await expect(gionAnchor.locator('[data-expert-variant="anchor"]')).toHaveCount(1);
 
-    // Arashiyama has NO lead expert → the anchor is the top ready-made tile.
+    // Arashiyama has NO lead expert → the anchor is the appended city-wide ready-made tile.
     const araAnchor = page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]');
     await expect(araAnchor.locator('[data-testid^="feed-card-package-"]')).toHaveCount(1);
     await expect(araAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(0);
+  });
+
+  test('3b. one city-wide ready-made fills only the first package-less neighbourhood as a 2×1 tile', async ({ page }) => {
+    const ara = page.locator('[data-testid="bento-section-arashiyama"]');
+    await expect(ara.getByTestId('feed-card-package-tmpl-1')).toHaveCount(1);
+    await expect(ara.getByTestId('package-city-wide-tmpl-1')).toHaveText('Kyoto-wide');
+    await expect(ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'))
+      .toHaveAttribute('data-col-span', '2');
+    await expect(ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'))
+      .toHaveAttribute('data-row-span', '1');
+    // This is a single-fill rule, not a per-section fill: the sole city-wide
+    // listing lands in the first package-less section and is never duplicated.
+    await expect(page.locator('[data-testid="feed-card-package-tmpl-1"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="bento-section-gion"] [data-testid="package-city-wide-tmpl-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="bento-section-nishiki"] [data-testid="package-city-wide-tmpl-1"]')).toHaveCount(0);
   });
 
   test('4. partner tile has no storefront link (only a partner label)', async ({ page }) => {
