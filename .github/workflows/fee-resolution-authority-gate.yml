@@ -104,6 +104,21 @@ jobs:
           NODE_ENV: test
           ALLOW_TEST_ACCOUNTS: '1'
 
+      # Migration 033 was recorded in production while its four provider-band rows were absent.
+      # This runs both the fresh-schema / existing-admin-value reconciliation proof and the
+      # resolver-level pricing assertion, so a future absent seed cannot wait for a user-facing
+      # pricing request or provider booking to reveal itself.
+      - name: Provider band reconciliation and pricing resolver pins
+        run: |
+          npx tsx scripts/verify-provider-fee-bands-reconcile-convergence.ts
+          npx tsx --test server/__tests__/pricing-bundle.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          ALLOW_TEST_ACCOUNTS: '1'
+
       # D6 attribution pin (ruling 61). Runs in the SAME job, deliberately: the resolver half and
       # the attribution half are one chain, and a green resolver over a broken attribution chain is
       # exactly the false comfort ruling 43 warns about. Ruling 61 holds the waiver marketing caption
