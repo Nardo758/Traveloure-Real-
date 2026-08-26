@@ -55,7 +55,7 @@ export function discoverAdminMutations(root = process.cwd()): AdminMutation[] {
   const found: AdminMutation[] = [];
   for (const source of EFFECTIVE_ROUTE_SOURCES) {
     const text = fs.readFileSync(path.join(root, source), "utf8");
-    for (const match of text.matchAll(ROUTE_RE)) {
+    for (const match of Array.from(text.matchAll(ROUTE_RE))) {
       const routePath = match[2];
       const risk = privilegedRisk(routePath, source);
       if (!risk) continue;
@@ -85,8 +85,8 @@ export function assertCasesCoverDiscoveredInventory(
 ): void {
   const caseKeys = new Set(cases.map(mutationKey));
   const discoveredKeys = new Set(discovered.map(mutationKey));
-  const omitted = [...discoveredKeys].filter((key) => !caseKeys.has(key));
-  const stale = [...caseKeys].filter((key) => !discoveredKeys.has(key));
+  const omitted = Array.from(discoveredKeys).filter((key) => !caseKeys.has(key));
+  const stale = Array.from(caseKeys).filter((key) => !discoveredKeys.has(key));
 
   assert.deepEqual(
     omitted,
