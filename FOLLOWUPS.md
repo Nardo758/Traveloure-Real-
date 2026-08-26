@@ -24,6 +24,12 @@ provider-city filtering become required, give them an explicit public DTO contra
 After the seed commit is approved, run the two-pass seed idempotency proof and the prescribed desktop
 and mobile surface captures. This remains intentionally outside the seed commit.
 
+### FU-4 — Ready-made market constraint
+
+`ready_made_trips.market CHECK permits Kyoto only — widening to other launch markets is a ruling +
+migration, not a seed change.` The city feed's `{City}`-wide ready-made fill will render for Kyoto
+and honestly show nothing elsewhere until that contract is widened.
+
 ---
 
 ## From the fee-ledger lane (2026-08-06, rulings 47–52)

@@ -17,9 +17,11 @@ Experts & Services earn-demo dispatch.
 
 Each of the eight launch markets receives a local expert, trip planner, provider, two neighborhoods
 with three gems each, and a wanted slot. Kyoto and Mumbai also receive event planners. Expert
-accounts receive approved services/templates/ready-mades; providers receive approved active services
-and three approved service reviews. The existing `test-provider-qa` storefront is enriched; the
-existing `kansai-bizlang` storefront is left unchanged.
+accounts receive approved services/templates; Kyoto receives the two requested ready-mades. The
+non-Kyoto ready-made rows are explicitly counted as blocked because the locked database contract
+currently permits only `ready_made_trips.market = 'Kyoto'`. Providers receive approved active
+services and three approved service reviews. The existing `test-provider-qa` storefront is enriched;
+the existing `kansai-bizlang` storefront is left unchanged.
 
 The runner prints inserted-row counters and a deletion cascade report. A production guard check can
 be run without touching the database:

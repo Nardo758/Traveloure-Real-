@@ -133,11 +133,11 @@ async function upsertUser(
 ): Promise<string> {
   const predicates = [eq(users.email, data.email)];
   if (data.handle) predicates.push(eq(users.handle, data.handle));
-  const matches = await conn
+  const matches: Array<{ id: string; email: string | null; handle: string | null }> = await conn
     .select({ id: users.id, email: users.email, handle: users.handle })
     .from(users)
     .where(or(...predicates));
-  const ids = [...new Set(matches.map((row: { id: string }) => row.id))];
+  const ids: string[] = Array.from(new Set<string>(matches.map((row) => row.id)));
   if (ids.length > 1) {
     throw new Error(`[earn-demo-seed] Email/handle collision for ${data.email}.`);
   }
@@ -340,6 +340,10 @@ async function upsertReadyMade(
   prefix: string,
   counter: Counter,
 ): Promise<void> {
+  if (market.city !== "Kyoto") {
+    increment(counter, "readyMadesBlockedByMarketCheck");
+    return;
+  }
   const duration = prefix === "local" ? 5 : 4;
   const tripId = `earn-demo-${market.slug}-${prefix}-source-trip`;
   await upsertById(conn, trips, {
@@ -507,11 +511,11 @@ async function countRows(conn: Connection, table: any, column: any, ids: string[
 }
 
 async function deleteProbeFixtures(conn: Connection): Promise<Record<string, unknown>> {
-  const matches = await conn
+  const matches: Array<{ id: string; email: string | null }> = await conn
     .select({ id: users.id, email: users.email })
     .from(users)
     .where(or(inArray(users.id, PROBE_IDS), inArray(users.email, PROBE_EMAILS)));
-  const ids = [...new Set(matches.map((row: { id: string }) => row.id))];
+  const ids: string[] = Array.from(new Set<string>(matches.map((row) => row.id)));
   const before: Record<string, number> = {};
   const tableCounts: Array<[string, any, any]> = [
     ["localExpertForms", localExpertForms, localExpertForms.userId],
