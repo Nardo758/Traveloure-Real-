@@ -236,8 +236,13 @@ The exact production prop list must be reconciled with the currently shipped
 - Lane 3’s convergence added the explicit primary test-ID and source-link
   behavior, but did not complete this compact-density caller contract.
 
-This is a known implementation prerequisite, not a reason to alter the static
-frame or silently change the shared component in Phase 1.
+**Ruling:** this caller gap is not a separate lane. It is the landing lane's
+first build commit, since `TrendingCities` is the section being redrawn
+anyway: add `density="compact"` to `CityCard`, switch the caller's
+`primaryLabel` to `Plan this destination`, and pass `expertsCount` from the
+API response before any other landing implementation work lands. This is a
+known implementation prerequisite, not a reason to alter the static frame or
+silently change the shared component in Phase 1.
 
 ### Navigation and IDs
 
@@ -397,10 +402,13 @@ and config-driven earning indicators.
 
 ## 11. Later implementation gates
 
-Before production work begins, the next lane must explicitly resolve:
+Before production work begins, the landing lane must explicitly resolve:
 
-- whether `density="compact"` belongs on the shared `CityCard` API or should
-  be represented by an existing variant/layout contract;
+- **First build commit:** add `density="compact"` to `CityCard`, change the
+  `TrendingCities` caller's `primaryLabel` to `Plan this destination`, and
+  pass `expertsCount` from the API response. This lands first, in the landing
+  lane itself, not as a separate lane, because `TrendingCities` is the section
+  being redrawn;
 - which API field supplies `expertsCount`, and what the honest absent-count
   state is;
 - how the browse form maps its two fields into `/services` without mutating
