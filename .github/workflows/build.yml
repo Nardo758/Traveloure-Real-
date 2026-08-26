@@ -207,6 +207,11 @@ jobs:
       # Ready-Made listings must pass the same completeness gate at submit and approval.
       - name: Ready-Made completeness gate
         run: npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts
+      # docs/findings/CART_SLIP_DELTA.md item 3: ready-made clone must always land in_planning
+      # (ROUTING_STATE_CONTRACT.md §3.1) regardless of the source item's routing_status — this
+      # test existed (added alongside the clone-path fix) but was never wired into CI.
+      - name: Ready-Made clone routing_status override
+        run: npx tsx --test server/services/__tests__/ready-made-clone-routing.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
