@@ -41,6 +41,8 @@ export interface BandRow {
   maxAmount: number | null;
 }
 
+export type FeeBandRateType = "percent" | "flat" | "flat_cents" | "count" | "rule";
+
 export class BandResolutionError extends Error {
   constructor(bandKey: string, detail: string) {
     super(
@@ -82,6 +84,38 @@ export async function requireBand(bandKey: string): Promise<BandRow> {
   }
   return band;
 }
+
+/**
+ * Typed accessors for non-commission pricing rows. `requireBand` remains the
+ * percent-only provider/traveler commission path; these accessors prevent a
+ * count or rule row from being silently interpreted as currency.
+ */
+export async function requireBandType(
+  bandKey: string,
+  expectedType: FeeBandRateType,
+): Promise<BandRow> {
+  const band = await readBand(bandKey);
+  if (!band) throw new BandResolutionError(bandKey, "no active row in fee_bands");
+  if (band.rateType !== expectedType) {
+    throw new BandResolutionError(
+      bandKey,
+      `rate_type='${band.rateType}', expected '${expectedType}'`,
+    );
+  }
+  return band;
+}
+
+export const CONCIERGE_AI_TASK_BAND = "concierge:ai_task";
+export const CONCIERGE_BOOKING_PERCENT_BAND = "concierge:booking_pct";
+export const CONCIERGE_BOOKING_CAP_BAND = "concierge:booking_cap_cents";
+export const CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND = "concierge:done_for_you_deposit_pct";
+export const PROVIDER_PRO_BAND_STEP = "provider:pro_band_step";
+export const PLUS_TASK_ALLOWANCE_BAND = "plans:plus_task_allowance";
+export const READY_MADE_PLATFORM_BAND = "ready_made:platform_band";
+
+export const requireFlatCentsBand = (bandKey: string) => requireBandType(bandKey, "flat_cents");
+export const requireCountBand = (bandKey: string) => requireBandType(bandKey, "count");
+export const requireRuleBand = (bandKey: string) => requireBandType(bandKey, "rule");
 
 export interface ProviderRateInput {
   /** The service's category id — the D1 path to the band. */

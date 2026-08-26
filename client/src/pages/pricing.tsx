@@ -1,370 +1,462 @@
-import { motion } from "framer-motion";
+/**
+ * /pricing — "Plan it your way" ladder (lane/pricing-page, Phase 2).
+ *
+ * Every number on this page is a live-row read via GET /api/pricing (see
+ * server/routes/pricing.routes.ts) — no price literal lives in this file.
+ * Visual grammar matches the Ways-to-Earn system: --earn-* tokens from
+ * client/src/index.css, Fraunces headings, Geist Mono numbers/labels/
+ * eyebrows, Inter body, one coral CTA per band.
+ *
+ * Structure (per docs/design/PRICING_PAGE_SPEC.md):
+ *   band header -> four-column ladder (Yourself / AI / Trip Pass / Local)
+ *   -> Plus band -> Pro band.
+ * No purchase flow ships in this lane — CTAs route to the relevant surface
+ * (planner, /experts) or a stub toast for the not-yet-buildable ones.
+ */
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Check, 
-  Sparkles, 
-  Users, 
-  Crown,
-  ArrowRight,
-  HelpCircle
-} from "lucide-react";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  Palmtree,
+  Sparkles,
+  MapPinned,
+  UserRound,
+  Check,
+  Cake,
+  HeartHandshake,
+  Moon,
+  Loader2,
+  AlertTriangle,
+} from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { SEOHead } from "@/components/seo-head";
 
-// FP-3: credits system retired — shared/credit-packages.ts is kept only for its RETIRED
-// header/history; do not re-import it on the client.
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
-const plans = [
-  {
-    name: "Free",
-    price: "$0",
-    period: "forever",
-    description: "Perfect for trying out Traveloure",
-    icon: Sparkles,
-    features: [
-      "1 free AI optimize run",
-      "AI-powered trip planning",
-      "Basic itinerary generation",
-      "Community support",
-      "Save up to 3 trips"
-    ],
-    limitations: [
-      "Limited expert access",
-      "Basic customization"
-    ],
-    cta: "Get Started",
-    variant: "outline" as const
-  },
-  {
-    name: "Power Pass",
-    price: "$9",
-    period: "/month",
-    description: "2 optimize runs + 25% pay-per-use discount",
-    icon: Users,
-    popular: true,
-    features: [
-      "2 AI optimize runs per month",
-      "25% discount on pay-per-use fees",
-      "Unlimited trip saves",
-      "Expert chat access",
-      "Advanced itinerary features",
-      "Priority support",
-      "Trip collaboration tools"
-    ],
-    // R3/F6: no subscription checkout or entitlement enforcement exists yet — labeled
-    // honestly instead of promising an upgrade that cannot be purchased.
-    cta: "Coming soon",
-    comingSoon: true,
-    variant: "default" as const
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    period: "",
-    description: "For travel agencies and large teams",
-    icon: Crown,
-    features: [
-      "Unlimited optimize runs",
-      "Dedicated account manager",
-      "Custom integrations",
-      "Team management",
-      "White-label options",
-      "API access",
-      "SLA guarantees",
-      "Priority everything"
-    ],
-    cta: "Contact Sales",
-    variant: "outline" as const
-  }
-];
+interface PricingPlanRow {
+  key: string;
+  name: string;
+  priceCents: number;
+  interval: string;
+  betaFreeUntil?: string | null;
+}
 
-const featureComparison = [
-  { id: "ai-planning", feature: "AI Trip Planning", free: true, power: true, enterprise: true },
-  { id: "optimize-runs", feature: "AI Optimize Runs", free: "1 total", power: "2/month", enterprise: "Unlimited" },
-  { id: "overage-discount", feature: "Pay-Per-Use Discount", free: false, power: "25% off", enterprise: "Included" },
-  { id: "itinerary", feature: "Itinerary Generation", free: "Basic", power: "Advanced", enterprise: "Advanced" },
-  { id: "expert-chat", feature: "Expert Chat", free: "Limited", power: "Unlimited", enterprise: "Unlimited" },
-  { id: "trip-saves", feature: "Trip Saves", free: "3", power: "Unlimited", enterprise: "Unlimited" },
-  { id: "support", feature: "Support", free: "Community", power: "Priority", enterprise: "Dedicated" },
-  { id: "collaboration", feature: "Collaboration", free: false, power: true, enterprise: true },
-  { id: "api", feature: "API Access", free: false, power: false, enterprise: true },
-  { id: "integrations", feature: "Custom Integrations", free: false, power: false, enterprise: true },
-];
+interface PricingBundle {
+  serviceFeePct: number;
+  serviceFeeCapCents: number;
+  optimizerRunDisplay: { priceCents: number; currency: string; complexityTier: string };
+  aiTaskCents: number;
+  tripPass: PricingPlanRow;
+  plusAnnual: PricingPlanRow;
+  proMonthly: PricingPlanRow;
+  doneForYouDepositPct: number;
+  proRateStandard: number;
+  proRateStepped: number;
+  railsRate: number;
+  proBandStep: number;
+}
+
+function dollars(cents: number): string {
+  const v = cents / 100;
+  return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+}
+
+function pct(n: number): string {
+  return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`;
+}
 
 export default function PricingPage() {
   const { openSignInModal } = useSignInModal();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
-  const handlePricingAction = () => {
-    // FP-3: credits system retired — signed-in users land on the dashboard
-    // (the actual monetization model is per-use fees, charged at the point of use).
-    if (user) {
-      setLocation("/dashboard");
-    } else {
-      openSignInModal();
-    }
-  };
-  
+  const { data: pricing, isLoading, isError } = useQuery<PricingBundle>({
+    queryKey: ["/api/pricing"],
+  });
+
+  const stub = (label: string) =>
+    toast({ title: `${label} — coming soon`, description: "This purchase flow isn't live yet." });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[var(--earn-ground)]">
+        <Loader2 className="w-6 h-6 animate-spin text-[color:var(--earn-teal-ink)]" data-testid="loader-pricing" />
+      </div>
+    );
+  }
+
+  if (isError || !pricing) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[var(--earn-ground)] px-4">
+        <div className="flex flex-col items-center gap-3 text-center max-w-sm" data-testid="text-pricing-error">
+          <AlertTriangle className="w-6 h-6 text-[color:var(--earn-coral-ink)]" />
+          <p className="text-sm text-[color:var(--earn-muted)]">
+            We couldn't load current pricing. Please refresh the page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const ladder = [
+    {
+      key: "yourself",
+      eyebrow: "YOURSELF",
+      name: "Plan it yourself",
+      price: "Free",
+      icon: MapPinned,
+      checklist: [
+        "Slip up, browse, book — you're in control",
+        `${pct(pricing.serviceFeePct)} service fee, capped at ${dollars(pricing.serviceFeeCapCents)}`,
+        "Waived on bookings you make through a provider's link",
+      ],
+      cta: "Start planning",
+      variant: "outline" as const,
+      onClick: () => (user ? setLocation("/dashboard") : openSignInModal()),
+      testid: "yourself",
+    },
+    {
+      key: "ai",
+      eyebrow: "WITH AI · PAY PER USE",
+      name: "Plan with AI",
+      price: dollars(pricing.optimizerRunDisplay.priceCents),
+      priceSuffix: "/ run",
+      priceSub: `${dollars(pricing.aiTaskCents)} / task`,
+      icon: Sparkles,
+      checklist: [
+        "3 versions built around your anchor plans",
+        "Re-time, fill gaps, or stitch it together",
+        "Charged only when you confirm",
+      ],
+      cta: "Optimize a plan",
+      variant: "outline" as const,
+      onClick: () => (user ? setLocation("/dashboard") : openSignInModal()),
+      testid: "ai",
+    },
+    {
+      key: "trip-pass",
+      eyebrow: "BEST FOR ONE TRIP",
+      name: "Trip Pass",
+      price: dollars(pricing.tripPass.priceCents),
+      priceSuffix: "/ trip",
+      icon: Palmtree,
+      highlighted: true,
+      checklist: [
+        "Unlimited AI runs & tasks on that trip",
+        "One revision from a local expert",
+        "No service fee on that trip's bookings",
+        "Usually pays for itself in one booking",
+      ],
+      cta: "Get a Trip Pass",
+      variant: "coral" as const,
+      onClick: () => stub("Trip Pass"),
+      testid: "trip-pass",
+    },
+    {
+      key: "local",
+      eyebrow: "WITH A LOCAL",
+      name: "Plan with a local",
+      price: "Set by each expert",
+      noPriceNumber: true,
+      icon: UserRound,
+      checklist: [
+        "A named expert takes your trip end to end",
+        "They review, re-route, and book for you",
+        `Events: custom quote · ${pct(pricing.doneForYouDepositPct)} deposit`,
+      ],
+      cta: "Find a local expert",
+      variant: "outline" as const,
+      onClick: () => setLocation("/experts"),
+      testid: "local",
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        <div className="container mx-auto px-4 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h1 className="text-4xl md:text-5xl font-bold text-foreground dark:text-white mb-6">
-              Simple, Transparent Pricing
-            </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Choose the plan that fits your travel style. Start free and upgrade as you grow.
-            </p>
-          </motion.div>
-        </div>
-      </section>
+    <div className="min-h-screen bg-[var(--earn-ground)] text-[color:var(--earn-ink)]">
+      <SEOHead
+        title="Pricing | Traveloure"
+        description="Plan it yourself for free, pay per use with AI, get a Trip Pass for unlimited runs, or hand it to a local expert. Transparent pricing, no membership required."
+      />
 
-      {/* Plans Section */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {plans.map((plan, i) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
+      {/* Band header */}
+      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-[26px]">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex items-center gap-[14px]">
+            <span className="w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] grid place-items-center shrink-0">
+              <Palmtree className="w-[22px] h-[22px]" />
+            </span>
+            <div>
+              <div
+                className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--earn-coral-ink)]"
+                style={{ fontFamily: EARN_MONO }}
+                data-testid="text-pricing-eyebrow"
               >
-                <Card 
-                  className={`h-full relative ${plan.popular ? "border-primary shadow-lg" : ""}`}
-                  data-testid={`card-plan-${plan.name.toLowerCase()}`}
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-primary text-white">Most Popular</Badge>
-                    </div>
-                  )}
-                  <CardHeader className="text-center pb-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                      <plan.icon className="w-6 h-6 text-primary" />
-                    </div>
-                    <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                    <div className="mt-4">
-                      <span className="text-4xl font-bold text-foreground dark:text-white">{plan.price}</span>
-                      <span className="text-muted-foreground">{plan.period}</span>
-                    </div>
-                    <CardDescription className="mt-2">{plan.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <ul className="space-y-3">
-                      {plan.features.map((feature, j) => (
-                        <li key={j} className="flex items-start gap-3">
-                          <Check className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
-                          <span className="text-sm text-muted-foreground">{feature}</span>
-                        </li>
-                      ))}
-                      {plan.limitations?.map((limitation, j) => (
-                        <li key={`lim-${j}`} className="flex items-start gap-3 opacity-50">
-                          <Check className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <span className="text-sm text-muted-foreground">{limitation}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button 
-                      variant={plan.variant} 
-                      className="w-full mt-6"
-                      onClick={(plan as any).comingSoon ? undefined : handlePricingAction}
-                      disabled={(plan as any).comingSoon}
-                      data-testid={`button-plan-${plan.name.toLowerCase()}`}
-                    >
-                      {plan.cta}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pay-Per-Use Section */}
-      <section className="py-16 md:py-24 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
-              Pay-Per-Use
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              No subscription required. Pay only for what you use.
-            </p>
-            {/* R3/F1 disclosure (ratified model): the cart shows this fee as its own line item;
-                this page must say it exists too. No rate literal — rates are admin-configured. */}
-            <p className="text-sm text-muted-foreground max-w-2xl mx-auto mt-2" data-testid="text-service-fee-disclosure">
-              Service bookings include a platform service fee, shown as a separate line at checkout
-              before you pay.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            {[
-              { name: "Trip / Experience", price: "$5.99", desc: "Per AI optimize run" }, // fee-literal-ok: UI display string, fees resolve from config
-              { name: "Event", price: "$19.99", desc: "Per AI optimize run (credited toward coordination)" }, // fee-literal-ok: UI display string, fees resolve from config
-              { name: "Coordination", price: "8% or $499", desc: "Greater-of: 8% of event budget or $499 flat" },
-            ].map((tier, i) => (
-              <motion.div
-                key={tier.name}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.05 }}
+                PLAN IT YOUR WAY
+              </div>
+              <h1
+                className="text-[28px] md:text-[30px] font-semibold text-[color:var(--earn-navy)] leading-tight"
+                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                data-testid="text-pricing-title"
               >
-                <Card className="text-center relative hover-elevate">
-                  <CardContent className="p-6 pt-8">
-                    <div className="text-sm font-medium text-muted-foreground mb-2">{tier.name}</div>
-                    <div className="text-3xl font-bold text-primary mb-1">{tier.price}</div>
-                    <div className="text-sm text-muted-foreground">{tier.desc}</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+                Plan it your way
+              </h1>
+            </div>
           </div>
-
-          <div className="text-center mt-8">
-            <p className="text-sm text-muted-foreground">
-              Power Pass members save 25% on all pay-per-use fees. Break-even at ~1.5 runs/month.
-            </p>
-          </div>
+          <p className="text-sm text-[color:var(--earn-muted)] mt-[6px] ml-[56px] max-w-[62ch]">
+            Yourself, with AI, with a local, or done for you. Every AI action is pay-per-use —
+            no membership needed.
+          </p>
         </div>
       </section>
 
-      {/* Feature Comparison Table */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
-              Compare Plans
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              See what's included in each plan
-            </p>
-          </div>
-
-          <div className="max-w-4xl mx-auto overflow-x-auto">
-            <table className="w-full" data-testid="table-feature-comparison">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-4 px-4 font-medium text-muted-foreground">Feature</th>
-                  <th className="text-center py-4 px-4 font-medium">Free</th>
-                  <th className="text-center py-4 px-4 font-medium text-primary">Power Pass</th>
-                  <th className="text-center py-4 px-4 font-medium">Enterprise</th>
-                </tr>
-              </thead>
-              <tbody>
-                {featureComparison.map((row) => (
-                  <tr key={row.id} className="border-b" data-testid={`row-feature-${row.id}`}>
-                    <td className="py-4 px-4 text-sm" data-testid={`text-feature-${row.id}`}>{row.feature}</td>
-                    <td className="py-4 px-4 text-center">
-                      {typeof row.free === "boolean" ? (
-                        row.free ? <Check className="w-5 h-5 text-green-500 mx-auto" /> : <span className="text-muted-foreground">-</span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">{row.free}</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4 text-center bg-primary/5">
-                      {typeof row.power === "boolean" ? (
-                        row.power ? <Check className="w-5 h-5 text-green-500 mx-auto" /> : <span className="text-muted-foreground">-</span>
-                      ) : (
-                        <span className="text-sm font-medium">{row.power}</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      {typeof row.enterprise === "boolean" ? (
-                        row.enterprise ? <Check className="w-5 h-5 text-green-500 mx-auto" /> : <span className="text-muted-foreground">-</span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">{row.enterprise}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="py-16 md:py-24 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
-              Frequently Asked Questions
-            </h2>
-          </div>
-
-          <div className="max-w-3xl mx-auto space-y-6">
-            {[
-              {
-                q: "What are optimize runs and how do they work?",
-                a: "An optimize run is a full AI-powered plan generation for your trip, experience, or event. The AI analyzes your preferences, budget, and dates to produce a curated itinerary with bookings and vendor recommendations. Free users get 1 run; Power Pass subscribers get 2 per month."
-              },
-              {
-                q: "Can I upgrade or downgrade my plan anytime?",
-                a: "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you'll get immediate access to new features. When downgrading, changes take effect at the end of your billing period."
-              },
-              {
-                q: "Do unused optimize runs roll over?",
-                a: "Power Pass optimize runs do not roll over — they reset each billing month. This keeps the plan simple and predictable. Pay-per-use fees are always available if you need more."
-              },
-              {
-                q: "What is the 25% overage discount?",
-                a: "Power Pass subscribers get 25% off all pay-per-use fees. For example, a $5.99 Trip optimize costs only $4.49 with the discount. The discount applies automatically at checkout." // fee-literal-ok: UI FAQ string, fees resolve from config
-              },
-              {
-                q: "Is there a refund policy?",
-                a: "We offer a 14-day money-back guarantee for all paid plans. If you're not satisfied, contact our support team for a full refund."
+      {/* Four-column ladder */}
+      <section className="max-w-6xl mx-auto px-6 py-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
+          {ladder.map((col) => (
+            <div
+              key={col.key}
+              data-testid={`card-plan-${col.testid}`}
+              className={
+                "rounded-2xl border bg-[var(--earn-card)] p-5 flex flex-col " +
+                (col.highlighted
+                  ? "border-[color:var(--earn-teal)] shadow-[0_0_0_3px_var(--earn-teal-wash)]"
+                  : "border-[color:var(--earn-border)]")
               }
-            ].map((faq, i) => (
-              <Card key={i} data-testid={`card-faq-${i}`}>
-                <CardContent className="p-6">
-                  <h3 className="font-semibold text-foreground dark:text-white mb-2 flex items-center gap-2">
-                    <HelpCircle className="w-5 h-5 text-primary" />
-                    {faq.q}
-                  </h3>
-                  <p className="text-muted-foreground text-sm pl-7">{faq.a}</p>
-                </CardContent>
-              </Card>
+            >
+              <div
+                className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-muted)]"
+                style={{ fontFamily: EARN_MONO }}
+              >
+                {col.eyebrow}
+              </div>
+              <h2
+                className="text-[19px] font-semibold mt-1.5"
+                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+              >
+                {col.name}
+              </h2>
+              <div className="mt-2.5">
+                <span
+                  className={
+                    "font-semibold " + (col.noPriceNumber ? "text-[17px]" : "text-[28px]")
+                  }
+                  style={{ fontFamily: EARN_MONO, letterSpacing: "-0.02em" }}
+                  data-testid={`text-price-${col.testid}`}
+                >
+                  {col.price}
+                </span>
+                {col.priceSuffix && (
+                  <span className="text-sm text-[color:var(--earn-muted)] ml-1">
+                    {col.priceSuffix}
+                  </span>
+                )}
+                {col.priceSub && (
+                  <div
+                    className="text-[11px] text-[color:var(--earn-muted)] mt-1"
+                    style={{ fontFamily: EARN_MONO }}
+                  >
+                    {col.priceSub}
+                  </div>
+                )}
+              </div>
+              <ul className="mt-4 space-y-2 flex-1">
+                {col.checklist.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[13px] text-[color:var(--earn-muted)]">
+                    <Check className="w-3.5 h-3.5 mt-[3px] text-[color:var(--earn-teal-ink)] shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={col.onClick}
+                data-testid={`button-plan-${col.testid}`}
+                className={
+                  "mt-5 w-full rounded-lg py-2.5 text-sm font-semibold transition-colors " +
+                  (col.variant === "coral"
+                    ? "bg-[var(--earn-coral-ink)] text-white hover:opacity-90"
+                    : "border border-[color:var(--earn-border)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]")
+                }
+              >
+                {col.cta}
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Plus band */}
+      <section className="bg-[var(--earn-ground)] border-y border-[color:var(--earn-border)]">
+        <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          <div>
+            <div
+              className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--earn-coral-ink)]"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              PLUS · FOR THE CITY YOU LIVE IN
+            </div>
+            <h3
+              className="text-[26px] font-semibold text-[color:var(--earn-navy)] mt-2 leading-tight"
+              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+            >
+              A plan arrives before every date that matters.
+            </h3>
+            <p className="text-sm text-[color:var(--earn-muted)] mt-3 max-w-[52ch]">
+              Birthdays, anniversaries, date nights — the ones you always mean to plan ahead
+              for and never do. Plus keeps a draft ready before you need it.
+            </p>
+            <div className="mt-5">
+              <span
+                className="text-[28px] font-semibold"
+                style={{ fontFamily: EARN_MONO, letterSpacing: "-0.02em" }}
+                data-testid="text-price-plus"
+              >
+                {dollars(pricing.plusAnnual.priceCents)}
+              </span>
+              <span className="text-sm text-[color:var(--earn-muted)] ml-1">/ year</span>
+            </div>
+            <ul className="mt-4 space-y-2">
+              {[
+                "A draft plan 14 days before every occasion you tell us about",
+                "Priority response from local experts, on their time and their price",
+                "48-hour early access to new listings",
+                "4 concierge tasks a month",
+              ].map((line, i) => (
+                <li key={i} className="flex items-start gap-2 text-[13px] text-[color:var(--earn-muted)]">
+                  <Check className="w-3.5 h-3.5 mt-[3px] text-[color:var(--earn-teal-ink)] shrink-0" />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={() => stub("Plus")}
+              data-testid="button-join-plus"
+              className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold bg-[var(--earn-coral-ink)] text-white hover:opacity-90 transition-colors"
+            >
+              Join Plus · {dollars(pricing.plusAnnual.priceCents)}/year
+            </button>
+            <p className="text-[11px] text-[color:var(--earn-faint)] mt-3" style={{ fontFamily: EARN_MONO }}>
+              Not a discount club — Plus is about timing, not member pricing.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { icon: Cake, tag: "BIRTHDAY", copy: "A draft plan lands two weeks before, ready to tweak.", grad: "from-[#F3E2B8] to-[#D2A24C]" },
+              { icon: HeartHandshake, tag: "ANNIVERSARY", copy: "The place you loved, or somewhere just as good.", grad: "from-[#E5C6B6] to-[#B97C7C]" },
+              { icon: Moon, tag: "DATE NIGHT", copy: "Something for tonight, picked before you had to ask.", grad: "from-[#CFE3D3] to-[#6FA383]" },
+            ].map((card, i) => (
+              <div key={i} className="rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] overflow-hidden">
+                <div className={`h-[84px] bg-gradient-to-br ${card.grad} flex items-center justify-center text-white/90`}>
+                  <card.icon className="w-6 h-6" />
+                </div>
+                <div className="p-3">
+                  <div
+                    className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-[color:var(--earn-muted)]"
+                    style={{ fontFamily: EARN_MONO }}
+                  >
+                    {card.tag}
+                  </div>
+                  <p className="text-[12px] text-[color:var(--earn-muted)] mt-1 leading-snug">{card.copy}</p>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-16 md:py-24 bg-primary text-white">
-        <div className="container mx-auto px-4 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+      {/* Pro band */}
+      <section className="max-w-6xl mx-auto px-6 py-12">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div
+            className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--earn-muted)]"
+            style={{ fontFamily: EARN_MONO }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Start Planning for Free
-            </h2>
-            <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
-              Get 1 free AI optimize run when you sign up. No credit card required.
-            </p>
-            <Button size="lg" variant="secondary" onClick={handlePricingAction} data-testid="button-get-started-free">
-              Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </motion.div>
+            FOR EXPERTS & PROVIDERS
+          </div>
+          {pricing.proMonthly.betaFreeUntil && (
+            <span
+              className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-gold-ink)] bg-[var(--earn-gold-wash)] border border-[#F0DCA6] rounded-full px-2.5 py-1"
+              style={{ fontFamily: EARN_MONO }}
+              data-testid="text-pro-beta-pill"
+            >
+              FREE DURING BETA · UNTIL {pricing.proMonthly.betaFreeUntil}
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-5">
+          <div className="rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] p-6 flex flex-col justify-between">
+            <div>
+              <h3
+                className="text-[22px] font-semibold"
+                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+              >
+                Turn on Pro
+              </h3>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span
+                  className="text-[17px] line-through text-[color:var(--earn-faint)]"
+                  style={{ fontFamily: EARN_MONO }}
+                >
+                  {dollars(pricing.proMonthly.priceCents)}
+                </span>
+                <span
+                  className="text-[28px] font-semibold"
+                  style={{ fontFamily: EARN_MONO, letterSpacing: "-0.02em" }}
+                  data-testid="text-price-pro"
+                >
+                  $0
+                </span>
+                <span className="text-sm text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+                  / month during beta
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => stub("Pro")}
+              data-testid="button-turn-on-pro"
+              className="mt-6 w-full rounded-lg py-2.5 text-sm font-semibold bg-[var(--earn-teal)] text-white hover:opacity-90 transition-colors"
+            >
+              Turn on Pro · free
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] p-6">
+            <div className="divide-y divide-[color:var(--earn-border)]">
+              <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
+                <span className="text-[12px] text-[color:var(--earn-muted)]">
+                  Your commission on platform-sourced bookings
+                </span>
+                <span className="text-[13px] flex items-center gap-2">
+                  <span className="line-through text-[color:var(--earn-faint)]">{pct(pricing.proRateStandard)}</span>
+                  <span className="font-semibold text-[color:var(--earn-green-ink)]" data-testid="text-pro-rate-stepped">
+                    {pct(pricing.proRateStepped)}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
+                <span className="text-[12px] text-[color:var(--earn-muted)]">
+                  Own-sourced bookings via your short link
+                </span>
+                <span className="text-[13px] font-semibold" data-testid="text-pro-rate-rails">
+                  {pct(pricing.railsRate)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
+                <span className="text-[12px] text-[color:var(--earn-muted)]">
+                  Demand view · wanted slots, trend, lead-time
+                </span>
+                <span className="text-[13px] font-semibold text-[color:var(--earn-teal-ink)]">included</span>
+              </div>
+              <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
+                <span className="text-[12px] text-[color:var(--earn-muted)]">
+                  Priority feed placement · early occasion listings
+                </span>
+                <span className="text-[13px] font-semibold text-[color:var(--earn-teal-ink)]">included</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
