@@ -18,6 +18,7 @@
  */
 
 import { db } from "../db";
+import { resolveCanonicalCity } from "../utils/canonical-city";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
@@ -212,6 +213,15 @@ class LocationViewService {
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
+    // Case-insensitive city match: normalize the incoming name to its canonical
+    // stored casing FIRST, so a mis-cased URL (/kyoto) resolves the same non-empty
+    // feed as /Kyoto. The marketplace reads below use case-sensitive `eq()` against
+    // the title-case canonical ("Kyoto"); without this, `kyoto` returned an HTTP-200
+    // but partially-EMPTY feed (neighborhoods/gems/services all []). An unknown city
+    // is left unchanged ⇒ honestly empty (§13). Done before the cache key so all
+    // casings of one city share a cache entry.
+    cityName = (await resolveCanonicalCity(cityName)) ?? cityName;
+
     // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
     // v5: payload shape change — adds externalStubs (Trailhead T4.3 published scraped stubs).
     const cacheKey = `v5|${cityName}:${country ?? ""}`;

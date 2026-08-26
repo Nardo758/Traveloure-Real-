@@ -636,15 +636,24 @@ export async function insertImpression(
 }
 
 export async function markImpressionClicked(
-  tripId: string,
+  tripId: string | null,
   surface: string,
   offeringId: string,
 ): Promise<void> {
+  // Marks ONLY the single most-recent matching impression (flipping a whole window
+  // would inflate CTR — the exact metric this instruments). A null tripId is the
+  // public/discover case: the impression was written with trip_id NULL, so match
+  // trip_id IS NULL. A non-null tripId scopes to that trip (cart/checkout),
+  // preserving the previous behaviour exactly.
   await db.execute(sql`
     UPDATE upsell_impressions SET clicked = true
     WHERE id = (
       SELECT id FROM upsell_impressions
-      WHERE trip_id = ${tripId} AND surface = ${surface} AND offering_id = ${offeringId}
+      WHERE surface = ${surface} AND offering_id = ${offeringId}
+        AND (
+          (${tripId}::text IS NULL AND trip_id IS NULL)
+          OR trip_id = ${tripId}
+        )
       ORDER BY shown_at DESC
       LIMIT 1
     )
