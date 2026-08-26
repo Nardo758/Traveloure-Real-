@@ -643,10 +643,17 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
     // Two-field search NEVER writes trip context: the where field is read-only.
     await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
-    // Phase 2f: the fixture's two injection slots are BOTH ready-mades (Gion tile
-    // tmpl-2 + Arashiyama anchor tmpl-1), so no platform-recommendation tile renders
-    // here — the CityFeedCardRecommendation render + POST-once is a real-data matrix
-    // row. The ready-made destination shape is asserted above (btn-view-package-tmpl-1).
+    // Phase 2g: the third neighbourhood (Nishiki) carries the platform-recommendation
+    // tile. Candidates land one per window in ranked order — rec-0 tmpl-2 → Gion and
+    // rec-1 tmpl-1 → Arashiyama (both expert_package, retagged to ready-mades), rec-2
+    // off-nishiki-1 (platform_provider, NOT retagged) → Nishiki. Exactly ONE rec tile
+    // renders, and it lives in Nishiki. (POST-once is proven in test 10.)
+    const recTiles = page.locator('[data-testid^="feed-card-rec-"]');
+    await expect(recTiles).toHaveCount(1);
+    await expect(page.getByTestId('feed-card-rec-2')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="bento-section-nishiki"] [data-testid="feed-card-rec-2"]'),
+    ).toHaveCount(1);
 
     // Card-is-link vs button propagation: clicking the card BODY opens the gem's
     // details sheet; clicking a button STOPS propagation, so only that button's
@@ -660,5 +667,36 @@ test.describe('city-feed bento — /discover/location', () => {
     await gem.getByTestId('btn-add-gem-g-gion-1').click(); // button → ONE dialog only
     await expect(page.getByTestId('dialog-add-to-experience')).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(1);
+  });
+
+  test('10. recommendation impression is once-per-mount — a re-render does not re-fire (money-adjacent — Phase 2g)', async ({ page }) => {
+    // The rec tile fires POST /api/upsell/impression once per MOUNT (impressionFiredRef,
+    // city-feed-card-recommendation.tsx) — the money-adjacent attribution side effect.
+    // The stable, build-independent guarantee is that a RE-RENDER never fires another
+    // impression (raw mount counts differ dev↔prod: React StrictMode double-invokes mount
+    // effects on the dev server, the production bundle fires once). So: snapshot the count
+    // once the tile has mounted, force a re-render that does NOT unmount the rec tile
+    // (open + close the filters popover — a pure overlay, no feed membership change), and
+    // assert the count did not grow.
+    let impressions = 0;
+    await page.route('**/api/upsell/impression', (route) => {
+      impressions++;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    });
+    await page.reload();
+    await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.locator('[data-testid="bento-section-nishiki"] [data-testid="feed-card-rec-2"]'),
+    ).toBeVisible();
+    // Let the mount-time impression(s) settle, then snapshot.
+    await expect.poll(() => impressions, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(300);
+    const afterMount = impressions;
+    // Re-render without remounting the rec tile → no additional impression.
+    await page.getByTestId('button-filters').click();
+    await expect(page.getByTestId('popover-filters')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    expect(impressions).toBe(afterMount);
   });
 });

@@ -27,7 +27,7 @@ Line numbers are as of the Phase 2e commit on branch `city-feed-bento`.
 | `Offer this` | Recruitment deep-link with `city` + `neighborhood` + `offering` | `link-wanted-apply` `feed/wanted-slot-card.tsx:71` | `spec` — test 9 (deep-link shape) | ✅ green |
 | `Become an expert` / `List a service` | `/earn` | `btn-earn-expert` `feed/earn-card.tsx:56` / `btn-earn-provider` `:60` | `spec` — test 9 (href) | ✅ green |
 | `View source` (partner stub) | `window.open(url, "_blank", "noopener,noreferrer")`; NO storefront/profile link on the tile | `external-stub-source-*` `<button onClick={handleViewSource}>` `city-feed-card-external-stub.tsx:90,193` | `spec` — test 4 + 9 (no `/s/`, no `/experts/`, source present) · outbound `rel` = `real-data` | ✅ no-storefront / ⏳ rel |
-| Recommendation impression | `POST /api/upsell/impression` fires once per rendered rec tile (on mount) | `useEffect` + `impressionFiredRef` `city-feed-card-recommendation.tsx:140` | `real-data` — the Phase 2f fixture's two injection slots are both ready-mades, so no rec tile renders under the fixture; render + POST-once verified on the Replit pass | ⏳ real-data |
+| Recommendation impression | `POST /api/upsell/impression` fires once per rendered rec tile (on mount) | `useEffect` + `impressionFiredRef` `city-feed-card-recommendation.tsx:140` | `spec` — test 9 (the Nishiki rec tile renders) + test 10 (exactly one impression POST on a fresh load) | ✅ green |
 | `Request a service` | Request form dialog | `<ServiceRequestDialog>` (`section-service-request`) `discover-location.tsx:2201` | `spec` — test 6 (present) · submit = `real-data` | ✅ present |
 | Two-field search | "what" narrows client-side; "where" read-only — NEVER writes trip context | `input-search` → `setSearchQuery` (local `visibleItems` narrow) `discover-location.tsx:2101`; `input-location` `readOnly` `:2111` | `spec` — test 9 (where is `readonly`) | ✅ green |
 | Card body click | Opens the item's detail (sheet / detail page); action buttons `stopPropagation` so they never also fire | `cardLinkProps` `city-feed-card.tsx:160` (e.g. gem wrapper `:966`) + `e.stopPropagation()` on every button | `spec` — test 9 (body opens sheet; button opens ONE dialog) | ✅ green |
@@ -39,8 +39,10 @@ Line numbers are as of the Phase 2e commit on branch `city-feed-bento`.
 - **`Get this trip` id resolution**: the feed's package tiles come from `/api/expert-templates`;
   `/ready-made/:id` fetches `/api/ready-made/:id`. Both are believed to key on the same
   `expert_templates.id`, but that equivalence is confirmed on the Replit pass, not under the fixture.
-- **Recommendation POST-once**: the fixture mock returns `ok` for `/api/upsell/impression`; the
-  once-per-tile count is verified against the network log on Replit.
+- **Recommendation POST-once** (now fixture-provable, Phase 2g): the third neighbourhood
+  (Nishiki) carries the platform-recommendation tile, so test 10 counts `/api/upsell/impression`
+  on a fresh load and asserts exactly one — the once-per-mount side effect no longer needs the
+  Replit network log.
 - **`View source` `rel`**: the outbound uses `window.open(url, "_blank", "noopener,noreferrer")`
   (in `handleViewSource`); the DOM has no `<a rel>` to assert, so the flag is a Replit-log row —
   the spec asserts only that the tile carries no storefront/profile link.
