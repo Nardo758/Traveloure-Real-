@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,209 @@ function buildSrcSet(url: string | null | undefined): { srcSet?: string; sizes: 
   return { sizes };
 }
 
+// ─── Family-card grammar helpers (2026-08-25-card-family) ─────────────────────
+// Mono face for the facts row / source row / count badges — same per-file local
+// const pattern as expert-card.tsx and the feed/* panels.
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+interface CardFact {
+  value: string;
+  label: string;
+  /** Optional per-fact testid, so a fact that re-homes an existing meta row keeps its id. */
+  testid?: string;
+}
+
+/**
+ * Three-column mono facts row (family grammar). §13: only REAL facts render —
+ * an absent fact is omitted, never placeholdered — so the row can carry fewer
+ * than three columns, and disappears entirely when the record has none.
+ */
+function FactsRow({ facts, testid }: { facts: CardFact[]; testid?: string }) {
+  const real = facts.filter((f) => f.value && f.value.trim().length > 0).slice(0, 3);
+  if (real.length === 0) return null;
+  return (
+    <div className="grid grid-cols-3 gap-2 border-t border-border pt-2" data-testid={testid}>
+      {real.map((f) => (
+        <div key={f.label} className="min-w-0">
+          <div
+            className="text-[12.5px] font-semibold leading-none truncate"
+            style={{ fontFamily: EARN_MONO }}
+            data-testid={f.testid}
+          >
+            {f.value}
+          </div>
+          <div
+            className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground truncate"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {f.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Mono source row (2026-08-25-card-source-link): an in-platform id link when the
+ * card resolves to a Traveloure entity, a plain partner LABEL when the source is
+ * affiliate/external (never a raw partner URL on the face — §16), and nothing at
+ * all when the card has no real source (§13).
+ */
+function SourceRow({
+  href,
+  label,
+  testid,
+}: {
+  href?: string | null;
+  label: string;
+  testid?: string;
+}) {
+  if (!label) return null;
+  const inner = (
+    <span className="inline-flex items-center gap-1 min-w-0">
+      <MapPin className="w-3 h-3 flex-shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+  return (
+    <div
+      className="flex items-center text-[11px] text-muted-foreground"
+      style={{ fontFamily: EARN_MONO }}
+      data-testid={testid}
+    >
+      {href ? (
+        <a
+          href={href}
+          className="inline-flex items-center gap-1 min-w-0 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {inner}
+        </a>
+      ) : (
+        inner
+      )}
+    </div>
+  );
+}
+
+// ─── Compact-density helpers (2026-08-26-bento-compact-density) ────────────────
+// Phase 2e Part A: the "compact" bento layout replaces the 3-column FactsRow with
+// ONE mono meta line, truncates the title to a single line, and drops the photo
+// band to 84px. §13 is unchanged — every meta fragment is omitted when its field
+// is absent (joinMeta drops empty/whitespace parts), never placeholdered.
+function joinMeta(...parts: Array<string | null | undefined>): string {
+  return parts
+    .filter((p) => p && String(p).trim().length > 0)
+    .map((p) => String(p))
+    .join(" · ");
+}
+
+/** Single mono meta line for compact cards. Renders nothing when empty (§13). */
+function CompactMetaLine({ text, testid }: { text: string; testid?: string }) {
+  if (!text) return null;
+  return (
+    <div
+      className="text-[11px] text-muted-foreground truncate"
+      style={{ fontFamily: EARN_MONO }}
+      data-testid={testid}
+    >
+      {text}
+    </div>
+  );
+}
+
+/** A gem's area DISPLAY name — a real display field only (§13): `gem.neighborhood`
+ *  is the slug and is never rendered; no display name ⇒ the area is omitted. */
+function gemAreaName(gem: any): string | null {
+  const v = gem?.neighborhoodName ?? gem?.neighborhood_name ?? gem?.areaName ?? null;
+  return typeof v === "string" && v.trim().length > 0 ? v : null;
+}
+
+/** Compact duration label (Phase 2f): whole hours read "{n} hr(s)", anything else
+ *  "{n} min". §13: no duration field ⇒ null (the fragment is omitted, not zeroed). */
+function compactDuration(mins: unknown): string | null {
+  const n = typeof mins === "number" ? mins : Number(mins);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n % 60 === 0) {
+    const h = n / 60;
+    return `${h} hr${h === 1 ? "" : "s"}`;
+  }
+  return `${n} min`;
+}
+
+/**
+ * The compact meta line's SOURCE fragment (Phase 2f + 2026-08-25-card-source-link):
+ * a provider HANDLE resolves to an in-platform storefront link (`/s/:handle`); a
+ * provider NAME with no handle is a plain label (no link — there is no id to key on);
+ * affiliate supply is a partner LABEL ("via {Partner}", never a raw URL — §16). §13:
+ * a row with no attributable source returns null and the fragment is omitted.
+ */
+function compactSource(item: any): { label: string; href: string | null } | null {
+  const handle = item?.providerHandle ?? item?.expertHandle ?? item?.handle;
+  if (typeof handle === "string" && handle.trim().length > 0) {
+    const h = handle.trim().replace(/^@/, "");
+    return { label: `@${h}`, href: `/s/${h}` };
+  }
+  const name = item?.providerName ?? item?.expertName ?? item?.vendorName;
+  if (typeof name === "string" && name.trim().length > 0) {
+    return { label: name.trim(), href: null };
+  }
+  const partner = item?.affiliatePartner ?? item?.partnerName ?? item?.supplierName;
+  if (typeof partner === "string" && partner.trim().length > 0) {
+    return { label: `via ${partner.trim()}`, href: null };
+  }
+  return null;
+}
+
+/** Compact meta line carrying an optional LINKED source fragment (Phase 2f). The
+ *  duration is plain mono text; the source is a storefront link when it has an href,
+ *  a plain label otherwise. Renders nothing when both are absent (§13). */
+function CompactSourceMetaLine({
+  duration,
+  source,
+  testid,
+}: {
+  duration: string | null;
+  source: { label: string; href: string | null } | null;
+  testid?: string;
+}) {
+  if (!duration && !source) return null;
+  return (
+    <div
+      className="text-[11px] text-muted-foreground truncate"
+      style={{ fontFamily: EARN_MONO }}
+      data-testid={testid}
+    >
+      {duration && <span>{duration}</span>}
+      {duration && source && <span> · </span>}
+      {source &&
+        (source.href ? (
+          <a href={source.href} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+            {source.label}
+          </a>
+        ) : (
+          <span>{source.label}</span>
+        ))}
+    </div>
+  );
+}
+
+/** Make a whole card the link (family grammar): Enter/Space activate too. */
+function cardLinkProps(onActivate: () => void) {
+  return {
+    role: "link" as const,
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActivate();
+      }
+    },
+  };
+}
+
 // ─── Type metadata ─────────────────────────────────────────────────────────────
 
 interface TypeMeta {
@@ -46,6 +249,8 @@ interface TypeMeta {
   tagText: string;
   phBg: string;
   phText: string;
+  /** Photo-band fallback gradient (family grammar: gradient + tag, no grey box). */
+  phGrad: string;
 }
 
 function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
@@ -53,7 +258,7 @@ function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
   const t = (placeType ?? "").toLowerCase();
 
   if (cat === "photo_spots") {
-    return { label: "Photo spot", emoji: "📷", tagBg: "bg-teal-50", tagText: "text-teal-700", phBg: "bg-teal-50", phText: "text-teal-600" };
+    return { label: "Photo spot", emoji: "📷", tagBg: "bg-teal-50", tagText: "text-teal-700", phBg: "bg-teal-50", phText: "text-teal-600", phGrad: "bg-gradient-to-br from-teal-50 via-teal-100 to-teal-200/70" };
   }
   if (cat === "stay") {
     const isMarquee = ["ryokan", "resort", "boutique"].some((k) => t.includes(k));
@@ -64,23 +269,31 @@ function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
       tagText: "text-blue-700",
       phBg: "bg-blue-50",
       phText: "text-blue-600",
+      phGrad: "bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200/70",
     };
   }
   if (cat === "eat") {
-    return { label: "Eat", emoji: "🍵", tagBg: "bg-pink-50", tagText: "text-pink-700", phBg: "bg-pink-50", phText: "text-pink-600" };
+    return { label: "Eat", emoji: "🍵", tagBg: "bg-pink-50", tagText: "text-pink-700", phBg: "bg-pink-50", phText: "text-pink-600", phGrad: "bg-gradient-to-br from-pink-50 via-pink-100 to-pink-200/70" };
   }
 
   // "do" — distinguish landmark, day-trip, and general attraction
   const isLandmark = ["temple", "shrine", "palace", "castle", "landmark", "monument"].some((k) => t.includes(k));
   const isDayTrip = ["day trip", "day-trip", "daytrip"].some((k) => t.includes(k));
   if (isDayTrip) {
-    return { label: "Day trip", emoji: "🚌", tagBg: "bg-indigo-50", tagText: "text-indigo-700", phBg: "bg-indigo-50", phText: "text-indigo-600" };
+    return { label: "Day trip", emoji: "🚌", tagBg: "bg-indigo-50", tagText: "text-indigo-700", phBg: "bg-indigo-50", phText: "text-indigo-600", phGrad: "bg-gradient-to-br from-indigo-50 via-indigo-100 to-indigo-200/70" };
   }
   if (isLandmark) {
-    return { label: "Landmark", emoji: "🌉", tagBg: "bg-stone-100", tagText: "text-stone-700", phBg: "bg-stone-100", phText: "text-stone-600" };
+    return { label: "Landmark", emoji: "🌉", tagBg: "bg-stone-100", tagText: "text-stone-700", phBg: "bg-stone-100", phText: "text-stone-600", phGrad: "bg-gradient-to-br from-stone-100 via-stone-200 to-stone-300/70" };
   }
-  return { label: "Do", emoji: "⛩", tagBg: "bg-amber-50", tagText: "text-amber-800", phBg: "bg-amber-50", phText: "text-amber-700" };
+  return { label: "Do", emoji: "⛩", tagBg: "bg-amber-50", tagText: "text-amber-800", phBg: "bg-amber-50", phText: "text-amber-700", phGrad: "bg-gradient-to-br from-amber-50 via-amber-100 to-amber-200/70" };
 }
+
+// ─── Three-state action row (family grammar) ──────────────────────────────────
+// Book now (teal) / Add to trip (navy) / Ask an expert (outline). The teal and
+// navy fills come from the earn tokens; every handler stops propagation so the
+// card-as-link container never double-fires.
+const BOOK_BTN_STYLE = { background: "var(--earn-teal)", color: "#fff", border: "none" } as const;
+const ADD_BTN_STYLE = { background: "var(--earn-navy)", color: "#fff", border: "none" } as const;
 
 // ─── Booking badge ─────────────────────────────────────────────────────────────
 
@@ -542,6 +755,9 @@ interface CityFeedCardGemProps {
   cardPosition?: number;
   /** Marquee gem inside a neighborhood container — renders a "Top pick" chip on the image. */
   topPick?: boolean;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" renders the
+   *  tighter ~200px bento tile; "full" (default) is byte-identical to today. */
+  density?: "full" | "compact";
 }
 
 export function CityFeedCardGem({
@@ -555,6 +771,7 @@ export function CityFeedCardGem({
   className,
   cardPosition,
   topPick = false,
+  density = "full",
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -597,7 +814,7 @@ export function CityFeedCardGem({
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add";
+    : "Add to trip";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -610,16 +827,17 @@ export function CityFeedCardGem({
   // bestFor chips — show first 2 on card face
   const bestForFace: string[] = Array.isArray(gem.bestFor) ? (gem.bestFor as string[]).slice(0, 2) : [];
 
-  // Photo / placeholder area
+  // Photo / placeholder area — family grammar: the no-photo fallback is the
+  // kind-tinted GRADIENT carrying the kind tag, never a grey box.
   const photoArea = (
     <div
       className={cn(
-        // Neutral placeholder band (F4 palette unification) — kind color lives in the badge only.
-        "relative overflow-hidden flex-shrink-0 flex items-center justify-center bg-muted text-muted-foreground",
+        "relative overflow-hidden flex-shrink-0 flex items-center justify-center",
+        typeMeta.phGrad,
+        typeMeta.phText,
         isRow ? "w-36 self-stretch" : "h-[104px] w-full",
       )}
     >
-      {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
       {!loading && photoUrl && (
         <img
           src={photoUrl}
@@ -634,17 +852,18 @@ export function CityFeedCardGem({
           )}
         />
       )}
-      {!loading && !photoUrl && (
-        <span className="text-2xl">{typeMeta.emoji}</span>
-      )}
-      {gem.isSecret && (
-        <span className="absolute bottom-1.5 left-1.5 bg-purple-600/90 text-white text-[9px] font-medium rounded px-1.5 py-0.5">
-          Hidden Gem
-        </span>
-      )}
+      {/* No-photo fallback is the kind gradient ALONE — no emoji glyph (Phase 2d). */}
+      {/* Every gems[]-sourced tile carries the Hidden gem tag — green wash, mono. */}
+      <span
+        className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+        style={{ fontFamily: EARN_MONO }}
+        data-testid={`gem-hidden-tag-${gem.id}`}
+      >
+        Hidden gem
+      </span>
       {topPick && (
         <span
-          className="absolute top-2 left-2 bg-primary/90 text-primary-foreground text-[10px] font-medium rounded-full px-2 py-0.5"
+          className="absolute top-2 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
           data-testid={`gem-top-pick-${gem.id}`}
         >
           Top pick
@@ -701,26 +920,42 @@ export function CityFeedCardGem({
         </div>
       )}
 
-      {/* Neighborhood tag */}
-      {gem.neighborhood && !isRow && (
+      {/* Neighborhood tag — display name only, never the slug (§13 / Phase 2d) */}
+      {gemAreaName(gem) && !isRow && (
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <MapPin className="w-3 h-3" />
-          <span>{gem.neighborhood}</span>
+          <span>{gemAreaName(gem)}</span>
         </div>
       )}
 
       {/* Matched-service suggestion strip */}
       {!compact && suggestion && <MatchedServiceStrip suggestion={suggestion} id={gem.id} city={city} />}
 
-      {/* Actions */}
+      {/* Facts row (family grammar) — real record fields only, §13 */}
+      {!compact && (
+        <FactsRow
+          facts={[
+            { value: gem.gemScore !== undefined && gem.gemScore !== null ? Number(gem.gemScore).toFixed(1) : "", label: "gem score" },
+            { value: gemAreaName(gem) ?? "", label: "area" },
+            { value: bestForFace[0] ?? "", label: "best for" },
+          ]}
+          testid={`gem-facts-${gem.id}`}
+        />
+      )}
+
+      {/* Three-state action row (family grammar): Book now teal / Add to trip
+          navy / Ask an expert outline. No "More info" text link — the CARD is
+          the link (it opens the details sheet). */}
       {!compact && (
         <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
           {resolvedBookability !== "info_only" && bookHref && (
             <Button
               size="sm"
               className="h-7 text-xs px-3"
+              style={BOOK_BTN_STYLE}
               asChild
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 const impId = getImpressionId();
                 fetch("/api/affiliates/track", {
                   method: "POST",
@@ -733,15 +968,16 @@ export function CityFeedCardGem({
               {/* bookHref is always an in-platform path (§16 sanitization above) — no
                   target=_blank / off-site hop remains on this CTA. */}
               <a href={bookHref}>
-                {resolvedBookability === "deeplink" ? "Reserve" : "Book"}
+                {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
               </a>
             </Button>
           )}
           <Button
             size="sm"
-            variant="outline"
             className="h-7 text-xs px-3"
-            onClick={() =>
+            style={ADD_BTN_STYLE}
+            onClick={(e) => {
+              e.stopPropagation();
               onAdd?.({
                 title: gem.placeName,
                 description: gem.description,
@@ -750,8 +986,8 @@ export function CityFeedCardGem({
                 scheduledDate,
                 sourceImpressionId: getImpressionId(),
                 sourceContentId: gem.id,
-              })
-            }
+              });
+            }}
             data-testid={`btn-add-gem-${gem.id}`}
           >
             <Plus className="w-3 h-3 mr-1" />
@@ -761,33 +997,163 @@ export function CityFeedCardGem({
             size="sm"
             variant="outline"
             className="h-7 text-xs px-2.5"
-            onClick={() => askExpert({ city, subject: gem.placeName })}
+            onClick={(e) => {
+              e.stopPropagation();
+              askExpert({ city, subject: gem.placeName });
+            }}
             data-testid={`btn-ask-gem-${gem.id}`}
           >
-            💬 Ask
+            Ask an expert
           </Button>
-          <button
-            onClick={() => setSheetOpen(true)}
-            className="ml-auto text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-            data-testid={`btn-more-info-gem-${gem.id}`}
-          >
-            More info
-          </button>
         </div>
       )}
     </div>
   );
+
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // One mono meta line stands in for the facts row / body / chips; the card stays
+  // the link (opens the same details sheet). §13: score/best-for/area each omitted
+  // when absent.
+  if (density === "compact") {
+    const gemScoreStr =
+      gem.gemScore !== undefined && gem.gemScore !== null ? Number(gem.gemScore).toFixed(1) : null;
+    const metaText = joinMeta(
+      gemScoreStr,
+      bestForFace[0] ? `best for ${bestForFace[0]}` : null,
+      gemAreaName(gem),
+    );
+    return (
+      <>
+        <div
+          ref={impressionRef}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full cursor-pointer flex flex-col",
+            className,
+          )}
+          data-testid={`feed-card-gem-${gem.id}`}
+          aria-label={`${gem.placeName} details`}
+          {...cardLinkProps(() => setSheetOpen(true))}
+        >
+          {/* Compact photo band — 84px; kind gradient + Hidden gem corner tag only. */}
+          <div
+            className={cn(
+              "relative overflow-hidden flex-shrink-0 flex items-center justify-center h-[84px] w-full",
+              typeMeta.phGrad,
+              typeMeta.phText,
+            )}
+          >
+            {!loading && photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={gem.placeName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn(
+                  "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+                  imgLoaded ? "opacity-100" : "opacity-0",
+                )}
+              />
+            )}
+            <span
+              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+              style={{ fontFamily: EARN_MONO }}
+              data-testid={`gem-hidden-tag-${gem.id}`}
+            >
+              Hidden gem
+            </span>
+            {topPick && (
+              <span
+                className="absolute top-2 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
+                data-testid={`gem-top-pick-${gem.id}`}
+              >
+                Top pick
+              </span>
+            )}
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
+              {gem.placeName}
+            </h3>
+            <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              {resolvedBookability !== "info_only" && bookHref && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={BOOK_BTN_STYLE}
+                  asChild
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const impId = getImpressionId();
+                    fetch("/api/affiliates/track", {
+                      method: "POST",
+                      keepalive: true,
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
+                    }).catch(() => {});
+                  }}
+                >
+                  <a href={bookHref}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd?.({
+                    title: gem.placeName,
+                    description: gem.description,
+                    city,
+                    type: "gem",
+                    scheduledDate,
+                    sourceImpressionId: getImpressionId(),
+                    sourceContentId: gem.id,
+                  });
+                }}
+                data-testid={`btn-add-gem-${gem.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
+              </Button>
+              {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
+              {!(resolvedBookability !== "info_only" && bookHref) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    askExpert({ city, subject: gem.placeName });
+                  }}
+                  data-testid={`btn-ask-gem-${gem.id}`}
+                >
+                  Ask an expert
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} />
+      </>
+    );
+  }
 
   return (
     <>
       <div
         ref={impressionRef}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full cursor-pointer",
           isRow ? "flex flex-row" : "flex flex-col",
           className,
         )}
         data-testid={`feed-card-gem-${gem.id}`}
+        aria-label={`${gem.placeName} details`}
+        {...cardLinkProps(() => setSheetOpen(true))}
       >
         {photoArea}
         {cardBody}
@@ -806,9 +1172,12 @@ interface CityFeedCardEventProps {
   onAdd?: (item: any) => void;
   className?: string;
   cardPosition?: number;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
-export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardEventProps) {
+export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -837,7 +1206,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   };
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add";
+    : "Add to trip";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Price chip
@@ -847,19 +1216,134 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
       ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-gray-100 text-gray-600" data-testid={`event-price-${event.id}`}>{event.priceRange ?? `From $${event.minPrice}`}</span>
       : null;
 
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // §13: date short (e.g. "Mar 12"); second fragment is venue when present, else
+  // price; each omitted when absent. Keeps the Tickets/Add/Ask action row.
+  if (density === "compact") {
+    const dateStr = event.date
+      ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : null;
+    const venueStr = event.venueName ? String(event.venueName) : null;
+    const priceStr = event.isFree
+      ? "Free"
+      : event.priceRange ?? (event.minPrice ? `From $${event.minPrice}` : null);
+    const metaText = joinMeta(dateStr, venueStr ?? priceStr);
+    return (
+      <>
+        <div
+          ref={impressionRefEvt}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+            className,
+          )}
+          data-testid={`feed-card-event-${event.id ?? event.eventId}`}
+          aria-label={`${eventName} details`}
+          {...cardLinkProps(() => setSheetOpen(true))}
+        >
+          <div className="h-[84px] relative overflow-hidden bg-gradient-to-br from-pink-50 via-pink-100 to-pink-200/70 flex items-center justify-center text-pink-600 flex-shrink-0">
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={eventName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+              />
+            )}
+            <span
+              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-pink-50 text-pink-700"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              Event
+            </span>
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{eventName}</h3>
+            <CompactMetaLine text={metaText} testid={`event-facts-${event.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              {event.url && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={{ background: "var(--earn-gold-ink)", color: "#fff", border: "none" }}
+                  asChild
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const impId = getImpIdEvt();
+                    fetch("/api/affiliates/track", {
+                      method: "POST",
+                      keepalive: true,
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ partner: "discover-event", destination: city, contentType: "event", contentId: String(event.id), impressionId: impId }),
+                    }).catch(() => {});
+                  }}
+                >
+                  <a href={event.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Tickets
+                  </a>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd?.({
+                    title: eventName,
+                    city,
+                    type: "event",
+                    scheduledDate,
+                    sourceImpressionId: getImpIdEvt(),
+                    sourceContentId: String(event.id ?? event.eventId ?? ""),
+                  });
+                }}
+                data-testid={`btn-add-event-${event.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
+              </Button>
+              {/* Compact = exactly two buttons: Tickets IS the book action, so Ask
+                  shows ONLY when there is no ticket url. */}
+              {!event.url && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    askExpert({ city, subject: eventName });
+                  }}
+                  data-testid={`btn-ask-event-${event.id}`}
+                >
+                  Ask an expert
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
+      </>
+    );
+  }
+
   return (
     <>
       <div
         ref={impressionRefEvt}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
           className,
         )}
         data-testid={`feed-card-event-${event.id ?? event.eventId}`}
+        aria-label={`${eventName} details`}
+        {...cardLinkProps(() => setSheetOpen(true))}
       >
-        {/* Neutral placeholder band (F4) — kind color lives in the badge only. */}
-        <div className="h-[104px] relative overflow-hidden bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0">
-          {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        {/* Family grammar: gradient + tag fallback, no grey box. */}
+        <div className="h-[104px] relative overflow-hidden bg-gradient-to-br from-pink-50 via-pink-100 to-pink-200/70 flex items-center justify-center text-pink-600 flex-shrink-0">
           {photoUrl && (
             <img
               src={photoUrl}
@@ -871,7 +1355,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
-          {!loading && !photoUrl && <span className="text-2xl">🏮</span>}
+          {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
         </div>
 
         <div className="p-3 flex flex-col gap-1.5 flex-1">
@@ -892,30 +1376,40 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             </p>
           )}
 
-          {event.date && (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Calendar className="w-3 h-3" />
-              <span>{new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-            </div>
-          )}
-
-          {/* Venue name */}
-          {event.venueName && (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground" data-testid={`event-venue-${event.id}`}>
-              <MapPin className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">{event.venueName}</span>
-            </div>
-          )}
-
           <MatchedServiceStrip suggestion={eventSuggestion} id={`event-${event.id ?? event.eventId}`} />
+
+          {/* Facts row (family grammar) — date / venue / price, §13 omitted when absent */}
+          <FactsRow
+            facts={[
+              {
+                value: event.date
+                  ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : "",
+                label: "date",
+              },
+              { value: event.venueName ? String(event.venueName) : "", label: "venue", testid: `event-venue-${event.id}` },
+              {
+                value: event.isFree ? "Free" : (event.priceRange ?? (event.minPrice ? `From $${event.minPrice}` : "")),
+                label: "price",
+              },
+            ]}
+            testid={`event-facts-${event.id}`}
+          />
+
+          {/* Source row — an event with an off-site ticketing URL is partner-fulfilled:
+              a partner LABEL only, never the raw URL on the face (§16 /
+              2026-08-25-card-source-link). Omitted when there is no source. */}
+          {event.url && <SourceRow label="Partner ticketing" testid={`event-source-${event.id}`} />}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
             {event.url && (
               <Button
                 size="sm"
-                className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700"
+                className="h-7 text-xs px-3"
+                style={{ background: "var(--earn-gold-ink)", color: "#fff", border: "none" }}
                 asChild
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   const impId = getImpIdEvt();
                   fetch("/api/affiliates/track", {
                     method: "POST",
@@ -933,16 +1427,19 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             )}
             <Button
               size="sm"
-              variant="outline"
               className="h-7 text-xs px-3"
-              onClick={() => onAdd?.({
-                title: eventName,
-                city,
-                type: "event",
-                scheduledDate,
-                sourceImpressionId: getImpIdEvt(),
-                sourceContentId: String(event.id ?? event.eventId ?? ""),
-              })}
+              style={ADD_BTN_STYLE}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd?.({
+                  title: eventName,
+                  city,
+                  type: "event",
+                  scheduledDate,
+                  sourceImpressionId: getImpIdEvt(),
+                  sourceContentId: String(event.id ?? event.eventId ?? ""),
+                });
+              }}
               data-testid={`btn-add-event-${event.id}`}
             >
               <Plus className="w-3 h-3 mr-1" />
@@ -952,18 +1449,14 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               size="sm"
               variant="outline"
               className="h-7 text-xs px-2.5"
-              onClick={() => askExpert({ city, subject: eventName })}
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({ city, subject: eventName });
+              }}
               data-testid={`btn-ask-event-${event.id}`}
             >
-              💬 Ask
+              Ask an expert
             </Button>
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="ml-auto text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              data-testid={`btn-more-info-event-${event.id}`}
-            >
-              More info
-            </button>
           </div>
         </div>
       </div>
@@ -979,11 +1472,15 @@ interface CityFeedCardVendorServiceProps {
   city: string;
   className?: string;
   cardPosition?: number;
+  scheduledDate?: string | null;
+  onAdd?: (item: any) => void;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
-export function CityFeedCardVendorService({ service, city, className, cardPosition }: CityFeedCardVendorServiceProps) {
+export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full" }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
   const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
@@ -995,6 +1492,20 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
   );
 
   const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
+
+  // A vendor-service is a real provider_services row: it books in-app on
+  // /services/:id through the audited /api/checkout rail, so its native booking
+  // signal is its own id. resolveBookability (@shared/bookability) is the single
+  // source of truth — native for a platform service, deeplink only when it is
+  // affiliate-sourced supply carrying an off-site link. This ONE value drives the
+  // badge AND the action row, so a "Not bookable" badge can never sit beside a live
+  // "Book" button (§13). The earlier `resolveBookability({ externalUrl })` badge
+  // ignored the native id and mislabelled every link-less platform service.
+  const resolvedBookability: Bookability = resolveBookability({
+    ...service,
+    providerServiceId: service.id,
+    externalUrl,
+  });
 
   const tag: string = (() => {
     const tags: string[] = service.contentAffinityTags ?? [];
@@ -1018,19 +1529,124 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
     ? (service.whatIncluded as string[]).slice(0, 2)
     : [];
 
+  // ─── Compact density (2026-08-26-bento-compact-density; Phase 2f) ───────────
+  // The price rides the photo band as a pill (mock detail); the ONE mono meta line
+  // now carries {duration · source} — the source LINKED per 2026-08-25-card-source-link
+  // (handle → /s/:handle, name → plain, affiliate → "via {Partner}"). §13: price,
+  // duration and source each omitted when absent. Two buttons only (Book + Add).
+  if (density === "compact") {
+    const durationLabel = compactDuration(service.durationMinutes);
+    const source = compactSource(service);
+    return (
+      <>
+        <div
+          ref={impressionRefVendor}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+            className,
+          )}
+          data-testid={`feed-card-vendor-svc-${service.id}`}
+          aria-label={`${service.serviceName} listing`}
+          {...cardLinkProps(() => (window.location.href = `/services/${service.id}`))}
+        >
+          <div className="h-[84px] relative overflow-hidden bg-gradient-to-br from-teal-50 via-teal-100 to-teal-200/70 flex items-center justify-center text-teal-600 flex-shrink-0">
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={service.serviceName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+              />
+            )}
+            <span
+              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-teal-50 text-teal-700 capitalize"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {tag}
+            </span>
+            {/* Price pill on the band (Phase 2f, §13: omitted when absent). */}
+            {priceDisplay && (
+              <span
+                className="absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-white/95 text-foreground shadow-sm"
+                style={{ fontFamily: EARN_MONO }}
+                data-testid={`svc-price-${service.id}`}
+              >
+                {priceDisplay}
+              </span>
+            )}
+            {service.isFeatured && (
+              <span className="absolute top-2 right-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
+                Featured
+              </span>
+            )}
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
+            <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              {resolvedBookability !== "info_only" && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={BOOK_BTN_STYLE}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.location.href = `/services/${service.id}`;
+                  }}
+                  data-testid={`btn-book-svc-${service.id}`}
+                >
+                  {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
+                </Button>
+              )}
+              {onAdd && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={ADD_BTN_STYLE}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAdd({
+                      title: service.serviceName,
+                      description: service.shortDescription,
+                      city,
+                      type: "service",
+                      scheduledDate,
+                      sourceImpressionId: getImpIdVendor(),
+                      sourceContentId: String(service.id),
+                    });
+                  }}
+                  data-testid={`btn-add-svc-${service.id}`}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add to trip
+                </Button>
+              )}
+              {/* Compact = exactly two buttons (Book + Add): the Globe/website and
+                  Ask buttons are dropped here; their full-density counterparts stay. */}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div
         ref={impressionRefVendor}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
           className,
         )}
         data-testid={`feed-card-vendor-svc-${service.id}`}
+        aria-label={`${service.serviceName} listing`}
+        {...cardLinkProps(() => (window.location.href = `/services/${service.id}`))}
       >
-        {/* Neutral placeholder band (F4) — kind color lives in the badge only. */}
-        <div className="h-[104px] relative overflow-hidden bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0">
-          {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        {/* Family grammar: gradient + tag fallback, no grey box. */}
+        <div className="h-[104px] relative overflow-hidden bg-gradient-to-br from-teal-50 via-teal-100 to-teal-200/70 flex items-center justify-center text-teal-600 flex-shrink-0">
           {photoUrl && (
             <img
               src={photoUrl}
@@ -1042,22 +1658,10 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
-          {!photoUrl && !loading && (
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-              <Tag className="w-8 h-8 text-primary/40" />
-            </div>
-          )}
-          <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-            <BookingBadge level={resolveBookability({ externalUrl })} />
-          </span>
+          {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
           {service.isFeatured && (
             <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
               Featured
-            </span>
-          )}
-          {!service.isFeatured && tag && (
-            <span className="absolute top-2 left-2 bg-primary/80 text-white text-[10px] font-medium rounded-full px-2 py-0.5 capitalize">
-              {tag}
             </span>
           )}
         </div>
@@ -1067,18 +1671,10 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 capitalize">
               {tag}
             </span>
-            <BookingBadge level="native" />
+            <BookingBadge level={resolvedBookability} />
           </div>
 
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{service.serviceName}</h3>
-            {service.averageRating && (
-              <div className="flex items-center gap-0.5 flex-shrink-0 text-xs text-muted-foreground">
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                <span>{Number(service.averageRating).toFixed(1)}</span>
-              </div>
-            )}
-          </div>
+          <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{service.serviceName}</h3>
 
           {service.shortDescription && (
             <p className="text-[12px] text-muted-foreground line-clamp-2">{service.shortDescription}</p>
@@ -1096,36 +1692,73 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             </div>
           )}
 
-          {/* deliveryTimeframe chip */}
-          {service.deliveryTimeframe && (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground" data-testid={`svc-delivery-${service.id}`}>
-              <Clock className="w-3 h-3 flex-shrink-0" />
-              <span>{service.deliveryTimeframe}</span>
-            </div>
-          )}
+          {/* Facts row (family grammar) — price / rating / delivery, §13 */}
+          <FactsRow
+            facts={[
+              { value: priceDisplay ?? "", label: "price" },
+              {
+                value: service.averageRating ? `★ ${Number(service.averageRating).toFixed(1)}` : "",
+                label: "rating",
+              },
+              { value: service.deliveryTimeframe ? String(service.deliveryTimeframe) : "", label: "delivery", testid: `svc-delivery-${service.id}` },
+            ]}
+            testid={`svc-facts-${service.id}`}
+          />
 
-          {priceDisplay && (
-            <span className="text-sm font-bold text-foreground">{priceDisplay}</span>
-          )}
+          {/* Source row — a vendor service is a Traveloure listing; id-based link
+              (2026-08-25-card-source-link fallback: /services/:id). */}
+          <SourceRow href={`/services/${service.id}`} label="Traveloure listing" testid={`svc-source-${service.id}`} />
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-            {/* Native on-site booking: the card is badged "Book on Traveloure", so the
-                primary CTA is a real Book that lands on the service detail page (date/time
-                picker → cart → the audited /api/checkout rail), not an "Inquire". */}
-            <Button
-              size="sm"
-              className="h-7 text-xs px-3"
-              onClick={() => (window.location.href = `/services/${service.id}`)}
-              data-testid={`btn-book-svc-${service.id}`}
-            >
-              Book
-            </Button>
+            {/* Three-state action row (§13, card-family grammar): the Book CTA renders
+                only when the resolved bookability is bookable — native → "Book now"
+                (teal), deeplink → "Reserve". The CTA always lands on the in-app service
+                detail page (date/time picker → cart → the audited /api/checkout rail);
+                it never hops off-site (§16). info_only shows no Book at all. */}
+            {resolvedBookability !== "info_only" && (
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={BOOK_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.location.href = `/services/${service.id}`;
+                }}
+                data-testid={`btn-book-svc-${service.id}`}
+              >
+                {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
+              </Button>
+            )}
+            {onAdd && (
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd({
+                    title: service.serviceName,
+                    description: service.shortDescription,
+                    city,
+                    type: "service",
+                    scheduledDate,
+                    sourceImpressionId: getImpIdVendor(),
+                    sourceContentId: String(service.id),
+                  });
+                }}
+                data-testid={`btn-add-svc-${service.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Add to trip
+              </Button>
+            )}
             {externalUrl && (
               <Button
                 size="sm"
                 variant="outline"
                 className="h-7 px-2"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   const impId = getImpIdVendor();
                   fetch("/api/affiliates/track", {
                     method: "POST",
@@ -1144,22 +1777,17 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               size="sm"
               variant="outline"
               className="h-7 text-xs px-2.5"
-              onClick={() => askExpert({ city, subject: service.serviceName })}
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({ city, subject: service.serviceName });
+              }}
               data-testid={`btn-ask-svc-${service.id}`}
             >
-              💬 Ask
+              Ask an expert
             </Button>
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="ml-auto text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              data-testid={`btn-more-info-svc-${service.id}`}
-            >
-              More info
-            </button>
           </div>
         </div>
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="vendor-service" data={service} />
     </>
   );
 }
@@ -1174,9 +1802,12 @@ interface CityFeedCardSupplyProps {
   onAdd?: (item: any) => void;
   className?: string;
   cardPosition?: number;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
-export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardSupplyProps) {
+export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -1200,7 +1831,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add";
+    : "Add to trip";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Price chip
@@ -1220,19 +1851,135 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     ? ` · ${Number(item.reviewCount).toLocaleString()} reviews`
     : "";
 
+  // ─── Compact density (2026-08-26-bento-compact-density; Phase 2f) ───────────
+  // Price rides the band as a pill; the ONE meta line carries {duration · source}
+  // — supply is affiliate, so the source is a partner LABEL ("via {Partner}", never
+  // a raw URL — §16). Card opens the details sheet (where the tracked partner
+  // outbound lives — F6/§16). §13: each fragment omitted when absent. Add + Ask.
+  if (density === "compact") {
+    const compactDur = compactDuration(item.durationMinutes);
+    const source = compactSource(item);
+    return (
+      <>
+        <div
+          ref={impressionRefSupply}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+            className,
+          )}
+          data-testid={`feed-card-${kind}-${item.id}`}
+          aria-label={`${itemName} details`}
+          {...cardLinkProps(() => setSheetOpen(true))}
+        >
+          <div
+            className={cn(
+              "h-[84px] relative overflow-hidden flex items-center justify-center flex-shrink-0",
+              isHotel
+                ? "bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200/70 text-blue-600"
+                : "bg-gradient-to-br from-amber-50 via-amber-100 to-amber-200/70 text-amber-700",
+            )}
+          >
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={itemName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+              />
+            )}
+            <span
+              className={cn(
+                "absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                isHotel ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-800",
+              )}
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {isHotel ? "Hotel" : "Activity"}
+            </span>
+            {/* Price pill on the band (Phase 2f, §13: omitted when absent). */}
+            {priceText && (
+              <span
+                className="absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-white/95 text-foreground shadow-sm"
+                style={{ fontFamily: EARN_MONO }}
+                data-testid={`supply-price-${item.id}`}
+              >
+                {priceText}
+              </span>
+            )}
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{itemName}</h3>
+            <CompactSourceMetaLine duration={compactDur} source={source} testid={`supply-facts-${item.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd?.({
+                    title: itemName,
+                    city,
+                    type: isHotel ? "hotel" : "activity",
+                    scheduledDate,
+                    sourceImpressionId: getImpIdSupply(),
+                    sourceContentId: String(item.id ?? ""),
+                  });
+                }}
+                data-testid={`btn-add-supply-${item.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askExpert({ city, subject: itemName });
+                }}
+                data-testid={`btn-ask-supply-${item.id}`}
+              >
+                Ask an expert
+              </Button>
+            </div>
+          </div>
+        </div>
+        <MoreInfoSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          cardType="supply"
+          data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <div
         ref={impressionRefSupply}
         className={cn(
-          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full",
+          "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
           className,
         )}
         data-testid={`feed-card-${kind}-${item.id}`}
+        aria-label={`${itemName} details`}
+        {...cardLinkProps(() => setSheetOpen(true))}
       >
-        {/* Neutral placeholder band (F4) — kind color lives in the badge only. */}
-        <div className="h-[104px] relative overflow-hidden flex items-center justify-center text-2xl flex-shrink-0 bg-muted text-muted-foreground">
-          {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        {/* Family grammar: gradient + tag fallback, no grey box. */}
+        <div
+          className={cn(
+            "h-[104px] relative overflow-hidden flex items-center justify-center text-2xl flex-shrink-0",
+            isHotel
+              ? "bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200/70 text-blue-600"
+              : "bg-gradient-to-br from-amber-50 via-amber-100 to-amber-200/70 text-amber-700",
+          )}
+        >
           {photoUrl && (
             <img
               src={photoUrl}
@@ -1244,7 +1991,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
-          {!loading && !photoUrl && <span>{isHotel ? "🏨" : "🎯"}</span>}
+          {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
         </div>
 
         <div className="p-3 flex flex-col gap-1.5 flex-1">
@@ -1277,22 +2024,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             </p>
           )}
 
-          {/* Star rating + reviewCount */}
-          {item.rating && (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground" data-testid={`supply-rating-${item.id}`}>
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              <span>{item.rating}{reviewCountLabel}</span>
-            </div>
-          )}
-
-          {/* Duration chip for activities */}
-          {durationLabel && (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground" data-testid={`supply-duration-${item.id}`}>
-              <Clock className="w-3 h-3 flex-shrink-0" />
-              <span>{durationLabel}</span>
-            </div>
-          )}
-
           {isHotel && item.amenities && (
             <div className="flex flex-wrap gap-1">
               {(item.amenities as string[]).slice(0, 2).map((a) => (
@@ -1304,21 +2035,39 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             </div>
           )}
 
+          {/* Facts row (family grammar) — price / rating / duration, §13 */}
+          <FactsRow
+            facts={[
+              { value: priceText ?? "", label: "price" },
+              { value: item.rating ? `★ ${item.rating}${reviewCountLabel}` : "", label: "rating", testid: `supply-rating-${item.id}` },
+              { value: durationLabel ?? "", label: "duration", testid: `supply-duration-${item.id}` },
+            ]}
+            testid={`supply-facts-${item.id}`}
+          />
+
+          {/* Source row — partner-fed supply: a partner LABEL only on the face; the
+              tracked outbound link stays inside the details sheet (F6 / §16). */}
+          <SourceRow label="Partner supply" testid={`supply-source-${item.id}`} />
+
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
             {/* Keep bookings on-site (F6): no external "Book" button on the card face.
-                Add is the primary action; the outbound partner link lives inside the
-                Details sheet as a small secondary action. */}
+                Add to trip is the primary action; the outbound partner link lives inside
+                the details sheet (opened by the card itself) as a small secondary action. */}
             <Button
               size="sm"
               className="h-7 text-xs px-3"
-              onClick={() => onAdd?.({
-                title: itemName,
-                city,
-                type: isHotel ? "hotel" : "activity",
-                scheduledDate,
-                sourceImpressionId: getImpIdSupply(),
-                sourceContentId: String(item.id ?? ""),
-              })}
+              style={ADD_BTN_STYLE}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd?.({
+                  title: itemName,
+                  city,
+                  type: isHotel ? "hotel" : "activity",
+                  scheduledDate,
+                  sourceImpressionId: getImpIdSupply(),
+                  sourceContentId: String(item.id ?? ""),
+                });
+              }}
               data-testid={`btn-add-supply-${item.id}`}
             >
               <Plus className="w-3 h-3 mr-1" />
@@ -1327,20 +2076,14 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs px-3"
-              onClick={() => setSheetOpen(true)}
-              data-testid={`btn-details-supply-${item.id}`}
-            >
-              Details
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
               className="h-7 text-xs px-2.5"
-              onClick={() => askExpert({ city, subject: itemName })}
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({ city, subject: itemName });
+              }}
               data-testid={`btn-ask-supply-${item.id}`}
             >
-              💬 Ask
+              Ask an expert
             </Button>
           </div>
         </div>
