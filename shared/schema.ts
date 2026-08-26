@@ -7306,7 +7306,7 @@ export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema
 export const feeBands = pgTable("fee_bands", {
   id: uuid("id").primaryKey().defaultRandom(),
   bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
-  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat'
+  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat' | 'flat_cents' | 'count' | 'rule'
   defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
   minRate: decimal("min_rate", { precision: 10, scale: 4 }),
   maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
@@ -7320,6 +7320,8 @@ export const feeBands = pgTable("fee_bands", {
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   updatedBy: varchar("updated_by", { length: 255 }),
+  asOfDate: date("as_of_date"),
+  reviewDate: date("review_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -7330,6 +7332,27 @@ export const feeBands = pgTable("fee_bands", {
 export type FeeBand = typeof feeBands.$inferSelect;
 export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
+
+// ─── Plan pricing ledger ─────────────────────────────────────────────────────
+// Every purchasable plan is a row. `priceCents` is authoritative for plan
+// pricing; interval='trip' denotes a per-trip entitlement rather than a
+// recurring subscription.
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  name: text("name").notNull(),
+  priceCents: integer("price_cents").notNull(),
+  interval: varchar("interval", { length: 20 }).notNull(),
+  allowances: jsonb("allowances").notNull().default({}),
+  active: boolean("active").notNull().default(true),
+  effectiveFrom: date("effective_from").notNull(),
+  betaFreeUntil: date("beta_free_until"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type Plan = typeof plans.$inferSelect;
+export const insertPlanSchema = createInsertSchema(plans).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
 
 // platform_settings: key/value rows for cross-cutting flags.
 // First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
