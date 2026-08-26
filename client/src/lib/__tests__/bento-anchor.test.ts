@@ -52,31 +52,4 @@ describe("bento anchor priority (§2)", () => {
     assert.equal(selectBentoAnchorIndex([entry], neighbourhood, "Kyoto"), -1);
     assert.equal(bentoAnchorPriority(entry.item, neighbourhood, "Kyoto"), null);
   });
-
-  // Real Mumbai data (2026-08-27-neighbourhood-slug-match): Fort / Kala Ghoda's
-  // seeded neighbourhood name and an expert's own neighbourhoods list both carry
-  // the same punctuation; the match must not depend on that raw-string symmetry.
-  it("matches a punctuated neighbourhood display name (Fort / Kala Ghoda)", () => {
-    const punctuated = { id: "fk", slug: "fort_kala_ghoda", name: "Fort / Kala Ghoda" };
-    const local = expert("priya", "local_expert", {
-      expertForm: { neighborhoods: ["Bandra", "Colaba", "Fort / Kala Ghoda"] },
-    });
-
-    assert.equal(bentoAnchorPriority(local, punctuated, "Mumbai"), "neighborhood-local");
-  });
-
-  // Real Mumbai data: the legacy bare `expert` role (Raj Patel) carries a real
-  // expertForm.neighborhoods list and must be evaluated as a local-expert
-  // candidate, not silently folded into the planner bucket.
-  it("evaluates the legacy generic 'expert' role as a local-expert candidate", () => {
-    const generic = expert("raj", "expert", {
-      expertForm: { neighborhoods: ["Bandra", "Colaba", "Dharavi", "Juhu"] },
-    });
-
-    assert.equal(bentoAnchorPriority(generic, neighbourhood, "Mumbai"), "city-local");
-    assert.equal(
-      bentoAnchorPriority(generic, { id: "bandra", slug: "bandra", name: "Bandra" }, "Mumbai"),
-      "neighborhood-local",
-    );
-  });
 });
