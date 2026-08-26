@@ -1271,4 +1271,8 @@ export const MIGRATION_FILES = [
   // slip resolver (rung 02: catalog → affiliate → DMO); declared in shared/schema.ts.
   "256_itinerary_item_affiliate_grounding.sql",
   "257_itinerary_variant_anchor.sql",
+  // 258: pricing foundation reconciliation (ledger 2026-08-27-plans-reconcile). Establishes
+  // the plans baseline on a clean database, reconciles pre-existing plan rows, widens fee-band
+  // value types, and inserts missing shared pricing rows without rewriting existing values.
+  "258_plans_reconcile.sql",
 ] as const;
