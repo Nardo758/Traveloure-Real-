@@ -199,6 +199,10 @@ interface OptimizationPreview {
   feeCents: number;
   currency: string;
   freeRerun: boolean;
+  // Pricing ledger Lane 1 (Task 1669): an ADDITIVE ledger-priced teaser sourced from the
+  // optimizer:run fee_bands row. Never the source of feeCents above (the real tiered charge) —
+  // display-only. null when the resolver couldn't resolve it (fails soft server-side).
+  ledgerTeaserFeeCents?: number | null;
   metrics: {
     balanceScore: number;
     wellnessScore: number;
@@ -2362,6 +2366,11 @@ export default function CartPage() {
                             {formatPrice(optimizationPreview.feeCents / 100)}
                           </p>
                           <p className="text-xs text-muted-foreground">one-time fee{displayCurrency !== "USD" ? ` · charged in ${displayCurrency}` : ""}</p>
+                          {typeof optimizationPreview.ledgerTeaserFeeCents === "number" && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-1" data-testid="text-optimizer-run-ledger-teaser">
+                              Standard AI optimizer runs from {formatPrice(optimizationPreview.ledgerTeaserFeeCents / 100)}
+                            </p>
+                          )}
                         </div>
                       )}
 

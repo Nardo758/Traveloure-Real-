@@ -7306,7 +7306,7 @@ export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema
 export const feeBands = pgTable("fee_bands", {
   id: uuid("id").primaryKey().defaultRandom(),
   bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
-  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat'
+  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat' | 'flat_cents' | 'count' | 'rule' (last 3 added migration 259, Task 1669)
   defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
   minRate: decimal("min_rate", { precision: 10, scale: 4 }),
   maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
@@ -7322,6 +7322,11 @@ export const feeBands = pgTable("fee_bands", {
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // Pricing ledger Lane 1 (Task 1669, migration 259). Additive/nullable — fee_bands had no
+  // date columns before this. Existing rows are NULL in both; only the 8 Lane 1 rows carry
+  // values. Recorded as their own columns rather than repurposing description/displayName.
+  asOfDate: date("as_of_date"),
+  reviewDate: date("review_date"),
 }, (table) => [
   // Migration 031: partial index for active-band lookups.
   // Declared here — drizzle push drops indexes absent from this file on publish.
@@ -7330,6 +7335,25 @@ export const feeBands = pgTable("fee_bands", {
 export type FeeBand = typeof feeBands.$inferSelect;
 export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
+
+// ─── plans — Pricing ledger Lane 1 (Task 1669, migration 259) ───────────────────────────────
+// Minimal plan catalog rows. Stripe product creation and entitlement/gating logic are explicitly
+// out of scope for this lane — this table only creates and exposes the rows.
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  name: text("name").notNull(),
+  priceCents: integer("price_cents").notNull(),
+  interval: varchar("interval", { length: 20 }).notNull(), // 'trip' | 'year' | 'month' — app-enforced, no CHECK (publish-safe)
+  allowances: jsonb("allowances").notNull().default({}),
+  active: boolean("active").notNull().default(true),
+  effectiveFrom: date("effective_from").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type Plan = typeof plans.$inferSelect;
+export const insertPlanSchema = createInsertSchema(plans).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
 
 // platform_settings: key/value rows for cross-cutting flags.
 // First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
