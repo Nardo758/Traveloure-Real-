@@ -864,6 +864,7 @@ function BentoGroup({
             <h3
               className="text-[22px] font-semibold leading-tight"
               style={{ color: "var(--earn-navy)", fontFamily: FRAUNCES }}
+              data-testid={`bento-heading-${nbSlug}`}
             >
               {heading}
             </h3>

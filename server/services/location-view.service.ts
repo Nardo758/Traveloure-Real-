@@ -54,6 +54,27 @@ import { sortByFeaturedAdjusted } from "./featured-sort";
  *    into some city (§13). It becomes visible by its owner naming a neighborhood, not by us
  *    inferring one.
  */
+/**
+ * 2026-08-27-neighbourhood-slug-match — gems/services store a free-text
+ * `neighborhood` value; some rows use the seeded slug ("gion"), others the
+ * display name ("Bandra", "Fort / Kala Ghoda"), and slugs themselves mix
+ * hyphens and underscores ("kawaramachi-sanjo" vs "fushimi_inari"). A raw
+ * equality join against `cityNeighborhoods.slug` silently drops any
+ * mismatched row from that neighbourhood's gemCount/serviceCount/gems —
+ * which then drops the neighbourhood out of the client feed entirely (its
+ * section chrome disappears along with the content). Normalize BOTH sides
+ * the same way before comparing so slug-vs-name and hyphen-vs-underscore
+ * differences collapse to one key. This is a matching fix, not a
+ * composition change — these rows were always meant to be members.
+ */
+export function normalizeNeighborhoodKey(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 function cityScopePredicate(cityName: string) {
   return or(
     eq(providerServices.city, cityName),
@@ -311,22 +332,32 @@ class LocationViewService {
           .orderBy(travelPulseHiddenGems.gemScore),
       ]);
 
+      // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
+      // above — so a row's raw neighborhood value can be the slug OR the display
+      // name (and either hyphen or underscore word-separators) and still match.
       const gemCountMap = new Map<string, number>();
       for (const row of gemRows) {
-        if (row.neighborhood) gemCountMap.set(row.neighborhood, row.count);
+        if (row.neighborhood) {
+          const key = normalizeNeighborhoodKey(row.neighborhood);
+          gemCountMap.set(key, (gemCountMap.get(key) ?? 0) + row.count);
+        }
       }
 
       const svcCountMap = new Map<string, number>();
       for (const row of svcRows) {
-        if (row.neighborhood) svcCountMap.set(row.neighborhood, row.count);
+        if (row.neighborhood) {
+          const key = normalizeNeighborhoodKey(row.neighborhood);
+          svcCountMap.set(key, (svcCountMap.get(key) ?? 0) + row.count);
+        }
       }
 
-      // Group gems by neighborhood slug for the gems[] embed
+      // Group gems by normalized neighborhood key for the gems[] embed
       const gemsBySlug = new Map<string, any[]>();
       for (const gem of allCityGems) {
         if (gem.neighborhood) {
-          if (!gemsBySlug.has(gem.neighborhood)) gemsBySlug.set(gem.neighborhood, []);
-          gemsBySlug.get(gem.neighborhood)!.push(gem);
+          const key = normalizeNeighborhoodKey(gem.neighborhood);
+          if (!gemsBySlug.has(key)) gemsBySlug.set(key, []);
+          gemsBySlug.get(key)!.push(gem);
         }
       }
 
@@ -380,12 +411,13 @@ class LocationViewService {
 
       return neighborhoods.map((n) => {
         const expertRow = localExpertByNeighborhood.get(n.id) ?? null;
+        const nKey = normalizeNeighborhoodKey(n.slug);
         return {
           ...n,
-          gemCount: gemCountMap.get(n.slug) ?? 0,
-          serviceCount: svcCountMap.get(n.slug) ?? 0,
+          gemCount: gemCountMap.get(nKey) ?? 0,
+          serviceCount: svcCountMap.get(nKey) ?? 0,
           // bookability is DERIVED (never stored) via the single shared resolver.
-          gems: (gemsBySlug.get(n.slug) ?? [])
+          gems: (gemsBySlug.get(nKey) ?? [])
             .slice(0, 6)
             .map((gem) => ({ ...gem, bookability: resolveBookability(gem) })),
           localExpert: expertRow

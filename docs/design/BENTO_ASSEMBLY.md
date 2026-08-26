@@ -167,7 +167,7 @@ Every seller-bearing tile links back to its source, in this order: claimed handl
 | §3.5 fill order, once-per-page | Arashiyama gets `{City}-wide`; Nishiki does not | Kyoto |
 | §4 three states, coral once | count coral buttons = 1 per section | capture |
 | §5 label-with-value | gem tile with `bestFor` null shows `gem score N` only; score 0 shows nothing | Kyoto gems |
-| §6 chrome present on real data | eyebrow, heading, See-all, jump list present | **Mumbai — currently missing** |
+| §6 chrome present on real data | eyebrow, heading, See-all, jump list present | Mumbai — Bandra/Colaba (`playwright/tests/discover-bento-real-data.spec.ts`) |
 | §7 source links | partner tile has no `/s/` link; expert tile links `/experts/:id` or `/s/` | Mumbai |
 | §8 search read-only | trip context unchanged after typing | fixture |
 
@@ -176,6 +176,6 @@ Every seller-bearing tile links back to its source, in this order: claimed handl
 ## 11. Known deviations to close (as of `9ba9c99b`, Mumbai capture)
 
 1. §2 — event planner rendered as anchor (Rhea Desai). Priority not implemented.
-2. §6 — section eyebrow, heading, `See all`, jump list absent on real data; present under fixture. Likely the section-chrome branch keys on a fixture-only field (`editorialTitle`?) instead of falling back per §6.2.
+2. §6 — CLOSED 2026-08-27 (see `2026-08-27-neighbourhood-slug-match` in DECISIONS.md). Root cause was not the chrome fallback chain (`editorialTitle → headline → tagline → description → name`, already correct) — it was that Mumbai's Bandra/Colaba gems/services were seeded with the neighbourhood's display name instead of its slug, so location-view.service.ts's raw-equality join against `cityNeighborhoods.slug` zeroed their gemCount/serviceCount/gems, dropping the whole neighbourhood (chrome included) out of the client feed. Fixed by normalizing both sides of the join (`normalizeNeighborhoodKey`) and correcting the seed data to store slugs. Known residual: the heading text itself falls back to `description`, and Bandra's (and two Kyoto rows') seeded `description` is a leftover centroid-placeholder string, not editorial copy — chrome renders, but that specific heading text is a seed-data quality issue, not a rendering bug; not fixed here (out of this commit's sanctioned scope, and pre-existing in Kyoto too).
 3. §5 — gem tiles show bare `85`; `gem score` label dropped.
 4. §3.5 — no ready-made fill outside Kyoto is **correct** (DB constraint) and not a deviation.
