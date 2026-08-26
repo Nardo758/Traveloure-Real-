@@ -193,6 +193,7 @@ import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
+import pricingRoutes from "./routes/pricing.routes";
 import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -924,6 +925,9 @@ export async function registerRoutes(
       console.warn("[Seed] Could not seed expert_service_offerings:", err);
     }
   })();
+
+  // Pricing display bundle (Phase 1 of the /pricing rebuild lane) — public, read-only.
+  app.use(pricingRoutes);
 
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);
