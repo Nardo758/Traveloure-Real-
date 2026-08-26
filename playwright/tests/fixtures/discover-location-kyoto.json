@@ -1,5 +1,5 @@
 {
-  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. Two neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert), 'arashiyama' WITHOUT (its anchor is the top ready-made). Includes a partner/affiliate external stub, a wanted slot (via offering-types + composition config), gems and services so spans exercise. Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1). CHIP-FILTER DIFFERENTIAL (Phase 2c): gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant) and arashiyama carries NONE, so the Eat spine chip proves both halves of the rule — every bento filters to the chip's kind, and a neighbourhood with no matches drops out entirely.",
+  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. Two neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert) AND a ready-made tile, 'arashiyama' WITHOUT an expert (its anchor is the top ready-made). GION LAYOUT (Phase 2f, the mock's Gion frame): expert anchor (col-span-2 row-span-2) + four 1×1 gems over the two beside-anchor rows, then a full row of [1×1 · ready-made(col-span-2) · 1×1] — the ready-made (tmpl-2, @yuki-flowers) stays col-span-2 even though the section has the tall expert anchor (the packer never demotes a ready-made to 1×1). COMPOSITION CONSTRAINT: with two neighbourhoods and the lead-expert-anchors-Gion rule, Gion's stream window holds exactly ONE injected tile (a second would force intro filler that steals the expert anchor). So both injection slots are ready-mades (Gion tile tmpl-2 + Arashiyama anchor tmpl-1) and the platform-recommendation candidate is intentionally absent here — the CityFeedCardRecommendation render+impression is a real-data matrix row. CHIP-FILTER DIFFERENTIAL: gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant) and arashiyama NONE, so the Eat chip proves filter + drop-out. COMPACT SOURCE/PRICE (Phase 2f): svc-1 carries durationMinutes 240 + providerHandle 'norisato' (compact meta '4 hrs · @norisato' linked to /s/norisato, price $85 as a band pill); svc-2 carries durationMinutes 90 + providerName 'Aya S.' (compact meta '90 min · Aya S.', price $60 pill). Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1).",
 
   "locationView": {
     "city": "Kyoto",
@@ -16,13 +16,14 @@
           "name": "Gion",
           "editorialTitle": "Lantern-lit lanes after dark",
           "description": "Geisha districts, teahouses and stone-paved alleys.",
-          "gemCount": 3,
+          "gemCount": 4,
           "serviceCount": 0,
           "localExpert": null,
           "gems": [
             { "id": "g-gion-1", "placeName": "Hanamikoji Street", "placeType": "viewpoint", "neighborhood": "gion", "gemScore": 8.7, "imageUrl": null, "whyLocalsLoveIt": "Golden-hour lanterns before the crowds arrive.", "bestFor": ["photography", "evening walk"] },
             { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 8.1, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." },
-            { "id": "g-gion-3", "placeName": "Izuju Sushi Counter", "placeType": "restaurant", "neighborhood": "gion", "gemScore": 8.4, "imageUrl": null, "whyLocalsLoveIt": "Kyoto-style pressed sushi beside the shrine gates.", "bestFor": ["lunch"] }
+            { "id": "g-gion-3", "placeName": "Izuju Sushi Counter", "placeType": "restaurant", "neighborhood": "gion", "gemScore": 8.4, "imageUrl": null, "whyLocalsLoveIt": "Kyoto-style pressed sushi beside the shrine gates.", "bestFor": ["lunch"] },
+            { "id": "g-gion-4", "placeName": "Yasaka Shrine", "placeType": "shrine", "neighborhood": "gion", "gemScore": 8.0, "imageUrl": null, "whyLocalsLoveIt": "Lantern-lit at night, quiet at dawn.", "bestFor": ["temples"] }
           ]
         },
         {
@@ -45,8 +46,8 @@
     "gems": { "data": [], "error": null },
     "services": {
       "data": [
-        { "id": "svc-1", "serviceName": "Kyoto Tea Ceremony", "price": "85", "shortDescription": "A private matcha ceremony with a certified host.", "categoryName": "Culture", "averageRating": "4.8", "whatIncluded": ["Sweets", "Matcha"] },
-        { "id": "svc-2", "serviceName": "Nishiki Market Food Walk", "price": "60", "shortDescription": "Taste your way through Kyoto's kitchen.", "categoryName": "Food", "averageRating": "4.9" }
+        { "id": "svc-1", "serviceName": "Kyoto Tea Ceremony", "price": "85", "shortDescription": "A private matcha ceremony with a certified host.", "categoryName": "Culture", "averageRating": "4.8", "whatIncluded": ["Sweets", "Matcha"], "durationMinutes": 240, "providerHandle": "norisato" },
+        { "id": "svc-2", "serviceName": "Nishiki Market Food Walk", "price": "60", "shortDescription": "Taste your way through Kyoto's kitchen.", "categoryName": "Food", "averageRating": "4.9", "durationMinutes": 90, "providerName": "Aya S." }
       ],
       "error": null
     },
@@ -96,6 +97,20 @@
 
   "packages": [
     {
+      "id": "tmpl-2",
+      "title": "Romance & Honeymoon in Kyoto",
+      "price": "149",
+      "coverImage": null,
+      "destination": "Kyoto",
+      "duration": 6,
+      "expertName": "Yuki",
+      "handle": "yuki-flowers",
+      "reviewCount": 9,
+      "averageRating": 4.9,
+      "salesCount": 14,
+      "itineraryPreview": [{ "day": 1, "title": "Arrival and a private teahouse evening" }, { "day": 2, "title": "Arashiyama at dawn, two by two" }]
+    },
+    {
       "id": "tmpl-1",
       "title": "Kyoto in Five Unhurried Days",
       "price": "149",
@@ -116,13 +131,12 @@
 
   "candidates": [
     {
-      "offeringId": "off-guide-1",
-      "categoryKey": "guided_tour",
-      "displayName": "Private Gion Night Walk",
-      "tagline": "See the lanes light up with a local at your side.",
-      "reason": "Endorsed by a Gion local for your dates.",
-      "expertEndorsed": true,
-      "sourceType": "platform_provider"
+      "offeringId": "tmpl-2",
+      "categoryKey": "itinerary",
+      "displayName": "Romance & Honeymoon in Kyoto",
+      "tagline": "Six unhurried days for two.",
+      "reason": "A ready-made trip authored by a Gion local.",
+      "sourceType": "expert_package"
     },
     {
       "offeringId": "tmpl-1",

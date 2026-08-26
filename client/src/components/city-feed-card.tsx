@@ -156,6 +156,75 @@ function gemAreaName(gem: any): string | null {
   return typeof v === "string" && v.trim().length > 0 ? v : null;
 }
 
+/** Compact duration label (Phase 2f): whole hours read "{n} hr(s)", anything else
+ *  "{n} min". §13: no duration field ⇒ null (the fragment is omitted, not zeroed). */
+function compactDuration(mins: unknown): string | null {
+  const n = typeof mins === "number" ? mins : Number(mins);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n % 60 === 0) {
+    const h = n / 60;
+    return `${h} hr${h === 1 ? "" : "s"}`;
+  }
+  return `${n} min`;
+}
+
+/**
+ * The compact meta line's SOURCE fragment (Phase 2f + 2026-08-25-card-source-link):
+ * a provider HANDLE resolves to an in-platform storefront link (`/s/:handle`); a
+ * provider NAME with no handle is a plain label (no link — there is no id to key on);
+ * affiliate supply is a partner LABEL ("via {Partner}", never a raw URL — §16). §13:
+ * a row with no attributable source returns null and the fragment is omitted.
+ */
+function compactSource(item: any): { label: string; href: string | null } | null {
+  const handle = item?.providerHandle ?? item?.expertHandle ?? item?.handle;
+  if (typeof handle === "string" && handle.trim().length > 0) {
+    const h = handle.trim().replace(/^@/, "");
+    return { label: `@${h}`, href: `/s/${h}` };
+  }
+  const name = item?.providerName ?? item?.expertName ?? item?.vendorName;
+  if (typeof name === "string" && name.trim().length > 0) {
+    return { label: name.trim(), href: null };
+  }
+  const partner = item?.affiliatePartner ?? item?.partnerName ?? item?.supplierName;
+  if (typeof partner === "string" && partner.trim().length > 0) {
+    return { label: `via ${partner.trim()}`, href: null };
+  }
+  return null;
+}
+
+/** Compact meta line carrying an optional LINKED source fragment (Phase 2f). The
+ *  duration is plain mono text; the source is a storefront link when it has an href,
+ *  a plain label otherwise. Renders nothing when both are absent (§13). */
+function CompactSourceMetaLine({
+  duration,
+  source,
+  testid,
+}: {
+  duration: string | null;
+  source: { label: string; href: string | null } | null;
+  testid?: string;
+}) {
+  if (!duration && !source) return null;
+  return (
+    <div
+      className="text-[11px] text-muted-foreground truncate"
+      style={{ fontFamily: EARN_MONO }}
+      data-testid={testid}
+    >
+      {duration && <span>{duration}</span>}
+      {duration && source && <span> · </span>}
+      {source &&
+        (source.href ? (
+          <a href={source.href} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+            {source.label}
+          </a>
+        ) : (
+          <span>{source.label}</span>
+        ))}
+    </div>
+  );
+}
+
 /** Make a whole card the link (family grammar): Enter/Space activate too. */
 function cardLinkProps(onActivate: () => void) {
   return {
@@ -1460,11 +1529,14 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
     ? (service.whatIncluded as string[]).slice(0, 2)
     : [];
 
-  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
-  // §13: price / ★rating each omitted when absent. Keeps Book/Add/Globe/Ask.
+  // ─── Compact density (2026-08-26-bento-compact-density; Phase 2f) ───────────
+  // The price rides the photo band as a pill (mock detail); the ONE mono meta line
+  // now carries {duration · source} — the source LINKED per 2026-08-25-card-source-link
+  // (handle → /s/:handle, name → plain, affiliate → "via {Partner}"). §13: price,
+  // duration and source each omitted when absent. Two buttons only (Book + Add).
   if (density === "compact") {
-    const ratingStr = service.averageRating ? `★ ${Number(service.averageRating).toFixed(1)}` : null;
-    const metaText = joinMeta(priceDisplay, ratingStr);
+    const durationLabel = compactDuration(service.durationMinutes);
+    const source = compactSource(service);
     return (
       <>
         <div
@@ -1495,6 +1567,16 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             >
               {tag}
             </span>
+            {/* Price pill on the band (Phase 2f, §13: omitted when absent). */}
+            {priceDisplay && (
+              <span
+                className="absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-white/95 text-foreground shadow-sm"
+                style={{ fontFamily: EARN_MONO }}
+                data-testid={`svc-price-${service.id}`}
+              >
+                {priceDisplay}
+              </span>
+            )}
             {service.isFeatured && (
               <span className="absolute top-2 right-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
                 Featured
@@ -1503,7 +1585,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
-            <CompactMetaLine text={metaText} testid={`svc-facts-${service.id}`} />
+            <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
               {resolvedBookability !== "info_only" && (
                 <Button
@@ -1769,12 +1851,14 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     ? ` · ${Number(item.reviewCount).toLocaleString()} reviews`
     : "";
 
-  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
-  // §13: price / ★rating each omitted when absent. Card opens the details sheet
-  // (where the tracked partner outbound lives — F6/§16). Add + Ask action row.
+  // ─── Compact density (2026-08-26-bento-compact-density; Phase 2f) ───────────
+  // Price rides the band as a pill; the ONE meta line carries {duration · source}
+  // — supply is affiliate, so the source is a partner LABEL ("via {Partner}", never
+  // a raw URL — §16). Card opens the details sheet (where the tracked partner
+  // outbound lives — F6/§16). §13: each fragment omitted when absent. Add + Ask.
   if (density === "compact") {
-    const ratingStr = item.rating ? `★ ${item.rating}` : null;
-    const metaText = joinMeta(priceText, ratingStr);
+    const compactDur = compactDuration(item.durationMinutes);
+    const source = compactSource(item);
     return (
       <>
         <div
@@ -1815,10 +1899,20 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             >
               {isHotel ? "Hotel" : "Activity"}
             </span>
+            {/* Price pill on the band (Phase 2f, §13: omitted when absent). */}
+            {priceText && (
+              <span
+                className="absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-white/95 text-foreground shadow-sm"
+                style={{ fontFamily: EARN_MONO }}
+                data-testid={`supply-price-${item.id}`}
+              >
+                {priceText}
+              </span>
+            )}
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{itemName}</h3>
-            <CompactMetaLine text={metaText} testid={`supply-facts-${item.id}`} />
+            <CompactSourceMetaLine duration={compactDur} source={source} testid={`supply-facts-${item.id}`} />
             <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
               <Button
                 size="sm"
