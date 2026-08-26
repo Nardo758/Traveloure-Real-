@@ -6,6 +6,7 @@
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { resolveCommissionRates } from './commission';
+import { PLATFORM_DEPOSIT_BAND } from './fee-band-requirements';
 
 interface FeeBreakdown {
   serviceAmount: number;
@@ -33,7 +34,7 @@ class PricingService {
       const result = await db.execute(sql`
         SELECT CAST(default_rate AS FLOAT) AS rate
         FROM fee_bands
-        WHERE band_key = 'platform_deposit' AND is_active = true
+        WHERE band_key = ${PLATFORM_DEPOSIT_BAND} AND is_active = true
         LIMIT 1
       `);
       const row = result.rows?.[0] as { rate: number | null } | undefined;

@@ -95,6 +95,19 @@ jobs:
           # No authenticated routes here — the pins call the resolver directly.
           seed-ci-users: 'false'
 
+      # Read-only contract gate. The manifest is shared by the resolvers and this
+      # check also derives category-band dependencies from the migrated database,
+      # so a missing or mistyped row fails before a pricing/booking request can
+      # expose it. It never overwrites admin-configured values.
+      - name: Resolver configuration completeness
+        run: npx tsx scripts/verify-fee-configuration-completeness.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          ALLOW_TEST_ACCOUNTS: '1'
+
       - name: Resolver authority pins
         run: npx tsx --test server/__tests__/fee-resolution-authority.db.test.ts
         env:

@@ -29,6 +29,14 @@
 import { db } from "../db";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/schema";
+import {
+  AFFILIATE_STANDARD_BAND,
+  CONCIERGE_BOOKING_FEE_BAND_KEY,
+  EXPERT_STANDARD_BAND,
+  EXPERIENCE_CART_BAND_KEY,
+  TIP_HANDLING_BAND,
+} from "./fee-band-requirements";
+export { CONCIERGE_BOOKING_FEE_BAND_KEY, EXPERIENCE_CART_BAND_KEY } from "./fee-band-requirements";
 
 // 3.0.1b: Structural invariant — AI fulfillment has no expert counterparty, so the
 // platform keeps the full per-task fee by definition. Not a safety-net fallback;
@@ -84,7 +92,7 @@ export async function getExpertSplitRates(): Promise<{ expertShareRate: number; 
   const now = Date.now();
   if (expertSplitCache && expertSplitCache.expiresAt > now) return expertSplitCache.rates;
 
-  const band = await getBand("expert_standard");
+  const band = await getBand(EXPERT_STANDARD_BAND);
   const rates =
     band && band.rateType === "percent" && band.rate > 0 && band.rate < 1
       ? { expertShareRate: 1 - band.rate, platformFeeRate: band.rate }
@@ -162,7 +170,6 @@ export async function resolveServiceOwnerShareRate(opts: {
  * AMOUNT is read from this band (Phase 3.4); the 75/25 split is applied
  * separately via the expert band — a flat band is never built into a split. */
 export const CONCIERGE_BOOKING_CONCERN = "booking_concierge";
-export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
 
 /** Ruling 25 follow-through (migration 174): the EXPERIENCE_CART typed-breakdown
  *  rate resolves from this admin-editable percent band (platform-take fraction).
@@ -170,8 +177,6 @@ export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
  *  (calculateCommission). The actual cart charge + fee-preview paths resolve
  *  per-item rates via resolveCommissionRates() — per the R3/F6 note in
  *  payments.routes.ts, the old 0.30 literal matched no actual charged rate. */
-export const EXPERIENCE_CART_BAND_KEY = "experience_cart_checkout";
-
 export interface CommissionRates {
   expertShareRate: number;
   platformFeeRate: number;
@@ -251,7 +256,7 @@ export function decideBandKey(
   defaultBandKey: string,
 ): string {
   // Phase 1.5 semantic mappings (override the generic direct-lookup fallback):
-  if (opts.category === "tip") return "tip_handling";
+  if (opts.category === "tip") return TIP_HANDLING_BAND;
 
   // Phase 3.1: the Booking Concierge concern routes to its dedicated FLAT
   // fee-amount band — a named mapping so it never silently falls through to the
@@ -367,7 +372,7 @@ export async function getConciergeBookingRate(): Promise<number> {
     const result = await db.execute(sql`
       SELECT CAST(default_rate AS FLOAT) AS rate
       FROM fee_bands
-      WHERE band_key = 'expert_concierge_booking'
+      WHERE band_key = ${CONCIERGE_BOOKING_FEE_BAND_KEY}
         AND rate_type = 'percent'
         AND is_active = true
       LIMIT 1
@@ -398,7 +403,7 @@ export async function requireConciergeBookingRate(): Promise<number> {
   const result = await db.execute(sql`
     SELECT CAST(default_rate AS FLOAT) AS rate
     FROM fee_bands
-    WHERE band_key = 'expert_concierge_booking'
+      WHERE band_key = ${CONCIERGE_BOOKING_FEE_BAND_KEY}
       AND rate_type = 'percent'
       AND is_active = true
     LIMIT 1
@@ -551,7 +556,7 @@ export async function resolveCommissionRates(
   // (Per-partner affiliate:<partner> bands remain a separate, still-dormant Phase-2 concern — that's
   // the partner's own commission %, not this internal platform/expert split.)
   if (source === "affiliate" || revenueType === "affiliate_commission") {
-    const band = await getBand("affiliate_standard");
+    const band = await getBand(AFFILIATE_STANDARD_BAND);
     if (band && band.rateType === "percent") {
       return buildRatesFromBand(band.rate, noInsurance);
     }
