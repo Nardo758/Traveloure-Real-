@@ -230,12 +230,21 @@ export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
  * across multiple sections, and existing section item order is untouched.
  */
 export function appendCityWideReadyMadeFill(
-  sections: Array<{ items: FeedItem[]; neighbourhood: any | null }>,
+  entries: readonly unknown[],
   template: any | null | undefined,
   city: string,
 ): void {
   const templateId = template?.id == null ? "" : String(template.id);
   if (!templateId) return;
+
+  // FeedRenderer's ordered list also includes separator sections. Narrow here
+  // so callers may preserve their mixed render order without pre-filtering it.
+  const sections = entries.filter(
+    (entry): entry is { items: FeedItem[]; neighbourhood: any | null } =>
+      typeof entry === "object" &&
+      entry !== null &&
+      Array.isArray((entry as { items?: unknown }).items),
+  );
 
   const alreadyUsed = sections.some((section) =>
     section.items.some(

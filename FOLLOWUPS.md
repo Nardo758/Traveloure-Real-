@@ -5,6 +5,33 @@ Each entry states what was found, why it was not fixed in place, and where the e
 
 ---
 
+## From the Experts & Services earn-demo seed lane
+
+### FU-1 — Review source-of-truth reconciliation
+
+The demo seed writes current public provider reviews to `service_reviews`, while legacy expert
+ratings live in `review_ratings`. If profile and review totals diverge, reconcile the DTO/source
+contract rather than duplicating review rows across both tables.
+
+### FU-2 — Provider directory category/location presentation
+
+The provider form stores category and location, but the public directory payload currently focuses on
+handle-bearing providers, service counts, ratings, and the location resolver. If category facets or
+provider-city filtering become required, give them an explicit public DTO contract.
+
+### FU-3 — Seed proof lane
+
+After the seed commit is approved, run the two-pass seed idempotency proof and the prescribed desktop
+and mobile surface captures. This remains intentionally outside the seed commit.
+
+### FU-4 — Ready-made market constraint
+
+`ready_made_trips.market CHECK permits Kyoto only — widening to other launch markets is a ruling +
+migration, not a seed change.` The city feed's `{City}`-wide ready-made fill will render for Kyoto
+and honestly show nothing elsewhere until that contract is widened.
+
+---
+
 ## From the fee-ledger lane (2026-08-06, rulings 47–52)
 
 ### FU-1 — SD-2: a paid booking can be cancelled with no refund and no reversal
