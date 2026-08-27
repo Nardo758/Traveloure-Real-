@@ -474,7 +474,7 @@ export default function ExpertDetailPage() {
             <div className="h-[120px] w-full" style={{ background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }} />
             <div className="grid gap-4 px-5 pb-5 sm:grid-cols-[76px_1fr] sm:items-start">
               <Avatar className="h-[76px] w-[76px] shrink-0 border-4 border-white shadow-lg" style={{ marginTop: -32 }}>
-                <AvatarImage src={expert.profileImage} alt={fullName} />
+                <AvatarImage src={expert.profileImageUrl} alt={fullName} />
                 <AvatarFallback className="text-xl font-bold">{initials}</AvatarFallback>
               </Avatar>
 
