@@ -386,6 +386,20 @@ export default function ExpertDetailPage() {
   const verified = expert.verified === true;
   const idVerified = expert.expertForm?.identityVerificationStatus === "verified";
   const roleLabel = expert.role ? (ROLE_LABELS[expert.role] || "Expert") : "Expert";
+  // Member-since (§13 honest-omit): read the real users.createdAt; render only when it
+  // parses to a valid year, never a fabricated "member since —".
+  const memberSinceYear: number | null = (() => {
+    if (!expert.createdAt) return null;
+    const y = new Date(expert.createdAt).getFullYear();
+    return Number.isFinite(y) ? y : null;
+  })();
+  // Cover image (D2): the expert's own storefront cover if they set one; the hero falls
+  // back to the brand gradient when absent (honest-omit — never another expert's photo).
+  const coverImageUrl: string | null =
+    typeof expert.preferences?.storefront?.coverImageUrl === "string" &&
+    expert.preferences.storefront.coverImageUrl.trim().length > 0
+      ? expert.preferences.storefront.coverImageUrl
+      : null;
 
   // Unified offering catalogs (§13: real fields only, no invented ratings/prices).
   const serviceOfferings: UnifiedOffering[] = services.map((s: any) => ({
@@ -471,10 +485,18 @@ export default function ExpertDetailPage() {
 
           {/* Hero */}
           <section className="overflow-hidden rounded-[14px] border bg-white" style={{ borderColor: LINE, boxShadow: "0 8px 28px rgba(17,24,39,.04)" }}>
-            <div className="h-[120px] w-full" style={{ background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }} />
+            <div
+              className="h-[120px] w-full bg-cover bg-center"
+              style={
+                coverImageUrl
+                  ? { backgroundImage: `url(${JSON.stringify(coverImageUrl)})` }
+                  : { background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }
+              }
+              data-testid="expert-cover"
+            />
             <div className="grid gap-4 px-5 pb-5 sm:grid-cols-[76px_1fr] sm:items-start">
               <Avatar className="h-[76px] w-[76px] shrink-0 border-4 border-white shadow-lg" style={{ marginTop: -32 }}>
-                <AvatarImage src={expert.profileImage} alt={fullName} />
+                <AvatarImage src={expert.profileImageUrl} alt={fullName} />
                 <AvatarFallback className="text-xl font-bold">{initials}</AvatarFallback>
               </Avatar>
 
@@ -500,9 +522,9 @@ export default function ExpertDetailPage() {
                 </div>
                 <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: MUTED }}>{bio}</p>
 
-                {/* Facts row (§3.9): offerings · rating · responds. "since" is OMITTED —
-                    there is no expert-level member-since field yet, and responds renders
-                    only when the expert actually stated a response time (§13, Phase 0). */}
+                {/* Facts row (§3.9): offerings · rating · responds · member since. Each fact
+                    renders only from a real field — responds appears when the expert stated a
+                    response time, member-since when users.createdAt parses (§13, honest-omit). */}
                 <div className="mt-3 flex flex-wrap items-stretch gap-x-6 gap-y-2 border-t pt-3" style={{ borderColor: LINE }}>
                   <div>
                     <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>{allOfferings.length}</div>
@@ -520,6 +542,12 @@ export default function ExpertDetailPage() {
                     <div>
                       <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>{responseTime}</div>
                       <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>responds</div>
+                    </div>
+                  )}
+                  {memberSinceYear !== null && (
+                    <div data-testid="fact-member-since">
+                      <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>{memberSinceYear}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>member since</div>
                     </div>
                   )}
                 </div>
