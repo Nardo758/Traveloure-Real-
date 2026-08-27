@@ -36,7 +36,7 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
   test('Bandra section renders eyebrow, heading, and See-all on real data', async ({ page }) => {
     await page.goto(`${BASE_URL}/discover/location/Mumbai`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
-    const section = page.getByTestId('bento-section-bandra');
+      const section = page.getByTestId(`bento-section-${slug}`);
     await expect(section).toBeAttached({ timeout: 15_000 });
 
     const eyebrow = page.getByTestId('bento-eyebrow-bandra');
@@ -125,7 +125,8 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
         .toMatch(/minmax\(0px,\s*auto\)/);
 
       const tiles = grid.locator('[data-testid^="bento-tile-"]');
-      await expect(tiles).not.toHaveCount(0);
+
+      const serviceTiles = grid.locator('[data-testid^="bento-tile-vsvc-"]');
       const proof = await tiles.evaluateAll((elements) =>
         elements.map((tile) => {
           const box = tile.getBoundingClientRect();

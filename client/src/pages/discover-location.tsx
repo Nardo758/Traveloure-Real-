@@ -973,6 +973,20 @@ function nestedGemItems(neighbourhood: any): FeedItem[] {
     .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
 }
 
+/** A neighbourhood's scoped platform services become tiles in that section. */
+function nestedServiceItems(neighbourhood: any): FeedItem[] {
+  return ((neighbourhood?.services ?? []) as any[])
+    .map((service) => ({
+      kind: "vendor-service" as FeedItem["kind"],
+      id: `vsvc-${service.id}`,
+      data: service,
+    }));
+}
+
+function nestedNeighbourhoodItems(neighbourhood: any): FeedItem[] {
+  return [...nestedGemItems(neighbourhood), ...nestedServiceItems(neighbourhood)];
+}
+
 /**
  * Blended-feed renderer (city-feed bento, Phase 2; single-rendering + chip
  * filtering in Phase 2c).
@@ -1059,8 +1073,9 @@ function FeedRenderer({
     if (item.kind === "neighborhood") {
       flushGroup();
       currentNeighbourhood = item.data;
-      // The neighbourhood's own gems lead its bento run (single rendering).
-      currentGroup.push(...nestedGemItems(item.data));
+      // The neighbourhood's own gems and scoped services lead its bento run
+      // (single rendering); city-wide filler follows in stream order.
+      currentGroup.push(...nestedNeighbourhoodItems(item.data));
     } else if (item.kind === "city-separator") {
       flushGroup();
       sections.push({ type: "city-separator", item });
@@ -1862,19 +1877,19 @@ export default function DiscoverLocationPage() {
       })
     : experts;
 
-  // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): the mixed "all" feed keeps its
-  // 4-service balance cap; a spine chip is a deliberate search and must show EVERY matching
-  // approved listing, not a sample of four (that cap is why a whole approved Kyoto catalog was
-  // invisible on Kyoto's own page even once it reached the payload). The same deliberate-search
-  // posture applies to experts under the Experts chip: the full list, not the lead-excluded
-  // filler slice (there is no separate lead-expert injection to dedupe against off "all").
+  // Neighbourhood-scoped services are placed into their matching Bento section
+  // by buildFeedStream. City-wide services are deliberate inventory on this
+  // location page, so the unfiltered composition does not hide the rest behind
+  // the old four-service filler balance cap. A spine chip likewise shows every
+  // approved listing. The same deliberate-search posture applies to experts
+  // under the Experts chip: the full list, not the lead-excluded filler slice.
   const feedItems: FeedItem[] = data
     ? buildFeedStream(
         neighborhoods, allGems,
         activeFilter === "all" ? feedExperts : experts,
         events, supplyHotels, supplyActivities, platformServices,
         undefined,
-        activeFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
+        Number.POSITIVE_INFINITY,
       )
     : [];
 
@@ -2022,9 +2037,10 @@ export default function DiscoverLocationPage() {
     );
     const countable: FeedItem[] = searchStream.flatMap((it) => {
       if (it.kind === "neighborhood")
-        return ((it.data?.gems ?? []) as any[])
-          .slice(0, 4)
-          .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
+        return [
+          ...nestedGemItems(it.data),
+          ...nestedServiceItems(it.data),
+        ];
       if (it.kind === "city-separator") return [];
       return [it];
     });

@@ -40,6 +40,19 @@ export interface FeedItem {
 }
 
 /**
+ * Provider services store neighbourhood as free text, so match it like the
+ * server's location payload does: case-insensitive and tolerant of display
+ * names versus slugs (including hyphen/underscore separators).
+ */
+function neighborhoodKey(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
  * Map a gem's placeType to one of the spine filter categories.
  */
 export function gemCategory(placeType: string | null | undefined): string {
@@ -135,40 +148,72 @@ export function buildFeedStream(
   // ── 1. Group gems by neighborhood slug ──────────────────────────────────
   const gemsByNeighborhood = new Map<string, any[]>();
   const looseGems: any[] = [];
+  const servicesByNeighborhood = new Map<string, any[]>();
+  const looseServices: any[] = [];
 
   for (const gem of allGems) {
     if (gem.neighborhood) {
-      if (!gemsByNeighborhood.has(gem.neighborhood)) {
-        gemsByNeighborhood.set(gem.neighborhood, []);
+      const key = neighborhoodKey(gem.neighborhood);
+      if (!gemsByNeighborhood.has(key)) {
+        gemsByNeighborhood.set(key, []);
       }
-      gemsByNeighborhood.get(gem.neighborhood)!.push(gem);
+      gemsByNeighborhood.get(key)!.push(gem);
     } else {
       looseGems.push(gem);
     }
   }
 
-  // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
+  // Provider services may be scoped to a neighbourhood in the location
+  // payload. Keep those services with their section instead of treating them
+  // as shared filler; services without a matching neighbourhood remain
+  // city-wide filler.
+  for (const service of platformServices ?? []) {
+    const key = neighborhoodKey(
+      service.neighborhood ?? service.neighborhoodName ?? service.neighborhood_name,
+    );
+    if (!key) {
+      looseServices.push(service);
+      continue;
+    }
+    if (!servicesByNeighborhood.has(key)) servicesByNeighborhood.set(key, []);
+    servicesByNeighborhood.get(key)!.push(service);
+  }
+
+  // ── 2. Build neighborhood FeedItems (where gems or services exist) ──────
   //
   // Gems can arrive in two forms:
   //   a) Nested inside each neighborhood object (n.gems) — primary source
   //   b) At the top level in allGems, keyed by slug — fallback source
   //
-  // We merge both: use n.gems when present, otherwise fall back to
-  // gemsByNeighborhood. The merged gemCount is updated to match the actual
-  // gems array so the header ("N things to do") is always accurate.
+  // Services arrive as a flat platformServices list, so they are grouped by
+  // normalized neighbourhood key above and embedded alongside the gems.
+  // We merge both gem sources: use n.gems when present, otherwise fall back
+  // to gemsByNeighborhood. The counts are updated to match the actual arrays
+  // so the section header and membership stay honest.
   const neighborhoodItems: FeedItem[] = neighborhoods
-    .filter((n) => (n.gems?.length ?? 0) > 0 || (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
+    .filter((n) => {
+      const key = neighborhoodKey(n.slug ?? n.id ?? n.name);
+      return (
+        (n.gems?.length ?? 0) > 0 ||
+        (gemsByNeighborhood.get(key)?.length ?? 0) > 0 ||
+        (servicesByNeighborhood.get(key)?.length ?? 0) > 0
+      );
+    })
     .map((n) => {
+      const key = neighborhoodKey(n.slug ?? n.id ?? n.name);
       const mergedGems: any[] = (n.gems?.length ? n.gems : null)
-        ?? gemsByNeighborhood.get(n.slug)
+        ?? gemsByNeighborhood.get(key)
         ?? [];
+      const mergedServices: any[] = servicesByNeighborhood.get(key) ?? [];
       return {
         kind: "neighborhood" as FeedItemKind,
         id: `neighborhood-${n.id}`,
         data: {
           ...n,
           gems: mergedGems,
+          services: mergedServices,
           gemCount: Math.max(n.gemCount ?? 0, mergedGems.length),
+          serviceCount: Math.max(n.serviceCount ?? 0, mergedServices.length),
         },
       };
     });
@@ -196,7 +241,7 @@ export function buildFeedStream(
       id: `activity-${a.id ?? Math.random()}`,
       data: a,
     })),
-    ...(platformServices ?? []).slice(0, serviceLimit).map((s) => ({
+    ...looseServices.slice(0, serviceLimit).map((s) => ({
       kind: "vendor-service" as FeedItemKind,
       id: `vsvc-${s.id}`,
       data: s,
