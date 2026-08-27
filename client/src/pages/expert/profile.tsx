@@ -40,6 +40,10 @@ import { getRoleHomePath } from "@/lib/role-utils";
 
 const EXPERT_ROLE_LABELS: Record<string, string> = {
   travel_expert: "Trip Planner",
+  // Intake-fixes C5 (latent-bug ruling): `trip_planner` is not a stored role — the trip
+  // planner IS `travel_expert` — but a literal that slips through (copy, imports, older
+  // rows) must render "Trip Planner", never fall to the generic "Expert".
+  trip_planner: "Trip Planner",
   local_expert: "Local Expert",
   event_planner: "Event Planner",
   executive_assistant: "Executive Assistant",

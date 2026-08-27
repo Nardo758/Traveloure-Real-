@@ -194,6 +194,8 @@ import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import pricingRoutes from "./routes/pricing.routes";
+import occasionsRoutes from "./routes/occasions.routes";
+import internalRoutes from "./routes/internal.routes";
 import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -1092,6 +1094,15 @@ export async function registerRoutes(
   // mounting restores it (caught by the unmounted-router guard). Routes carry full /api paths.
   app.use(savedItemsRoutes);
 
+  // Plus occasions (ledger 2026-08-27-plus-is-delivery): the member intake surface — /api/occasions
+  // CRUD, /api/me/home-city, /api/plus/config. Session-scoped, owner-gated; routes carry full /api
+  // paths. The internal drafts trigger is a SEPARATE machine-to-machine router below.
+  app.use(occasionsRoutes);
+  // Internal machine-to-machine trigger — POST /internal/run-occasion-drafts, auth'd by
+  // INTERNAL_JOB_SECRET (NOT a user session). The authoritative daily runner on Autoscale (fired by
+  // an external Scheduled Deployment / cron); the in-process timer is defense-in-depth only.
+  app.use(internalRoutes);
+
   // Traveler service requests ("request a service that doesn't exist yet"):
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
@@ -1962,6 +1973,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(form ? pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS) : null);
   });
 
+  // Intake bio mirror (intake-fixes C1/C2, decision-maker ratified Aug 27 2026): onboarding
+  // writes the bio to users.bio IN ADDITION to the role form, mirroring what the profile
+  // editor already does (see the PATCH profile handler's userUpdates.bio below) — because the
+  // public storefront (/s/:handle) and the /api/experts browse listing read users.bio, which
+  // onboarding previously never filled. The read stays on users.bio; the intake fills it.
+  // Unconditional overwrite matches the editor's posture (the newest submission is the newest
+  // statement); empty/absent bio never writes (§13 — no fabricated empty-string bio). Failure
+  // is logged, never fails the submission — the form row is already committed, and the
+  // backfill script (scripts/backfill-users-bio.cjs) sweeps up any missed mirror.
+  async function mirrorBioToUsersRow(userId: string, bio: unknown): Promise<void> {
+    if (typeof bio !== "string" || bio.trim().length === 0) return;
+    try {
+      await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+    } catch (e: any) {
+      console.error("[intake-bio-mirror] users.bio mirror failed:", e?.message);
+    }
+  }
+
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
@@ -1980,6 +2009,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "pending",
             rejectionMessage: null,
           });
+          await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
             (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
@@ -1999,6 +2029,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      await mirrorBioToUsersRow(userId, input.bio);
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
@@ -2037,6 +2068,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "pending",
             rejectionMessage: null,
           });
+          await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
             (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
@@ -2055,6 +2087,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      await mirrorBioToUsersRow(userId, input.bio);
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
@@ -2133,6 +2166,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
+      // Intake-fixes C2 (ratified): service_provider_forms.description IS the provider's
+      // public bio — mirror it into users.bio, the column /s/:handle and the directory read.
+      // The description column stays the form's field; it is no longer collected-never-read.
+      await mirrorBioToUsersRow(userId, input.description);
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2197,6 +2234,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
+      // Intake-fixes C2: mirror description → users.bio (see /api/provider-application above).
+      await mirrorBioToUsersRow(userId, input.description);
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4616,7 +4655,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // PATCH /api/expert/photo — Save the expert's profile photo.
+  // PATCH /api/expert/photo — the SHARED earner profile-photo rail (intake-fixes C3).
+  // Deliberately isAuthenticated-only, NOT role-gated: it writes the caller's own
+  // users.profileImageUrl and nothing else, so expert AND provider profile editors both
+  // reuse it (expert/profile.tsx, provider/profile.tsx). The "expert" in the path is
+  // historical; do not fork a parallel provider endpoint.
   // Accepts a base64 data URL; server-side validation of type + decoded size.
   app.patch("/api/expert/photo", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
