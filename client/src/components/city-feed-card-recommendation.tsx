@@ -394,11 +394,11 @@ export function CityFeedCardRecommendation({
               {metaText}
             </div>
           )}
-          <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+          <div className="flex flex-wrap gap-1.5 pt-0.5 items-center mt-auto min-w-0">
             {onBook && compactActionState !== "not-bookable" && (
               <Button
                 size="sm"
-                className="h-7 text-xs px-3"
+                className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
                 style={bookStyle}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -411,7 +411,7 @@ export function CityFeedCardRecommendation({
             )}
             <Button
               size="sm"
-              className="h-7 text-xs px-3"
+              className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
               style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -433,7 +433,7 @@ export function CityFeedCardRecommendation({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs px-2.5"
+                className="h-7 text-xs px-2.5 flex-1 min-w-0 whitespace-nowrap"
                 onClick={(e) => {
                   e.stopPropagation();
                   askExpert({ city, subject: name });
