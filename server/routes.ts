@@ -2155,6 +2155,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
+      // Intake-fixes C2 (ratified): service_provider_forms.description IS the provider's
+      // public bio — mirror it into users.bio, the column /s/:handle and the directory read.
+      // The description column stays the form's field; it is no longer collected-never-read.
+      await mirrorBioToUsersRow(userId, input.description);
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2219,6 +2223,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
+      // Intake-fixes C2: mirror description → users.bio (see /api/provider-application above).
+      await mirrorBioToUsersRow(userId, input.description);
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
