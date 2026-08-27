@@ -47,6 +47,14 @@ export function FeedEarnCard({ city, density = "full" }: { city: string; density
       <p className={isCompact ? "text-[12px] line-clamp-2" : "text-[12px]"} style={{ color: "var(--earn-muted)" }}>
         Local experts share their knowledge; providers list bookable services — both earn on Traveloure.
       </p>
+      <a
+        href="/how-it-works"
+        className="w-fit text-[11px] hover:underline"
+        style={{ color: "var(--earn-teal-ink)", fontFamily: EARN_MONO }}
+        data-testid="link-earn-more-info"
+      >
+        More info →
+      </a>
       <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
         <Button
           size="sm"

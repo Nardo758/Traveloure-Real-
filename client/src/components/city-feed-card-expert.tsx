@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Star, MapPin, UserCircle } from "lucide-react";
+import { Info, Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 // Family-card grammar (2026-08-25-card-family): mono facts/source rows share the
 // per-file local const pattern used across the earn family.
@@ -16,6 +17,7 @@ interface CityFeedCardExpertProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
 /**
@@ -25,7 +27,7 @@ interface CityFeedCardExpertProps {
  * Ask an expert outline). The CARD is the link (the expert's profile) — no
  * "More info" text link or modal.
  */
-export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full" }: CityFeedCardExpertProps) {
+export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
@@ -89,7 +91,7 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
           }
         }}
       >
-        {/* Compact photo band — 84px; gradient + initials fallback, Expert tag. */}
+        {/* §4a: the card body is the profile path; the Info icon is passive. */}
         <div className="relative h-[84px] overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-100 to-teal-200/70 flex items-center justify-center flex-shrink-0">
           {imageUrl ? (
             <img
@@ -113,6 +115,12 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
           >
             Expert
           </span>
+          <Info
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+            style={{ color: "var(--earn-muted)" }}
+            data-testid={`info-cue-expert-${expert.id}`}
+          />
         </div>
         <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
           <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{name}</h3>
@@ -124,15 +132,14 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
           <div className="flex gap-1.5 mt-auto pt-0.5">
             <Button
               size="sm"
+              asChild
               className="flex-1 h-7 text-xs"
               style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = profileHref;
-              }}
               data-testid={`btn-contact-expert-${expert.id}`}
             >
-              View {expert.firstName || "Expert"}'s profile
+              <a href={profileHref} onClick={(e) => e.stopPropagation()}>
+                View profile
+              </a>
             </Button>
             <Button
               size="sm"

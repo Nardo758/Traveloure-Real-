@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { FeedItem } from "../feed-stream";
-import { bentoAnchorPriority, selectBentoAnchorIndex } from "../bento-anchor";
+import {
+  bentoAnchorPriority,
+  isBentoAnchorEligible,
+  selectBentoAnchorIndex,
+} from "../bento-anchor";
 
 function expert(
   id: string,
@@ -51,5 +55,36 @@ describe("bento anchor priority (§2)", () => {
 
     assert.equal(selectBentoAnchorIndex([entry], neighbourhood, "Kyoto"), -1);
     assert.equal(bentoAnchorPriority(entry.item, neighbourhood, "Kyoto"), null);
+  });
+
+  it("treats eligibility as a role predicate, never admitting event planners or providers", () => {
+    assert.equal(isBentoAnchorEligible(expert("local", "local_expert")), true);
+    assert.equal(isBentoAnchorEligible(expert("planner", "trip_planner")), true);
+    assert.equal(isBentoAnchorEligible(expert("event", "event_planner")), false);
+    assert.equal(
+      isBentoAnchorEligible({
+        kind: "vendor-service",
+        id: "provider-service",
+        data: { role: "local_expert" },
+      }),
+      false,
+    );
+  });
+
+  it("uses highest rating then offerings to break a same-priority tie", () => {
+    const entries = [
+      tagged(expert("more-offerings", "local_expert", { averageRating: 4.7, packagesCount: 4 }), 0),
+      tagged(expert("higher-rating", "local_expert", { averageRating: 4.9, packagesCount: 1 }), 1),
+      tagged(expert("same-rating-more-offerings", "local_expert", { averageRating: 4.9, packagesCount: 3 }), 2),
+    ];
+
+    assert.equal(selectBentoAnchorIndex(entries, neighbourhood, "Kyoto"), 2);
+  });
+
+  it("does not anchor a trip planner scoped to another city", () => {
+    const entry = tagged(expert("elsewhere", "trip_planner", { city: "Tokyo" }), 0);
+
+    assert.equal(bentoAnchorPriority(entry.item, neighbourhood, "Kyoto"), null);
+    assert.equal(selectBentoAnchorIndex([entry], neighbourhood, "Kyoto"), -1);
   });
 });

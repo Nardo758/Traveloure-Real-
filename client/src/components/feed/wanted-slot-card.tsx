@@ -62,6 +62,14 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
             : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
+        <a
+          href="/how-it-works"
+          className="mt-1 inline-flex w-fit text-[11px] hover:underline"
+          style={{ color: "var(--earn-teal-ink)", fontFamily: EARN_MONO }}
+          data-testid={`link-wanted-more-info-${neighborhoodId}`}
+        >
+          More info →
+        </a>
       </div>
       <div className="mt-auto flex flex-wrap items-center gap-2">
         <a

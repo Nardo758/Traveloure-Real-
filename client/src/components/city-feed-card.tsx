@@ -3,7 +3,7 @@ import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Calendar, ExternalLink, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag, Clock } from "lucide-react";
+import { Calendar, ExternalLink, Info, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +12,7 @@ import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { normalizeGemScore } from "@/lib/gem-score";
+import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -239,6 +240,18 @@ function cardLinkProps(onActivate: () => void) {
       }
     },
   };
+}
+
+/** §4a: a passive cue that makes the card-body detail path discoverable. */
+function CompactInfoCue({ testid }: { testid: string }) {
+  return (
+    <Info
+      aria-hidden="true"
+      className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+      style={{ color: "var(--earn-muted)" }}
+      data-testid={testid}
+    />
+  );
 }
 
 // ─── Type metadata ─────────────────────────────────────────────────────────────
@@ -759,6 +772,7 @@ interface CityFeedCardGemProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" renders the
    *  tighter ~200px bento tile; "full" (default) is byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
 export function CityFeedCardGem({
@@ -773,6 +787,7 @@ export function CityFeedCardGem({
   cardPosition,
   topPick = false,
   density = "full",
+  compactActionState,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -810,6 +825,10 @@ export function CityFeedCardGem({
     suggestion?.href ??
     (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
     platformPath;
+  const compactHasBookAction =
+    compactActionState === "platform" &&
+    resolvedBookability !== "info_only" &&
+    Boolean(bookHref);
   const typeMeta = gemTypeMeta(gem.placeType);
   const gemScore = normalizeGemScore(gem.gemScore);
   const isTrending = gemScore !== null && gemScore >= 85;
@@ -1035,7 +1054,7 @@ export function CityFeedCardGem({
           aria-label={`${gem.placeName} details`}
           {...cardLinkProps(() => setSheetOpen(true))}
         >
-          {/* Compact photo band — 84px; kind gradient + Hidden gem corner tag only. */}
+          {/* §4a: the card body is the detail path; this passive cue makes it discoverable. */}
           <div
             className={cn(
               "relative overflow-hidden flex-shrink-0 flex items-center justify-center h-[84px] w-full",
@@ -1064,9 +1083,10 @@ export function CityFeedCardGem({
             >
               Hidden gem
             </span>
+            <CompactInfoCue testid={`info-cue-gem-${gem.id}`} />
             {topPick && (
               <span
-                className="absolute top-2 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
+                className="absolute top-9 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
                 data-testid={`gem-top-pick-${gem.id}`}
               >
                 Top pick
@@ -1079,7 +1099,7 @@ export function CityFeedCardGem({
             </h3>
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
             <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
-              {resolvedBookability !== "info_only" && bookHref && (
+              {compactHasBookAction && (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1096,7 +1116,7 @@ export function CityFeedCardGem({
                     }).catch(() => {});
                   }}
                 >
-                  <a href={bookHref}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
+                  <a href={bookHref ?? undefined}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
                 </Button>
               )}
               <Button
@@ -1121,7 +1141,7 @@ export function CityFeedCardGem({
                 {addLabel}
               </Button>
               {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
-              {!(resolvedBookability !== "info_only" && bookHref) && (
+              {!compactHasBookAction && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1176,9 +1196,10 @@ interface CityFeedCardEventProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardEventProps) {
+export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -1259,6 +1280,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             >
               Event
             </span>
+            <CompactInfoCue testid={`info-cue-event-${event.id ?? event.eventId}`} />
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{eventName}</h3>
@@ -1478,9 +1500,10 @@ interface CityFeedCardVendorServiceProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full" }: CityFeedCardVendorServiceProps) {
+export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
@@ -1568,6 +1591,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             >
               {tag}
             </span>
+            <CompactInfoCue testid={`info-cue-vendor-svc-${service.id}`} />
             {/* Price pill on the band (Phase 2f, §13: omitted when absent). */}
             {priceDisplay && (
               <span
@@ -1579,7 +1603,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               </span>
             )}
             {service.isFeatured && (
-              <span className="absolute top-2 right-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
+              <span className="absolute top-9 right-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
                 Featured
               </span>
             )}
@@ -1588,7 +1612,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
-              {resolvedBookability !== "info_only" && (
+              {compactActionState === "platform" && resolvedBookability !== "info_only" && (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1806,9 +1830,10 @@ interface CityFeedCardSupplyProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardSupplyProps) {
+export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -1900,6 +1925,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
             >
               {isHotel ? "Hotel" : "Activity"}
             </span>
+            <CompactInfoCue testid={`info-cue-${kind}-${item.id}`} />
             {/* Price pill on the band (Phase 2f, §13: omitted when absent). */}
             {priceText && (
               <span
