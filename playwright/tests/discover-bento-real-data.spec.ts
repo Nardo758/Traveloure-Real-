@@ -27,6 +27,10 @@ const signedInTraveler = testAccounts.travelers[0];
 test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, signedInTraveler.email, signedInTraveler.password);
+    // loginAs resolves when the post-login URL changes. Await the document
+    // itself before a test replaces that navigation with /discover/location;
+    // without this, a direct goto can intermittently abort during handoff.
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('Bandra section renders eyebrow, heading, and See-all on real data', async ({ page }) => {
@@ -77,6 +81,30 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
     await expect(anchor.getByRole('link', { name: /view profile/i })).toHaveAttribute('href', /^\/(experts|s)\//);
 
     await page.screenshot({ path: 'test-results/bento-mumbai-top-feed.png', fullPage: false });
+  });
+
+  test('Mumbai in 5 days keeps its teal Get this trip CTA', async ({ page }) => {
+    await page.goto(`${BASE_URL}/discover/location/Mumbai`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+    // This is the public Mumbai ready-made row, not a fixture stand-in. It
+    // protects the channel rule that ready-made purchase actions stay teal
+    // rather than inheriting the navy Add to trip treatment.
+    const cta = page.getByTestId('btn-view-package-earn-demo-mumbai-local-template');
+    await expect(cta).toBeVisible({ timeout: 15_000 });
+    await expect(cta).toHaveText('Get this trip');
+
+    const usesToken = async (token: '--earn-teal' | '--earn-navy') =>
+      cta.evaluate((element, cssToken) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = `var(${cssToken})`;
+        document.body.appendChild(probe);
+        const matches = getComputedStyle(element).backgroundColor === getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return matches;
+      }, token);
+
+    expect(await usesToken('--earn-teal')).toBe(true);
+    expect(await usesToken('--earn-navy')).toBe(false);
   });
 
   test('signed-in Bandra and Colaba preserve live Bento action and layout rules', async ({ page }) => {
