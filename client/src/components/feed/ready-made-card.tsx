@@ -57,10 +57,20 @@ export function FeedReadyMadeCard({
 
   // Traveler-facing Ready-Made card → the buyer detail page (2026-08-26-bento-
   // compact-density). The whole card is ONE destination: body click, source row
-  // and the `Get this trip` CTA all land on /ready-made/:id (never split between
-  // the buyer page and the expert-template view). id-resolution there is a
-  // real-data matrix row.
-  const detailHref = `/ready-made/${template.id}`;
+  // and the `Get this trip` CTA all land on /expert-templates/:id (never split
+  // between the buyer page and the expert-template view).
+  //
+  // BUGFIX (found during storefront taxonomy audit): this component only ever
+  // renders `expert_templates` rows (see the module doc above — data comes
+  // exclusively from GET /api/expert-templates). It previously linked to
+  // /ready-made/:id, which resolves the UNRELATED `ready_made_trips` table
+  // (a different product — see shared/schema.ts's Ready-Made Trips section).
+  // That id never exists there, so every click 404'd ("Trip not found"),
+  // confirmed live against the Mumbai demo listing. /ready-made/:id is the
+  // correct route ONLY for actual ready_made_trips-backed listings (see
+  // storefront.tsx's separate Ready-Made lane, and discover.tsx/experts.tsx,
+  // which fetch from /api/ready-made and correctly link there already).
+  const detailHref = `/expert-templates/${template.id}`;
   const ctaHref = detailHref;
 
   // ─── Compact density ────────────────────────────────────────────────────────
