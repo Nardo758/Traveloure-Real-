@@ -4,8 +4,10 @@
  * fallback anchor — the grid gives every ready-made col-span-2), on the family
  * grammar: photo band (gradient + tag fallback, no grey box) · title · meta ·
  * three-column mono facts row · source row · action row (View itinerary, teal).
- * The CARD is the link (/expert-templates/:id) — the teaser "More info" modal
- * is gone; the detail page carries the teaser.
+ * The CARD is the link, routed by SOURCE (a ready_made_trips row → /ready-made/:id,
+ * an expert_templates row → /expert-templates/:id — never unified; see the
+ * detailHref note below) — the teaser "More info" modal is gone; the detail page
+ * carries the teaser.
  *
  * Kept testids: wrapper `feed-card-package-${id}`, `package-rating-${id}`,
  * `package-sold-${id}`, `btn-view-package-${id}`.
@@ -15,6 +17,7 @@
  * §13: a real rating renders only when reviewCount > 0, otherwise an honest "New".
  */
 import React, { useState } from "react";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +27,7 @@ export function FeedReadyMadeCard({
   template,
   layout: _layout = "column",
   density = "full",
+  embedded = false,
 }: {
   template: any;
   /** Accepted for API compatibility; the ready-made tile is ALWAYS photo-left (2×1). */
@@ -31,6 +35,9 @@ export function FeedReadyMadeCard({
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" trims to two
    *  mono lines; "full" (default) keeps today's facts grid + source row. */
   density?: "full" | "compact";
+  /** When true, the Bento grid item owns the visual shell and this element only
+   *  owns the card's content layout and interaction semantics. */
+  embedded?: boolean;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
 
@@ -50,12 +57,21 @@ export function FeedReadyMadeCard({
     .join(" · ");
   const byline = expertName ? `by ${expertName}` : destDuration;
 
-  // Traveler-facing Ready-Made card → the buyer detail page (2026-08-26-bento-
-  // compact-density). The whole card is ONE destination: body click, source row
-  // and the `Get this trip` CTA all land on /ready-made/:id (never split between
-  // the buyer page and the expert-template view). id-resolution there is a
-  // real-data matrix row.
-  const detailHref = `/ready-made/${template.id}`;
+  // Route by SOURCE, never unified. storefront.tsx is the reference: its template
+  // lane links /expert-templates/:id and its ready-made lane /ready-made/:id — two
+  // routes, chosen by source. Phase 2e's "unify every card to /ready-made/:id" was
+  // itself the bug the marketplace audit caught: /ready-made/:id resolves the
+  // `ready_made_trips` table ONLY, so a card backed by `expert_templates` 404'd
+  // there ("Trip not found", confirmed live on the Mumbai demo). The href now
+  // follows the card's OWN source — a `ready_made_trips` row → /ready-made/:id, an
+  // `expert_templates` row → /expert-templates/:id — bringing the feed into line
+  // with what the storefront already proves. The whole card is ONE destination:
+  // body click, source row and the `Get this trip` CTA all land on that route.
+  const isReadyMadeSource =
+    template.source === "ready_made" || template.source === "ready_made_trips";
+  const detailHref = isReadyMadeSource
+    ? `/ready-made/${template.id}`
+    : `/expert-templates/${template.id}`;
   const ctaHref = detailHref;
 
   // ─── Compact density ────────────────────────────────────────────────────────
@@ -71,7 +87,9 @@ export function FeedReadyMadeCard({
       .join(" · ");
     return (
       <div
-        className="rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer"
+        className={cn(
+          embedded ? "h-full flex flex-row cursor-pointer" : "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer",
+        )}
         data-testid={`feed-card-package-${template.id}`}
         role="link"
         tabIndex={0}
@@ -94,6 +112,12 @@ export function FeedReadyMadeCard({
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
+          <Info
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+            style={{ color: "var(--earn-muted)" }}
+            data-testid={`info-cue-package-${template.id}`}
+          />
         </div>
         <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 self-start">
@@ -139,8 +163,10 @@ export function FeedReadyMadeCard({
   }
 
   return (
-    <div
-      className="rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer"
+      <div
+        className={cn(
+          embedded ? "h-full flex flex-row cursor-pointer" : "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer",
+        )}
       data-testid={`feed-card-package-${template.id}`}
       role="link"
       tabIndex={0}

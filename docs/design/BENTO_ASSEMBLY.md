@@ -98,6 +98,18 @@ Three states, decided by the item, never by position:
 
 ---
 
+## 4a. Info affordance (not a button)
+
+"More info" is never a button — a third button would crowd the two-button action row (§4) and take a color, breaking the rule that color encodes action state. The detail path is tertiary and styled as text/affordance:
+
+- **Card body opens detail.** The tile's photo + title + meta area is itself the link to the item's detail page; the two action buttons `stopPropagation`. This is the primary "more info" path and needs no separate control — just a discoverability cue: a small `ⓘ` (lucide `info`, 14px, `--earn-muted`) in the tile's top-right corner of the photo band, and `cursor:pointer` on the body.
+- **Bodiless tiles** (wanted slot, earn/concierge/add-on panels — no detail page to open) carry a **mono text link** instead: `More info →` in Geist Mono, `--earn-teal-ink`, under the meta line, same treatment as the source row — never bordered, never colored as a button.
+- Never both: a tile with a tappable body shows the `ⓘ` cue; a bodiless panel shows the mono link. One info path per tile.
+
+Color note: **green (`--earn-green`) is status-only** — `✓ In your trip`, the `Hidden gem` tag — and never appears on a button or a link. The five hues each mean one thing: coral = the section's one primary CTA, teal = platform-bookable, gold = affiliate, navy = add/secondary, green = owned/confirmed status. No sixth color, no reuse.
+
+---
+
 ## 5. Meta line grammar
 
 One mono line per compact tile, built from fragments joined by ` · `. A fragment is **dropped** when its field is null, empty, or `0`; the **label goes with its value** (never a label without a value, never a bare value without its label where the type defines one).

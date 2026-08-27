@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Plus, Sparkles } from "lucide-react";
+import { Info, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -102,6 +103,7 @@ interface CityFeedCardRecommendationProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
 // Mono face for the compact meta line — matches the earn family's per-file const.
@@ -120,6 +122,7 @@ export function CityFeedCardRecommendation({
   className,
   cardPosition,
   density = "full",
+  compactActionState,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   // Why-recommended disclosure modal — opened by the CARD itself (family
@@ -128,7 +131,10 @@ export function CityFeedCardRecommendation({
   const askExpert = useAskExpert();
   const name = resolveRecommendationName(candidate);
   const meta = recVisualMeta(candidate);
-  const isAffiliate = candidate.sourceType === "affiliate";
+  const isAffiliate =
+    density === "compact"
+      ? compactActionState === "affiliate"
+      : candidate.sourceType === "affiliate";
   const bookLabel = isAffiliate ? "Book on partner" : "Book now";
   const bookStyle = {
     background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",
@@ -359,7 +365,7 @@ export function CityFeedCardRecommendation({
           }
         }}
       >
-        {/* Compact photo band — 84px; tinted band + disclosure corner tag only. */}
+        {/* §4a: this passive icon points to the card-body disclosure path. */}
         <div className={cn("relative overflow-hidden flex-shrink-0 flex items-center justify-center h-[84px] w-full", meta.phBg, meta.phText)}>
           {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
           {!loading && photoUrl && (
@@ -380,6 +386,12 @@ export function CityFeedCardRecommendation({
             <Sparkles className="w-2.5 h-2.5" />
             {isAffiliate ? affiliateLabel : recommendedLabel}
           </span>
+          <Info
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+            style={{ color: "var(--earn-muted)" }}
+            data-testid={`info-cue-rec-${position}`}
+          />
         </div>
         <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
           <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{name}</h3>
@@ -388,11 +400,11 @@ export function CityFeedCardRecommendation({
               {metaText}
             </div>
           )}
-          <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
-            {onBook && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5 items-center mt-auto min-w-0">
+            {onBook && compactActionState !== "not-bookable" && (
               <Button
                 size="sm"
-                className="h-7 text-xs px-3"
+                className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
                 style={bookStyle}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -405,7 +417,7 @@ export function CityFeedCardRecommendation({
             )}
             <Button
               size="sm"
-              className="h-7 text-xs px-3"
+              className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
               style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -423,11 +435,11 @@ export function CityFeedCardRecommendation({
               {addLabel}
             </Button>
             {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
-            {!onBook && (
+            {(!onBook || compactActionState === "not-bookable") && (
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs px-2.5"
+                className="h-7 text-xs px-2.5 flex-1 min-w-0 whitespace-nowrap"
                 onClick={(e) => {
                   e.stopPropagation();
                   askExpert({ city, subject: name });
