@@ -393,6 +393,13 @@ export default function ExpertDetailPage() {
     const y = new Date(expert.createdAt).getFullYear();
     return Number.isFinite(y) ? y : null;
   })();
+  // Cover image (D2): the expert's own storefront cover if they set one; the hero falls
+  // back to the brand gradient when absent (honest-omit — never another expert's photo).
+  const coverImageUrl: string | null =
+    typeof expert.preferences?.storefront?.coverImageUrl === "string" &&
+    expert.preferences.storefront.coverImageUrl.trim().length > 0
+      ? expert.preferences.storefront.coverImageUrl
+      : null;
 
   // Unified offering catalogs (§13: real fields only, no invented ratings/prices).
   const serviceOfferings: UnifiedOffering[] = services.map((s: any) => ({
@@ -478,7 +485,15 @@ export default function ExpertDetailPage() {
 
           {/* Hero */}
           <section className="overflow-hidden rounded-[14px] border bg-white" style={{ borderColor: LINE, boxShadow: "0 8px 28px rgba(17,24,39,.04)" }}>
-            <div className="h-[120px] w-full" style={{ background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }} />
+            <div
+              className="h-[120px] w-full bg-cover bg-center"
+              style={
+                coverImageUrl
+                  ? { backgroundImage: `url(${JSON.stringify(coverImageUrl)})` }
+                  : { background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }
+              }
+              data-testid="expert-cover"
+            />
             <div className="grid gap-4 px-5 pb-5 sm:grid-cols-[76px_1fr] sm:items-start">
               <Avatar className="h-[76px] w-[76px] shrink-0 border-4 border-white shadow-lg" style={{ marginTop: -32 }}>
                 <AvatarImage src={expert.profileImageUrl} alt={fullName} />
