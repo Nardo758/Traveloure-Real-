@@ -914,11 +914,13 @@ function BentoGroup({
         </div>
       )}
 
-      {/* Rows are minmax(172px,auto): at least the ratified 172px, growing to fit
-          the converged family card — a tile never clips its card. A tile is ONE
-          row; only the tall lead-expert anchor spans two (rowSpan 2). Literal
-          classes only (Tailwind JIT scans source). */}
-      <div className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:auto-rows-[minmax(172px,auto)] gap-[14px]">
+      {/* §3: rows follow their content. The prior minmax(172px,auto) track
+          originated in ace946d9 and can crop an action row once a compact card
+          grows. Only the tall lead-expert anchor spans two content-sized rows. */}
+      <div
+        className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[1000px]:grid-cols-4 min-[1000px]:auto-rows-[minmax(0,auto)] gap-[14px]"
+        data-testid={nbSlug ? `bento-grid-${nbSlug}` : "bento-grid-intro"}
+      >
         {placed.map((tile) => (
           <div
             key={tile.item.id}
