@@ -24,6 +24,7 @@ export function FeedReadyMadeCard({
   template,
   layout: _layout = "column",
   density = "full",
+  embedded = false,
 }: {
   template: any;
   /** Accepted for API compatibility; the ready-made tile is ALWAYS photo-left (2×1). */
@@ -31,6 +32,9 @@ export function FeedReadyMadeCard({
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" trims to two
    *  mono lines; "full" (default) keeps today's facts grid + source row. */
   density?: "full" | "compact";
+  /** When true, the Bento grid item owns the visual shell and this element only
+   *  owns the card's content layout and interaction semantics. */
+  embedded?: boolean;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
 
@@ -71,7 +75,9 @@ export function FeedReadyMadeCard({
       .join(" · ");
     return (
       <div
-        className="rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer"
+        className={cn(
+          embedded ? "h-full flex flex-row cursor-pointer" : "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer",
+        )}
         data-testid={`feed-card-package-${template.id}`}
         role="link"
         tabIndex={0}
@@ -139,8 +145,10 @@ export function FeedReadyMadeCard({
   }
 
   return (
-    <div
-      className="rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer"
+      <div
+        className={cn(
+          embedded ? "h-full flex flex-row cursor-pointer" : "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer",
+        )}
       data-testid={`feed-card-package-${template.id}`}
       role="link"
       tabIndex={0}

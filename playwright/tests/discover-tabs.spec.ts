@@ -586,9 +586,10 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveAttribute('data-row-span', '1');
   });
 
-  test('5a. §3 rows use minmax(0, auto) and compact actions remain inside their tiles', async ({ page }) => {
+  test('5a. §3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
     for (const viewport of [
       { width: 1280, height: 900 },
+      { width: 768, height: 900 },
       { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport);
@@ -605,16 +606,16 @@ test.describe('city-feed bento — /discover/location', () => {
         const containment = await grid.locator('[data-testid^="bento-tile-"]').evaluateAll((tiles) =>
           tiles.flatMap((tile) => {
             const tileBox = tile.getBoundingClientRect();
-            return Array.from(tile.querySelectorAll("button, a")).map((action) => {
-              const actionBox = action.getBoundingClientRect();
+            return Array.from(tile.querySelectorAll("button, a, span")).map((content) => {
+              const contentBox = content.getBoundingClientRect();
               return {
                 tile: tile.getAttribute("data-testid"),
-                action: action.textContent?.trim() ?? "",
+                content: content.textContent?.trim() ?? "",
                 contained:
-                  actionBox.left >= tileBox.left - 1 &&
-                  actionBox.right <= tileBox.right + 1 &&
-                  actionBox.top >= tileBox.top - 1 &&
-                  actionBox.bottom <= tileBox.bottom + 1,
+                  contentBox.left >= tileBox.left - 1 &&
+                  contentBox.right <= tileBox.right + 1 &&
+                  contentBox.top >= tileBox.top - 1 &&
+                  contentBox.bottom <= tileBox.bottom + 1,
               };
             });
           }),
@@ -622,6 +623,18 @@ test.describe('city-feed bento — /discover/location', () => {
 
         expect(containment).not.toHaveLength(0);
         expect(containment.filter((entry) => !entry.contained)).toEqual([]);
+
+        const packageShells = await grid.locator('[data-testid^="feed-card-package-"]').evaluateAll((cards) =>
+          cards.map((card) => {
+            const tile = card.parentElement;
+            return {
+              cardBorder: getComputedStyle(card).borderTopWidth,
+              tileBorder: tile ? getComputedStyle(tile).borderTopWidth : "missing",
+            };
+          }),
+        );
+        expect(packageShells).not.toHaveLength(0);
+        expect(packageShells).toEqual(packageShells.map((shell) => ({ cardBorder: "0px", tileBorder: "1px" })));
       }
     }
   });
