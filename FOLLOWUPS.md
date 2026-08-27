@@ -256,3 +256,34 @@ documented as two-tracks-per-1×1 / anchor-four (accepted as-is — see ledger
 - **Inline-card props with no family-card home.** None found blocking during convergence; if one
   surfaces (e.g. an engine-only field on the recommendation candidate), add it additively rather
   than dropping it.
+
+### FU — Marketplace-fixes lane deferrals (audit `docs/audits/marketplace-surface-audit.md`)
+The `marketplace-fixes` lane landed the four live DISPLAY bugs (B1 avatar field-name, B2
+browse-card specialties dead fallback, R1 [PR #602], R2 verified-clean) and the two clean DISPLAY
+gaps (D1 member-since fact, D2 expert cover image); D3 (ABOUT section) was already on `main` via
+`aae09f08` on both `/experts/:id` and `/s/:handle`. The following audit rows are **filed, not
+built** — each is a separate lane:
+
+- **INTAKE — onboarding never writes `users.bio` (all 4 roles).** `/s/:handle` renders `earner.bio`
+  = `users.bio`, but onboarding writes the bio to the role form (`local_expert_forms.bio` etc.),
+  never to `users.bio`; only the post-signup profile editor fills it. So the storefront ABOUT is
+  empty for anyone who hasn't hand-edited their profile. **Fix (INTAKE lane):** have onboarding
+  mirror the role-form bio into `users.bio` (or have the storefront DTO read the role form). This
+  is the D3-note referenced in the dispatch. Also in this lane: provider onboarding has **no photo
+  intake** (profileImageUrl never captured), **no city intake** (provider `location`/`city` never
+  asked), and a **description collected-but-never-read** field. → one intake-fixes lane.
+- **SCHEMA — consultation config has no column.** The expert-detail consultation facts (duration,
+  price, format) have no backing column anywhere; the surface omits them (§13). Needs a real
+  schema decision before any display. → schema lane (decision-maker ratification required).
+- **SCHEMA — providers directory has no `?market=` / facet.** `/providers` cannot filter by market
+  or facet; there is no endpoint parameter for it. → schema/endpoint lane.
+- **DISPLAY (larger) — storefront fee-attribution sidebar.** Blocked on a DTO field that does not
+  exist yet (the fee breakdown is not in the storefront payload). → deferred until the DTO carries
+  it; do not derive a fee client-side (§8/§18).
+- **DISPLAY (larger) — card-family grammar conformance.** A sweep to bring every marketplace card
+  onto one grammar (price pill, meta line, source link) is its own lane; not mechanical.
+- **LATENT BUG — `trip_planner` → `travel_expert` label mapping.** There is no stored `trip_planner`
+  role (the "trip planner" is stored as `travel_expert`). Any code that emits or matches the literal
+  `trip_planner` falls through `ROLE_LABELS` to the generic `"Expert"` label. Audit-flagged as a
+  latent bug: reconcile all `trip_planner` literals to `travel_expert`, or add an explicit
+  `ROLE_LABELS["trip_planner"]` alias. → small correctness lane.
