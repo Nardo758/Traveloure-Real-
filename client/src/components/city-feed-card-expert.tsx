@@ -126,15 +126,14 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
           <div className="flex gap-1.5 mt-auto pt-0.5">
             <Button
               size="sm"
+              asChild
               className="flex-1 h-7 text-xs"
               style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = profileHref;
-              }}
               data-testid={`btn-contact-expert-${expert.id}`}
             >
-              View {expert.firstName || "Expert"}'s profile
+              <a href={profileHref} onClick={(e) => e.stopPropagation()}>
+                View profile
+              </a>
             </Button>
             <Button
               size="sm"

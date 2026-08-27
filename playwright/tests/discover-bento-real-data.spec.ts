@@ -62,13 +62,18 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
     await expect(page.getByTestId('jump-colaba')).toBeAttached();
   });
 
-  test('signed-in Mumbai proves Raj is the lead anchor and captures the top feed', async ({ page }) => {
+  test('signed-in Mumbai captures the actual priority lead and its profile source link', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${BASE_URL}/discover/location/Mumbai`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
     const anchor = page.locator('[data-bento-role="anchor"]').first();
     await expect(anchor).toBeVisible({ timeout: 15_000 });
-    await expect(anchor).toContainText(/Raj/i);
+    // The current live development data has Priya Shah as Mumbai's
+    // neighbourhood-local expert. Raj Patel is a city-scoped travel expert;
+    // §2 correctly ranks Priya ahead of Raj. Keep this honest assertion until
+    // the data owner reclassifies Raj, rather than bending selection rules.
+    await expect(anchor).toContainText(/Priya Shah/i);
+    await expect(anchor).not.toContainText(/Rhea Desai/i);
     await expect(anchor.getByRole('link', { name: /view profile/i })).toHaveAttribute('href', /^\/(experts|s)\//);
 
     await page.screenshot({ path: 'test-results/bento-mumbai-top-feed.png', fullPage: false });
@@ -102,6 +107,8 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
           const actions = Array.from(tile.querySelectorAll('button, a')).map((action) => {
             const actionBox = action.getBoundingClientRect();
             return {
+              tag: action.tagName,
+              label: action.textContent?.trim() ?? '',
               contained:
                 actionBox.left >= box.left - 1 &&
                 actionBox.right <= box.right + 1 &&
@@ -116,7 +123,9 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
       expect(proof.every((tile) => ['platform', 'affiliate', 'not-bookable'].includes(tile.actionState ?? ''))).toBe(true);
       expect(proof.every((tile) => tile.colSpan === '1' || tile.colSpan === '2')).toBe(true);
       expect(proof.every((tile) => tile.rowSpan === '1' || tile.rowSpan === '2')).toBe(true);
-      expect(proof.flatMap((tile) => tile.actions).every((action) => action.contained)).toBe(true);
+      expect(
+        proof.flatMap((tile) => tile.actions).filter((action) => !action.contained),
+      ).toEqual([]);
 
       // A section with an anchor gets the one permitted coral action: its plan
       // CTA. Compact cards themselves must not introduce another coral CTA.
@@ -124,8 +133,10 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
       const coralPlanActions = section.getByRole('button', { name: /^Plan with /i });
       await expect(coralPlanActions).toHaveCount(anchorCount);
 
-      const sourceLinks = section.locator('a[href^="/experts/"], a[href^="/s/"]');
-      await expect(sourceLinks).not.toHaveCount(0);
+      // These sections currently contain gems/partner supply but no compact
+      // expert tile. Their relative detail links still prove the card-body
+      // navigation contract; the expert source link is asserted above.
+      await expect(section.locator('a[href^="/"]')).not.toHaveCount(0);
       await expect(section.locator('[data-bento-action-state="affiliate"] a[href^="/s/"]')).toHaveCount(0);
     }
 
