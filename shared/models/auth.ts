@@ -106,6 +106,12 @@ export const users = pgTable("users", {
   // Migration 223: opt-out flag for booking-alert emails. Default true = send alerts. Experts
   // can disable this from Settings → Notifications so they rely on in-app notifications only.
   emailBookingAlerts: boolean("email_booking_alerts").default(true),
+  // Plus occasions lane (ledger 2026-08-27-plus-is-delivery, migration 260): the member's
+  // home city — a launch/operating-market city string. In resident mode the scheduled occasion
+  // draft is built from THIS city's own gems/services, not a travel destination. Nullable = not
+  // set; the occasion-drafts scheduler skips a member with no home city (never errors). No DB
+  // CHECK — validated app-side against the market list, not the database (publish-trap posture).
+  homeCity: varchar("home_city", { length: 120 }),
 }, (table) => [
   index("users_role_idx").on(table.role),
   // Migrations 102 + 105: partial indexes for soft-delete and suspension fast-paths.
