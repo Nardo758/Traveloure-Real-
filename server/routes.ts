@@ -4644,7 +4644,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // PATCH /api/expert/photo — Save the expert's profile photo.
+  // PATCH /api/expert/photo — the SHARED earner profile-photo rail (intake-fixes C3).
+  // Deliberately isAuthenticated-only, NOT role-gated: it writes the caller's own
+  // users.profileImageUrl and nothing else, so expert AND provider profile editors both
+  // reuse it (expert/profile.tsx, provider/profile.tsx). The "expert" in the path is
+  // historical; do not fork a parallel provider endpoint.
   // Accepts a base64 data URL; server-side validation of type + decoded size.
   app.patch("/api/expert/photo", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
