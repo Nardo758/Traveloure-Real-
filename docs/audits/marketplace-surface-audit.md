@@ -198,3 +198,23 @@ The only page rendering visibly different chrome per role is `storefront.tsx` (`
 
 ### Verification note
 R1, R2, the avatar bug, the specialties bug, and the bio-intake mismatch were each spot-verified against source during assembly (`[verified]` above). The remaining rows are agent-reported with the cited file:line; a lane picking one up should re-open the citation before building.
+
+## Part 6 — Post-fix verification appendix (`verified@f4cf0285`)
+
+The `[verified]` rows above were re-opened against `main` at `f4cf0285` (post-#602, post-#603) and
+proven closed on **real dev records** — the fixed field rendering in a live browser session against
+the running dev server, not code-read alone. Method per row: seed the real column on a real
+`users`/`local_expert_forms`/`expert_specializations` row, load the real page, assert the render.
+
+| Finding | Fixed by | Proof (real record, live page) | Status |
+|---|---|---|---|
+| **R1** feed ready-made card 404 (`Get this trip` → wrong resolver) | #602 (`0a424c11`), route-by-source | `discover-tabs.spec.ts` test 9 asserts **both** routes per source (`ready_made` → `/ready-made/:id`, `expert_templates` → `/expert-templates/:id`); `discover-tabs-smoke` green on the #603 head (`b3ed7e33`, content-identical to `f4cf0285`) | **CLOSED** |
+| **B1** avatar always initials | #603 `e0a2f4e8` | Seeded `users.profile_image_url` on a real expert (Maria Santos, `a877da08…`) → `/experts/:id` mounts the avatar `<img>` with that exact src. (Note: Radix `AvatarImage` mounts the `<img>` only after the image *loads*, so a network-blocked URL still shows initials — that is image-load fallback, not the field-name bug.) | **CLOSED** |
+| **B2** browse-card specialties always empty | #603 `beffbffe` | Real B2-shaped record (Kenji, `7a359438…`): `users.specialties = []`, two `expert_specializations` rows → `/experts` card renders "Tea Ceremony" / "Temple Walks" chips. Under the old `\|\|` code the truthy `[]` made these chips unreachable. **Precision note:** the fallback's source is the `expert_specializations` **table** (`getExpertSpecializations` → top-level DTO `specializations`), not `local_expert_forms.specializations` — Part 2's row named the field generically. | **CLOSED** |
+| **D1** member-since omitted | #603 `b7ce365c` | Real `users.created_at` (2026-08-23) → `/experts/:id` facts row renders "2026 · member since" (`data-testid="fact-member-since"`) | **CLOSED** |
+| **D2** cover image never rendered | #603 `6458cee0` | Seeded `preferences.storefront.coverImageUrl` on the same real row → `/experts/:id` cover band carries `background-image: url(<seeded url>)` (`data-testid="expert-cover"`) | **CLOSED** |
+| **R2** `/providers/:handle` client dead links | no change needed | Re-confirmed at `f4cf0285`: no client-built `/providers/:handle` hrefs exist (both grep hits are admin API endpoints; directory links `/s/:handle`) | **CLEAN** (unchanged) |
+| **D3** ABOUT section | already on `main` (`aae09f08`) | `expert-about` / `storefront-about` sections present on both surfaces, honest-omit gated | **CLOSED** (pre-existing) |
+
+Open rows are unchanged: every INTAKE/SCHEMA/larger-DISPLAY row in Part 5 remains open and is filed
+in `FOLLOWUPS.md` ("Marketplace-fixes lane deferrals") with its lane class.
