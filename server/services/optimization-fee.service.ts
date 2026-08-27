@@ -17,6 +17,10 @@ import { db } from "../db";
 import { optimizationFees, feeBands, coordinationFeeCredits } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
 import { logger } from "../infrastructure/logger";
+import {
+  COORDINATION_FLOOR_BAND,
+  COORDINATION_PERCENT_BAND,
+} from "./fee-band-requirements";
 
 // 3.0.1b: Fail-loud resolver. If the DB is missing both the event-type row AND
 // the tier-level default, throw instead of silently serving a wrong fallback.
@@ -188,12 +192,12 @@ async function resolveCoordinationParams(): Promise<{ floorCents: number; percen
     const [floorRow] = await db
       .select({ defaultRate: feeBands.defaultRate })
       .from(feeBands)
-      .where(and(eq(feeBands.bandKey, "coordination_floor"), eq(feeBands.isActive, true)))
+      .where(and(eq(feeBands.bandKey, COORDINATION_FLOOR_BAND), eq(feeBands.isActive, true)))
       .limit(1);
     const [percentRow] = await db
       .select({ defaultRate: feeBands.defaultRate })
       .from(feeBands)
-      .where(and(eq(feeBands.bandKey, "coordination_percent"), eq(feeBands.isActive, true)))
+      .where(and(eq(feeBands.bandKey, COORDINATION_PERCENT_BAND), eq(feeBands.isActive, true)))
       .limit(1);
     // Honor a present, valid, NON-NEGATIVE row — including an explicit 0 (an admin
     // may genuinely want a $0 floor or 0% percent). Only fall back to the code

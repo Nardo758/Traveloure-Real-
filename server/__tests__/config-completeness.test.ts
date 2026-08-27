@@ -3,6 +3,11 @@ import { db } from "../db";
 import { optimizationFees } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { getBand } from "../services/commission";
+import {
+  OPTIMIZATION_COMPLEXITY_TIERS,
+  OPTIMIZATION_EVENT_TYPES,
+  RESOLVER_FEE_BAND_REQUIREMENTS,
+} from "../services/fee-band-requirements";
 
 /**
  * 3.0.1b — Config-completeness test.
@@ -16,13 +21,7 @@ import { getBand } from "../services/commission";
 
 describe("config completeness", () => {
   it("all required optimization_fees rows are present", async () => {
-    const requiredEventTypes = [
-      "vacation", "adventure", "honeymoon", "anniversary", // Trip @ $5.99
-      "proposal", "birthday",                              // Experience @ $5.99
-      "wedding", "corporate",                              // Event @ $19.99
-    ];
-
-    for (const eventType of requiredEventTypes) {
+    for (const eventType of OPTIMIZATION_EVENT_TYPES) {
       const [row] = await db
         .select({ priceCents: optimizationFees.priceCents, isActive: optimizationFees.isActive })
         .from(optimizationFees)
@@ -35,9 +34,7 @@ describe("config completeness", () => {
   });
 
   it("all required tier-level defaults are present", async () => {
-    const requiredTiers = ["simple", "standard", "complex"];
-
-    for (const tier of requiredTiers) {
+    for (const tier of OPTIMIZATION_COMPLEXITY_TIERS) {
       const [row] = await db
         .select({ priceCents: optimizationFees.priceCents, isActive: optimizationFees.isActive })
         .from(optimizationFees)
@@ -50,19 +47,13 @@ describe("config completeness", () => {
   });
 
   it("all required fee_bands are present and active", async () => {
-    // beta_flat is intentionally NOT here: migration 178 (fee-ledger Phase 1A,
-    // ruling D2, 2026-08-06) deactivates it, and getBand() returns null for
-    // inactive bands by design.
-    const requiredBands = [
-      "expert_standard",
-      "expert_new",
-      "expert_concierge_booking",
-    ];
-
-    for (const bandKey of requiredBands) {
-      const band = await getBand(bandKey);
-      expect(band, `bandKey=${bandKey} must be seeded and active`).toBeDefined();
-      expect(band!.rate, `bandKey=${bandKey} must have a positive rate`).toBeGreaterThan(0);
+    for (const requirement of RESOLVER_FEE_BAND_REQUIREMENTS.filter((item) => item.required)) {
+      const band = await getBand(requirement.bandKey);
+      expect(band, `bandKey=${requirement.bandKey} must be seeded and active`).toBeDefined();
+      expect(
+        band!.rateType,
+        `bandKey=${requirement.bandKey} must use rate_type=${requirement.expectedType}`,
+      ).toBe(requirement.expectedType);
     }
   });
 

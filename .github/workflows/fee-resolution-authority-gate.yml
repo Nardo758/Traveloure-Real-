@@ -95,8 +95,36 @@ jobs:
           # No authenticated routes here — the pins call the resolver directly.
           seed-ci-users: 'false'
 
+      # Read-only contract gate. The manifest is shared by the resolvers and this
+      # check also derives category-band dependencies from the migrated database,
+      # so a missing or mistyped row fails before a pricing/booking request can
+      # expose it. It never overwrites admin-configured values.
+      - name: Resolver configuration completeness
+        run: npx tsx scripts/verify-fee-configuration-completeness.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          NODE_ENV: test
+          ALLOW_TEST_ACCOUNTS: '1'
+
       - name: Resolver authority pins
         run: npx tsx --test server/__tests__/fee-resolution-authority.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          NODE_ENV: test
+          ALLOW_TEST_ACCOUNTS: '1'
+
+      # Migration 033 was recorded in production while its four provider-band rows were absent.
+      # This runs both the fresh-schema / existing-admin-value reconciliation proof and the
+      # resolver-level pricing assertion, so a future absent seed cannot wait for a user-facing
+      # pricing request or provider booking to reveal itself.
+      - name: Provider band reconciliation and pricing resolver pins
+        run: |
+          npx tsx scripts/verify-provider-fee-bands-reconcile-convergence.ts
+          npx tsx --test server/__tests__/pricing-bundle.db.test.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production

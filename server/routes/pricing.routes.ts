@@ -18,6 +18,9 @@ import {
   requireCountBand,
   CONCIERGE_AI_TASK_BAND,
   CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,
+  PROVIDER_LIMITED_BAND,
+  PROVIDER_MODERATE_BAND,
+  TRAVELER_SERVICE_FEE_BAND,
   PROVIDER_PRO_BAND_STEP,
   PROVIDER_RAILS_BAND,
 } from "../services/fee-resolution.service";
@@ -27,8 +30,8 @@ const router = Router();
 
 // The approved one-step Pro rate ladder (limited → moderate). Narrative-named
 // per the ratified pricing map; the live band keys are unchanged.
-const PRO_RATE_STANDARD_BAND = "limited";
-const PRO_RATE_STEPPED_BAND = "moderate";
+const PRO_RATE_STANDARD_BAND = PROVIDER_LIMITED_BAND;
+const PRO_RATE_STEPPED_BAND = PROVIDER_MODERATE_BAND;
 
 /** Exported directly so tests can invoke it without standing up the full app/auth stack. */
 export const getPricingHandler = async (_req: any, res: any) => {
@@ -49,7 +52,7 @@ export const getPricingHandler = async (_req: any, res: any) => {
       proBandStepBand,
       optimizerRun,
     ] = await Promise.all([
-      requireBand("traveler_service_fee"),
+      requireBand(TRAVELER_SERVICE_FEE_BAND),
       requireFlatCentsBand(CONCIERGE_AI_TASK_BAND),
       requireBandType(CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND, "percent"),
       requireBand(PRO_RATE_STANDARD_BAND),
