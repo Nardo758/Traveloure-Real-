@@ -571,6 +571,23 @@ export default function ExpertDetailPage() {
             </div>
           </section>
 
+          {/* About — the bio promoted into its own labeled section below the hero, above
+              Offerings, so a trust-scanning visitor can find "who is this person" without
+              hunting through the hero card. The hero keeps its own bio line as the one-line
+              hook; this is the fuller story (same text today — same treatment across local
+              expert profiles, trip planner profiles, and the provider storefront). Honest-
+              omit: the fallback copy above (`bio`) always yields a real string today, but
+              this section still guards on the raw source field so it degrades to nothing if
+              that ever changes to allow a genuinely empty bio. */}
+          {expert.expertForm?.bio && (
+            <section className="mt-6 rounded-[14px] border bg-white px-6 py-5" style={{ borderColor: LINE }} data-testid="expert-about">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}>
+                About
+              </p>
+              <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: INK }}>{bio}</p>
+            </section>
+          )}
+
           {/* Body — open-card two-grid (§3.9): content panels on the left, the sticky
               PLAN IT FOR ME panel on the right (facts now live in the hero, so the old
               summary strip is retired). */}
