@@ -32,6 +32,7 @@ const Vendors = lazy(() => import("@/pages/vendors"));
 const ExecutiveAssistant = lazy(() => import("@/pages/executive-assistant"));
 const HowItWorks = lazy(() => import("@/pages/how-it-works"));
 const Pricing = lazy(() => import("@/pages/pricing"));
+const PlusOccasions = lazy(() => import("@/pages/plus-occasions"));
 const About = lazy(() => import("@/pages/about"));
 const EarnPage = lazy(() => import("@/pages/earn"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -503,6 +504,9 @@ function Router() {
       </Route>
       <Route path="/inbox">
         {() => <ProtectedRoute component={InboxPage} />}
+      </Route>
+      <Route path="/plus/occasions">
+        {() => <Layout><ProtectedRoute component={PlusOccasions} /></Layout>}
       </Route>
       <Route path="/contracts/:id">
         <PageErrorBoundary fallbackHeading="Contract Not Found">
