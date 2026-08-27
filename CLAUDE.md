@@ -151,6 +151,25 @@ This document captures architectural decisions to maintain consistency across co
     id of ANY shape, so a collision is a CI failure rather than a manual renumber. Cite old rulings by
     number and new ones by slug; both are permanent.
 
+26. **Plus is DELIVERY, and does not go on sale until it delivers (decision-maker ratified Aug 27, 2026 —
+    ledger `2026-08-27-plus-is-delivery`, `2026-08-27-plan-memberships`; migration 260).** Plus's product is
+    the **scheduled occasion draft**: 14 days before each occasion a member registers (`occasions`), an
+    idempotent scheduler builds a plan from the member's **home city** (`users.home_city`) on the EXISTING AI
+    rail — an ordinary trip with `origin:'ai'`, `in_planning` items (`saveGeneratedItinerarySnapshot`), **not**
+    a new artifact type, reusing the AI-Concierge task, **not** a new generator — and sends ONE reminder email
+    (Resend outbox). Idempotency is the `occasion_drafts` ledger (dedupe on `(occasion_id, cycle_key)` — the
+    concrete occurrence date, correct for any recurrence; §15 CLAIM→generate→PROMOTE). Because Autoscale holds
+    no in-process cron, the **authoritative runner is an internal endpoint** (`POST /internal/run-occasion-drafts`,
+    `INTERNAL_JOB_SECRET`) fired by a daily external trigger; the in-process timer is defense-in-depth only.
+    Entitlement is **`plan_memberships`** — the ONE user-level record for the recurring plans (Plus
+    `plus_annual` + Pro `pro_monthly`; `source ∈ {stripe, manual, beta}`), READ here (`isActivePlus`) and
+    WRITTEN later by the separate Plus-**checkout** lane from the Stripe subscription webhook (it populates,
+    never redefines). **Trip Pass stays per-trip (`trip_entitlements`), never in `plan_memberships`.**
+    **`PLUS_SALES_ENABLED` (default off) is this lane's gate:** the `/pricing` Join-Plus CTA reads it (public
+    flag on `/api/pricing`) and shows coming-soon until it is on. Flip it on ONLY once a draft fires
+    end-to-end AND the home market is stocked — a thin draft in an unstocked market is honest (§13, a seed-lane
+    signal), not a bug to hide. Checkout (Stripe annual) is a SEPARATE lane: this one delivers, that one collects.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
