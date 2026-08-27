@@ -247,7 +247,11 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
     || expert.verified === true;
   const superExpert = expert.superExpert || false;
 
-  const specialties = expert.specialties || expert.specializations?.slice(0, 2) || [];
+  // Empty array is TRUTHY in JS, so `expert.specialties || …` returned the empty
+  // `users.specialties` (default []) and the `specializations` fallback was dead
+  // code — the card never showed chips. Treat an empty array as absent so the
+  // populated `local_expert_forms.specializations` fallback actually fires (audit B2).
+  const specialties = (expert.specialties?.length ? expert.specialties : expert.specializations)?.slice(0, 2) || [];
   const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
   const showNeighbourhoods = neighbourhoods.length > 0;
 
