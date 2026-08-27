@@ -45,6 +45,50 @@ function isExpertItem(item: FeedItem): boolean {
 }
 
 /**
+ * Eligibility is deliberately separate from prioritization: destination-feed
+ * anchors can only be local experts or trip planners. Event planners remain
+ * ordinary expert tiles, while provider items are never expert feed items.
+ */
+export function isBentoAnchorEligible(item: FeedItem): boolean {
+  if (!isExpertItem(item)) return false;
+  const role = expertRole(item.data ?? {});
+  return (
+    role === "" ||
+    role === "local-expert" ||
+    role === "expert" ||
+    role === "travel-expert" ||
+    role === "trip-planner" ||
+    role === "planner"
+  );
+}
+
+function cityMatches(data: any, city: string): boolean {
+  const cityTokens = [
+    ...fieldValues(data, ["city", "location", "destination"]),
+    ...fieldValues(data?.expertForm, ["city", "location", "destination"]),
+  ];
+  return cityTokens.length === 0 || cityTokens.includes(normalizeToken(city));
+}
+
+function rankValue(value: unknown): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function anchorQuality(item: FeedItem): { rating: number; offerings: number } {
+  const data = item.data ?? {};
+  const selectedServices = Array.isArray(data.selectedServices)
+    ? data.selectedServices.length
+    : Array.isArray(data.expertForm?.selectedServices)
+      ? data.expertForm.selectedServices.length
+      : 0;
+  return {
+    rating: rankValue(data.averageRating ?? data.rating ?? data.expertForm?.averageRating),
+    offerings: rankValue(data.offeringsCount ?? data.packagesCount ?? selectedServices),
+  };
+}
+
+/**
  * Resolve an expert's bento anchor priority without changing feed membership or
  * order. The expert endpoint is already city-scoped, so a local expert with no
  * explicit city field is still a city-local candidate.
@@ -54,11 +98,10 @@ export function bentoAnchorPriority(
   neighbourhood: any | null,
   city: string,
 ): BentoAnchorPriority | null {
-  if (!isExpertItem(item)) return null;
+  if (!isBentoAnchorEligible(item)) return null;
 
   const data = item.data ?? {};
   const role = expertRole(data);
-  if (role === "event-planner" || role === "eventplanner") return null;
 
   const localRole = role === "local-expert" || role === "expert" || role === "";
   if (localRole) {
@@ -80,17 +123,16 @@ export function bentoAnchorPriority(
       return "neighborhood-local";
     }
 
-    const cityTokens = [
-      ...fieldValues(data, ["city", "location", "destination"]),
-      ...fieldValues(data?.expertForm, ["city", "location", "destination"]),
-    ];
-    if (cityTokens.length === 0 || cityTokens.includes(normalizeToken(city))) {
+    if (cityMatches(data, city)) {
       return "city-local";
     }
     return null;
   }
 
-  if (role === "travel-expert" || role === "trip-planner" || role === "planner") {
+  if (
+    (role === "travel-expert" || role === "trip-planner" || role === "planner") &&
+    cityMatches(data, city)
+  ) {
     return "planner";
   }
 
@@ -115,11 +157,24 @@ export function selectBentoAnchorIndex(
     planner: 2,
   };
 
+  let selectedQuality = { rating: Number.NEGATIVE_INFINITY, offerings: Number.NEGATIVE_INFINITY };
+
   tagged.forEach((entry, index) => {
     const candidatePriority = bentoAnchorPriority(entry.item, neighbourhood, city);
-    if (candidatePriority !== null && priority[candidatePriority] < selectedPriority) {
+    if (candidatePriority === null) return;
+
+    const candidateRank = priority[candidatePriority];
+    const candidateQuality = anchorQuality(entry.item);
+    const outranksSelection =
+      candidateRank < selectedPriority ||
+      (candidateRank === selectedPriority &&
+        (candidateQuality.rating > selectedQuality.rating ||
+          (candidateQuality.rating === selectedQuality.rating &&
+            candidateQuality.offerings > selectedQuality.offerings)));
+    if (outranksSelection) {
       selectedIndex = index;
-      selectedPriority = priority[candidatePriority];
+      selectedPriority = candidateRank;
+      selectedQuality = candidateQuality;
     }
   });
 
