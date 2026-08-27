@@ -82,3 +82,17 @@ uri = "file://reports/rohit-daily-report-2026-08-23.md"
 type = "text"
 title = "Rohit Daily Work Report — August 23, 2026"
 description = "Repository-based report covering work completed, defects fixed, and tests or verification recorded for yesterday."
+
+[[outputs]]
+id = "s-HTb_vcNErIa0R6ZpB95"
+uri = "file://screenshots/bento-mumbai-top-feed.png"
+type = "image"
+title = "Signed-in Mumbai top feed"
+description = "Live development capture of the Mumbai destination feed after the Bento regression fixes."
+
+[[outputs]]
+id = "bCGOAmEPxD5Hermy5rk00"
+uri = "file://screenshots/bento-colaba.png"
+type = "image"
+title = "Signed-in Colaba Bento section"
+description = "Live development capture of the Colaba section with content-sized rows and contained compact actions."
