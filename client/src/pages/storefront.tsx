@@ -252,8 +252,10 @@ function StorefrontOfferingCard({
             )}
           </span>
         </div>
-        <h3 className="mt-1 font-semibold leading-snug">{title}</h3>
-        {meta && <p className="text-[11.5px] leading-snug text-[color:var(--earn-muted)]">{meta}</p>}
+        {/* line-clamp keeps card heights aligned across a row — an unclamped long title
+            previously made one card in a grid row taller than its siblings. */}
+        <h3 className="mt-1 line-clamp-2 font-semibold leading-snug">{title}</h3>
+        {meta && <p className="line-clamp-1 text-[11.5px] leading-snug text-[color:var(--earn-muted)]">{meta}</p>}
         {chips.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1.5">
             {chips.map((c) => (
@@ -544,15 +546,28 @@ export default function StorefrontPage() {
               </div>
             </div>
 
-            <div className="flex gap-2 sm:pt-4 col-span-2 sm:col-span-1">
-              {!isOwnStorefront && (
-                <Button className="flex-1 sm:flex-none" onClick={messageEarner} data-testid="button-message-storefront">
-                  <MessageCircle className="w-4 h-4 mr-1.5" />
-                  Message @{earner.handle}
+            {/* Message/Share actions — stacked full-width on mobile so a long "Message @handle"
+                label never gets squeezed into an equal-width flex-1 half (which wrapped its
+                text while "Share" stayed single-line, leaving the two buttons visibly
+                mismatched in height). From `sm:` up they sit side by side at their own
+                natural width in the grid's `auto` column. On your own storefront there was
+                previously no way back to editing from here — a lone "Share" button — so an
+                "Edit profile" action replaces "Message @you" instead. */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:pt-4 col-span-2 sm:col-span-1">
+              {isOwnStorefront ? (
+                <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full sm:w-auto">
+                  <Button className="w-full sm:w-auto" data-testid="button-edit-storefront">
+                    Edit profile
+                  </Button>
+                </Link>
+              ) : (
+                <Button className="w-full sm:w-auto" onClick={messageEarner} data-testid="button-message-storefront">
+                  <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
+                  <span className="truncate">Message @{earner.handle}</span>
                 </Button>
               )}
-              <Button variant="outline" className="flex-1 sm:flex-none" onClick={copyLink} data-testid="button-share-storefront">
-                <Share2 className="w-4 h-4 mr-1.5" />
+              <Button variant="outline" className="w-full sm:w-auto" onClick={copyLink} data-testid="button-share-storefront">
+                <Share2 className="w-4 h-4 mr-1.5 shrink-0" />
                 Share
               </Button>
             </div>
