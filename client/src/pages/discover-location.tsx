@@ -662,7 +662,14 @@ function BentoTile({
     case "earn-card":
       return <FeedEarnCard city={city} density="compact" />;
     case "package":
-      return <FeedReadyMadeCard template={item.data} layout={isMarquee ? "row" : "column"} density="compact" />;
+      return (
+        <FeedReadyMadeCard
+          template={item.data}
+          layout={isMarquee ? "row" : "column"}
+          density="compact"
+          embedded
+        />
+      );
     case "external-stub":
       return <CityFeedCardExternalStub stub={item.data} city={city} density="compact" />;
     default:
@@ -926,6 +933,7 @@ function BentoGroup({
             key={tile.item.id}
             className={cn(
               "h-full min-w-0 overflow-hidden",
+              tile.item.kind === "package" && "rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md",
               tile.rowSpan === 2 && "min-[900px]:row-span-2", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
               COL_SPAN_CLASS[tile.colSpan] ?? "",
             )}
