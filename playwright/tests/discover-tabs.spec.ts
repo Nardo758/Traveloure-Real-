@@ -586,6 +586,39 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveAttribute('data-row-span', '1');
   });
 
+  test('5a. §3 rows use minmax(0, auto) and compact actions remain inside their tiles', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+
+    for (const slug of ['gion', 'arashiyama']) {
+      const grid = page.getByTestId(`bento-grid-${slug}`);
+      await expect(grid).toBeVisible();
+      await expect
+        .poll(() => grid.evaluate((element) => getComputedStyle(element).gridAutoRows))
+        .toMatch(/minmax\(0px,\s*auto\)/);
+
+      const containment = await grid.locator('[data-testid^="bento-tile-"]').evaluateAll((tiles) =>
+        tiles.flatMap((tile) => {
+          const tileBox = tile.getBoundingClientRect();
+          return Array.from(tile.querySelectorAll("button, a")).map((action) => {
+            const actionBox = action.getBoundingClientRect();
+            return {
+              tile: tile.getAttribute("data-testid"),
+              action: action.textContent?.trim() ?? "",
+              contained:
+                actionBox.left >= tileBox.left - 1 &&
+                actionBox.right <= tileBox.right + 1 &&
+                actionBox.top >= tileBox.top - 1 &&
+                actionBox.bottom <= tileBox.bottom + 1,
+            };
+          });
+        }),
+      );
+
+      expect(containment).not.toHaveLength(0);
+      expect(containment.filter((entry) => !entry.contained)).toEqual([]);
+    }
+  });
+
   test('6. preserved testids + Phase 2c/2d surface — single rendering, chip rail, jump list', async ({ page }) => {
     await expect(page.getByTestId('section-hero')).toBeVisible();
     // Phase 2d: no ← Back and no stats row — the rail/browser cover back, and
