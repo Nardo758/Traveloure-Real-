@@ -1285,4 +1285,9 @@ export const MIGRATION_FILES = [
   // on existing rows / no default backfill → no publish-time push trap. All declared in
   // shared/schema.ts (publish-trap rule).
   "260_plus_occasions.sql",
+  // 261: additive-nullable service_provider_forms.city (intake-fixes C4; renumbered from 260
+  // after #605 claimed it) — the discrete city the provider intake already collects; read by
+  // the storefront's resolveEarnerLocation provider fallback. Declared in shared/schema.ts
+  // (deploy-push rule); no CHECK, no backfill.
+  "261_service_provider_forms_city.sql",
 ] as const;

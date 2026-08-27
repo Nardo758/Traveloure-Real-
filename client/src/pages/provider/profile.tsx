@@ -18,7 +18,7 @@ import {
   Pencil,
   Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -46,10 +46,12 @@ import {
 // those only alongside a real backing endpoint. The Phase-3 note's "none are real columns"
 // overreached for ONE control: `users.bio` (the About text below) IS a real column, written
 // by the mounted PATCH /api/profile (server/replit_integrations/auth/routes.ts
-// updateProfileSchema) — so Edit About is WIRED to that rail. The avatar likewise now shows
+// updateProfileSchema) — so Edit About is WIRED to that rail. The avatar likewise shows
 // the real profileImageUrl when set and computes real initials (shared lib/initials.ts, the
-// sidebar's logic) instead of the old hardcoded "GE"; there is still no image-UPLOAD rail,
-// so no "Change logo" button.
+// sidebar's logic) instead of the old hardcoded "GE". Intake-fixes C3 (ratified Aug 27
+// 2026): the photo-UPLOAD rail now exists here too — PATCH /api/expert/photo is the SHARED
+// earner photo rail (isAuthenticated, not role-gated; validates + writes
+// users.profileImageUrl), so the provider camera button reuses it verbatim, no fork.
 export default function ProviderProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -77,6 +79,54 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
       });
     },
   });
+
+  // Intake-fixes C3: profile photo upload through the SHARED earner photo rail
+  // (PATCH /api/expert/photo — isAuthenticated, not role-gated; server-validates
+  // type + decoded size and writes users.profileImageUrl). Mirrors the expert
+  // profile page's uploader (expert/profile.tsx) — same rail, no fork.
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (imageData: string) =>
+      apiRequest("PATCH", "/api/expert/photo", { imageData }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Profile photo updated" });
+    },
+    onError: (error: any) => {
+      let message = "Failed to upload photo";
+      try {
+        const raw: string = error?.message ?? "";
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart !== -1) {
+          const body = JSON.parse(raw.slice(jsonStart));
+          if (body?.message) message = body.message;
+        }
+      } catch {}
+      toast({ title: message, variant: "destructive" });
+    },
+  });
+
+  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const allowed = ["image/png", "image/jpeg"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Photo must be a PNG or JPEG image", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Photo must be smaller than 2 MB", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        uploadPhotoMutation.mutate(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Ruling 85: the provider's account-level office / place-of-business location. GET returns the
   // provider form (or null); the ONLY fields this card touches are `officeLocation` (the confirmed
@@ -148,14 +198,31 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-6">
               <div className="relative">
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={handlePhotoSelected}
+                  data-testid="input-provider-photo-file"
+                />
                 <Avatar className="w-24 h-24">
                   {user?.profileImageUrl && <AvatarImage src={user.profileImageUrl} alt={businessInfo.name} />}
                   <AvatarFallback className="bg-primary/10 text-primary text-2xl" data-testid="text-avatar-initials">
                     {initialsFromUser(user)}
                   </AvatarFallback>
                 </Avatar>
-                {/* No image-UPLOAD rail exists — "Change logo" stays removed rather than left
-                    dead. profileImageUrl (a real users column) is displayed when set. */}
+                {/* Intake-fixes C3: upload goes through the SHARED earner photo rail
+                    (PATCH /api/expert/photo → users.profileImageUrl) — see header comment. */}
+                <Button
+                  size="icon"
+                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-primary"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
+                  data-testid="button-provider-change-photo"
+                >
+                  <Camera className="w-4 h-4" />
+                </Button>
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">

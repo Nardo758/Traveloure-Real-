@@ -207,7 +207,11 @@ export default function ServicesProviderPage() {
         email: formData.email,
         mobile: formData.phone,
         country: formData.country,
+        // Intake-fixes C4: the city is ALSO sent discretely (migration 261 column) — the
+        // concatenated address keeps its exact previous shape for anything reading the
+        // free-text field, but the storefront's location derivation needs the discrete value.
         address: `${formData.address}, ${formData.city}`,
+        city: formData.city || undefined,
         businessType: formData.businessType,
         website: formData.website || undefined,
         gst: formData.registrationNumber || undefined,
