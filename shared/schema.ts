@@ -522,6 +522,11 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   mobile: varchar("mobile", { length: 50 }).notNull(),
   whatsapp: varchar("whatsapp", { length: 50 }),
   country: varchar("country", { length: 100 }).notNull(),
+  // Intake-fixes C4 (migration 260, ratified Aug 27 2026): the discrete city the provider
+  // intake already collects (previously concatenated into `address` and lost). Nullable —
+  // NULL renders as no location line on the storefront (§13), never a guessed city. Read by
+  // resolveEarnerLocation's provider fallback (storefront.routes.ts).
+  city: varchar("city", { length: 100 }),
   address: text("address").notNull(),
   bookingLink: text("booking_link"),
   gst: varchar("gst", { length: 100 }),

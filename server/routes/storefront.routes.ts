@@ -158,10 +158,11 @@ async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
 
 // Storefront identity-hero location (§13-honest): prefers the admin-managed neighborhood
 // assignment (expertNeighborhoods → city_neighborhoods — the Kyoto lead-vetting table, isLead
-// first), falling back to the local-expert onboarding form's own city/country.
-// service_provider_forms carries no clean city column (only free-text `address`), so a
-// provider with no local-expert form returns null and the client simply omits the location
-// line — no fabricated/derived location is ever shown.
+// first), falling back to the local-expert onboarding form's own city/country, then (intake-
+// fixes C4, migration 260) the provider form's discrete city/country. A provider row with a
+// NULL city (every pre-260 application — the intake used to concatenate the city into the
+// free-text address and lose it) still returns null and the client omits the location line —
+// no fabricated/derived location is ever shown, never a city parsed out of free text (§13).
 async function resolveEarnerLocation(userId: string): Promise<string | null> {
   const [neighborhood] = await db
     .select({ name: cityNeighborhoods.name, city: cityNeighborhoods.city })
@@ -179,6 +180,15 @@ async function resolveEarnerLocation(userId: string): Promise<string | null> {
     .limit(1);
   if (localForm?.city) {
     return localForm.country ? `${localForm.city}, ${localForm.country}` : localForm.city;
+  }
+
+  const [providerForm] = await db
+    .select({ city: serviceProviderForms.city, country: serviceProviderForms.country })
+    .from(serviceProviderForms)
+    .where(eq(serviceProviderForms.userId, userId))
+    .limit(1);
+  if (providerForm?.city) {
+    return providerForm.country ? `${providerForm.city}, ${providerForm.country}` : providerForm.city;
   }
   return null;
 }
