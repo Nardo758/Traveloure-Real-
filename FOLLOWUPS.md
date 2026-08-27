@@ -264,14 +264,14 @@ gaps (D1 member-since fact, D2 expert cover image); D3 (ABOUT section) was alrea
 `aae09f08` on both `/experts/:id` and `/s/:handle`. The following audit rows are **filed, not
 built** — each is a separate lane:
 
-- **INTAKE — onboarding never writes `users.bio` (all 4 roles).** `/s/:handle` renders `earner.bio`
-  = `users.bio`, but onboarding writes the bio to the role form (`local_expert_forms.bio` etc.),
-  never to `users.bio`; only the post-signup profile editor fills it. So the storefront ABOUT is
-  empty for anyone who hasn't hand-edited their profile. **Fix (INTAKE lane):** have onboarding
-  mirror the role-form bio into `users.bio` (or have the storefront DTO read the role form). This
-  is the D3-note referenced in the dispatch. Also in this lane: provider onboarding has **no photo
-  intake** (profileImageUrl never captured), **no city intake** (provider `location`/`city` never
-  asked), and a **description collected-but-never-read** field. → one intake-fixes lane.
+- **INTAKE — onboarding never writes `users.bio` (all 4 roles). ✅ CONSUMED by the
+  `intake-fixes` lane (C1–C4, C6; decision-maker ratified Aug 27 2026):** onboarding now
+  mirrors the role-form bio into `users.bio` on all submit routes + aliases (C1 experts,
+  C2 providers — `description` ruled to BE the provider bio, column kept); provider photo
+  intake reuses the shared `PATCH /api/expert/photo` rail (C3); provider city persists
+  discretely (migration 261) and `resolveEarnerLocation` reads it (C4); existing earners
+  fixed by the operator-run `scripts/backfill-users-bio.ts` (C6 — report-only default,
+  `--apply`, prod-refusing). The storefront read stayed on `users.bio` per the ruling.
 - **SCHEMA — consultation config has no column.** The expert-detail consultation facts (duration,
   price, format) have no backing column anywhere; the surface omits them (§13). Needs a real
   schema decision before any display. → schema lane (decision-maker ratification required).
@@ -282,8 +282,7 @@ built** — each is a separate lane:
   it; do not derive a fee client-side (§8/§18).
 - **DISPLAY (larger) — card-family grammar conformance.** A sweep to bring every marketplace card
   onto one grammar (price pill, meta line, source link) is its own lane; not mechanical.
-- **LATENT BUG — `trip_planner` → `travel_expert` label mapping.** There is no stored `trip_planner`
-  role (the "trip planner" is stored as `travel_expert`). Any code that emits or matches the literal
-  `trip_planner` falls through `ROLE_LABELS` to the generic `"Expert"` label. Audit-flagged as a
-  latent bug: reconcile all `trip_planner` literals to `travel_expert`, or add an explicit
-  `ROLE_LABELS["trip_planner"]` alias. → small correctness lane.
+- **LATENT BUG — `trip_planner` → `travel_expert` label mapping. ✅ CONSUMED by the
+  `intake-fixes` lane (C5):** both `ROLE_LABELS` maps (`expert-detail.tsx`,
+  `expert/profile.tsx`) now alias `trip_planner` to the same label as `travel_expert`, so a
+  stray literal renders "Trip planner", never the generic "Expert".

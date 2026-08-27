@@ -55,6 +55,10 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 const ROLE_LABELS: Record<string, string> = {
   local_expert: "Local expert",
   travel_expert: "Trip planner",
+  // Intake-fixes C5 (latent-bug ruling): `trip_planner` is not a stored role — the trip
+  // planner IS `travel_expert` — but a literal that slips through must render "Trip
+  // planner", never fall to the generic "Expert".
+  trip_planner: "Trip planner",
   event_planner: "Event planner",
 };
 
