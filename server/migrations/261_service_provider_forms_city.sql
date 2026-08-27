@@ -1,4 +1,4 @@
--- 260: additive-nullable city on service_provider_forms (intake-fixes C4, decision-maker
+-- 261: additive-nullable city on service_provider_forms (intake-fixes C4, decision-maker
 -- ratified Aug 27 2026; audit docs/audits/marketplace-surface-audit.md Part 5).
 -- The provider intake ALREADY collects a discrete city (services-provider.tsx) but
 -- concatenated it into the free-text address and lost it, which is why the storefront's

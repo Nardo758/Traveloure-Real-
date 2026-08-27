@@ -25,6 +25,7 @@ import {
   PROVIDER_RAILS_BAND,
 } from "../services/fee-resolution.service";
 import { getFee } from "../services/optimization-fee.service";
+import { isPlusSalesEnabled } from "../config/plus-sales";
 
 const router = Router();
 
@@ -99,6 +100,10 @@ export const getPricingHandler = async (_req: any, res: any) => {
       proRateStepped: round1(proRateSteppedBand.rate * 100),
       railsRate: round1(railsBand.rate * 100),
       proBandStep: proBandStepBand.rate,
+      // Plus-occasions lane (ledger 2026-08-27-plus-is-delivery): the sales gate. While false
+      // (default), the /pricing + landing "Join Plus" CTAs show coming-soon / route to a waitlist
+      // instead of checkout. Public read (this bundle is unauthenticated).
+      plusSalesEnabled: isPlusSalesEnabled(),
     };
 
     res.json(bundle);

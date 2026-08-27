@@ -159,7 +159,7 @@ async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
 // Storefront identity-hero location (§13-honest): prefers the admin-managed neighborhood
 // assignment (expertNeighborhoods → city_neighborhoods — the Kyoto lead-vetting table, isLead
 // first), falling back to the local-expert onboarding form's own city/country, then (intake-
-// fixes C4, migration 260) the provider form's discrete city/country. A provider row with a
+// fixes C4, migration 261) the provider form's discrete city/country. A provider row with a
 // NULL city (every pre-260 application — the intake used to concatenate the city into the
 // free-text address and lose it) still returns null and the client omits the location line —
 // no fabricated/derived location is ever shown, never a city parsed out of free text (§13).

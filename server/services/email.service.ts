@@ -240,6 +240,73 @@ export function buildBookingConfirmationEmailPayload(params: BookingConfirmation
   };
 }
 
+// ─── Occasion reminder (Plus scheduled draft) ────────────────────────────────
+// Ledger 2026-08-27-plus-is-delivery. One email per generated occasion draft, deep-linking to the
+// slip. The occasion_drafts ledger (notified_at) guards against a second send — this builder just
+// shapes the message. Go through enqueueEmail so the platform kill switch is honored and the send
+// is persisted/retried (there is no per-user email-preference table in this codebase today).
+export interface OccasionReminderParams {
+  firstName?: string | null;
+  occasionLabel: string;
+  homeCity: string;
+  tripId: string;
+  daysUntil: number;
+}
+
+export function buildOccasionReminderEmailPayload(params: OccasionReminderParams): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const tripUrl = `${getAppBaseUrl()}/trip/${encodeURIComponent(params.tripId)}?tab=itinerary`;
+  const label = escHtml(params.occasionLabel);
+  const city = escHtml(params.homeCity);
+  const when =
+    params.daysUntil <= 0
+      ? "is today"
+      : params.daysUntil === 1
+        ? "is tomorrow"
+        : `is in ${params.daysUntil} days`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">${label} ${when}</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        <strong>${label}</strong> ${when} — and a plan built for <strong>${city}</strong> is ready in your account.
+        We drafted it from your city so you can make the day yours with a few taps.
+      </p>
+      <a href="${tripUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View your plan
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're a Traveloure Plus member and added this occasion to your calendar.<br>
+        Open your plan at <a href="${tripUrl}" style="color: #FF385C;">${tripUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `${params.occasionLabel} ${when}`,
+    ``,
+    greeting,
+    ``,
+    `${params.occasionLabel} ${when} — and a plan built for ${params.homeCity} is ready in your account.`,
+    `We drafted it from your city so you can make the day yours.`,
+    ``,
+    `View your plan: ${tripUrl}`,
+  ].filter((line) => line !== "").join("\n");
+
+  return {
+    subject: `${stripCrLf(params.occasionLabel)} ${when} — a plan for ${stripCrLf(params.homeCity)} is ready`,
+    html,
+    text,
+  };
+}
+
 /**
  * @deprecated Callers should use enqueueBookingConfirmationEmail from
  * email-outbox.service.ts so failed sends are retried automatically.
