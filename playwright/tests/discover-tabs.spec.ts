@@ -811,14 +811,15 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
     // Two-field search NEVER writes trip context: the where field is read-only.
     await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
-    // Phase 2g: the third neighbourhood (Nishiki) carries the platform-recommendation
-    // tile. Candidates land one per window in ranked order — rec-0 tmpl-2 → Gion and
-    // rec-1 tmpl-1 → Arashiyama (both expert_package, retagged to ready-mades), rec-2
-    // off-nishiki-1 (platform_provider, NOT retagged) → Nishiki. Exactly ONE rec tile
-    // renders, and it lives in Nishiki. (POST-once is proven in test 10.)
+    // Candidates land one per window in ranked order: the affiliate tile is
+    // in Arashiyama and the platform recommendation is in Nishiki.
     const recTiles = page.locator('[data-testid^="feed-card-rec-"]');
-    await expect(recTiles).toHaveCount(1);
+    await expect(recTiles).toHaveCount(2);
+    await expect(page.getByTestId('feed-card-rec-1')).toBeVisible();
     await expect(page.getByTestId('feed-card-rec-2')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-nishiki"] [data-testid="feed-card-rec-2"]'),
     ).toHaveCount(1);
@@ -868,7 +869,43 @@ test.describe('city-feed bento — /discover/location', () => {
     expect(impressions).toBe(afterMount);
   });
 
-  test('11. rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
+  test('11. compact book actions use the ratified channel colors', async ({ page }) => {
+    // Compare against the page's resolved design tokens instead of hard-coded
+    // RGB values, so the proof survives a palette adjustment.
+    const usesToken = async (
+      control: import('@playwright/test').Locator,
+      token: '--earn-teal' | '--earn-gold-ink' | '--earn-navy',
+    ) =>
+      control.evaluate((element, cssToken) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = `var(${cssToken})`;
+        document.body.appendChild(probe);
+        const matches = getComputedStyle(element).backgroundColor === getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return matches;
+      }, token);
+
+    // Platform service → teal Book now.
+    const serviceBook = page.getByTestId('btn-book-svc-svc-1');
+    await expect(serviceBook).toHaveText('Book now');
+    expect(await usesToken(serviceBook, '--earn-teal')).toBe(true);
+    expect(await usesToken(serviceBook, '--earn-navy')).toBe(false);
+
+    // Ready-made → teal Get this trip, never navy Add to trip.
+    const readyMadeBook = page.getByTestId('btn-view-package-tmpl-1');
+    await expect(readyMadeBook).toHaveText('Get this trip');
+    expect(await usesToken(readyMadeBook, '--earn-teal')).toBe(true);
+    expect(await usesToken(readyMadeBook, '--earn-navy')).toBe(false);
+
+    // Affiliate/partner → gold Book on {Partner}.
+    const affiliateBook = page.getByTestId('btn-book-rec-1');
+    await expect(affiliateBook).toHaveText(/^Book on .+/);
+    expect(await usesToken(affiliateBook, '--earn-gold-ink')).toBe(true);
+    expect(await usesToken(affiliateBook, '--earn-teal')).toBe(false);
+    expect(await usesToken(affiliateBook, '--earn-navy')).toBe(false);
+  });
+
+  test('12. platform rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
     // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
     // the services surface opens scoped to where the traveller was browsing, not a
     // bare catalog. It navigates to /services?categoryKey=…&location=<city>&upsellSource=…
