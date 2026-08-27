@@ -1278,8 +1278,16 @@ export const MIGRATION_FILES = [
   // 259: production recorded the original fee-band seed but is missing all four provider
   // commission bands. Insert only absent ratified rows; existing admin configuration wins.
   "259_provider_fee_bands_reconcile.sql",
-  // 260: additive-nullable service_provider_forms.city (intake-fixes C4) — the discrete city
-  // the provider intake already collects; read by the storefront's resolveEarnerLocation
-  // provider fallback. Declared in shared/schema.ts (deploy-push rule); no CHECK, no backfill.
-  "260_service_provider_forms_city.sql",
+  // 260: Plus occasions (ledger 2026-08-27-plus-is-delivery). Additive schema only —
+  // users.home_city; plan_memberships (the one user-level entitlement record, read by this
+  // lane's delivery gate and populated later by the checkout lane); occasions; and the
+  // occasion_drafts idempotency ledger (CLAIM → generate → PROMOTE). No DB CHECK / no NOT NULL
+  // on existing rows / no default backfill → no publish-time push trap. All declared in
+  // shared/schema.ts (publish-trap rule).
+  "260_plus_occasions.sql",
+  // 261: additive-nullable service_provider_forms.city (intake-fixes C4; renumbered from 260
+  // after #605 claimed it) — the discrete city the provider intake already collects; read by
+  // the storefront's resolveEarnerLocation provider fallback. Declared in shared/schema.ts
+  // (deploy-push rule); no CHECK, no backfill.
+  "261_service_provider_forms_city.sql",
 ] as const;

@@ -522,7 +522,7 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   mobile: varchar("mobile", { length: 50 }).notNull(),
   whatsapp: varchar("whatsapp", { length: 50 }),
   country: varchar("country", { length: 100 }).notNull(),
-  // Intake-fixes C4 (migration 260, ratified Aug 27 2026): the discrete city the provider
+  // Intake-fixes C4 (migration 261, ratified Aug 27 2026): the discrete city the provider
   // intake already collects (previously concatenated into `address` and lost). Nullable —
   // NULL renders as no location line on the storefront (§13), never a guessed city. Read by
   // resolveEarnerLocation's provider fallback (storefront.routes.ts).
@@ -7370,6 +7370,97 @@ export const insertPlanSchema = createInsertSchema(plans).pick({
   betaFreeUntil: true,
 });
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
+
+// ─── Plan memberships (the one user-level entitlement record) ────────────────
+// Introduced by the Plus-occasions lane (ledger 2026-08-27-plus-is-delivery, migration 260)
+// as the minimal contract the delivery gate needs. It is the SINGLE entitlement table for the
+// recurring/annual plans — plan_key 'plus_annual' | 'pro_monthly' (the same row serves Pro's
+// beta-free grant via source='beta'). Trip Pass stays PER-TRIP and is deliberately NOT here.
+//   · THIS lane READS it: isActivePlus(userId) = a row with status='active' AND
+//     current_period_end > now() (see server/services/plan-membership.service.ts).
+//   · The separate Plus-checkout lane later WRITES source='stripe' rows from the Stripe
+//     subscription webhook — it POPULATES this table, it does not redefine it.
+//   · Proof / manual grants are source='manual'; Pro beta grants source='beta'.
+// No UNIQUE(user, plan): a user accrues history (lapsed → re-subscribed) as separate rows, and
+// isActivePlus matches ANY live row. No DB CHECK on status/plan_key/source — validated app-side
+// (migration-181/195 publish-trap posture). Declared here per the publish-trap rule.
+export const planMemberships = pgTable("plan_memberships", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'plus_annual' | 'pro_monthly'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'lapsed' | 'cancelled'
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  source: varchar("source", { length: 20 }).notNull().default("manual"), // 'stripe' | 'manual' | 'beta'
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("plan_memberships_user_idx").on(table.userId),
+  index("plan_memberships_user_plan_idx").on(table.userId, table.planKey),
+]);
+export type PlanMembership = typeof planMemberships.$inferSelect;
+
+// ─── Plus occasions (the member's recurring/one-off personal dates) ──────────
+// Ledger 2026-08-27-plus-is-delivery, migration 260. For each ACTIVE occasion whose date is
+// within the 14-day lead window, the occasion-drafts scheduler builds ONE AI-Concierge draft
+// slip from the member's home city and notifies them. template_key selects the occasion
+// template (date_night | birthday | proposal | celebration | …); recurrence drives the next
+// cycle. No DB CHECK on template_key/recurrence — validated app-side (publish-trap posture).
+export const occasions = pgTable("occasions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  templateKey: varchar("template_key", { length: 64 }).notNull(),
+  occasionDate: date("occasion_date").notNull(),
+  recurrence: varchar("recurrence", { length: 20 }).notNull().default("none"), // 'none'|'annual'|'biweekly'
+  label: varchar("label", { length: 200 }),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("occasions_user_idx").on(table.userId),
+  index("occasions_active_date_idx").on(table.active, table.occasionDate),
+]);
+export type Occasion = typeof occasions.$inferSelect;
+// #PS18 (§19): new insert schemas are .pick()-based allowlists. user_id is NOT picked — it is
+// stamped server-side from the session (§14 identity), never trusted from the body.
+export const insertOccasionSchema = createInsertSchema(occasions).pick({
+  templateKey: true,
+  occasionDate: true,
+  recurrence: true,
+  label: true,
+  active: true,
+});
+export type InsertOccasion = z.infer<typeof insertOccasionSchema>;
+
+// ─── Occasion drafts (the idempotency ledger) ────────────────────────────────
+// One row per occasion per generated cycle — the ledger that makes the scheduler idempotent so
+// a re-run, an hourly pass, or a double-fire (external endpoint + in-process timer) produces
+// exactly ONE draft. It follows the §15 CLAIM → generate → PROMOTE spine:
+//   · claim: INSERT ... ON CONFLICT (occasion_id, cycle_key) DO NOTHING RETURNING — only the
+//     winner generates; a loser skips. claimed_at is the lease stamp.
+//   · promote: generated_at + trip_id are stamped ONLY after the trip is written, via an atomic
+//     conditional (WHERE generated_at IS NULL). A stale claim (crashed before generating) is
+//     reclaimed after a TTL, never rolled back (§15b).
+// The dedupe key is (occasion_id, cycle_key). cycle_key is the concrete target occurrence date
+// (YYYY-MM-DD), so it is unique per cycle for ANY recurrence (annual/biweekly/none) — a bare
+// year cannot express a biweekly cycle. occasion_year is retained as a report/convenience field.
+// Never client-reachable (server-only inserts) → no createInsertSchema here.
+export const occasionDrafts = pgTable("occasion_drafts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  occasionId: varchar("occasion_id").notNull().references(() => occasions.id, { onDelete: "cascade" }),
+  cycleKey: varchar("cycle_key", { length: 32 }).notNull(),
+  occasionYear: integer("occasion_year").notNull(),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  claimedAt: timestamp("claimed_at").defaultNow(), // §15 claim/lease time
+  generatedAt: timestamp("generated_at"), // set only after the trip is written (promotion)
+  notifiedAt: timestamp("notified_at"), // set only after the reminder email is enqueued
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("occasion_drafts_occasion_cycle_unique").on(table.occasionId, table.cycleKey),
+  index("occasion_drafts_occasion_idx").on(table.occasionId),
+]);
+export type OccasionDraft = typeof occasionDrafts.$inferSelect;
 
 // platform_settings: key/value rows for cross-cutting flags.
 // First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.

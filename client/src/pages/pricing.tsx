@@ -55,6 +55,7 @@ interface PricingBundle {
   proRateStepped: number;
   railsRate: number;
   proBandStep: number;
+  plusSalesEnabled: boolean;
 }
 
 function dollars(cents: number): string {
@@ -329,16 +330,38 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            <button
-              onClick={() => stub("Plus")}
-              data-testid="button-join-plus"
-              className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold bg-[var(--earn-coral-ink)] text-white hover:opacity-90 transition-colors"
-            >
-              Join Plus · {dollars(pricing.plusAnnual.priceCents)}/year
-            </button>
+            {pricing.plusSalesEnabled ? (
+              <button
+                onClick={() => stub("Plus")}
+                data-testid="button-join-plus"
+                className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold bg-[var(--earn-coral-ink)] text-white hover:opacity-90 transition-colors"
+              >
+                Join Plus · {dollars(pricing.plusAnnual.priceCents)}/year
+              </button>
+            ) : (
+              <button
+                onClick={() =>
+                  toast({
+                    title: "Plus is coming soon",
+                    description: "We're finishing Plus for your city. Check back shortly.",
+                  })
+                }
+                data-testid="button-join-plus-waitlist"
+                className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold border border-[color:var(--earn-coral-ink)] text-[color:var(--earn-coral-ink)] bg-transparent hover:bg-[color:var(--earn-coral-ink)]/5 transition-colors"
+              >
+                Join Plus · Coming soon
+              </button>
+            )}
             <p className="text-[11px] text-[color:var(--earn-faint)] mt-3" style={{ fontFamily: EARN_MONO }}>
               Not a discount club — Plus is about timing, not member pricing.
             </p>
+            <button
+              onClick={() => setLocation("/plus/occasions")}
+              data-testid="link-setup-occasions"
+              className="mt-2 text-[12px] text-[color:var(--earn-coral-ink)] underline underline-offset-2 hover:opacity-80"
+            >
+              Set up your occasions →
+            </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[

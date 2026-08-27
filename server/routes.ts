@@ -194,6 +194,8 @@ import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import pricingRoutes from "./routes/pricing.routes";
+import occasionsRoutes from "./routes/occasions.routes";
+import internalRoutes from "./routes/internal.routes";
 import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -1091,6 +1093,15 @@ export async function registerRoutes(
   // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;
   // mounting restores it (caught by the unmounted-router guard). Routes carry full /api paths.
   app.use(savedItemsRoutes);
+
+  // Plus occasions (ledger 2026-08-27-plus-is-delivery): the member intake surface — /api/occasions
+  // CRUD, /api/me/home-city, /api/plus/config. Session-scoped, owner-gated; routes carry full /api
+  // paths. The internal drafts trigger is a SEPARATE machine-to-machine router below.
+  app.use(occasionsRoutes);
+  // Internal machine-to-machine trigger — POST /internal/run-occasion-drafts, auth'd by
+  // INTERNAL_JOB_SECRET (NOT a user session). The authoritative daily runner on Autoscale (fired by
+  // an external Scheduled Deployment / cron); the in-process timer is defense-in-depth only.
+  app.use(internalRoutes);
 
   // Traveler service requests ("request a service that doesn't exist yet"):
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests

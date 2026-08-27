@@ -269,7 +269,7 @@ built** — each is a separate lane:
   mirrors the role-form bio into `users.bio` on all submit routes + aliases (C1 experts,
   C2 providers — `description` ruled to BE the provider bio, column kept); provider photo
   intake reuses the shared `PATCH /api/expert/photo` rail (C3); provider city persists
-  discretely (migration 260) and `resolveEarnerLocation` reads it (C4); existing earners
+  discretely (migration 261) and `resolveEarnerLocation` reads it (C4); existing earners
   fixed by the operator-run `scripts/backfill-users-bio.ts` (C6 — report-only default,
   `--apply`, prod-refusing). The storefront read stayed on `users.bio` per the ruling.
 - **SCHEMA — consultation config has no column.** The expert-detail consultation facts (duration,
