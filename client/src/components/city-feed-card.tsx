@@ -12,6 +12,7 @@ import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { normalizeGemScore } from "@/lib/gem-score";
+import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -759,6 +760,7 @@ interface CityFeedCardGemProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" renders the
    *  tighter ~200px bento tile; "full" (default) is byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
 export function CityFeedCardGem({
@@ -773,6 +775,7 @@ export function CityFeedCardGem({
   cardPosition,
   topPick = false,
   density = "full",
+  compactActionState,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -810,6 +813,10 @@ export function CityFeedCardGem({
     suggestion?.href ??
     (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
     platformPath;
+  const compactHasBookAction =
+    compactActionState === "platform" &&
+    resolvedBookability !== "info_only" &&
+    Boolean(bookHref);
   const typeMeta = gemTypeMeta(gem.placeType);
   const gemScore = normalizeGemScore(gem.gemScore);
   const isTrending = gemScore !== null && gemScore >= 85;
@@ -1079,7 +1086,7 @@ export function CityFeedCardGem({
             </h3>
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
             <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
-              {resolvedBookability !== "info_only" && bookHref && (
+              {compactHasBookAction && (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1121,7 +1128,7 @@ export function CityFeedCardGem({
                 {addLabel}
               </Button>
               {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
-              {!(resolvedBookability !== "info_only" && bookHref) && (
+              {!compactHasBookAction && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1176,9 +1183,10 @@ interface CityFeedCardEventProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardEventProps) {
+export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -1478,9 +1486,10 @@ interface CityFeedCardVendorServiceProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full" }: CityFeedCardVendorServiceProps) {
+export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
@@ -1588,7 +1597,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
-              {resolvedBookability !== "info_only" && (
+              {compactActionState === "platform" && resolvedBookability !== "info_only" && (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1806,9 +1815,10 @@ interface CityFeedCardSupplyProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardSupplyProps) {
+export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
