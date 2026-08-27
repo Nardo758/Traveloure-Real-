@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -102,6 +103,7 @@ interface CityFeedCardRecommendationProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
 // Mono face for the compact meta line — matches the earn family's per-file const.
@@ -120,6 +122,7 @@ export function CityFeedCardRecommendation({
   className,
   cardPosition,
   density = "full",
+  compactActionState,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   // Why-recommended disclosure modal — opened by the CARD itself (family
@@ -128,7 +131,10 @@ export function CityFeedCardRecommendation({
   const askExpert = useAskExpert();
   const name = resolveRecommendationName(candidate);
   const meta = recVisualMeta(candidate);
-  const isAffiliate = candidate.sourceType === "affiliate";
+  const isAffiliate =
+    density === "compact"
+      ? compactActionState === "affiliate"
+      : candidate.sourceType === "affiliate";
   const bookLabel = isAffiliate ? "Book on partner" : "Book now";
   const bookStyle = {
     background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",
@@ -389,7 +395,7 @@ export function CityFeedCardRecommendation({
             </div>
           )}
           <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
-            {onBook && (
+            {onBook && compactActionState !== "not-bookable" && (
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
@@ -423,7 +429,7 @@ export function CityFeedCardRecommendation({
               {addLabel}
             </Button>
             {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
-            {!onBook && (
+            {(!onBook || compactActionState === "not-bookable") && (
               <Button
                 size="sm"
                 variant="outline"

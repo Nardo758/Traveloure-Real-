@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 // Family-card grammar (2026-08-25-card-family): mono facts/source rows share the
 // per-file local const pattern used across the earn family.
@@ -16,6 +17,7 @@ interface CityFeedCardExpertProps {
   /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
    *  "full" (default) renders byte-identical to today. */
   density?: "full" | "compact";
+  compactActionState?: BentoCompactActionState;
 }
 
 /**
@@ -25,7 +27,7 @@ interface CityFeedCardExpertProps {
  * Ask an expert outline). The CARD is the link (the expert's profile) — no
  * "More info" text link or modal.
  */
-export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full" }: CityFeedCardExpertProps) {
+export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
