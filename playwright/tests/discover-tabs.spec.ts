@@ -586,7 +586,7 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveAttribute('data-row-span', '1');
   });
 
-  test('5a. §3 rows use minmax(0, auto) and compact actions remain inside their tiles', async ({ page }) => {
+  test('5a. §3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
     for (const viewport of [
       { width: 1280, height: 900 },
       { width: 768, height: 900 },
@@ -606,16 +606,16 @@ test.describe('city-feed bento — /discover/location', () => {
         const containment = await grid.locator('[data-testid^="bento-tile-"]').evaluateAll((tiles) =>
           tiles.flatMap((tile) => {
             const tileBox = tile.getBoundingClientRect();
-            return Array.from(tile.querySelectorAll("button, a")).map((action) => {
-              const actionBox = action.getBoundingClientRect();
+            return Array.from(tile.querySelectorAll("button, a, span")).map((content) => {
+              const contentBox = content.getBoundingClientRect();
               return {
                 tile: tile.getAttribute("data-testid"),
-                action: action.textContent?.trim() ?? "",
+                content: content.textContent?.trim() ?? "",
                 contained:
-                  actionBox.left >= tileBox.left - 1 &&
-                  actionBox.right <= tileBox.right + 1 &&
-                  actionBox.top >= tileBox.top - 1 &&
-                  actionBox.bottom <= tileBox.bottom + 1,
+                  contentBox.left >= tileBox.left - 1 &&
+                  contentBox.right <= tileBox.right + 1 &&
+                  contentBox.top >= tileBox.top - 1 &&
+                  contentBox.bottom <= tileBox.bottom + 1,
               };
             });
           }),
@@ -753,6 +753,56 @@ test.describe('city-feed bento — /discover/location', () => {
     // Earn routes → /earn.
     await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
     await expect(page.getByTestId('btn-earn-provider')).toHaveAttribute('href', '/earn');
+    // §4a: every tappable compact tile has exactly one passive Info cue in its
+    // photo band. Bodiless panels carry a single mono link instead, never both.
+    const tappableCompactTiles = page.locator('[data-bento-role="tile"] > [role="link"]');
+    await expect(tappableCompactTiles).not.toHaveCount(0);
+    await expect
+      .poll(async () =>
+        tappableCompactTiles.evaluateAll((tiles) =>
+          tiles.every((tile) => {
+            const cue = tile.querySelector<HTMLElement>('[data-testid^="info-cue-"]');
+            const band = cue?.parentElement;
+            if (!cue || !band || tile.querySelectorAll('[data-testid^="info-cue-"]').length !== 1) return false;
+
+            const cueRect = cue.getBoundingClientRect();
+            const bandRect = band.getBoundingClientRect();
+            return (
+              getComputedStyle(cue).pointerEvents === "none" &&
+              Math.round(cueRect.width) === 14 &&
+              cueRect.top >= bandRect.top &&
+              cueRect.right <= bandRect.right + 1
+            );
+          }),
+        ),
+      )
+      .toBe(true);
+    // Compact action rows never gain a third button. (Ready-made/external rows
+    // legitimately have one; every other compact card has its state-driven pair.)
+    await expect
+      .poll(async () =>
+        tappableCompactTiles.evaluateAll((tiles) =>
+          tiles.every((tile) => tile.querySelectorAll('button').length <= 2),
+        ),
+      )
+      .toBe(true);
+    // §4a color note: green is status-only, never a button or link treatment.
+    await expect
+      .poll(async () =>
+        page.locator('[data-testid^="bento-section-"] button, [data-testid^="bento-section-"] a').evaluateAll((controls) =>
+          controls.every((control) => {
+            const className = typeof control.className === "string" ? control.className : "";
+            return !className.includes("green") && !(control.getAttribute("style") ?? "").includes("--earn-green");
+          }),
+        ),
+      )
+      .toBe(true);
+    const wanted = page.getByTestId('section-recruitment-gion');
+    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveAttribute('href', '/how-it-works');
+    await expect(wanted.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
+    const earn = page.getByTestId('feed-card-earn');
+    await expect(earn.getByTestId('link-earn-more-info')).toHaveAttribute('href', '/how-it-works');
+    await expect(earn.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
     // View source → NO storefront/profile link on a partner tile; the source control
     // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
     const stub = page.getByTestId('external-stub-stub-1');
@@ -761,14 +811,15 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
     // Two-field search NEVER writes trip context: the where field is read-only.
     await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
-    // Phase 2g: the third neighbourhood (Nishiki) carries the platform-recommendation
-    // tile. Candidates land one per window in ranked order — rec-0 tmpl-2 → Gion and
-    // rec-1 tmpl-1 → Arashiyama (both expert_package, retagged to ready-mades), rec-2
-    // off-nishiki-1 (platform_provider, NOT retagged) → Nishiki. Exactly ONE rec tile
-    // renders, and it lives in Nishiki. (POST-once is proven in test 10.)
+    // Candidates land one per window in ranked order: the affiliate tile is
+    // in Arashiyama and the platform recommendation is in Nishiki.
     const recTiles = page.locator('[data-testid^="feed-card-rec-"]');
-    await expect(recTiles).toHaveCount(1);
+    await expect(recTiles).toHaveCount(2);
+    await expect(page.getByTestId('feed-card-rec-1')).toBeVisible();
     await expect(page.getByTestId('feed-card-rec-2')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-nishiki"] [data-testid="feed-card-rec-2"]'),
     ).toHaveCount(1);
@@ -818,7 +869,43 @@ test.describe('city-feed bento — /discover/location', () => {
     expect(impressions).toBe(afterMount);
   });
 
-  test('11. rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
+  test('11. compact book actions use the ratified channel colors', async ({ page }) => {
+    // Compare against the page's resolved design tokens instead of hard-coded
+    // RGB values, so the proof survives a palette adjustment.
+    const usesToken = async (
+      control: import('@playwright/test').Locator,
+      token: '--earn-teal' | '--earn-gold-ink' | '--earn-navy',
+    ) =>
+      control.evaluate((element, cssToken) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = `var(${cssToken})`;
+        document.body.appendChild(probe);
+        const matches = getComputedStyle(element).backgroundColor === getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return matches;
+      }, token);
+
+    // Platform service → teal Book now.
+    const serviceBook = page.getByTestId('btn-book-svc-svc-1');
+    await expect(serviceBook).toHaveText('Book now');
+    expect(await usesToken(serviceBook, '--earn-teal')).toBe(true);
+    expect(await usesToken(serviceBook, '--earn-navy')).toBe(false);
+
+    // Ready-made → teal Get this trip, never navy Add to trip.
+    const readyMadeBook = page.getByTestId('btn-view-package-tmpl-1');
+    await expect(readyMadeBook).toHaveText('Get this trip');
+    expect(await usesToken(readyMadeBook, '--earn-teal')).toBe(true);
+    expect(await usesToken(readyMadeBook, '--earn-navy')).toBe(false);
+
+    // Affiliate/partner → gold Book on {Partner}.
+    const affiliateBook = page.getByTestId('btn-book-rec-1');
+    await expect(affiliateBook).toHaveText(/^Book on .+/);
+    expect(await usesToken(affiliateBook, '--earn-gold-ink')).toBe(true);
+    expect(await usesToken(affiliateBook, '--earn-teal')).toBe(false);
+    expect(await usesToken(affiliateBook, '--earn-navy')).toBe(false);
+  });
+
+  test('12. platform rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
     // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
     // the services surface opens scoped to where the traveller was browsing, not a
     // bare catalog. It navigates to /services?categoryKey=…&location=<city>&upsellSource=…

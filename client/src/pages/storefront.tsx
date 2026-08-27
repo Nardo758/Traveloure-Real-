@@ -138,7 +138,12 @@ const DELIVERY_LABELS: Record<string, string> = {
   hybrid: "Hybrid",
 };
 
-type OfferingCategory = "All" | "Services" | "Templates" | "Ready-made";
+type OfferingCategory = "All" | "Services" | "Ready-Made Trips";
+
+/** Tab/testid-safe slug for a category label ("Ready-Made Trips" → "ready-made-trips"). */
+function categorySlug(c: OfferingCategory): string {
+  return c.toLowerCase().replace(/\s+/g, "-");
+}
 
 function priceUnitLabel(priceType: string | null, pricingUnit: string | null): string | null {
   if (pricingUnit === "per_night") return "per night";
@@ -197,6 +202,7 @@ function StorefrontOfferingCard({
   cta,
   showPrice,
   bookingMode,
+  meta,
 }: {
   href: string;
   testId: string;
@@ -210,6 +216,9 @@ function StorefrontOfferingCard({
   cta: string;
   showPrice?: boolean;
   bookingMode?: "instant" | "request" | "hidden";
+  /** Optional one-line description shown under the title — e.g. distinguishing what a
+   *  merged-lane card's badge means in practice ("Guide · day-by-day, yours to follow"). */
+  meta?: string;
 }) {
   const priceHidden = showPrice === false;
   const ctaLabel =
@@ -243,7 +252,10 @@ function StorefrontOfferingCard({
             )}
           </span>
         </div>
-        <h3 className="mt-1 font-semibold leading-snug">{title}</h3>
+        {/* line-clamp keeps card heights aligned across a row — an unclamped long title
+            previously made one card in a grid row taller than its siblings. */}
+        <h3 className="mt-1 line-clamp-2 font-semibold leading-snug">{title}</h3>
+        {meta && <p className="line-clamp-1 text-[11.5px] leading-snug text-[color:var(--earn-muted)]">{meta}</p>}
         {chips.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1.5">
             {chips.map((c) => (
@@ -315,20 +327,25 @@ export default function StorefrontPage() {
     () => (category === "All" || category === "Services" ? services.filter((s) => matchesTerm(s.serviceName)) : []),
     [services, category, term],
   );
+  // Ready-Made Trips is a display-layer merge of two genuinely different products —
+  // expert_templates (a static, self-guided itinerary write-up) and ready_made_trips (an
+  // author-owned trip that clones into the buyer's own editable planner). No schema
+  // unification: each keeps its own data, its own card badge, and its own detail route.
+  // Sort order is source-grouped (templates first, then ready-made) — never a fabricated
+  // cross-source ranking.
   const visibleTemplates = useMemo(
-    () => (category === "All" || category === "Templates" ? templates.filter((t) => matchesTerm(t.title)) : []),
+    () => (category === "All" || category === "Ready-Made Trips" ? templates.filter((t) => matchesTerm(t.title)) : []),
     [templates, category, term],
   );
   const visibleReadyMade = useMemo(
-    () => (category === "All" || category === "Ready-made" ? readyMade.filter((r) => matchesTerm(r.title)) : []),
+    () => (category === "All" || category === "Ready-Made Trips" ? readyMade.filter((r) => matchesTerm(r.title)) : []),
     [readyMade, category, term],
   );
   const visibleTotal = visibleServices.length + visibleTemplates.length + visibleReadyMade.length;
   const availableCategories: OfferingCategory[] = [
     "All",
     ...(services.length > 0 ? (["Services"] as const) : []),
-    ...(templates.length > 0 ? (["Templates"] as const) : []),
-    ...(readyMade.length > 0 ? (["Ready-made"] as const) : []),
+    ...(templates.length > 0 || readyMade.length > 0 ? (["Ready-Made Trips"] as const) : []),
   ];
 
   if (isLoading) {
@@ -390,8 +407,10 @@ export default function StorefrontPage() {
   // earner genuinely sells across more than one lane — never implies three when there's one.
   const presentLaneNames: string[] = [
     ...(services.length > 0 ? [`book time with ${firstName}`] : []),
-    ...(templates.length > 0 ? ["bring home a route"] : []),
-    ...(readyMade.length > 0 ? ["start with a complete trip"] : []),
+    // Templates and Ready-Made Trips now render as one merged "Ready-Made Trips" lane
+    // (each card keeps its own Guide/Editable trip badge) — one note entry, not two,
+    // since the visible tab count no longer distinguishes them.
+    ...(templates.length > 0 || readyMade.length > 0 ? ["start from a finished plan"] : []),
   ];
   const planWaysNote =
     presentLaneNames.length > 1
@@ -527,15 +546,28 @@ export default function StorefrontPage() {
               </div>
             </div>
 
-            <div className="flex gap-2 sm:pt-4 col-span-2 sm:col-span-1">
-              {!isOwnStorefront && (
-                <Button className="flex-1 sm:flex-none" onClick={messageEarner} data-testid="button-message-storefront">
-                  <MessageCircle className="w-4 h-4 mr-1.5" />
-                  Message @{earner.handle}
+            {/* Message/Share actions — stacked full-width on mobile so a long "Message @handle"
+                label never gets squeezed into an equal-width flex-1 half (which wrapped its
+                text while "Share" stayed single-line, leaving the two buttons visibly
+                mismatched in height). From `sm:` up they sit side by side at their own
+                natural width in the grid's `auto` column. On your own storefront there was
+                previously no way back to editing from here — a lone "Share" button — so an
+                "Edit profile" action replaces "Message @you" instead. */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:pt-4 col-span-2 sm:col-span-1">
+              {isOwnStorefront ? (
+                <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full sm:w-auto">
+                  <Button className="w-full sm:w-auto" data-testid="button-edit-storefront">
+                    Edit profile
+                  </Button>
+                </Link>
+              ) : (
+                <Button className="w-full sm:w-auto" onClick={messageEarner} data-testid="button-message-storefront">
+                  <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
+                  <span className="truncate">Message @{earner.handle}</span>
                 </Button>
               )}
-              <Button variant="outline" className="flex-1 sm:flex-none" onClick={copyLink} data-testid="button-share-storefront">
-                <Share2 className="w-4 h-4 mr-1.5" />
+              <Button variant="outline" className="w-full sm:w-auto" onClick={copyLink} data-testid="button-share-storefront">
+                <Share2 className="w-4 h-4 mr-1.5 shrink-0" />
                 Share
               </Button>
             </div>
@@ -578,6 +610,20 @@ export default function StorefrontPage() {
           )}
         </div>
 
+        {/* About — the bio promoted into its own labeled section below the hero, above
+            Offerings, so a trust-scanning visitor can find "who is this person" without
+            hunting through the hero card. The hero keeps its own bio line as the one-line
+            hook; this is the fuller story (same text today — same-treatment across
+            expert-detail.tsx and this page). Honest-omit: renders nothing when empty. */}
+        {earner.bio && (
+          <section className="mt-6 rounded-xl border bg-[var(--earn-card)] px-6 py-5" data-testid="storefront-about">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>
+              About
+            </div>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--earn-ink)]">{earner.bio}</p>
+          </section>
+        )}
+
         {/* Offerings — category tabs + search over the three real lanes. Default state (category
             "All", empty search) is the exact pre-rebuild render: nothing here changes what
             offering-card.spec.ts already proves. */}
@@ -602,7 +648,7 @@ export default function StorefrontPage() {
                     role="tab"
                     aria-selected={category === c}
                     onClick={() => setCategory(c)}
-                    data-testid={`tab-storefront-category-${c.toLowerCase()}`}
+                    data-testid={`tab-storefront-category-${categorySlug(c)}`}
                     className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
                       category === c ? "bg-[var(--earn-card)] text-[color:var(--earn-ink)] shadow-sm" : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)]"
                     }`}
@@ -689,10 +735,18 @@ export default function StorefrontPage() {
             </div>
           )}
 
-          {/* Lane 2: itinerary templates (seller-side vocabulary; §10) */}
-          {visibleTemplates.length > 0 && (
-            <div className="mb-10 sm:mb-12" data-testid="storefront-lane-templates">
-              <LaneHeader eyebrow="Guided itineraries" title="Itinerary Templates" count={visibleTemplates.length} />
+          {/* Lane 2: Ready-Made Trips — a display-layer merge of two different products that
+              both let a traveler start from a finished plan instead of building one from
+              scratch. Source-grouped, never a fabricated cross-source ranking: templates
+              (self-guided write-ups) render first, then ready-made trips (clone into the
+              buyer's own planner) — each keeps its own real href, badge and copy. */}
+          {(visibleTemplates.length > 0 || visibleReadyMade.length > 0) && (
+            <div className="mb-10 sm:mb-12" data-testid="storefront-lane-readymade">
+              <LaneHeader
+                eyebrow="Start from a finished plan"
+                title="Ready-Made Trips"
+                count={visibleTemplates.length + visibleReadyMade.length}
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {visibleTemplates.map((t) => {
                   const chips = [
@@ -705,7 +759,8 @@ export default function StorefrontPage() {
                       href={`/expert-templates/${t.id}`}
                       testId={`storefront-template-${t.id}`}
                       image={t.coverImage}
-                      categoryLabel="Template"
+                      categoryLabel="Guide"
+                      meta="Guide · day-by-day, yours to follow"
                       title={t.title}
                       chips={chips}
                       ratingSlot={<RatingLine rating={t.averageRating} count={t.reviewCount} />}
@@ -714,15 +769,6 @@ export default function StorefrontPage() {
                     />
                   );
                 })}
-              </div>
-            </div>
-          )}
-
-          {/* Lane 3: Ready Made Trips — buy the whole plan (§10/§17 store channel) */}
-          {visibleReadyMade.length > 0 && (
-            <div className="mb-10 sm:mb-12" data-testid="storefront-lane-readymade">
-              <LaneHeader eyebrow="Buy the whole plan" title="Ready-Made Trips" count={visibleReadyMade.length} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {visibleReadyMade.map((r) => {
                   const chips = [
                     ...(r.durationDays ? [`${r.durationDays} day${r.durationDays === 1 ? "" : "s"}`] : []),
@@ -734,7 +780,8 @@ export default function StorefrontPage() {
                       href={`/ready-made/${r.id}`}
                       testId={`storefront-readymade-${r.id}`}
                       image={r.heroImageUrl}
-                      categoryLabel="Ready-made"
+                      categoryLabel="Editable trip"
+                      meta="Editable trip · clones into your planner"
                       title={r.title}
                       chips={chips}
                       // Ready Made Trips have no review mechanism yet (§13) — no rating line,

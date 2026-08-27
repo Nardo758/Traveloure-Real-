@@ -15,6 +15,7 @@
  * §13: a real rating renders only when reviewCount > 0, otherwise an honest "New".
  */
 import React, { useState } from "react";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -56,10 +57,20 @@ export function FeedReadyMadeCard({
 
   // Traveler-facing Ready-Made card → the buyer detail page (2026-08-26-bento-
   // compact-density). The whole card is ONE destination: body click, source row
-  // and the `Get this trip` CTA all land on /ready-made/:id (never split between
-  // the buyer page and the expert-template view). id-resolution there is a
-  // real-data matrix row.
-  const detailHref = `/ready-made/${template.id}`;
+  // and the `Get this trip` CTA all land on /expert-templates/:id (never split
+  // between the buyer page and the expert-template view).
+  //
+  // BUGFIX (found during storefront taxonomy audit): this component only ever
+  // renders `expert_templates` rows (see the module doc above — data comes
+  // exclusively from GET /api/expert-templates). It previously linked to
+  // /ready-made/:id, which resolves the UNRELATED `ready_made_trips` table
+  // (a different product — see shared/schema.ts's Ready-Made Trips section).
+  // That id never exists there, so every click 404'd ("Trip not found"),
+  // confirmed live against the Mumbai demo listing. /ready-made/:id is the
+  // correct route ONLY for actual ready_made_trips-backed listings (see
+  // storefront.tsx's separate Ready-Made lane, and discover.tsx/experts.tsx,
+  // which fetch from /api/ready-made and correctly link there already).
+  const detailHref = `/expert-templates/${template.id}`;
   const ctaHref = detailHref;
 
   // ─── Compact density ────────────────────────────────────────────────────────
@@ -100,6 +111,12 @@ export function FeedReadyMadeCard({
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
+          <Info
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+            style={{ color: "var(--earn-muted)" }}
+            data-testid={`info-cue-package-${template.id}`}
+          />
         </div>
         <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 self-start">
