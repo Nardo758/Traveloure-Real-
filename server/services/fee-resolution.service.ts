@@ -56,7 +56,13 @@ export {
   READY_MADE_PLATFORM_BAND,
   TRAVELER_SERVICE_FEE_BAND,
 } from "./fee-band-requirements";
-export type { FeeBandRateType } from "./fee-band-requirements";
+// FeeBandRateType is the canonical rate_type union (fee-band-requirements.ts:
+// 'percent' | 'flat' | 'flat_cents' | 'count' | 'rule', matched to the migration-258
+// CHECK). Import it LOCALLY so requireBandType can name it (a bare `export … from`
+// re-export makes it visible to importers but creates no local binding — that gap
+// was the "Cannot find name 'FeeBandRateType'" error), then re-export for consumers.
+import type { FeeBandRateType } from "./fee-band-requirements";
+export type { FeeBandRateType };
 
 export interface BandRow {
   id: string;

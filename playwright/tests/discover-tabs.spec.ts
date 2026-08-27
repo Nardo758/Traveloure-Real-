@@ -743,8 +743,12 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(
       page.locator('[data-bento-role="anchor"] a[href="/experts/exp-gion-1"]'),
     ).not.toHaveCount(0);
-    // Get this trip → /ready-made/:id (href SHAPE; id-resolution is a real-data row).
+    // Get this trip → routed by SOURCE, never unified (storefront.tsx is the
+    // reference; Phase 2e's "always /ready-made/:id" 404'd template-backed cards).
+    // tmpl-1 is a ready_made_trips-sourced card → /ready-made/:id; tmpl-2 is an
+    // expert_templates-sourced card → /expert-templates/:id. One assertion per source.
     await expect(page.getByTestId('btn-view-package-tmpl-1')).toHaveAttribute('href', '/ready-made/tmpl-1');
+    await expect(page.getByTestId('btn-view-package-tmpl-2')).toHaveAttribute('href', '/expert-templates/tmpl-2');
     // Offer this → recruitment deep-link carrying city + neighbourhood + offering.
     const offerHref = await page.getByTestId('link-wanted-apply').first().getAttribute('href');
     expect(offerHref).toContain('/become-expert');

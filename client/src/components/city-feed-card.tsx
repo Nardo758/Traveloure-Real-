@@ -1116,7 +1116,7 @@ export function CityFeedCardGem({
                     }).catch(() => {});
                   }}
                 >
-                  <a href={bookHref}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
+                  <a href={bookHref ?? undefined}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
                 </Button>
               )}
               <Button
