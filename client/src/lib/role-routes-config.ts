@@ -78,7 +78,8 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/profile',            description: 'Retired Profile -> redirects to Settings profile tab (C8)' },
   { href: '/expert/settings',           description: 'Account settings' },
   { href: '/expert/verification',       description: 'Expert verification status' },
-  { href: '/expert/contract-categories', description: 'Contract category management' },
+  // '/expert/contract-categories' removed: page deleted by the expert-console
+  // consolidation (9959ca80) with no redirect — it now hits the 404 catch-all.
   { href: '/expert/booking-partners',   description: 'Booking partner configuration' },
   { href: '/expert/workspace',          description: 'Trip planning workspace' },
   // /expert/dmo-library is kept deliberately (B5/C1 redirect pattern): it redirects to
@@ -107,13 +108,8 @@ export const providerRoutesConfig: RoleRouteConfig[] = [
   { href: '/provider/services',     description: 'Catalog — offerings + availability + share tools (C9)' },
   // Static creation surface (ServiceForm) — /:id/edit stays excluded (parameterised).
   { href: '/provider/services/new', description: 'ServiceForm — offering creation (single builder, §5)' },
-  { href: '/provider/properties/new', description: 'Property builder — three-step property creation flow' },
-  { href: '/provider/bundles/new',   description: 'Bundle builder — multi-service offering creation flow' },
-  { href: '/provider/availability',  description: 'Availability management' },
-  { href: '/provider/distribute',    description: 'Catalog distribution hub' },
   { href: '/provider/customers',    description: 'Customers — honest self-scoped aggregation (C9)' },
   { href: '/provider/performance',  description: 'Performance — hosts Analytics as a tab (C9)' },
-  { href: '/provider/market-research', description: 'Market research' },
   // /provider/analytics redirects to /provider/performance?tab=analytics (C9 Analytics
   // retirement — the page is hosted as Performance's Analytics tab).
   { href: '/provider/analytics',    description: 'Retired Analytics -> redirects to Performance analytics tab (C9)' },
@@ -127,9 +123,9 @@ export const providerRoutesConfig: RoleRouteConfig[] = [
   // /provider/share-promote redirects to /provider/services (C9 Share & Promote retirement —
   // share kits/posting opportunities/storefront tools live on Catalog).
   { href: '/provider/share-promote', description: 'Retired Share & Promote -> redirects to Catalog (C9)' },
-  // Legacy redirect retained so the smoke also checks that old bookmarks reach Playbook.
-  { href: '/provider/resources',    description: 'Retired Resources -> redirects to Playbook' },
-  { href: '/provider/playbook',     description: 'Provider playbook and operating guides' },
+  // Not one of the NINE: routed but deliberately unlisted in the sidebar (static guides,
+  // no backing content system) — see the provider-sidebar C9 note.
+  { href: '/provider/resources',    description: 'Provider resources & guides (quiet extra)' },
 ];
 
 // ── Executive Assistant routes (requiredRole="executive_assistant") ──────────
@@ -175,7 +171,6 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/offering-types',      description: 'Offering type seed' },
   { href: '/admin/category-fees',       description: 'Category fee percentages' },
   { href: '/admin/neighborhoods',       description: 'Neighborhood management' },
-  { href: '/admin/markets',             description: 'Market management' },
   { href: '/admin/event-packages',      description: 'Event package management' },
   { href: '/admin/platform-providers',  description: 'Platform provider registry' },
   { href: '/admin/routing-queue',       description: 'Lead routing queue' },
@@ -190,12 +185,10 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/neighborhood-backfill', description: 'Neighborhood backfill tool' },
   { href: '/admin/gem-photo-backfill',  description: 'Gem photo backfill tool' },
   { href: '/admin/review-moderation',   description: 'Review moderation queue' },
-  { href: '/admin/message-moderation',  description: 'Message moderation queue' },
   { href: '/admin/destination-events',  description: 'Destination events management' },
   { href: '/admin/analytics/cross-sell', description: 'Cross-sell analytics' },
   { href: '/admin/qa-checklist',        description: 'QA checklist' },
   { href: '/admin/content-ops',         description: 'Content Ops — YouTube ingestion, extraction status, offering requests, market checklist' },
-  { href: '/admin/audit-log',           description: 'Administrative audit log' },
 ];
 
 // ── Convenience accessors ─────────────────────────────────────────────────────

@@ -65,7 +65,7 @@ export async function getRoleChangeAuditLogs(opts: {
     LIMIT ${limit} OFFSET ${offset}
   `);
 
-  const countResult = await db.execute(sql`
+  const [countResult] = await db.execute(sql`
     SELECT count(*)::int AS total
     FROM access_audit_logs aal
     WHERE aal.action = 'role_change'

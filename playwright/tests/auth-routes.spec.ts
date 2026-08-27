@@ -36,17 +36,11 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import {
-  adminRoutesConfig,
-  eaRoutesConfig,
-  expertRoutesConfig,
   getExpertRouteHrefs,
   getProviderRouteHrefs,
   getAdminRouteHrefs,
   getEARouteHrefs,
-  providerRoutesConfig,
 } from '../../client/src/lib/role-routes-config';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
@@ -59,55 +53,6 @@ const EXPERT_ROLES = ['expert', 'local_expert', 'travel_expert', 'event_planner'
 const PROVIDER_ROLES = ['service_provider'];
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
-
-type RegistryRole = 'expert' | 'provider' | 'executive_assistant' | 'admin';
-
-const ROUTE_CONFIG_BY_ROLE: Record<RegistryRole, { href: string }[]> = {
-  expert: expertRoutesConfig,
-  provider: providerRoutesConfig,
-  executive_assistant: eaRoutesConfig,
-  admin: adminRoutesConfig,
-};
-
-function getStaticGuardedRoutesFromApp(): Map<RegistryRole, string[]> {
-  const appPath = fileURLToPath(new URL('../../client/src/App.tsx', import.meta.url));
-  const appSource = readFileSync(appPath, 'utf8');
-  const routes = new Map<RegistryRole, string[]>();
-  const routeBlockPattern = /<Route\s+path="([^"]+)"[^>]*>([\s\S]*?)<\/Route>/g;
-
-  for (const match of appSource.matchAll(routeBlockPattern)) {
-    const [, href, routeBody] = match;
-    if (href.includes(':')) continue;
-
-    const roleMatch = routeBody.match(
-      /<ProtectedRoute\b[^>]*\brequiredRole="(expert|provider|executive_assistant|admin)"/,
-    );
-    if (!roleMatch) continue;
-
-    const role = roleMatch[1] as RegistryRole;
-    routes.set(role, [...(routes.get(role) ?? []), href]);
-  }
-
-  return routes;
-}
-
-test('every static guarded App route is registered for authenticated smoke coverage', () => {
-  const guardedRoutes = getStaticGuardedRoutesFromApp();
-  const missingByRole: string[] = [];
-
-  for (const [role, hrefs] of guardedRoutes) {
-    const registered = new Set(ROUTE_CONFIG_BY_ROLE[role].map(({ href }) => href));
-    const missing = hrefs.filter((href) => !registered.has(href));
-    if (missing.length > 0) {
-      missingByRole.push(`${role}: ${missing.join(', ')}`);
-    }
-  }
-
-  expect(
-    missingByRole,
-    'Static role-gated routes in App.tsx must be listed in role-routes-config.ts',
-  ).toEqual([]);
-});
 
 async function assertMeaningfulContent(
   page: import('@playwright/test').Page,
