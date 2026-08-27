@@ -587,35 +587,42 @@ test.describe('city-feed bento — /discover/location', () => {
   });
 
   test('5a. §3 rows use minmax(0, auto) and compact actions remain inside their tiles', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
 
-    for (const slug of ['gion', 'arashiyama']) {
-      const grid = page.getByTestId(`bento-grid-${slug}`);
-      await expect(grid).toBeVisible();
-      await expect
-        .poll(() => grid.evaluate((element) => getComputedStyle(element).gridAutoRows))
-        .toMatch(/minmax\(0px,\s*auto\)/);
+      for (const slug of ['gion', 'arashiyama']) {
+        const grid = page.getByTestId(`bento-grid-${slug}`);
+        await expect(grid).toBeVisible();
+        if (viewport.width >= 1000) {
+          await expect
+            .poll(() => grid.evaluate((element) => getComputedStyle(element).gridAutoRows))
+            .toMatch(/minmax\(0px,\s*auto\)/);
+        }
 
-      const containment = await grid.locator('[data-testid^="bento-tile-"]').evaluateAll((tiles) =>
-        tiles.flatMap((tile) => {
-          const tileBox = tile.getBoundingClientRect();
-          return Array.from(tile.querySelectorAll("button, a")).map((action) => {
-            const actionBox = action.getBoundingClientRect();
-            return {
-              tile: tile.getAttribute("data-testid"),
-              action: action.textContent?.trim() ?? "",
-              contained:
-                actionBox.left >= tileBox.left - 1 &&
-                actionBox.right <= tileBox.right + 1 &&
-                actionBox.top >= tileBox.top - 1 &&
-                actionBox.bottom <= tileBox.bottom + 1,
-            };
-          });
-        }),
-      );
+        const containment = await grid.locator('[data-testid^="bento-tile-"]').evaluateAll((tiles) =>
+          tiles.flatMap((tile) => {
+            const tileBox = tile.getBoundingClientRect();
+            return Array.from(tile.querySelectorAll("button, a")).map((action) => {
+              const actionBox = action.getBoundingClientRect();
+              return {
+                tile: tile.getAttribute("data-testid"),
+                action: action.textContent?.trim() ?? "",
+                contained:
+                  actionBox.left >= tileBox.left - 1 &&
+                  actionBox.right <= tileBox.right + 1 &&
+                  actionBox.top >= tileBox.top - 1 &&
+                  actionBox.bottom <= tileBox.bottom + 1,
+              };
+            });
+          }),
+        );
 
-      expect(containment).not.toHaveLength(0);
-      expect(containment.filter((entry) => !entry.contained)).toEqual([]);
+        expect(containment).not.toHaveLength(0);
+        expect(containment.filter((entry) => !entry.contained)).toEqual([]);
+      }
     }
   });
 
