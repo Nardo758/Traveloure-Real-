@@ -25,6 +25,10 @@ import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { appendCityWideReadyMadeFill } from "@/lib/feed-composition";
 import { selectBentoAnchorIndex } from "@/lib/bento-anchor";
+import {
+  resolveBentoCompactActionState,
+  type BentoCompactActionState,
+} from "@/lib/bento-action-state";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   composeDiscoverFeed,
@@ -560,6 +564,11 @@ function BentoTile({
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
+  // Every compact tile passes through this resolver before it reaches a card.
+  // Card components receive the semantic state rather than inferring colors
+  // from their own position in the grid.
+  const compactActionState = resolveBentoCompactActionState(item);
+
   // Anchor expert → the dark-gradient ExpertCard anchor treatment (col-span-2
   // row-span-2 lead of the neighbourhood bento) — unchanged geometry, full
   // density. Every OTHER bento tile renders its family card at compact density
@@ -579,11 +588,20 @@ function BentoTile({
           layout={isMarquee ? "row" : "column"}
           cardPosition={cardPosition}
           density="compact"
+          compactActionState={compactActionState}
         />
       );
     case "expert":
     case "lead-expert":
-      return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} density="compact" />;
+      return (
+        <CityFeedCardExpert
+          expert={item.data}
+          city={city}
+          cardPosition={cardPosition}
+          density="compact"
+          compactActionState={compactActionState}
+        />
+      );
     case "event":
       return (
         <CityFeedCardEvent
@@ -593,6 +611,7 @@ function BentoTile({
           onAdd={onAdd}
           cardPosition={cardPosition}
           density="compact"
+          compactActionState={compactActionState}
         />
       );
     case "supply-hotel":
@@ -606,6 +625,7 @@ function BentoTile({
           onAdd={onAdd}
           cardPosition={cardPosition}
           density="compact"
+          compactActionState={compactActionState}
         />
       );
     case "vendor-service":
@@ -617,6 +637,7 @@ function BentoTile({
           scheduledDate={scheduledDate}
           onAdd={onAdd}
           density="compact"
+          compactActionState={compactActionState}
         />
       );
     case "recommendation":
@@ -633,6 +654,7 @@ function BentoTile({
           layout={isMarquee ? "row" : "column"}
           cardPosition={cardPosition}
           density="compact"
+          compactActionState={compactActionState}
         />
       );
     case "wanted-slot":
@@ -910,6 +932,7 @@ function BentoGroup({
             data-order={tile.order}
             data-col-span={tile.colSpan}
             data-row-span={tile.rowSpan}
+            data-bento-action-state={resolveBentoCompactActionState(tile.item)}
           >
             <BentoTile
               item={tile.item}
