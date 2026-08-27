@@ -753,6 +753,56 @@ test.describe('city-feed bento — /discover/location', () => {
     // Earn routes → /earn.
     await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
     await expect(page.getByTestId('btn-earn-provider')).toHaveAttribute('href', '/earn');
+    // §4a: every tappable compact tile has exactly one passive Info cue in its
+    // photo band. Bodiless panels carry a single mono link instead, never both.
+    const tappableCompactTiles = page.locator('[data-bento-role="tile"] > [role="link"]');
+    await expect(tappableCompactTiles).not.toHaveCount(0);
+    await expect
+      .poll(async () =>
+        tappableCompactTiles.evaluateAll((tiles) =>
+          tiles.every((tile) => {
+            const cue = tile.querySelector<HTMLElement>('[data-testid^="info-cue-"]');
+            const band = cue?.parentElement;
+            if (!cue || !band || tile.querySelectorAll('[data-testid^="info-cue-"]').length !== 1) return false;
+
+            const cueRect = cue.getBoundingClientRect();
+            const bandRect = band.getBoundingClientRect();
+            return (
+              getComputedStyle(cue).pointerEvents === "none" &&
+              Math.round(cueRect.width) === 14 &&
+              cueRect.top >= bandRect.top &&
+              cueRect.right <= bandRect.right + 1
+            );
+          }),
+        ),
+      )
+      .toBe(true);
+    // Compact action rows never gain a third button. (Ready-made/external rows
+    // legitimately have one; every other compact card has its state-driven pair.)
+    await expect
+      .poll(async () =>
+        tappableCompactTiles.evaluateAll((tiles) =>
+          tiles.every((tile) => tile.querySelectorAll('button').length <= 2),
+        ),
+      )
+      .toBe(true);
+    // §4a color note: green is status-only, never a button or link treatment.
+    await expect
+      .poll(async () =>
+        page.locator('[data-testid^="bento-section-"] button, [data-testid^="bento-section-"] a').evaluateAll((controls) =>
+          controls.every((control) => {
+            const className = typeof control.className === "string" ? control.className : "";
+            return !className.includes("green") && !(control.getAttribute("style") ?? "").includes("--earn-green");
+          }),
+        ),
+      )
+      .toBe(true);
+    const wanted = page.getByTestId('section-recruitment-gion');
+    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveAttribute('href', '/how-it-works');
+    await expect(wanted.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
+    const earn = page.getByTestId('feed-card-earn');
+    await expect(earn.getByTestId('link-earn-more-info')).toHaveAttribute('href', '/how-it-works');
+    await expect(earn.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
     // View source → NO storefront/profile link on a partner tile; the source control
     // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
     const stub = page.getByTestId('external-stub-stub-1');
