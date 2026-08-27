@@ -1962,6 +1962,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(form ? pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS) : null);
   });
 
+  // Intake bio mirror (intake-fixes C1/C2, decision-maker ratified Aug 27 2026): onboarding
+  // writes the bio to users.bio IN ADDITION to the role form, mirroring what the profile
+  // editor already does (see the PATCH profile handler's userUpdates.bio below) — because the
+  // public storefront (/s/:handle) and the /api/experts browse listing read users.bio, which
+  // onboarding previously never filled. The read stays on users.bio; the intake fills it.
+  // Unconditional overwrite matches the editor's posture (the newest submission is the newest
+  // statement); empty/absent bio never writes (§13 — no fabricated empty-string bio). Failure
+  // is logged, never fails the submission — the form row is already committed, and the
+  // backfill script (scripts/backfill-users-bio.cjs) sweeps up any missed mirror.
+  async function mirrorBioToUsersRow(userId: string, bio: unknown): Promise<void> {
+    if (typeof bio !== "string" || bio.trim().length === 0) return;
+    try {
+      await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+    } catch (e: any) {
+      console.error("[intake-bio-mirror] users.bio mirror failed:", e?.message);
+    }
+  }
+
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
@@ -1980,6 +1998,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "pending",
             rejectionMessage: null,
           });
+          await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
             (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
@@ -1999,6 +2018,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      await mirrorBioToUsersRow(userId, input.bio);
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
@@ -2037,6 +2057,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "pending",
             rejectionMessage: null,
           });
+          await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
             (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
@@ -2055,6 +2076,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      await mirrorBioToUsersRow(userId, input.bio);
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
