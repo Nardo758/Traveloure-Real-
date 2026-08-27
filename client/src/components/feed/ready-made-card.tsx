@@ -4,8 +4,10 @@
  * fallback anchor — the grid gives every ready-made col-span-2), on the family
  * grammar: photo band (gradient + tag fallback, no grey box) · title · meta ·
  * three-column mono facts row · source row · action row (View itinerary, teal).
- * The CARD is the link (/expert-templates/:id) — the teaser "More info" modal
- * is gone; the detail page carries the teaser.
+ * The CARD is the link, routed by SOURCE (a ready_made_trips row → /ready-made/:id,
+ * an expert_templates row → /expert-templates/:id — never unified; see the
+ * detailHref note below) — the teaser "More info" modal is gone; the detail page
+ * carries the teaser.
  *
  * Kept testids: wrapper `feed-card-package-${id}`, `package-rating-${id}`,
  * `package-sold-${id}`, `btn-view-package-${id}`.
@@ -55,22 +57,21 @@ export function FeedReadyMadeCard({
     .join(" · ");
   const byline = expertName ? `by ${expertName}` : destDuration;
 
-  // Traveler-facing Ready-Made card → the buyer detail page (2026-08-26-bento-
-  // compact-density). The whole card is ONE destination: body click, source row
-  // and the `Get this trip` CTA all land on /expert-templates/:id (never split
-  // between the buyer page and the expert-template view).
-  //
-  // BUGFIX (found during storefront taxonomy audit): this component only ever
-  // renders `expert_templates` rows (see the module doc above — data comes
-  // exclusively from GET /api/expert-templates). It previously linked to
-  // /ready-made/:id, which resolves the UNRELATED `ready_made_trips` table
-  // (a different product — see shared/schema.ts's Ready-Made Trips section).
-  // That id never exists there, so every click 404'd ("Trip not found"),
-  // confirmed live against the Mumbai demo listing. /ready-made/:id is the
-  // correct route ONLY for actual ready_made_trips-backed listings (see
-  // storefront.tsx's separate Ready-Made lane, and discover.tsx/experts.tsx,
-  // which fetch from /api/ready-made and correctly link there already).
-  const detailHref = `/expert-templates/${template.id}`;
+  // Route by SOURCE, never unified. storefront.tsx is the reference: its template
+  // lane links /expert-templates/:id and its ready-made lane /ready-made/:id — two
+  // routes, chosen by source. Phase 2e's "unify every card to /ready-made/:id" was
+  // itself the bug the marketplace audit caught: /ready-made/:id resolves the
+  // `ready_made_trips` table ONLY, so a card backed by `expert_templates` 404'd
+  // there ("Trip not found", confirmed live on the Mumbai demo). The href now
+  // follows the card's OWN source — a `ready_made_trips` row → /ready-made/:id, an
+  // `expert_templates` row → /expert-templates/:id — bringing the feed into line
+  // with what the storefront already proves. The whole card is ONE destination:
+  // body click, source row and the `Get this trip` CTA all land on that route.
+  const isReadyMadeSource =
+    template.source === "ready_made" || template.source === "ready_made_trips";
+  const detailHref = isReadyMadeSource
+    ? `/ready-made/${template.id}`
+    : `/expert-templates/${template.id}`;
   const ctaHref = detailHref;
 
   // ─── Compact density ────────────────────────────────────────────────────────
