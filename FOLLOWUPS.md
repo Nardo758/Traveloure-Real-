@@ -286,3 +286,9 @@ built** — each is a separate lane:
   `intake-fixes` lane (C5):** both `ROLE_LABELS` maps (`expert-detail.tsx`,
   `expert/profile.tsx`) now alias `trip_planner` to the same label as `travel_expert`, so a
   stray literal renders "Trip planner", never the generic "Expert".
+
+---
+
+## From the Plus occasions lane (2026-08-27)
+
+- **CI check rejecting duplicate migration numeric prefixes** — happened twice today (258×2, 260×2). A guard that fails when two registered migration files share the same `NNN` prefix would catch the collision at PR time; not built in this docs lane.
