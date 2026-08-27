@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Plus, Sparkles } from "lucide-react";
+import { Info, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -365,7 +365,7 @@ export function CityFeedCardRecommendation({
           }
         }}
       >
-        {/* Compact photo band — 84px; tinted band + disclosure corner tag only. */}
+        {/* §4a: this passive icon points to the card-body disclosure path. */}
         <div className={cn("relative overflow-hidden flex-shrink-0 flex items-center justify-center h-[84px] w-full", meta.phBg, meta.phText)}>
           {loading && <div className="absolute inset-0 bg-muted animate-pulse" />}
           {!loading && photoUrl && (
@@ -386,6 +386,12 @@ export function CityFeedCardRecommendation({
             <Sparkles className="w-2.5 h-2.5" />
             {isAffiliate ? affiliateLabel : recommendedLabel}
           </span>
+          <Info
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+            style={{ color: "var(--earn-muted)" }}
+            data-testid={`info-cue-rec-${position}`}
+          />
         </div>
         <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
           <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{name}</h3>

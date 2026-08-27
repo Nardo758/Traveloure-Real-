@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Star, MapPin, UserCircle } from "lucide-react";
+import { Info, Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -91,7 +91,7 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
           }
         }}
       >
-        {/* Compact photo band — 84px; gradient + initials fallback, Expert tag. */}
+        {/* §4a: the card body is the profile path; the Info icon is passive. */}
         <div className="relative h-[84px] overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-100 to-teal-200/70 flex items-center justify-center flex-shrink-0">
           {imageUrl ? (
             <img
@@ -115,6 +115,12 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
           >
             Expert
           </span>
+          <Info
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5"
+            style={{ color: "var(--earn-muted)" }}
+            data-testid={`info-cue-expert-${expert.id}`}
+          />
         </div>
         <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
           <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{name}</h3>
