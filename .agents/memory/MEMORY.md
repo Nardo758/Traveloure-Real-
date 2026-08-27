@@ -55,3 +55,4 @@
 - [Neighbourhood slug matching](neighbourhood-slug-matching.md) — free-text neighbourhood joins must normalize both sides or a mismatch silently drops the whole neighbourhood (and its chrome) from the feed.
 - [Lane branch HEAD reset risk](lane-branch-head-reset-risk.md) — an unrelated task-agent merge elsewhere can silently move this workspace's git HEAD off a lane branch back to main mid-session; push lane branches to origin early.
 - [tsc baseline ratchet gap](tsc-baseline-ratchet-gap.md) — a PR clean on its own branch can still push main's live tsc count over TSC_BASELINE if main already drifted; never bump the baseline to hide it.
+- [Bento card-shell ownership](bento-card-shell-ownership.md) — spanning Bento grid items own the visual shell; cards inside retain only content and interaction semantics.
