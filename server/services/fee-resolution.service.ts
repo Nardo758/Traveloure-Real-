@@ -26,10 +26,37 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import type { FeeRateSource } from "@shared/schema";
-
-/** Band keys this resolver names. Values live in `fee_bands`; only the KEYS are code. */
-export const TRAVELER_SERVICE_FEE_BAND = "traveler_service_fee";
-export const PROVIDER_RAILS_BAND = "provider_rails";
+import {
+  CONCIERGE_AI_TASK_BAND,
+  CONCIERGE_BOOKING_CAP_BAND,
+  CONCIERGE_BOOKING_PERCENT_BAND,
+  CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,
+  PLUS_TASK_ALLOWANCE_BAND,
+  PROVIDER_COMMERCIAL_BAND,
+  PROVIDER_LIMITED_BAND,
+  PROVIDER_MODERATE_BAND,
+  PROVIDER_PRO_BAND_STEP,
+  PROVIDER_PREMIUM_BAND,
+  PROVIDER_RAILS_BAND,
+  READY_MADE_PLATFORM_BAND,
+  TRAVELER_SERVICE_FEE_BAND,
+} from "./fee-band-requirements";
+export {
+  CONCIERGE_AI_TASK_BAND,
+  CONCIERGE_BOOKING_CAP_BAND,
+  CONCIERGE_BOOKING_PERCENT_BAND,
+  CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,
+  PLUS_TASK_ALLOWANCE_BAND,
+  PROVIDER_COMMERCIAL_BAND,
+  PROVIDER_LIMITED_BAND,
+  PROVIDER_MODERATE_BAND,
+  PROVIDER_PRO_BAND_STEP,
+  PROVIDER_PREMIUM_BAND,
+  PROVIDER_RAILS_BAND,
+  READY_MADE_PLATFORM_BAND,
+  TRAVELER_SERVICE_FEE_BAND,
+} from "./fee-band-requirements";
+export type { FeeBandRateType } from "./fee-band-requirements";
 
 export interface BandRow {
   id: string;
@@ -40,8 +67,6 @@ export interface BandRow {
   /** Per-booking dollar ceiling on the resolved amount; null = uncapped. */
   maxAmount: number | null;
 }
-
-export type FeeBandRateType = "percent" | "flat" | "flat_cents" | "count" | "rule";
 
 export class BandResolutionError extends Error {
   constructor(bandKey: string, detail: string) {
@@ -104,14 +129,6 @@ export async function requireBandType(
   }
   return band;
 }
-
-export const CONCIERGE_AI_TASK_BAND = "concierge:ai_task";
-export const CONCIERGE_BOOKING_PERCENT_BAND = "concierge:booking_pct";
-export const CONCIERGE_BOOKING_CAP_BAND = "concierge:booking_cap_cents";
-export const CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND = "concierge:done_for_you_deposit_pct";
-export const PROVIDER_PRO_BAND_STEP = "provider:pro_band_step";
-export const PLUS_TASK_ALLOWANCE_BAND = "plans:plus_task_allowance";
-export const READY_MADE_PLATFORM_BAND = "ready_made:platform_band";
 
 export const requireFlatCentsBand = (bandKey: string) => requireBandType(bandKey, "flat_cents");
 export const requireCountBand = (bandKey: string) => requireBandType(bandKey, "count");
