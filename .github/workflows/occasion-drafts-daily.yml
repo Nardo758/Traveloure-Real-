@@ -1,0 +1,63 @@
+name: Daily occasion drafts
+
+# The production app is Autoscale, so its in-process timer is only
+# defense-in-depth. This workflow is the authoritative daily trigger.
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-occasion-drafts:
+    name: Run production occasion drafts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST the daily runner
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$INTERNAL_JOB_SECRET" ]]; then
+            echo "::error title=Missing GitHub secret::INTERNAL_JOB_SECRET is not configured for this repository."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          set +e
+          http_status="$(
+            curl \
+              --silent \
+              --show-error \
+              --request POST \
+              --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
+              --header "content-type: application/json" \
+              --data '{}' \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              https://www.traveloure.com/internal/run-occasion-drafts
+          )"
+          curl_exit=$?
+          set -e
+
+          echo "HTTP status: $http_status"
+          cat "$response_file"
+          echo
+
+          if [[ "$curl_exit" -ne 0 ]]; then
+            echo "::error title=Occasion draft trigger failed::curl exited with status $curl_exit."
+            exit "$curl_exit"
+          fi
+
+          if [[ "$http_status" != "200" ]]; then
+            echo "::error title=Occasion draft trigger returned HTTP $http_status::Expected HTTP 200 from the production runner."
+            exit 1
+          fi
+
+          echo "Daily occasion draft pass completed successfully."

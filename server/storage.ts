@@ -4,10 +4,11 @@ import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
+import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
 import { sanitizeText } from "./utils/text-sanitizer";
 import { 
-  trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
+  trips, occasions, occasionDrafts, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints, servicePickupRoutePoints,
   type ServiceRoutePoint,
@@ -141,6 +142,7 @@ import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
 import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
 import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
+import { resolveOccasionTemplate } from "./services/occasion-templates";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -168,7 +170,7 @@ export interface BookingStatusNotification {
 
 export interface IStorage {
   // Trips
-  getTrips(userId?: string): Promise<Trip[]>;
+  getTrips(userId?: string, status?: string): Promise<TripListItem[]>;
 
   getTrip(id: string): Promise<Trip | undefined>;
 
@@ -1283,13 +1285,33 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // Trips
-  async getTrips(userId?: string, status?: string): Promise<Trip[]> {
+  async getTrips(userId?: string, status?: string): Promise<TripListItem[]> {
     if (!userId) return [];
     const conditions = [eq(trips.userId, userId)];
     if (status) {
       conditions.push(eq(trips.status, status));
     }
-    return await db.select().from(trips).where(and(...conditions));
+    const rows = await db
+      .select({
+        trip: trips,
+        occasionLabel: occasions.label,
+        occasionDate: occasions.occasionDate,
+        occasionTemplateKey: occasions.templateKey,
+      })
+      .from(trips)
+      .leftJoin(occasionDrafts, eq(occasionDrafts.tripId, trips.id))
+      .leftJoin(occasions, eq(occasions.id, occasionDrafts.occasionId))
+      .where(and(...conditions));
+
+    return rows.map(({ trip, occasionLabel, occasionDate, occasionTemplateKey }) => ({
+      ...trip,
+      occasion: occasionDate && occasionTemplateKey
+        ? {
+            label: occasionLabel?.trim() || resolveOccasionTemplate(occasionTemplateKey).defaultLabel,
+            date: occasionDate,
+          }
+        : null,
+    }));
   }
 
   async getTrip(id: string): Promise<Trip | undefined> {
