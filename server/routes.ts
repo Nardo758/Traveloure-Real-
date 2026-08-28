@@ -1104,7 +1104,7 @@ export async function registerRoutes(
   app.use(occasionsRoutes);
   // Internal machine-to-machine trigger — POST /internal/run-occasion-drafts, auth'd by
   // INTERNAL_JOB_SECRET (NOT a user session). The authoritative daily runner on Autoscale (fired by
-  // an external Scheduled Deployment / cron); the in-process timer is defense-in-depth only.
+  // the GitHub Actions cron / another external cron); the in-process timer is defense-in-depth only.
   app.use(internalRoutes);
 
   // Traveler service requests ("request a service that doesn't exist yet"):

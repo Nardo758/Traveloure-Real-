@@ -1254,7 +1254,7 @@ export default function ItineraryComparisonPage() {
               data-testid="button-back-to-my-plans"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to My plans
+              Back to My Plans
             </Button>
           </CardContent>
         </Card>

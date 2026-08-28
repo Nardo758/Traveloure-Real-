@@ -292,6 +292,7 @@ built** — each is a separate lane:
 ## From the Plus occasions lane (2026-08-27)
 
 - **CI check rejecting duplicate migration numeric prefixes** — happened twice today (258×2, 260×2). A guard that fails when two registered migration files share the same `NNN` prefix would catch the collision at PR time; not built in this docs lane.
+- **Traveler sidebar localization** — the traveler sidebar remains hardcoded in this copy-only lane. When it is properly wired into the i18n system, use the approved Japanese label **「マイプラン」** for “My Plans”; do not add a half-wired key here.
 
 ### FU — Landing-build lane deferrals (docs/design/LANDING_SPEC.md)
 The `landing-build` lane shipped the v2.4 landing (hero endpoint + 9 ruled sections). Filed,

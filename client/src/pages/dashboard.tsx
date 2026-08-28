@@ -154,7 +154,7 @@ export default function Dashboard() {
       <DashboardLayout>
         <div className="py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
