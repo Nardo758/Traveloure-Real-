@@ -1,12 +1,12 @@
 /**
  * logo-navigation-surfaces.spec.ts
  *
- * Verifies that the Traveloure PNG logo renders correctly across every
+ * Verifies that the Traveloure SVG logo renders correctly across every
  * navigation surface after the brand update.
  *
  * For each surface the test asserts:
  *   (a) the logo anchor (`data-testid="link-*-logo"`) contains an <img>
- *       with src="/traveloure-logo.png" and alt="Traveloure"
+ *       with src="/traveloure-logo.svg", alt="Traveloure", and intrinsic dimensions
  *   (b) no red-T placeholder <div> (background-color #E85D55 with inner
  *       text "T") exists anywhere inside the logo anchor
  *
@@ -51,7 +51,7 @@ function didNotRedirect(page: Page, requestedPath: string): boolean {
 
 /**
  * Core assertion: the element identified by `testId` must contain exactly one
- * <img src="/traveloure-logo.png" alt="Traveloure"> and no red-T placeholder.
+ * <img src="/traveloure-logo.svg" alt="Traveloure"> and no red-T placeholder.
  */
 async function assertLogoInLink(page: Page, testId: string, surface: string) {
   const link = page.getByTestId(testId);
@@ -60,10 +60,10 @@ async function assertLogoInLink(page: Page, testId: string, surface: string) {
   });
 
   // (a) img with correct src and alt
-  const img = link.locator('img[src="/traveloure-logo.png"]');
+  const img = link.locator('img[src="/traveloure-logo.svg"]');
   await expect(
     img,
-    `[${surface}] logo link "${testId}" must contain <img src="/traveloure-logo.png">`,
+    `[${surface}] logo link "${testId}" must contain <img src="/traveloure-logo.svg">`,
   ).toBeAttached({ timeout: 5_000 });
 
   const altValue = await img.getAttribute('alt');
@@ -71,6 +71,8 @@ async function assertLogoInLink(page: Page, testId: string, surface: string) {
     altValue,
     `[${surface}] logo <img> must have alt="Traveloure"`,
   ).toBe('Traveloure');
+  await expect(img).toHaveAttribute('width', '1000');
+  await expect(img).toHaveAttribute('height', '295');
 
   // (b) no red-T placeholder div — the old placeholder was a <div> containing
   //     only the letter "T" styled with background #E85D55.
@@ -87,7 +89,7 @@ async function assertLogoInLink(page: Page, testId: string, surface: string) {
       bgColor.includes('232') && bgColor.includes('93') && bgColor.includes('85');
     expect(
       isRedPlaceholder,
-      `[${surface}] found a red-T placeholder div inside "${testId}" — the PNG logo is missing`,
+      `[${surface}] found a red-T placeholder div inside "${testId}" — the SVG logo is missing`,
     ).toBe(false);
   }
 }
@@ -97,7 +99,7 @@ async function assertLogoInLink(page: Page, testId: string, surface: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('Logo — public main navbar (/)', () => {
-  test('link-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('link-logo contains traveloure-logo.svg img', async ({ page }) => {
     await gotoAndSettle(page, '/');
     await assertLogoInLink(page, 'link-logo', 'public-navbar');
     console.log('[logo-test] PASS public main navbar (/)');
@@ -135,7 +137,7 @@ test.describe('Logo — expert sidebar (/expert/today)', () => {
     expertSessionOk = roleOk;
   });
 
-  test('link-expert-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('link-expert-logo contains traveloure-logo.svg img', async ({ page }) => {
     if (!expertSessionOk) {
       test.skip(true, 'Expert session not available — seed CI users and run with PW_AUTH_SETUP=1');
       return;
@@ -179,7 +181,7 @@ test.describe('Logo — provider sidebar (/provider/dashboard)', () => {
     providerSessionOk = roleOk;
   });
 
-  test('link-provider-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('link-provider-logo contains traveloure-logo.svg img', async ({ page }) => {
     if (!providerSessionOk) {
       test.skip(true, 'Provider session not available — seed CI users and run with PW_AUTH_SETUP=1');
       return;
@@ -222,7 +224,7 @@ test.describe('Logo — traveler dashboard sidebar (/dashboard)', () => {
     sessionOk = authenticated;
   });
 
-  test('link-sidebar-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('link-sidebar-logo contains traveloure-logo.svg img', async ({ page }) => {
     if (!sessionOk) {
       test.skip(
         true,
@@ -239,7 +241,7 @@ test.describe('Logo — traveler dashboard sidebar (/dashboard)', () => {
     console.log('[logo-test] PASS traveler dashboard sidebar (/dashboard)');
   });
 
-  test('dashboard layout header link-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('dashboard layout header link-logo contains traveloure-logo.svg img', async ({ page }) => {
     if (!sessionOk) {
       test.skip(
         true,
@@ -288,7 +290,7 @@ test.describe('Logo — EA sidebar (/ea/dashboard)', () => {
     eaSessionOk = roleOk;
   });
 
-  test('link-ea-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('link-ea-logo contains traveloure-logo.svg img', async ({ page }) => {
     if (!eaSessionOk) {
       test.skip(true, 'EA session not available — seed CI users and run with PW_AUTH_SETUP=1');
       return;
@@ -332,7 +334,7 @@ test.describe('Logo — admin sidebar (/admin/dashboard)', () => {
     adminSessionOk = roleOk;
   });
 
-  test('link-admin-logo contains traveloure-logo.png img', async ({ page }) => {
+  test('link-admin-logo contains traveloure-logo.svg img', async ({ page }) => {
     if (!adminSessionOk) {
       test.skip(true, 'Admin session not available — seed CI users and run with PW_AUTH_SETUP=1');
       return;
