@@ -3,8 +3,8 @@
  *
  * DEFENSE-IN-DEPTH ONLY. On Autoscale the app scales to zero between requests, so an in-process
  * timer is NOT a reliable runner — the authoritative path is the idempotent internal endpoint
- * (POST /internal/run-occasion-drafts) fired by a daily external trigger (Replit Scheduled
- * Deployment / cron). This timer is a best-effort second rail while an instance is warm; because
+ * (POST /internal/run-occasion-drafts) fired by a daily external trigger (GitHub Actions
+ * cron / another external cron). This timer is a best-effort second rail while an instance is warm; because
  * runOccasionDrafts() is idempotent by the occasion_drafts ledger, the endpoint and this timer
  * firing in the same window produce exactly ONE draft per occasion cycle.
  *
