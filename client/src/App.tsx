@@ -465,11 +465,6 @@ function Router() {
         {(params: any) => <Redirect to={`/discover/location/${params.slug}`} />}
       </Route>
 
-      {/* Phase B: Legacy route redirect — /city/:slug → /discover/location/:slug for bookmark continuity */}
-      <Route path="/city/:city">
-        {({ city }) => <Redirect to={`/discover/location/${city}`} />}
-      </Route>
-
       <Route path="/services/:id">
         <PageErrorBoundary fallbackHeading="Service Not Found">
           <ServiceDetailPage />
