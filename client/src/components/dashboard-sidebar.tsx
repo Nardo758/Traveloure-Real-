@@ -44,7 +44,7 @@ const menuGroups = [
     label: "Plan",
     items: [
       { title: "Home", href: "/dashboard", icon: Home },
-      { title: "My plans", href: "/my-trips", icon: Calendar },
+      { title: "My Plans", href: "/my-trips", icon: Calendar },
       { title: "AI planner", href: "/ai-assistant", icon: Bot },
     ],
   },

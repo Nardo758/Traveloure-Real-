@@ -72,7 +72,7 @@ export default function MyTrips() {
       <DashboardLayout>
         <div className="container mx-auto px-4 py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
@@ -189,7 +189,7 @@ export default function MyTrips() {
               {!isCompleted && progress !== null && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Trip progress</span>
+                    <span className="text-muted-foreground">Plan progress</span>
                     <span className="font-medium text-foreground dark:text-white">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
@@ -229,7 +229,7 @@ export default function MyTrips() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-            My plans
+            My Plans
           </h1>
           <Button
             className="bg-primary hover:bg-primary/90 text-white"
@@ -343,12 +343,12 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Past trips */}
+        {/* Past plans */}
         {pastTrips.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground dark:text-white flex items-center gap-2">
-                Past trips ({pastTrips.length})
+                Past plans ({pastTrips.length})
               </h2>
               <Button variant="ghost" className="text-primary" data-testid="button-show-all-completed">
                 Show All <ChevronRight className="w-4 h-4 ml-1" />
@@ -384,7 +384,7 @@ export default function MyTrips() {
               <p className="text-muted-foreground mb-4">
                 {searchQuery || typeFilter !== "all" || statusFilter !== "all"
                   ? "Try adjusting your filters"
-                  : "Start planning your next adventure!"}
+                  : "Start one, or let an occasion bring you one."}
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
                 <Button
