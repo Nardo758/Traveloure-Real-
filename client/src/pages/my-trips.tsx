@@ -20,6 +20,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function formatOccasionDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return format(new Date(year, month - 1, day), "MMM d");
+}
+
 const eventTypeIcons: Record<string, any> = {
   vacation: Plane,
   wedding: Heart,
@@ -149,10 +156,10 @@ export default function MyTrips() {
               <Icon className={`${viewMode === "list" ? "w-8 h-8" : "w-12 h-12"} text-primary`} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
+              <div className="flex flex-wrap items-start gap-2 mb-2">
+                <div className="min-w-0 flex-[1_1_14rem]">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <h3 className="min-w-0 max-w-full font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
                       {trip.title}
                     </h3>
                     {/* Slip identity — render ONLY when the trips-list response carries a
@@ -165,6 +172,19 @@ export default function MyTrips() {
                         {trip.trackingNumber}
                       </span>
                     )}
+                    {trip.occasion && (
+                      <span
+                        className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          background: "var(--earn-gold-wash)",
+                          color: "var(--earn-gold-ink)",
+                          fontFamily: EARN_MONO,
+                        }}
+                        data-testid={`chip-occasion-${trip.id}`}
+                      >
+                        {trip.occasion.label} · {formatOccasionDate(trip.occasion.date)}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {format(start, "MMM d")} - {format(end, "MMM d, yyyy")} • {trip.destination}
@@ -172,15 +192,15 @@ export default function MyTrips() {
                 </div>
                 {/* Phase chip — same date-derived logic as the section buckets (§13 honest-or-absent). */}
                 {isCompleted ? (
-                  <Badge variant="secondary" className="flex-shrink-0">
+                  <Badge variant="secondary" className="ml-auto flex-shrink-0">
                     <Star className="w-3 h-3 mr-1" /> Completed
                   </Badge>
                 ) : isUpcoming ? (
-                  <Badge className="flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
+                  <Badge className="ml-auto flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
                     {daysAway} days away
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="flex-shrink-0">
+                  <Badge variant="outline" className="ml-auto flex-shrink-0">
                     Underway
                   </Badge>
                 )}
