@@ -292,3 +292,23 @@ built** — each is a separate lane:
 ## From the Plus occasions lane (2026-08-27)
 
 - **CI check rejecting duplicate migration numeric prefixes** — happened twice today (258×2, 260×2). A guard that fails when two registered migration files share the same `NNN` prefix would catch the collision at PR time; not built in this docs lane.
+
+### FU — Landing-build lane deferrals (docs/design/LANDING_SPEC.md)
+The `landing-build` lane shipped the v2.4 landing (hero endpoint + 9 ruled sections). Filed,
+not built:
+- **`experience_starts` rollup** — the experiences section ships the mock's degraded contract
+  (static curated order, ticker hidden, no counts/ranks §13). The rollup (starts-per-occasion
+  per week) is its own lane; when it lands, the live ranked rail + ticker + shared-rotation
+  advance replace the static ordering (`experiences-rail.tsx` carries the note).
+- **Production anchor verification** — outbound to the deployed hosts is blocked from the
+  build container, so "does the top prod city's feed yield a real anchor expert" (13 real
+  earners) needs a Replit-side check: `GET /api/landing/hero` on prod after deploy; a null
+  anchorExpert means no `expert_neighborhoods` assignment exists yet — an ops/assignment gap,
+  not a code bug (the hero collapses honestly either way).
+- **Curated testimonials rail** — removed with the rebuild (the mock carries none; the old rail
+  was already hidden until admin-curated reviews existed). Revisit only with a ruling once
+  curated reviews exist.
+- **Plus coral accounting** — with `plusSalesEnabled=false` the page's coral CTAs are exactly 3
+  (hero, earn, final). When Plus sales flip ON, Join-Plus becomes a coral button and the count
+  goes to 4 — the mock's own note anticipates this; needs a one-line ruling at flip time
+  (which section yields, or 4 is accepted).
