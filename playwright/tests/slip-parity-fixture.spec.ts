@@ -96,7 +96,7 @@ test.describe("authenticated Slip review parity fixture", () => {
     await expect(page.getByTestId("comparison-access-denied")).toContainText(
       "You don't have access to this optimization review",
     );
-    await expect(page.getByTestId("button-back-to-my-plans")).toContainText("Back to My plans");
+    await expect(page.getByTestId("button-back-to-my-plans")).toContainText("Back to My Plans");
     await expect(page.getByText("No itinerary data found")).toHaveCount(0);
 
     const requests = await page.evaluate(() => {
