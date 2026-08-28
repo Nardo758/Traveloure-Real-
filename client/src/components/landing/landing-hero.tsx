@@ -16,11 +16,12 @@
  * "Plan my trip" calls the SAME handler the old hero used — setPlanningOpen(true) via the
  * onPlanTrip prop → EnhancedPlanningModal (preserve-exactly, LANDING_SPEC.md).
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
+import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
@@ -83,7 +84,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const anchorFrom = centsToDollarsLabel(anchor?.fromPriceCents ?? null);
   const servicePrice = centsToDollarsLabel(service?.priceCents ?? null);
   const anchorFirstName = anchor?.name?.split(" ")[0] ?? null;
-  const marketNames = OPERATING_MARKETS.slice(0, 4).map((m) => m.cityName);
+  const marketNames = OPERATING_MARKETS.slice(0, 4);
 
   const tickerParts = hero?.city
     ? [
@@ -339,11 +340,32 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
           </div>
 
           <div
-            className="mt-2 flex justify-between text-[10.5px]"
+            className="mt-2 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[10.5px]"
             style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
           >
             <span>{hero?.city ? `live from the ${hero.city} feed` : "live feed warming up"}</span>
-            <span>{marketNames.join(" · ")}</span>
+            <span
+              className="flex items-center gap-1 whitespace-nowrap uppercase tracking-[0.14em]"
+              data-testid="hero-market-ticker"
+            >
+              {marketNames.map((market, index) => (
+                <Fragment key={market.marketKey}>
+                  {index > 0 && (
+                    <span className="text-[color:var(--earn-muted)]" aria-hidden="true">
+                      ·
+                    </span>
+                  )}
+                  <Link
+                    href={getCityDiscoverHref(market.cityName)}
+                    className="rounded-sm text-[color:var(--earn-muted)] hover:text-[color:var(--earn-teal-ink)] hover:underline focus:text-[color:var(--earn-teal-ink)] focus-visible:text-[color:var(--earn-teal-ink)] focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--earn-teal)]"
+                    aria-label={market.cityName}
+                    data-testid={`hero-market-link-${market.marketKey}`}
+                  >
+                    {market.cityName}
+                  </Link>
+                </Fragment>
+              ))}
+            </span>
           </div>
         </div>
       </div>
