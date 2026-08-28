@@ -181,7 +181,10 @@ export default function ExpertsPage() {
     const topicParam = params.get("topic");
     const roleParam = params.get("role");
     if (destParam) {
-      setSearchQuery(destParam);
+      // Keep the directory's two-field contract intact: `destination` scopes the
+      // Where control and the server query; it is not free text for the What input.
+      // Copying it into searchQuery caused valid destination-scoped experts to be
+      // removed by the independent client-side text filter.
       const match = destinations.find(d =>
         d.toLowerCase().startsWith(destParam.toLowerCase().split(",")[0])
       );
