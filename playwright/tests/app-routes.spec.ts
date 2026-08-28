@@ -169,3 +169,20 @@ test.describe('App route coverage — no broken routes', () => {
     }
   }
 });
+
+test.describe('App route coverage — terminal NotFound', () => {
+  test('an unknown direct URL renders the catch-all NotFound page', async ({ page }) => {
+    const unknownPath = '/route-contract-test/definitely-not-a-real-page';
+    await page.goto(`${BASE_URL}${unknownPath}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30_000,
+    });
+
+    await expect(
+      page.getByRole('heading', { name: NOT_FOUND_HEADING, exact: true }),
+      `Expected ${unknownPath} to render the terminal 404 page`,
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('link', { name: 'Return Home' })).toHaveAttribute('href', '/');
+    expect(new URL(page.url()).pathname).toBe(unknownPath);
+  });
+});
