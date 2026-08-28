@@ -96,3 +96,10 @@ uri = "file://screenshots/bento-colaba.png"
 type = "image"
 title = "Signed-in Colaba Bento section"
 description = "Live development capture of the Colaba section with content-sized rows and contained compact actions."
+
+[[outputs]]
+id = "YNzLVvAnq4V-gMA8Cu39T"
+uri = "file://attached_assets/Rohit_Work_Test_Findings_Fixes_Report.md"
+type = "text"
+title = "Rohit — Work, Testing, Findings, and Fixes Report"
+description = "Detailed Traveloure report covering Rohit’s structural audit, tests, production findings, merged fixes, backfill analysis, and final deployment verification."
