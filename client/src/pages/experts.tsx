@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { ExpertCard } from "@/components/expert-card";
 import { SEOHead } from "@/components/seo-head";
+import { expertFacetValues, expertSearchMatches } from "@/lib/expert-search";
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile reads it
 // rather than restating the role→glyph mapping; keyed by the nav leaf `name`.
 import { NAV_LEAF_ICONS } from "@/components/layout";
@@ -118,17 +119,6 @@ const roleLabels: Record<string, string> = {
   local_expert: "Local Experts",
   event_planner: "Event Planners",
 };
-
-function expertFacetValues(expert: any, facet: "specialties" | "neighborhoods"): string[] {
-  const values =
-    facet === "specialties"
-      ? expert.expertForm?.specialties || expert.specialties || expert.specializations
-      : expert.expertForm?.neighborhoods;
-  return Array.isArray(values)
-    ? values.filter((value: unknown): value is string => typeof value === "string" && value.trim() !== "")
-    : [];
-}
-
 export default function ExpertsPage() {
   const [location, navigate] = useLocation();
   const searchString = useSearch();
@@ -181,7 +171,10 @@ export default function ExpertsPage() {
     const topicParam = params.get("topic");
     const roleParam = params.get("role");
     if (destParam) {
-      setSearchQuery(destParam);
+      // Keep the directory's two-field contract intact: `destination` scopes the
+      // Where control and the server query; it is not free text for the What input.
+      // Copying it into searchQuery caused valid destination-scoped experts to be
+      // removed by the independent client-side text filter.
       const match = destinations.find(d =>
         d.toLowerCase().startsWith(destParam.toLowerCase().split(",")[0])
       );
@@ -274,18 +267,12 @@ export default function ExpertsPage() {
     );
   };
 
-  // Filter experts by search and language (destination + neighbourhood are handled server-side)
+  // Filter experts by search and language. Destination/neighbourhood are also
+  // handled server-side, but destination URL parameters seed searchQuery too,
+  // so location fields must remain searchable in this client-side pass.
   const filteredExperts = apiExperts.filter((expert: any) => {
-    const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
-    const neighbourhoods = expertFacetValues(expert, "neighborhoods");
     const expertSpecialties = expertFacetValues(expert, "specialties");
-    const query = searchQuery.toLowerCase();
-    const matchesSearch =
-      searchQuery === "" ||
-      fullName.includes(query) ||
-      expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      expertSpecialties.some((specialty) => specialty.toLowerCase().includes(query)) ||
-      neighbourhoods.some((n) => n.toLowerCase().includes(query));
+    const matchesSearch = expertSearchMatches(expert, searchQuery);
 
     const matchesLanguage =
       selectedLanguage === "All Languages" ||
