@@ -1,5 +1,6 @@
 import { MapPin, Sparkles, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import "./CityTickerTape.css";
 
@@ -32,18 +33,30 @@ export function CityTickerTape() {
             </span>
           </div>
 
-          <div className="ticker-wrapper flex-1 min-w-0 mx-2" aria-hidden="true">
+          <div className="ticker-wrapper flex-1 min-w-0 mx-2">
             <div className="ticker-content-inline">
               {[...markets, ...markets, ...markets].map((market, index) => (
                 <span
                   key={`${market.marketKey}-${index}`}
                   className="inline-flex items-center gap-1.5 mx-3 whitespace-nowrap"
                   data-testid={`ticker-city-${market.marketKey}-${index}`}
+                  aria-hidden={index >= markets.length ? "true" : undefined}
                 >
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-white/20">
-                    <MapPin className="w-3 h-3" />
+                    <MapPin className="w-3 h-3" aria-hidden="true" />
                   </span>
-                  <span className="font-medium">{market.cityName}</span>
+                  {index < markets.length ? (
+                    <Link
+                      href={getCityDiscoverHref(market.cityName)}
+                      className="rounded-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                      aria-label={market.cityName}
+                      data-testid={`ticker-city-link-${market.marketKey}`}
+                    >
+                      {market.cityName}
+                    </Link>
+                  ) : (
+                    <span className="font-medium">{market.cityName}</span>
+                  )}
                 </span>
               ))}
             </div>
