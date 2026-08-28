@@ -15,6 +15,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { CityCard } from "@/components/travelpulse/CityCard";
 import { useRotation } from "@/hooks/use-rotation";
+import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { SectionHeader, OpenSection } from "./section-header";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -91,7 +92,7 @@ export function CitiesRail() {
               score={c.trendingScore ?? null}
               crowdLevel={c.crowdLevel ?? null}
               primaryLabel="View"
-              onCardClick={() => navigate(`/discover/location/${encodeURIComponent(c.cityName)}`)}
+              onCardClick={() => navigate(getCityDiscoverHref(c.cityName))}
               testId={`city-compact-${c.cityName.toLowerCase()}`}
             />
           </div>

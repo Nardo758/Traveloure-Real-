@@ -16,11 +16,12 @@
  * "Plan my trip" calls the SAME handler the old hero used — setPlanningOpen(true) via the
  * onPlanTrip prop → EnhancedPlanningModal (preserve-exactly, LANDING_SPEC.md).
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
+import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
@@ -83,7 +84,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const anchorFrom = centsToDollarsLabel(anchor?.fromPriceCents ?? null);
   const servicePrice = centsToDollarsLabel(service?.priceCents ?? null);
   const anchorFirstName = anchor?.name?.split(" ")[0] ?? null;
-  const marketNames = OPERATING_MARKETS.slice(0, 4).map((m) => m.cityName);
+  const marketNames = OPERATING_MARKETS.slice(0, 4);
 
   const tickerParts = hero?.city
     ? [
@@ -343,7 +344,22 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
             style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
           >
             <span>{hero?.city ? `live from the ${hero.city} feed` : "live feed warming up"}</span>
-            <span>{marketNames.join(" · ")}</span>
+            <span className="flex items-center gap-1 whitespace-nowrap" data-testid="hero-market-ticker">
+              {marketNames.map((market, index) => (
+                <Fragment key={market.marketKey}>
+                  {index > 0 && <span aria-hidden="true">·</span>}
+                  <Link
+                    href={getCityDiscoverHref(market.cityName)}
+                    className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    style={{ color: "inherit" }}
+                    aria-label={market.cityName}
+                    data-testid={`hero-market-link-${market.marketKey}`}
+                  >
+                    {market.cityName}
+                  </Link>
+                </Fragment>
+              ))}
+            </span>
           </div>
         </div>
       </div>
