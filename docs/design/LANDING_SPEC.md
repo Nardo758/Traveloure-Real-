@@ -41,11 +41,29 @@ disagree, **the dispatch wins** (it is the reissue; delta noted below).
 | Hero gem | city feed `gems.data[]` | `placeName` (NOT `name`), `gemScore` (the score), `localRating`, coords. 21 rows in dev Kyoto. |
 | Hero bookable service | city feed `services.data[]` | `serviceName`, `price` (**decimal-dollars string**, e.g. `"480.00"` — Phase 1 converts to `priceCents`), `priceType`, `city`, `neighborhood`, `serviceImage`, approved+active only. 27 rows in dev Kyoto. |
 | Hero wanted slot | **no server home** — today derived client-side in `discover-location.tsx:1881-1906` (neighborhoods × offering types with no coverage) | Phase 1 re-derives server-side inside `/api/landing/hero` (same inputs: `expert_offering_types` minus covered), nullable. |
-| Typed search titles | `service_requests` table exists (`shared/schema.ts:6344`) but has **no public read** — only auth'd `/mine` + admin triage | **Open decision (hard stop):** serving traveler-authored titles publicly needs a ruling; options at the stop. |
+| Typed search titles | **Static curated list (decision-maker ruled at the Phase 0 stop): no UGC.** `service_requests` has no public read and its only free text is traveler-authored — nothing user-generated reaches the landing. | The curated, market-spread list below (§ Typed-search titles). Client-side constant, rotated by the shared rotation utility; stops on focus; submits to `/services?q=&location=`; never writes trip context. |
 | Price strip / Plus price | `GET /api/pricing` (public, unauthenticated — verified) | `serviceFeePct:7`, `serviceFeeCapCents:2500`, `optimizerRunDisplay.priceCents:599`, `aiTaskCents:299`, `tripPass.priceCents:1900`, `plusAnnual:{priceCents:2500,interval:"year"}`, **`plusSalesEnabled:false`** — the Join-Plus CTA gates on this field (coming-soon state, price still shown). |
 | Numbers | `GET /api/platform/stats` (already consumed at `landing.tsx:270-272`) | `{totalTrips:1, totalUsers:29, totalExperts:12, totalReviews:0, totalBookings:0, totalCountries:1}` in dev. Current page renders `"0+"` fallbacks (`formatStat`); ruled behavior is honest `—` where empty — change with the section rebuild. |
 | Experiences ticker | `experience_starts` rollup **does not exist** (verified: zero references repo-wide) | Build the degraded section: static curated order, ticker hidden (mock's note). Rollup filed, not built. |
 | Cities rail | `TrendingCities` (already mounted, `landing.tsx:526`) → shared `travelpulse/CityCard` | **`CityCard` has no `density` prop** — the compact variant must be added (additive prop, default preserves current renders). |
+
+## Typed-search titles (ruled: static curated, market-spread, no UGC)
+
+One per operating market (the ratified 8, `@shared/operating-markets`), phrased as
+searches a traveler would type. This list is the source of truth — edits here, not
+inline in the component:
+
+1. "A rainy-day tea itinerary in Kyoto"
+2. "Porto wine cellars a local would pick"
+3. "Sunset sailing out of Cartagena's old port"
+4. "Street food after dark in Mumbai"
+5. "Edinburgh closes and hidden courtyards"
+6. "A slow morning in Goa's spice villages"
+7. "Block-printing with a maker in Jaipur"
+8. "Bogotá coffee farms in a day"
+
+Rotation via the shared utility (below); the input stops rotating on focus; submit
+navigates to `/services?q=<text>&location=<city>` and never writes trip context.
 
 ## Shared rotation utility — must be CREATED (does not exist)
 
