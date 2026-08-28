@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
+import { LandingHero } from "@/components/landing/landing-hero";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
-import { CityTickerTape } from "@/components/CityTickerTape";
 import { TrendingCities } from "@/components/TrendingCities";
 import { ExperienceCard } from "@/components/ui/experience-card";
 import { StatCard } from "@/components/ui/stat-card";
@@ -41,7 +41,6 @@ import {
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.webp";
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useQuery } from "@tanstack/react-query";
@@ -319,209 +318,12 @@ export default function LandingPage() {
         keywords={["travel platform", "AI travel planning", "event planning", "vacation booking", "travel services"]}
         url="/"
       />
-      <CityTickerTape />
 
-      <section
-        className="relative min-h-[650px] lg:min-h-[750px] flex items-center"
-        style={{
-          backgroundImage: `url(${lakeImage})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/40" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-
-        <div className="container mx-auto px-4 max-w-6xl relative z-10 py-12">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-12"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 }}
-              className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md text-white px-4 py-2 rounded-full text-sm font-medium mb-6 border border-white/20"
-            >
-              <Rocket className="w-4 h-4 text-primary" />
-              <span>BETA VERSION</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            </motion.div>
-
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight mb-6">
-              Plan Your Perfect<br />
-              <span className="bg-gradient-to-r from-[#FF385C] via-[#FF6B6B] to-[#FF8E53] bg-clip-text text-transparent">
-                Life Experiences
-              </span>
-            </h1>
-
-            <p className="text-lg md:text-xl text-white/90 leading-relaxed max-w-2xl mx-auto">
-              From dream vacations to unforgettable celebrations — plan it yourself with AI or get personalized help from experts.
-            </p>
-
-            <div className="mt-8 flex justify-center">
-              <Button
-                size="lg"
-                className="bg-primary hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2 min-h-[44px]"
-                onClick={() => setPlanningOpen(true)}
-                data-testid="button-plan-trip"
-              >
-                <Sparkles className="w-4 h-4" />
-                Plan a Trip with AI
-              </Button>
-            </div>
-          </motion.div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
-              <Card className="bg-white/10 backdrop-blur-lg border-white/20 h-full shadow-2xl">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center shadow-lg">
-                      <Sparkles className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Choose Your Experience</h2>
-                      <p className="text-sm text-white/70">Start planning with our templates</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
-                    {experienceTemplates.map((cat, index) => (
-                      <motion.div
-                        key={cat.label}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.4 + index * 0.02 }}
-                      >
-                        <Link href={`/experiences/${cat.slug}`}>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="bg-white/10 border-white/30 text-white gap-1.5 text-xs min-h-[44px] sm:min-h-0"
-                            data-testid={`button-category-${cat.slug}`}
-                          >
-                            <cat.icon className={cn("w-3.5 h-3.5", cat.color)} />
-                            {cat.label}
-                          </Button>
-                        </Link>
-                      </motion.div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <div className="flex flex-col gap-5">
-              <div className="grid grid-cols-2 gap-3">
-                <motion.div
-                  initial={{ opacity: 0, x: 30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: 0.4 }}
-                >
-                  <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl overflow-hidden h-full">
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-emerald-500/20 to-transparent rounded-bl-full" />
-                    <CardContent className="p-4 relative flex flex-col h-full">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shrink-0">
-                          <UserCheck className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-bold text-white leading-tight">Local Experts</h3>
-                          <p className="text-[10px] text-white/70">Insider guidance from locals</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-white/80 mb-3 leading-relaxed flex-1">
-                        Verified local experts and trip planners who know every hidden gem.
-                      </p>
-                      <Link href="/experts?role=local_expert">
-                        <Button
-                          size="sm"
-                          className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold shadow-lg text-xs"
-                          data-testid="button-find-expert"
-                        >
-                          Find an Expert <ArrowRight className="w-3 h-3 ml-1" />
-                        </Button>
-                      </Link>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, x: 30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: 0.5 }}
-                >
-                  <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl overflow-hidden h-full">
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-pink-500/20 to-transparent rounded-bl-full" />
-                    <CardContent className="p-4 relative flex flex-col h-full">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center shadow-lg shrink-0">
-                          <Heart className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-bold text-white leading-tight">Plan Your Event</h3>
-                          <p className="text-[10px] text-white/70">Weddings, proposals & more</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-white/80 mb-3 leading-relaxed flex-1">
-                        Specialist planners for weddings, proposals, and group celebrations.
-                      </p>
-                      <Link href="/experts?role=event_planner">
-                        <Button
-                          size="sm"
-                          className="w-full bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold shadow-lg text-xs"
-                          data-testid="button-plan-event"
-                        >
-                          Plan your event <ArrowRight className="w-3 h-3 ml-1" />
-                        </Button>
-                      </Link>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className="grid grid-cols-2 gap-3"
-              >
-                {keyFeatures.map((feature, index) => (
-                  <motion.div
-                    key={feature.label}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.6 + index * 0.1 }}
-                  >
-                    <Link href={feature.href}>
-                      <div
-                        className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-4 hover-elevate cursor-pointer group h-full"
-                        data-testid={`link-feature-${feature.label.toLowerCase().replace(/\s+/g, '-')}`}
-                      >
-                        <div className={cn(
-                          "w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center mb-2 shadow-md",
-                          feature.gradient
-                        )}>
-                          <feature.icon className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="text-sm font-semibold text-white block mb-1">{feature.label}</span>
-                        <p className="text-xs text-white/70 line-clamp-2">{feature.description}</p>
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* HERO v2 (landing-build lane) — visual of record: docs/design/landing-earn-mock.html;
+          behavior: docs/design/LANDING_SPEC.md. Plan-my-trip keeps the exact same handler
+          (setPlanningOpen(true) → EnhancedPlanningModal). The old photo hero + CityTickerTape
+          are replaced by the mock's live bento + beta pill / market caption. */}
+      <LandingHero onPlanTrip={() => setPlanningOpen(true)} />
 
       <TrendingCities />
 
