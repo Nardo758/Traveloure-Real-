@@ -13,8 +13,10 @@ export function TraveloureLogo({ collapsed, className }: TraveloureLogoProps) {
         style={{ borderRadius: 6 }}
       >
         <img
-          src="/traveloure-logo.png"
+          src="/traveloure-logo.svg"
           alt="Traveloure"
+          width={1000}
+          height={295}
           className="h-8 w-auto max-w-none"
           style={{ objectFit: "cover", objectPosition: "left center" }}
         />
@@ -24,8 +26,10 @@ export function TraveloureLogo({ collapsed, className }: TraveloureLogoProps) {
 
   return (
     <img
-      src="/traveloure-logo.png"
+      src="/traveloure-logo.svg"
       alt="Traveloure"
+      width={1000}
+      height={295}
       className={cn("h-7 w-auto object-contain", className)}
     />
   );
