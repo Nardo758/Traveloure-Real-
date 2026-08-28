@@ -340,18 +340,24 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
           </div>
 
           <div
-            className="mt-2 flex justify-between text-[10.5px]"
+            className="mt-2 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[10.5px]"
             style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
           >
             <span>{hero?.city ? `live from the ${hero.city} feed` : "live feed warming up"}</span>
-            <span className="flex items-center gap-1 whitespace-nowrap" data-testid="hero-market-ticker">
+            <span
+              className="flex items-center gap-1 whitespace-nowrap uppercase tracking-[0.14em]"
+              data-testid="hero-market-ticker"
+            >
               {marketNames.map((market, index) => (
                 <Fragment key={market.marketKey}>
-                  {index > 0 && <span aria-hidden="true">·</span>}
+                  {index > 0 && (
+                    <span className="text-[color:var(--earn-muted)]" aria-hidden="true">
+                      ·
+                    </span>
+                  )}
                   <Link
                     href={getCityDiscoverHref(market.cityName)}
-                    className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    style={{ color: "inherit" }}
+                    className="rounded-sm text-[color:var(--earn-muted)] hover:text-[color:var(--earn-teal-ink)] hover:underline focus:text-[color:var(--earn-teal-ink)] focus-visible:text-[color:var(--earn-teal-ink)] focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--earn-teal)]"
                     aria-label={market.cityName}
                     data-testid={`hero-market-link-${market.marketKey}`}
                   >
