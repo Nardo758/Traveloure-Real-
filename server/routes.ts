@@ -194,6 +194,7 @@ import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import pricingRoutes from "./routes/pricing.routes";
+import landingRoutes from "./routes/landing.routes";
 import occasionsRoutes from "./routes/occasions.routes";
 import internalRoutes from "./routes/internal.routes";
 import {
@@ -930,6 +931,9 @@ export async function registerRoutes(
 
   // Pricing display bundle (Phase 1 of the /pricing rebuild lane) — public, read-only.
   app.use(pricingRoutes);
+
+  // Landing hero bento (landing-build lane Phase 1) — public, read-only, honest-null legs.
+  app.use(landingRoutes);
 
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);

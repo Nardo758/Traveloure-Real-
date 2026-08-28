@@ -23,6 +23,13 @@ export interface CityCardExperience {
 
 export interface CityCardProps {
   variant: "pulse" | "season";
+  /**
+   * Landing-build lane (Lane-3's filed gap, ruled to land here): "compact" renders the
+   * mock's small momentum tile — swatch/photo + trend pill + name + one meta line —
+   * instead of the full card. ADDITIVE: omitted/"full" preserves every existing caller
+   * byte-for-byte.
+   */
+  density?: "full" | "compact";
   cityName: string;
   country: string;
   imageUrl?: string | null;
@@ -83,6 +90,54 @@ export function CityCard(props: CityCardProps) {
     expertsCount = 0, primaryLabel, onPrimary, secondaryLabel, onSecondary, onAsk,
     experiences = [], onCardClick, primaryTestId, testId,
   } = props;
+
+  // Compact momentum tile (density="compact") — the mock's `.ct`: swatch/photo with a
+  // trend pill, city name, one honest meta line. Score/crowd/experts render only when
+  // present (§13); everything else of the full card is deliberately absent.
+  if (props.density === "compact") {
+    const compactMeta = [
+      crowdLevel ? `${crowdLevel} crowd` : null,
+      expertsCount > 0 ? `${expertsCount} ${expertsCount === 1 ? "expert" : "experts"}` : null,
+    ].filter(Boolean);
+    return (
+      <div
+        onClick={onCardClick}
+        role={onCardClick ? "button" : undefined}
+        tabIndex={onCardClick ? 0 : undefined}
+        onKeyDown={onCardClick ? (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCardClick(); }
+        } : undefined}
+        aria-label={onCardClick ? `View ${cityName}` : undefined}
+        className={`group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-[12px] ${onCardClick ? "cursor-pointer" : ""}`}
+        data-testid={testId}
+      >
+        <div
+          className="relative h-24 overflow-hidden rounded-[12px]"
+          style={imageUrl ? undefined : { background: "linear-gradient(135deg,#B9C8D8,#7C97B4)" }}
+        >
+          {imageUrl && (
+            <img
+              src={optimizeUnsplashUrl(imageUrl, { w: 480 })}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          )}
+          {typeof score === "number" && score > 0 && (
+            <span className="absolute left-2 top-2 rounded-[6px] bg-white px-[7px] py-[3px] font-mono text-[10px] font-semibold text-[var(--earn-ink)]">
+              Trend {score}
+            </span>
+          )}
+        </div>
+        <h4 className="mt-2 text-[14px] font-semibold text-[var(--earn-ink)]">{cityName}</h4>
+        {compactMeta.length > 0 && (
+          <div className="font-mono text-[10.5px] text-[var(--earn-muted)]">
+            {compactMeta.join(" · ")}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const priceDown = typeof priceChangePct === "number" && priceChangePct < 0;
   const countSegments = [
