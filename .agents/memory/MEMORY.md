@@ -57,3 +57,4 @@
 - [tsc baseline ratchet gap](tsc-baseline-ratchet-gap.md) — a PR clean on its own branch can still push main's live tsc count over TSC_BASELINE if main already drifted; never bump the baseline to hide it.
 - [Bento card-shell ownership](bento-card-shell-ownership.md) — spanning Bento grid items own the visual shell; cards inside retain only content and interaction semantics.
 - [Post-login Playwright handoff](post-login-playwright-handoff.md) — URL-based login helpers can resolve before the destination document is ready; live-data tests must wait for document readiness.
+- [Expert search field contract](expert-search-field-contract.md) — destination URLs hydrate Where only; What stays independent free text filtering within the scoped results.
