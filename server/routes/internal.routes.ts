@@ -3,7 +3,7 @@
  *
  * The AUTHORITATIVE runner for the Plus occasion-drafts scheduler (ledger 2026-08-27-plus-is-delivery).
  * On Autoscale there is no reliable in-process cron (the instance scales to zero), so a daily
- * external trigger — a Replit Scheduled Deployment or a cron service — fires this endpoint, which
+ * external trigger — the repository's GitHub Actions cron or another cron service — fires this endpoint, which
  * runs one idempotent pass. Authenticated by a shared secret (INTERNAL_JOB_SECRET), NOT a user
  * session: it is machine-to-machine. Endpoint disabled (503) until the secret is configured.
  *
