@@ -21,7 +21,7 @@
           "localExpert": null,
           "gems": [
             { "id": "g-gion-1", "placeName": "Hanamikoji Street", "placeType": "viewpoint", "neighborhood": "gion", "gemScore": 87, "imageUrl": null, "whyLocalsLoveIt": "Golden-hour lanterns before the crowds arrive.", "bestFor": ["photography", "evening walk"], "curatedBy": { "id": "exp-yuki", "firstName": "Yuki", "lastName": "Tanaka", "profileImageUrl": null } },
-            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 81, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." },
+            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 81, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore.", "description": "A tiny stone bridge over the Shirakawa canal.", "address": "SHOULD-NEVER-RENDER 12 Shirakawa-minami-dori", "touristMentions": 120, "localMentions": 340, "localRating": "4.60", "daysUntilMainstream": 45, "discoveryStatus": "SHOULD-NEVER-RENDER-status" },
             { "id": "g-gion-3", "placeName": "Izuju Sushi Counter", "placeType": "restaurant", "neighborhood": "gion", "gemScore": 84, "imageUrl": null, "whyLocalsLoveIt": "Kyoto-style pressed sushi beside the shrine gates.", "bestFor": ["lunch"] },
             { "id": "g-gion-4", "placeName": "Yasaka Shrine", "placeType": "shrine", "neighborhood": "gion", "gemScore": 80, "imageUrl": null, "whyLocalsLoveIt": "Lantern-lit at night, quiet at dawn.", "bestFor": ["temples"] }
           ]

@@ -948,4 +948,27 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('gem-curated-by-g-gion-2')).toHaveCount(0);
     await page.keyboard.press('Escape');
   });
+
+  test('14. thin gem detail — the ruled teaser set only; deep fields never render even when present in the payload (2026-08-29 audit ruling 3)', async ({ page }) => {
+    // g-gion-2 deliberately carries every removed family in the fixture
+    // (address, tourist/local mentions + localRating, daysUntilMainstream,
+    // discoveryStatus) — simulating a stale or hand-built payload. The server
+    // projection (shared/gem-teaser.ts, pinned by gem-teaser.test.ts) strips
+    // them; this proves the CLIENT never resurrects them either.
+    await page.getByTestId('feed-card-gem-g-gion-2').locator('h3').click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toHaveCount(1);
+
+    // Teaser content renders.
+    await expect(sheet).toContainText('A tiny stone bridge over the Shirakawa canal.');
+    await expect(sheet).toContainText('A quiet canal-side frame locals adore.');
+
+    // The four removed families do not.
+    await expect(page.getByTestId('link-gem-address')).toHaveCount(0);
+    await expect(sheet).not.toContainText('SHOULD-NEVER-RENDER');
+    await expect(sheet).not.toContainText(/Locals \d+%/);
+    await expect(sheet).not.toContainText(/Tourists \d+%/);
+    await expect(sheet).not.toContainText('Goes mainstream');
+    await page.keyboard.press('Escape');
+  });
 });
