@@ -2027,6 +2027,18 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   totalEarnings: true,
   pendingPayout: true,
   payoutSchedule: true,
+  // §19 class (ruling 46, same MI-1 sibling sweep as the block above): the identity-verification
+  // family was likewise mass-assignable — `insertLocalExpertFormSchema.parse(req.body)` is spread
+  // verbatim into create/update at POST /api/expert-application and POST /api/expert-forms, and
+  // `resolvePublishVerification` treats `identityVerificationStatus === "verified"` as (half of) the
+  // publish gate — so a crafted `{ identityVerificationStatus: "verified" }` body could self-verify
+  // and bypass the wall. The two SANCTIONED writers are `storage.updateFormIdentityVerification`
+  // (the dedicated setter) and the Stripe/Persona webhook (server/routes/webhooks.routes.ts) —
+  // never this generic create/update path. Layer 2 (storage strip) covers `as any` callers a
+  // type-level omit cannot reach.
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
 }).extend({
   // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
   // The admin approval path copies expertType into users.role verbatim, so an unvalidated
@@ -2083,7 +2095,24 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
     });
   }
 });
-export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+// §19 class (ruling 46, MI-1 sibling sweep — same shape as insertLocalExpertFormSchema above):
+// the identity- and business-verification family was mass-assignable on the create path (there is
+// no general updateServiceProviderForm — provider updates use targeted setters, so the create
+// route at POST /api/provider-application is the one reachable body-parse site).
+// `resolvePublishVerification` treats these as (half of) the publish gate, so a crafted body could
+// self-verify. Sole sanctioned writers: `storage.updateFormIdentityVerification` /
+// `storage.updateProviderBusinessVerificationByInquiry`, and the Stripe/Persona webhook.
+export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({
+  id: true,
+  userId: true,
+  status: true,
+  rejectionMessage: true,
+  createdAt: true,
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
+  businessVerificationStatus: true,
+});
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
 // MI-1 (provider money-hardening lane, ruling 42): `revenueShareRate` is a COMMISSION SPLIT and is
