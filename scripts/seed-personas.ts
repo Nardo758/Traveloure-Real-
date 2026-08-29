@@ -12,33 +12,35 @@
  *     or approvals — Lane B's Playwright suites create those through the
  *     product's own UI/API flows, never as direct SQL fixtures.
  *
- * Trip Pass (`trip_entitlements`, migration 262, PR #621): the table now
- * EXISTS, but this seed still does not grant a pass, and that is not a gap —
- * it is §19a. The table's sole writer is `grantTripPass()`
- * (server/services/trip-entitlement.service.ts), whose `sourcePaymentId`
- * parameter is a required string, never optional: the schema comment on
- * `tripEntitlements` (shared/schema.ts) states plainly that the column "is
- * PAYMENT IDENTITY (§19a): written ONLY by the server-side grant path from a
- * Stripe-verified PaymentIntent" and that there is "deliberately NO
- * createInsertSchema for this table". Unlike `plan_memberships` — which has
- * an explicit `source` column (`'stripe' | 'manual' | 'beta'`) built exactly
- * so a seed can grant a membership without a payment — `trip_entitlements`
- * carries no such vocabulary. A direct INSERT here (even leaving
- * source_payment_id NULL, which the DB column alone would permit) would make
- * this seed a second, unaudited writer of a §19a-protected column, which is
- * the exact class of defect §18's "two authors resolving [a privileged value]
- * two ways" rule exists to prevent. So this seed does not touch
- * trip_entitlements — the real purchase is a fully shipped, Stripe-gated flow
- * (`POST /api/trips/:tripId/trip-pass/purchase` +
- * `.../purchase/confirm`, server/routes/trip-pass.routes.ts) and
- * journey-traveler.spec.ts exercises it directly, under the SAME
- * Stripe-test-mode gate (hasStripeTestKey / STRIPE_UNAVAILABLE) the checkout
- * journeys already use: a real sk_test_ key runs the full purchase → confirm
- * → grantTripPass path and asserts the resulting `trip_entitlements` row; a
- * stub key asserts the honest negative (no entitlement row, per the same
- * ruling-38-style contract). Occasions are also reported, not inserted: they
- * are authored through the Plus flow, outside this account/entitlement-only
- * seed.
+ * Trip Pass (`trip_entitlements`, migration 262, PR #621) — UPDATED (ledger
+ * 2026-08-29-trip-pass-provenance, migration 264): the table gained a
+ * `source ∈ {stripe, manual, beta}` provenance column, mirroring
+ * `plan_memberships.source`, and `grantTripPass()`
+ * (server/services/trip-entitlement.service.ts) gained a SANCTIONED
+ * non-Stripe path — `source='manual'|'beta'` REQUIRES `sourcePaymentId` be
+ * NULL (rejects a fabricated payment identity, §19a), exactly the vocabulary
+ * `plan_memberships.source` already had. That closes the gap the ORIGINAL
+ * version of this comment described: `trip_entitlements` is no longer §19a's
+ * one-writer table with no manual-grant seam. This seed now calls the SAME
+ * `grantTripPass()` function the Stripe confirm path calls — never a raw SQL
+ * INSERT — with `source: 'manual'` and `sourcePaymentId` omitted, so the
+ * ONE function that enforces the provenance invariant is still the ONLY
+ * writer; this seed is simply a second SANCTIONED CALLER of it, not a second
+ * implementation (§18 rule 1: derivation delegates, never re-implements).
+ * The Trip-Pass persona's trip is likewise created through the real
+ * `storage.createTrip()` — the same function `POST /api/trips` calls — found
+ * by (`user_id`, `title`) rather than a hardcoded id, so a re-run reuses the
+ * same trip instead of minting a duplicate. This is the one deliberate
+ * exception to the "never insert marketplace content" rule above: an
+ * entitlement is meaningless without a trip to attach to, and both writes
+ * go through the product's own functions, never a hand-rolled INSERT.
+ * The Stripe-gated PURCHASE flow (`POST /api/trips/:tripId/trip-pass/purchase`
+ * + `.../purchase/confirm`, server/routes/trip-pass.routes.ts) is untouched
+ * and still exercised on its own fresh trip by journey-traveler.spec.ts's
+ * uncovered-branch test, under the same Stripe-test-mode gate
+ * (hasStripeTestKey / STRIPE_UNAVAILABLE) the checkout journeys use.
+ * Occasions are still reported, not inserted: they are authored through the
+ * Plus flow, outside this account/entitlement seed.
  *
  * Verification pre-seed (Persona Lane B): real Stripe Identity/KYB cannot run
  * in a CI container, and `resolvePublishVerification`
@@ -92,6 +94,16 @@
 import crypto from "node:crypto";
 import { db, pool } from "../server/db";
 import { sql } from "drizzle-orm";
+import { storage } from "../server/storage";
+import { grantTripPass } from "../server/services/trip-entitlement.service";
+import { PLAN_KEYS, requirePlan } from "../server/services/plans.service";
+
+// Deterministic lookup key for the Trip-Pass persona's seeded trip — found by (user_id, title)
+// on re-run rather than a hardcoded trip id, matching the occasion-dedup pattern
+// journey-traveler.spec.ts already uses. Kept distinct from the ad-hoc "Trip Pass Kyoto Trip"
+// title journey-traveler.spec.ts's own uncovered-branch test creates via the API, so the two
+// never collide on a title lookup.
+const TRIP_PASS_SEED_TRIP_TITLE = "Trip Pass Kyoto Trip (seeded entitlement)";
 
 const APPLY = process.argv.includes("--apply");
 const PASSWORD = "TestPass123!";
@@ -332,13 +344,13 @@ async function main(): Promise<void> {
       );
     }
     console.log(
-      "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant. " +
-        "trip_entitlements EXISTS (migration 262) but its sole writer grantTripPass() " +
-        "(server/services/trip-entitlement.service.ts) requires a real Stripe-verified " +
-        "PaymentIntent id and carries no manual/beta source vocabulary (unlike " +
-        "plan_memberships.source) — this seed does not become a second writer of that " +
-        "§19a-protected column. journey-traveler.spec.ts exercises the real purchase+confirm " +
-        "flow under Stripe test mode instead.",
+      `WOULD UPSERT trip ${TRIP_PASS_SEED_TRIP_TITLE} for kyoto-trip-pass-traveler (via storage.createTrip, found-or-created by user_id+title)`,
+    );
+    console.log(
+      "WOULD GRANT trip_entitlements via grantTripPass({source:'manual'}) on that trip " +
+        "(ledger 2026-08-29-trip-pass-provenance) — status=active, source_payment_id=NULL, " +
+        "allowances_snapshot mirrors the plans.trip_pass row (§19a-sanctioned manual grant, " +
+        "not a raw INSERT).",
     );
     console.log("UNSUPPORTED/OMITTED: Plus occasion row (created through the authenticated Plus flow).");
     console.log("NOT IN SCOPE: marketplace content, services, templates, trips, bookings, approvals.");
@@ -527,6 +539,55 @@ async function main(): Promise<void> {
   });
 
   const personaIds = await resolvePersonaIds();
+
+  // ── Trip Pass persona: seeded trip + manual-provenance entitlement ───────────
+  // (ledger 2026-08-29-trip-pass-provenance). Both writes go through the REAL product
+  // functions (storage.createTrip / grantTripPass) — see the module header for why this is
+  // the one sanctioned exception to "never insert marketplace content" above.
+  const tripPassUserId = personaIds.get("kyoto-trip-pass-traveler");
+  if (!tripPassUserId) throw new Error("Unable to resolve kyoto-trip-pass-traveler after account upsert.");
+
+  const [existingTripRow] = (
+    await db.execute(sql`
+      SELECT id FROM trips WHERE user_id = ${tripPassUserId} AND title = ${TRIP_PASS_SEED_TRIP_TITLE} LIMIT 1
+    `)
+  ).rows;
+
+  let tripPassTripId: string;
+  if (existingTripRow?.id) {
+    tripPassTripId = String(existingTripRow.id);
+  } else {
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() + 30);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 5);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    const newTrip = await storage.createTrip({
+      userId: tripPassUserId,
+      title: TRIP_PASS_SEED_TRIP_TITLE,
+      destination: "Kyoto",
+      startDate: fmt(start),
+      endDate: fmt(end),
+      status: "draft",
+    });
+    tripPassTripId = newTrip.id;
+  }
+
+  // FROZEN snapshot, mirroring the real Stripe-confirm grant in trip-pass.routes.ts — the
+  // plans row's CURRENT allowances plus the ruled one-revision benefit. No priceCentsPaid
+  // field: unlike a Stripe grant, nothing was actually captured, and inventing an amount here
+  // would misrepresent this as a payment (§13 — never claim a fact with no fact behind it).
+  const tripPassPlan = await requirePlan(PLAN_KEYS.TRIP_PASS);
+  const { entitlement: tripPassEntitlement } = await grantTripPass({
+    tripId: tripPassTripId,
+    source: "manual",
+    allowancesSnapshot: {
+      ...(tripPassPlan.allowances as Record<string, unknown>),
+      revisionsRemaining: 1,
+      planName: tripPassPlan.name,
+    },
+  });
+
   const memberships = await db.execute(sql`
     SELECT pm.plan_key, pm.status, pm.source, u.email
     FROM plan_memberships pm
@@ -576,8 +637,10 @@ async function main(): Promise<void> {
     );
   }
   console.log(
-    "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant — see the " +
-      "module header. journey-traveler.spec.ts exercises the real Stripe-gated purchase flow.",
+    `SEEDED trip_pass entitlement: trip_id=${tripPassTripId} status=${tripPassEntitlement.status} ` +
+      `source=${tripPassEntitlement.source} source_payment_id=${tripPassEntitlement.sourcePaymentId ?? "NULL"} ` +
+      `(ledger 2026-08-29-trip-pass-provenance; the Stripe-gated purchase flow is still separately ` +
+      `exercised by journey-traveler.spec.ts's uncovered-branch test on its own fresh trip).`,
   );
   console.log("UNSUPPORTED/OMITTED: Plus occasion row (created through the authenticated Plus flow).");
   console.log("NOT IN SCOPE: marketplace content, services, templates, trips, bookings, approvals.");
