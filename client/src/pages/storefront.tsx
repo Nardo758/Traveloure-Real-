@@ -72,6 +72,9 @@ interface StorefrontEarner {
   memberSince: string | null;
   coverImageUrl: string | null;
   offeringsCount: number;
+  /** Gems attributed to this earner (curated_by_expert_id — 2026-08-29-replit-gem-audit
+   *  ruling 7). Rendered as "{N} gems shared" ONLY when > 0 (§13 — never a padded zero). */
+  gemsSharedCount?: number;
 }
 
 interface StorefrontService {
@@ -590,6 +593,15 @@ export default function StorefrontPage() {
             <div className="text-xl font-bold tabular-nums" data-testid="fact-reviews">{earner.reviewCount}</div>
             <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Reviews</div>
           </div>
+          {/* Ruling 7: renders ONLY when the earner has attributed gems — no zero tile. */}
+          {(earner.gemsSharedCount ?? 0) > 0 && (
+            <div className="border-l pl-8">
+              <div className="text-xl font-bold tabular-nums" data-testid="fact-gems-shared">{earner.gemsSharedCount}</div>
+              <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">
+                {earner.gemsSharedCount === 1 ? "Gem shared" : "Gems shared"}
+              </div>
+            </div>
+          )}
           {memberSinceYear && (
             <div className="border-l pl-8">
               <div className="text-xl font-bold tabular-nums" data-testid="fact-member-since">{memberSinceYear}</div>
