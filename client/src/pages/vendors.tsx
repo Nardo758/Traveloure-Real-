@@ -29,7 +29,8 @@ import {
   Home,
   Sparkles,
   Heart,
-  Users
+  Users,
+  UserRound,
 } from "lucide-react";
 import {
   Dialog,
@@ -51,6 +52,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { getVendorCreatorLabel } from "@/lib/vendor-creator";
 import {
   Form,
   FormControl,
@@ -59,7 +61,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import type { Vendor } from "@shared/schema";
+import type { VendorWithCreator } from "@shared/schema";
 
 const vendorCategories = [
   { id: "photography", label: "Photography", icon: Camera },
@@ -85,8 +87,31 @@ const vendorFormSchema = z.object({
 });
 
 type VendorFormValues = z.infer<typeof vendorFormSchema>;
+type Vendor = VendorWithCreator;
 
 const PLANNER_ROLES = new Set(["admin", "service_provider", "provider", "local_expert", "travel_expert", "event_planner"]);
+
+function VendorCreatorAttribution({ vendor }: { vendor: Vendor }) {
+  const creatorName = [vendor.createdBy?.firstName, vendor.createdBy?.lastName]
+    .filter(Boolean)
+    .join(" ");
+  const creatorLabel = getVendorCreatorLabel(vendor.createdBy);
+
+  return (
+    <div
+      className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400"
+      data-testid={`vendor-creator-${vendor.id}`}
+      title={vendor.createdBy ? "Creator provenance is read-only" : "This vendor predates creator provenance"}
+    >
+      <UserRound className="w-4 h-4 shrink-0" />
+      <span className="font-medium">Created by:</span>
+      <span className={vendor.createdBy ? "" : "italic"}>{creatorLabel}</span>
+      {vendor.createdBy && creatorName && vendor.createdBy.email && (
+        <span className="truncate text-xs">({vendor.createdBy.email})</span>
+      )}
+    </div>
+  );
+}
 
 export default function Vendors() {
   const [, setLocation] = useLocation();
@@ -479,6 +504,7 @@ export default function Vendors() {
                           <span className="font-medium">{vendor.rating}</span>
                         </div>
                       )}
+                      <VendorCreatorAttribution vendor={vendor} />
                     </CardContent>
                   </Card>
                 );
@@ -523,6 +549,7 @@ export default function Vendors() {
                               {vendor.rating}
                             </div>
                           )}
+                          <VendorCreatorAttribution vendor={vendor} />
                         </div>
                         <Button variant="outline" size="sm" data-testid={`button-contact-vendor-${vendor.id}`}>
                           Contact

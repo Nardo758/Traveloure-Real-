@@ -2358,6 +2358,15 @@ export type UserAndExpertChat = typeof userAndExpertChats.$inferSelect;
 export type TouristPlaceResult = typeof touristPlaceResults.$inferSelect;
 export type HelpGuideTrip = typeof helpGuideTrips.$inferSelect;
 export type Vendor = typeof vendors.$inferSelect;
+export type VendorCreator = {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+};
+export type VendorWithCreator = Vendor & {
+  createdBy: VendorCreator | null;
+};
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;
