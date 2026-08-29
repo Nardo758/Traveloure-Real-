@@ -27,6 +27,9 @@ export interface OptimizationPaymentSheet {
 export type OptimizationGateOutcome =
   /** Server says the 24h free re-run window is active — run the comparison, nothing to charge. */
   | { kind: "free_rerun" }
+  /** Ruling 2026-08-29-trip-pass: the trip's active Trip Pass covers this run — no charge.
+   *  Server-decided (the client never asserts coverage); flow-wise identical to free_rerun. */
+  | { kind: "covered_by_pass" }
   /** FP-2 one-click: the saved default card was charged off-session and succeeded. */
   | { kind: "paid"; paymentIntentId: string }
   /** A PaymentIntent needing the interactive sheet (fresh card, or 3DS `requiresAction` fallback). */
@@ -104,6 +107,7 @@ export async function requestOptimizationGate(
     );
   }
 
+  if (data.coveredByTripPass) return { kind: "covered_by_pass" };
   if (data.freeRerun) return { kind: "free_rerun" };
 
   if (useSavedCard) {

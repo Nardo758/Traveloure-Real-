@@ -1290,4 +1290,8 @@ export const MIGRATION_FILES = [
   // the storefront's resolveEarnerLocation provider fallback. Declared in shared/schema.ts
   // (deploy-push rule); no CHECK, no backfill.
   "261_service_provider_forms_city.sql",
+  // 262 — Trip Pass per-trip entitlement (ruling 2026-08-29-trip-pass): trip_entitlements
+  // with one-active-per-trip + one-per-PaymentIntent partial unique indexes, BOTH declared
+  // in shared/schema.ts (deploy-push durability rule). Additive, no CHECK, no backfill.
+  "262_trip_entitlements.sql",
 ] as const;
