@@ -188,6 +188,33 @@ async function pickOfferingOrCategory(page: Page, searchTerm: string): Promise<b
   return false;
 }
 
+/**
+ * Expert-only "Service Tier *" picker (client/src/components/ServiceForm.tsx, the
+ * `role === "expert"` tile grid, `option-tier-${offeringTypeKey}`) — a SEPARATE required field
+ * from `#category`/the offering picker above: it sets `formData.expertOfferingTypeId`, which
+ * gates `button-submit-service` directly on a fresh create
+ * (`disabled={... || (!isEditMode && !formData.expertOfferingTypeId)}`). Missing this was the
+ * root cause of the submit button staying disabled — driveServiceFormToSubmit filled name,
+ * description and category, but never this tile grid, so expertOfferingTypeId stayed "" and the
+ * button could never enable no matter how long the caller waited on it.
+ * No-op (returns false) for a provider create, where this block does not render at all.
+ */
+async function pickExpertTierIfPresent(page: Page): Promise<boolean> {
+  const firstTier = page.locator('[data-testid^="option-tier-"]').first();
+  // The tiles render after the /api/expert/offering-types fetch resolves. Locator.isVisible()
+  // does NOT wait (its `timeout` option is deprecated/ignored — Playwright checks the CURRENT
+  // DOM state only), so a genuine bounded wait needs waitFor(), not isVisible({timeout}) — the
+  // pattern used elsewhere in this file for already-settled (post-networkidle) content, which is
+  // fine there but would be wrong for a tile that can still be mid-fetch.
+  try {
+    await firstTier.waitFor({ state: "visible", timeout: 8_000 });
+  } catch {
+    return false; // role !== "expert" (block never renders) or the fetch never resolved.
+  }
+  await firstTier.click();
+  return true;
+}
+
 /** Fills whichever known fields are visible on the wizard's CURRENT step. Never fails if a
  *  field is absent (steps render conditionally on delivery method / role). */
 async function fillCurrentStep(page: Page, input: ServiceFormInput): Promise<void> {
@@ -224,6 +251,7 @@ async function fillCurrentStep(page: Page, input: ServiceFormInput): Promise<voi
   }
 
   await pickOfferingOrCategory(page, input.offeringSearchTerm);
+  await pickExpertTierIfPresent(page);
 }
 
 /**
@@ -256,6 +284,23 @@ export async function driveServiceFormToSubmit(
       }
       const target = submitVisible ? submitBtn : publishBtn;
       const testid = submitVisible ? "button-submit-service" : "button-publish-service";
+      // FAIL FAST (not Playwright's default actionability retry, which — with no timeout
+      // override on a bare .click() — retried against this test's whole 240s budget before
+      // reporting anything). A DISABLED submit/publish button means the required-field set
+      // (name, category, and for a fresh expert create also expertOfferingTypeId — see
+      // pickExpertTierIfPresent above) is not fully satisfied; that is a form-completeness bug
+      // in THIS driver (or a real product regression), and it should say so in ~15s, not 4
+      // minutes x however many retries the test config allows.
+      try {
+        await expect(
+          target,
+          `${testid} stayed disabled — form incomplete (required: name, category, and ` +
+            `expertOfferingTypeId on a fresh expert create; see pickExpertTierIfPresent)`,
+        ).toBeEnabled({ timeout: 15_000 });
+      } catch (err) {
+        console.error(`[driveServiceFormToSubmit] ${(err as Error).message}`);
+        return null;
+      }
       await target.click();
       return testid;
     }
