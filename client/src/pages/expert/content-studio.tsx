@@ -161,6 +161,11 @@ type LocalKnowledgeNugget = {
   targetAudience?: string | null;
   notFor?: string | null;
   seasonality?: string[];
+  // Gem-promotion candidate path (2026-08-29-replit-gem-audit ruling 4) — read-only
+  // here: written solely by the propose/approve/reject rails, never by this form.
+  promotionStatus?: "submitted" | "approved" | "rejected" | null;
+  promotionReviewNote?: string | null;
+  promotedGemId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -274,6 +279,17 @@ export default function ContentStudio() {
       toast({ title: "Nugget deleted" });
     },
     onError: () => toast({ title: "Error", description: "Failed to delete nugget", variant: "destructive" }),
+  });
+
+  // Propose a nugget as a hidden-gem candidate (ruling 4). Submission only —
+  // review + scoring are admin-side; this never sets a status itself.
+  const proposeGemMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/expert/knowledge-nuggets/${id}/propose-gem`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/knowledge-nuggets"] });
+      toast({ title: "Proposed as a gem", description: "Your nugget is now in admin review." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to propose nugget as gem", variant: "destructive" }),
   });
 
   const openEditNugget = (nugget: LocalKnowledgeNugget) => {
@@ -641,6 +657,35 @@ export default function ContentStudio() {
                             ))}
                           </div>
                         )}
+                        {/* Gem-promotion rail (ruling 4): propose → admin review + scoring.
+                            Status is server-authored; this surface only submits + reflects. */}
+                        <div className="flex items-center gap-2 pt-1">
+                          {nugget.promotionStatus === "submitted" ? (
+                            <Badge variant="outline" className="text-xs text-amber-700 border-amber-300" data-testid={`status-gem-review-${nugget.id}`}>
+                              Gem — in admin review
+                            </Badge>
+                          ) : nugget.promotionStatus === "approved" ? (
+                            <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300" data-testid={`status-gem-approved-${nugget.id}`}>
+                              Shared as a gem
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => proposeGemMutation.mutate(nugget.id)}
+                              disabled={proposeGemMutation.isPending}
+                              data-testid={`button-propose-gem-${nugget.id}`}
+                            >
+                              Propose as gem
+                            </Button>
+                          )}
+                          {nugget.promotionStatus === "rejected" && nugget.promotionReviewNote && (
+                            <p className="text-xs text-muted-foreground" data-testid={`text-gem-reject-note-${nugget.id}`}>
+                              <span className="font-medium text-red-500">Not approved:</span> {nugget.promotionReviewNote}
+                            </p>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   );
