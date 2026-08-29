@@ -72,6 +72,18 @@
  * than re-POST a form that would already exist. See those specs for the
  * detail; this file only establishes the verified base row.
  *
+ * A SECOND, SEPARATE gate exists for providers only, found by the persona-nightly proof
+ * run: ServiceForm.tsx's `publishBlocked` (`isCategoryGated && !isProviderVerified`) reads
+ * `GET /api/provider/verification-status`, which is `users.provider_verification_status` /
+ * `users.background_check_confirmed` (shared/models/auth.ts) — NOT anything on
+ * `service_provider_forms`. A background-check-gated category (`service_categories
+ * .requires_background_check`, or `insurance_band >= 2`) stays disabled ("Verification
+ * Required") for a provider whose ONLY pre-seeded state is the form's identity/business
+ * fields above. The server-side publish gate at `POST /api/provider/services` checks the
+ * SAME two `users` columns, so both are seeded together (see the PROVIDER_FORMS loop
+ * below) — a provider persona is a fully-vetted provider for every category, not just the
+ * gate the form row alone clears.
+ *
  * Usage:
  *   npx tsx scripts/seed-personas.ts          # report only
  *   npx tsx scripts/seed-personas.ts --apply  # write development state
@@ -313,6 +325,11 @@ async function main(): Promise<void> {
       console.log(
         `WOULD UPSERT service_provider_forms ${form.key}: businessType=${form.businessType} identityVerificationStatus=verified businessVerificationStatus=verified`,
       );
+      console.log(
+        `WOULD UPDATE users ${form.personaKey}: provider_verification_status=verified background_check_confirmed=true ` +
+          `(the SEPARATE category-level publishBlocked gate — ServiceForm.tsx isCategoryGated/isProviderVerified, ` +
+          `GET /api/provider/verification-status — not the form's own identity/business fields above)`,
+      );
     }
     console.log(
       "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant. " +
@@ -484,6 +501,28 @@ async function main(): Promise<void> {
           identity_verified_at = COALESCE(service_provider_forms.identity_verified_at, EXCLUDED.identity_verified_at),
           business_verification_status = 'verified'
       `);
+
+      // Category-level publish gate (SEPARATE from the service_provider_forms identity/business
+      // verification above): client/src/components/ServiceForm.tsx's
+      //   isCategoryGated = requiresBackgroundCheck || insuranceBand >= 2
+      //   isProviderVerified = verificationStatus.providerVerificationStatus === "verified"
+      //   publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified
+      // reads GET /api/provider/verification-status, which is users.provider_verification_status
+      // / users.background_check_confirmed (shared/models/auth.ts) — not anything on
+      // service_provider_forms. The server-side publish gate at POST /api/provider/services
+      // checks BOTH of those same users columns (providerVerificationStatus==='verified' AND,
+      // for a requires_background_check category, backgroundCheckConfirmed) before accepting
+      // status:'active', so both are seeded together here — setting only the form's identity/
+      // business fields left this category-level gate unaddressed (found by the Aug 29 persona-
+      // nightly proof run: a background-check-gated category's Publish button stayed disabled
+      // with "Verification Required" for an otherwise seed-verified provider persona).
+      await tx.execute(sql`
+        UPDATE users
+        SET provider_verification_status = 'verified',
+            background_check_confirmed = true,
+            updated_at = now()
+        WHERE id = ${userId}
+      `);
     }
   });
 
@@ -521,6 +560,19 @@ async function main(): Promise<void> {
   for (const row of forms.rows) {
     console.log(
       `SEEDED ${row.kind}_form ${row.email}: detail=${row.detail} identity_verification_status=${row.identity}`,
+    );
+  }
+  const providerClearance = await db.execute(sql`
+    SELECT u.email, u.provider_verification_status, u.background_check_confirmed
+    FROM users u
+    WHERE u.id = ANY(${sql.join(
+      PROVIDER_FORMS.map((form) => sql`${personaIds.get(form.personaKey)}`),
+      sql`, `,
+    )}::text[])
+  `);
+  for (const row of providerClearance.rows) {
+    console.log(
+      `SEEDED category-gate clearance ${row.email}: provider_verification_status=${row.provider_verification_status} background_check_confirmed=${row.background_check_confirmed}`,
     );
   }
   console.log(

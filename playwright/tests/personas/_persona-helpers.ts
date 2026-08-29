@@ -312,19 +312,26 @@ export async function driveServiceFormToSubmit(
       const testid = submitVisible ? "button-submit-service" : "button-publish-service";
       // FAIL FAST (not Playwright's default actionability retry, which — with no timeout
       // override on a bare .click() — retried against this test's whole 240s budget before
-      // reporting anything). A DISABLED submit/publish button means the required-field set
-      // (name, category, and for a fresh expert create also expertOfferingTypeId — see
-      // pickExpertTierIfPresent above) is not fully satisfied; that is a form-completeness bug
-      // in THIS driver (or a real product regression), and it should say so in ~15s, not 4
-      // minutes x however many retries the test config allows.
+      // reporting anything). A DISABLED submit/publish button can mean SEVERAL distinct things
+      // depending on role/branch (ServiceForm.tsx): an incomplete required-field set (name,
+      // category, and for a fresh expert create also expertOfferingTypeId — see
+      // pickExpertTierIfPresent above), OR — provider only — the SEPARATE publishBlocked /
+      // verificationGateBlocked / attestationGateBlocked category-level gates, which ARE named
+      // in the button's own `title` attribute and relabel its text (e.g. "Verification
+      // Required"). A hardcoded expert-branch hint was wrong and misleading the one time this
+      // ran on the provider branch — read the button's actual title/text at failure time and
+      // lead the message with THAT (the product's own stated reason), falling back to the
+      // generic form-completeness hint only when the button carries no title at all.
       try {
-        await expect(
-          target,
-          `${testid} stayed disabled — form incomplete (required: name, category, and ` +
-            `expertOfferingTypeId on a fresh expert create; see pickExpertTierIfPresent)`,
-        ).toBeEnabled({ timeout: 15_000 });
-      } catch (err) {
-        console.error(`[driveServiceFormToSubmit] ${(err as Error).message}`);
+        await expect(target).toBeEnabled({ timeout: 15_000 });
+      } catch {
+        const title = await target.getAttribute("title").catch(() => null);
+        const text = await target.textContent().catch(() => null);
+        const reason = title
+          ? `button title: "${title}" (text: "${text?.trim() ?? ""}")`
+          : `no title attribute — likely an incomplete required-field set (name, category, and ` +
+            `expertOfferingTypeId on a fresh expert create; see pickExpertTierIfPresent)`;
+        console.error(`[driveServiceFormToSubmit] ${testid} stayed disabled after 15s — ${reason}`);
         return null;
       }
       await target.click();
