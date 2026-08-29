@@ -48,3 +48,15 @@ Ratified 2026-08-25 (`audited@f06356f7`). The transcription lanes 1–5 build ag
 - **Spec of record:** `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` — the transcription contract (what a lane may and may not change).
 - **Visual of record:** `docs/design/marketplace-experts-earn-grammar-mock.html` — what the result must look like.
 - Both are read-only through the lanes.
+
+---
+
+## Chrome alignment — header / Your Trip strip / footer (2026-08-28 session)
+
+Ratified 2026-08-28 (ledger `2026-08-28-chrome-alignment`); **merged code came first** (PRs #616 + #617),
+the mock below is the post-merge reconstruction of the ratified Variant A frames — where mock and merged
+code disagree, the merged code is authoritative.
+
+| Mock | Feature / ledger | Merged code |
+|------|------------------|-------------|
+| `chrome-alignment-mock.html` | Chrome earn-grammar reskin, Variant A (`2026-08-28-chrome-alignment`): ground chrome, white reserved for cards, 3 chrome corals (Sign In · strip eyebrow · BETA pill), footer as the white card closing the page. | `client/src/components/layout.tsx`; `client/src/components/trip/trip-strip.tsx`; `client/src/components/ui/traveloure-logo.tsx`; `client/public/traveloure-logo-mono.svg` |

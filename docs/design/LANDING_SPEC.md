@@ -100,6 +100,19 @@ Server-composed, public, cacheable; every field nullable; collapses honestly:
 
 ## What Not To Do (dispatch, restated)
 
-No handler changes; no stock photos; no inventory-promising copy; no fourth coral;
+No handler changes; no stock photos; no inventory-promising copy; no fourth coral
+(see the coral-at-flip ruling below — the fourth is deferred, not rejected);
 no `layout.tssx`/`trip-strip.tsx`; no merge (draft PR, Leon merges). If
 `experience_starts` must be built, it is FILED, not built here.
+
+## Coral-at-flip (decision-maker ruled; recorded 2026-08-29)
+
+The landing's ruled coral BUTTON count is **3 while `PLUS_SALES_ENABLED` is off**
+(hero, earn, final CTA — the Plus section's CTA renders the coming-soon state, not
+coral). **When `PLUS_SALES_ENABLED` turns on, the Plus occasions section's Join-Plus
+CTA becomes the accepted FOURTH coral** (matching the v2.4 mock's own note: one coral
+per section — hero, occasions, earn, final). This is the flip's built-in visual
+change, not a new decision to make at flip time: no lane may add a fourth coral for
+any other reason, and no re-ratification is needed when the flag flips. Chrome's
+coral budget (`2026-08-28-chrome-alignment`: Sign In + strip eyebrow + BETA pill) is
+a separate budget and does not change at the flip.
