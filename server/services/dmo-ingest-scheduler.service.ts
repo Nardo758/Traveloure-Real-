@@ -11,6 +11,7 @@
  * (no key ⇒ no writes) — see dmo-ingestion.service.ts.
  */
 import { ingestKyotoHeritage, isDmoIngestReady } from "./dmo-ingestion.service";
+import { runBackgroundJob } from "./background-job-runner";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000; // 5 min after startup, once seeding has settled
@@ -33,8 +34,16 @@ class DmoIngestSchedulerService {
       return;
     }
     console.log("[DMOIngest] Starting Kyoto DMO ingestion scheduler (daily)");
-    setTimeout(() => { void this.run(); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { void this.run(); }, CHECK_INTERVAL_MS);
+    setTimeout(() => {
+      void runBackgroundJob("dmo-ingest", () => this.run()).catch((err) =>
+        console.error("[DMOIngest] scheduled pass failed:", err),
+      );
+    }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => {
+      void runBackgroundJob("dmo-ingest", () => this.run()).catch((err) =>
+        console.error("[DMOIngest] scheduled pass failed:", err),
+      );
+    }, CHECK_INTERVAL_MS);
   }
 
   stop(): void {
