@@ -28,6 +28,7 @@ import {
   Share2,
   ShoppingCart,
   Sparkles,
+  Ticket,
   Undo2,
   Users,
 } from "lucide-react";
@@ -578,6 +579,12 @@ function SlipActions({
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
+  // Display-honesty fix (ledger 2026-08-29-persona-coverage-complete's filed finding):
+  // startOptimization used to treat `covered_by_pass` identically to the ordinary
+  // `free_rerun` — same silent proceed, no label distinguishing "this is free because you
+  // have a Trip Pass" from "this is free because of the 24h window". Server truth only
+  // (server/routes/optimization.routes.ts ~L276 `coveredByTripPass`); never inferred client-side.
+  const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
   const confirmedPinnedAnchorRef = useRef<ComparisonPinnedAnchor | undefined>(undefined);
 
   const optimizableCount = countOptimizableItems(activities);
@@ -626,6 +633,7 @@ function SlipActions({
   async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
     if (optimizing || creatingComparison || optimizeDisabledReason) return;
     setOptimizing(true);
+    setLastOptimizeCoveredByPass(false);
     try {
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
@@ -643,7 +651,9 @@ function SlipActions({
         return;
       }
       if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
-        // 24h free re-run (server-side canRunOptimizer) — nothing to charge.
+        // 24h free re-run (server-side canRunOptimizer) — nothing to charge. `covered_by_pass`
+        // gets the "Included in your Trip Pass" label alongside the free-run treatment.
+        if (outcome.kind === "covered_by_pass") setLastOptimizeCoveredByPass(true);
         await runComparison(undefined, pinnedAnchor);
         confirmedPinnedAnchorRef.current = undefined;
         return;
@@ -767,6 +777,15 @@ function SlipActions({
             )}
             {creatingComparison ? "Building..." : "Optimize this plan"}
           </Button>
+        </span>
+      )}
+      {isOwner && lastOptimizeCoveredByPass && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
+          data-testid="trip-pass-covered-label"
+        >
+          <Ticket className="w-3.5 h-3.5" />
+          Included in your Trip Pass
         </span>
       )}
       <BuildAroundDialog
