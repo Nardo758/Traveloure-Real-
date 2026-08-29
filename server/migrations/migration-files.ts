@@ -1290,4 +1290,8 @@ export const MIGRATION_FILES = [
   // the storefront's resolveEarnerLocation provider fallback. Declared in shared/schema.ts
   // (deploy-push rule); no CHECK, no backfill.
   "261_service_provider_forms_city.sql",
+  // 262: additive-nullable gem-promotion candidate columns on local_knowledge_nuggets
+  // (2026-08-29-replit-gem-audit ruling 4). Declared in shared/schema.ts (deploy-push
+  // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
+  "262_nugget_gem_promotion.sql",
 ] as const;

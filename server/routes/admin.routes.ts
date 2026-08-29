@@ -13,6 +13,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
+import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
@@ -7413,6 +7414,103 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
     } catch (err) {
       console.error("[Knowledge Nuggets] admin counts error:", err);
       res.status(500).json({ message: "Failed to fetch nugget counts" });
+    }
+  });
+
+  // ─── Nugget → gem promotion queue (2026-08-29-replit-gem-audit ruling 4) ─────────────
+  // The §10 shared-queue vocabulary (submitted → approved|rejected) over
+  // local_knowledge_nuggets.promotion_status. Approval BIRTHS the hidden-gem row with
+  // the admin-assigned score, and PROVENANCE comes from the rail — the born gem's
+  // curated_by_expert_id is the nugget's expert_user_id, never a body field (ruling 1:
+  // no fabricated attribution). Rides the blanket /api/admin adminApiGuard (§2) plus
+  // the explicit per-handler admin check, matching the ready-made queue siblings.
+
+  // GET /api/admin/gem-candidates — submitted nuggets + author identity.
+  router.get("/api/admin/gem-candidates", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      res.json({ candidates: await listGemCandidates() });
+    } catch (err) {
+      console.error("[Gem Candidates] list error:", err);
+      res.status(500).json({ message: "Failed to fetch gem candidates" });
+    }
+  });
+
+  // POST /api/admin/gem-candidates/:id/approve — SCORING happens here: the reviewing
+  // admin assigns gem_score (1–100, integer, validated). Body is a hand-named
+  // allowlist (§19): gemScore + optional placeName/placeType/country overrides.
+  // The place name defaults to the nugget's linked POI; with neither, the approve
+  // is refused rather than a gem born nameless (§13 — never guess a place).
+  router.post("/api/admin/gem-candidates/:id/approve", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      // Allowlist body (§19): gemScore + optional placeName/placeType/country.
+      const result = await approveGemCandidate({
+        id: req.params.id,
+        adminId: user.id,
+        gemScore: Number((req.body ?? {}).gemScore),
+        placeName: typeof req.body?.placeName === "string" ? req.body.placeName : null,
+        placeType: typeof req.body?.placeType === "string" ? req.body.placeType : null,
+        country: typeof req.body?.country === "string" ? req.body.country : null,
+      });
+      if (!result.ok) return res.status(result.status).json({ message: result.message });
+
+      await insertAccessAuditLog({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "gem_candidate_approve",
+        resourceType: "local_knowledge_nugget",
+        resourceId: req.params.id,
+        metadata: {
+          gemId: result.gem.id,
+          gemScore: result.gem.gemScore,
+          placeName: result.gem.placeName,
+          curatedByExpertId: result.gem.curatedByExpertId,
+        },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/gem-candidates] audit log failed (non-fatal):", err));
+
+      res.json({ success: true, gem: result.gem, candidateId: req.params.id });
+    } catch (err) {
+      console.error("[Gem Candidates] approve error:", err);
+      res.status(500).json({ message: "Failed to approve gem candidate" });
+    }
+  });
+
+  // POST /api/admin/gem-candidates/:id/reject — reason required (the expert sees it).
+  router.post("/api/admin/gem-candidates/:id/reject", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const result = await rejectGemCandidate({
+        id: req.params.id,
+        adminId: user.id,
+        reason: String(req.body?.reason ?? ""),
+      });
+      if (!result.ok) return res.status(result.status).json({ message: result.message });
+      await insertAccessAuditLog({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "gem_candidate_reject",
+        resourceType: "local_knowledge_nugget",
+        resourceId: req.params.id,
+        metadata: { reason: result.candidate.promotionReviewNote },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/gem-candidates] audit log failed (non-fatal):", err));
+      res.json({ success: true, candidate: result.candidate });
+    } catch (err) {
+      console.error("[Gem Candidates] reject error:", err);
+      res.status(500).json({ message: "Failed to reject gem candidate" });
     }
   });
 

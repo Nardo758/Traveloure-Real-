@@ -30,6 +30,7 @@ import {
   updateLocalKnowledgeNugget,
   deleteLocalKnowledgeNugget,
 } from "../services/experts-query.service";
+import { proposeNuggetAsGem } from "../services/gem-promotion.service";
 
 const router = Router();
 
@@ -656,6 +657,35 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalE
   } catch (err) {
     console.error("[Knowledge Nuggets] update error:", err);
     res.status(500).json({ message: "Failed to update knowledge nugget" });
+  }
+});
+
+// Propose an owned nugget as a hidden-gem candidate (2026-08-29-replit-gem-audit
+// ruling 4). Enters the ADMIN review + scoring queue — the expert can only
+// submit; status/score/gem birth are admin-side. No body is read (§19 — the
+// promotion cluster is never client-settable); ownership + transition are one
+// atomic conditional UPDATE in proposeNuggetAsGem.
+router.post("/api/expert/knowledge-nuggets/:id/propose-gem", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
+  try {
+    const expertId = sessionUserId(req);
+    const { id } = req.params;
+    const row = await proposeNuggetAsGem(id, expertId);
+    if (!row) {
+      const existing = await getLocalKnowledgeNuggetById(id, expertId);
+      if (!existing) return res.status(404).json({ message: "Nugget not found" });
+      // Row exists and is owned — the conditional lost on status.
+      return res.status(409).json({
+        message:
+          existing.promotionStatus === "approved"
+            ? "This nugget was already approved as a gem"
+            : "This nugget is already in review",
+        promotionStatus: existing.promotionStatus,
+      });
+    }
+    res.json(row);
+  } catch (err) {
+    console.error("[Knowledge Nuggets] propose-gem error:", err);
+    res.status(500).json({ message: "Failed to propose nugget as gem" });
   }
 });
 
