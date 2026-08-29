@@ -227,7 +227,7 @@ export interface IStorage {
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
-  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  createVendor(vendor: InsertVendor & { createdById: string }): Promise<Vendor>;
 
   // Local Expert Forms
 
@@ -1582,7 +1582,7 @@ export class DatabaseStorage implements IStorage {
     return vendor;
   }
 
-  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+  async createVendor(vendor: InsertVendor & { createdById: string }): Promise<Vendor> {
     const [newVendor] = await db.insert(vendors).values(vendor).returning();
     return newVendor;
   }
