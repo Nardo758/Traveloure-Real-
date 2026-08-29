@@ -82,6 +82,46 @@ function cityScopePredicate(cityName: string) {
   );
 }
 
+/** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null. */
+export interface GemCuratedBy {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+}
+
+/**
+ * Gem attribution (2026-08-29 Replit-audit ruling 1): reuse the EXISTING
+ * `travel_pulse_hidden_gems.curated_by_expert_id` column — never fabricate a
+ * byline. A gem gets `curatedBy` ONLY when its curator id resolves to a real
+ * user row (soft FK, so a dangling id yields null, not a guessed name — §13).
+ * One bulk users lookup for the whole gem set; no N+1.
+ */
+export async function attachGemAttribution<T extends { curatedByExpertId?: string | null }>(
+  rows: T[],
+): Promise<Array<T & { curatedBy: GemCuratedBy | null }>> {
+  const curatorIds = Array.from(
+    new Set(rows.map((r) => r.curatedByExpertId).filter((id): id is string => !!id)),
+  );
+  const curatorById = new Map<string, GemCuratedBy>();
+  if (curatorIds.length > 0) {
+    const curatorRows = await db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+      })
+      .from(users)
+      .where(inArray(users.id, curatorIds));
+    for (const row of curatorRows) curatorById.set(row.id, row);
+  }
+  return rows.map((row) => ({
+    ...row,
+    curatedBy: (row.curatedByExpertId && curatorById.get(row.curatedByExpertId)) || null,
+  }));
+}
+
 export interface SectionResult<T> {
   data: T | null;
   error: string | null;
@@ -351,9 +391,11 @@ class LocationViewService {
         }
       }
 
-      // Group gems by normalized neighborhood key for the gems[] embed
+      // Group gems by normalized neighborhood key for the gems[] embed.
+      // Attribution attached first so nested gems[] carry curatedBy (ruling 1).
+      const attributedCityGems = await attachGemAttribution(allCityGems);
       const gemsBySlug = new Map<string, any[]>();
-      for (const gem of allCityGems) {
+      for (const gem of attributedCityGems) {
         if (gem.neighborhood) {
           const key = normalizeNeighborhoodKey(gem.neighborhood);
           if (!gemsBySlug.has(key)) gemsBySlug.set(key, []);
@@ -439,6 +481,8 @@ class LocationViewService {
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
       .orderBy(travelPulseHiddenGems.gemScore)
+      // Attribution (ruling 1) attached before the bookability derive.
+      .then((rows) => attachGemAttribution(rows))
       // bookability is DERIVED (never stored) via the single shared resolver.
       .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
 
