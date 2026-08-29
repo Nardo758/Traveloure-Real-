@@ -365,3 +365,24 @@ jobs:
         run: node scripts/check-duplicate-migration-prefixes.cjs --self-test
       - name: Duplicate-migration-prefix guard
         run: node scripts/check-duplicate-migration-prefixes.cjs
+
+  privileged-field-completeness-guard:
+    name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # §14 caught a client-set amount, §18 the rate, §19 verification — three privileged column
+      # families found ONE AT A TIME. This guard enumerates all six NAMED families up front
+      # (role/privilege, status/approval, fee/payout/rate, verification, payment-identity,
+      # plan/entitlement) against every insert schema that is actually reachable from a request
+      # body (not all 186 createInsertSchema(...) calls — most are internal-only), so the next
+      # family doesn't need its own incident before it gets a check. Intentional exposures are
+      # named in an explicit GRANDFATHERED_COLUMNS allowlist with a one-line reason each. Node
+      # built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Privileged-field completeness guard predicate self-test
+        run: node scripts/check-privileged-field-completeness.cjs --self-test
+      - name: Privileged-field completeness guard
+        run: node scripts/check-privileged-field-completeness.cjs
