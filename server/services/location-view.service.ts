@@ -24,6 +24,8 @@ import { eq, sql, and, or, isNull, ilike, inArray, asc, desc, gte } from "drizzl
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
+import { toGemTeaser } from "@shared/gem-teaser";
+import type { GemCuratedBy } from "@shared/gem-curated-by";
 import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
 import {
   DEFAULT_RESOLUTION_CLASS,
@@ -80,6 +82,42 @@ function cityScopePredicate(cityName: string) {
     eq(providerServices.city, cityName),
     and(isNull(providerServices.city), ilike(providerServices.location, `%${cityName}%`)),
   );
+}
+
+/** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null.
+ *  Canonical shape lives in @shared/gem-curated-by; re-exported for server callers. */
+export type { GemCuratedBy };
+
+/**
+ * Gem attribution (2026-08-29 Replit-audit ruling 1): reuse the EXISTING
+ * `travel_pulse_hidden_gems.curated_by_expert_id` column — never fabricate a
+ * byline. A gem gets `curatedBy` ONLY when its curator id resolves to a real
+ * user row (soft FK, so a dangling id yields null, not a guessed name — §13).
+ * One bulk users lookup for the whole gem set; no N+1.
+ */
+export async function attachGemAttribution<T extends { curatedByExpertId?: string | null }>(
+  rows: T[],
+): Promise<Array<T & { curatedBy: GemCuratedBy | null }>> {
+  const curatorIds = Array.from(
+    new Set(rows.map((r) => r.curatedByExpertId).filter((id): id is string => !!id)),
+  );
+  const curatorById = new Map<string, GemCuratedBy>();
+  if (curatorIds.length > 0) {
+    const curatorRows = await db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+      })
+      .from(users)
+      .where(inArray(users.id, curatorIds));
+    for (const row of curatorRows) curatorById.set(row.id, row);
+  }
+  return rows.map((row) => ({
+    ...row,
+    curatedBy: (row.curatedByExpertId && curatorById.get(row.curatedByExpertId)) || null,
+  }));
 }
 
 export interface SectionResult<T> {
@@ -324,12 +362,15 @@ class LocationViewService {
             ),
           )
           .groupBy(providerServices.neighborhood),
-        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood
+        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood.
+        // DESC by gemScore (fixed Aug 29 2026): this was ascending, so the per-neighborhood
+        // `.slice(0, 6)` below kept each neighborhood's six WORST gems — every sibling gem
+        // query (travelpulse.service getHiddenGems, /api/cities/gems) sorts DESC.
         db
           .select()
           .from(travelPulseHiddenGems)
           .where(eq(travelPulseHiddenGems.city, cityName))
-          .orderBy(travelPulseHiddenGems.gemScore),
+          .orderBy(desc(travelPulseHiddenGems.gemScore)),
       ]);
 
       // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
@@ -351,9 +392,14 @@ class LocationViewService {
         }
       }
 
-      // Group gems by normalized neighborhood key for the gems[] embed
+      // Group gems by normalized neighborhood key for the gems[] embed.
+      // Attribution attached first so nested gems[] carry curatedBy (ruling 1),
+      // then each row is projected to the ruled TEASER set (ruling 3) — the
+      // deep fields (address, mention ratios, mainstream forecast, discovery
+      // status) never leave the server on this surface.
+      const attributedCityGems = (await attachGemAttribution(allCityGems)).map(toGemTeaser);
       const gemsBySlug = new Map<string, any[]>();
-      for (const gem of allCityGems) {
+      for (const gem of attributedCityGems) {
         if (gem.neighborhood) {
           const key = normalizeNeighborhoodKey(gem.neighborhood);
           if (!gemsBySlug.has(key)) gemsBySlug.set(key, []);
@@ -433,12 +479,17 @@ class LocationViewService {
       });
     })();
 
-    // DB hidden gems for the city — all placeTypes, all neighborhoods
+    // DB hidden gems for the city — all placeTypes, all neighborhoods.
+    // DESC by gemScore (fixed Aug 29 2026 — was ascending; see the bulk fetch above).
     const gemsPromise = db
       .select()
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
-      .orderBy(travelPulseHiddenGems.gemScore)
+      .orderBy(desc(travelPulseHiddenGems.gemScore))
+      // Attribution (ruling 1) attached, then the ruled TEASER projection
+      // (ruling 3) — deep fields never leave the server on this surface.
+      .then((rows) => attachGemAttribution(rows))
+      .then((rows) => rows.map(toGemTeaser))
       // bookability is DERIVED (never stored) via the single shared resolver.
       .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
 

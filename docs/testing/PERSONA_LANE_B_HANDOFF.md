@@ -19,9 +19,20 @@ Use the fixed accounts from `docs/testing/PERSONA_JOURNEYS.md`, all with
 - Guest is a signed-out browser context.
 
 The provider has a manually seeded active `pro_monthly` membership. The Plus
-member has a manually seeded active `plus_annual` membership. There is no
-`trip_entitlements` table: the Trip Pass suite must detect and report that
-unsupported state rather than insert a guessed row.
+member has a manually seeded active `plus_annual` membership.
+
+`trip_entitlements` now EXISTS (migration 262). The seed still does not
+grant a Trip Pass row, and that is by design, not a gap: the table's sole
+writer, `grantTripPass()` (server/services/trip-entitlement.service.ts),
+requires a real Stripe-verified PaymentIntent id (§19a) and carries no
+manual/beta source vocabulary the way `plan_memberships.source` does — a
+direct seed insert would make the seed a second, unaudited writer of a
+§19a-protected column. The Trip Pass suite instead exercises the real,
+fully shipped purchase flow (`POST /api/trips/:tripId/trip-pass/purchase` +
+`.../purchase/confirm`) under the SAME Stripe-test-mode gate the checkout
+journeys already use: a real `sk_test_` key runs the full positive path and
+asserts the resulting `trip_entitlements` row; a stub key asserts the honest
+negative (no row created) rather than a guess either way.
 
 ## Suite ownership
 
@@ -122,9 +133,15 @@ plan/workspace without treating it as a travel-expert account.
    card or live-key request.
 6. Complete the test checkout and assert the UI confirmation plus the
    `service_bookings`/payment linkage in the development DB.
-7. Repeat with `persona-kyoto-trip-pass`. If no supported per-trip entitlement
-   row exists, record `UNSUPPORTED` with the schema proof and stop that branch;
-   do not manufacture `trip_entitlements`.
+7. Repeat with `persona-kyoto-trip-pass`: purchase the real Trip Pass on that
+   persona's own trip through `POST /api/trips/:tripId/trip-pass/purchase` +
+   `.../purchase/confirm` (migration 262), gated on Stripe test mode like the
+   free traveler's checkout leg. A real `sk_test_` key runs the full positive
+   path and asserts the `trip_entitlements` row (`status='active'`,
+   `source_payment_id` set to the confirmed PaymentIntent id) plus the
+   one-active-pass-per-trip rejection on a second purchase attempt; a stub
+   key asserts the honest negative (purchase fails, zero `trip_entitlements`
+   rows) — never a guessed row, per §19a.
 8. Log in as `persona-kyoto-plus`, verify active Plus state and the seeded
    Kyoto home city, and create one occasion 14 days out through the UI. Assert the
    `plan_memberships`, `users.home_city`, and `occasions` rows plus the visible
@@ -166,107 +183,71 @@ seed, supply suites before demand suites, and publish only the concise journey
 verdict tables. The workflow must fail closed if a live Stripe key is detected
 and must never target production.
 
-## Manual Kyoto supply pass — 2026-08-29
+## Supply-pass completion — status and findings
 
-The development-only manual pass used the seeded personas, the live browser
-flows, and the real admin queues. It did not create marketplace content with
-SQL and did not touch production or Stripe payment activity.
+The Lane A development supply pass stocked Kyoto (dev) with purchasable
+inventory created and approved through real UI flows: two priced provider
+services (Kyoto Portrait Route Planning Call $75, Gion Photo Session
+Preparation Call $95, both `approved/active`) and one approved `$39`
+ready-made itinerary ("Quiet Gion: A Dawn-to-Dusk Kyoto Day"). The follow-on
+items below close out the pass before Lane B builds against it.
 
-### Result
+### 1. Expert persona offering still missing → `/s/kyoto-gion-expert` stays gated
 
-| Requirement | Result | Direct proof |
-|---|---|---|
-| Gion expert application | PASS | `local_expert_forms.status = approved`, city `Kyoto`, neighbourhood `Gion` |
-| `/s/kyoto-gion-expert` handle and bio | PASS (saved) | `users.handle = kyoto-gion-expert`; public route correctly remains unavailable without an approved offering |
-| Three expert-authored Kyoto/Gion gems | BLOCKED | No expert-facing write path exists for feed gems; `local_knowledge_nuggets` remains `0` |
-| Photographer/provider application | PASS | `service_provider_forms.status = approved` |
-| Two priced provider services | PARTIAL | UI-created drafts at `$75` and `$95`; both are owned by the seeded provider |
-| Provider service queue approval | BLOCKED | Final publish/submit is disabled until identity and business verification complete |
-| Planner ready-made itinerary | NOT RUN | The pass stopped on the upstream supply blockers rather than bypassing product gates |
-| Complete public storefront and Kyoto feed | BLOCKED | Storefront requires at least one approved offering; blocked drafts/gems cannot appear |
+`/s/kyoto-gion-expert` correctly 404s: all current inventory belongs to the
+provider and planner personas, and the storefront route lists **only
+admin-approved offerings and 404s when the earner has zero approved items**
+(`server/routes/storefront.routes.ts` header). The Gion expert persona still
+needs to publish its own consultation / "plan-with-me" offering through the
+expert flow to flip the storefront public and complete the cast. (The three
+expert-authored gems are a separate lane — the gem-chain PR — and are not part
+of this pass.)
 
-### UI flow and selectors observed
+**Finding for the recruitment funnel — the expert flow hits the same
+verification wall the providers did.** Publishing an expert offering resolves
+through the single publish predicate `resolvePublishVerification`
+(`server/services/publish-verification.service.ts`): for an expert role it
+requires `local_expert_forms.identity_verification_status === "verified"`
+(identity only; business verification is N/A for an individual expert). Until
+verified, an admin-approved expert listing is held `approvalStatus='approved'
+AND status='draft'` and is not active/public — the same held state providers
+hit, which is why the dev-only provider verification override was created. To
+complete this step in a dev environment, verify the expert form or apply the
+same dev-only override extended to the expert (`local_expert_forms`) path.
+Note: that dev override lane is tracked separately and is **not present on this
+branch/main** — extending it to the expert path (dev-only at the server,
+reason required, audited, rejected in prod/test/unset) is the prerequisite for
+publishing the expert offering without real KYB.
 
-- Expert storefront editor:
-  - `input-handle`
-  - `button-save-handle`
-  - `input-storefront-bio`
-  - `button-save-bio`
-- Local-expert application:
-  - route must include `?type=local_expert`; `/expert/apply` alone defaults to
-    the Trip Planner wizard even for a signed-in `local_expert`
-  - `input-local-city`, `input-neighborhood`
-  - `button-locality-resident_5yr`
-  - `badge-language-english`, `badge-language-japanese`
-  - `textarea-knowledge-proof-0..2`
-  - `button-local-specialty-*`, `badge-service-*`
-  - `select-availability`, `select-response-time`, `input-hourly-rate`
-  - `checkbox-terms`, `button-submit`
-- Expert admin approval:
-  - `card-application-<id>`
-  - `button-approve-<id>`
-  - approving an identity-unverified development persona requires the real
-    browser prompt and a non-empty override reason
-- Provider application:
-  - `select-business-type`, `button-category-*`
-  - `checkbox-insurance`, `checkbox-license`, `checkbox-terms`
-  - Admin Providers opens on the Platform tab; click
-    `button-tab-applications` before locating `card-application-<id>`
-  - approval also requires a non-empty verification override reason
-- Provider service authoring:
-  - `button-choose-offering`, `input-offering-search`
-  - `option-offering-couples_photographer`
-  - `method-tile-video-call`
-  - this offering uses package tiers, not `input-base-price`:
-    `button-add-tier`, `input-tier-label-0`, `input-tier-price-0`,
-    `input-tier-desc-0`
-  - `button-save-draft` successfully persists the priced listing
-  - `banner-identity-biz-verification-required` blocks final publication
+### 2. Stock cover images are a test fixture only, never the production pattern
 
-### Source-linked findings
+The dev ready-made used an attributed Unsplash cover. That is an acceptable
+**dev fixture**, but it must not become the pattern: **production listings use
+the creator's own real photos; stock/Unsplash covers are test-fixture-only**
+(the ratified content rule is real-or-gradient for production). The first real
+planner must not copy the demo's stock cover.
 
-1. **Experts cannot author feed gems.** The Content Studio explicitly has no
-   backend for its social content library and only persists knowledge nuggets
-   (`client/src/pages/expert/content-studio.tsx:186-190`,
-   `client/src/pages/expert/content-studio.tsx:236-248`). The TravelPulse
-   hidden-gem surface is read-only (`server/routes/content.routes.ts:5142-5154`);
-   the only discovered-gem write trigger is an admin-only AI scan
-   (`server/routes/content.routes.ts:7603-7617`). Therefore creating three
-   expert-owned Gion gems through product flows is unsupported.
-2. **Provider listings cannot reach the approval queue without external
-   verification.** The service form derives `idVerified` and `bizVerified`
-   from the provider application and renders the blocking verification banner
-   (`client/src/components/ServiceForm.tsx:1756-1764`,
-   `client/src/components/ServiceForm.tsx:1888-1889`,
-   `client/src/components/ServiceForm.tsx:2685`). The two services were saved
-   as drafts instead of bypassing this gate.
-3. **Local-expert AI scoring failed during submission.** The saved application
-   records the model error ``temperature` is deprecated for this model``.
-   The scorer still sends `temperature: 0`
-   (`server/services/expertise-scoring.service.ts:180`). The application can
-   be reviewed as `unscored`, but automated knowledge scoring did not run.
-4. **A claimed storefront is intentionally not public without approved
-   supply.** The handle editor tells users that the page goes live only after
-   at least one approved offering
-   (`client/src/components/backoffice/handle-claim-card.tsx:123-124`).
+### 3. Canonical market string is `Kyoto`, not `Kyoto, Japan`
 
-### Screenshots
+All supply and demand must use the canonical short market string **`Kyoto`**
+(`marketKey` `kyoto`; `content-gap-taxonomy.ts` `GAP_CITY = "Kyoto"`;
+`city_neighborhoods.city = "Kyoto"`; `dmo-ingestion.service.ts` `CITY =
+"Kyoto"`). The long form `"Kyoto, Japan"` is the same string-matching-mismatch
+class as the neighbourhood-slug bug.
 
-Screenshots are under `docs/testing/screenshots/kyoto-persona/`:
+Grep finding (`"Kyoto, Japan"` write paths, as of this pass): almost every hit
+is free-text traveler input or a test fixture and is fine — trip
+`destination` fields, form placeholders, `playwright/` fixtures, docs. The one
+non-fixture DB write is `server/seeds/beta-data-extended.ts` (a **beta** expert
+seed, not a Kyoto persona), which writes a provider-service `location:
+"Kyoto, Japan"`; matching is tolerant in some paths
+(`client/src/lib/build-formats/registry.ts` keys both `"Kyoto, Japan"` and
+`"Kyoto"` to `"kyoto"`) but general destination-matching tolerance is still
+an open task (#962). No production Kyoto-persona write emits the long form; the
+persona seed and supply flows must keep emitting `Kyoto`.
 
-- `01-expert-storefront-handle.png`
-- `02-expert-application-review.png`
-- `03-expert-application-pending.png`
-- `04-admin-expert-approval-queue.png`
-- `05-admin-expert-approved.png`
-- `06-provider-application-review.png`
-- `07-provider-application-pending.png`
-- `08-admin-provider-approval-queue.png`
-- `09-admin-provider-approved.png`
-- `10-provider-service-1-priced-draft.png`
-- `10-provider-service-2-priced-draft.png`
-- `10-provider-service-form-blocked.png`
-- `11-provider-service-1-saved.png`
-- `11-provider-service-2-saved.png`
-- `12-gion-storefront-public-state.png`
-- `13-kyoto-feed-final-state.png`
+> Environment note: the follow-on findings above were verified from the code
+> (routes, the publish-verification predicate, seeds). Executing the expert
+> UI supply pass end-to-end requires a live development DB + dev server, which
+> a fresh remote container does not have; run it in the Lane A dev
+> environment (the Replit workspace) with `scripts/seed-personas.ts`.

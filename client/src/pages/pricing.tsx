@@ -28,6 +28,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
@@ -69,6 +70,7 @@ function pct(n: number): string {
 
 export default function PricingPage() {
   const { openSignInModal } = useSignInModal();
+  const { open: openPlanning } = usePlanning();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -115,7 +117,7 @@ export default function PricingPage() {
       ],
       cta: "Start planning",
       variant: "outline" as const,
-      onClick: () => (user ? setLocation("/dashboard") : openSignInModal()),
+      onClick: () => openPlanning({ branch: "myself" }),
       testid: "yourself",
     },
     {
@@ -133,7 +135,7 @@ export default function PricingPage() {
       ],
       cta: "Optimize a plan",
       variant: "outline" as const,
-      onClick: () => (user ? setLocation("/dashboard") : openSignInModal()),
+      onClick: () => openPlanning({ branch: "ai" }),
       testid: "ai",
     },
     {
@@ -152,7 +154,12 @@ export default function PricingPage() {
       ],
       cta: "Get a Trip Pass",
       variant: "coral" as const,
-      onClick: () => stub("Trip Pass"),
+      onClick: () => {
+        // Ruling 2026-08-29-trip-pass: a pass attaches to ONE trip, so the CTA routes to
+        // My Plans (pick a trip -> its slip carries the purchase) instead of a stub.
+        toast({ title: "Trip Pass", description: "Pick a trip — the pass attaches to one trip from its plan page." });
+        user ? setLocation("/dashboard") : openSignInModal();
+      },
       testid: "trip-pass",
     },
     {

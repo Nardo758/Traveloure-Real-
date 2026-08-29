@@ -872,7 +872,9 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-            name: g.name,
+            // travel_pulse_hidden_gems has no `name` column — the field is placeName
+            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
+            name: g.placeName,
             description: g.description,
             gemScore: g.gemScore,
           })),
@@ -3251,9 +3253,9 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
 // advisor ‖ trip author ‖ audit-logged admin) with `requireWriteAccess: true` — the same §12
 // posture ("a PENDING advisor may not write") the itinerary-item mutation routes above use — since
 // this endpoint mutates trip-visible content exactly like they do. This is a deliberately BROADER
-// gate than the private-notes PATCH it mirrors in shape (that one is assignment-only, a known
-// narrower gap — see this file's PATCH itinerary-items handler for the same owner/author/advisor
-// posture already established elsewhere in this router).
+// gate than the private-notes PATCH it mirrors in shape (that one is advisor-only; since Aug 29
+// 2026 its advisor branch resolves against the same §12 WRITE allow-list — the earlier
+// assignment-existence-only check let a pending/rejected advisor write private build notes).
 router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;

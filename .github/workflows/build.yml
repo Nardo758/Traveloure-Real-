@@ -207,6 +207,11 @@ jobs:
       # Ready-Made listings must pass the same completeness gate at submit and approval.
       - name: Ready-Made completeness gate
         run: npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts
+      # Thin gem detail (2026-08-29-replit-gem-audit ruling 3): the discover teaser
+      # ships EXACTLY the ruled key set — address / popularity ratios / mainstream
+      # forecast / discovery status stay removed, attribution ships only resolved.
+      - name: Gem teaser projection gate
+        run: npx tsx --test server/services/__tests__/gem-teaser.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
@@ -346,3 +351,43 @@ jobs:
         run: node scripts/check-artifact-deploy-guard.cjs --self-test
       - name: Artifact deploy override guard
         run: node scripts/check-artifact-deploy-guard.cjs
+
+  duplicate-migration-prefix-guard:
+    name: duplicate-migration-prefix-guard (ledger 2026-08-16-ledger-ids — three-way collision history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if two server/migrations/*.sql filenames (or MIGRATION_FILES registry entries)
+      # share the exact same leading numeric prefix — migration numbers have collided three
+      # times because nothing checked for it. A letter-suffixed prefix (025b) is distinct from
+      # its bare form (025). Three pre-existing collisions (079/098/099) are grandfathered by
+      # an explicit allowlist in the script. Node built-ins only — no npm ci needed. Predicate
+      # fixtures FIRST (§18d).
+      - name: Duplicate-migration-prefix guard predicate self-test
+        run: node scripts/check-duplicate-migration-prefixes.cjs --self-test
+      - name: Duplicate-migration-prefix guard
+        run: node scripts/check-duplicate-migration-prefixes.cjs
+
+  privileged-field-completeness-guard:
+    name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # §14 caught a client-set amount, §18 the rate, §19 verification — three privileged column
+      # families found ONE AT A TIME. This guard enumerates all six NAMED families up front
+      # (role/privilege, status/approval, fee/payout/rate, verification, payment-identity,
+      # plan/entitlement) against every insert schema that is actually reachable from a request
+      # body (not all 186 createInsertSchema(...) calls — most are internal-only), so the next
+      # family doesn't need its own incident before it gets a check. Intentional exposures are
+      # named in an explicit GRANDFATHERED_COLUMNS allowlist with a one-line reason each. Node
+      # built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Privileged-field completeness guard predicate self-test
+        run: node scripts/check-privileged-field-completeness.cjs --self-test
+      - name: Privileged-field completeness guard
+        run: node scripts/check-privileged-field-completeness.cjs

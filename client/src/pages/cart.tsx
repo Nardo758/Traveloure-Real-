@@ -1271,7 +1271,7 @@ export default function CartPage() {
         handleOptimizationPaymentRefusal(outcome.status, outcome.body);
         return;
       }
-      if (outcome.kind === "free_rerun") {
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
         // Skip payment for 24h free re-run
         await createComparison();
         return;
@@ -1314,7 +1314,7 @@ export default function CartPage() {
         handleOptimizationPaymentRefusal(outcome.status, outcome.body);
         return;
       }
-      if (outcome.kind === "free_rerun") {
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
         await createComparison();
         return;
       }
@@ -1609,8 +1609,16 @@ export default function CartPage() {
         )}
         <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
 
-        {/* Guest nudge — only shown when unauthenticated and there are items */}
-        {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (
+        {/* Guest nudge — only shown when unauthenticated and there are items. `totalItemCount`
+            alone under-counts here: it's server-cart-derived (cart?.itemCount) plus external
+            items, and never includes `guestPendingIds` — the localStorage-only items a genuine
+            signed-out click writes via discover.tsx's saveToGuestCart (never POSTed to
+            /api/cart, so they never reach cart?.itemCount). The empty-cart branch below and the
+            "Generate itinerary" disabled-check already OR in guestPendingIds.length for the same
+            reason; this banner — the one surface whose whole job is nudging a guest with a
+            browser-local cart to sign in — had not, so it never fired for a real guest-cart-only
+            visitor (2026-08-29 persona-nightly run #6, journey-guest.spec.ts step 5). */}
+        {!user && !authLoading && (totalItemCount > 0 || guestPendingIds.length > 0) && flowStep === "cart" && (
           <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="banner-guest-nudge">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-800 dark:text-amber-200 flex-1">
@@ -1627,8 +1635,10 @@ export default function CartPage() {
           </div>
         )}
 
-        {/* Guest nudge — empty cart prompt for unauthenticated users without items */}
-        {!user && !authLoading && totalItemCount === 0 && flowStep === "cart" && !isLoading && !optimizationResult && (
+        {/* Guest nudge — empty cart prompt for unauthenticated users without items. Mirrors the
+            banner-guest-nudge fix above: a guest with only localStorage guestPendingIds is not
+            empty either, so it must be excluded here too or both banners would render at once. */}
+        {!user && !authLoading && totalItemCount === 0 && guestPendingIds.length === 0 && flowStep === "cart" && !isLoading && !optimizationResult && (
           <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800" data-testid="banner-guest-empty-nudge">
             <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0" />
             <p className="text-sm text-blue-800 dark:text-blue-200 flex-1">
@@ -2125,7 +2135,7 @@ export default function CartPage() {
                           <div className="flex items-start gap-2 mb-2">
                             <Route className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
-                              <h4 className="text-sm font-medium">Start Planning Your Trip</h4>
+                              <h4 className="text-sm font-medium">Add to Trip Itinerary</h4>
                               <p className="text-xs text-muted-foreground mt-1">
                                 Add your {planCandidateItems.length} saved item{planCandidateItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
                               </p>
@@ -2138,7 +2148,7 @@ export default function CartPage() {
                             data-testid="button-start-planning"
                           >
                             <Route className="w-4 h-4 mr-2" />
-                            Start Planning
+                            Add to itinerary
                           </Button>
                         </div>
                       )}

@@ -195,6 +195,7 @@ import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import pricingRoutes from "./routes/pricing.routes";
 import landingRoutes from "./routes/landing.routes";
+import tripPassRoutes from "./routes/trip-pass.routes";
 import occasionsRoutes from "./routes/occasions.routes";
 import internalRoutes from "./routes/internal.routes";
 import {
@@ -934,6 +935,8 @@ export async function registerRoutes(
 
   // Landing hero bento (landing-build lane Phase 1) — public, read-only, honest-null legs.
   app.use(landingRoutes);
+  // Trip Pass purchase/status (ruling 2026-08-29-trip-pass).
+  app.use(tripPassRoutes);
 
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);
@@ -1951,7 +1954,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(vendorList);
   });
 
-  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+  // CLAUDE.md §2/§19 gap (endpoint-auth completeness sweep, Aug 29 2026): this route was
+  // `isAuthenticated`-only — any signed-in traveler could POST a live, publicly-listed vendor row
+  // (`GET /api/vendors` above is fully public and `vendors.status` defaults `'active'`, so the row
+  // is immediately world-visible). NOT admin-only by design: `client/src/pages/vendors.tsx` gates
+  // its "Add Vendor" dialog on `isPlanner` (PLANNER_ROLES = admin + EARNER_ROLES + the "provider"
+  // client alias), so `requireAdmin` here would break the legitimate expert/provider add-vendor
+  // flow — `isEarner` (shared/roles.ts `isEarnerRole` = expert-family OR provider, plus admin) is
+  // the server-side mirror of that same UI gate, queried from the SESSION (never `req.body`, §14).
+  app.post("/api/vendors", isAuthenticated, isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
       const vendor = await storage.createVendor(input);
@@ -10348,7 +10359,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-            name: g.name,
+            // travel_pulse_hidden_gems has no `name` column — the field is placeName
+            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
+            name: g.placeName,
             description: g.description,
             gemScore: g.gemScore,
           })),
