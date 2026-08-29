@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, XCircle, Clock, History } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, History, ShieldAlert } from "lucide-react";
 
 /**
  * Provenance spine move 5 (ledger 2026-08-23-provenance-audit-read): the per-listing audit timeline.
@@ -94,6 +94,7 @@ export default function ServiceApprovals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [overrideReasons, setOverrideReasons] = useState<Record<string, string>>({});
 
   const { data: pending = [], isLoading } = useQuery<PendingService[]>({
     queryKey: ["/api/admin/provider-services/pending"],
@@ -106,7 +107,12 @@ export default function ServiceApprovals() {
   };
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("POST", `/api/admin/provider-services/${id}/approve`, {}),
+    mutationFn: ({ id, developmentVerificationOverrideReason }: {
+      id: string;
+      developmentVerificationOverrideReason?: string;
+    }) => apiRequest("POST", `/api/admin/provider-services/${id}/approve`, {
+      ...(developmentVerificationOverrideReason ? { developmentVerificationOverrideReason } : {}),
+    }),
     onSuccess: () => { toast({ title: "Service approved", description: "It's now live and bookable." }); invalidate(); },
     onError: (e: any) => toast({ title: "Approve failed", description: e.message, variant: "destructive" }),
   });
@@ -222,7 +228,7 @@ export default function ServiceApprovals() {
                       <AlertDialogFooter>
                         <AlertDialogCancel data-testid={`button-approve-cancel-${s.id}`}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                          onClick={() => approveMutation.mutate(s.id)}
+                          onClick={() => approveMutation.mutate({ id: s.id })}
                           data-testid={`button-approve-confirm-${s.id}`}
                         >
                           Approve
@@ -239,6 +245,42 @@ export default function ServiceApprovals() {
                     <XCircle className="w-4 h-4 mr-2" /> Reject
                   </Button>
                 </div>
+                {import.meta.env.DEV && (
+                  <div
+                    className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2"
+                    data-testid={`panel-dev-verification-override-${s.id}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-700 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-amber-900">Development verification override</p>
+                        <p className="text-xs text-amber-800">
+                          Approves this listing as live without changing the provider's verification record.
+                          The admin and reason are written to the audit log.
+                        </p>
+                      </div>
+                    </div>
+                    <Textarea
+                      placeholder="Why is this development-only override needed? (required)"
+                      value={overrideReasons[s.id] ?? ""}
+                      onChange={(e) => setOverrideReasons((r) => ({ ...r, [s.id]: e.target.value }))}
+                      data-testid={`dev-verification-override-reason-${s.id}`}
+                    />
+                    <Button
+                      variant="outline"
+                      className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                      onClick={() => approveMutation.mutate({
+                        id: s.id,
+                        developmentVerificationOverrideReason: overrideReasons[s.id]?.trim(),
+                      })}
+                      disabled={approveMutation.isPending || !(overrideReasons[s.id] ?? "").trim()}
+                      data-testid={`button-dev-approve-override-${s.id}`}
+                    >
+                      <ShieldAlert className="w-4 h-4 mr-2" />
+                      Approve live with dev override
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))

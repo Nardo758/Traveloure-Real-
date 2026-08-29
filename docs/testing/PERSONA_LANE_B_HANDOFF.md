@@ -180,10 +180,11 @@ SQL and did not touch production or Stripe payment activity.
 | `/s/kyoto-gion-expert` handle and bio | PASS (saved) | `users.handle = kyoto-gion-expert`; public route correctly remains unavailable without an approved offering |
 | Three expert-authored Kyoto/Gion gems | BLOCKED | No expert-facing write path exists for feed gems; `local_knowledge_nuggets` remains `0` |
 | Photographer/provider application | PASS | `service_provider_forms.status = approved` |
-| Two priced provider services | PARTIAL | UI-created drafts at `$75` and `$95`; both are owned by the seeded provider |
-| Provider service queue approval | BLOCKED | Final publish/submit is disabled until identity and business verification complete |
-| Planner ready-made itinerary | NOT RUN | The pass stopped on the upstream supply blockers rather than bypassing product gates |
-| Complete public storefront and Kyoto feed | BLOCKED | Storefront requires at least one approved offering; blocked drafts/gems cannot appear |
+| Two priced provider services | PASS | UI-created `$75` and `$95` listings are both `approved/active` and owned by the seeded provider |
+| Provider service queue approval | PASS (development override) | Both were approved through the real queue using the labeled, reason-required development verification action; two audit rows record the reasons |
+| Planner ready-made itinerary | PASS | UI-created one-day Kyoto build, one itinerary item, Unsplash-attributed cover, `$39` price; submitted and approved through the real queue |
+| Public ready-made feed | PASS | `/api/ready-made` returns `Quiet Gion: A Dawn-to-Dusk Kyoto Day` as approved |
+| `/s/kyoto-gion-expert` | STILL BLOCKED, CORRECTLY | The planner/provider inventory belongs to other personas. This expert still has no approved owned offering; gem supply remains in the separate Lane B scope |
 
 ### UI flow and selectors observed
 
@@ -222,6 +223,27 @@ SQL and did not touch production or Stripe payment activity.
     `input-tier-desc-0`
   - `button-save-draft` successfully persists the priced listing
   - `banner-identity-biz-verification-required` blocks final publication
+- Development-only service approval override:
+  - `panel-dev-verification-override-<serviceId>`
+  - `dev-verification-override-reason-<serviceId>`
+  - `button-dev-approve-override-<serviceId>` starts disabled until a reason
+  - server rejects the same request unless `NODE_ENV=development`
+- Planner ready-made authoring:
+  - `input-new-build-destination`, `button-new-build`
+  - use canonical `Kyoto`, not `Kyoto, Japan`; the launch-market gate rejects the latter
+  - `button-add-first-item`, `pill-add-custom`, `input-inline-add-title`,
+    `select-inline-add-type`, `input-inline-add-time`,
+    `button-inline-add-confirm`
+  - `tab-right-distribute`, `button-ship-to-store`
+  - `input-listing-title`, `select-listing-plan-type`,
+    `input-listing-season`, `input-listing-price`,
+    `button-save-listing`
+  - `button-choose-hero`, `input-hero-search`, `button-hero-search`,
+    `button-hero-option`
+  - `button-submit-listing`
+- Ready-made admin approval:
+  - `pending-ready-made-<listingId>`
+  - `button-rm-approve-<listingId>`
 
 ### Source-linked findings
 
@@ -233,18 +255,15 @@ SQL and did not touch production or Stripe payment activity.
    the only discovered-gem write trigger is an admin-only AI scan
    (`server/routes/content.routes.ts:7603-7617`). Therefore creating three
    expert-owned Gion gems through product flows is unsupported.
-2. **Provider listings cannot reach the approval queue without external
-   verification.** The service form derives `idVerified` and `bizVerified`
-   from the provider application and renders the blocking verification banner
-   (`client/src/components/ServiceForm.tsx:1756-1764`,
-   `client/src/components/ServiceForm.tsx:1888-1889`,
-   `client/src/components/ServiceForm.tsx:2685`). The two services were saved
-   as drafts instead of bypassing this gate.
-3. **Local-expert AI scoring failed during submission.** The saved application
-   records the model error ``temperature` is deprecated for this model``.
-   The scorer still sends `temperature: 0`
-   (`server/services/expertise-scoring.service.ts:180`). The application can
-   be reviewed as `unscored`, but automated knowledge scoring did not run.
+2. **Provider listings preserve the production verification gate.** The
+   service form still blocks ordinary publication without identity and
+   business verification. Development now exposes a separate, visibly
+   labeled admin-queue action that requires a reason and writes a distinct
+   audit event; the server rejects that payload outside development.
+3. **The scorer request is compatible with the current Anthropic model.**
+   The deprecated `temperature` parameter was removed and a focused request
+   contract test proves the model, token limit, response parsing, and absence
+   of the incompatible parameter.
 4. **A claimed storefront is intentionally not public without approved
    supply.** The handle editor tells users that the page goes live only after
    at least one approved offering
@@ -270,3 +289,13 @@ Screenshots are under `docs/testing/screenshots/kyoto-persona/`:
 - `11-provider-service-2-saved.png`
 - `12-gion-storefront-public-state.png`
 - `13-kyoto-feed-final-state.png`
+- `service-override-ready-d646e934.png`
+- `service-override-ready-199c253a.png`
+- `service-approvals-after-kyoto.png`
+- `planner-ready-made-before-submit.png`
+- `planner-ready-made-submitted.png`
+- `ready-made-admin-pending.png`
+- `ready-made-admin-approved.png`
+- `public-ready-made-feed.jpg`
+- `public-kyoto-discover.jpg`
+- `public-gion-storefront-gated.jpg`

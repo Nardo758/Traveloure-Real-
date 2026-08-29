@@ -91,6 +91,7 @@ import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@sha
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
 import { resolvePublishVerification } from "../services/publish-verification.service";
+import { resolveDevelopmentVerificationOverride } from "../services/dev-verification-override";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
@@ -3334,6 +3335,11 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
 
+      const developmentOverride = resolveDevelopmentVerificationOverride(req.body ?? {});
+      if (developmentOverride.requested && !developmentOverride.ok) {
+        return res.status(developmentOverride.status).json({ message: developmentOverride.message });
+      }
+
       // QA_PUNCH_LIST.md P0 / DECISIONS.md ruling 53's amending ruling — option (B): admin
       // approval always records the approval (preserves the admin's review work) but only
       // goes publicly live when the LISTING OWNER (service.expertId, NEVER adminId — the
@@ -3342,14 +3348,39 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       // go-live then follows automatically the next time the owner completes verification
       // (activateVerificationHeldListings, wired at the verification write paths).
       const ownerVerification = await resolvePublishVerification(service.expertId);
-      const approved = await storage.approveProviderServiceListing(req.params.id, adminId, ownerVerification.ok);
+      const overrideReason =
+        developmentOverride.requested && developmentOverride.ok ? developmentOverride.reason : null;
+      if (overrideReason) {
+        // Audit first and fail closed: a development override must never take effect without
+        // its admin, target listing, original verification result, and entered reason recorded.
+        await insertAccessAuditLog({
+          actorId: adminId,
+          actorRole: user.role,
+          action: "provider_service_approve_dev_verification_override",
+          resourceType: "provider_service",
+          resourceId: req.params.id,
+          targetUserId: service.expertId,
+          metadata: {
+            reason: overrideReason,
+            identityVerified: ownerVerification.identityVerified,
+            businessVerified: ownerVerification.businessVerified,
+          },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        });
+      }
+      const approved = await storage.approveProviderServiceListing(
+        req.params.id,
+        adminId,
+        ownerVerification.ok || Boolean(overrideReason),
+      );
 
       // Ruling 112 / R3: keep the wizard's promise — the owner hears about the decision.
       await notifyListingDecision({
         userId: service.expertId,
         type: "listing_approved",
         title: "Your listing was approved",
-        message: ownerVerification.ok
+        message: ownerVerification.ok || overrideReason
           ? `"${service.title}" is approved and live — travelers can find and book it now.`
           : `"${service.title}" is approved. It goes live automatically once your verification completes.`,
         serviceId: req.params.id,
@@ -3365,7 +3396,7 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
         action: "provider_service_approve",
         resourceType: "provider_service",
         resourceId: req.params.id,
-        metadata: {},
+        metadata: { developmentVerificationOverride: Boolean(overrideReason) },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
       }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
