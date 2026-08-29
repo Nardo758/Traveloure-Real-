@@ -103,3 +103,31 @@ uri = "file://attached_assets/Rohit_Work_Test_Findings_Fixes_Report.md"
 type = "text"
 title = "Rohit — Work, Testing, Findings, and Fixes Report"
 description = "Detailed Traveloure report covering Rohit’s structural audit, tests, production findings, merged fixes, backfill analysis, and final deployment verification."
+
+[[outputs]]
+id = "6Gf6uUUTMdLmbXlDYgBy7"
+uri = "file://screenshots/dispatch-a-kyoto-feed.jpg"
+type = "image"
+title = "Dispatch A — Kyoto feed"
+description = "Development Kyoto marketplace capture after the persona supply pass."
+
+[[outputs]]
+id = "ElkM1EfgYaUC4zoKfklnM"
+uri = "file://screenshots/dispatch-a-gion-storefront.jpg"
+type = "image"
+title = "Dispatch A — Gion expert storefront"
+description = "Development public storefront showing two approved expert offerings."
+
+[[outputs]]
+id = "2TCH_kXH8jZNHg_-KZBzi"
+uri = "file://playwright-report/persona-screenshots/journey-traveler-plus-occasions.png"
+type = "image"
+title = "Dispatch A — Plus occasion"
+description = "Authenticated Plus persona occasion state before the delivery job ran."
+
+[[outputs]]
+id = "FsB9iMNTKjSNP7LGnxTTr"
+uri = "file://playwright-report/persona-screenshots/journey-guest-cart-prompt.png"
+type = "image"
+title = "Dispatch A — Guest sign-in boundary"
+description = "Guest cart sign-in prompt captured during the exploratory journey."
