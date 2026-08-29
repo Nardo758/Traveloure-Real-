@@ -2125,7 +2125,7 @@ export default function CartPage() {
                           <div className="flex items-start gap-2 mb-2">
                             <Route className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
-                              <h4 className="text-sm font-medium">Start Planning Your Trip</h4>
+                              <h4 className="text-sm font-medium">Add to Trip Itinerary</h4>
                               <p className="text-xs text-muted-foreground mt-1">
                                 Add your {planCandidateItems.length} saved item{planCandidateItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
                               </p>
@@ -2138,7 +2138,7 @@ export default function CartPage() {
                             data-testid="button-start-planning"
                           >
                             <Route className="w-4 h-4 mr-2" />
-                            Start Planning
+                            Add to itinerary
                           </Button>
                         </div>
                       )}

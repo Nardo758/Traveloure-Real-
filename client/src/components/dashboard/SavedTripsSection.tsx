@@ -133,7 +133,7 @@ export function SavedTripsSection() {
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <>
-                    Start planning this
+                    Continue this trip
                     <ArrowRight className="w-3 h-3" />
                   </>
                 )}
