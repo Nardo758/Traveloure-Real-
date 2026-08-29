@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
+import { PlanningProvider } from "@/contexts/PlanningContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
@@ -1282,13 +1283,18 @@ function App() {
           <SignInModalProvider>
             <ActiveConsoleProvider>
               <TooltipProvider>
-                <Toaster />
-                <LocaleSync />
-                <GuestCartMigrator />
-                <AuthReturnToRestorer />
-                <MaintenanceGate>
-                  <Router />
-                </MaintenanceGate>
+                {/* Single planning entry (ruling 2026-08-28-single-planning-entry):
+                    mounted ONCE, above the router, so every surface's CTA reaches
+                    the same chooser via usePlanning(). */}
+                <PlanningProvider>
+                  <Toaster />
+                  <LocaleSync />
+                  <GuestCartMigrator />
+                  <AuthReturnToRestorer />
+                  <MaintenanceGate>
+                    <Router />
+                  </MaintenanceGate>
+                </PlanningProvider>
               </TooltipProvider>
             </ActiveConsoleProvider>
           </SignInModalProvider>
