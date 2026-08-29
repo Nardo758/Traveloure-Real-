@@ -165,3 +165,108 @@ After the four suites are implemented and proven locally, add
 seed, supply suites before demand suites, and publish only the concise journey
 verdict tables. The workflow must fail closed if a live Stripe key is detected
 and must never target production.
+
+## Manual Kyoto supply pass — 2026-08-29
+
+The development-only manual pass used the seeded personas, the live browser
+flows, and the real admin queues. It did not create marketplace content with
+SQL and did not touch production or Stripe payment activity.
+
+### Result
+
+| Requirement | Result | Direct proof |
+|---|---|---|
+| Gion expert application | PASS | `local_expert_forms.status = approved`, city `Kyoto`, neighbourhood `Gion` |
+| `/s/kyoto-gion-expert` handle and bio | PASS (saved) | `users.handle = kyoto-gion-expert`; public route correctly remains unavailable without an approved offering |
+| Three expert-authored Kyoto/Gion gems | BLOCKED | No expert-facing write path exists for feed gems; `local_knowledge_nuggets` remains `0` |
+| Photographer/provider application | PASS | `service_provider_forms.status = approved` |
+| Two priced provider services | PARTIAL | UI-created drafts at `$75` and `$95`; both are owned by the seeded provider |
+| Provider service queue approval | BLOCKED | Final publish/submit is disabled until identity and business verification complete |
+| Planner ready-made itinerary | NOT RUN | The pass stopped on the upstream supply blockers rather than bypassing product gates |
+| Complete public storefront and Kyoto feed | BLOCKED | Storefront requires at least one approved offering; blocked drafts/gems cannot appear |
+
+### UI flow and selectors observed
+
+- Expert storefront editor:
+  - `input-handle`
+  - `button-save-handle`
+  - `input-storefront-bio`
+  - `button-save-bio`
+- Local-expert application:
+  - route must include `?type=local_expert`; `/expert/apply` alone defaults to
+    the Trip Planner wizard even for a signed-in `local_expert`
+  - `input-local-city`, `input-neighborhood`
+  - `button-locality-resident_5yr`
+  - `badge-language-english`, `badge-language-japanese`
+  - `textarea-knowledge-proof-0..2`
+  - `button-local-specialty-*`, `badge-service-*`
+  - `select-availability`, `select-response-time`, `input-hourly-rate`
+  - `checkbox-terms`, `button-submit`
+- Expert admin approval:
+  - `card-application-<id>`
+  - `button-approve-<id>`
+  - approving an identity-unverified development persona requires the real
+    browser prompt and a non-empty override reason
+- Provider application:
+  - `select-business-type`, `button-category-*`
+  - `checkbox-insurance`, `checkbox-license`, `checkbox-terms`
+  - Admin Providers opens on the Platform tab; click
+    `button-tab-applications` before locating `card-application-<id>`
+  - approval also requires a non-empty verification override reason
+- Provider service authoring:
+  - `button-choose-offering`, `input-offering-search`
+  - `option-offering-couples_photographer`
+  - `method-tile-video-call`
+  - this offering uses package tiers, not `input-base-price`:
+    `button-add-tier`, `input-tier-label-0`, `input-tier-price-0`,
+    `input-tier-desc-0`
+  - `button-save-draft` successfully persists the priced listing
+  - `banner-identity-biz-verification-required` blocks final publication
+
+### Source-linked findings
+
+1. **Experts cannot author feed gems.** The Content Studio explicitly has no
+   backend for its social content library and only persists knowledge nuggets
+   (`client/src/pages/expert/content-studio.tsx:186-190`,
+   `client/src/pages/expert/content-studio.tsx:236-248`). The TravelPulse
+   hidden-gem surface is read-only (`server/routes/content.routes.ts:5142-5154`);
+   the only discovered-gem write trigger is an admin-only AI scan
+   (`server/routes/content.routes.ts:7603-7617`). Therefore creating three
+   expert-owned Gion gems through product flows is unsupported.
+2. **Provider listings cannot reach the approval queue without external
+   verification.** The service form derives `idVerified` and `bizVerified`
+   from the provider application and renders the blocking verification banner
+   (`client/src/components/ServiceForm.tsx:1756-1764`,
+   `client/src/components/ServiceForm.tsx:1888-1889`,
+   `client/src/components/ServiceForm.tsx:2685`). The two services were saved
+   as drafts instead of bypassing this gate.
+3. **Local-expert AI scoring failed during submission.** The saved application
+   records the model error ``temperature` is deprecated for this model``.
+   The scorer still sends `temperature: 0`
+   (`server/services/expertise-scoring.service.ts:180`). The application can
+   be reviewed as `unscored`, but automated knowledge scoring did not run.
+4. **A claimed storefront is intentionally not public without approved
+   supply.** The handle editor tells users that the page goes live only after
+   at least one approved offering
+   (`client/src/components/backoffice/handle-claim-card.tsx:123-124`).
+
+### Screenshots
+
+Screenshots are under `docs/testing/screenshots/kyoto-persona/`:
+
+- `01-expert-storefront-handle.png`
+- `02-expert-application-review.png`
+- `03-expert-application-pending.png`
+- `04-admin-expert-approval-queue.png`
+- `05-admin-expert-approved.png`
+- `06-provider-application-review.png`
+- `07-provider-application-pending.png`
+- `08-admin-provider-approval-queue.png`
+- `09-admin-provider-approved.png`
+- `10-provider-service-1-priced-draft.png`
+- `10-provider-service-2-priced-draft.png`
+- `10-provider-service-form-blocked.png`
+- `11-provider-service-1-saved.png`
+- `11-provider-service-2-saved.png`
+- `12-gion-storefront-public-state.png`
+- `13-kyoto-feed-final-state.png`
