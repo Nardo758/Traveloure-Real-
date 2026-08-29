@@ -511,7 +511,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 aria-label={t("homeAria")}
                 data-testid="link-logo"
               >
-                <TraveloureLogo />
+                <TraveloureLogo className="h-[26px]" />
                 <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20" aria-hidden="true">
                   BETA
                 </span>
@@ -764,7 +764,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Brand Column */}
             <div className="lg:col-span-2">
               <div className="flex items-center mb-4" aria-hidden="true">
-                <TraveloureLogo className="h-8" />
+                <TraveloureLogo mono className="h-8" />
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
                 {t("footer.tagline")}
