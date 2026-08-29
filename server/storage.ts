@@ -1283,6 +1283,27 @@ export interface IStorage {
   getCustomVenuesPage(userId: string | undefined, tripId: string | undefined, experienceType: string | undefined, limit: number, offset: number): Promise<{ venues: CustomVenue[]; total: number }>;
 }
 
+// §19 layer 2 (ruling 46, same placement rationale as updateProviderService's approval-lifecycle
+// and MI-1 strips): the identity/business-verification family on local_expert_forms /
+// service_provider_forms is omitted at the schema layer (layer 1), but an internal caller that
+// spreads a body with an `as any` cast (e.g. a test fixture, or a future call site) bypasses that
+// type-level guard. Stripped here in STORAGE so every caller is covered, regardless of which of
+// the two tables' object shape is passed in — a table missing one of these columns (e.g.
+// local_expert_forms has no businessVerificationStatus) just drops nothing for that key. The sole
+// sanctioned writers remain `updateFormIdentityVerification` and
+// `updateProviderBusinessVerificationByInquiry` below, and the Stripe/Persona webhook — none of
+// which route through this helper.
+export function stripFormVerificationFields<T extends Record<string, unknown>>(form: T): T {
+  const {
+    identityVerificationSessionId: _ivsid,
+    identityVerificationStatus: _ivs,
+    identityVerifiedAt: _iva,
+    businessVerificationStatus: _bvs,
+    ...safe
+  } = form as Record<string, unknown>;
+  return safe as T;
+}
+
 export class DatabaseStorage implements IStorage {
   // Trips
   async getTrips(userId?: string, status?: string): Promise<TripListItem[]> {
@@ -1564,6 +1585,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm> {
+    // §19 layer 2: strip the verification family before it ever reaches the insert — covers the
+    // `as any` internal callers a type-level schema `.omit()` cannot reach.
+    form = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     // Same clamp as createServiceProviderForm: offering_type_key FKs into expert_offering_types
     // (migration 107); an unknown key from a stale /earn link must not fail the application.
     if (form.offeringTypeKey) {
@@ -1577,8 +1601,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined> {
+    // §19 layer 2: same strip as createLocalExpertForm — see stripFormVerificationFields.
+    const safeForm = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     const [updated] = await db.update(localExpertForms)
-      .set(form)
+      .set(safeForm)
       .where(eq(localExpertForms.id, id))
       .returning();
     return updated;
@@ -1796,6 +1822,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm> {
+    // §19 layer 2: strip the identity/business-verification family — see stripFormVerificationFields.
+    form = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     // offering_type_key is an FK into service_offering_types (migration 107). The value rides
     // in from the /earn card's URL param — clamp unknown/stale keys to null so a bad shared
     // link degrades to "no offering hint" instead of failing the whole signup on the FK.
