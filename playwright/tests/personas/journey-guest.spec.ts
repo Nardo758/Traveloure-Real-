@@ -7,18 +7,50 @@
  * Runs AFTER the supply suites (supply-expert / supply-provider) so there is real Kyoto
  * inventory to browse — but is otherwise independent of any persona (no login here at all).
  *
- * FINDING (client/src/pages/discover.tsx handleAddToCart): a signed-out "Add to trip" click does
- * NOT itself pop a sign-in prompt — it saves the pick into a per-browser guest cart
- * (saveToGuestCart) so a guest never loses a selection mid-browse. The sign-in prompt
- * (data-testid="banner-guest-nudge" / "button-sign-in-nudge") surfaces on /cart once that guest
- * cart has items, and opens SignInModal (data-testid="modal-sign-in"). This spec asserts the
- * ACTUAL two-step contract rather than a guessed single-step one, per the handoff's own
- * selector-notes instruction to inspect the rendered page before asserting.
+ * TWO REAL PAGES, TWO REAL SELECTOR SETS (found by the Aug 29 persona-nightly proof run —
+ * step 1 asserted `text-page-title`/`card-service-*` against a page that has neither):
+ *   - `/discover/location/:city` renders `client/src/pages/discover-location.tsx`, the
+ *     Kyoto-SCOPED city feed. Its real testids: `text-city-name` (title), `card-expert-*` (via
+ *     the shared ExpertCard component — proven working), `feed-card-vendor-svc-*` (provider
+ *     services, via CityFeedCardVendorService, add button `btn-add-svc-*`), and
+ *     `feed-card-package-*` (ready-made trips, via FeedReadyMadeCard). It has NO
+ *     `text-page-title` and NO `card-service-*`/`button-add-to-cart-*` — those belong to the
+ *     OTHER page below.
+ *   - `/services` renders `client/src/pages/discover.tsx`'s "services" marketplace surface
+ *     (SURFACE_META.services). Its real testids: `text-page-title` (title), `card-service-*`
+ *     (every approved+active service, unfiltered by default — no city/location matching at
+ *     all), `button-add-to-cart-*`. It has NO expert cards on this surface.
+ *   No single page renders both card-expert-* and card-service-*, so this spec browses BOTH
+ *   pages: the city feed for the Kyoto-scoped expert + ready-made proof, and /services for the
+ *   two NAMED provider services (by exact name — decoupled from the city feed's location-match
+ *   predicate, see the FINDING below) and the button-add-to-cart-* protected action the handoff
+ *   names literally.
+ *
+ * FINDING (open, not fabricated as fact — logged, non-blocking): the city feed's service match
+ * (server/services/location-view.service.ts) is `city === cityName OR (city IS NULL AND
+ * location ILIKE '%cityName%')`. supply-provider.spec.ts's two services use delivery method
+ * "call" (deliberately, to skip the meeting-point flow), and nothing in this lane's
+ * ServiceForm driver fills a city/location field for a call-only listing — so
+ * provider_services.city/location plausibly stay NULL/empty for them, which would mean they
+ * do NOT match the Kyoto city feed's predicate even though they are genuinely Kyoto supply
+ * (their owner's service_provider_forms.city = 'Kyoto'). This spec checks for their
+ * feed-card-vendor-svc-* presence on the city feed and records the actual result rather than
+ * assuming either way — a miss there is a supply-visibility candidate for a follow-up, not
+ * something this spec quietly works around.
+ *
+ * FINDING (client/src/pages/discover.tsx handleAddToCart, /services surface): a signed-out
+ * "Add to trip" click does NOT itself pop a sign-in prompt — it saves the pick into a
+ * per-browser guest cart (saveToGuestCart) so a guest never loses a selection mid-browse. The
+ * sign-in prompt (data-testid="banner-guest-nudge" / "button-sign-in-nudge") surfaces on /cart
+ * once that guest cart has items, and opens SignInModal (data-testid="modal-sign-in"). This
+ * spec asserts the ACTUAL two-step contract rather than a guessed single-step one.
  */
 import { test, expect } from "@playwright/test";
-import { BASE_URL, closePool, KYOTO, checkpoint, JourneyReport } from "./_persona-helpers";
+import { BASE_URL, rows, closePool, KYOTO, checkpoint, JourneyReport } from "./_persona-helpers";
 
 test.setTimeout(120_000);
+
+const PROVIDER_SERVICE_NAMES = ["Kyoto Portrait Route Planning Call", "Gion Photo Session Preparation Call"] as const;
 
 test.afterAll(async () => {
   await closePool();
@@ -36,27 +68,81 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
       if (res.status() >= 500) serverErrors.push(`${res.status()} ${res.url()}`);
     });
 
-    // ── Step 2-3: open the Kyoto discover/feed route, assert public content ─────────────────
+    // ── Step 2-3a: the Kyoto-SCOPED city feed — real title + expert cards + ready-made ───────
     await page.goto(`${BASE_URL}/discover/location/${encodeURIComponent(KYOTO)}`);
     await page.waitForLoadState("networkidle");
     await checkpoint(page, "journey-guest-discover-kyoto");
 
-    const title = page.getByTestId("text-page-title");
-    const titleVisible = await title.isVisible().catch(() => false);
-    const serviceCards = page.locator('[data-testid^="card-service-"]');
+    const cityTitle = page.getByTestId("text-city-name");
+    const cityTitleVisible = await cityTitle.isVisible().catch(() => false);
     const expertCards = page.locator('[data-testid^="card-expert-"]');
-    const serviceCount = await serviceCards.count().catch(() => 0);
     const expertCount = await expertCards.count().catch(() => 0);
+    const readyMadeCards = page.locator('[data-testid^="feed-card-package-"]');
+    const readyMadeCount = await readyMadeCards.count().catch(() => 0);
     report.record({
-      action: "open Kyoto discover/feed route, assert public content is visible",
-      ui: `text-page-title visible=${titleVisible}, card-service-* count=${serviceCount}, card-expert-* count=${expertCount}`,
+      action: "open the Kyoto-scoped city feed, assert public expert + ready-made content is visible",
+      ui: `text-city-name visible=${cityTitleVisible}, card-expert-* count=${expertCount}, feed-card-package-* count=${readyMadeCount}`,
       db: "n/a (public read)",
-      verdict: titleVisible ? "PASS" : "FAIL",
-      note: serviceCount + expertCount === 0 ? "no cards rendered — supply suites may not have run first" : undefined,
+      verdict: cityTitleVisible && expertCount > 0 ? "PASS" : "FAIL",
+      note: readyMadeCount === 0 ? "no ready-made card on the city feed — supply-expert must run first, or see the DEEPER finding below" : undefined,
+    });
+
+    // Open finding, not asserted as pass/fail either way — see the file header FINDING.
+    const vendorServiceCards = page.locator('[data-testid^="feed-card-vendor-svc-"]');
+    const vendorServiceCount = await vendorServiceCards.count().catch(() => 0);
+    report.record({
+      action: "OPEN FINDING: do the two named provider services surface on the Kyoto city feed?",
+      ui: `feed-card-vendor-svc-* count=${vendorServiceCount}`,
+      db: "n/a",
+      verdict: vendorServiceCount > 0 ? "PASS" : "UNSUPPORTED",
+      note:
+        vendorServiceCount > 0
+          ? undefined
+          : "0 vendor-service tiles on the city feed — consistent with the city-feed location-match " +
+            "predicate (server/services/location-view.service.ts) requiring provider_services.city= " +
+            "'Kyoto' OR location ILIKE '%Kyoto%', neither of which this lane's call-delivery service " +
+            "fixtures set. Recorded as an open supply-visibility finding, not asserted as a defect — " +
+            "the same services ARE proven publicly visible on /services below.",
+    });
+
+    // ── Step 3b: /services — real title + the two NAMED services + the protected action ──────
+    // ONE row per name (name-scoped, retry-safe — same reasoning as supply-provider.spec.ts's
+    // owned-service assertion: nothing deletes a prior failed Playwright retry's duplicate
+    // rows, so a raw row/name-pair count is not what "both named services exist" means here).
+    const svcRowsAll = await rows<{ id: string; service_name: string }>(
+      `SELECT id, service_name FROM provider_services
+       WHERE service_name = ANY($1::text[]) AND approval_status = 'approved' AND status = 'active'
+       ORDER BY created_at DESC`,
+      [PROVIDER_SERVICE_NAMES as unknown as string[]],
+    );
+    const svcRows = PROVIDER_SERVICE_NAMES.map((name) => svcRowsAll.find((r) => r.service_name === name)).filter(
+      (r): r is { id: string; service_name: string } => Boolean(r),
+    );
+    await page.goto(`${BASE_URL}/services`);
+    await page.waitForLoadState("networkidle");
+    await checkpoint(page, "journey-guest-services-surface");
+
+    const servicesTitle = page.getByTestId("text-page-title");
+    const servicesTitleVisible = await servicesTitle.isVisible().catch(() => false);
+    let namedCardsVisible = 0;
+    for (const svc of svcRows) {
+      if (await page.getByTestId(`card-service-${svc.id}`).isVisible({ timeout: 10_000 }).catch(() => false)) {
+        namedCardsVisible++;
+      }
+    }
+    report.record({
+      action: "open /services, assert the two named provider services are publicly visible",
+      ui: `text-page-title visible=${servicesTitleVisible}, named card-service-* visible=${namedCardsVisible}/${PROVIDER_SERVICE_NAMES.length}`,
+      db: `names found=${svcRows.length}/${PROVIDER_SERVICE_NAMES.length} (${svcRows.map((s) => s.service_name).join(", ")})`,
+      verdict: servicesTitleVisible && svcRows.length === PROVIDER_SERVICE_NAMES.length && namedCardsVisible === PROVIDER_SERVICE_NAMES.length ? "PASS" : "FAIL",
+      note: svcRows.length < PROVIDER_SERVICE_NAMES.length ? "one or both named services missing/not approved+active — supply-provider.spec.ts must run first" : undefined,
     });
 
     // ── Step 4: attempt a protected action (add to trip) as a signed-out visitor ─────────────
-    const addToCartBtn = page.locator('[data-testid^="button-add-to-cart-"]').first();
+    const targetId = svcRows[0]?.id;
+    const addToCartBtn = targetId
+      ? page.getByTestId(`button-add-to-cart-${targetId}`)
+      : page.locator('[data-testid^="button-add-to-cart-"]').first();
     const addBtnVisible = await addToCartBtn.isVisible({ timeout: 10_000 }).catch(() => false);
     if (addBtnVisible) {
       await addToCartBtn.click();
@@ -67,7 +153,7 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
       ui: addBtnVisible ? "clicked button-add-to-cart-* (guest cart save, client-local — see file header)" : "no add-to-cart CTA found on this page",
       db: "n/a",
       verdict: addBtnVisible ? "PASS" : "UNSUPPORTED",
-      note: addBtnVisible ? undefined : "no purchasable card with an add-to-cart CTA was visible; supply suites must run first",
+      note: addBtnVisible ? undefined : "no purchasable card with an add-to-cart CTA was visible; supply-provider.spec.ts must run first",
     });
 
     // ── Step 5: the sign-in prompt appears (on /cart, once the guest cart has an item), and the
@@ -94,10 +180,10 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
     // Browser stays usable after dismissal — re-navigate and confirm the page still renders.
     await page.goto(`${BASE_URL}/discover/location/${encodeURIComponent(KYOTO)}`);
     await page.waitForLoadState("networkidle");
-    const stillUsable = await page.getByTestId("text-page-title").isVisible().catch(() => false);
+    const stillUsable = await page.getByTestId("text-city-name").isVisible().catch(() => false);
     report.record({
       action: "browser remains usable after dismissing the sign-in prompt (re-navigation succeeds)",
-      ui: `text-page-title visible after re-navigation=${stillUsable}`,
+      ui: `text-city-name visible after re-navigation=${stillUsable}`,
       db: "n/a",
       verdict: stillUsable ? "PASS" : "FAIL",
     });
