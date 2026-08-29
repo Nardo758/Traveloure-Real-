@@ -118,6 +118,16 @@ export interface NormalizedKnowledgeProofAnswer {
   a: string;
 }
 
+interface ExpertiseScoringClient {
+  messages: {
+    create: (request: {
+      model: string;
+      max_tokens: number;
+      messages: Array<{ role: "user"; content: string }>;
+    }) => Promise<{ content: Array<{ type: string; text?: string }> }>;
+  };
+}
+
 /**
  * CC-6 normalizer, pulled out as a standalone pure function so it's directly unit-testable
  * (server/services/__tests__/expertise-scoring.test.ts) rather than only reachable through
@@ -146,6 +156,7 @@ export async function scoreKnowledgeProof(
   questions: string[],
   localityProof: string | null,
   market: string,
+  clientOverride?: ExpertiseScoringClient,
 ): Promise<KnowledgeScore> {
   const marketKey = (market || "").trim().toLowerCase();
   // Normalize to { q, a } pairs — see normalizeKnowledgeProofAnswers for shape handling.
@@ -173,11 +184,11 @@ export async function scoreKnowledgeProof(
     `with exactly ${cleaned.length} entries in order.`;
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client: ExpertiseScoringClient =
+      clientOverride ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,
-      temperature: 0,
       messages: [{ role: "user", content: prompt }],
     });
     const text = resp.content

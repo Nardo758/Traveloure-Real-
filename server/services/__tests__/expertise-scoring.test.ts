@@ -13,7 +13,10 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeKnowledgeProofAnswers } from "../expertise-scoring.service";
+import {
+  normalizeKnowledgeProofAnswers,
+  scoreKnowledgeProof,
+} from "../expertise-scoring.service";
 
 const QUESTIONS = ["Q1 text", "Q2 text", "Q3 text"];
 
@@ -82,5 +85,54 @@ describe("normalizeKnowledgeProofAnswers (CC-6)", () => {
   it("returns an empty array for an empty/undefined input, never throws", () => {
     assert.deepEqual(normalizeKnowledgeProofAnswers([], QUESTIONS), []);
     assert.deepEqual(normalizeKnowledgeProofAnswers(undefined as any, QUESTIONS), []);
+  });
+});
+
+describe("scoreKnowledgeProof model compatibility", () => {
+  it("calls the current model without the deprecated temperature parameter and parses its response", async () => {
+    const previousKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "test-only-key";
+    let capturedRequest: Record<string, unknown> | undefined;
+    const client = {
+      messages: {
+        create: async (request: Record<string, unknown>) => {
+          capturedRequest = request;
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                perAnswer: [{
+                  weighted: 3,
+                  current_local: 3,
+                  negative: 2,
+                  personalization: 2,
+                  feedback: "Specific current advice with a clear tradeoff.",
+                }],
+              }),
+            }],
+          };
+        },
+      },
+    };
+
+    try {
+      const result = await scoreKnowledgeProof(
+        ["Go before 7am, and avoid midday when the path is most congested."],
+        ["When should a traveler visit?"],
+        "resident_5yr",
+        "kyoto",
+        client,
+      );
+
+      assert.equal(capturedRequest?.model, process.env.EXPERTISE_SCORING_MODEL || "claude-sonnet-5");
+      assert.equal(capturedRequest?.max_tokens, 1024);
+      assert.equal("temperature" in (capturedRequest ?? {}), false);
+      assert.equal(result.verdict, "strong");
+      assert.equal(result.overall, 83);
+      assert.equal(result.model, process.env.EXPERTISE_SCORING_MODEL || "claude-sonnet-5");
+    } finally {
+      if (previousKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousKey;
+    }
   });
 });
