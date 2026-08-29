@@ -123,17 +123,21 @@ test.describe("Breakpoint tests — navbar renders correctly", () => {
         ).toBeHidden();
       }
 
-      // I) Text readability: nav anchor links ≥ 14px
-      //    (Shadcn sm buttons on desktop use text-sm; we check anchor links
-      //    which are the primary readable nav elements)
+      // I) Text readability floor: nav anchor links ≥ 12px.
+      //    The original 14px floor was calibrated to the pre-chrome-alignment
+      //    text-sm nav. Ruling 2026-08-28-chrome-alignment (merged as PR #616,
+      //    decision-maker merged over this gate's red) sets nav links at
+      //    Geist Mono 500 12.5px with .05em tracking — a deliberate type-scale
+      //    choice, not a regression — so the floor moves to 12px: it still
+      //    catches accidental tiny text while accepting the ratified scale.
       const fontSizeOk = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll("nav a"));
         return links.every((el) => {
           const fs = parseFloat(getComputedStyle(el).fontSize);
-          return fs >= 14;
+          return fs >= 12;
         });
       });
-      expect(fontSizeOk, `Nav link text should be ≥ 14px at ${bp.width}px`).toBe(true);
+      expect(fontSizeOk, `Nav link text should be ≥ 12px at ${bp.width}px`).toBe(true);
     });
   }
 });
