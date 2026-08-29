@@ -290,7 +290,9 @@ async function buildDraftSlip(input: {
         aiLocalInsights: city?.aiLocalInsights,
         aiMustSeeAttractions: city?.aiMustSeeAttractions,
         hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-          name: g.name,
+          // travel_pulse_hidden_gems has no `name` column — the field is placeName
+          // (fixed Aug 29 2026: g.name fed the model undefined gem names).
+          name: g.placeName,
           description: g.description,
           gemScore: g.gemScore,
         })),
