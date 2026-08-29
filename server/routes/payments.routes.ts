@@ -23,9 +23,11 @@ import {
   validateRailsRef,
   resolveRailsForItem,
   railsSnapshot,
+  resolveTripPassFeeWaiver,
   logRailsRefusal,
   type RailsItemResolution,
 } from "../services/rails-attribution.service";
+import { coversAction } from "../services/trip-entitlement.service";
 // 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6): a DIRECT provider booking
 // prices through the same D1 resolver the rails lane uses, so `fee_bands` is the single authority
 // on every provider charge path — not just the attributed one (ruling 68 §5's owed item).
@@ -1257,6 +1259,30 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         );
       }
 
+      // ── Trip Pass traveler-fee waiver (ruling 2026-08-29-trip-pass) ──────────────────────
+      // Server-side entitlement check (the client never asserts coverage). Reuses the rails
+      // waiver mechanism with basis 'trip_pass'; a line ALREADY waived by the provider link
+      // keeps its rails waiver — one waiver per line, rails first. Best-effort: a failure
+      // here means fees price at the full (i.e. current: unbilled) rate, never a guess.
+      const tripPassWaiverByItemId = new Map<string, Record<string, unknown>>();
+      try {
+        if (tripId && (await coversAction(String(tripId), "traveler_service_fee"))) {
+          for (const item of cartData) {
+            if (!item.service) continue;
+            const rails = railsByItemId.get(item.id);
+            if (rails?.travelerFeeWaiver) continue;
+            const w = await resolveTripPassFeeWaiver(resolveItemBaseAmount(item, stayRatesByItemId));
+            if (w) tripPassWaiverByItemId.set(item.id, w);
+          }
+        }
+      } catch (tpErr: any) {
+        tripPassWaiverByItemId.clear();
+        console.error(
+          `[checkout] trip-pass waiver pre-pass failed — no waiver recorded:`,
+          tpErr?.message ?? tpErr,
+        );
+      }
+
       // ── 1C DIRECT-LANE RATE (docs/DECISIONS.md ruling 69 disposition 6) ─────────────────────
       // The SECOND pre-pass, on the SAME shape and for the same reason as the rails one: the two
       // charge loops below resolve rates twice and two more surfaces quote the same cart, so the
@@ -1508,6 +1534,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               // it. The fee-ledger row is written from this snapshot at the authorization stamp, so
               // an admin re-pricing a band mid-checkout cannot rewrite what was charged.
               ...(itemRails2 ? { railsAttribution: railsSnapshot(itemRails2) } : {}),
+              // Trip Pass (ruling 2026-08-29-trip-pass): the pass's traveler-fee waiver,
+              // snapshotted on the row it covers — basis 'trip_pass' beside rails' own
+              // basis, same counterfactual honesty (the fee is not billed on the direct
+              // path today; this records what WOULD have been charged and why it is 0).
+              ...(tripPassWaiverByItemId.get(item.id)
+                ? { tripPassFeeWaiver: tripPassWaiverByItemId.get(item.id) }
+                : {}),
               // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
               // posture and for the same reason — a line that fell back to the legacy lane must
               // SAY so on the row, or a later reader would infer a D1 charge that never happened
