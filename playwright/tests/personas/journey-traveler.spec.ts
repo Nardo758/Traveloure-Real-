@@ -444,6 +444,184 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
     report.write();
     expect(report.hasFailures, `journey-traveler-trip-pass had failing steps: ${JSON.stringify(report)}`).toBe(false);
   });
+
+  // ── COVERED branch (ledger 2026-08-29-trip-pass-provenance) — extends the SAME describe
+  //    block rather than duplicating it. The test above exercises the real Stripe
+  //    purchase→confirm path on a FRESH trip (the uncovered/honest-negative-when-no-Stripe
+  //    branch); this one exercises the trip scripts/seed-personas.ts already granted a
+  //    MANUAL-provenance Trip Pass on (source='manual', no PaymentIntent) — so every
+  //    assertion here is Stripe-independent EXCEPT the checkout-waiver step, which still
+  //    needs a real charge to produce a real booking row.
+  test("Trip Pass traveler: the COVERED branch on the seeded manual-provenance entitlement", async ({ page }) => {
+    const report = new JourneyReport("journey-traveler-trip-pass-covered");
+    const request = page.request;
+
+    const actor = await loginAs(request, PERSONAS.tripPassTraveler);
+
+    // Must match scripts/seed-personas.ts's TRIP_PASS_SEED_TRIP_TITLE exactly — the seed's
+    // find-or-create key (no hardcoded trip id; a re-seed reuses the same row).
+    const SEEDED_TRIP_TITLE = "Trip Pass Kyoto Trip (seeded entitlement)";
+    const [seededTrip] = await rows<{ id: string }>(
+      `SELECT id FROM trips WHERE user_id = $1 AND title = $2 LIMIT 1`,
+      [actor.id, SEEDED_TRIP_TITLE],
+    );
+    expect(seededTrip, `seeded trip "${SEEDED_TRIP_TITLE}" not found — run scripts/seed-personas.ts --apply first`).toBeTruthy();
+    const coveredTripId = seededTrip!.id;
+
+    const [entitlement] = await rows<{
+      status: string;
+      plan_key: string;
+      source: string;
+      source_payment_id: string | null;
+      allowances_snapshot: { revisionsRemaining?: number };
+    }>(
+      `SELECT status, plan_key, source, source_payment_id, allowances_snapshot FROM trip_entitlements WHERE trip_id = $1 AND status = 'active'`,
+      [coveredTripId],
+    );
+    report.record({
+      action: "assert the seeded manual-provenance entitlement (ruling 2026-08-29-trip-pass-provenance)",
+      ui: "n/a (seed-created)",
+      db: JSON.stringify(entitlement),
+      verdict:
+        entitlement?.status === "active" &&
+        entitlement?.plan_key === "trip_pass" &&
+        entitlement?.source === "manual" &&
+        entitlement?.source_payment_id === null &&
+        Number(entitlement?.allowances_snapshot?.revisionsRemaining) > 0
+          ? "PASS"
+          : "FAIL",
+    });
+
+    // ── Optimizer paid-gate: covered ─────────────────────────────────────────────────────
+    // server/routes/optimization.routes.ts:276 short-circuits BEFORE any Stripe call —
+    // asserted directly on the response, since NOTHING else observable changes: the code's
+    // own comment records that suppression is `covered_by:trip_pass` in a console.log line
+    // ONLY (fee_ledger's amount<>0 CHECK forbids a literal $0 row) — there is no DB ledger
+    // row to assert against. Recorded here as a FINDING rather than fabricating one.
+    const optRes = await request.post(`${BASE_URL}/api/optimization-payments`, {
+      data: { tripId: coveredTripId, destination: "Kyoto" },
+    });
+    const optBody = optRes.ok() ? await optRes.json().catch(() => ({})) : {};
+    report.record({
+      action: "optimizer run on the covered trip — no PaymentIntent, no clientSecret",
+      ui: `POST /api/optimization-payments status ${optRes.status()}, body=${JSON.stringify(optBody)}`,
+      db: "n/a — coverage suppresses the charge before any Stripe call; the $0 suppression is a console.log line only (FINDING: no fee_ledger row exists for a covered run, by design — fee_ledger's amount<>0 CHECK forbids a literal $0 row)",
+      verdict:
+        optRes.status() === 200 &&
+        optBody.coveredByTripPass === true &&
+        optBody.feeCents === 0 &&
+        !optBody.clientSecret &&
+        !optBody.paymentIntentId
+          ? "PASS"
+          : "FAIL",
+    });
+
+    // ── Persistent "covered" UI (TripPassCard, the real testid/copy) ─────────────────────
+    // FINDING: there is no distinct mid-optimize-click "Included in your Trip Pass" banner —
+    // client/src/components/plancard/SlipView.tsx's startOptimization() treats
+    // `covered_by_pass` identically to `free_rerun` (silently proceeds, no toast). The ONE
+    // real, persistent signal a covered trip shows is TripPassCard's active state
+    // (data-testid="trip-pass-card-active"), asserted here instead of a fabricated banner.
+    await page.goto(`${BASE_URL}/plans/${coveredTripId}`);
+    await page.waitForLoadState("networkidle");
+    await checkpoint(page, "journey-traveler-trip-pass-covered-slip");
+    const activeCard = page.getByTestId("trip-pass-card-active");
+    const activeCardVisible = await activeCard.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false);
+    const activeCardText = activeCardVisible ? await activeCard.textContent().catch(() => "") : "";
+    report.record({
+      action: 'slip shows the persistent "Trip Pass active" card (the real coverage signal — no separate mid-flow banner exists)',
+      ui: `trip-pass-card-active visible=${activeCardVisible}, text="${activeCardText?.trim()}"`,
+      db: `trip_entitlements.status=${entitlement?.status}`,
+      verdict: activeCardVisible ? "PASS" : "FAIL",
+    });
+
+    // ── Checkout: traveler service-fee waiver recorded on the booking row ────────────────
+    // FINDING: `GET /api/cart/fee-preview` does NOT consider trip_entitlements at all (no
+    // tripId param, no coversAction call) — so "the checkout preview shows the fee zeroed"
+    // is not something the product currently renders anywhere; asserting it would be
+    // fabricated. The REAL waiver mechanism is server/routes/payments.routes.ts:1269's
+    // resolveTripPassFeeWaiver pre-pass, which snapshots onto the CREATED booking row's
+    // booking_details.tripPassFeeWaiver (basis:'trip_pass', waived:true) at checkout —
+    // asserted directly against that row instead, gated the same Stripe-test-mode way as
+    // the free-traveler checkout above. Note also (from the resolver's own doc comment):
+    // billedOnDirectPathToday=false — the traveler service fee is not actually billed on
+    // the direct checkout path today regardless of Trip Pass, so this waiver is a
+    // counterfactual record, not a suppression of a real charge.
+    const svcRow = await scalar<string>(
+      `SELECT id FROM provider_services WHERE service_name = $1 AND approval_status = 'approved' AND status = 'active' LIMIT 1`,
+      [PROVIDER_SERVICE_NAME],
+    );
+    if (!svcRow) {
+      report.record({
+        action: `checkout waiver check skipped — "${PROVIDER_SERVICE_NAME}" not found`,
+        ui: "n/a",
+        db: "n/a",
+        verdict: "EXTERNAL",
+        note: "supply-provider.spec.ts must run first to create the named service.",
+      });
+    } else {
+      const [svc] = await rows<{ id: string; price: string; service_name: string }>(
+        `SELECT id, price, service_name FROM provider_services WHERE id = $1`,
+        [svcRow],
+      );
+      const itemId = await createCatalogItem(request, coveredTripId, { id: svc.id, price: svc.price, name: svc.service_name });
+      await routeItem(request, coveredTripId, itemId, "ready_for_checkout");
+
+      const idempotencyKey = crypto.randomUUID();
+      const checkoutRes = await request.post(`${BASE_URL}/api/checkout`, { data: { tripId: coveredTripId, idempotencyKey } });
+
+      if (STRIPE_UNAVAILABLE) {
+        const [{ n: cartCountBefore }] = await rows<{ n: number }>(
+          `SELECT count(*)::int AS n FROM cart_items WHERE user_id = $1`,
+          [actor.id],
+        );
+        await assertCheckoutCommittedNothing(checkoutRes, "journey-traveler-trip-pass-covered", {
+          userId: actor.id,
+          tripId: coveredTripId,
+          itemIds: [itemId],
+          cartCountBefore: Number(cartCountBefore),
+        });
+        report.record({
+          action: "checkout waiver check — Stripe unavailable, honest negative (declared 503, nothing committed)",
+          ui: `POST /api/checkout status ${checkoutRes.status()}`,
+          db: "no booking row exists to check the waiver on — nothing committed (hard-asserted above)",
+          verdict: "EXTERNAL",
+        });
+      } else {
+        await assertCheckoutAccepted(checkoutRes, "journey-traveler-trip-pass-covered");
+        const [booking] = await rows<{ id: string; booking_details: { tripPassFeeWaiver?: { basis?: string; waived?: boolean } } }>(
+          `SELECT id, booking_details FROM service_bookings WHERE traveler_id = $1 AND trip_id = $2 ORDER BY created_at DESC LIMIT 1`,
+          [actor.id, coveredTripId],
+        );
+        const waiver = booking?.booking_details?.tripPassFeeWaiver;
+        report.record({
+          action: "checkout on the covered trip records the trip-pass traveler-fee waiver on the booking row",
+          ui: `POST /api/checkout 2xx`,
+          db: `booking_details.tripPassFeeWaiver=${JSON.stringify(waiver)}`,
+          verdict: waiver?.waived === true && waiver?.basis === "trip_pass" ? "PASS" : "FAIL",
+        });
+      }
+    }
+
+    // ── One active pass per trip: a second purchase on the ALREADY-covered trip is
+    //    rejected BEFORE any Stripe call, regardless of Stripe availability (the 409 check
+    //    is the getActiveTripPass() pre-flight, which runs before any Stripe client is
+    //    constructed) — so this assertion is Stripe-independent. ─────────────────────────
+    const secondPurchase = await request.post(`${BASE_URL}/api/trips/${coveredTripId}/trip-pass/purchase`);
+    const activeCountAfter = await scalar<string>(
+      `SELECT count(*)::int FROM trip_entitlements WHERE trip_id = $1 AND status = 'active'`,
+      [coveredTripId],
+    );
+    report.record({
+      action: "second Trip Pass purchase on the already-covered (manually-granted) trip is rejected before any PaymentIntent",
+      ui: `second purchase status ${secondPurchase.status()}`,
+      db: `active trip_entitlements count=${activeCountAfter}`,
+      verdict: secondPurchase.status() === 409 && Number(activeCountAfter) === 1 ? "PASS" : "FAIL",
+    });
+
+    report.write();
+    expect(report.hasFailures, `journey-traveler-trip-pass-covered had failing steps: ${JSON.stringify(report)}`).toBe(false);
+  });
 });
 
 test.describe("journey-traveler — Plus member", () => {
