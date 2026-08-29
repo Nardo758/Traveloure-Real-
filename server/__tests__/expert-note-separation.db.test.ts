@@ -22,6 +22,11 @@
  *       and the re-assembled plan renders the new value to the owner
  *   D4. the three columns stay independent: writing each leaves the others
  *       byte-identical (the never-merge pin)
+ *   D5. ROUTE-LEVEL (§12 hardening, Aug 29 2026): on the real HTTP stack a
+ *       PENDING advisor's PATCH /api/trips/:tripId/expert-notes gets 403 (and
+ *       their GET too); flipped to accepted, both succeed and the note lands
+ *   D6. ROUTE-LEVEL (§21): the trip OWNER's GET /api/trips/:tripId/expert-notes
+ *       gets 403 — the private build notes are builder-side only
  *
  * Run with:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
@@ -30,9 +35,17 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import http from "node:http";
+import express from "express";
+import passport from "passport";
 
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/traveloure";
-process.env.STRIPE_SECRET_KEY ??= "[REDACTED_STRIPE_TEST_KEY]";
+// Stub every outbound credential so importing the booking-actions router (which pulls
+// the Stripe/email service modules) never constructs a live client.
+process.env.STRIPE_SECRET_KEY = "[REDACTED_STRIPE_TEST_KEY]";
+process.env.SESSION_SECRET ??= "test-session-secret-not-for-prod";
+process.env.SESSION_COOKIE_INSECURE ??= "1";
+process.env.RESEND_API_KEY ??= "re_test_dummy";
 
 const { db, pool } = await import("../db");
 const { eq, inArray, sql } = await import("drizzle-orm");
@@ -41,6 +54,9 @@ const { storage } = await import("../storage");
 const { assembleTripPlan } = await import("../services/trip-plan.service");
 const { getTripWriteRole, canMutateTrip } = await import("../utils/trip-role");
 const { isTripAdvisorWithWriteAccess } = await import("../utils/trip-advisor");
+const { getSession } = await import("../replit_integrations/auth/replitAuth");
+const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
+const bookingActionsRoutes = (await import("../routes/booking-actions")).default;
 
 // ── Disposable-DB guard (house pattern; never defaults open) ──────────────────
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -70,6 +86,91 @@ async function assertDisposableDb(): Promise<void> {
   }
 }
 
+// ── Password + HTTP harness (mirrors user-suspension.db.test.ts) ──────────────
+
+const TEST_PASSWORD = "NoteSep1Test!";
+
+function hashPassword(password: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString("hex");
+    crypto.scrypt(password, salt, 64, (err, dk) => {
+      if (err) return reject(err);
+      resolve(`${salt}:${dk.toString("hex")}`);
+    });
+  });
+}
+
+let noteServer: http.Server | null = null;
+
+async function getNoteServer(): Promise<http.Server> {
+  if (noteServer) return noteServer;
+  const app = express();
+  app.use(express.json());
+  app.use(getSession());
+  app.use(passport.initialize());
+  app.use(passport.session());
+  passport.serializeUser((user: any, cb) => cb(null, user));
+  passport.deserializeUser((user: any, cb) => cb(null, user));
+  setupEmailAuth(app);
+  // Production mount shape (server/routes.ts): app.use("/api", bookingActionsRoutes)
+  app.use("/api", bookingActionsRoutes);
+  noteServer = http.createServer(app);
+  await new Promise<void>((resolve) => noteServer!.listen(0, "127.0.0.1", resolve));
+  return noteServer;
+}
+
+interface HttpResult {
+  status: number;
+  data: any;
+  setCookie?: string;
+}
+
+function httpRequest(
+  server: http.Server,
+  method: string,
+  path: string,
+  opts: { body?: object; cookie?: string } = {},
+): Promise<HttpResult> {
+  return new Promise((resolve, reject) => {
+    const addr = server.address() as { port: number };
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const headers: Record<string, string | number> = {
+      "Content-Type": "application/json",
+      "Content-Length": bodyStr ? Buffer.byteLength(bodyStr) : 0,
+    };
+    if (opts.cookie) headers["Cookie"] = opts.cookie;
+    const req = http.request(
+      { hostname: "127.0.0.1", port: addr.port, path, method, headers },
+      (res) => {
+        let raw = "";
+        res.on("data", (c) => { raw += c; });
+        res.on("end", () => {
+          const setCookie = res.headers["set-cookie"]
+            ?.find((c) => c.startsWith("connect.sid"))
+            ?.split(";")[0];
+          try {
+            resolve({ status: res.statusCode ?? 0, data: JSON.parse(raw), setCookie });
+          } catch {
+            resolve({ status: res.statusCode ?? 0, data: raw, setCookie });
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function loginCookie(server: http.Server, email: string): Promise<string> {
+  const res = await httpRequest(server, "POST", "/api/auth/login", {
+    body: { email, password: TEST_PASSWORD },
+  });
+  assert.equal(res.status, 200, `login must succeed for ${email}`);
+  assert.ok(res.setCookie, "login must set a session cookie");
+  return res.setCookie!;
+}
+
 const RUN = crypto.randomUUID().slice(0, 8);
 const PRIVATE_NOTE = `PRIVATE-BUILD-NOTE-${RUN} — must never reach a traveler surface`;
 const DELIVERED_TRIP_NOTE = `DELIVERED-TRIP-NOTE-${RUN} — from your expert`;
@@ -84,6 +185,7 @@ let itemId = "";
 describe("expert-note separation + per-item authoring (rulings 5+6, §12/§21)", () => {
   before(async () => {
     await assertDisposableDb();
+    const password = await hashPassword(TEST_PASSWORD);
     for (const [id, role, first] of [
       [ownerId, "user", "Owner"],
       [advisorId, "local_expert", "Advisor"],
@@ -94,6 +196,7 @@ describe("expert-note separation + per-item authoring (rulings 5+6, §12/§21)",
         firstName: first,
         lastName: `Tester${RUN}`,
         role,
+        password,
       } as any);
     }
     const [trip] = await db.insert(trips).values({
@@ -119,6 +222,7 @@ describe("expert-note separation + per-item authoring (rulings 5+6, §12/§21)",
   });
 
   after(async () => {
+    if (noteServer) await new Promise<void>((resolve) => noteServer!.close(() => resolve()));
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
     await db.delete(tripExpertAdvisors).where(eq(tripExpertAdvisors.tripId, tripId));
     await db.delete(trips).where(eq(trips.id, tripId));
@@ -202,5 +306,69 @@ describe("expert-note separation + per-item authoring (rulings 5+6, §12/§21)",
 
     const [i] = await db.select().from(itineraryItems).where(eq(itineraryItems.id, itemId));
     assert.equal((i as any).expertNote, ITEM_NOTE_V2, "trip-level writes must not touch the item note");
+  });
+
+  it("D5: §12 route-level — a pending advisor's private-notes PATCH/GET get 403; accepted succeeds", async () => {
+    const server = await getNoteServer();
+    const [advisorRow] = await db
+      .select()
+      .from(tripExpertAdvisors)
+      .where(eq(tripExpertAdvisors.tripId, tripId));
+    const advisorEmail = `note-sep-${advisorId.slice(0, 8)}@test.invalid`;
+    const cookie = await loginCookie(server, advisorEmail);
+
+    // Pending: neither write nor read on the private rail (fails on the pre-fix
+    // code, which passed on bare assignment existence).
+    await db.update(tripExpertAdvisors).set({ status: "pending" } as any).where(eq(tripExpertAdvisors.id, advisorRow.id));
+    const patchPending = await httpRequest(server, "PATCH", `/api/trips/${tripId}/expert-notes`, {
+      body: { expertNotes: "pending advisor should never land this" },
+      cookie,
+    });
+    assert.equal(patchPending.status, 403, "pending advisor PATCH must 403");
+    const getPending = await httpRequest(server, "GET", `/api/trips/${tripId}/expert-notes`, { cookie });
+    assert.equal(getPending.status, 403, "pending advisor GET must 403");
+
+    // Rejected: same refusal.
+    await db.update(tripExpertAdvisors).set({ status: "rejected" } as any).where(eq(tripExpertAdvisors.id, advisorRow.id));
+    const patchRejected = await httpRequest(server, "PATCH", `/api/trips/${tripId}/expert-notes`, {
+      body: { expertNotes: "rejected advisor should never land this" },
+      cookie,
+    });
+    assert.equal(patchRejected.status, 403, "rejected advisor PATCH must 403");
+
+    // The refusals wrote nothing.
+    let [t] = await db.select().from(trips).where(eq(trips.id, tripId));
+    assert.equal(
+      String((t as any).expertNotes).includes("should never land this"),
+      false,
+      "refused PATCHes must not have written",
+    );
+
+    // Accepted: both succeed and the note lands.
+    await db.update(tripExpertAdvisors).set({ status: "accepted" } as any).where(eq(tripExpertAdvisors.id, advisorRow.id));
+    const noteV3 = `PRIVATE-V3-${RUN} accepted advisor autosave`;
+    const patchAccepted = await httpRequest(server, "PATCH", `/api/trips/${tripId}/expert-notes`, {
+      body: { expertNotes: noteV3 },
+      cookie,
+    });
+    assert.equal(patchAccepted.status, 200, "accepted advisor PATCH must succeed");
+    const getAccepted = await httpRequest(server, "GET", `/api/trips/${tripId}/expert-notes`, { cookie });
+    assert.equal(getAccepted.status, 200, "accepted advisor GET must succeed");
+    assert.equal(getAccepted.data.expertNotes, noteV3);
+    [t] = await db.select().from(trips).where(eq(trips.id, tripId));
+    assert.equal((t as any).expertNotes, noteV3);
+  });
+
+  it("D6: §21 route-level — the trip OWNER cannot read the private build notes", async () => {
+    const server = await getNoteServer();
+    const ownerEmail = `note-sep-${ownerId.slice(0, 8)}@test.invalid`;
+    const cookie = await loginCookie(server, ownerEmail);
+    const res = await httpRequest(server, "GET", `/api/trips/${tripId}/expert-notes`, { cookie });
+    assert.equal(res.status, 403, "owner GET must 403 — private notes are builder-side only");
+    const patchRes = await httpRequest(server, "PATCH", `/api/trips/${tripId}/expert-notes`, {
+      body: { expertNotes: "owner should never land this" },
+      cookie,
+    });
+    assert.equal(patchRes.status, 403, "owner PATCH must 403");
   });
 });
