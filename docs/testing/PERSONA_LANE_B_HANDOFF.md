@@ -182,3 +182,72 @@ After the four suites are implemented and proven locally, add
 seed, supply suites before demand suites, and publish only the concise journey
 verdict tables. The workflow must fail closed if a live Stripe key is detected
 and must never target production.
+
+## Supply-pass completion — status and findings
+
+The Lane A development supply pass stocked Kyoto (dev) with purchasable
+inventory created and approved through real UI flows: two priced provider
+services (Kyoto Portrait Route Planning Call $75, Gion Photo Session
+Preparation Call $95, both `approved/active`) and one approved `$39`
+ready-made itinerary ("Quiet Gion: A Dawn-to-Dusk Kyoto Day"). The follow-on
+items below close out the pass before Lane B builds against it.
+
+### 1. Expert persona offering still missing → `/s/kyoto-gion-expert` stays gated
+
+`/s/kyoto-gion-expert` correctly 404s: all current inventory belongs to the
+provider and planner personas, and the storefront route lists **only
+admin-approved offerings and 404s when the earner has zero approved items**
+(`server/routes/storefront.routes.ts` header). The Gion expert persona still
+needs to publish its own consultation / "plan-with-me" offering through the
+expert flow to flip the storefront public and complete the cast. (The three
+expert-authored gems are a separate lane — the gem-chain PR — and are not part
+of this pass.)
+
+**Finding for the recruitment funnel — the expert flow hits the same
+verification wall the providers did.** Publishing an expert offering resolves
+through the single publish predicate `resolvePublishVerification`
+(`server/services/publish-verification.service.ts`): for an expert role it
+requires `local_expert_forms.identity_verification_status === "verified"`
+(identity only; business verification is N/A for an individual expert). Until
+verified, an admin-approved expert listing is held `approvalStatus='approved'
+AND status='draft'` and is not active/public — the same held state providers
+hit, which is why the dev-only provider verification override was created. To
+complete this step in a dev environment, verify the expert form or apply the
+same dev-only override extended to the expert (`local_expert_forms`) path.
+Note: that dev override lane is tracked separately and is **not present on this
+branch/main** — extending it to the expert path (dev-only at the server,
+reason required, audited, rejected in prod/test/unset) is the prerequisite for
+publishing the expert offering without real KYB.
+
+### 2. Stock cover images are a test fixture only, never the production pattern
+
+The dev ready-made used an attributed Unsplash cover. That is an acceptable
+**dev fixture**, but it must not become the pattern: **production listings use
+the creator's own real photos; stock/Unsplash covers are test-fixture-only**
+(the ratified content rule is real-or-gradient for production). The first real
+planner must not copy the demo's stock cover.
+
+### 3. Canonical market string is `Kyoto`, not `Kyoto, Japan`
+
+All supply and demand must use the canonical short market string **`Kyoto`**
+(`marketKey` `kyoto`; `content-gap-taxonomy.ts` `GAP_CITY = "Kyoto"`;
+`city_neighborhoods.city = "Kyoto"`; `dmo-ingestion.service.ts` `CITY =
+"Kyoto"`). The long form `"Kyoto, Japan"` is the same string-matching-mismatch
+class as the neighbourhood-slug bug.
+
+Grep finding (`"Kyoto, Japan"` write paths, as of this pass): almost every hit
+is free-text traveler input or a test fixture and is fine — trip
+`destination` fields, form placeholders, `playwright/` fixtures, docs. The one
+non-fixture DB write is `server/seeds/beta-data-extended.ts` (a **beta** expert
+seed, not a Kyoto persona), which writes a provider-service `location:
+"Kyoto, Japan"`; matching is tolerant in some paths
+(`client/src/lib/build-formats/registry.ts` keys both `"Kyoto, Japan"` and
+`"Kyoto"` to `"kyoto"`) but general destination-matching tolerance is still
+an open task (#962). No production Kyoto-persona write emits the long form; the
+persona seed and supply flows must keep emitting `Kyoto`.
+
+> Environment note: the follow-on findings above were verified from the code
+> (routes, the publish-verification predicate, seeds). Executing the expert
+> UI supply pass end-to-end requires a live development DB + dev server, which
+> a fresh remote container does not have; run it in the Lane A dev
+> environment (the Replit workspace) with `scripts/seed-personas.ts`.
