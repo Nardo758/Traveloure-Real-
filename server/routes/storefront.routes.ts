@@ -27,7 +27,7 @@ import fs from "fs";
 import path from "path";
 import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
@@ -561,7 +561,8 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
 // locale differs from the listing's own source_locale; otherwise the honest original renders,
 // flagged `shownInOriginal` so the client can label it (§13 — never silent, never machine-
 // translated). Omitted (the OG-injection caller, crawlers) ⇒ no overlay, canonical content.
-async function loadStorefront(handle: string, activeLocale?: string) {
+// Exported for storefront-gems-shared.db.test.ts (ruling 7 proof) — route callers unchanged.
+export async function loadStorefront(handle: string, activeLocale?: string) {
   const normalized = handle.trim().toLowerCase();
   if (!HANDLE_RE.test(normalized)) return null;
 
@@ -754,10 +755,20 @@ async function loadStorefront(handle: string, activeLocale?: string) {
   //  - memberSince: users.createdAt, verbatim.
   //  - coverImageUrl: the earner's own storefront.coverImageUrl preference (see PATCH
   //    /api/me/storefront); null renders the gradient fallback.
-  const [verified, location] = await Promise.all([
+  const [verified, location, gemsSharedRows] = await Promise.all([
     isOwnerIdentityVerified(owner.id),
     resolveEarnerLocation(owner.id),
+    // "{N} gems shared" (2026-08-29-replit-gem-audit ruling 7): gems ATTRIBUTED
+    // to this earner — curated_by_expert_id, the same column the byline and the
+    // promotion rail write (rulings 1+4), so every counted gem is one that is
+    // live and carries this earner's attribution. A real count or nothing: the
+    // client renders the tile only when > 0 (§13 — never a padded zero).
+    db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(travelPulseHiddenGems)
+      .where(eq(travelPulseHiddenGems.curatedByExpertId, owner.id)),
   ]);
+  const gemsSharedCount = gemsSharedRows[0]?.count ?? 0;
   const coverImageUrl = ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null;
   const memberSince = owner.createdAt ? owner.createdAt.toISOString() : null;
 
@@ -789,6 +800,9 @@ async function loadStorefront(handle: string, activeLocale?: string) {
       memberSince,
       coverImageUrl,
       offeringsCount: total,
+      // Ruling 7: attributed gems only; the client renders "{N} gems shared"
+      // solely when > 0.
+      gemsSharedCount,
     },
     services: resolvedServices,
     templates,

@@ -207,6 +207,11 @@ jobs:
       # Ready-Made listings must pass the same completeness gate at submit and approval.
       - name: Ready-Made completeness gate
         run: npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts
+      # Thin gem detail (2026-08-29-replit-gem-audit ruling 3): the discover teaser
+      # ships EXACTLY the ruled key set — address / popularity ratios / mainstream
+      # forecast / discovery status stay removed, attribution ships only resolved.
+      - name: Gem teaser projection gate
+        run: npx tsx --test server/services/__tests__/gem-teaser.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
