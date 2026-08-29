@@ -1954,7 +1954,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(vendorList);
   });
 
-  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+  // CLAUDE.md §2/§19 gap (endpoint-auth completeness sweep, Aug 29 2026): this route was
+  // `isAuthenticated`-only — any signed-in traveler could POST a live, publicly-listed vendor row
+  // (`GET /api/vendors` above is fully public and `vendors.status` defaults `'active'`, so the row
+  // is immediately world-visible). NOT admin-only by design: `client/src/pages/vendors.tsx` gates
+  // its "Add Vendor" dialog on `isPlanner` (PLANNER_ROLES = admin + EARNER_ROLES + the "provider"
+  // client alias), so `requireAdmin` here would break the legitimate expert/provider add-vendor
+  // flow — `isEarner` (shared/roles.ts `isEarnerRole` = expert-family OR provider, plus admin) is
+  // the server-side mirror of that same UI gate, queried from the SESSION (never `req.body`, §14).
+  app.post("/api/vendors", isAuthenticated, isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
       const vendor = await storage.createVendor(input);
