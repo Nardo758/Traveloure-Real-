@@ -41,6 +41,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { emailOutbox, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
+import { runBackgroundJob } from "./background-job-runner";
 import {
   buildBookingConfirmationEmailPayload,
   type BookingConfirmationParams,
@@ -347,9 +348,13 @@ export const emailOutboxScheduler = {
     if (_drainInterval) return; // already running
     // First pass after a short delay so startup noise settles.
     setTimeout(() => {
-      void drainOutbox();
+      void runBackgroundJob("email-outbox", () => drainOutbox()).catch((err) =>
+        logger.error({ err }, "[email-outbox] scheduled pass failed"),
+      );
       _drainInterval = setInterval(() => {
-        void drainOutbox();
+        void runBackgroundJob("email-outbox", () => drainOutbox()).catch((err) =>
+          logger.error({ err }, "[email-outbox] scheduled pass failed"),
+        );
       }, intervalMs);
     }, 30 * 1000);
     logger.info("[email-outbox] scheduler registered (interval=%dms)", intervalMs);

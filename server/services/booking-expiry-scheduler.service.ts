@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { bookings, notifications } from "@shared/schema";
 import { sql, and, eq, lt } from "drizzle-orm";
+import { runBackgroundJob } from "./background-job-runner";
 
 const DEFAULT_STALE_THRESHOLD_HOURS = 48;
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // every 4 hours
@@ -33,10 +34,16 @@ class BookingExpirySchedulerService {
     console.log("[BookingExpiry] Starting booking expiry scheduler");
 
     // First run 2 minutes after startup so DB is settled
-    setTimeout(() => this.runCancellation(), 2 * 60 * 1000);
+    setTimeout(() => {
+      void runBackgroundJob("booking-expiry", () => this.runCancellation()).catch((err) =>
+        console.error("[BookingExpiry] scheduled pass failed:", err),
+      );
+    }, 2 * 60 * 1000);
 
     this.timer = setInterval(() => {
-      this.runCancellation();
+      void runBackgroundJob("booking-expiry", () => this.runCancellation()).catch((err) =>
+        console.error("[BookingExpiry] scheduled pass failed:", err),
+      );
     }, CHECK_INTERVAL_MS);
 
     console.log(`[BookingExpiry] Scheduled to run every ${CHECK_INTERVAL_MS / (60 * 60 * 1000)} hours`);

@@ -4,6 +4,7 @@ import { refreshDestinationTrends } from "./destination-trends.service";
 import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
 import { trendEngineIngestionRunner } from "./trend-engine/ingestion-runner";
 import { trendScoreService } from "./trend-engine/trend-score.service";
+import { runBackgroundJob } from "./background-job-runner";
 
 // Phase 2.3 — GROK SCORING REMOVED.
 // updateCityWithAI is no longer called from the daily scheduler.
@@ -58,13 +59,22 @@ export class TravelPulseScheduler {
     console.log(`[TravelPulse Scheduler] First run scheduled at: ${this.nextRunAt.toISOString()}`);
 
     // Run once after initial delay
-    setTimeout(async () => {
-      await this.runDailyRefresh();
+    schedulerTimer = setTimeout(async () => {
+      try {
+        await runBackgroundJob("travelpulse-demand-refresh", () => this.runDailyRefresh());
+      } catch (err) {
+        console.error("[TravelPulse Scheduler] Scheduled refresh failed:", err);
+      }
 
-      // Then schedule to run every 24 hours
-      schedulerTimer = setInterval(async () => {
-        await this.runDailyRefresh();
-      }, DAILY_REFRESH_INTERVAL);
+      // Then schedule to run every 24 hours. Keep the timer assigned only if
+      // stop() was not called while the first pass was running.
+      if (schedulerTimer) {
+        schedulerTimer = setInterval(() => {
+          void runBackgroundJob("travelpulse-demand-refresh", () => this.runDailyRefresh()).catch((err) =>
+            console.error("[TravelPulse Scheduler] Scheduled refresh failed:", err),
+          );
+        }, DAILY_REFRESH_INTERVAL);
+      }
     }, INITIAL_DELAY);
   }
 

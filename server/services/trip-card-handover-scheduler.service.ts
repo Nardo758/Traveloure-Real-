@@ -24,6 +24,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 import { TRIP_CARD_HANDOVER_WINDOW_MS } from "@shared/trip-primary-surface";
+import { runBackgroundJob } from "./background-job-runner";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — matches earningsReleaseScheduler's cadence
 const FIRST_RUN_DELAY_MS = 3 * 60 * 1000; // stagger slightly after the other startup schedulers
@@ -51,8 +52,16 @@ class TripCardHandoverSchedulerService {
       return;
     }
     console.log("[TripCardHandover] Starting T-48h auto-handover scheduler");
-    setTimeout(() => { void this.runPass(); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { void this.runPass(); }, CHECK_INTERVAL_MS);
+    setTimeout(() => {
+      void runBackgroundJob("trip-card-handover", () => this.runPass()).catch((err) =>
+        logger.error({ err }, "[TripCardHandover] scheduled pass failed"),
+      );
+    }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => {
+      void runBackgroundJob("trip-card-handover", () => this.runPass()).catch((err) =>
+        logger.error({ err }, "[TripCardHandover] scheduled pass failed"),
+      );
+    }, CHECK_INTERVAL_MS);
     console.log(`[TripCardHandover] Scheduled to run every ${CHECK_INTERVAL_MS / (60 * 1000)} minutes`);
   }
 

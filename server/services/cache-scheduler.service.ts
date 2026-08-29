@@ -8,6 +8,7 @@ import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { partnerizeSyncService } from "./partnerize/partnerize-sync.service";
 import { affiliateReconciliationService, LATE_REPORT_TOLERANCE_DAYS } from "./affiliate-reconciliation.service";
+import { runBackgroundJob } from "./background-job-runner";
 
 // Partnerize campaign catalog changes infrequently — sync every 12 hours,
 // separate from the 24h stale-data refresh loop above.
@@ -67,23 +68,31 @@ class CacheSchedulerService {
     console.log("[CacheScheduler] Starting background cache refresh scheduler");
     
     // Run initial check after 5 minutes (allow server to stabilize)
-    setTimeout(() => this.checkAndRefreshStaleData(), 5 * 60 * 1000);
+    setTimeout(() => {
+      void runBackgroundJob("cache-refresh", () => this.checkAndRefreshStaleData()).catch((err) =>
+        console.error("[CacheScheduler] Initial refresh failed:", err),
+      );
+    }, 5 * 60 * 1000);
     
     // Schedule regular refresh checks
     this.refreshTimer = setInterval(() => {
-      this.checkAndRefreshStaleData();
+      void runBackgroundJob("cache-refresh", () => this.checkAndRefreshStaleData()).catch((err) =>
+        console.error("[CacheScheduler] Refresh failed:", err),
+      );
     }, REFRESH_INTERVAL_MS);
 
     console.log(`[CacheScheduler] Scheduled to run every ${REFRESH_INTERVAL_MS / (60 * 60 * 1000)} hours`);
 
     // Partnerize campaign sync — separate cadence, gracefully no-ops without credentials
-    setTimeout(() => partnerizeSyncService.syncCampaigns().catch((err) =>
-      console.error("[CacheScheduler] Initial Partnerize sync failed:", err)
-    ), 2 * 60 * 1000);
+    setTimeout(() => {
+      void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
+        console.error("[CacheScheduler] Initial Partnerize sync failed:", err),
+      );
+    }, 2 * 60 * 1000);
 
     this.partnerizeSyncTimer = setInterval(() => {
-      partnerizeSyncService.syncCampaigns().catch((err) =>
-        console.error("[CacheScheduler] Partnerize sync failed:", err)
+      void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
+        console.error("[CacheScheduler] Partnerize sync failed:", err),
       );
     }, PARTNERIZE_SYNC_INTERVAL_MS);
 
@@ -93,13 +102,15 @@ class CacheSchedulerService {
     // recent commission data so payouts stay reconciled without requiring an
     // admin to hit "Run Now". Gracefully no-ops (logs + skips) if credentials
     // are missing or the API call fails.
-    setTimeout(() => this.pollPartnerizeReports().catch((err) =>
-      console.error("[CacheScheduler] Initial Partnerize report poll failed:", err)
-    ), 3 * 60 * 1000);
+    setTimeout(() => {
+      void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
+        console.error("[CacheScheduler] Initial Partnerize report poll failed:", err),
+      );
+    }, 3 * 60 * 1000);
 
     this.partnerizeReportTimer = setInterval(() => {
-      this.pollPartnerizeReports().catch((err) =>
-        console.error("[CacheScheduler] Partnerize report poll failed:", err)
+      void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
+        console.error("[CacheScheduler] Partnerize report poll failed:", err),
       );
     }, PARTNERIZE_REPORT_POLL_INTERVAL_MS);
 
@@ -110,14 +121,14 @@ class CacheSchedulerService {
     // Gracefully no-ops (logs + skips) when TRAVELPAYOUTS_TOKEN is missing.
     this.travelpayoutsInitialPollTimer = setTimeout(() => {
       this.travelpayoutsInitialPollTimer = null;
-      this.pollTravelpayoutsReports().catch((err) =>
-        console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err)
+      void runBackgroundJob("travelpayouts-report-poll", () => this.pollTravelpayoutsReports()).catch((err) =>
+        console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err),
       );
     }, 4 * 60 * 1000);
 
     this.travelpayoutsReportTimer = setInterval(() => {
-      this.pollTravelpayoutsReports().catch((err) =>
-        console.error("[CacheScheduler] Travelpayouts report poll failed:", err)
+      void runBackgroundJob("travelpayouts-report-poll", () => this.pollTravelpayoutsReports()).catch((err) =>
+        console.error("[CacheScheduler] Travelpayouts report poll failed:", err),
       );
     }, TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS);
 
@@ -127,14 +138,14 @@ class CacheSchedulerService {
     // between the 24h full-refresh cycles.  First run is delayed 10 minutes so
     // it doesn't compete with server start-up work.
     setTimeout(() => {
-      this.pruneExpiredCacheNow().catch((err) =>
-        console.error("[CacheScheduler] Initial Travelpayouts cache prune failed:", err)
+      void runBackgroundJob("travelpayouts-cache-prune", () => this.pruneExpiredCacheNow()).catch((err) =>
+        console.error("[CacheScheduler] Initial Travelpayouts cache prune failed:", err),
       );
     }, 10 * 60 * 1000);
 
     this.travelpayoutsCachePruneTimer = setInterval(() => {
-      this.pruneExpiredCacheNow().catch((err) =>
-        console.error("[CacheScheduler] Travelpayouts cache prune failed:", err)
+      void runBackgroundJob("travelpayouts-cache-prune", () => this.pruneExpiredCacheNow()).catch((err) =>
+        console.error("[CacheScheduler] Travelpayouts cache prune failed:", err),
       );
     }, TRAVELPAYOUTS_CACHE_PRUNE_INTERVAL_MS);
 
