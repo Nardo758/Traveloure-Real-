@@ -362,12 +362,15 @@ class LocationViewService {
             ),
           )
           .groupBy(providerServices.neighborhood),
-        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood
+        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood.
+        // DESC by gemScore (fixed Aug 29 2026): this was ascending, so the per-neighborhood
+        // `.slice(0, 6)` below kept each neighborhood's six WORST gems — every sibling gem
+        // query (travelpulse.service getHiddenGems, /api/cities/gems) sorts DESC.
         db
           .select()
           .from(travelPulseHiddenGems)
           .where(eq(travelPulseHiddenGems.city, cityName))
-          .orderBy(travelPulseHiddenGems.gemScore),
+          .orderBy(desc(travelPulseHiddenGems.gemScore)),
       ]);
 
       // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
@@ -476,12 +479,13 @@ class LocationViewService {
       });
     })();
 
-    // DB hidden gems for the city — all placeTypes, all neighborhoods
+    // DB hidden gems for the city — all placeTypes, all neighborhoods.
+    // DESC by gemScore (fixed Aug 29 2026 — was ascending; see the bulk fetch above).
     const gemsPromise = db
       .select()
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
-      .orderBy(travelPulseHiddenGems.gemScore)
+      .orderBy(desc(travelPulseHiddenGems.gemScore))
       // Attribution (ruling 1) attached, then the ruled TEASER projection
       // (ruling 3) — deep fields never leave the server on this surface.
       .then((rows) => attachGemAttribution(rows))
