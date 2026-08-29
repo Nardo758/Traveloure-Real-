@@ -1,0 +1,354 @@
+name: Persona Nightly (Kyoto marketplace personas — Lane B)
+
+# Runs the Kyoto persona-marketplace journeys end-to-end against a freshly-built production
+# bundle backed by a THROWAWAY Postgres service. Modeled closely on journey-suite.yml — same
+# service-container/build/migrations/seed/server-start/Stripe-key posture — extended for the
+# persona seed (scripts/seed-personas.ts) and the four-suite supply-before-demand ordering
+# docs/testing/PERSONA_LANE_B_HANDOFF.md requires.
+#
+# ORDERING (the handoff's "Required ordering", non-negotiable): seed -> supply-expert ->
+# supply-provider -> journey-guest -> journey-traveler -> the SAME four suites again for
+# idempotence. Demand journeys (guest/traveler) read Kyoto inventory the supply suites create —
+# running them out of order, or in parallel across files, would let Playwright's default file
+# ordering silently break the dependency. Each suite therefore runs as its OWN
+# `playwright test <file>` step, in the exact order above, twice.
+#
+# NON-BLOCKING, BUT NOT INVISIBLE (journey-suite.yml precedent, carried forward verbatim): this
+# workflow is not a `pull_request` check, so it can never gate a merge — but that is exactly why
+# it must never LOOK green over a red suite either. No step in the run-suite chain carries
+# `continue-on-error`; a failing suite stops the job there (the default), and the verdict step
+# (always-run) reports exactly how far the run got. A masked failure here is worse than an honest
+# stop, because nothing else gates this content.
+#
+# Stripe: same ruling-38 truthful-contract posture as journey-suite.yml — a real sk_test_
+# STRIPE_SECRET_KEY secret runs the full positive money path (checkout, Trip Pass, ready-made
+# purchase); its absence runs the honest negative (declared-unavailable, hard-asserted, never a
+# skip). FAIL-CLOSED, additionally: this workflow refuses to even start the server if either
+# Stripe secret is shaped like a LIVE key (sk_live_) — a persona-marketplace run must never be
+# capable of a real charge, regardless of what secret happens to be configured on the repo.
+#
+# Route/spec source of truth: playwright/tests/personas/*.spec.ts, scripts/seed-personas.ts.
+
+on:
+  push:
+    # TEMPORARY, entire `push` trigger (docs/testing/PERSONA_LANE_B_HANDOFF.md nightly-workflow
+    # instruction + the journey-suite.yml precedent this mirrors): workflow_dispatch is 403 to
+    # the integration token (the same standing BRANCH_PROTECTION_PAT gap journey-suite.yml
+    # documents), and this lane needs a run before merge to prove the workflow itself.
+    # Push-triggering on the feature branch is the only self-serve proof path. Unlike
+    # journey-suite.yml (whose `push` trigger is permanent, on `main`), this workflow's ONLY
+    # `push` trigger is this temporary branch entry — REMOVE THIS ENTIRE `push:` BLOCK when this
+    # branch merges to main; `schedule` + `workflow_dispatch` are the permanent triggers.
+    branches: [claude/persona-lane-b-suites]
+  schedule:
+    # Nightly at 09:00 UTC — after journey-suite.yml's 07:00 UTC run, so the two throwaway-DB
+    # nightly workflows never contend for the same Postgres/runner window.
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: persona-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  personas:
+    name: personas (supply-expert, supply-provider, journey-guest, journey-traveler x2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail closed on a live Stripe key (this workflow must never be able to charge a real card)
+        run: |
+          for VAR_NAME in STRIPE_SECRET_KEY STRIPE_SECRET_KEY_TEST; do
+            VALUE="${!VAR_NAME:-}"
+            if [[ "$VALUE" == sk_live_* ]]; then
+              echo "::error::$VAR_NAME is shaped like a LIVE Stripe key (sk_live_...). Persona Nightly refuses to run with a live key under any circumstance — this workflow must never be capable of a real charge."
+              exit 1
+            fi
+          done
+          echo "Stripe secrets are not live-shaped (or unset) — safe to proceed."
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_SECRET_KEY_TEST: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.VITE_STRIPE_PUBLISHABLE_KEY }}
+
+      - name: Set up CI database (migrations, sessions table, ci-admin for admin-approval steps)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # ci-admin@traveloure.test is the admin login the supply suites use to approve
+          # listings (POST /api/admin/provider-services/:id/approve,
+          # /api/admin/ready-made/:id/approve) — the existing CI admin rail, not a new one.
+          seed-ci-users: 'true'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Same posture as journey-suite.yml: a real sk_test_ secret (never sk_live_ — refused
+          # above before this step is even reached) flows through when provisioned; its absence
+          # falls back to a non-functional stub, which selects the ruling-38 negative contract.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Declare Stripe availability (explicit, never a silent pass — same gate as journey-suite.yml)
+        id: stripe-gate
+        run: |
+          if [ -n "${{ secrets.STRIPE_SECRET_KEY }}" ]; then
+            echo "Real STRIPE_SECRET_KEY present → strict positive-path contract (checkout, Trip Pass, ready-made purchase all confirm for real in Stripe TEST mode)."
+            echo "stripe_unavailable=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::STRIPE_SECRET_KEY absent in CI → Stripe is DECLARED UNAVAILABLE. Every money leg (checkout, Trip Pass purchase, ready-made purchase) asserts its honest negative contract instead of a skip."
+            echo "stripe_unavailable=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Seed Kyoto personas (scripts/seed-personas.ts --apply)
+        id: seed-personas
+        run: npx tsx scripts/seed-personas.ts --apply
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: 1/2 — supply-expert
+        id: run-supply-expert-1
+        run: npx playwright test playwright/tests/personas/supply-expert.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 1/2 — supply-provider
+        id: run-supply-provider-1
+        run: npx playwright test playwright/tests/personas/supply-provider.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 1/2 — journey-guest
+        id: run-journey-guest-1
+        run: npx playwright test playwright/tests/personas/journey-guest.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 1/2 — journey-traveler
+        id: run-journey-traveler-1
+        run: npx playwright test playwright/tests/personas/journey-traveler.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: Re-seed (idempotent) before the second pass
+        id: seed-personas-2
+        run: npx tsx scripts/seed-personas.ts --apply
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: 2/2 — supply-expert (idempotence pass)
+        id: run-supply-expert-2
+        run: npx playwright test playwright/tests/personas/supply-expert.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 2/2 — supply-provider (idempotence pass)
+        id: run-supply-provider-2
+        run: npx playwright test playwright/tests/personas/supply-provider.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 2/2 — journey-guest (idempotence pass)
+        id: run-journey-guest-2
+        run: npx playwright test playwright/tests/personas/journey-guest.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 2/2 — journey-traveler (idempotence pass)
+        id: run-journey-traveler-2
+        run: npx playwright test playwright/tests/personas/journey-traveler.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: Upload report (Playwright HTML report + persona journey JSON reports)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persona-nightly-report
+          path: |
+            playwright-report/
+          retention-days: 14
+
+      - name: Persona Nightly verdict (concise per-suite table — never green over a red suite)
+        if: always()
+        run: |
+          echo "### Persona Nightly — Kyoto marketplace personas" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Stripe declared unavailable: \`${{ steps.stripe-gate.outputs.stripe_unavailable }}\` (1 = stub key; every money leg still asserts its full honest contract, positive or negative)." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Suite | Pass 1 | Pass 2 (idempotence) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          verdict() {
+            case "$1" in
+              success) echo "✅ PASS" ;;
+              skipped) echo "⬜ not reached" ;;
+              "") echo "⬜ not reached" ;;
+              *) echo "❌ FAIL" ;;
+            esac
+          }
+
+          echo "| supply-expert | $(verdict '${{ steps.run-supply-expert-1.outcome }}') | $(verdict '${{ steps.run-supply-expert-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| supply-provider | $(verdict '${{ steps.run-supply-provider-1.outcome }}') | $(verdict '${{ steps.run-supply-provider-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| journey-guest | $(verdict '${{ steps.run-journey-guest-1.outcome }}') | $(verdict '${{ steps.run-journey-guest-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| journey-traveler | $(verdict '${{ steps.run-journey-traveler-1.outcome }}') | $(verdict '${{ steps.run-journey-traveler-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+
+          FAILED=0
+          for OUTCOME in \
+            "${{ steps.seed-personas.outcome }}" \
+            "${{ steps.run-supply-expert-1.outcome }}" \
+            "${{ steps.run-supply-provider-1.outcome }}" \
+            "${{ steps.run-journey-guest-1.outcome }}" \
+            "${{ steps.run-journey-traveler-1.outcome }}" \
+            "${{ steps.seed-personas-2.outcome }}" \
+            "${{ steps.run-supply-expert-2.outcome }}" \
+            "${{ steps.run-supply-provider-2.outcome }}" \
+            "${{ steps.run-journey-guest-2.outcome }}" \
+            "${{ steps.run-journey-traveler-2.outcome }}"; do
+            if [ "$OUTCOME" = "failure" ] || [ "$OUTCOME" = "cancelled" ]; then FAILED=1; fi
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FAILED" = "1" ]; then
+            echo "**This run is RED on purpose** — download the **persona-nightly-report** artifact (Playwright HTML report + \`playwright-report/persona-*.json\` per-suite journey reports) for the failing steps. A non-blocking gate is still an honest one." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Persona Nightly did not pass — see the verdict table in the run summary."
+            exit 1
+          fi
+          echo "**All suites passed both the first run and the idempotence re-run.**" >> "$GITHUB_STEP_SUMMARY"
