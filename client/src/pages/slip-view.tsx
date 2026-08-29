@@ -6,6 +6,7 @@
  * briefly highlights that item row on mount.
  */
 import { Loader2 } from "lucide-react";
+import { TripPassCard } from "@/components/plancard/TripPassCard";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
@@ -47,6 +48,10 @@ export default function SlipViewPage() {
       {/* Concierge support — renders only when this trip is a ready-made clone the caller owns
           (ledger 2026-08-22-concierge-revision). Self-gating: null on any other trip. */}
       <ConciergeCard tripId={tripId!} />
+      {/* Trip Pass offer/status (ruling 2026-08-29-trip-pass) — the slip is where the
+          tripId is known, so the purchase mounts here; teal action (the slip's coral
+          budget belongs to Finalize). */}
+      <TripPassCard tripId={tripId!} />
       <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} />
     </div>
   );

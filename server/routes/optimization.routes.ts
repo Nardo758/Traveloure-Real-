@@ -15,6 +15,7 @@
  */
 
 import { Router } from "express";
+import { coversAction } from "../services/trip-entitlement.service";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
@@ -264,6 +265,17 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
         error: "ai_concierge_disabled",
         message: "Platform Concierge is currently disabled for this experience type.",
       });
+    }
+
+    // Trip Pass (ruling 2026-08-29-trip-pass): a covered trip's optimizer runs are
+    // INCLUDED — no PaymentIntent is ever created. Entitlement checked server-side here
+    // (the client never asserts coverage). The durable record is the active
+    // trip_entitlements row + the absence of a PI, matching the free-rerun precedent
+    // (fee_ledger's amount<>0 CHECK forbids a literal $0 row — suppression is
+    // covered_by:trip_pass in the response/log, never a zero ledger row).
+    if (tripId && (await coversAction(String(tripId), "optimizer_run"))) {
+      console.log(`[trip-pass] optimizer charge suppressed (covered_by:trip_pass) trip=${tripId}`);
+      return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
     }
 
     // 24-hour free re-run check

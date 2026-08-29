@@ -1271,7 +1271,7 @@ export default function CartPage() {
         handleOptimizationPaymentRefusal(outcome.status, outcome.body);
         return;
       }
-      if (outcome.kind === "free_rerun") {
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
         // Skip payment for 24h free re-run
         await createComparison();
         return;
@@ -1314,7 +1314,7 @@ export default function CartPage() {
         handleOptimizationPaymentRefusal(outcome.status, outcome.body);
         return;
       }
-      if (outcome.kind === "free_rerun") {
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
         await createComparison();
         return;
       }
