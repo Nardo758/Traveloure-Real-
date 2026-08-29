@@ -1946,10 +1946,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Vendors Routes
   app.get("/api/vendors", async (req, res) => {
-    const { category, city } = req.query;
+    const { category, city, createdById } = req.query;
     const vendorList = await storage.getVendors(
       category as string | undefined, 
-      city as string | undefined
+      city as string | undefined,
+      createdById as string | undefined,
     );
     res.json(vendorList);
   });

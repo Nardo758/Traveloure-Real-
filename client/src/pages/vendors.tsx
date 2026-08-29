@@ -117,14 +117,23 @@ export default function Vendors() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const isPlanner = !!user && PLANNER_ROLES.has(user.role ?? "");
+  const isAdmin = user?.role === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [creatorFilter, setCreatorFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
   const { data: vendors = [], isLoading } = useQuery<Vendor[]>({
-    queryKey: ["/api/vendors"],
+    queryKey: ["/api/vendors", { createdById: isAdmin && creatorFilter !== "all" ? creatorFilter : undefined }],
   });
+
+  const creatorOptions = vendors.reduce<Vendor["createdBy"][]>((creators, vendor) => {
+    if (vendor.createdBy && !creators.some((creator) => creator?.id === vendor.createdBy?.id)) {
+      creators.push(vendor.createdBy);
+    }
+    return creators;
+  }, []).sort((a, b) => getVendorCreatorLabel(a).localeCompare(getVendorCreatorLabel(b)));
 
   const form = useForm<VendorFormValues>({
     resolver: zodResolver(vendorFormSchema),
@@ -390,6 +399,23 @@ export default function Vendors() {
                 ))}
               </SelectContent>
             </Select>
+            {isAdmin && (
+              <Select value={creatorFilter} onValueChange={setCreatorFilter}>
+                <SelectTrigger className="w-[220px]" data-testid="select-filter-creator">
+                  <UserRound className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Creator" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Creators</SelectItem>
+                  {creatorOptions.map((creator) => (
+                    <SelectItem key={creator!.id} value={creator!.id}>
+                      {getVendorCreatorLabel(creator)}
+                      {creator!.email ? ` (${creator!.email})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <div className="flex border rounded-md">
               <Button
                 variant={viewMode === "grid" ? "secondary" : "ghost"}
