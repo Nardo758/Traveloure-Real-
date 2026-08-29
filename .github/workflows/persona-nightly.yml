@@ -35,16 +35,6 @@ name: Persona Nightly (Kyoto marketplace personas — Lane B)
 # Route/spec source of truth: playwright/tests/personas/*.spec.ts, scripts/seed-personas.ts.
 
 on:
-  push:
-    # TEMPORARY, entire `push` trigger (docs/testing/PERSONA_LANE_B_HANDOFF.md nightly-workflow
-    # instruction + the journey-suite.yml precedent this mirrors): workflow_dispatch is 403 to
-    # the integration token (the same standing BRANCH_PROTECTION_PAT gap journey-suite.yml
-    # documents), and this lane needs a run before merge to prove the workflow itself.
-    # Push-triggering on the feature branch is the only self-serve proof path. Unlike
-    # journey-suite.yml (whose `push` trigger is permanent, on `main`), this workflow's ONLY
-    # `push` trigger is this temporary branch entry — REMOVE THIS ENTIRE `push:` BLOCK when this
-    # branch merges to main; `schedule` + `workflow_dispatch` are the permanent triggers.
-    branches: [claude/persona-lane-b-suites, claude/persona-coverage-2]
   schedule:
     # Nightly at 09:00 UTC — after journey-suite.yml's 07:00 UTC run, so the two throwaway-DB
     # nightly workflows never contend for the same Postgres/runner window.
