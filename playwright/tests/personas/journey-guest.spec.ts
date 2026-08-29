@@ -124,9 +124,22 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
 
     const servicesTitle = page.getByTestId("text-page-title");
     const servicesTitleVisible = await servicesTitle.isVisible().catch(() => false);
+    // Run #6 finding: the grid populates from a client-side /api/discover fetch (a full-text-search
+    // base query PLUS a packages query PLUS three parallel enrichment queries) that can still be
+    // in flight a beat after `networkidle` resolves and this loop starts. `.isVisible({timeout})`
+    // does NOT wait/retry — it is a one-shot check of the CURRENT DOM state, exactly the pitfall
+    // `pickExpertTierIfPresent` above already documents and fixes with `waitFor()`. That is what
+    // produced the deterministic 1/2-visible split (the first-checked name caught mid-fetch, the
+    // second caught after the grid had painted) — a genuine bounded `waitFor()` per card fixes it.
     let namedCardsVisible = 0;
     for (const svc of svcRows) {
-      if (await page.getByTestId(`card-service-${svc.id}`).isVisible({ timeout: 10_000 }).catch(() => false)) {
+      if (
+        await page
+          .getByTestId(`card-service-${svc.id}`)
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false)
+      ) {
         namedCardsVisible++;
       }
     }
