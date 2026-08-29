@@ -7401,6 +7401,41 @@ export const planMemberships = pgTable("plan_memberships", {
 ]);
 export type PlanMembership = typeof planMemberships.$inferSelect;
 
+// ─── Trip entitlements (the one PER-TRIP entitlement record) ─────────────────
+// Ruling 2026-08-29-trip-pass, migration 262. Trip Pass is per-trip: for its ONE trip it
+// grants unlimited optimizer runs + AI Concierge tasks (charge suppression), one expert
+// revision (snapshot-recorded, unenforced until the expert-flow lane), and the traveler
+// service-fee waiver (the rails-waiver mechanism, basis 'trip_pass'). It NEVER discounts
+// commissions and it is deliberately NOT plan_memberships (user-level, Plus/Pro).
+//   · allowances_snapshot is FROZEN at purchase from the plans row — later price/allowance
+//     changes never alter a sold pass.
+//   · ONE active pass per trip (partial unique index below); a second purchase is rejected
+//     BEFORE any PaymentIntent.
+//   · source_payment_id is PAYMENT IDENTITY (§19a): written ONLY by the server-side grant
+//     path from a Stripe-verified PaymentIntent. There is deliberately NO createInsertSchema
+//     for this table — nothing here is ever parsed off a request body (#PS18 posture).
+// Both partial unique indexes are DECLARED here (deploy-push durability rule) and must stay
+// byte-identical to migration 262's CREATE INDEX statements.
+export const tripEntitlements = pgTable("trip_entitlements", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'trip_pass'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'revoked'
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  sourcePaymentId: varchar("source_payment_id", { length: 255 }),
+  allowancesSnapshot: jsonb("allowances_snapshot").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("trip_entitlements_active_trip_uniq")
+    .on(table.tripId)
+    .where(sql`${table.status} = 'active'`),
+  uniqueIndex("trip_entitlements_source_payment_uniq")
+    .on(table.sourcePaymentId)
+    .where(sql`${table.sourcePaymentId} IS NOT NULL`),
+]);
+export type TripEntitlement = typeof tripEntitlements.$inferSelect;
+
 // ─── Plus occasions (the member's recurring/one-off personal dates) ──────────
 // Ledger 2026-08-27-plus-is-delivery, migration 260. For each ACTIVE occasion whose date is
 // within the 14-day lead window, the occasion-drafts scheduler builds ONE AI-Concierge draft
