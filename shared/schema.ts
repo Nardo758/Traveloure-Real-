@@ -1386,6 +1386,9 @@ export const vendors = pgTable("vendors", {
   imageUrl: varchar("image_url", { length: 1000 }),
   status: varchar("status", { length: 30 }).default("active"),
   metadata: jsonb("metadata").default({}),
+  // Immutable server-authored creator provenance. Nullable because rows created before this
+  // column was introduced have an honestly unknown origin; do not fabricate a backfill.
+  createdById: varchar("created_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1991,7 +1994,14 @@ export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertCha
   });
 export const insertTouristPlaceResultSchema = createInsertSchema(touristPlaceResults).omit({ id: true });
 export const insertHelpGuideTripSchema = createInsertSchema(helpGuideTrips).omit({ id: true, userId: true, createdAt: true });
-export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
+// Creator provenance is derived from the authenticated session by POST /api/vendors and is
+// deliberately absent from this request schema so a client cannot submit or override it.
+export const insertVendorSchema = createInsertSchema(vendors).omit({
+  id: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
@@ -2348,6 +2358,15 @@ export type UserAndExpertChat = typeof userAndExpertChats.$inferSelect;
 export type TouristPlaceResult = typeof touristPlaceResults.$inferSelect;
 export type HelpGuideTrip = typeof helpGuideTrips.$inferSelect;
 export type Vendor = typeof vendors.$inferSelect;
+export type VendorCreator = {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+};
+export type VendorWithCreator = Vendor & {
+  createdBy: VendorCreator | null;
+};
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;

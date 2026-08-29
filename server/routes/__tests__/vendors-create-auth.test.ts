@@ -50,6 +50,7 @@ const { db } = await import("../../db.js");
 const { isEarner } = await import("../../middleware/role-rbac.js");
 const { insertVendorSchema } = await import("@shared/schema");
 const { storage } = await import("../../storage.js");
+const { getUserId } = await import("../../utils/auth.js");
 
 // ── db.select(...).from(...).where(...) chain used by isEarner's role lookup ──────────────
 function makeMockSelect(rowsByUserId: Record<string, { role: string }>): () => any {
@@ -93,8 +94,12 @@ function buildApp(userId: string): express.Express {
   app.post("/api/vendors", isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
+      const creatorId = getUserId(req);
+      if (!creatorId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
       createVendorCalled = true;
-      const vendor = await (storage as any).createVendor(input);
+      const vendor = await (storage as any).createVendor({ ...input, createdById: creatorId });
       res.status(201).json(vendor);
     } catch (err) {
       res.status(500).json({ message: "Failed to create vendor" });
@@ -184,6 +189,18 @@ describe("POST /api/vendors — role gate (CLAUDE.md §2/§19)", () => {
     assert.equal(createVendorCalls.length, 1);
   });
 
+  it("(d) creator provenance comes from the session, not request JSON", async () => {
+    (db as any).select = makeMockSelect({ "earner-1": { role: "expert" } });
+    const post = await startServer("earner-1");
+
+    const res = await post({ ...VALID_VENDOR, createdById: "spoofed-creator" });
+
+    assert.equal(res.status, 201);
+    assert.equal(createVendorCalls.length, 1);
+    assert.equal(createVendorCalls[0].createdById, "earner-1");
+    assert.notEqual(createVendorCalls[0].createdById, "spoofed-creator");
+  });
+
   it("unauthenticated request never reaches the role lookup or the handler", async () => {
     const app = express();
     app.use(express.json());
@@ -214,6 +231,11 @@ describe("POST /api/vendors — route wiring (static source check)", () => {
       /app\.post\(\s*"\/api\/vendors"\s*,\s*isAuthenticated\s*,\s*isEarner\s*,/,
       "POST /api/vendors must be wired as app.post(\"/api/vendors\", isAuthenticated, isEarner, ...) — " +
         "a passing isEarner unit test alone would not prove the fix is actually applied to this route.",
+    );
+    assert.match(
+      source,
+      /storage\.createVendor\(\{\s*\.\.\.input,\s*createdById:\s*creatorId\s*\}\)/,
+      "vendor creator provenance must be injected from the authenticated session",
     );
   });
 });

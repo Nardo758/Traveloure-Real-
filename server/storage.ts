@@ -45,7 +45,7 @@ import {
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
   type UserAndExpertChat, type HelpGuideTrip,
-  type Vendor, type InsertVendor,
+  type Vendor, type VendorWithCreator, type InsertVendor,
   type LocalExpertForm, type InsertLocalExpertForm,
   type ServiceProviderForm, type InsertServiceProviderForm,
   type ProviderService, type InsertProviderService,
@@ -223,11 +223,11 @@ export interface IStorage {
 
   // Vendors
 
-  getVendors(category?: string, city?: string): Promise<Vendor[]>;
+  getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
-  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  createVendor(vendor: InsertVendor & { createdById: string }): Promise<Vendor>;
 
   // Local Expert Forms
 
@@ -1566,14 +1566,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(category?: string, city?: string): Promise<Vendor[]> {
-    let result = await db.select().from(vendors);
-    if (category) {
-      result = result.filter(v => v.category === category);
-    }
-    if (city) {
-      result = result.filter(v => v.city === city);
-    }
+  async getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
+    const conditions = [
+      category ? eq(vendors.category, category) : undefined,
+      city ? eq(vendors.city, city) : undefined,
+      createdById ? eq(vendors.createdById, createdById) : undefined,
+    ].filter((condition): condition is NonNullable<typeof condition> => condition !== undefined);
+    const rows = await db
+      .select({
+        vendor: vendors,
+        creator: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        },
+      })
+      .from(vendors)
+      .leftJoin(users, eq(vendors.createdById, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    const result = rows.map(({ vendor, creator }) => ({
+      ...vendor,
+      createdBy: creator?.id ? creator : null,
+    }));
     return result;
   }
 
@@ -1582,7 +1597,7 @@ export class DatabaseStorage implements IStorage {
     return vendor;
   }
 
-  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+  async createVendor(vendor: InsertVendor & { createdById: string }): Promise<Vendor> {
     const [newVendor] = await db.insert(vendors).values(vendor).returning();
     return newVendor;
   }

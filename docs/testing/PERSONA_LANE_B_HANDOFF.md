@@ -203,6 +203,41 @@ expert flow to flip the storefront public and complete the cast. (The three
 expert-authored gems are a separate lane — the gem-chain PR — and are not part
 of this pass.)
 
+#### Expert offering publish path — Lane A-4 selector and approval record
+
+1. Sign in as `persona-gion-expert@traveloure.test` using the development
+   password from `PERSONA_JOURNEYS.md`.
+2. Use the role menu control
+   `data-testid="link-expert-console"` and open the Catalog route
+   `/expert/catalog`.
+3. Select `data-testid="button-catalog-new-service"`; this opens the shared
+   ServiceForm at `/expert/services/new`.
+4. Complete the form using the live controls
+   `data-testid="service-name"`,
+   `data-testid="service-description"`,
+   `data-testid="service-duration"`, the offering picker
+   `data-testid="button-choose-offering"`, and the required review fields.
+   `data-testid="input-service-image"` is the cover-photo control when a real
+   development-safe image is available. Do not use a stock image as production
+   evidence.
+5. Use `data-testid="button-save-draft"` to prove the durable draft path, or
+   finish the final step and use
+   `data-testid="button-submit-service"` ("Submit for Approval"). The expert
+   action submits for review; it does not claim that the listing is live.
+6. Confirm the owned row through `GET /api/expert/services` and the
+   `provider_services` development row. A mutation is not complete without
+   both the visible submitted/draft state and the direct DB ownership/status
+   assertion.
+7. In the admin expert queue, load `GET /api/admin/expert-applications`, locate
+   the Gion application by its seeded user ID, and use
+   `data-testid="button-approve-<applicationId>"`. Confirm the application
+   status and role transition in the development DB. The admin approval is
+   separate from the listing submission and does not bypass the listing's
+   publish predicate.
+8. Re-open the public expert/profile or storefront route only after the
+   listing is both approved and active. The storefront must remain 404 while
+   the owner has no approved public inventory.
+
 **Finding for the recruitment funnel — the expert flow hits the same
 verification wall the providers did.** Publishing an expert offering resolves
 through the single publish predicate `resolvePublishVerification`
@@ -210,14 +245,17 @@ through the single publish predicate `resolvePublishVerification`
 requires `local_expert_forms.identity_verification_status === "verified"`
 (identity only; business verification is N/A for an individual expert). Until
 verified, an admin-approved expert listing is held `approvalStatus='approved'
-AND status='draft'` and is not active/public — the same held state providers
-hit, which is why the dev-only provider verification override was created. To
-complete this step in a dev environment, verify the expert form or apply the
-same dev-only override extended to the expert (`local_expert_forms`) path.
-Note: that dev override lane is tracked separately and is **not present on this
-branch/main** — extending it to the expert path (dev-only at the server,
-reason required, audited, rejected in prod/test/unset) is the prerequisite for
-publishing the expert offering without real KYB.
+AND status='draft'` and is not active/public.
+
+There is currently **no sanctioned development-only expert verification
+override in this checkout**. The admin UI may ask for a reason when an
+application is unverified, but that prompt is not proof of a server-enforced,
+development-only override and must not be used to claim a successful publish.
+The safe completion states are: use a real development verification session, or
+record the expert publish step as blocked by the identity gate. The separate
+expert-override implementation (development-only at the server, reason
+required, audited, rejected in production/test/unset) remains a prerequisite
+for publishing the expert offering without real verification.
 
 ### 2. Stock cover images are a test fixture only, never the production pattern
 

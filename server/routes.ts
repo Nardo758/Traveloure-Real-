@@ -1946,12 +1946,94 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Vendors Routes
   app.get("/api/vendors", async (req, res) => {
-    const { category, city } = req.query;
+    const { category, city, createdById } = req.query;
     const vendorList = await storage.getVendors(
       category as string | undefined, 
-      city as string | undefined
+      city as string | undefined,
+      createdById as string | undefined,
     );
     res.json(vendorList);
+  });
+
+  // Admin-only offline audit export. Creator provenance is read-only: the export derives
+  // display fields from the existing nullable createdById relationship and never backfills
+  // or changes that immutable source field.
+  app.get("/api/admin/vendors/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const vendorList = await storage.getVendors();
+      const escapeCsv = (value: unknown) => {
+        let text = String(value ?? "");
+        // Prevent spreadsheet formula injection when an admin opens the export.
+        if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+      const headers = [
+        "id",
+        "name",
+        "category",
+        "description",
+        "vendor_email",
+        "phone",
+        "website",
+        "address",
+        "city",
+        "country",
+        "rating",
+        "price_range",
+        "status",
+        "created_at",
+        "updated_at",
+        "creator_name",
+        "creator_email",
+        "creator_origin",
+      ];
+      const rows = vendorList.map((vendor) => {
+        const creatorName = [vendor.createdBy?.firstName, vendor.createdBy?.lastName]
+          .filter(Boolean)
+          .join(" ");
+        const hasCreator = Boolean(vendor.createdBy);
+        return [
+          vendor.id,
+          vendor.name,
+          vendor.category,
+          vendor.description,
+          vendor.email,
+          vendor.phone,
+          vendor.website,
+          vendor.address,
+          vendor.city,
+          vendor.country,
+          vendor.rating,
+          vendor.priceRange,
+          vendor.status,
+          vendor.createdAt?.toISOString(),
+          vendor.updatedAt?.toISOString(),
+          creatorName || (hasCreator ? vendor.createdBy?.email : null) || "Unknown origin",
+          vendor.createdBy?.email || "Unknown origin",
+          hasCreator ? "Account" : "Unknown origin",
+        ].map(escapeCsv).join(",");
+      });
+      const csv = [headers.join(","), ...rows].join("\r\n") + "\r\n";
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="vendor-creator-export-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      return res.send(csv);
+    } catch (err) {
+      console.error("Admin vendor export error:", err);
+      return res.status(500).json({ message: "Failed to export vendors" });
+    }
   });
 
   // CLAUDE.md §2/§19 gap (endpoint-auth completeness sweep, Aug 29 2026): this route was
@@ -1965,7 +2047,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/vendors", isAuthenticated, isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
-      const vendor = await storage.createVendor(input);
+      const creatorId = getUserId(req);
+      if (!creatorId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      // Creator provenance is immutable application metadata: it comes from the authenticated
+      // session, never from request JSON. insertVendorSchema also omits createdById defensively.
+      const vendor = await storage.createVendor({ ...input, createdById: creatorId });
       res.status(201).json(vendor);
     } catch (err) {
       if (err instanceof z.ZodError) {
