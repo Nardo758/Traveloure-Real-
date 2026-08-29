@@ -565,10 +565,10 @@ async function main(): Promise<void> {
   const providerClearance = await db.execute(sql`
     SELECT u.email, u.provider_verification_status, u.background_check_confirmed
     FROM users u
-    WHERE u.id = ANY(${sql.join(
+    WHERE u.id IN (${sql.join(
       PROVIDER_FORMS.map((form) => sql`${personaIds.get(form.personaKey)}`),
       sql`, `,
-    )}::text[])
+    )})
   `);
   for (const row of providerClearance.rows) {
     console.log(
