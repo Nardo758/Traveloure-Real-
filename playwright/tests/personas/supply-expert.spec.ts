@@ -160,15 +160,23 @@ test.describe("supply-expert — Gion local expert", () => {
       });
     }
 
-    const owned = await rows<{ id: string }>(
-      `SELECT id FROM provider_services WHERE user_id = $1 AND service_name = ANY($2::text[])`,
+    // Name-scoped, retry-safe (not a blanket count): a Playwright retry re-runs this whole test
+    // from scratch, and nothing here deletes a prior failed attempt's rows, so the RAW COUNT for
+    // this user can legitimately be >2 after a retry (2 -> 4 -> 6 observed) without either named
+    // service actually being missing. What must hold is that EACH of the two names resolves to
+    // at least one owned row — a blanket `=== 2` fails exactly the case that matters least.
+    const ownedByName = await rows<{ service_name: string; cnt: string }>(
+      `SELECT service_name, count(*)::int AS cnt FROM provider_services
+       WHERE user_id = $1 AND service_name = ANY($2::text[]) GROUP BY service_name`,
       [actor.id, EXPERT_SERVICES.map((s) => s.name)],
     );
+    const namesFound = new Set(ownedByName.map((r) => r.service_name));
+    const allNamesPresent = EXPERT_SERVICES.every((s) => namesFound.has(s.name));
     report.record({
-      action: "assert two owned service rows",
+      action: "assert both named services are owned by the expert (name-scoped, retry-safe)",
       ui: "n/a",
-      db: `count=${owned.length}`,
-      verdict: owned.length === 2 ? "PASS" : "FAIL",
+      db: JSON.stringify(ownedByName),
+      verdict: allNamesPresent ? "PASS" : "FAIL",
     });
 
     // ── Admin approves; since the owner is verified, activateVerificationHeldListings goes

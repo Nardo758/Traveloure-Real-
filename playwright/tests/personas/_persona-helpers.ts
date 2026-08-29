@@ -255,6 +255,31 @@ async function fillCurrentStep(page: Page, input: ServiceFormInput): Promise<voi
 }
 
 /**
+ * Discards a restored autosave checkpoint, if the wizard opened with one (client/src/components
+ * /ServiceForm.tsx: `traveloure:new-service-autosave:v1:${role}` in localStorage, keyed by role
+ * only — NOT per-service). This is the STALE-STATE FIX for creating more than one service in the
+ * same browser context: `readAutosave()` runs synchronously at mount (`useRef(readAutosave())`),
+ * seeding `formData` with the PREVIOUS service's name/category/tier and — critically —
+ * `currentStep` with whatever step that previous session last saved at (frequently the final
+ * step, since the debounced 800ms autosave keeps checkpointing as the driver advances through
+ * steps). A second `/expert|provider/services/new` visit therefore does not start clean: it can
+ * land straight on the final (submit) step with an ALREADY-VALID, ALREADY-ENABLED submit button
+ * carrying the FIRST service's data — so fillCurrentStep never gets a chance to run (Basics,
+ * where name/description/category/tier live, was skipped entirely) and the second create writes
+ * a row named after the first service. Clicking `button-discard-autosave` ("Start fresh") is the
+ * product's own reset path — it clears the checkpoint, empties formData, and resets to step 1 —
+ * so this calls it BEFORE any fill, every time driveServiceFormToSubmit is invoked, whether or
+ * not a banner is currently visible (idempotent: a no-op when there is nothing to discard).
+ */
+async function discardAutosaveIfPresent(page: Page): Promise<void> {
+  const banner = page.getByTestId("banner-autosave-restored");
+  if (await banner.isVisible().catch(() => false)) {
+    await page.getByTestId("button-discard-autosave").click();
+    await banner.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
+  }
+}
+
+/**
  * Drives the ServiceForm wizard from its current (first) step through to the final submit
  * button, filling recognized fields on each step as they become visible. Clicks
  * `button-step-next` until either `button-submit-service` (expert) or `button-publish-service`
@@ -267,6 +292,7 @@ export async function driveServiceFormToSubmit(
   input: ServiceFormInput,
   publishStatus: "draft" | "submit",
 ): Promise<"button-submit-service" | "button-publish-service" | null> {
+  await discardAutosaveIfPresent(page);
   for (let guard = 0; guard < 12; guard++) {
     await fillCurrentStep(page, input);
 
