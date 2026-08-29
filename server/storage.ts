@@ -45,7 +45,7 @@ import {
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
   type UserAndExpertChat, type HelpGuideTrip,
-  type Vendor, type InsertVendor,
+  type Vendor, type VendorWithCreator, type InsertVendor,
   type LocalExpertForm, type InsertLocalExpertForm,
   type ServiceProviderForm, type InsertServiceProviderForm,
   type ProviderService, type InsertProviderService,
@@ -223,7 +223,7 @@ export interface IStorage {
 
   // Vendors
 
-  getVendors(category?: string, city?: string): Promise<Vendor[]>;
+  getVendors(category?: string, city?: string): Promise<VendorWithCreator[]>;
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
@@ -1566,8 +1566,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(category?: string, city?: string): Promise<Vendor[]> {
-    let result = await db.select().from(vendors);
+  async getVendors(category?: string, city?: string): Promise<VendorWithCreator[]> {
+    const rows = await db
+      .select({
+        vendor: vendors,
+        creator: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        },
+      })
+      .from(vendors)
+      .leftJoin(users, eq(vendors.createdById, users.id));
+    let result = rows.map(({ vendor, creator }) => ({
+      ...vendor,
+      createdBy: creator?.id ? creator : null,
+    }));
     if (category) {
       result = result.filter(v => v.category === category);
     }
