@@ -1294,4 +1294,9 @@ export const MIGRATION_FILES = [
   // with one-active-per-trip + one-per-PaymentIntent partial unique indexes, BOTH declared
   // in shared/schema.ts (deploy-push durability rule). Additive, no CHECK, no backfill.
   "262_trip_entitlements.sql",
+  // 263: additive-nullable gem-promotion candidate columns on local_knowledge_nuggets
+  // (2026-08-29-replit-gem-audit ruling 4). Declared in shared/schema.ts (deploy-push
+  // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
+  // Renumbered from 262 during merge with main — 262 was claimed by 262_trip_entitlements.sql.
+  "263_nugget_gem_promotion.sql",
 ] as const;

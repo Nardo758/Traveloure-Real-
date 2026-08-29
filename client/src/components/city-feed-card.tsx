@@ -158,6 +158,33 @@ function gemAreaName(gem: any): string | null {
   return typeof v === "string" && v.trim().length > 0 ? v : null;
 }
 
+/** Gem attribution (2026-08-29 Replit-audit rulings 1+2): the server resolves
+ *  `curated_by_expert_id` into `gem.curatedBy` — a REAL user row or null, never
+ *  a fabricated name (§13). These read only that resolved shape. */
+function gemCurator(gem: any): { id: string; firstName: string | null; lastName: string | null; profileImageUrl?: string | null } | null {
+  const c = gem?.curatedBy;
+  return c && typeof c.id === "string" && c.id.length > 0 ? c : null;
+}
+
+/** Short display name for a curator ("Yuki"); null when nothing real to show. */
+function gemCuratorShortName(gem: any): string | null {
+  const c = gemCurator(gem);
+  if (!c) return null;
+  const name = (c.firstName ?? "").trim() || (c.lastName ?? "").trim();
+  return name.length > 0 ? name : null;
+}
+
+/** Full display name for a curator ("Yuki Tanaka"); null when nothing real to show. */
+function gemCuratorFullName(gem: any): string | null {
+  const c = gemCurator(gem);
+  if (!c) return null;
+  const name = [c.firstName, c.lastName]
+    .map((p) => (p ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return name.length > 0 ? name : null;
+}
+
 /** Compact duration label (Phase 2f): whole hours read "{n} hr(s)", anything else
  *  "{n} min". §13: no duration field ⇒ null (the fragment is omitted, not zeroed). */
 function compactDuration(mins: unknown): string | null {
@@ -452,27 +479,26 @@ interface MoreInfoSheetProps {
   data: any;
 }
 
-function LocalsVsTouristsBar({ localRating, touristMentions }: { localRating?: number; touristMentions?: number }) {
-  if (!localRating && !touristMentions) return null;
-  const total = (localRating ?? 0) + (touristMentions ?? 0);
-  if (total === 0) return null;
-  const localPct = Math.round(((localRating ?? 0) / total) * 100);
-  return (
-    <div>
-      <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
-        <span>Locals {localPct}%</span>
-        <span>Tourists {100 - localPct}%</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden flex">
-        <div className="bg-green-500 h-full rounded-full transition-all" style={{ width: `${localPct}%` }} />
-      </div>
-    </div>
-  );
-}
-
 function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
+  // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
+  // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
+  // the "goes mainstream" forecast and the discovery status were REMOVED —
+  // the server no longer ships them (shared/gem-teaser.ts) and this render
+  // must not resurrect them from a stale or hand-built payload.
   const renderGemContent = () => (
     <div className="flex flex-col gap-4 pt-2">
+      {/* Byline (2026-08-29 Replit-audit ruling 1): server-resolved curator only —
+          no curatedBy ⇒ no byline, never a fabricated attribution (§13). */}
+      {gemCuratorFullName(data) && (
+        <p
+          className="text-[12px] text-muted-foreground"
+          style={{ fontFamily: EARN_MONO }}
+          data-testid={`gem-curated-by-${data.id}`}
+        >
+          Curated by {gemCuratorFullName(data)}
+        </p>
+      )}
+
       {data.description && (
         <div>
           <p className="text-[13px] font-semibold text-foreground mb-1">About</p>
@@ -493,34 +519,10 @@ function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
         </div>
       )}
 
-      {data.address && (
+      {data.whyLocalsLoveIt && (
         <div>
-          <p className="text-[13px] font-semibold text-foreground mb-1">Address</p>
-          <a
-            href={`https://maps.google.com/?q=${encodeURIComponent(data.address)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-start gap-1.5 text-[13px] text-blue-600 hover:underline"
-            data-testid="link-gem-address"
-          >
-            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            {data.address}
-          </a>
-        </div>
-      )}
-
-      <LocalsVsTouristsBar localRating={data.localRating} touristMentions={data.touristMentions} />
-
-      {(data.discoveryStatus || data.daysUntilMainstream != null) && (
-        <div className="bg-purple-50 rounded-lg px-3 py-2.5">
-          {data.discoveryStatus && (
-            <p className="text-[12px] font-semibold text-purple-700 capitalize">{data.discoveryStatus}</p>
-          )}
-          {data.daysUntilMainstream != null && (
-            <p className="text-[12px] text-purple-600 mt-0.5">
-              Goes mainstream in ~{data.daysUntilMainstream} days
-            </p>
-          )}
+          <p className="text-[13px] font-semibold text-foreground mb-1">Why locals love it</p>
+          <p className="text-[13px] text-muted-foreground leading-relaxed">{data.whyLocalsLoveIt}</p>
         </div>
       )}
     </div>
@@ -1020,11 +1022,17 @@ export function CityFeedCardGem({
             className="h-7 text-xs px-2.5"
             onClick={(e) => {
               e.stopPropagation();
-              askExpert({ city, subject: gem.placeName });
+              askExpert({
+                city,
+                subject: gem.placeName,
+                expertId: gemCurator(gem)?.id ?? null,
+                fallbackName: gemCuratorFullName(gem),
+                fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
+              });
             }}
             data-testid={`btn-ask-gem-${gem.id}`}
           >
-            Ask an expert
+            {gemCuratorShortName(gem) ? `Ask ${gemCuratorShortName(gem)}` : "Ask an expert"}
           </Button>
         </div>
       )}
@@ -1037,10 +1045,14 @@ export function CityFeedCardGem({
   // when absent.
   if (density === "compact") {
     const gemScoreStr = gemScore !== null ? String(gemScore) : null;
+    // Byline fragment (rulings 1+2): only a server-resolved curator renders;
+    // no attribution ⇒ the fragment is omitted (§13), never placeholdered.
+    const curatorName = gemCuratorShortName(gem);
     const metaText = joinMeta(
       gemScoreStr,
       bestForFace[0] ? `best for ${bestForFace[0]}` : null,
       gemAreaName(gem),
+      curatorName ? `curated by ${curatorName}` : null,
     );
     return (
       <>
@@ -1140,7 +1152,9 @@ export function CityFeedCardGem({
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
+              {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent.
+                  Ruling 2: an attributed gem's Ask targets ITS curator by name;
+                  otherwise the honest city-resolution fallback stands. */}
               {!compactHasBookAction && (
                 <Button
                   size="sm"
@@ -1148,11 +1162,17 @@ export function CityFeedCardGem({
                   className="h-7 text-xs px-2.5"
                   onClick={(e) => {
                     e.stopPropagation();
-                    askExpert({ city, subject: gem.placeName });
+                    askExpert({
+                      city,
+                      subject: gem.placeName,
+                      expertId: gemCurator(gem)?.id ?? null,
+                      fallbackName: gemCuratorFullName(gem),
+                      fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
+                    });
                   }}
                   data-testid={`btn-ask-gem-${gem.id}`}
                 >
-                  Ask an expert
+                  {curatorName ? `Ask ${curatorName}` : "Ask an expert"}
                 </Button>
               )}
             </div>

@@ -922,4 +922,53 @@ test.describe('city-feed bento — /discover/location', () => {
     expect(url.searchParams.get('categoryKey')).toBeTruthy();
     expect(url.searchParams.get('upsellSource')).toBe('discover_location');
   });
+
+  test('13. gem byline + Ask targeting — attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
+    // g-gion-1 carries curatedBy (Yuki Tanaka) in the fixture; g-gion-2 does not.
+    // Ruling 1: the byline renders ONLY from the resolved attribution — an
+    // unattributed gem shows no byline fragment and no curator name anywhere.
+    const attributed = page.getByTestId('feed-card-gem-g-gion-1');
+    const unattributed = page.getByTestId('feed-card-gem-g-gion-2');
+
+    await expect(attributed.getByTestId('gem-facts-g-gion-1')).toContainText('curated by Yuki');
+    await expect(unattributed.getByTestId('gem-facts-g-gion-2')).not.toContainText('curated by');
+
+    // Ruling 2: the attributed gem's Ask CTA names the curator; the
+    // unattributed gem keeps the honest generic label (city-resolution fallback).
+    await expect(attributed.getByTestId('btn-ask-gem-g-gion-1')).toHaveText('Ask Yuki');
+    await expect(unattributed.getByTestId('btn-ask-gem-g-gion-2')).toHaveText('Ask an expert');
+
+    // The details sheet carries the full byline for the attributed gem only.
+    await attributed.locator('h3').click();
+    await expect(page.getByTestId('gem-curated-by-g-gion-1')).toHaveText('Curated by Yuki Tanaka');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await unattributed.locator('h3').click();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(page.getByTestId('gem-curated-by-g-gion-2')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+  });
+
+  test('14. thin gem detail — the ruled teaser set only; deep fields never render even when present in the payload (2026-08-29 audit ruling 3)', async ({ page }) => {
+    // g-gion-2 deliberately carries every removed family in the fixture
+    // (address, tourist/local mentions + localRating, daysUntilMainstream,
+    // discoveryStatus) — simulating a stale or hand-built payload. The server
+    // projection (shared/gem-teaser.ts, pinned by gem-teaser.test.ts) strips
+    // them; this proves the CLIENT never resurrects them either.
+    await page.getByTestId('feed-card-gem-g-gion-2').locator('h3').click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toHaveCount(1);
+
+    // Teaser content renders.
+    await expect(sheet).toContainText('A tiny stone bridge over the Shirakawa canal.');
+    await expect(sheet).toContainText('A quiet canal-side frame locals adore.');
+
+    // The four removed families do not.
+    await expect(page.getByTestId('link-gem-address')).toHaveCount(0);
+    await expect(sheet).not.toContainText('SHOULD-NEVER-RENDER');
+    await expect(sheet).not.toContainText(/Locals \d+%/);
+    await expect(sheet).not.toContainText(/Tourists \d+%/);
+    await expect(sheet).not.toContainText('Goes mainstream');
+    await page.keyboard.press('Escape');
+  });
 });
