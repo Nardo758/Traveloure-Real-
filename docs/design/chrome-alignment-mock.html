@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chrome alignment — Variant A (visual of record)</title>
+<!--
+  chrome-alignment-mock.html — visual of record for ruling 2026-08-28-chrome-alignment.
+
+  PROVENANCE: the original mock file was authored in the decision-maker's session but its
+  attachment never reached the repo before the lane ran. This file is the RECONSTRUCTION,
+  committed 2026-08-29 AFTER the lane merged (PRs #616 + #617): it transcribes the ratified
+  written Locked spec plus the shipped implementation (client/src/components/layout.tsx,
+  trip/trip-strip.tsx at merge #616). Where this file and the merged code disagree, the
+  MERGED CODE is authoritative — fix this file, not the chrome.
+
+  Variant A only (ratified): chrome sits on --earn-ground; white (#FFFFFF) is reserved for
+  cards; hairlines (--earn-border) do all separation. Coral appears exactly three times in
+  chrome: Sign In, the strip's YOUR TRIP eyebrow, the BETA pill. Variant B was rejected and
+  is deliberately absent.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --earn-ground:#FAFAF8; --earn-card:#FFFFFF; --earn-border:#E7E4DD;
+    --earn-teal:#2E8B8B; --earn-teal-ink:#226B6B; --earn-teal-wash:rgba(46,139,139,.10);
+    --earn-coral-bg:#FFF4F4; --earn-coral-border:#FCCACA; --earn-coral-ink:#E85D55;
+    --earn-navy:#1E3A5F; --earn-ink:#1F2733; --earn-muted:#6A7480; --earn-faint:#B0AAA0;
+    --earn-chip:#F6F5F1;
+    --mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:#EDEBE6;font-family:var(--sans);color:var(--earn-ink);padding:32px 16px;display:flex;flex-direction:column;gap:28px;align-items:center}
+  .frame{width:100%;max-width:1180px}
+  .frame>h2{font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--earn-muted);margin-bottom:8px}
+  .frame>.note{font:400 11px var(--mono);color:var(--earn-faint);margin-top:6px}
+  .shell{border:1px solid var(--earn-border);border-radius:10px;overflow:hidden;background:var(--earn-ground)}
+
+  /* ── Header (60px, ground, hairline bottom) ─────────────────────────── */
+  .hdr{height:60px;display:flex;align-items:center;gap:10px;padding:0 24px;background:var(--earn-ground);border-bottom:1px solid var(--earn-border)}
+  .logo{display:flex;align-items:center;gap:10px}
+  .logo b{font:600 17px var(--sans);color:#485960;letter-spacing:.01em}
+  .logo .glyph{color:var(--earn-coral-ink);font-size:19px;line-height:1}
+  .beta{font:500 10px var(--mono);letter-spacing:.08em;padding:2px 8px;border-radius:999px;background:var(--earn-coral-bg);border:1px solid var(--earn-coral-border);color:var(--earn-coral-ink)}
+  .navlinks{display:flex;gap:4px;margin-left:22px;flex:1}
+  .nl{font:500 12.5px var(--mono);letter-spacing:.05em;color:var(--earn-ink);padding:8px 12px;border-radius:6px;text-decoration:none;display:flex;align-items:center;gap:4px}
+  .nl .caret{color:var(--earn-faint);font-size:10px}
+  .nl.hover{color:var(--earn-teal-ink);text-decoration:underline;text-underline-offset:2px}
+  .nl.active{color:var(--earn-teal-ink);text-decoration:underline;text-underline-offset:2px}
+  .actions{display:flex;gap:8px;align-items:center}
+  .btn{font:500 13px var(--sans);border-radius:8px;padding:7px 14px;cursor:default}
+  .btn.navy{border:1px solid var(--earn-navy);color:var(--earn-navy);background:transparent}
+  .btn.coral{background:var(--earn-coral-ink);color:#fff;border:1px solid var(--earn-coral-ink)}
+
+  /* ── Dropdown panel (white card, hairline, eyebrow, icon tiles) ─────── */
+  .panelwrap{position:relative;height:250px;background:var(--earn-ground)}
+  .panel{position:absolute;top:10px;left:220px;width:300px;background:var(--earn-card);border:1px solid var(--earn-border);border-radius:10px;box-shadow:0 18px 40px rgba(31,39,51,.12);padding:12px 0}
+  .eyebrow{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-coral-ink);padding:6px 16px}
+  .row{display:flex;gap:10px;align-items:flex-start;padding:9px 16px}
+  .row.hover{background:var(--earn-teal-wash)}
+  .tile{width:24px;height:24px;border-radius:6px;background:var(--earn-teal-wash);display:flex;align-items:center;justify-content:center;color:var(--earn-teal-ink);font-size:12px;flex:none;margin-top:1px}
+  .row b{font:500 14px var(--sans);color:var(--earn-ink);display:block}
+  .row span{font:400 11.5px var(--sans);color:var(--earn-muted)}
+
+  /* ── Your Trip strip (44px, ground, hairline bottom) ────────────────── */
+  .strip{min-height:44px;display:flex;align-items:center;gap:10px;padding:6px 24px;background:var(--earn-ground);border-bottom:1px solid var(--earn-border);flex-wrap:wrap}
+  .strip .eb{font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-coral-ink)}
+  .strip .name{font:600 14px var(--sans);color:var(--earn-ink)}
+  .chip{font:400 11.5px var(--mono);background:var(--earn-chip);border:1px solid var(--earn-border);border-radius:999px;padding:3px 12px;color:var(--earn-muted)}
+  .chip.cart{border-color:var(--earn-teal);color:var(--earn-ink)}
+  .chip.cart .amt{color:var(--earn-teal-ink);font-weight:500}
+  .chip.cart .ico{color:var(--earn-teal)}
+  .editbtn{margin-left:auto;font:600 12px var(--sans);color:var(--earn-navy);border:1px solid var(--earn-navy);border-radius:6px;padding:4px 10px}
+
+  /* ── Footer (white card closing the page, hairline top) ─────────────── */
+  .footer{background:var(--earn-card);border-top:1px solid var(--earn-border);padding:40px 32px 24px}
+  .fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px}
+  .fbrand .logo b{color:var(--earn-muted)}
+  .fbrand .logo .glyph{color:var(--earn-muted)}
+  .fbrand p{font:400 13px var(--sans);color:var(--earn-muted);max-width:300px;margin-top:10px;line-height:1.5}
+  .social{display:flex;gap:8px;margin-top:14px}
+  .stile{width:34px;height:34px;border-radius:10px;background:var(--earn-chip);display:flex;align-items:center;justify-content:center;color:var(--earn-muted);font-size:13px}
+  .fcol h3{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-muted);margin-bottom:14px}
+  .fcol a{display:block;font:400 13px var(--sans);color:var(--earn-muted);text-decoration:none;margin-bottom:10px}
+  .fcol a.hover{color:var(--earn-teal-ink);text-decoration:underline;text-underline-offset:2px}
+  .legal{border-top:1px solid var(--earn-border);margin-top:28px;padding-top:18px;display:flex;justify-content:space-between;font:400 11px var(--mono);color:var(--earn-faint)}
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <h2>Header — rest · hover · active (Variant A: ground + hairline; coral = Sign In + BETA only)</h2>
+  <div class="shell">
+    <div class="hdr">
+      <span class="logo"><span class="glyph">✈</span><b>TRAVELOURE</b></span>
+      <span class="beta">BETA</span>
+      <nav class="navlinks">
+        <a class="nl">Marketplace <span class="caret">▾</span></a>
+        <a class="nl hover">Experts &amp; Services <span class="caret">▾</span></a>
+        <a class="nl">Experiences <span class="caret">▾</span></a>
+        <a class="nl">Planning Tools <span class="caret">▾</span></a>
+        <a class="nl">Ways to Earn <span class="caret">▾</span></a>
+        <a class="nl active">Pricing</a>
+      </nav>
+      <span class="actions">
+        <span class="btn navy">Join as Partner ▾</span>
+        <span class="btn coral">Sign In</span>
+      </span>
+    </div>
+  </div>
+  <div class="note">nav links: Geist Mono 500 12.5px / .05em · rest --earn-ink · hover/active --earn-teal-ink + 2px-offset underline · carets --earn-faint · logo = new SVG @ ~26px</div>
+</div>
+
+<div class="frame">
+  <h2>Dropdown open — white card on --earn-border, mono coral eyebrow, teal-wash icon tiles + row hover</h2>
+  <div class="shell">
+    <div class="panelwrap">
+      <div class="panel">
+        <div class="eyebrow">Find Help</div>
+        <div class="row"><span class="tile">◫</span><div><b>Service Providers</b><span>Vetted local vendors</span></div></div>
+        <div class="row hover"><span class="tile">◈</span><div><b>Local Experts</b><span>People who live there</span></div></div>
+        <div class="row"><span class="tile">◇</span><div><b>Trip Planners</b><span>End-to-end itineraries</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="note">same open/close + keyboard logic as before the reskin — restyled shell only</div>
+</div>
+
+<div class="frame">
+  <h2>Your Trip strip — 44px, ground, hairline; the strip eyebrow is chrome coral #2 of 3</h2>
+  <div class="shell">
+    <div class="strip">
+      <span class="eb">Your Trip</span>
+      <span class="name">Your trip</span>
+      <span class="chip">Kyoto, Japan</span>
+      <span class="chip">Oct 12 → Oct 18</span>
+      <span class="chip">2 travelers</span>
+      <span class="chip cart"><span class="ico">🛒</span> 3 · <span class="amt">$1,240</span></span>
+      <span class="editbtn">Edit trip ›</span>
+    </div>
+  </div>
+  <div class="note">chips mono on --earn-chip · cart chip = the cart action (teal border/icon, $ in --earn-teal-ink), data source unchanged (cart-backed; semantics change when cart-is-slip lands, not here) · Edit navy-outline small</div>
+</div>
+
+<div class="frame">
+  <h2>Footer — the white card closing the page (hairline top; mono logo in --earn-muted)</h2>
+  <div class="shell" style="background:var(--earn-card)">
+    <div class="footer">
+      <div class="fgrid">
+        <div class="fbrand">
+          <span class="logo"><span class="glyph">✈</span><b>TRAVELOURE</b></span>
+          <p>Experience personalized travel planning with insider knowledge from local experts and trip planners.</p>
+          <div class="social"><span class="stile">f</span><span class="stile">𝕏</span><span class="stile">◎</span></div>
+        </div>
+        <div class="fcol"><h3>Product</h3><a>Plan an Experience</a><a class="hover">Marketplace</a><a>Talk to Experts</a><a>Pricing</a></div>
+        <div class="fcol"><h3>Company</h3><a>About Us</a><a>Ways to Earn</a><a>Careers</a><a>Press</a></div>
+        <div class="fcol"><h3>Support</h3><a>Help Center</a><a>Contact Us</a><a>Privacy Policy</a><a>FAQ</a></div>
+      </div>
+      <div class="legal"><span>© 2026 Traveloure. All rights reserved.</span><span>English (US) · USD ($)</span></div>
+    </div>
+  </div>
+  <div class="note">column eyebrows mono uppercase --earn-muted · links Inter with teal-underline hover · legal line mono --earn-faint · columns/link set unchanged from pre-reskin</div>
+</div>
+
+</body>
+</html>
