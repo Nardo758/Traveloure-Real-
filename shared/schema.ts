@@ -7926,11 +7926,40 @@ export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
   targetAudience: text("target_audience"),
   notFor: text("not_for"),
   seasonality: jsonb("seasonality").default([]), // array of knowledgeSeasonEnum
+
+  // ── Gem-promotion candidate path (2026-08-29-replit-gem-audit ruling 4; migration 262) ──
+  // A nugget PROPOSED as a hidden gem enters the admin review + scoring queue.
+  // Vocabulary is the §10 shared-queue set, app-enforced (NULL = never proposed;
+  // 'submitted' | 'approved' | 'rejected') — no DB CHECK (migration-181 publish-trap
+  // posture). PRIVILEGED FIELDS (§19): none of these are client-settable — they are
+  // omitted from insertLocalKnowledgeNuggetSchema, stripped in createLocalKnowledgeNugget,
+  // absent from the PATCH allowlist, and written ONLY by the propose/approve/reject
+  // handlers' atomic conditional updates. Provenance: on approval the born gem's
+  // curated_by_expert_id = this row's expert_user_id — carried through the rail,
+  // never typed in (ruling 1: no fabricated attribution).
+  promotionStatus: varchar("promotion_status", { length: 20 }),
+  promotionSubmittedAt: timestamp("promotion_submitted_at"),
+  promotionReviewedBy: varchar("promotion_reviewed_by", { length: 255 }),
+  promotionReviewedAt: timestamp("promotion_reviewed_at"),
+  promotionReviewNote: text("promotion_review_note"),
+  promotedGemId: varchar("promoted_gem_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  // §19: the promotion cluster is server-authored only — never client-settable.
+  promotionStatus: true,
+  promotionSubmittedAt: true,
+  promotionReviewedBy: true,
+  promotionReviewedAt: true,
+  promotionReviewNote: true,
+  promotedGemId: true,
+});
 export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
 export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;
 
