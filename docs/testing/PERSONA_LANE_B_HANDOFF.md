@@ -19,9 +19,20 @@ Use the fixed accounts from `docs/testing/PERSONA_JOURNEYS.md`, all with
 - Guest is a signed-out browser context.
 
 The provider has a manually seeded active `pro_monthly` membership. The Plus
-member has a manually seeded active `plus_annual` membership. There is no
-`trip_entitlements` table: the Trip Pass suite must detect and report that
-unsupported state rather than insert a guessed row.
+member has a manually seeded active `plus_annual` membership.
+
+`trip_entitlements` now EXISTS (migration 262). The seed still does not
+grant a Trip Pass row, and that is by design, not a gap: the table's sole
+writer, `grantTripPass()` (server/services/trip-entitlement.service.ts),
+requires a real Stripe-verified PaymentIntent id (§19a) and carries no
+manual/beta source vocabulary the way `plan_memberships.source` does — a
+direct seed insert would make the seed a second, unaudited writer of a
+§19a-protected column. The Trip Pass suite instead exercises the real,
+fully shipped purchase flow (`POST /api/trips/:tripId/trip-pass/purchase` +
+`.../purchase/confirm`) under the SAME Stripe-test-mode gate the checkout
+journeys already use: a real `sk_test_` key runs the full positive path and
+asserts the resulting `trip_entitlements` row; a stub key asserts the honest
+negative (no row created) rather than a guess either way.
 
 ## Suite ownership
 
@@ -122,9 +133,15 @@ plan/workspace without treating it as a travel-expert account.
    card or live-key request.
 6. Complete the test checkout and assert the UI confirmation plus the
    `service_bookings`/payment linkage in the development DB.
-7. Repeat with `persona-kyoto-trip-pass`. If no supported per-trip entitlement
-   row exists, record `UNSUPPORTED` with the schema proof and stop that branch;
-   do not manufacture `trip_entitlements`.
+7. Repeat with `persona-kyoto-trip-pass`: purchase the real Trip Pass on that
+   persona's own trip through `POST /api/trips/:tripId/trip-pass/purchase` +
+   `.../purchase/confirm` (migration 262), gated on Stripe test mode like the
+   free traveler's checkout leg. A real `sk_test_` key runs the full positive
+   path and asserts the `trip_entitlements` row (`status='active'`,
+   `source_payment_id` set to the confirmed PaymentIntent id) plus the
+   one-active-pass-per-trip rejection on a second purchase attempt; a stub
+   key asserts the honest negative (purchase fails, zero `trip_entitlements`
+   rows) — never a guessed row, per §19a.
 8. Log in as `persona-kyoto-plus`, verify active Plus state and the seeded
    Kyoto home city, and create one occasion 14 days out through the UI. Assert the
    `plan_memberships`, `users.home_city`, and `occasions` rows plus the visible
