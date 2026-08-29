@@ -1955,6 +1955,87 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(vendorList);
   });
 
+  // Admin-only offline audit export. Creator provenance is read-only: the export derives
+  // display fields from the existing nullable createdById relationship and never backfills
+  // or changes that immutable source field.
+  app.get("/api/admin/vendors/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const vendorList = await storage.getVendors();
+      const escapeCsv = (value: unknown) => {
+        let text = String(value ?? "");
+        // Prevent spreadsheet formula injection when an admin opens the export.
+        if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+      const headers = [
+        "id",
+        "name",
+        "category",
+        "description",
+        "vendor_email",
+        "phone",
+        "website",
+        "address",
+        "city",
+        "country",
+        "rating",
+        "price_range",
+        "status",
+        "created_at",
+        "updated_at",
+        "creator_name",
+        "creator_email",
+        "creator_origin",
+      ];
+      const rows = vendorList.map((vendor) => {
+        const creatorName = [vendor.createdBy?.firstName, vendor.createdBy?.lastName]
+          .filter(Boolean)
+          .join(" ");
+        const hasCreator = Boolean(vendor.createdBy);
+        return [
+          vendor.id,
+          vendor.name,
+          vendor.category,
+          vendor.description,
+          vendor.email,
+          vendor.phone,
+          vendor.website,
+          vendor.address,
+          vendor.city,
+          vendor.country,
+          vendor.rating,
+          vendor.priceRange,
+          vendor.status,
+          vendor.createdAt?.toISOString(),
+          vendor.updatedAt?.toISOString(),
+          creatorName || (hasCreator ? vendor.createdBy?.email : null) || "Unknown origin",
+          vendor.createdBy?.email || "Unknown origin",
+          hasCreator ? "Account" : "Unknown origin",
+        ].map(escapeCsv).join(",");
+      });
+      const csv = [headers.join(","), ...rows].join("\r\n") + "\r\n";
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="vendor-creator-export-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      return res.send(csv);
+    } catch (err) {
+      console.error("Admin vendor export error:", err);
+      return res.status(500).json({ message: "Failed to export vendors" });
+    }
+  });
+
   // CLAUDE.md §2/§19 gap (endpoint-auth completeness sweep, Aug 29 2026): this route was
   // `isAuthenticated`-only — any signed-in traveler could POST a live, publicly-listed vendor row
   // (`GET /api/vendors` above is fully public and `vendors.status` defaults `'active'`, so the row
