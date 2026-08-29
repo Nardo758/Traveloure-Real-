@@ -209,7 +209,40 @@ test.describe("journey-traveler — free traveler (browse -> cart -> checkout + 
     expect(listingId, `"${READY_MADE_TITLE}" must be approved+active — run supply-expert.spec.ts first`).toBeTruthy();
 
     const buyRes = await request.post(`${BASE_URL}/api/ready-made/${listingId}/purchase`);
-    if (STRIPE_UNAVAILABLE) {
+    const [existingPurchase] = await rows<{
+      id: string;
+      status: string;
+      stripe_payment_intent_id: string;
+      clone_trip_id: string | null;
+    }>(
+      `SELECT id, status, stripe_payment_intent_id, clone_trip_id
+       FROM ready_made_purchases
+       WHERE buyer_id = $1 AND ready_made_trip_id = $2
+       ORDER BY purchased_at DESC
+       LIMIT 1`,
+      [actor.id, listingId],
+    );
+
+    if (buyRes.status() === 409 && existingPurchase?.status === "cloned" && existingPurchase.clone_trip_id) {
+      const rerunBody = await buyRes.json();
+      const [cloneTrip] = await rows<{ id: string; user_id: string; title: string }>(
+        `SELECT id, user_id, title FROM trips WHERE id = $1`,
+        [existingPurchase.clone_trip_id],
+      );
+      report.record({
+        action: `re-run purchase "${READY_MADE_TITLE}" without charging twice`,
+        ui: `POST purchase status 409, cloneTripId=${rerunBody.purchase?.cloneTripId}`,
+        db: JSON.stringify({ purchase: existingPurchase, cloneTrip }),
+        verdict:
+          rerunBody.purchase?.status === "cloned" &&
+          rerunBody.purchase?.cloneTripId === existingPurchase.clone_trip_id &&
+          existingPurchase.stripe_payment_intent_id &&
+          cloneTrip?.id === existingPurchase.clone_trip_id &&
+          cloneTrip.user_id === actor.id
+            ? "PASS"
+            : "FAIL",
+      });
+    } else if (STRIPE_UNAVAILABLE) {
       // No Stripe key on the SERVER at all — the purchase attempt cannot obtain a PaymentIntent.
       const purchaseCountBefore = await scalar<string>(
         `SELECT count(*)::int FROM ready_made_purchases WHERE buyer_id = $1 AND ready_made_trip_id = $2`,
@@ -261,15 +294,38 @@ test.describe("journey-traveler — free traveler (browse -> cart -> checkout + 
       });
       expect(confirmRes.status(), `confirm failed: ${await confirmRes.text()}`).toBe(200);
       const confirmBody = await confirmRes.json();
-      const [purchaseRow] = await rows<{ status: string; stripe_payment_intent_id: string }>(
-        `SELECT status, stripe_payment_intent_id FROM ready_made_purchases WHERE buyer_id = $1 AND ready_made_trip_id = $2`,
+      const [purchaseRow] = await rows<{
+        status: string;
+        stripe_payment_intent_id: string;
+        clone_trip_id: string | null;
+      }>(
+        `SELECT status, stripe_payment_intent_id, clone_trip_id
+         FROM ready_made_purchases
+         WHERE buyer_id = $1 AND ready_made_trip_id = $2
+         ORDER BY purchased_at DESC
+         LIMIT 1`,
         [actor.id, listingId],
+      );
+      const [cloneTrip] = await rows<{ id: string; user_id: string; title: string }>(
+        `SELECT id, user_id, title FROM trips WHERE id = $1`,
+        [purchaseRow?.clone_trip_id],
       );
       report.record({
         action: `purchase "${READY_MADE_TITLE}" in Stripe test mode`,
         ui: `purchase 202 -> confirm 200, cloneTripId=${confirmBody.cloneTripId}`,
-        db: JSON.stringify(purchaseRow),
-        verdict: purchaseRow?.status === "paid" && purchaseRow?.stripe_payment_intent_id === buyBody.paymentIntentId ? "PASS" : "FAIL",
+        db: JSON.stringify({ purchase: purchaseRow, cloneTrip }),
+        verdict:
+          purchaseRow?.status === "cloned" &&
+          purchaseRow?.stripe_payment_intent_id === buyBody.paymentIntentId &&
+          purchaseRow?.clone_trip_id === confirmBody.cloneTripId &&
+          confirmBody.purchase?.status === "cloned" &&
+          confirmBody.purchase?.stripePaymentIntentId === buyBody.paymentIntentId &&
+          confirmBody.purchase?.cloneTripId === confirmBody.cloneTripId &&
+          cloneTrip?.id === confirmBody.cloneTripId &&
+          cloneTrip.user_id === actor.id &&
+          confirmBody.redirect === `/plans/${confirmBody.cloneTripId}`
+            ? "PASS"
+            : "FAIL",
       });
     }
 

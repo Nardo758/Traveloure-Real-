@@ -9,7 +9,7 @@
  */
 import { db } from "../db";
 import { users, serviceProviderForms, localExpertForms, providerServices } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 
 export interface PublishVerificationResult {
@@ -50,6 +50,7 @@ export async function resolvePublishVerification(userId: string): Promise<Publis
       })
       .from(serviceProviderForms)
       .where(eq(serviceProviderForms.userId, userId))
+      .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
       .limit(1);
 
     const identityVerified = provForm?.identityVerificationStatus === "verified";

@@ -18,6 +18,7 @@ import { adminNotifications, users, webhookEvents } from "@shared/schema";
 import { eq, and, sql, gte, inArray } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { runBackgroundJob } from "./background-job-runner";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
@@ -32,9 +33,17 @@ class AdminDigestSchedulerService {
     }
 
     // First run 5 minutes after startup so the server is fully warmed up
-    setTimeout(() => this.runDigest(), 5 * 60 * 1000);
+    setTimeout(() => {
+      void runBackgroundJob("admin-digest", () => this.runDigest()).catch((err) =>
+        console.error("[AdminDigest] scheduled pass failed:", err),
+      );
+    }, 5 * 60 * 1000);
 
-    this.timer = setInterval(() => this.runDigest(), CHECK_INTERVAL_MS);
+    this.timer = setInterval(() => {
+      void runBackgroundJob("admin-digest", () => this.runDigest()).catch((err) =>
+        console.error("[AdminDigest] scheduled pass failed:", err),
+      );
+    }, CHECK_INTERVAL_MS);
     console.log("[AdminDigest] Scheduler started — digest runs every 24 hours");
   }
 

@@ -1305,4 +1305,9 @@ export const MIGRATION_FILES = [
   // Backfills every pre-existing row to 'stripe' (correct: the only writer before this
   // lane was the Stripe-verified confirm path). Declared in shared/schema.ts.
   "264_trip_entitlement_source.sql",
+  // 265: creator provenance on vendors — server-authored created_by_id from the authenticated
+  // session. Additive-nullable with no backfill; NULL means legacy origin is unknown.
+  // Renumbered from 264 during merge with main — 264 was claimed by
+  // 264_trip_entitlement_source.sql.
+  "265_vendor_creation_provenance.sql",
 ] as const;

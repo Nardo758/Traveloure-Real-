@@ -39,6 +39,7 @@ import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
+import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -1946,12 +1947,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Vendors Routes
   app.get("/api/vendors", async (req, res) => {
-    const { category, city } = req.query;
+    const { category, city, createdById } = req.query;
     const vendorList = await storage.getVendors(
       category as string | undefined, 
-      city as string | undefined
+      city as string | undefined,
+      createdById as string | undefined,
     );
     res.json(vendorList);
+  });
+
+  // Admin-only offline audit export. Creator provenance is read-only: the export derives
+  // display fields from the existing nullable createdById relationship and never backfills
+  // or changes that immutable source field.
+  app.get("/api/admin/vendors/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const vendorList = await storage.getVendors();
+      const csv = formatVendorAuditCsv(vendorList);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="vendor-creator-export-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      return res.send(csv);
+    } catch (err) {
+      console.error("Admin vendor export error:", err);
+      return res.status(500).json({ message: "Failed to export vendors" });
+    }
   });
 
   // CLAUDE.md §2/§19 gap (endpoint-auth completeness sweep, Aug 29 2026): this route was
@@ -1965,7 +1996,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/vendors", isAuthenticated, isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
-      const vendor = await storage.createVendor(input);
+      const creatorId = getUserId(req);
+      if (!creatorId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      // Creator provenance is immutable application metadata: it comes from the authenticated
+      // session, never from request JSON. insertVendorSchema also omits createdById defensively.
+      const vendor = await storage.createVendor({ ...input, createdById: creatorId });
       res.status(201).json(vendor);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2166,7 +2203,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const form = await storage.getServiceProviderForm(userId);
-    res.json(form || null);
+    const [userRow] = await db
+      .select({
+        providerVerificationStatus: users.providerVerificationStatus,
+        backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    // The application row carries identity/business verification; the account row
+    // carries the separate category/background gate. Return both from the same
+    // canonical application read so seed reports and provider clients can compare
+    // one complete verification state.
+    res.json(
+      form
+        ? {
+            ...form,
+            providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+            backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
+          }
+        : null,
+    );
   });
 
   // Submit provider application
@@ -2325,9 +2382,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
+      const [form] = await db
+        .select()
+        .from(serviceProviderForms)
+        .where(eq(serviceProviderForms.userId, userId))
+        .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
+        .limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
+      const [userRow] = await db
+        .select({
+          providerVerificationStatus: users.providerVerificationStatus,
+          backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
       const steps = [
         {
@@ -2385,6 +2455,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         businessVerificationStatus: bizStatus,
         businessCountry: (form as any)?.businessCountry,
+        providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
         form: form ? {
           id: form.id,
           status: form.status,

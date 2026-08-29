@@ -58,3 +58,4 @@
 - [Bento card-shell ownership](bento-card-shell-ownership.md) — spanning Bento grid items own the visual shell; cards inside retain only content and interaction semantics.
 - [Post-login Playwright handoff](post-login-playwright-handoff.md) — URL-based login helpers can resolve before the destination document is ready; live-data tests must wait for document readiness.
 - [Expert search field contract](expert-search-field-contract.md) — destination URLs hydrate Where only; What stays independent free text filtering within the scoped results.
+- [Background scheduler resilience](background-scheduler-resilience.md) — claim timers before first runs, cap aggregate concurrency, retry transient DB failures only, and never leak health clients.

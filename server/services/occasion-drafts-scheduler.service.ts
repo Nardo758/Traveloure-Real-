@@ -11,6 +11,7 @@
  * Matches the ~17 existing in-process schedulers started in server/index.ts onServerReady().
  */
 import { runOccasionDrafts, type RunOccasionDraftsResult } from "./occasion-drafts.service";
+import { runBackgroundJob } from "./background-job-runner";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily — occasion windows are day-scale
 const FIRST_RUN_DELAY_MS = 110 * 60 * 1000; // ~110 min after startup, behind the heavier daily jobs
@@ -35,8 +36,16 @@ class OccasionDraftsSchedulerService {
       return;
     }
     console.log("[OccasionDrafts] Starting occasion drafts scheduler (defense-in-depth; endpoint is authoritative)");
-    setTimeout(() => { void this.runOnce(); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { void this.runOnce(); }, CHECK_INTERVAL_MS);
+    setTimeout(() => {
+      void runBackgroundJob("occasion-drafts", () => this.runOnce()).catch((err) =>
+        console.error("[OccasionDrafts] scheduled pass failed:", err),
+      );
+    }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => {
+      void runBackgroundJob("occasion-drafts", () => this.runOnce()).catch((err) =>
+        console.error("[OccasionDrafts] scheduled pass failed:", err),
+      );
+    }, CHECK_INTERVAL_MS);
     console.log(`[OccasionDrafts] Scheduled to run every ${CHECK_INTERVAL_MS / (60 * 60 * 1000)} hours`);
   }
 
