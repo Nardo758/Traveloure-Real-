@@ -20,6 +20,20 @@
  * (assertCheckoutCommittedNothing); for ready-made/trip-pass purchase — NEITHER of which was
  * part of ruling 38's rewrite — it is whatever the endpoint actually returns for an
  * unauthenticated-with-Stripe key, asserted honestly and logged as a FINDING rather than assumed.
+ *
+ * TWO DIFFERENT "Stripe available" SIGNALS, THREE REAL STATES (run #8 finding): `STRIPE_UNAVAILABLE`
+ * reflects whether the SERVER has a working key (env-driven, JOURNEY_STRIPE_UNAVAILABLE — accurate
+ * in any CI). `hasStripeTestKey()` resolves the LITERAL key value for THIS TEST PROCESS to act as
+ * the customer and confirm a PaymentIntent — but it does so only via the Replit dev connector
+ * (scripts/dev-stripe-key.cjs, needs REPLIT_CONNECTORS_HOSTNAME), which is unreachable from GitHub
+ * Actions, so it is ALWAYS false there regardless of what the server's own STRIPE_SECRET_KEY is.
+ * The ready-made purchase and Trip Pass legs branch on BOTH, in order: STRIPE_UNAVAILABLE selects
+ * whether the purchase-initiation call itself can succeed at all (server has a key); within "yes",
+ * hasStripeTestKey() selects whether this process can go on to CONFIRM it (full positive path) or
+ * must stop at the honest intermediate state — 202 + a real PaymentIntent id, nothing yet marked
+ * paid/granted because confirmation never ran (§19a). Checkout's own gate only ever needed
+ * STRIPE_UNAVAILABLE (its positive assertion stops at "a PaymentIntent was authorized", never
+ * confirms one), which is why it never hit this.
  */
 import { test, expect } from "@playwright/test";
 import crypto from "node:crypto";
@@ -92,22 +106,34 @@ test.describe("journey-traveler — free traveler (browse -> cart -> checkout + 
     });
 
     // ── Step 3: browse Kyoto supply, assert the named service's card + CTA ───────────────────
+    // Run #8 finding: this previously navigated to `/discover/location/:city`
+    // (client/src/pages/discover-location.tsx, the Kyoto-SCOPED city feed) and checked
+    // `text-page-title`/`card-service-*` — testids that belong to the DIFFERENT `/services`
+    // page (discover.tsx). Same wrong-page mistake journey-guest.spec.ts made and fixed
+    // (see that file's header). And per that same fix, the unfiltered `/services` browse is
+    // sorted by rating with a 12-row page against ~35 other seeded provider_services, so a
+    // brand-new zero-rating fixture isn't guaranteed a page-1 slot either — searched by name
+    // (`?q=`) instead, exactly like journey-guest's step 3.
     const svcRow = await scalar<string>(
       `SELECT id FROM provider_services WHERE service_name = $1 AND approval_status = 'approved' AND status = 'active' LIMIT 1`,
       [PROVIDER_SERVICE_NAME],
     );
-    await page.goto(`${BASE_URL}/discover/location/${encodeURIComponent(KYOTO)}`);
+    await page.goto(`${BASE_URL}/services?q=${encodeURIComponent(PROVIDER_SERVICE_NAME)}`);
     await page.waitForLoadState("networkidle");
     await checkpoint(page, "journey-traveler-free-discover");
     const titleVisible = await page.getByTestId("text-page-title").isVisible().catch(() => false);
     const cardVisible = svcRow
-      ? await page.getByTestId(`card-service-${svcRow}`).isVisible({ timeout: 10_000 }).catch(() => false)
+      ? await page
+          .getByTestId(`card-service-${svcRow}`)
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false)
       : false;
     report.record({
-      action: `browse Kyoto surfaces, assert "${PROVIDER_SERVICE_NAME}" card is present`,
+      action: `browse Kyoto surfaces, assert "${PROVIDER_SERVICE_NAME}" card is present (by name search)`,
       ui: `text-page-title=${titleVisible}, card-service-${svcRow}=${cardVisible}`,
       db: svcRow ? `provider_services.id=${svcRow} approved+active` : "service not found — supply-provider must run first",
-      verdict: svcRow && titleVisible ? "PASS" : "FAIL",
+      verdict: svcRow && titleVisible && cardVisible ? "PASS" : "FAIL",
     });
 
     // ── Step 4: add the named service to the trip and route it to checkout (the established
@@ -183,19 +209,47 @@ test.describe("journey-traveler — free traveler (browse -> cart -> checkout + 
     expect(listingId, `"${READY_MADE_TITLE}" must be approved+active — run supply-expert.spec.ts first`).toBeTruthy();
 
     const buyRes = await request.post(`${BASE_URL}/api/ready-made/${listingId}/purchase`);
-    if (!hasStripeTestKey()) {
+    if (STRIPE_UNAVAILABLE) {
+      // No Stripe key on the SERVER at all — the purchase attempt cannot obtain a PaymentIntent.
       const purchaseCountBefore = await scalar<string>(
         `SELECT count(*)::int FROM ready_made_purchases WHERE buyer_id = $1 AND ready_made_trip_id = $2`,
         [actor.id, listingId],
       );
       report.record({
-        action: `purchase "${READY_MADE_TITLE}" without a Stripe test key`,
+        action: `purchase "${READY_MADE_TITLE}" without a Stripe key on the server`,
         ui: `POST purchase status ${buyRes.status()}`,
         db: `ready_made_purchases count=${purchaseCountBefore} (expected 0 — nothing committed without a PaymentIntent)`,
         verdict: !buyRes.ok() && Number(purchaseCountBefore) === 0 ? "EXTERNAL" : "FAIL",
         note:
           "FINDING: unlike /api/checkout (ruling 38), the ready-made purchase route is not yet wired to the " +
           "declared-503 payment_unavailable contract — it fails with whatever Stripe's SDK raises on a stub key.",
+      });
+    } else if (!hasStripeTestKey()) {
+      // Run #8 finding: the SERVER has a real Stripe key here (STRIPE_UNAVAILABLE is false — a
+      // genuine PaymentIntent gets created, 202 Accepted), but `hasStripeTestKey()` resolves the
+      // LITERAL key value only via the Replit dev connector (scripts/dev-stripe-key.cjs, needs
+      // REPLIT_CONNECTORS_HOSTNAME) — unreachable from a GitHub Actions runner, so it is always
+      // false here regardless of the server's own key. This test process therefore cannot act as
+      // the "customer" and confirm the PaymentIntent itself. The honest, asserted-not-guessed
+      // state for THIS combination is distinct from the no-key case above: purchase-initiation
+      // succeeds server-side, and nothing is marked paid because confirmation never ran — exactly
+      // the §19a posture (never mark a purchase paid without a Stripe-verified PaymentIntent).
+      const paidCountBefore = await scalar<string>(
+        `SELECT count(*)::int FROM ready_made_purchases WHERE buyer_id = $1 AND ready_made_trip_id = $2 AND status = 'paid'`,
+        [actor.id, listingId],
+      );
+      const buyBody = buyRes.ok() ? await buyRes.json().catch(() => null) : null;
+      report.record({
+        action: `purchase "${READY_MADE_TITLE}" initiated (server has a Stripe key; this CI runner cannot confirm the PaymentIntent as a customer would)`,
+        ui: `POST purchase status ${buyRes.status()}, paymentIntentId present=${Boolean(buyBody?.paymentIntentId)}`,
+        db: `ready_made_purchases status='paid' count=${paidCountBefore} (expected 0 — never marked paid without a confirmed PaymentIntent, §19a)`,
+        verdict: buyRes.status() === 202 && Boolean(buyBody?.paymentIntentId) && Number(paidCountBefore) === 0 ? "EXTERNAL" : "FAIL",
+        note:
+          "hasStripeTestKey() only resolves a literal key via the Replit dev connector, which is unreachable in " +
+          "GitHub Actions — so it is always false in CI independent of whether the server's own STRIPE_SECRET_KEY " +
+          "is real. STRIPE_UNAVAILABLE (server-side, env-driven) is the correct signal for whether the purchase " +
+          "attempt itself should succeed; this branch asserts the server-succeeds-but-unconfirmed state honestly " +
+          "instead of assuming the no-key failure shape.",
       });
     } else {
       expect(buyRes.status(), `ready-made purchase failed: ${await buyRes.text()}`).toBe(202);
@@ -240,13 +294,14 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
 
     const purchaseRes = await request.post(`${BASE_URL}/api/trips/${tripId}/trip-pass/purchase`);
 
-    if (!hasStripeTestKey()) {
+    if (STRIPE_UNAVAILABLE) {
+      // No Stripe key on the SERVER at all — the purchase attempt cannot obtain a PaymentIntent.
       const entitlementCount = await scalar<string>(
         `SELECT count(*)::int FROM trip_entitlements WHERE trip_id = $1`,
         [tripId],
       );
       report.record({
-        action: "Trip Pass purchase without a Stripe test key",
+        action: "Trip Pass purchase without a Stripe key on the server",
         ui: `POST purchase status ${purchaseRes.status()}`,
         db: `trip_entitlements count=${entitlementCount} (expected 0)`,
         verdict: !purchaseRes.ok() && Number(entitlementCount) === 0 ? "EXTERNAL" : "FAIL",
@@ -254,6 +309,36 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
           "Stripe declared unavailable — the real grant path (grantTripPass, §19a) requires a Stripe-verified " +
           "PaymentIntent and this run has none, so no trip_entitlements row is created. This IS the seed's " +
           "documented posture (scripts/seed-personas.ts header), exercised live here instead of faked.",
+      });
+      report.write();
+      expect(report.hasFailures).toBe(false);
+      return;
+    }
+
+    if (!hasStripeTestKey()) {
+      // Run #8 finding (mirrors the ready-made purchase branch above): the SERVER has a real
+      // Stripe key here (STRIPE_UNAVAILABLE is false — a genuine PaymentIntent gets created, 202
+      // Accepted), but hasStripeTestKey() only resolves the literal key via the Replit dev
+      // connector (unreachable in GitHub Actions), so this test process cannot confirm the
+      // PaymentIntent as the customer would. The honest state: purchase-initiation succeeds
+      // server-side, and no trip_entitlements row exists because grantTripPass (§19a) never runs
+      // without a Stripe-verified confirm — asserted directly instead of assuming the no-key
+      // failure shape that STRIPE_UNAVAILABLE (not hasStripeTestKey()) actually gates.
+      const entitlementCount = await scalar<string>(
+        `SELECT count(*)::int FROM trip_entitlements WHERE trip_id = $1`,
+        [tripId],
+      );
+      const purchaseBody = purchaseRes.ok() ? await purchaseRes.json().catch(() => null) : null;
+      report.record({
+        action: "Trip Pass purchase initiated (server has a Stripe key; this CI runner cannot confirm the PaymentIntent as a customer would)",
+        ui: `POST purchase status ${purchaseRes.status()}, paymentIntentId present=${Boolean(purchaseBody?.paymentIntentId)}`,
+        db: `trip_entitlements count=${entitlementCount} (expected 0 — grantTripPass never runs without a confirmed PaymentIntent, §19a)`,
+        verdict: purchaseRes.status() === 202 && Boolean(purchaseBody?.paymentIntentId) && Number(entitlementCount) === 0 ? "EXTERNAL" : "FAIL",
+        note:
+          "hasStripeTestKey() only resolves a literal key via the Replit dev connector, which is unreachable in " +
+          "GitHub Actions — so it is always false in CI independent of whether the server's own STRIPE_SECRET_KEY " +
+          "is real. STRIPE_UNAVAILABLE (server-side, env-driven) is the correct signal for whether the purchase " +
+          "attempt itself should succeed.",
       });
       report.write();
       expect(report.hasFailures).toBe(false);
@@ -362,13 +447,26 @@ test.describe("journey-traveler — Plus member", () => {
       [actor.id, occasionDateStr],
     );
     const listItemVisible = occasionRow
-      ? await page.getByTestId(`occasion-${occasionRow.id}`).isVisible({ timeout: 10_000 }).catch(() => false)
+      ? await page
+          .getByTestId(`occasion-${occasionRow.id}`)
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false)
       : false;
+    // Run #8 finding: `occasion_date` is a `date`-typed column — node-postgres parses it into a
+    // real JS `Date` object, not a string. `String(dateObject)` calls `.toString()` (the locale
+    // form, e.g. "Fri Sep 12 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"), which never
+    // starts with "YYYY-MM-DD" — so this comparison failed on every genuinely-correct row,
+    // deterministically, regardless of the underlying data (the `db` field above looked right
+    // only because `JSON.stringify` calls the Date's `.toJSON()`, a different method, which DOES
+    // produce the ISO form). Re-parsing through `new Date(...)` before formatting works whether
+    // the driver hands back a Date or a string.
+    const occasionDateActual = occasionRow?.occasion_date ? new Date(occasionRow.occasion_date).toISOString().slice(0, 10) : null;
     report.record({
       action: "add one occasion 14 days out through the UI",
       ui: existing ? "reused an existing occasion (idempotent re-run)" : `filled the Add-occasion form, occasion-${occasionRow?.id} visible=${listItemVisible}`,
       db: JSON.stringify(occasionRow),
-      verdict: occasionRow?.template_key === "birthday" && String(occasionRow?.occasion_date).startsWith(occasionDateStr) ? "PASS" : "FAIL",
+      verdict: occasionRow?.template_key === "birthday" && occasionDateActual === occasionDateStr ? "PASS" : "FAIL",
     });
 
     const dupeCount = await scalar<string>(
