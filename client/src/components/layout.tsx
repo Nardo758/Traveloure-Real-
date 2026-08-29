@@ -147,6 +147,16 @@ const authNavItems = authNavConfig.map((item) => ({
 // ── WCAG 2.1 AA: focus-ring helper shared by all interactive nav elements ──
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:rounded";
 
+// ── Chrome earn grammar (ruling 2026-08-28-chrome-alignment, Variant A) ──
+// Chrome sits on --earn-ground; white is reserved for cards; hairlines do all
+// separation. Geist Mono for nav links/eyebrows/counts, Inter for buttons and
+// trip name, Fraunces nowhere in chrome. Reskin only: every testid, href,
+// handler and open/close behavior below is unchanged.
+const CHROME_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const CHROME_LINK_REST = "text-[color:var(--earn-ink)] hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2";
+const CHROME_LINK_ACTIVE = "text-[color:var(--earn-teal-ink)] underline underline-offset-2";
+const CHROME_EYEBROW = "text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]";
+
 function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
   const { t } = useTranslation("nav");
   // A config entry with no i18nKey renders English in every locale — the documented migration
@@ -236,12 +246,11 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       <Link
         href={item.href || "#"}
         className={cn(
-          "text-sm font-medium transition-colors px-3 py-2 relative hover-elevate rounded-md",
+          "text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 relative rounded-md",
           FOCUS_RING,
-          isActive
-            ? "text-primary after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-primary after:rounded-full"
-            : "text-muted-foreground"
+          isActive ? CHROME_LINK_ACTIVE : CHROME_LINK_REST
         )}
+        style={{ fontFamily: CHROME_MONO }}
         // TEST 5 — aria-current for active page
         aria-current={isActive ? "page" : undefined}
         data-testid={`link-nav-${slugify(item.name)}`}
@@ -266,9 +275,11 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       <button
         ref={triggerRef}
         className={cn(
-          "flex items-center text-sm font-medium text-muted-foreground hover-elevate transition-colors px-3 py-2 rounded-md",
+          "flex items-center text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 rounded-md",
+          CHROME_LINK_REST,
           FOCUS_RING
         )}
+        style={{ fontFamily: CHROME_MONO }}
         type="button"
         aria-expanded={isOpen}
         aria-haspopup="true"
@@ -277,7 +288,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
         data-testid={`button-nav-dropdown-${slugify(item.name)}`}
       >
         {tr(item.i18nKey, item.name)}
-        <ChevronDown className={cn("ml-1 w-4 h-4 transition-transform", isOpen && "rotate-180")} aria-hidden="true" />
+        <ChevronDown className={cn("ml-1 w-4 h-4 transition-transform text-[color:var(--earn-faint)]", isOpen && "rotate-180")} aria-hidden="true" />
       </button>
 
       <AnimatePresence>
@@ -290,7 +301,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             className={cn(
-              "absolute top-full mt-0 pt-1 bg-card border border-border rounded-lg shadow-xl z-50",
+              "absolute top-full mt-0 pt-1 rounded-lg border shadow-xl z-50 bg-[color:var(--earn-card)] border-[color:var(--earn-border)]",
               sections.length > 2
                 ? "w-[800px]"
                 : "left-0 w-72"
@@ -305,32 +316,40 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             )}>
               {sections.map((section, sIdx) => (
                 <div key={section.title} className={sections.length > 2 ? "px-2" : ""}>
-                  {sIdx > 0 && sections.length <= 2 && <div className="border-t border-border my-2" />}
+                  {sIdx > 0 && sections.length <= 2 && <div className="border-t border-[color:var(--earn-border)] my-2" />}
                   {/* TEST 5 — section titles are decorative, hide from SR */}
                   <div
                     className={cn(
-                      "text-xs font-semibold text-muted-foreground uppercase tracking-wide",
-                      sections.length > 2 ? "px-2 py-2 border-b border-border mb-1" : "px-4 py-2"
+                      CHROME_EYEBROW,
+                      sections.length > 2 ? "px-2 py-2 border-b border-[color:var(--earn-border)] mb-1" : "px-4 py-2"
                     )}
+                    style={{ fontFamily: CHROME_MONO }}
                     aria-hidden="true"
                   >
                     {tr(section.i18nKey, section.title)}
                   </div>
                   {section.items.map((child) => {
                     const sharedClass = cn(
-                      "flex items-start gap-2 text-sm hover-elevate transition-colors group rounded-md w-full text-left",
+                      "flex items-start gap-2 text-sm transition-colors group rounded-md w-full text-left hover:bg-[color:var(--earn-teal-wash)]",
                       FOCUS_RING,
                       sections.length > 2 ? "px-2 py-2" : "px-4 py-2.5 gap-3"
                     );
                     const inner = (
                       <>
-                        {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />}
+                        {child.icon && (
+                          <span
+                            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[color:var(--earn-teal-wash)]"
+                            aria-hidden="true"
+                          >
+                            <child.icon className="w-3.5 h-3.5 text-[color:var(--earn-teal-ink)]" />
+                          </span>
+                        )}
                         <div className="min-w-0">
-                          <div className="text-foreground font-medium truncate">
+                          <div className="text-[color:var(--earn-ink)] font-medium truncate">
                             {tr(child.i18nKey, child.name)}
                           </div>
                           {child.description && sections.length <= 2 && (
-                            <div className="text-xs text-muted-foreground">{child.description}</div>
+                            <div className="text-xs text-[color:var(--earn-muted)]">{child.description}</div>
                           )}
                         </div>
                       </>
@@ -367,8 +386,8 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             </div>
 
             {item.name === "Experiences" && recentCities.length > 0 && (
-              <div className="border-t border-border mx-4 pt-3 pb-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">
+              <div className="border-t border-[color:var(--earn-border)] mx-4 pt-3 pb-3">
+                <div className={cn("flex items-center gap-1.5 mb-2 px-1", CHROME_EYEBROW)} style={{ fontFamily: CHROME_MONO }}>
                   <Clock className="w-3 h-3" aria-hidden="true" />
                   Recently Viewed
                 </div>
@@ -379,7 +398,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                       href={`/discover/location/${encodeURIComponent(c.slug)}`}
                       role="menuitem"
                       className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-muted hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors hover-elevate",
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-[color:var(--earn-chip)] text-[color:var(--earn-muted)] hover:bg-[color:var(--earn-teal-wash)] hover:text-[color:var(--earn-teal-ink)] transition-colors",
                         FOCUS_RING
                       )}
                       data-testid={`link-recent-city-${c.slug}`}
@@ -499,10 +518,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <nav
         ref={navRef}
         aria-label={t("mainNavigation")}
-        className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm"
+        className="border-b border-[color:var(--earn-border)] sticky top-0 z-50"
+        style={{ background: "var(--earn-ground)" }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16">
+          <div className="flex h-[60px]">
             <div className="flex items-center flex-1 min-w-0">
               {/* TEST 3 — Logo link: aria-label describes destination for screen readers */}
               <Link
@@ -512,7 +532,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 data-testid="link-logo"
               >
                 <TraveloureLogo className="h-[26px]" />
-                <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20" aria-hidden="true">
+                <span
+                  className="px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] rounded-full border"
+                  style={{
+                    fontFamily: CHROME_MONO,
+                    background: "var(--earn-coral-bg)",
+                    borderColor: "var(--earn-coral-border)",
+                    color: "var(--earn-coral-ink)",
+                  }}
+                  aria-hidden="true"
+                >
                   BETA
                 </span>
               </Link>
@@ -534,12 +563,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1 text-sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid="button-become-expert-nav"
+                        className="gap-1 text-sm border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] bg-transparent hover:bg-[color:var(--earn-navy)] hover:text-white"
+                      >
                         {t("joinAsPartner")}
-                        <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                        <ChevronDown className="w-3.5 h-3.5 text-[color:var(--earn-faint)]" aria-hidden="true" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-72 p-2">
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-72 p-2 bg-[color:var(--earn-card)] border-[color:var(--earn-border)]"
+                    >
                       {[
                         // `label` stays English: it is the React key AND the source of the
                         // `link-partner-*` testid. Only `k` drives what the user reads.
@@ -551,13 +588,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       ].map(({ label, k, href, icon: Icon }) => (
                         <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
                           <Link href={href} data-testid={`link-partner-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
-                            <div className="flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-muted w-full cursor-pointer">
-                              <div className="mt-0.5 w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                <Icon className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                            <div className="flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-[color:var(--earn-teal-wash)] w-full cursor-pointer">
+                              <div className="mt-0.5 w-7 h-7 rounded-lg bg-[color:var(--earn-teal-wash)] flex items-center justify-center flex-shrink-0">
+                                <Icon className="w-3.5 h-3.5 text-[color:var(--earn-teal-ink)]" aria-hidden="true" />
                               </div>
                               <div>
-                                <p className="text-sm font-medium text-foreground">{t(`partner.${k}`)}</p>
-                                <p className="text-xs text-muted-foreground leading-snug mt-0.5">{t(`partner.${k}Desc`)}</p>
+                                <p className="text-sm font-medium text-[color:var(--earn-ink)]">{t(`partner.${k}`)}</p>
+                                <p className="text-xs text-[color:var(--earn-muted)] leading-snug mt-0.5">{t(`partner.${k}Desc`)}</p>
                               </div>
                             </div>
                           </Link>
@@ -567,7 +604,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </DropdownMenu>
                   <Button
                     size="sm"
-                    className="text-sm"
+                    className="text-sm text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
                     onClick={() => openSignInModal()}
                     data-testid="button-sign-in"
                   >
