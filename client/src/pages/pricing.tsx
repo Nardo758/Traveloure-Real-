@@ -154,7 +154,12 @@ export default function PricingPage() {
       ],
       cta: "Get a Trip Pass",
       variant: "coral" as const,
-      onClick: () => stub("Trip Pass"),
+      onClick: () => {
+        // Ruling 2026-08-29-trip-pass: a pass attaches to ONE trip, so the CTA routes to
+        // My Plans (pick a trip -> its slip carries the purchase) instead of a stub.
+        toast({ title: "Trip Pass", description: "Pick a trip — the pass attaches to one trip from its plan page." });
+        user ? setLocation("/dashboard") : openSignInModal();
+      },
       testid: "trip-pass",
     },
     {

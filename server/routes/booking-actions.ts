@@ -13,7 +13,7 @@ import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
-import { isTripAdvisor, isTripAdvisorWithWriteAccess, TRIP_ADVISOR_ACCESS_STATUSES } from '../utils/trip-advisor';
+import { isTripAdvisor, isTripAdvisorWithWriteAccess, TRIP_ADVISOR_ACCESS_STATUSES, tripAdvisorStatusGrantsAccess } from '../utils/trip-advisor';
 import { logItemTransition } from '../services/item-transition-log.service';
 import { getUserId } from '../utils/auth';
 import { sanitizeInput } from '../utils/sanitize';
@@ -1584,7 +1584,13 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const { tripId } = req.params;
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
-    if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+    // §12 same-class fix: existence alone let a REJECTED advisor read commission figures.
+    // Deliberately the READ predicate, not the write one — this is a read surface, and §12
+    // keeps `pending` on read surfaces (an invited expert previewing the gig before accepting);
+    // only rejected/unknown statuses now fall through. Flagged for decision-maker confirmation.
+    if (!assignment || !tripAdvisorStatusGrantsAccess(assignment.status)) {
+      return res.status(403).json({ message: "Not assigned to this trip" });
+    }
 
     const allItems = await storage.getItineraryItems(tripId);
     const CONFIRMED_STATUSES = ["planned", "confirmed", "in_progress", "booked"];
