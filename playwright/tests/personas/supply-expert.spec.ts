@@ -135,8 +135,35 @@ test.describe("supply-expert — Gion local expert", () => {
     });
 
     // ── Create the two services via the live wizard ──────────────────────────────────────────
+    // Run #9 finding: this loop used to drive the wizard UNCONDITIONALLY on every invocation,
+    // unlike the trip-planner test below (and supply-provider.spec.ts's OWN idempotence-pass
+    // counterpart) which already check for an existing row first. Every prior CI run died
+    // earlier in the pipeline (journey-guest/journey-traveler), so the workflow's reseed-and-
+    // rerun-everything "2/2" pass had NEVER actually been reached until 1b92e0e6 — the first run
+    // where every suite's FIRST pass went green. On that second pass this test re-drove the
+    // wizard for both names again (nothing here stops it), producing a genuine second row per
+    // name, which "re-run is idempotent" (below) correctly caught as a real duplicate. Same
+    // check-before-create pattern as the ready-made listing further down in this file.
     const serviceIds: Record<string, string> = {};
     for (const svc of EXPERT_SERVICES) {
+      // Any existing row by name (not scoped to approved+active) — matches exactly what the
+      // "re-run is idempotent" test below counts, so a not-yet-approved row from a prior
+      // partial attempt is also correctly treated as "already exists", never re-created.
+      let svcRow = await scalar<string>(
+        `SELECT id FROM provider_services WHERE user_id = $1 AND service_name = $2 ORDER BY created_at DESC LIMIT 1`,
+        [actor.id, svc.name],
+      );
+      if (svcRow) {
+        serviceIds[svc.name] = svcRow;
+        report.record({
+          action: `service "${svc.name}" already exists (idempotent re-run) — skip the wizard`,
+          ui: "n/a",
+          db: `provider_services.id=${svcRow}`,
+          verdict: "PASS",
+        });
+        continue;
+      }
+
       await page.goto(`${BASE_URL}/expert/services/new`);
       await page.waitForLoadState("networkidle");
       const clicked = await driveServiceFormToSubmit(
@@ -147,7 +174,7 @@ test.describe("supply-expert — Gion local expert", () => {
       await page.waitForTimeout(1_500);
       await checkpoint(page, `supply-expert-service-${svc.name.replace(/\s+/g, "-")}`);
 
-      const svcRow = await scalar<string>(
+      svcRow = await scalar<string>(
         `SELECT id FROM provider_services WHERE user_id = $1 AND service_name = $2 ORDER BY created_at DESC LIMIT 1`,
         [actor.id, svc.name],
       );
