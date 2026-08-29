@@ -26,3 +26,9 @@ valid secret key.
 **client_secret mismatch variant (July 2026):** Stripe Elements error "The client_secret provided does not match any associated PaymentIntent/SetupIntent on this account" means the publishable key belongs to a DIFFERENT Stripe account (or mode) than the secret key that created the intent. The sk's account is identifiable from intent ids (e.g. `pi_3...JZ5fFY5Q8L...` ↔ acct_1OL2SOJZ5fFY5Q8L). Fix: re-copy the pk from the same account+mode as the sk. Remember VITE_ vars need a dev-server restart to be inlined.
 
 **Dev/test-mode setup (July 2026, current):** dev is guarded by server/validate-env.ts (sk_test required unless ENVIRONMENT=PROD). The Stripe connector (connection conn_stripe_…) holds a matching test pair; sandbox redacts `settings.secret` at the durable boundary, so it cannot be copied into env vars via setEnvVars (you get the literal string "[redacted]"). Working setup: dev workflow command `STRIPE_SECRET_KEY="$(node scripts/dev-stripe-key.cjs)" npm run dev` (script fetches sk_test from the connector API at launch); VITE_STRIPE_PUBLISHABLE_KEY is a dev-scoped env var (publishable isn't redacted). Users carry live-mode cus_ ids → payment routes 500 "No such customer" until nulled (task filed).
+
+**Stripe webhook environment selection (August 2026):** the installed Stripe connector can expose separate development and production connections under the same `stripe` slug. Webhook endpoint configuration must use the production connection; the development connection lists only test-mode endpoints and cannot represent the live deployment.
+
+**Why:** using the first connection returned by the connector can silently configure or inspect the wrong Stripe mode, even though the API calls succeed.
+
+**How to apply:** when configuring live webhooks, select the connection whose environment is `production`, verify `livemode: true`, and confirm the endpoint URL is the published production URL before creating or updating anything.
