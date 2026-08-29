@@ -2203,7 +2203,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const form = await storage.getServiceProviderForm(userId);
-    res.json(form || null);
+    const [userRow] = await db
+      .select({
+        providerVerificationStatus: users.providerVerificationStatus,
+        backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    // The application row carries identity/business verification; the account row
+    // carries the separate category/background gate. Return both from the same
+    // canonical application read so seed reports and provider clients can compare
+    // one complete verification state.
+    res.json(
+      form
+        ? {
+            ...form,
+            providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+            backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
+          }
+        : null,
+    );
   });
 
   // Submit provider application
@@ -2362,9 +2382,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
+      const [form] = await db
+        .select()
+        .from(serviceProviderForms)
+        .where(eq(serviceProviderForms.userId, userId))
+        .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
+        .limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
+      const [userRow] = await db
+        .select({
+          providerVerificationStatus: users.providerVerificationStatus,
+          backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
       const steps = [
         {
@@ -2422,6 +2455,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         businessVerificationStatus: bizStatus,
         businessCountry: (form as any)?.businessCountry,
+        providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
         form: form ? {
           id: form.id,
           status: form.status,

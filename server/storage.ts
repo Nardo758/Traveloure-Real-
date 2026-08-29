@@ -1841,7 +1841,14 @@ export class DatabaseStorage implements IStorage {
 
   // Service Provider Forms
   async getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined> {
-    const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId));
+    // service_provider_forms has no unique user_id constraint. Keep this canonical
+    // ordering aligned with the persona seed and publish-verification resolver.
+    const [form] = await db
+      .select()
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, userId))
+      .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
+      .limit(1);
     return form;
   }
 

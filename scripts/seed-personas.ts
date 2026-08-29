@@ -196,6 +196,10 @@ const MEMBERSHIPS: Membership[] = [
 // Deliberately minimal: only the fields resolvePublishVerification and the wizard's
 // category/derived fields need. `status` is left at its schema default ('pending') —
 // this seed stands in for Stripe Identity/KYB only, never for a human admin review.
+//
+// The forms tables do not enforce one row per user. Provider reads therefore use the
+// oldest row (created_at, then id) as the canonical application; the provider seed
+// must update that same row rather than upserting a second fixed-ID row.
 type ExpertFormSeed = {
   key: string;
   personaKey: string;
@@ -491,38 +495,53 @@ async function main(): Promise<void> {
       const persona = PERSONAS.find((p) => p.key === form.personaKey);
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
-      await tx.execute(sql`
-        INSERT INTO service_provider_forms (
-          id, user_id, business_name, name, email, mobile, country, city, address,
-          business_type, description,
-          identity_verification_status, identity_verified_at, business_verification_status,
-          created_at
-        )
-        VALUES (
-          ${`persona-kyoto-${form.key}`},
-          ${userId},
-          ${form.businessName},
-          ${`${persona.firstName} ${persona.lastName}`},
-          ${persona.email},
-          '+81-75-000-0000',
-          'Japan',
-          'Kyoto',
-          'Kyoto, Japan',
-          ${form.businessType},
-          ${persona.bio},
-          'verified',
-          ${verifiedAt},
-          'verified',
-          now()
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          business_name = EXCLUDED.business_name,
-          business_type = EXCLUDED.business_type,
-          city = EXCLUDED.city,
-          identity_verification_status = 'verified',
-          identity_verified_at = COALESCE(service_provider_forms.identity_verified_at, EXCLUDED.identity_verified_at),
-          business_verification_status = 'verified'
+      // There is no unique constraint on service_provider_forms.user_id. Resolve the
+      // same canonical row used by provider reads before inserting the fixed seed row,
+      // so a pre-existing application cannot be shadowed by a second row.
+      const existing = await tx.execute(sql`
+        SELECT id
+        FROM service_provider_forms
+        WHERE user_id = ${userId}
+        ORDER BY created_at ASC NULLS FIRST, id ASC
+        LIMIT 1
       `);
+      const existingId = existing.rows[0]?.id;
+
+      if (existingId) {
+        await tx.execute(sql`
+          UPDATE service_provider_forms
+          SET identity_verification_status = 'verified',
+              identity_verified_at = COALESCE(identity_verified_at, ${verifiedAt}),
+              business_verification_status = 'verified'
+          WHERE id = ${existingId}
+        `);
+      } else {
+        await tx.execute(sql`
+          INSERT INTO service_provider_forms (
+            id, user_id, business_name, name, email, mobile, country, city, address,
+            business_type, description,
+            identity_verification_status, identity_verified_at, business_verification_status,
+            created_at
+          )
+          VALUES (
+            ${`persona-kyoto-${form.key}`},
+            ${userId},
+            ${form.businessName},
+            ${`${persona.firstName} ${persona.lastName}`},
+            ${persona.email},
+            '+81-75-000-0000',
+            'Japan',
+            'Kyoto',
+            'Kyoto, Japan',
+            ${form.businessType},
+            ${persona.bio},
+            'verified',
+            ${verifiedAt},
+            'verified',
+            now()
+          )
+        `);
+      }
 
       // Category-level publish gate (SEPARATE from the service_provider_forms identity/business
       // verification above): client/src/components/ServiceForm.tsx's
@@ -566,15 +585,31 @@ async function main(): Promise<void> {
   `);
 
   const forms = await db.execute(sql`
-    SELECT 'expert' AS kind, u.email, lef.expert_type AS detail, lef.identity_verification_status AS identity
+    SELECT 'expert' AS kind, u.email, lef.expert_type AS detail, lef.id AS form_id,
+           lef.identity_verification_status AS identity,
+           NULL::text AS business, NULL::text AS provider_verification_status,
+           NULL::boolean AS background_check_confirmed
     FROM local_expert_forms lef
     JOIN users u ON u.id = lef.user_id
     WHERE lef.id LIKE 'persona-kyoto-%-form'
     UNION ALL
-    SELECT 'provider' AS kind, u.email, spf.business_type AS detail, spf.identity_verification_status AS identity
-    FROM service_provider_forms spf
-    JOIN users u ON u.id = spf.user_id
-    WHERE spf.id LIKE 'persona-kyoto-%-form'
+    SELECT 'provider' AS kind, u.email, spf.business_type AS detail, spf.id AS form_id,
+           spf.identity_verification_status AS identity,
+           spf.business_verification_status AS business,
+           u.provider_verification_status,
+           u.background_check_confirmed
+    FROM users u
+    JOIN LATERAL (
+      SELECT *
+      FROM service_provider_forms
+      WHERE service_provider_forms.user_id = u.id
+      ORDER BY created_at ASC NULLS FIRST, id ASC
+      LIMIT 1
+    ) spf ON true
+    WHERE u.email IN (${sql.join(PROVIDER_FORMS.map((form) => {
+      const persona = PERSONAS.find((p) => p.key === form.personaKey);
+      return sql`${persona?.email ?? ""}`;
+    }), sql`, `)})
     ORDER BY email
   `);
 
@@ -588,7 +623,12 @@ async function main(): Promise<void> {
   }
   for (const row of forms.rows) {
     console.log(
-      `SEEDED ${row.kind}_form ${row.email}: detail=${row.detail} identity_verification_status=${row.identity}`,
+      `SEEDED ${row.kind}_form ${row.email}: id=${row.form_id} detail=${row.detail} ` +
+        `identity_verification_status=${row.identity}` +
+        (row.kind === "provider"
+          ? ` business_verification_status=${row.business} provider_verification_status=${row.provider_verification_status} ` +
+            `background_check_confirmed=${row.background_check_confirmed}`
+          : ""),
     );
   }
   const providerClearance = await db.execute(sql`
