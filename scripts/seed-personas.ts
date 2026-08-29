@@ -32,6 +32,7 @@ type Persona = {
   firstName: string;
   lastName: string;
   bio: string;
+  homeCity?: string;
 };
 
 type Membership = {
@@ -97,6 +98,7 @@ const PERSONAS: Persona[] = [
     firstName: "Plus",
     lastName: "Member",
     bio: "Development persona for Plus membership and occasion delivery.",
+    homeCity: "Kyoto",
   },
 ];
 
@@ -152,9 +154,16 @@ async function resolvePersonaIds(): Promise<Map<string, string>> {
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL ?? "";
-  if (APPLY && (process.env.NODE_ENV === "production" || !looksLocal(databaseUrl))) {
+  const productionUrl = process.env.PROD_DATABASE_URL;
+  const isKnownProductionDatabase = Boolean(
+    databaseUrl && productionUrl && databaseUrl === productionUrl,
+  );
+  const isProductionRuntime =
+    process.env.NODE_ENV === "production" || process.env.ENVIRONMENT === "PROD";
+
+  if (APPLY && (isProductionRuntime || isKnownProductionDatabase)) {
     console.error(
-      "[seed-personas] REFUSED: --apply requires a local development DATABASE_URL and NODE_ENV other than production.\n" +
+      "[seed-personas] REFUSED: --apply cannot target a production runtime or the configured production database.\n" +
         "  Run without --apply first and review the report.",
     );
     process.exitCode = 2;
@@ -163,13 +172,7 @@ async function main(): Promise<void> {
 
   console.log("=== Kyoto persona seed report ===");
   console.log(`mode=${APPLY ? "apply" : "report-only"}`);
-  console.log(`database_host=${(() => {
-    try {
-      return new URL(databaseUrl).hostname || "(unset)";
-    } catch {
-      return "(unparseable)";
-    }
-  })()}`);
+  console.log(`database_target=${looksLocal(databaseUrl) ? "local-development" : "managed-development"}`);
   console.log(`persona_count=${PERSONAS.length}`);
   console.log(`supported_membership_count=${MEMBERSHIPS.length}`);
   console.log("password=TestPass123! (development test credential)");
@@ -193,12 +196,14 @@ async function main(): Promise<void> {
   const acceptedAt = new Date().toISOString();
 
   await db.transaction(async (tx) => {
+    const personaIds = new Map<string, string>();
+
     for (const persona of PERSONAS) {
-      await tx.execute(sql`
+      const result = await tx.execute(sql`
         INSERT INTO users (
           id, email, password, role, first_name, last_name, bio,
           auth_provider, terms_accepted_at, privacy_accepted_at,
-          is_deleted, is_suspended, updated_at
+          home_city, is_deleted, is_suspended, updated_at
         )
         VALUES (
           ${`persona-kyoto-${persona.key}`},
@@ -211,6 +216,7 @@ async function main(): Promise<void> {
           'email',
           ${acceptedAt},
           ${acceptedAt},
+          ${persona.homeCity ?? null},
           false,
           false,
           now()
@@ -224,13 +230,17 @@ async function main(): Promise<void> {
           auth_provider = EXCLUDED.auth_provider,
           terms_accepted_at = COALESCE(users.terms_accepted_at, EXCLUDED.terms_accepted_at),
           privacy_accepted_at = COALESCE(users.privacy_accepted_at, EXCLUDED.privacy_accepted_at),
+          home_city = EXCLUDED.home_city,
           is_deleted = false,
           is_suspended = false,
           updated_at = now()
+        RETURNING id
       `);
+      const userId = result.rows[0]?.id;
+      if (!userId) throw new Error(`Unable to resolve ${persona.key} after account upsert.`);
+      personaIds.set(persona.key, String(userId));
     }
 
-    const personaIds = await resolvePersonaIds();
     for (const membership of MEMBERSHIPS) {
       const userId = personaIds.get(membership.personaKey);
       if (!userId) throw new Error(`Unable to resolve ${membership.personaKey} after account upsert.`);

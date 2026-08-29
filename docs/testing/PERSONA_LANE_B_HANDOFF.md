@@ -125,8 +125,8 @@ plan/workspace without treating it as a travel-expert account.
 7. Repeat with `persona-kyoto-trip-pass`. If no supported per-trip entitlement
    row exists, record `UNSUPPORTED` with the schema proof and stop that branch;
    do not manufacture `trip_entitlements`.
-8. Log in as `persona-kyoto-plus`, verify active Plus state, set the Kyoto home
-   city, and create one occasion 14 days out through the UI. Assert the
+8. Log in as `persona-kyoto-plus`, verify active Plus state and the seeded
+   Kyoto home city, and create one occasion 14 days out through the UI. Assert the
    `plan_memberships`, `users.home_city`, and `occasions` rows plus the visible
    occasion state. Re-run and assert occasion idempotence.
 
