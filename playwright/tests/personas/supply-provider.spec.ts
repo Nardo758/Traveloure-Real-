@@ -159,16 +159,23 @@ test.describe("supply-provider — Kyoto provider persona", () => {
       });
     }
 
-    // ── Step 5b: both rows owned by the provider, in the product's normal approval state ────
-    const ownedRows = await rows<{ id: string; approval_status: string; status: string; price: string }>(
-      `SELECT id, approval_status, status, price FROM provider_services WHERE user_id = $1 AND service_name = ANY($2::text[])`,
+    // ── Step 5b: both named services owned by the provider, in the product's normal approval
+    //     state. Name-scoped, retry-safe (not a blanket count) — same reasoning as
+    //     supply-expert.spec.ts: a Playwright retry re-runs this whole test without deleting a
+    //     prior failed attempt's rows, so the raw row count for this user can legitimately exceed
+    //     2 without either named service actually being missing. ─────────────────────────────
+    const ownedByName = await rows<{ service_name: string; cnt: string }>(
+      `SELECT service_name, count(*)::int AS cnt FROM provider_services
+       WHERE user_id = $1 AND service_name = ANY($2::text[]) GROUP BY service_name`,
       [actor.id, SERVICES.map((s) => s.name)],
     );
+    const namesFound = new Set(ownedByName.map((r) => r.service_name));
+    const allNamesPresent = SERVICES.every((s) => namesFound.has(s.name));
     report.record({
-      action: "assert both services owned by the provider, in normal approval state",
+      action: "assert both named services are owned by the provider (name-scoped, retry-safe)",
       ui: "n/a",
-      db: JSON.stringify(ownedRows),
-      verdict: ownedRows.length === 2 ? "PASS" : "FAIL",
+      db: JSON.stringify(ownedByName),
+      verdict: allNamesPresent ? "PASS" : "FAIL",
     });
 
     // ── Step 6: save availability via the calendar UI's real endpoint, materializing slots ──
