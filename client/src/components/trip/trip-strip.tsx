@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, Calendar, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
+import { planningRouteForTrip } from "@/contexts/PlanningContext";
 
 /**
  * TripStrip — the ratified Option A global trip bar (Trip-Strip program P3).
@@ -212,8 +213,12 @@ export function TripStrip() {
               <Lock className="w-3 h-3" /> locked during payment
             </span>
           ) : ctx.tripId ? (
+            /* Ruling 2026-08-28-single-planning-entry: mid-planning continues on the
+               PLANNING surface (/plans/:tripId, the canonical slip), never the details
+               card; only a trip whose end date has passed lands on /trip/:id. Phase
+               derives from dates per ruling 2 (trips.status is dead). */
             <Link
-              href={`/trip/${ctx.tripId}`}
+              href={planningRouteForTrip(ctx.tripId, ctx.endDate)}
               className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
               data-testid="trip-strip-edit"
             >

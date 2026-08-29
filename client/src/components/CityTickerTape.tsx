@@ -1,5 +1,6 @@
 import { MapPin, Sparkles, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import "./CityTickerTape.css";
@@ -14,6 +15,7 @@ import "./CityTickerTape.css";
  * and demand rollup use. The city count is derived, never typed. No scarcity claims.
  */
 export function CityTickerTape() {
+  const { open: openPlanning } = usePlanning();
   const markets = OPERATING_MARKETS;
 
   return (
@@ -62,14 +64,15 @@ export function CityTickerTape() {
             </div>
           </div>
 
-          <Link
-            href="/experiences/travel"
+          <button
+            type="button"
+            onClick={() => openPlanning()}
             className="flex items-center gap-1 font-semibold whitespace-nowrap bg-white/20 hover-elevate px-3 py-1 rounded-full text-xs flex-shrink-0 min-h-[44px] sm:min-h-0"
             data-testid="link-apply-now"
           >
             Start planning
             <ArrowRight className="w-3 h-3" />
-          </Link>
+          </button>
         </div>
       </div>
     </div>

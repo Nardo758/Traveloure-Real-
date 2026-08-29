@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -101,6 +102,7 @@ const additionalFeatures = [
 ];
 
 export default function FeaturesPage() {
+  const { open: openPlanning } = usePlanning();
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
   }>({ queryKey: ["/api/platform/stats"] });
@@ -136,15 +138,14 @@ export default function FeaturesPage() {
               gives you all the tools to create unforgettable travel experiences.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/discover">
-                <Button
-                  size="lg"
-                  className="bg-primary hover:bg-primary/90 text-white px-8"
-                  data-testid="button-start-planning"
-                >
-                  Start Planning <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
+              <Button
+                size="lg"
+                className="bg-primary hover:bg-primary/90 text-white px-8"
+                onClick={() => openPlanning()}
+                data-testid="button-start-planning"
+              >
+                Start Planning <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
               <Link href="/experts">
                 <Button
                   size="lg"
