@@ -344,7 +344,7 @@ export async function rankAndLog(
       const lookup = await db.execute(sql`
         SELECT offering_type_key, display_name, tagline
         FROM service_offering_types
-        WHERE offering_type_key = ANY(${ids})
+        WHERE offering_type_key = ANY(${pgTextArray(ids)}::text[])
       `);
       for (const r of (lookup.rows ?? [])) {
         const row = r as any;
@@ -385,7 +385,7 @@ export async function loadEndorsementsForContext(
           ON en.expert_id = e.expert_id
          AND en.neighborhood_id = e.neighborhood_id
         WHERE e.scope = 'neighborhood'
-          AND e.neighborhood_id = ANY(${neighborhoodIds})
+          AND e.neighborhood_id = ANY(${pgTextArray(neighborhoodIds)}::text[])
           AND en.is_lead = true
       `);
       for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
@@ -538,7 +538,7 @@ export async function getExpertEndorsements(
       WHERE expert_id = ${expertId}
         AND (
           (scope = 'trip' AND trip_id = ${tripId}) OR
-          (scope = 'neighborhood' AND neighborhood_id = ANY(${neighborhoodIds ?? []}::TEXT[]))
+          (scope = 'neighborhood' AND neighborhood_id = ANY(${pgTextArray(neighborhoodIds ?? [])}::TEXT[]))
         )
       ORDER BY created_at DESC
     `);
