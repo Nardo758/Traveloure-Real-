@@ -39,6 +39,7 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
+import { resolvePublishVerification } from "../services/publish-verification.service";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -343,6 +344,95 @@ test("P5: ruling 86 — a non-place-anchored create lands with NULL coords; an i
   assert.equal(inPerson.precision, "exact", "a confirmed point is server-derived 'exact' (never client-asserted)");
 
   await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
+});
+
+test("G2: current applications are unique, while rejected review history remains and can be resubmitted", async () => {
+  const historyProvider = await registerProvider("history");
+  const rejectedId = crypto.randomUUID();
+  await db.execute(sql`
+    INSERT INTO service_provider_forms
+      (id, user_id, business_name, name, email, mobile, country, address, business_type,
+       status, rejection_message, identity_verification_status, business_verification_status)
+    VALUES
+      (${rejectedId}, ${historyProvider.id}, ${"Rejected History Biz"}, ${"History Provider"},
+       ${historyProvider.email}, ${"+10000000001"}, ${"Japan"}, ${"2 History Street, Kyoto"},
+       ${"tour_operator"}, ${"rejected"}, ${"Please provide a current business license."},
+       ${"verified"}, ${"verified"})
+  `);
+
+  const application = {
+    businessName: "Resubmitted Biz",
+    name: "History Provider",
+    email: historyProvider.email,
+    mobile: "+10000000002",
+    country: "Japan",
+    address: "3 Current Street, Kyoto",
+    businessType: "tour_operator",
+  };
+  const submitted = await readOnce(await api("/api/provider-application", historyProvider.cookie, "POST", application));
+  assert.equal(submitted.status, 201, `a rejected application may be resubmitted: ${submitted.text}`);
+
+  const rows = await db.execute(sql`
+    SELECT id, business_name, status, rejection_message
+    FROM service_provider_forms
+    WHERE user_id = ${historyProvider.id}
+    ORDER BY created_at ASC NULLS FIRST, id ASC
+  `);
+  assert.equal((rows.rows as any[]).length, 2, "resubmission keeps the rejected review row");
+  const historyRow = (rows.rows as any[]).find((row) => row.id === rejectedId);
+  assert.equal(historyRow?.status, "rejected");
+  assert.equal(historyRow?.rejection_message, "Please provide a current business license.");
+  assert.equal((await storage.getServiceProviderForm(historyProvider.id))?.businessName, "Resubmitted Biz",
+    "canonical reads select the current row over rejected history");
+  const status = await readOnce(await api("/api/provider/application-status", historyProvider.cookie));
+  assert.equal(status.status, 200);
+  assert.equal(status.body.overallStatus, "pending",
+    "application status reads the current resubmission, not the rejected history row");
+  assert.equal(status.body.identityVerificationStatus, "pending");
+  assert.equal(status.body.businessVerificationStatus, "pending");
+  const publishVerification = await resolvePublishVerification(historyProvider.id);
+  assert.equal(publishVerification.ok, false,
+    "a rejected history row must not satisfy the publish gate over a pending current row");
+
+  await assert.rejects(
+    db.execute(sql`
+      INSERT INTO service_provider_forms
+        (id, user_id, business_name, name, email, mobile, country, address, business_type)
+      VALUES
+        (${crypto.randomUUID()}, ${historyProvider.id}, ${"Concurrent Duplicate"}, ${"History Provider"},
+         ${historyProvider.email}, ${"+10000000003"}, ${"Japan"}, ${"4 Duplicate Street, Kyoto"},
+         ${"tour_operator"})
+    `),
+    (error: any) => error?.code === "23505" || error?.cause?.code === "23505",
+    "the database must reject a second current application",
+  );
+
+  const raceProvider = await registerProvider("race");
+  const raceApplication = {
+    businessName: "Race Biz",
+    name: "Race Provider",
+    email: raceProvider.email,
+    mobile: "+10000000004",
+    country: "Japan",
+    address: "5 Race Street, Kyoto",
+    businessType: "tour_operator",
+  };
+  const raceResults = await Promise.all([
+    api("/api/provider-application", raceProvider.cookie, "POST", raceApplication).then(readOnce),
+    api("/api/provider-forms", raceProvider.cookie, "POST", raceApplication).then(readOnce),
+  ]);
+  assert.deepEqual(
+    raceResults.map((result) => result.status).sort((a, b) => a - b),
+    [201, 400],
+    "concurrent submissions through both provider application aliases have one winner",
+  );
+  const raceRows = await db.execute(sql`
+    SELECT count(*)::int AS count
+    FROM service_provider_forms
+    WHERE user_id = ${raceProvider.id}
+      AND (status IS NULL OR status NOT IN ('rejected', 'deleted', 'deactivated'))
+  `);
+  assert.equal(Number((raceRows.rows[0] as any)?.count), 1, "the race leaves one current application row");
 });
 
 // ═══ GUARD ══════════════════════════════════════════════════════════════════════════════════════

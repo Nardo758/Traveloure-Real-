@@ -1302,4 +1302,8 @@ export const MIGRATION_FILES = [
   // 264: creator provenance on vendors — server-authored created_by_id from the authenticated
   // session. Additive-nullable with no backfill; NULL means legacy origin is unknown.
   "264_vendor_creation_provenance.sql",
+  // 265: one current provider application per user. Rejected/deleted/deactivated rows remain
+  // review/account history; only duplicate current rows are removed before the partial unique
+  // index is installed. The index is also declared in shared/schema.ts for publish durability.
+  "265_provider_application_current_unique.sql",
 ] as const;
