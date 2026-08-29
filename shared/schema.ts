@@ -578,7 +578,14 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   // declared here per the publish-trap rule (deploy-push would drop an undeclared column).
   officeLocation: jsonb("office_location"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Rejected/deleted/deactivated rows are retained as review/account history. The current
+  // application is the only row that must be unique per provider; the migration creates the
+  // same partial index after deterministically removing only duplicate current rows.
+  uniqueIndex("service_provider_forms_one_current_per_user_uniq")
+    .on(table.userId)
+    .where(sql`${table.status} IS NULL OR ${table.status} NOT IN ('rejected', 'deleted', 'deactivated')`),
+]);
 
 // === Service Categories ===
 
