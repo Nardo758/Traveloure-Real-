@@ -133,8 +133,29 @@ test.describe("supply-provider — Kyoto provider persona", () => {
     });
 
     // ── Steps 4-5: create the two named services through the live wizard ────────────────────
+    // Run #9 finding (supply-expert.spec.ts hit this first): this loop drove the wizard
+    // UNCONDITIONALLY on every invocation, so persona-nightly's reseed-and-rerun-everything
+    // "2/2" pass — never actually reached until 1b92e0e6, the first run where every suite's
+    // first pass went green — would re-create both named services a second time, which
+    // "re-run is idempotent" below correctly flags as a real duplicate. Same check-before-create
+    // pattern as supply-expert.spec.ts's trip-planner test and its own Gion-service loop.
     const serviceIds: Record<string, string> = {};
     for (const svc of SERVICES) {
+      let svcRow = await scalar<string>(
+        `SELECT id FROM provider_services WHERE user_id = $1 AND service_name = $2 ORDER BY created_at DESC LIMIT 1`,
+        [actor.id, svc.name],
+      );
+      if (svcRow) {
+        serviceIds[svc.name] = svcRow;
+        report.record({
+          action: `service "${svc.name}" already exists (idempotent re-run) — skip the wizard`,
+          ui: "n/a",
+          db: `provider_services.id=${svcRow}`,
+          verdict: "PASS",
+        });
+        continue;
+      }
+
       await page.goto(`${BASE_URL}/provider/services/new`);
       await page.waitForLoadState("networkidle");
       const clicked = await driveServiceFormToSubmit(
@@ -145,7 +166,7 @@ test.describe("supply-provider — Kyoto provider persona", () => {
       await page.waitForTimeout(1_500);
       await checkpoint(page, `supply-provider-service-${svc.name.replace(/\s+/g, "-")}`);
 
-      const svcRow = await scalar<string>(
+      svcRow = await scalar<string>(
         `SELECT id FROM provider_services WHERE user_id = $1 AND service_name = $2 ORDER BY created_at DESC LIMIT 1`,
         [actor.id, svc.name],
       );
