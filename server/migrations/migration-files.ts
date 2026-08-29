@@ -1299,4 +1299,10 @@ export const MIGRATION_FILES = [
   // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
   // Renumbered from 262 during merge with main — 262 was claimed by 262_trip_entitlements.sql.
   "263_nugget_gem_promotion.sql",
+  // 264: trip_entitlements.source (ledger 2026-08-29-trip-pass-provenance), mirroring
+  // plan_memberships.source ('stripe' | 'manual' | 'beta'). Additive, DEFAULT 'stripe' —
+  // no CHECK (publish-trap rule; vocabulary enforced by grantTripPass, service-layer).
+  // Backfills every pre-existing row to 'stripe' (correct: the only writer before this
+  // lane was the Stripe-verified confirm path). Declared in shared/schema.ts.
+  "264_trip_entitlement_source.sql",
 ] as const;
