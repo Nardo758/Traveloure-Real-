@@ -107,15 +107,18 @@ test.describe("supply-expert — Gion local expert", () => {
     await page.waitForLoadState("networkidle");
     await checkpoint(page, "supply-expert-gion-console");
 
-    const [formRow] = await rows<{ expert_type: string; city: string; neighborhoods: unknown; identity_verification_status: string }>(
-      `SELECT expert_type, city, neighborhoods, identity_verification_status FROM local_expert_forms WHERE user_id = $1`,
+    const formRows = await rows<{ id: string; expert_type: string; city: string; neighborhoods: unknown; identity_verification_status: string }>(
+      `SELECT id, expert_type, city, neighborhoods, identity_verification_status
+       FROM local_expert_forms WHERE user_id = $1 ORDER BY created_at NULLS FIRST, id`,
       [actor.id],
     );
+    const formRow = formRows[0];
     report.record({
-      action: "assert seed-verified Kyoto/Gion application (Kyoto + Gion, identity verified)",
+      action: "assert exactly one seed-verified Kyoto/Gion application (Kyoto + Gion, identity verified)",
       ui: "n/a (DB-proved; see next step's UI edit)",
-      db: JSON.stringify(formRow),
+      db: JSON.stringify({ count: formRows.length, row: formRow }),
       verdict:
+        formRows.length === 1 &&
         formRow?.city === KYOTO &&
         formRow?.identity_verification_status === "verified" &&
         JSON.stringify(formRow?.neighborhoods ?? []).includes("Gion")

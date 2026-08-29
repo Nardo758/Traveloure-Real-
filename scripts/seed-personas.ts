@@ -8,6 +8,8 @@
  *     service_provider_forms for the three earner personas (see "Verification
  *     pre-seed" below) — added for Persona Lane B (trip_entitlements landed,
  *     migration 262);
+ *   - reconcile legacy duplicate local_expert_forms rows for fixed expert
+ *     personas, without ever writing to a production database;
  *   - never insert marketplace content, trips, bookings, services, templates,
  *     or approvals — Lane B's Playwright suites create those through the
  *     product's own UI/API flows, never as direct SQL fixtures.
@@ -210,6 +212,11 @@ type ProviderFormSeed = {
   businessType: string;
 };
 
+type ExistingExpertForm = {
+  id: string;
+  status: string | null;
+  created_at: string | null;
+};
 const EXPERT_FORMS: ExpertFormSeed[] = [
   {
     key: "gion-local-expert-form",
@@ -245,13 +252,6 @@ const PROVIDER_FORMS: ProviderFormSeed[] = [
     businessType: "Transportation",
   },
 ];
-
-type ExpertFormReconciliation = {
-  personaKey: string;
-  survivorId: string;
-  removedIds: string[];
-};
-
 function looksLocal(url: string): boolean {
   try {
     const host = new URL(url).hostname;
@@ -272,6 +272,9 @@ function periodEnd(days: number): string {
   return end.toISOString();
 }
 
+function fixedExpertFormId(form: ExpertFormSeed): string {
+  return `persona-kyoto-${form.key}`;
+}
 async function resolvePersonaIds(): Promise<Map<string, string>> {
   const result = await db.execute(sql`
     SELECT id, email
@@ -337,6 +340,7 @@ async function main(): Promise<void> {
           `GET /api/provider/verification-status — not the form's own identity/business fields above)`,
       );
     }
+    await reportExistingExpertForms();
     console.log(
       "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant. " +
         "trip_entitlements EXISTS (migration 262) but its sole writer grantTripPass() " +
@@ -353,7 +357,6 @@ async function main(): Promise<void> {
 
   const password = hashPassword(PASSWORD);
   const acceptedAt = new Date().toISOString();
-  const expertFormReconciliations: ExpertFormReconciliation[] = [];
 
   await db.transaction(async (tx) => {
     const personaIds = new Map<string, string>();
@@ -438,49 +441,13 @@ async function main(): Promise<void> {
       const persona = PERSONAS.find((p) => p.key === form.personaKey);
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
-      // A persona can already have a real application created by the product flow (and that
-      // application can be the one an approval, offering, or storefront journey references).
-      // local_expert_forms has no row-level foreign keys from those user-owned records, so the
-      // lifecycle status is the only row-local signal we can safely use: preserve exactly one
-      // approved row, refuse to guess when multiple approved rows exist, and otherwise prefer
-      // the stable seed id. This makes the seed self-healing without deleting user-owned
-      // offerings or a claimed handle.
-      const existingForms = await tx.execute(sql`
-        SELECT id, status, created_at
-        FROM local_expert_forms
-        WHERE user_id = ${userId}
-        ORDER BY created_at ASC NULLS LAST, id ASC
-        FOR UPDATE
-      `);
-      const rows = existingForms.rows.map((row) => ({
-        id: String(row.id),
-        status: row.status == null ? null : String(row.status),
-        createdAt: row.created_at == null ? null : String(row.created_at),
-      }));
-      const approvedRows = rows.filter((row) => row.status === "approved");
-      if (approvedRows.length > 1) {
-        throw new Error(
-          `[seed-personas] REFUSED to reconcile ${form.personaKey}: multiple approved ` +
-            `local_expert_forms rows (${approvedRows.map((row) => row.id).join(", ")}). ` +
-            "Both may have dependent product state; review manually rather than guessing.",
+      const reconciliation = await reconcileExpertForm(tx, form, userId);
+      if (reconciliation.removedIds.length > 0) {
+        console.warn(
+          `[seed-personas] reconciled ${form.key}: ` +
+            `kept ${reconciliation.survivorId}; removed duplicate rows ${reconciliation.removedIds.join(",")}`,
         );
       }
-
-      const expectedId = `persona-kyoto-${form.key}`;
-      const survivor =
-        approvedRows[0] ??
-        rows.find((row) => row.id === expectedId) ??
-        rows[0] ??
-        { id: expectedId, status: null, createdAt: null };
-      const removedIds = rows.filter((row) => row.id !== survivor.id).map((row) => row.id);
-      if (removedIds.length > 0) {
-        await tx.execute(sql`
-          DELETE FROM local_expert_forms
-          WHERE user_id = ${userId}
-            AND id IN (${sql.join(removedIds.map((id) => sql`${id}`), sql`, `)})
-        `);
-      }
-      expertFormReconciliations.push({ personaKey: form.personaKey, survivorId: survivor.id, removedIds });
 
       await tx.execute(sql`
         INSERT INTO local_expert_forms (
@@ -489,7 +456,7 @@ async function main(): Promise<void> {
           identity_verification_status, identity_verified_at, created_at
         )
         VALUES (
-          ${survivor.id},
+          ${reconciliation.survivorId},
           ${userId},
           ${form.expertType},
           ${persona.firstName},
@@ -505,12 +472,15 @@ async function main(): Promise<void> {
           now()
         )
         ON CONFLICT (id) DO UPDATE SET
-          user_id = EXCLUDED.user_id,
           expert_type = EXCLUDED.expert_type,
+          first_name = EXCLUDED.first_name,
+          last_name = EXCLUDED.last_name,
+          email = EXCLUDED.email,
           country = EXCLUDED.country,
           city = EXCLUDED.city,
           neighborhoods = EXCLUDED.neighborhoods,
           local_specialties = EXCLUDED.local_specialties,
+          bio = EXCLUDED.bio,
           identity_verification_status = 'verified',
           identity_verified_at = COALESCE(local_expert_forms.identity_verified_at, EXCLUDED.identity_verified_at)
       `);
@@ -650,3 +620,95 @@ main()
   .finally(async () => {
     await pool.end();
   });
+
+async function reconcileExpertForm(
+  tx: typeof db,
+  form: ExpertFormSeed,
+  userId: string,
+): Promise<{ survivorId: string; removedIds: string[] }> {
+  const fixedId = fixedExpertFormId(form);
+
+  // Serialize concurrent persona-seed runs for this user. This is intentionally
+  // scoped to the seed's development-only writer; it does not weaken the
+  // production guard above or mutate any shared production state.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
+
+  const existing = await tx.execute(sql`
+    SELECT id, status, created_at
+    FROM local_expert_forms
+    WHERE user_id = ${userId}
+    ORDER BY created_at ASC NULLS LAST, id ASC
+    FOR UPDATE
+  `);
+  const rows = existing.rows as ExistingExpertForm[];
+  const approvedRows = rows.filter((row) => row.status === "approved");
+  if (approvedRows.length > 1) {
+    throw new Error(
+      `[seed-personas] REFUSED to reconcile ${form.personaKey}: multiple approved ` +
+        `local_expert_forms rows (${approvedRows.map((row) => row.id).join(", ")}). ` +
+        "Both may have dependent product state; review manually rather than guessing.",
+    );
+  }
+
+  // A persona can already have a real application created by the product flow,
+  // and that application can be the one an approval, offering, or storefront
+  // journey references. Preserve one approved row instead of replacing it with
+  // the deterministic seed row; otherwise prefer the fixed row and then the
+  // oldest existing row.
+  const survivor =
+    approvedRows[0] ??
+    rows.find((row) => row.id === fixedId) ??
+    rows[0] ??
+    { id: fixedId, status: null, created_at: null };
+  const removedIds = rows.filter((row) => row.id !== survivor.id).map((row) => row.id);
+  if (removedIds.length > 0) {
+    await tx.execute(sql`
+      DELETE FROM local_expert_forms
+      WHERE user_id = ${userId}
+        AND id IN (${sql.join(removedIds.map((id) => sql`${id}`), sql`, `)})
+    `);
+  }
+
+  return { survivorId: survivor.id, removedIds };
+}
+
+async function reportExistingExpertForms(): Promise<void> {
+  const result = await db.execute(sql`
+    SELECT lef.user_id, u.email, lef.id, lef.status, lef.created_at
+    FROM local_expert_forms lef
+    JOIN users u ON u.id = lef.user_id
+    WHERE u.email IN (${sql.join(EXPERT_FORMS.map((form) => {
+      const persona = PERSONAS.find((candidate) => candidate.key === form.personaKey);
+      return sql`${persona?.email ?? ""}`;
+    }), sql`, `)})
+    ORDER BY u.email, lef.created_at NULLS FIRST, lef.id
+  `);
+
+  const rowsByEmail = new Map<string, typeof result.rows>();
+  for (const row of result.rows) {
+    const email = String(row.email);
+    const rows = rowsByEmail.get(email) ?? [];
+    rows.push(row);
+    rowsByEmail.set(email, rows);
+  }
+
+  for (const form of EXPERT_FORMS) {
+    const persona = PERSONAS.find((candidate) => candidate.key === form.personaKey);
+    if (!persona) continue;
+    const rows = rowsByEmail.get(persona.email) ?? [];
+    const ids = rows.map((row) => String(row.id));
+    if (rows.length > 1) {
+      console.log(
+        `DUPLICATE local_expert_forms ${form.key}: count=${rows.length} ids=${ids.join(",")} ` +
+          `report-only; --apply will preserve one approved row when present, otherwise converge to ${fixedExpertFormId(form)}`,
+      );
+    } else if (rows.length === 1) {
+      console.log(
+        `EXISTING local_expert_forms ${form.key}: id=${ids[0]} status=${String(rows[0].status ?? "null")} ` +
+          `(report-only; --apply will converge it to ${fixedExpertFormId(form)})`,
+      );
+    } else {
+      console.log(`MISSING local_expert_forms ${form.key}: --apply will insert ${fixedExpertFormId(form)}`);
+    }
+  }
+}
