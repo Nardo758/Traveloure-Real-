@@ -124,15 +124,24 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
 
     const servicesTitle = page.getByTestId("text-page-title");
     const servicesTitleVisible = await servicesTitle.isVisible().catch(() => false);
-    // Run #6 finding: the grid populates from a client-side /api/discover fetch (a full-text-search
-    // base query PLUS a packages query PLUS three parallel enrichment queries) that can still be
-    // in flight a beat after `networkidle` resolves and this loop starts. `.isVisible({timeout})`
-    // does NOT wait/retry — it is a one-shot check of the CURRENT DOM state, exactly the pitfall
-    // `pickExpertTierIfPresent` above already documents and fixes with `waitFor()`. That is what
-    // produced the deterministic 1/2-visible split (the first-checked name caught mid-fetch, the
-    // second caught after the grid had painted) — a genuine bounded `waitFor()` per card fixes it.
+    // Run #7 finding: the unfiltered /services browse defaults to sortBy=rating with a
+    // 12-row page (client/src/pages/discover.tsx `limit = 12`), and by the time the supply
+    // suites finish, the marketplace already carries ~35 OTHER approved+active
+    // provider_services rows from server-startup seeding (8 "mock provider services" +
+    // 27 Phase D Kyoto wedding/corporate vendors — server/index.ts runDatabaseSeeding, logged
+    // "[Phase D] Vendors: 9 inserted... Services: 27 inserted" before the persona seed even
+    // runs), all with real ratings/bookingsCount. The two brand-new named fixtures (rating=0,
+    // bookings=0) land on a bare id-ASC tiebreak against that whole set for one of 12 page-1
+    // slots — not reliably won (confirmed: run #7 hit the FULL 10s `waitFor` timeout on one
+    // name, not a quick catch, so this was never the run #6 render-race theory; the row
+    // genuinely isn't on page 1 of the default sort). A guest who wants a SPECIFIC service
+    // searches for it by name — the page's own search box, `?q=` addressable per its "restore
+    // the same result set" contract (line ~816 above) — rather than scrolling blind pages, so
+    // this checks each named service through that real search path instead of the bare browse.
     let namedCardsVisible = 0;
     for (const svc of svcRows) {
+      await page.goto(`${BASE_URL}/services?q=${encodeURIComponent(svc.service_name)}`);
+      await page.waitForLoadState("networkidle");
       if (
         await page
           .getByTestId(`card-service-${svc.id}`)
@@ -144,7 +153,7 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
       }
     }
     report.record({
-      action: "open /services, assert the two named provider services are publicly visible",
+      action: "open /services, assert the two named provider services are publicly visible (by name search)",
       ui: `text-page-title visible=${servicesTitleVisible}, named card-service-* visible=${namedCardsVisible}/${PROVIDER_SERVICE_NAMES.length}`,
       db: `names found=${svcRows.length}/${PROVIDER_SERVICE_NAMES.length} (${svcRows.map((s) => s.service_name).join(", ")})`,
       verdict: servicesTitleVisible && svcRows.length === PROVIDER_SERVICE_NAMES.length && namedCardsVisible === PROVIDER_SERVICE_NAMES.length ? "PASS" : "FAIL",
@@ -152,11 +161,20 @@ test.describe("journey-guest — signed-out browse + protected-action boundary",
     });
 
     // ── Step 4: attempt a protected action (add to trip) as a signed-out visitor ─────────────
+    // Re-scope to the first named service's own search result — the loop above leaves the page
+    // on whichever name it last searched, which is not necessarily this one.
     const targetId = svcRows[0]?.id;
+    if (targetId) {
+      await page.goto(`${BASE_URL}/services?q=${encodeURIComponent(svcRows[0].service_name)}`);
+      await page.waitForLoadState("networkidle");
+    }
     const addToCartBtn = targetId
       ? page.getByTestId(`button-add-to-cart-${targetId}`)
       : page.locator('[data-testid^="button-add-to-cart-"]').first();
-    const addBtnVisible = await addToCartBtn.isVisible({ timeout: 10_000 }).catch(() => false);
+    const addBtnVisible = await addToCartBtn
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
     if (addBtnVisible) {
       await addToCartBtn.click();
       await page.waitForTimeout(500);
