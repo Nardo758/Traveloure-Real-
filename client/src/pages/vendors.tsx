@@ -31,6 +31,7 @@ import {
   Heart,
   Users,
   UserRound,
+  Download,
 } from "lucide-react";
 import {
   Dialog,
@@ -52,6 +53,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
 import { getVendorCreatorLabel } from "@/lib/vendor-creator";
 import {
   Form,
@@ -118,11 +120,13 @@ export default function Vendors() {
   const { user } = useAuth();
   const isPlanner = !!user && PLANNER_ROLES.has(user.role ?? "");
   const isAdmin = user?.role === "admin";
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [creatorFilter, setCreatorFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: vendors = [], isLoading } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors", { createdById: isAdmin && creatorFilter !== "all" ? creatorFilter : undefined }],
@@ -179,6 +183,34 @@ export default function Vendors() {
     createVendor.mutate(data);
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch("/api/admin/vendors/export", { credentials: "include" });
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `vendor-creator-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export complete", description: "Vendor creator history downloaded." });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unable to download vendor history.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
@@ -207,13 +239,29 @@ export default function Vendors() {
               </div>
             </div>
             {isPlanner && (
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-add-vendor">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Vendor
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  onClick={handleExport}
+                  disabled={isExporting}
+                  data-testid="button-export-vendors"
+                >
+                  {isExporting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Export History
                 </Button>
-              </DialogTrigger>
+              )}
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-add-vendor">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Vendor
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
                   <DialogTitle>Add New Vendor</DialogTitle>
@@ -368,7 +416,8 @@ export default function Vendors() {
                   </form>
                 </Form>
               </DialogContent>
-            </Dialog>
+              </Dialog>
+            </div>
             )}
           </div>
         </div>
