@@ -24,6 +24,8 @@ import { eq, sql, and, or, isNull, ilike, inArray, asc, desc, gte } from "drizzl
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
+import { toGemTeaser } from "@shared/gem-teaser";
+import type { GemCuratedBy } from "@shared/gem-curated-by";
 import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
 import {
   DEFAULT_RESOLUTION_CLASS,
@@ -82,13 +84,9 @@ function cityScopePredicate(cityName: string) {
   );
 }
 
-/** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null. */
-export interface GemCuratedBy {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  profileImageUrl: string | null;
-}
+/** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null.
+ *  Canonical shape lives in @shared/gem-curated-by; re-exported for server callers. */
+export type { GemCuratedBy };
 
 /**
  * Gem attribution (2026-08-29 Replit-audit ruling 1): reuse the EXISTING
@@ -392,8 +390,11 @@ class LocationViewService {
       }
 
       // Group gems by normalized neighborhood key for the gems[] embed.
-      // Attribution attached first so nested gems[] carry curatedBy (ruling 1).
-      const attributedCityGems = await attachGemAttribution(allCityGems);
+      // Attribution attached first so nested gems[] carry curatedBy (ruling 1),
+      // then each row is projected to the ruled TEASER set (ruling 3) — the
+      // deep fields (address, mention ratios, mainstream forecast, discovery
+      // status) never leave the server on this surface.
+      const attributedCityGems = (await attachGemAttribution(allCityGems)).map(toGemTeaser);
       const gemsBySlug = new Map<string, any[]>();
       for (const gem of attributedCityGems) {
         if (gem.neighborhood) {
@@ -481,8 +482,10 @@ class LocationViewService {
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
       .orderBy(travelPulseHiddenGems.gemScore)
-      // Attribution (ruling 1) attached before the bookability derive.
+      // Attribution (ruling 1) attached, then the ruled TEASER projection
+      // (ruling 3) — deep fields never leave the server on this surface.
       .then((rows) => attachGemAttribution(rows))
+      .then((rows) => rows.map(toGemTeaser))
       // bookability is DERIVED (never stored) via the single shared resolver.
       .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
 

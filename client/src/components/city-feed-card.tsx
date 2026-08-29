@@ -479,25 +479,12 @@ interface MoreInfoSheetProps {
   data: any;
 }
 
-function LocalsVsTouristsBar({ localRating, touristMentions }: { localRating?: number; touristMentions?: number }) {
-  if (!localRating && !touristMentions) return null;
-  const total = (localRating ?? 0) + (touristMentions ?? 0);
-  if (total === 0) return null;
-  const localPct = Math.round(((localRating ?? 0) / total) * 100);
-  return (
-    <div>
-      <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
-        <span>Locals {localPct}%</span>
-        <span>Tourists {100 - localPct}%</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden flex">
-        <div className="bg-green-500 h-full rounded-full transition-all" style={{ width: `${localPct}%` }} />
-      </div>
-    </div>
-  );
-}
-
 function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
+  // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
+  // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
+  // the "goes mainstream" forecast and the discovery status were REMOVED —
+  // the server no longer ships them (shared/gem-teaser.ts) and this render
+  // must not resurrect them from a stale or hand-built payload.
   const renderGemContent = () => (
     <div className="flex flex-col gap-4 pt-2">
       {/* Byline (2026-08-29 Replit-audit ruling 1): server-resolved curator only —
@@ -532,34 +519,10 @@ function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
         </div>
       )}
 
-      {data.address && (
+      {data.whyLocalsLoveIt && (
         <div>
-          <p className="text-[13px] font-semibold text-foreground mb-1">Address</p>
-          <a
-            href={`https://maps.google.com/?q=${encodeURIComponent(data.address)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-start gap-1.5 text-[13px] text-blue-600 hover:underline"
-            data-testid="link-gem-address"
-          >
-            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            {data.address}
-          </a>
-        </div>
-      )}
-
-      <LocalsVsTouristsBar localRating={data.localRating} touristMentions={data.touristMentions} />
-
-      {(data.discoveryStatus || data.daysUntilMainstream != null) && (
-        <div className="bg-purple-50 rounded-lg px-3 py-2.5">
-          {data.discoveryStatus && (
-            <p className="text-[12px] font-semibold text-purple-700 capitalize">{data.discoveryStatus}</p>
-          )}
-          {data.daysUntilMainstream != null && (
-            <p className="text-[12px] text-purple-600 mt-0.5">
-              Goes mainstream in ~{data.daysUntilMainstream} days
-            </p>
-          )}
+          <p className="text-[13px] font-semibold text-foreground mb-1">Why locals love it</p>
+          <p className="text-[13px] text-muted-foreground leading-relaxed">{data.whyLocalsLoveIt}</p>
         </div>
       )}
     </div>
