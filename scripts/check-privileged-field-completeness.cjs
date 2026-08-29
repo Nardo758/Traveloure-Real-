@@ -146,12 +146,28 @@ const GRANDFATHERED_COLUMNS = {
   // (planned/confirmed/completed/…). No cross-user or money read found; distinct from
   // `routingStatus` (stripped — the actual checkout-claim money-lifecycle field).
   'itineraryItems.status': "owner's own item planning state (planned/confirmed/…); no money or cross-user read found",
-  // STATUS family — a looser, purely descriptive sibling of `routingStatus`. Has a confirmed
-  // legitimate direct caller (content.routes.ts's affiliate-booking-confirm flow sets it at
-  // create time) and no proven money-decision read (unlike `routingStatus`, which the schema's
-  // own comment ties to the atomic checkout-claim flip). Narrower dedicated investigation filed
-  // separately rather than stripped here, since a blanket strip would break that caller.
-  'itineraryItems.bookingStatus': 'descriptive booking-status badge with a confirmed legitimate direct caller (affiliate-booking-confirm); routingStatus (the real money-lifecycle field) is stripped instead — filed for narrower follow-up, not fixed here',
+  // STATUS family — the §19 follow-up investigation this entry filed for is now CLOSED (not merely
+  // deferred): confirmed display-only, not a money hole.
+  //   (a) The one reader that looked money-adjacent, `GET /trips/:tripId/commission`
+  //       (booking-actions.ts), is a non-persisted LIVE ESTIMATE. Both real charge paths derive
+  //       their charged set from server-owned rows and never read bookingStatus:
+  //       `resolveCoordinationFee` (→ platform_revenue) is a pure function of
+  //       (eventType, budgetCents, credits); the checkout charge loop (payments.routes.ts →
+  //       pickOwnerShareRate → service_bookings/expert_earnings) charges cart_items gated on
+  //       routingStatus, not bookingStatus. So no strip is needed.
+  //   (b) Deliberately NOT stripped: the one legitimate writer is content.routes.ts's
+  //       affiliate-booking-confirm flow, which sets bookingStatus:"confirmed" as a
+  //       server-verified, ownership-gated transition. A blanket strip in
+  //       storage.createItineraryItem/updateItineraryItem would break that caller for zero
+  //       money-safety benefit. Contrast sibling `routingStatus`/`bookingId`, which ARE stripped —
+  //       they have no legitimate direct caller (item-routing.service.ts writes them raw).
+  //   (c) The commission endpoint has NO client consumer today (nothing useQuerys its body); its
+  //       future consumer is the filed fee-attribution sidebar (marketplace-audit DISPLAY lane).
+  //       WHEN that lane lands, switch its `bookingStatus !== "cancelled"` filter to a
+  //       server-owned signal (routingStatus/bookingId presence) so a traveler's cosmetic PATCH
+  //       can't nudge the displayed estimate — deferred to the moment it matters, not fixed here
+  //       for an endpoint with zero consumers.
+  'itineraryItems.bookingStatus': 'confirmed display-only (2026-08-29 investigation) — no money path reads it; not stripped because affiliate-booking-confirm is a legitimate direct writer; commission-endpoint filter hardening deferred until the fee-attribution sidebar consumes it',
   // STATUS family — a legacy generation-job tracker row (pending/completed/failed on the client's
   // OWN AI-generated-itinerary record). No gating read found anywhere in server/.
   'generatedItineraries.status': "the client's own AI-generation job status; no gating read found",
