@@ -92,6 +92,7 @@ import { serviceBookings, providerServices, users } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
 import { logger } from "../infrastructure/logger";
+import { runBackgroundJob } from "./background-job-runner";
 import { getStripeSecretKey } from "../utils/stripe-key";
 
 /** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
@@ -1244,9 +1245,7 @@ class CheckoutClaimSweepScheduler {
   }
 
   private async run(): Promise<void> {
-    await sweepExpiredCheckoutClaims().catch((err) =>
-      logger.error({ err }, "[checkout-sweep] scheduled pass threw (swallowed)"),
-    );
+    await runBackgroundJob("checkout-sweep", () => sweepExpiredCheckoutClaims());
   }
 }
 
