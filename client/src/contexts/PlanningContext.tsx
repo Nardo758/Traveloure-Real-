@@ -93,6 +93,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   const [source, setSource] = useState<PlanningSource | null>(null);
   const [step, setStep] = useState<"choose" | "myself">("choose");
   const [myselfDestination, setMyselfDestination] = useState("");
+  const [myselfStart, setMyselfStart] = useState("");
+  const [myselfEnd, setMyselfEnd] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -175,12 +177,24 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       setCreateError("Where are you going? A destination starts the plan.");
       return;
     }
+    // trips.startDate/endDate are NOT NULL — the schema demands real dates, so the
+    // step asks for them rather than inventing any (§13).
+    if (!myselfStart || !myselfEnd) {
+      setCreateError("Pick your dates — the plan needs a start and an end.");
+      return;
+    }
+    if (new Date(myselfEnd) < new Date(myselfStart)) {
+      setCreateError("The end date can't be before the start date.");
+      return;
+    }
     setCreating(true);
     setCreateError(null);
     try {
       const res = await apiRequest("POST", "/api/trips", {
         title: `${destination.split(",")[0].trim()} trip`,
         destination,
+        startDate: myselfStart,
+        endDate: myselfEnd,
       });
       const trip = await res.json();
       setChooserOpen(false);
@@ -191,7 +205,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setCreating(false);
     }
-  }, [myselfDestination, setLocation]);
+  }, [myselfDestination, myselfStart, myselfEnd, setLocation]);
 
   const continueHref = tripCtx.tripId
     ? planningRouteForTrip(tripCtx.tripId, tripCtx.endDate)
@@ -331,6 +345,22 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
                   }}
                   data-testid="input-planning-destination"
                 />
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={myselfStart}
+                    onChange={(e) => setMyselfStart(e.target.value)}
+                    aria-label="Start date"
+                    data-testid="input-planning-start-date"
+                  />
+                  <Input
+                    type="date"
+                    value={myselfEnd}
+                    onChange={(e) => setMyselfEnd(e.target.value)}
+                    aria-label="End date"
+                    data-testid="input-planning-end-date"
+                  />
+                </div>
                 {createError && (
                   <p className="text-xs text-destructive" data-testid="text-planning-create-error">
                     {createError}
