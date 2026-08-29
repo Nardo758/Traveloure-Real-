@@ -2126,7 +2126,20 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true }).extend({
+// §PS18-completeness-guard layer 1 (2026-08-29-privileged-field-completeness): `approvalStatus`,
+// `submittedAt`, `reviewedAt`, `reviewedBy`, `rejectionReason` are the F2/D1a approval-lifecycle
+// family — the same class as `revenueShareRate`/`deliverableUploadedAt` above. `approvalStatus`
+// already had a full layer-2 strip on BOTH create (`createProviderService`'s born-state clamp,
+// case C16b's sibling) and update (`updateProviderService`'s `{approvalStatus: _as, ...}`
+// destructure, C16b itself) — this closes the missing layer-1 half so every caller is covered,
+// not just the two that currently exist. `submittedAt`/`reviewedAt`/`reviewedBy`/`rejectionReason`
+// had NO strip on the CREATE path at all (`createProviderService` spread them through unstripped
+// via `...serviceWithoutRate`) — a client POST could self-attribute a fabricated
+// review/rejection on their own brand-new `submitted` listing (approvalStatus itself stays safely
+// clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
+// approve/reject writers below unconditionally overwrite all four the moment a real review
+// happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -4485,7 +4498,31 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
 // never client-settable via this schema. Every create route strips whatever the client sent and
 // re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true });
+// §PS18-completeness-guard (2026-08-29-privileged-field-completeness): `routingStatus` /
+// `bookingId` are the checkout-claim machine's OWN state — the same shape as
+// `service_bookings.stripePaymentIntentId` (§19a). `routingStatus` is atomically flipped to
+// 'purchased' (with `bookingId` stamped alongside) ONLY by the checkout-confirm path
+// (`server/services/item-routing.service.ts`, `server/routes/routing.routes.ts`'s validated
+// transition endpoint), via raw `db.update(itineraryItems)` calls that never go through
+// `storage.createItineraryItem`/`updateItineraryItem` at all — so omitting them here costs those
+// legitimate writers nothing, and NEITHER has any legitimate direct caller among
+// createItineraryItem's six call sites (verified by inspection). Found unstripped on BOTH create
+// call sites (`insertItineraryItemSchema.safeParse({...req.body, tripId})` in trips.routes.ts and
+// routes.ts) and — more importantly — on the canonical PATCH route
+// (`PATCH /api/trips/:tripId/itinerary-items/:itemId`), which bypasses this schema entirely via a
+// raw `req.body` destructure that stripped only id/tripId/createdAt/updatedAt/suggestedBy/origin.
+// A traveler/expert with ordinary write access to their OWN trip could POST or PATCH an item with
+// `routingStatus: "purchased"` and an ARBITRARY `bookingId` (no ownership check) — a fabricated
+// "this was purchased" state with zero payment, and a booking-id link to a row they may not own.
+// Layer 2 (storage.createItineraryItem / updateItineraryItem strip) is what actually closes the
+// PATCH route, since it bypasses this schema — same "layer 2 covers the caller layer 1 can't
+// reach" shape as `stripFormVerificationFields` (§19). `bookingStatus` (a looser, purely
+// descriptive sibling column with a confirmed legitimate direct caller —
+// `content.routes.ts`'s affiliate-booking-confirm flow sets it at create time — and no proven
+// money-decision read) is DELIBERATELY left alone here; it is grandfathered in the completeness
+// guard pending a separate, narrower investigation. Found by
+// `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 

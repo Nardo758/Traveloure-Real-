@@ -1304,6 +1304,22 @@ export function stripFormVerificationFields<T extends Record<string, unknown>>(f
   return safe as T;
 }
 
+// §PS18-completeness-guard layer 2 (2026-08-29-privileged-field-completeness): routingStatus /
+// bookingId are the checkout-claim machine's own state (see the `insertItineraryItemSchema`
+// comment in shared/schema.ts for the full finding) — omitted at the schema layer (layer 1), but
+// the canonical `PATCH /api/trips/:tripId/itinerary-items/:itemId` route bypasses that schema
+// entirely (a raw `req.body` destructure) and calls `updateItineraryItem` directly, so THIS strip
+// is what actually protects that route. Extracted as a standalone pure function (matching
+// `stripFormVerificationFields`'s placement) so it is unit-testable without a live DB.
+export function stripItineraryItemRoutingFields<T extends Record<string, unknown>>(item: T): T {
+  const {
+    routingStatus: _rs,
+    bookingId: _bid,
+    ...safe
+  } = item as Record<string, unknown>;
+  return safe as T;
+}
+
 export class DatabaseStorage implements IStorage {
   // Trips
   async getTrips(userId?: string, status?: string): Promise<TripListItem[]> {
@@ -2253,9 +2269,18 @@ export class DatabaseStorage implements IStorage {
     // Creation provenance (2026-08-23-provenance-creation): created_via/source_ref are stamped
     // EXPLICITLY below (omitted from the insert schema — never client-set), defaulting to 'wizard'
     // (this is the ServiceForm's create path; other rails pass their own via the opts).
+    // §PS18-completeness-guard (2026-08-29-privileged-field-completeness): submittedAt/reviewedAt/
+    // reviewedBy/rejectionReason are the CREATE half of the same approval-lifecycle family as
+    // approvalStatus (clamped explicitly below) — this table had NO strip for these four on
+    // create at all (unlike updateProviderService, which already dropped them), so a client POST
+    // could self-attribute a fabricated "reviewed by ___" / rejection reason onto their own
+    // brand-new submitted listing. Stripped here so every caller is covered, same placement as
+    // the revenueShareRate strip above.
     const {
       revenueShareRate: _clientRate, pendingChanges: _pcCreate, editReviewStatus: _ersCreate,
-      createdVia: _cvOpt, sourceRef: _srOpt, ...serviceWithoutRate
+      createdVia: _cvOpt, sourceRef: _srOpt,
+      submittedAt: _saCreate, reviewedAt: _raCreate, reviewedBy: _rbCreate, rejectionReason: _rrCreate,
+      ...serviceWithoutRate
     } = service as Record<string, unknown>;
 
     const [newService] = await db.insert(providerServices)
@@ -6904,14 +6929,27 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder), asc(itineraryItems.startTime));
   }
 
+  // §PS18-completeness-guard layer 2 (2026-08-29-privileged-field-completeness): routingStatus /
+  // bookingId are stripped here too — the schema omit (layer 1) is what protects the two
+  // `insertItineraryItemSchema.safeParse(req.body)` create sites, but the canonical
+  // `PATCH /api/trips/:tripId/itinerary-items/:itemId` route bypasses this schema entirely (a raw
+  // `req.body` destructure) and calls `updateItineraryItem` directly, so THIS strip is the only
+  // thing protecting that route. The sole legitimate writer of these two
+  // (`server/services/item-routing.service.ts` / the validated transition endpoint in
+  // `routing.routes.ts`) uses its own raw `db.update(itineraryItems)` calls and never calls either
+  // of these two methods, so stripping here costs it nothing. `bookingStatus` is deliberately NOT
+  // stripped — `content.routes.ts`'s affiliate-booking-confirm flow is a real, legitimate direct
+  // caller that sets it at create time (see the schema comment).
   async createItineraryItem(item: InsertItineraryItem & { tripId: string }): Promise<ItineraryItem> {
-    const [created] = await db.insert(itineraryItems).values(item).returning();
+    const safeItem = stripItineraryItemRoutingFields(item as Record<string, unknown>);
+    const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     return created;
   }
 
   async updateItineraryItem(id: string, updates: Partial<InsertItineraryItem>): Promise<ItineraryItem | undefined> {
+    const safeUpdates = stripItineraryItemRoutingFields(updates as Record<string, unknown>);
     const [updated] = await db.update(itineraryItems)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(itineraryItems.id, id))
       .returning();
     return updated;
