@@ -246,6 +246,12 @@ const PROVIDER_FORMS: ProviderFormSeed[] = [
   },
 ];
 
+type ExpertFormReconciliation = {
+  personaKey: string;
+  survivorId: string;
+  removedIds: string[];
+};
+
 function looksLocal(url: string): boolean {
   try {
     const host = new URL(url).hostname;
@@ -347,6 +353,7 @@ async function main(): Promise<void> {
 
   const password = hashPassword(PASSWORD);
   const acceptedAt = new Date().toISOString();
+  const expertFormReconciliations: ExpertFormReconciliation[] = [];
 
   await db.transaction(async (tx) => {
     const personaIds = new Map<string, string>();
@@ -431,6 +438,50 @@ async function main(): Promise<void> {
       const persona = PERSONAS.find((p) => p.key === form.personaKey);
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
+      // A persona can already have a real application created by the product flow (and that
+      // application can be the one an approval, offering, or storefront journey references).
+      // local_expert_forms has no row-level foreign keys from those user-owned records, so the
+      // lifecycle status is the only row-local signal we can safely use: preserve exactly one
+      // approved row, refuse to guess when multiple approved rows exist, and otherwise prefer
+      // the stable seed id. This makes the seed self-healing without deleting user-owned
+      // offerings or a claimed handle.
+      const existingForms = await tx.execute(sql`
+        SELECT id, status, created_at
+        FROM local_expert_forms
+        WHERE user_id = ${userId}
+        ORDER BY created_at ASC NULLS LAST, id ASC
+        FOR UPDATE
+      `);
+      const rows = existingForms.rows.map((row) => ({
+        id: String(row.id),
+        status: row.status == null ? null : String(row.status),
+        createdAt: row.created_at == null ? null : String(row.created_at),
+      }));
+      const approvedRows = rows.filter((row) => row.status === "approved");
+      if (approvedRows.length > 1) {
+        throw new Error(
+          `[seed-personas] REFUSED to reconcile ${form.personaKey}: multiple approved ` +
+            `local_expert_forms rows (${approvedRows.map((row) => row.id).join(", ")}). ` +
+            "Both may have dependent product state; review manually rather than guessing.",
+        );
+      }
+
+      const expectedId = `persona-kyoto-${form.key}`;
+      const survivor =
+        approvedRows[0] ??
+        rows.find((row) => row.id === expectedId) ??
+        rows[0] ??
+        { id: expectedId, status: null, createdAt: null };
+      const removedIds = rows.filter((row) => row.id !== survivor.id).map((row) => row.id);
+      if (removedIds.length > 0) {
+        await tx.execute(sql`
+          DELETE FROM local_expert_forms
+          WHERE user_id = ${userId}
+            AND id IN (${sql.join(removedIds.map((id) => sql`${id}`), sql`, `)})
+        `);
+      }
+      expertFormReconciliations.push({ personaKey: form.personaKey, survivorId: survivor.id, removedIds });
+
       await tx.execute(sql`
         INSERT INTO local_expert_forms (
           id, user_id, expert_type, first_name, last_name, email, country, city,
@@ -438,7 +489,7 @@ async function main(): Promise<void> {
           identity_verification_status, identity_verified_at, created_at
         )
         VALUES (
-          ${`persona-kyoto-${form.key}`},
+          ${survivor.id},
           ${userId},
           ${form.expertType},
           ${persona.firstName},
@@ -454,6 +505,7 @@ async function main(): Promise<void> {
           now()
         )
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           expert_type = EXCLUDED.expert_type,
           country = EXCLUDED.country,
           city = EXCLUDED.city,
@@ -525,6 +577,13 @@ async function main(): Promise<void> {
       `);
     }
   });
+
+  for (const reconciliation of expertFormReconciliations) {
+    console.log(
+      `RECONCILED expert_form ${reconciliation.personaKey}: survivor=${reconciliation.survivorId} ` +
+        `removed=${reconciliation.removedIds.length > 0 ? reconciliation.removedIds.join(",") : "none"}`,
+    );
+  }
 
   const personaIds = await resolvePersonaIds();
   const memberships = await db.execute(sql`
