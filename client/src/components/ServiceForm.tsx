@@ -2961,6 +2961,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 onChange={(e) => set("name", e.target.value)}
                 placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
                 className="mt-2"
+                data-testid="service-name"
               />
               <p className="text-xs text-muted-foreground mt-1">Travelers see this first.</p>
             </div>
@@ -3411,6 +3412,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
               rows={4}
               className="mt-2"
+              data-testid="service-description"
             />
             {/* Mock's live counter — an honest count naming the checklist's real ask: the 140+
                 row (`description140`, service-form-required.ts) now exists and reads this same
@@ -3504,6 +3506,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               onChange={(e) => set("duration", e.target.value)}
               placeholder={role === "expert" ? "e.g., 2 hours, 3 days, 1 week" : "e.g., 30 minutes, 2 hours, same-day"}
               className="mt-2"
+              data-testid="service-duration"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Asked once — travelers see this exactly as you write it.
