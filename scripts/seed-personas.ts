@@ -1,16 +1,88 @@
 /**
  * Kyoto persona account/state seed for the persona-marketplace dispatch.
  *
- * Scope is deliberately narrow:
+ * Scope:
  *   - upsert fixed development-only email/password persona accounts;
  *   - upsert supported user-level plan_memberships rows;
+ *   - upsert PRE-VERIFIED identity/business rows on local_expert_forms /
+ *     service_provider_forms for the three earner personas (see "Verification
+ *     pre-seed" below) — added for Persona Lane B (trip_entitlements landed,
+ *     migration 262);
  *   - never insert marketplace content, trips, bookings, services, templates,
- *     expert applications, or approvals.
+ *     or approvals — Lane B's Playwright suites create those through the
+ *     product's own UI/API flows, never as direct SQL fixtures.
  *
- * Trip Pass is reported as unsupported because the current schema stores it in
- * the plans catalog and does not have a per-trip entitlement table. Occasions
- * are also reported, not inserted: they are authored through the Plus flow,
- * outside this account/entitlement-only seed.
+ * Trip Pass (`trip_entitlements`, migration 262, PR #621): the table now
+ * EXISTS, but this seed still does not grant a pass, and that is not a gap —
+ * it is §19a. The table's sole writer is `grantTripPass()`
+ * (server/services/trip-entitlement.service.ts), whose `sourcePaymentId`
+ * parameter is a required string, never optional: the schema comment on
+ * `tripEntitlements` (shared/schema.ts) states plainly that the column "is
+ * PAYMENT IDENTITY (§19a): written ONLY by the server-side grant path from a
+ * Stripe-verified PaymentIntent" and that there is "deliberately NO
+ * createInsertSchema for this table". Unlike `plan_memberships` — which has
+ * an explicit `source` column (`'stripe' | 'manual' | 'beta'`) built exactly
+ * so a seed can grant a membership without a payment — `trip_entitlements`
+ * carries no such vocabulary. A direct INSERT here (even leaving
+ * source_payment_id NULL, which the DB column alone would permit) would make
+ * this seed a second, unaudited writer of a §19a-protected column, which is
+ * the exact class of defect §18's "two authors resolving [a privileged value]
+ * two ways" rule exists to prevent. So this seed does not touch
+ * trip_entitlements — the real purchase is a fully shipped, Stripe-gated flow
+ * (`POST /api/trips/:tripId/trip-pass/purchase` +
+ * `.../purchase/confirm`, server/routes/trip-pass.routes.ts) and
+ * journey-traveler.spec.ts exercises it directly, under the SAME
+ * Stripe-test-mode gate (hasStripeTestKey / STRIPE_UNAVAILABLE) the checkout
+ * journeys already use: a real sk_test_ key runs the full purchase → confirm
+ * → grantTripPass path and asserts the resulting `trip_entitlements` row; a
+ * stub key asserts the honest negative (no entitlement row, per the same
+ * ruling-38-style contract). Occasions are also reported, not inserted: they
+ * are authored through the Plus flow, outside this account/entitlement-only
+ * seed.
+ *
+ * Verification pre-seed (Persona Lane B): real Stripe Identity/KYB cannot run
+ * in a CI container, and `resolvePublishVerification`
+ * (server/services/publish-verification.service.ts) — the ONE gate every
+ * publish path resolves through — holds a listing at `status='draft'` for an
+ * earner whose form is not `identityVerificationStatus === 'verified'`
+ * (providers additionally need `businessVerificationStatus === 'verified'`).
+ * For a PROVIDER the wizard's Submit button is flatly DISABLED while
+ * unverified (`verificationGateBlocked`, client/src/components/ServiceForm.tsx)
+ * — there is no way to even create a service through the UI without it. This
+ * seed is the sanctioned dev-only stand-in for that external dependency: it
+ * upserts a form row with identity (+ business, for the provider) already
+ * `'verified'`, exactly as the Lane-A supply-pass findings called for
+ * ("the dev-only provider verification override... extending it to the
+ * expert path... is the prerequisite for publishing the expert offering
+ * without real KYB" — docs/testing/PERSONA_LANE_B_HANDOFF.md). It does NOT
+ * fabricate an admin-reviewed application (`status` is left at its schema
+ * default, 'pending') and it does NOT touch any rate/fee/payout column (the
+ * MI-1-swept family already `.omit()`'d from insertLocalExpertFormSchema) —
+ * only the identity/business verification fields, which is the one external
+ * dependency a CI container cannot itself clear.
+ *
+ * Because `POST /api/expert-forms` allows a fresh submission only when NO
+ * form exists yet (or the existing one is `status='rejected'`), and
+ * `POST /api/provider-application` allows it only when none exists at all,
+ * pre-seeding these rows changes what a suite's "complete the form" step can
+ * literally do: supply-expert.spec.ts / supply-provider.spec.ts read the
+ * existing (seed-verified) application first and, finding one, assert its
+ * saved state and exercise a REAL edit endpoint on top
+ * (`PATCH /api/expert/profile` / `PATCH /api/provider-application`) rather
+ * than re-POST a form that would already exist. See those specs for the
+ * detail; this file only establishes the verified base row.
+ *
+ * A SECOND, SEPARATE gate exists for providers only, found by the persona-nightly proof
+ * run: ServiceForm.tsx's `publishBlocked` (`isCategoryGated && !isProviderVerified`) reads
+ * `GET /api/provider/verification-status`, which is `users.provider_verification_status` /
+ * `users.background_check_confirmed` (shared/models/auth.ts) — NOT anything on
+ * `service_provider_forms`. A background-check-gated category (`service_categories
+ * .requires_background_check`, or `insurance_band >= 2`) stays disabled ("Verification
+ * Required") for a provider whose ONLY pre-seeded state is the form's identity/business
+ * fields above. The server-side publish gate at `POST /api/provider/services` checks the
+ * SAME two `users` columns, so both are seeded together (see the PROVIDER_FORMS loop
+ * below) — a provider persona is a fully-vetted provider for every category, not just the
+ * gate the form row alone clears.
  *
  * Usage:
  *   npx tsx scripts/seed-personas.ts          # report only
@@ -117,6 +189,63 @@ const MEMBERSHIPS: Membership[] = [
   },
 ];
 
+// ── Verification pre-seed (see module header "Verification pre-seed") ─────────
+// Pre-verified identity(+business) rows on local_expert_forms / service_provider_forms.
+// Deliberately minimal: only the fields resolvePublishVerification and the wizard's
+// category/derived fields need. `status` is left at its schema default ('pending') —
+// this seed stands in for Stripe Identity/KYB only, never for a human admin review.
+type ExpertFormSeed = {
+  key: string;
+  personaKey: string;
+  expertType: "local_expert" | "travel_expert" | "event_planner";
+  city: string;
+  neighborhoods: string[];
+  localSpecialties: string[];
+};
+
+type ProviderFormSeed = {
+  key: string;
+  personaKey: string;
+  businessName: string;
+  businessType: string;
+};
+
+const EXPERT_FORMS: ExpertFormSeed[] = [
+  {
+    key: "gion-local-expert-form",
+    personaKey: "gion-local-expert",
+    expertType: "local_expert",
+    city: "Kyoto",
+    neighborhoods: ["Gion"],
+    localSpecialties: ["Gion walks", "Higashiyama history", "neighborhood etiquette"],
+  },
+  {
+    key: "kyoto-trip-planner-form",
+    personaKey: "kyoto-trip-planner",
+    expertType: "travel_expert",
+    city: "Kyoto",
+    neighborhoods: [],
+    localSpecialties: [],
+  },
+  {
+    key: "kyoto-event-planner-form",
+    personaKey: "kyoto-event-planner",
+    expertType: "event_planner",
+    city: "Kyoto",
+    neighborhoods: [],
+    localSpecialties: [],
+  },
+];
+
+const PROVIDER_FORMS: ProviderFormSeed[] = [
+  {
+    key: "kyoto-provider-form",
+    personaKey: "kyoto-provider",
+    businessName: "Ito Kyoto Arrivals",
+    businessType: "Transportation",
+  },
+];
+
 function looksLocal(url: string): boolean {
   try {
     const host = new URL(url).hostname;
@@ -175,6 +304,7 @@ async function main(): Promise<void> {
   console.log(`database_target=${looksLocal(databaseUrl) ? "local-development" : "managed-development"}`);
   console.log(`persona_count=${PERSONAS.length}`);
   console.log(`supported_membership_count=${MEMBERSHIPS.length}`);
+  console.log(`verification_preseed_count=${EXPERT_FORMS.length + PROVIDER_FORMS.length}`);
   console.log("password=TestPass123! (development test credential)");
 
   if (!APPLY) {
@@ -186,9 +316,32 @@ async function main(): Promise<void> {
         `WOULD UPSERT membership ${membership.key}: ${membership.planKey} -> ${membership.personaKey}`,
       );
     }
-    console.log("UNSUPPORTED/OMITTED: Trip Pass per-trip entitlement (no table/row shape exists).");
+    for (const form of EXPERT_FORMS) {
+      console.log(
+        `WOULD UPSERT local_expert_forms ${form.key}: expertType=${form.expertType} city=${form.city} identityVerificationStatus=verified`,
+      );
+    }
+    for (const form of PROVIDER_FORMS) {
+      console.log(
+        `WOULD UPSERT service_provider_forms ${form.key}: businessType=${form.businessType} identityVerificationStatus=verified businessVerificationStatus=verified`,
+      );
+      console.log(
+        `WOULD UPDATE users ${form.personaKey}: provider_verification_status=verified background_check_confirmed=true ` +
+          `(the SEPARATE category-level publishBlocked gate — ServiceForm.tsx isCategoryGated/isProviderVerified, ` +
+          `GET /api/provider/verification-status — not the form's own identity/business fields above)`,
+      );
+    }
+    console.log(
+      "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant. " +
+        "trip_entitlements EXISTS (migration 262) but its sole writer grantTripPass() " +
+        "(server/services/trip-entitlement.service.ts) requires a real Stripe-verified " +
+        "PaymentIntent id and carries no manual/beta source vocabulary (unlike " +
+        "plan_memberships.source) — this seed does not become a second writer of that " +
+        "§19a-protected column. journey-traveler.spec.ts exercises the real purchase+confirm " +
+        "flow under Stripe test mode instead.",
+    );
     console.log("UNSUPPORTED/OMITTED: Plus occasion row (created through the authenticated Plus flow).");
-    console.log("NOT IN SCOPE: marketplace content, expert/provider forms, services, templates, trips, bookings, approvals.");
+    console.log("NOT IN SCOPE: marketplace content, services, templates, trips, bookings, approvals.");
     return;
   }
 
@@ -270,6 +423,107 @@ async function main(): Promise<void> {
           updated_at = now()
       `);
     }
+
+    // ── Verification pre-seed (see module header "Verification pre-seed") ─────
+    const verifiedAt = new Date().toISOString();
+    for (const form of EXPERT_FORMS) {
+      const userId = personaIds.get(form.personaKey);
+      const persona = PERSONAS.find((p) => p.key === form.personaKey);
+      if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
+
+      await tx.execute(sql`
+        INSERT INTO local_expert_forms (
+          id, user_id, expert_type, first_name, last_name, email, country, city,
+          neighborhoods, local_specialties, bio,
+          identity_verification_status, identity_verified_at, created_at
+        )
+        VALUES (
+          ${`persona-kyoto-${form.key}`},
+          ${userId},
+          ${form.expertType},
+          ${persona.firstName},
+          ${persona.lastName},
+          ${persona.email},
+          'Japan',
+          ${form.city},
+          ${JSON.stringify(form.neighborhoods)}::jsonb,
+          ${JSON.stringify(form.localSpecialties)}::jsonb,
+          ${persona.bio},
+          'verified',
+          ${verifiedAt},
+          now()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          expert_type = EXCLUDED.expert_type,
+          country = EXCLUDED.country,
+          city = EXCLUDED.city,
+          neighborhoods = EXCLUDED.neighborhoods,
+          local_specialties = EXCLUDED.local_specialties,
+          identity_verification_status = 'verified',
+          identity_verified_at = COALESCE(local_expert_forms.identity_verified_at, EXCLUDED.identity_verified_at)
+      `);
+    }
+
+    for (const form of PROVIDER_FORMS) {
+      const userId = personaIds.get(form.personaKey);
+      const persona = PERSONAS.find((p) => p.key === form.personaKey);
+      if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
+
+      await tx.execute(sql`
+        INSERT INTO service_provider_forms (
+          id, user_id, business_name, name, email, mobile, country, city, address,
+          business_type, description,
+          identity_verification_status, identity_verified_at, business_verification_status,
+          created_at
+        )
+        VALUES (
+          ${`persona-kyoto-${form.key}`},
+          ${userId},
+          ${form.businessName},
+          ${`${persona.firstName} ${persona.lastName}`},
+          ${persona.email},
+          '+81-75-000-0000',
+          'Japan',
+          'Kyoto',
+          'Kyoto, Japan',
+          ${form.businessType},
+          ${persona.bio},
+          'verified',
+          ${verifiedAt},
+          'verified',
+          now()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          business_name = EXCLUDED.business_name,
+          business_type = EXCLUDED.business_type,
+          city = EXCLUDED.city,
+          identity_verification_status = 'verified',
+          identity_verified_at = COALESCE(service_provider_forms.identity_verified_at, EXCLUDED.identity_verified_at),
+          business_verification_status = 'verified'
+      `);
+
+      // Category-level publish gate (SEPARATE from the service_provider_forms identity/business
+      // verification above): client/src/components/ServiceForm.tsx's
+      //   isCategoryGated = requiresBackgroundCheck || insuranceBand >= 2
+      //   isProviderVerified = verificationStatus.providerVerificationStatus === "verified"
+      //   publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified
+      // reads GET /api/provider/verification-status, which is users.provider_verification_status
+      // / users.background_check_confirmed (shared/models/auth.ts) — not anything on
+      // service_provider_forms. The server-side publish gate at POST /api/provider/services
+      // checks BOTH of those same users columns (providerVerificationStatus==='verified' AND,
+      // for a requires_background_check category, backgroundCheckConfirmed) before accepting
+      // status:'active', so both are seeded together here — setting only the form's identity/
+      // business fields left this category-level gate unaddressed (found by the Aug 29 persona-
+      // nightly proof run: a background-check-gated category's Publish button stayed disabled
+      // with "Verification Required" for an otherwise seed-verified provider persona).
+      await tx.execute(sql`
+        UPDATE users
+        SET provider_verification_status = 'verified',
+            background_check_confirmed = true,
+            updated_at = now()
+        WHERE id = ${userId}
+      `);
+    }
   });
 
   const personaIds = await resolvePersonaIds();
@@ -282,6 +536,19 @@ async function main(): Promise<void> {
     ORDER BY u.email, pm.plan_key
   `);
 
+  const forms = await db.execute(sql`
+    SELECT 'expert' AS kind, u.email, lef.expert_type AS detail, lef.identity_verification_status AS identity
+    FROM local_expert_forms lef
+    JOIN users u ON u.id = lef.user_id
+    WHERE lef.id LIKE 'persona-kyoto-%-form'
+    UNION ALL
+    SELECT 'provider' AS kind, u.email, spf.business_type AS detail, spf.identity_verification_status AS identity
+    FROM service_provider_forms spf
+    JOIN users u ON u.id = spf.user_id
+    WHERE spf.id LIKE 'persona-kyoto-%-form'
+    ORDER BY email
+  `);
+
   for (const persona of PERSONAS) {
     console.log(`SEEDED account ${persona.key}: ${persona.email} role=${persona.role} id=${personaIds.get(persona.key)}`);
   }
@@ -290,9 +557,30 @@ async function main(): Promise<void> {
       `SEEDED membership ${row.email}: plan=${row.plan_key} status=${row.status} source=${row.source}`,
     );
   }
-  console.log("UNSUPPORTED/OMITTED: Trip Pass per-trip entitlement (no table/row shape exists).");
+  for (const row of forms.rows) {
+    console.log(
+      `SEEDED ${row.kind}_form ${row.email}: detail=${row.detail} identity_verification_status=${row.identity}`,
+    );
+  }
+  const providerClearance = await db.execute(sql`
+    SELECT u.email, u.provider_verification_status, u.background_check_confirmed
+    FROM users u
+    WHERE u.id IN (${sql.join(
+      PROVIDER_FORMS.map((form) => sql`${personaIds.get(form.personaKey)}`),
+      sql`, `,
+    )})
+  `);
+  for (const row of providerClearance.rows) {
+    console.log(
+      `SEEDED category-gate clearance ${row.email}: provider_verification_status=${row.provider_verification_status} background_check_confirmed=${row.background_check_confirmed}`,
+    );
+  }
+  console.log(
+    "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant — see the " +
+      "module header. journey-traveler.spec.ts exercises the real Stripe-gated purchase flow.",
+  );
   console.log("UNSUPPORTED/OMITTED: Plus occasion row (created through the authenticated Plus flow).");
-  console.log("NOT IN SCOPE: marketplace content, expert/provider forms, services, templates, trips, bookings, approvals.");
+  console.log("NOT IN SCOPE: marketplace content, services, templates, trips, bookings, approvals.");
 }
 
 main()
