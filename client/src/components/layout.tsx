@@ -657,24 +657,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-modal="true"
               aria-label={t("navigationMenu")}
               {...slideMotion}
-              className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
+              className="lg:hidden border-t border-[color:var(--earn-border)] max-h-[calc(100svh-60px)] overflow-y-auto"
+              style={{ background: "var(--earn-ground)" }}
             >
               {/* Mobile Nav */}
               <div className="pt-2 pb-3 space-y-1 px-4">
                 {navItems.map((item) => (
                   item.sections ? (
                     <div key={item.name} className="py-2">
-                      <div className="px-3 py-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide" aria-hidden="true">
+                      <div className="px-3 py-2 text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-muted)]" style={{ fontFamily: CHROME_MONO }} aria-hidden="true">
                         {tr(item.i18nKey, item.name)}
                       </div>
                       {item.sections.map((section) => (
                         <div key={section.title}>
-                          <div className="px-6 py-1.5 text-xs font-semibold text-muted-foreground uppercase" aria-hidden="true">
+                          <div className="px-6 py-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-faint)]" style={{ fontFamily: CHROME_MONO }} aria-hidden="true">
                             {tr(section.i18nKey, section.title)}
                           </div>
                           {section.items.map((child) => {
                             const mobileClass = cn(
-                              "flex items-center gap-3 px-8 py-2.5 text-base font-medium text-muted-foreground hover-elevate rounded-lg transition-colors w-full text-left",
+                              "flex items-center gap-3 px-8 py-2.5 text-[13px] font-medium tracking-[.05em] rounded-lg transition-colors w-full text-left",
+                              CHROME_LINK_REST,
+                              "hover:no-underline hover:bg-[color:var(--earn-teal-wash)]",
                               FOCUS_RING
                             );
                             const testId = `link-mobile-${child.name.toLowerCase().replace(/\s+/g, '-')}`;
@@ -714,7 +717,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       key={item.name}
                       href={item.href || "#"}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-muted-foreground hover-elevate transition-colors",
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium tracking-[.05em] transition-colors",
+                        CHROME_LINK_REST,
+                        "hover:no-underline hover:bg-[color:var(--earn-teal-wash)]",
                         FOCUS_RING
                       )}
                       onClick={() => setIsMobileMenuOpen(false)}
@@ -726,7 +731,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   )
                 ))}
               </div>
-              <div className="pt-4 pb-4 border-t border-border px-4">
+              <div className="pt-4 pb-4 border-t border-[color:var(--earn-border)] px-4">
                 {user ? (
                   <div className="flex items-center gap-4">
                     <Avatar className="h-10 w-10">
@@ -752,7 +757,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">{t("joinAsPartnerMobile")}</p>
+                    <p className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-muted)] px-1 mb-1" style={{ fontFamily: CHROME_MONO }}>{t("joinAsPartnerMobile")}</p>
                     {[
                       // `label` stays English — React key + `button-mobile-*` testid source.
                       { label: "Trip Planner", k: "tripPlanner", href: "/become-expert?type=travel_expert", icon: Plane },
@@ -762,14 +767,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       { label: "Executive Assistant", k: "executiveAssistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                     ].map(({ label, k, href, icon: Icon }) => (
                       <Link key={label} href={href} onClick={() => setIsMobileMenuOpen(false)}>
-                        <Button variant="outline" className="w-full justify-start gap-2" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
-                          <Icon className="w-4 h-4 text-primary" aria-hidden="true" />
+                        <Button variant="outline" className="w-full justify-start gap-2 border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] bg-transparent hover:bg-[color:var(--earn-navy)] hover:text-white" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
+                          <Icon className="w-4 h-4" aria-hidden="true" />
                           {t(`partner.${k}`)}
                         </Button>
                       </Link>
                     ))}
                     <Button
-                      className="w-full mt-1"
+                      className="w-full mt-1 text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         openSignInModal();
@@ -794,8 +799,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-card border-t border-border py-16">
+      {/* Footer — the white card closing the page (ruling 2026-08-28-chrome-alignment):
+          white is reserved for cards, the page sits on ground, a hairline separates. */}
+      <footer className="border-t border-[color:var(--earn-border)] py-16" style={{ background: "var(--earn-card)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
@@ -803,7 +809,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="flex items-center mb-4" aria-hidden="true">
                 <TraveloureLogo mono className="h-8" />
               </div>
-              <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
+              <p className="text-[color:var(--earn-muted)] text-sm mb-6 max-w-sm leading-relaxed">
                 {t("footer.tagline")}
               </p>
               {/* TEST 3 — Social links: aria-label for icon-only anchors */}
@@ -812,7 +818,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://www.facebook.com/Traveloure/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={cn("w-10 h-10 rounded-xl bg-muted flex items-center justify-center hover-elevate transition-all text-muted-foreground", FOCUS_RING)}
+                  className={cn("w-10 h-10 rounded-xl bg-[color:var(--earn-chip)] flex items-center justify-center transition-colors text-[color:var(--earn-muted)] hover:bg-[color:var(--earn-teal-wash)] hover:text-[color:var(--earn-teal-ink)]", FOCUS_RING)}
                   aria-label="Traveloure on Facebook (opens in new tab)"
                   data-testid="link-social-facebook"
                 >
@@ -822,7 +828,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://x.com/Traveloure_"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={cn("w-10 h-10 rounded-xl bg-muted flex items-center justify-center hover-elevate transition-all text-muted-foreground", FOCUS_RING)}
+                  className={cn("w-10 h-10 rounded-xl bg-[color:var(--earn-chip)] flex items-center justify-center transition-colors text-[color:var(--earn-muted)] hover:bg-[color:var(--earn-teal-wash)] hover:text-[color:var(--earn-teal-ink)]", FOCUS_RING)}
                   aria-label="Traveloure on X / Twitter (opens in new tab)"
                   data-testid="link-social-twitter"
                 >
@@ -832,7 +838,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://www.instagram.com/traveloure_"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={cn("w-10 h-10 rounded-xl bg-muted flex items-center justify-center hover-elevate transition-all text-muted-foreground", FOCUS_RING)}
+                  className={cn("w-10 h-10 rounded-xl bg-[color:var(--earn-chip)] flex items-center justify-center transition-colors text-[color:var(--earn-muted)] hover:bg-[color:var(--earn-teal-wash)] hover:text-[color:var(--earn-teal-ink)]", FOCUS_RING)}
                   aria-label="Traveloure on Instagram (opens in new tab)"
                   data-testid="link-social-instagram"
                 >
@@ -844,15 +850,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Footer columns */}
             {footerSectionsConfig.map((section) => (
               <div key={section.title}>
-                <h3 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">
+                <h3
+                  className="mb-4 text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-muted)]"
+                  style={{ fontFamily: CHROME_MONO }}
+                >
                   {tr(section.i18nKey, section.title)}
                 </h3>
-                <ul className="space-y-3 text-sm text-muted-foreground">
+                <ul className="space-y-3 text-sm text-[color:var(--earn-muted)]">
                   {section.links.map((link) => (
                     <li key={link.href}>
                       <Link
                         href={link.href}
-                        className={cn("hover:text-foreground transition-colors", FOCUS_RING)}
+                        className={cn("transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
                         data-testid={`link-footer-${link.href.replace(/^\//, '').replace(/\//g, '-')}`}
                       >
                         {tr(link.i18nKey, link.label)}
@@ -865,11 +874,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Bottom Bar */}
-          <div className="border-t border-border mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="border-t border-[color:var(--earn-border)] mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-[color:var(--earn-faint)]" style={{ fontFamily: CHROME_MONO }}>
               {t("footer.rights", { year: new Date().getFullYear() })}
             </p>
-            <div className="flex items-center gap-6 text-xs text-muted-foreground">
+            <div className="flex items-center gap-6 text-xs text-[color:var(--earn-faint)]" style={{ fontFamily: CHROME_MONO }}>
               {/* Ruling 60 Phase A: this pill read a hardcoded "English (US)" and would have
                   stayed English while the whole footer above it rendered Japanese. It now shows
                   the LIVE locale's endonym. The currency pill beside it is deliberately
