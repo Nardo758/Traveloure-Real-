@@ -39,6 +39,7 @@ import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
+import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -1970,59 +1971,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const vendorList = await storage.getVendors();
-      const escapeCsv = (value: unknown) => {
-        let text = String(value ?? "");
-        // Prevent spreadsheet formula injection when an admin opens the export.
-        if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-      };
-      const headers = [
-        "id",
-        "name",
-        "category",
-        "description",
-        "vendor_email",
-        "phone",
-        "website",
-        "address",
-        "city",
-        "country",
-        "rating",
-        "price_range",
-        "status",
-        "created_at",
-        "updated_at",
-        "creator_name",
-        "creator_email",
-        "creator_origin",
-      ];
-      const rows = vendorList.map((vendor) => {
-        const creatorName = [vendor.createdBy?.firstName, vendor.createdBy?.lastName]
-          .filter(Boolean)
-          .join(" ");
-        const hasCreator = Boolean(vendor.createdBy);
-        return [
-          vendor.id,
-          vendor.name,
-          vendor.category,
-          vendor.description,
-          vendor.email,
-          vendor.phone,
-          vendor.website,
-          vendor.address,
-          vendor.city,
-          vendor.country,
-          vendor.rating,
-          vendor.priceRange,
-          vendor.status,
-          vendor.createdAt?.toISOString(),
-          vendor.updatedAt?.toISOString(),
-          creatorName || (hasCreator ? vendor.createdBy?.email : null) || "Unknown origin",
-          vendor.createdBy?.email || "Unknown origin",
-          hasCreator ? "Account" : "Unknown origin",
-        ].map(escapeCsv).join(",");
-      });
-      const csv = [headers.join(","), ...rows].join("\r\n") + "\r\n";
+      const csv = formatVendorAuditCsv(vendorList);
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
