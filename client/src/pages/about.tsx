@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { useQuery } from "@tanstack/react-query";
 
 function formatStat(n: number): string {
@@ -46,6 +47,7 @@ const values = [
 
 export default function AboutPage() {
   const { openSignInModal } = useSignInModal();
+  const { open: openPlanning } = usePlanning();
 
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
@@ -212,7 +214,7 @@ export default function AboutPage() {
               there's a place for you at Traveloure.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-start-planning">
+              <Button size="lg" variant="secondary" onClick={() => openPlanning()} data-testid="button-start-planning">
                 Start Planning <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Link href="/partner-with-us">

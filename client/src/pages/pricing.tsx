@@ -28,6 +28,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
@@ -69,6 +70,7 @@ function pct(n: number): string {
 
 export default function PricingPage() {
   const { openSignInModal } = useSignInModal();
+  const { open: openPlanning } = usePlanning();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -115,7 +117,7 @@ export default function PricingPage() {
       ],
       cta: "Start planning",
       variant: "outline" as const,
-      onClick: () => (user ? setLocation("/dashboard") : openSignInModal()),
+      onClick: () => openPlanning({ branch: "myself" }),
       testid: "yourself",
     },
     {
@@ -133,7 +135,7 @@ export default function PricingPage() {
       ],
       cta: "Optimize a plan",
       variant: "outline" as const,
-      onClick: () => (user ? setLocation("/dashboard") : openSignInModal()),
+      onClick: () => openPlanning({ branch: "ai" }),
       testid: "ai",
     },
     {

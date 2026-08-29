@@ -22,12 +22,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
-import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { GuestInviteManager } from "@/components/GuestInviteManager";
 import type { UserExperience } from "@shared/schema";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
@@ -168,6 +168,7 @@ export default function TripDetails() {
   };
   const { toast } = useToast();
   const { user } = useAuth();
+  const { open: openPlanning } = usePlanning();
   const [activeTab, setActiveTab] = useState(initialTab);
   const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
   const [section, setSection] = useState<Section>(initialSection);
@@ -183,7 +184,6 @@ export default function TripDetails() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
-  const [showPlanningModal, setShowPlanningModal] = useState(false);
   // T1-1: confirm before "Regenerate Plan" destructively rebuilds the itinerary. Only shown
   // when there's an existing plan to lose (see `hasExistingItineraryItems` below) — first-time
   // generation has nothing to warn about.
@@ -724,7 +724,7 @@ export default function TripDetails() {
                         </Button>
                         <Button
                           variant="outline"
-                          onClick={() => setShowPlanningModal(true)}
+                          onClick={() => openPlanning({ branch: "ai", destination: trip?.destination, tripId: trip?.id })}
                           data-testid="button-plan-with-preferences"
                         >
                           <MapPin className="w-4 h-4 mr-2" />
@@ -1486,24 +1486,10 @@ export default function TripDetails() {
         </DialogContent>
       </Dialog>
 
-      {/* Enhanced Planning Modal — Stage 3.1 wiring */}
-      <EnhancedPlanningModal
-        isOpen={showPlanningModal}
-        onClose={() => setShowPlanningModal(false)}
-        initialDestination={(() => {
-          if (!trip?.destination) return null;
-          const parts = trip.destination.split(',').map((s) => s.trim());
-          const city = parts[0] || trip.destination;
-          const country = parts[1] || '';
-          return {
-            city,
-            country,
-            cityId: `${city.toLowerCase().replace(/\s+/g, '-')}-${country.toLowerCase().substring(0, 2)}`,
-          };
-        })()}
-        mode="single"
-        userId={user?.id || ''}
-      />
+      {/* Stage 3.1 re-plan now rides the global planning entry (ruling
+          2026-08-28-single-planning-entry): the button above deep-opens the AI
+          branch with this trip's destination — same modal, one mount, in
+          PlanningProvider. */}
 
       {/* T1-1: confirm before Regenerate destructively rebuilds the plan. Only reachable via
           handleRegenerateClick, which itself only opens this when hasExistingItineraryItems —
