@@ -8,37 +8,41 @@
  *     service_provider_forms for the three earner personas (see "Verification
  *     pre-seed" below) — added for Persona Lane B (trip_entitlements landed,
  *     migration 262);
+ *   - reconcile legacy duplicate local_expert_forms rows for fixed expert
+ *     personas, without ever writing to a production database;
  *   - never insert marketplace content, trips, bookings, services, templates,
  *     or approvals — Lane B's Playwright suites create those through the
  *     product's own UI/API flows, never as direct SQL fixtures.
  *
- * Trip Pass (`trip_entitlements`, migration 262, PR #621): the table now
- * EXISTS, but this seed still does not grant a pass, and that is not a gap —
- * it is §19a. The table's sole writer is `grantTripPass()`
- * (server/services/trip-entitlement.service.ts), whose `sourcePaymentId`
- * parameter is a required string, never optional: the schema comment on
- * `tripEntitlements` (shared/schema.ts) states plainly that the column "is
- * PAYMENT IDENTITY (§19a): written ONLY by the server-side grant path from a
- * Stripe-verified PaymentIntent" and that there is "deliberately NO
- * createInsertSchema for this table". Unlike `plan_memberships` — which has
- * an explicit `source` column (`'stripe' | 'manual' | 'beta'`) built exactly
- * so a seed can grant a membership without a payment — `trip_entitlements`
- * carries no such vocabulary. A direct INSERT here (even leaving
- * source_payment_id NULL, which the DB column alone would permit) would make
- * this seed a second, unaudited writer of a §19a-protected column, which is
- * the exact class of defect §18's "two authors resolving [a privileged value]
- * two ways" rule exists to prevent. So this seed does not touch
- * trip_entitlements — the real purchase is a fully shipped, Stripe-gated flow
- * (`POST /api/trips/:tripId/trip-pass/purchase` +
- * `.../purchase/confirm`, server/routes/trip-pass.routes.ts) and
- * journey-traveler.spec.ts exercises it directly, under the SAME
- * Stripe-test-mode gate (hasStripeTestKey / STRIPE_UNAVAILABLE) the checkout
- * journeys already use: a real sk_test_ key runs the full purchase → confirm
- * → grantTripPass path and asserts the resulting `trip_entitlements` row; a
- * stub key asserts the honest negative (no entitlement row, per the same
- * ruling-38-style contract). Occasions are also reported, not inserted: they
- * are authored through the Plus flow, outside this account/entitlement-only
- * seed.
+ * Trip Pass (`trip_entitlements`, migration 262, PR #621) — UPDATED (ledger
+ * 2026-08-29-trip-pass-provenance, migration 264): the table gained a
+ * `source ∈ {stripe, manual, beta}` provenance column, mirroring
+ * `plan_memberships.source`, and `grantTripPass()`
+ * (server/services/trip-entitlement.service.ts) gained a SANCTIONED
+ * non-Stripe path — `source='manual'|'beta'` REQUIRES `sourcePaymentId` be
+ * NULL (rejects a fabricated payment identity, §19a), exactly the vocabulary
+ * `plan_memberships.source` already had. That closes the gap the ORIGINAL
+ * version of this comment described: `trip_entitlements` is no longer §19a's
+ * one-writer table with no manual-grant seam. This seed now calls the SAME
+ * `grantTripPass()` function the Stripe confirm path calls — never a raw SQL
+ * INSERT — with `source: 'manual'` and `sourcePaymentId` omitted, so the
+ * ONE function that enforces the provenance invariant is still the ONLY
+ * writer; this seed is simply a second SANCTIONED CALLER of it, not a second
+ * implementation (§18 rule 1: derivation delegates, never re-implements).
+ * The Trip-Pass persona's trip is likewise created through the real
+ * `storage.createTrip()` — the same function `POST /api/trips` calls — found
+ * by (`user_id`, `title`) rather than a hardcoded id, so a re-run reuses the
+ * same trip instead of minting a duplicate. This is the one deliberate
+ * exception to the "never insert marketplace content" rule above: an
+ * entitlement is meaningless without a trip to attach to, and both writes
+ * go through the product's own functions, never a hand-rolled INSERT.
+ * The Stripe-gated PURCHASE flow (`POST /api/trips/:tripId/trip-pass/purchase`
+ * + `.../purchase/confirm`, server/routes/trip-pass.routes.ts) is untouched
+ * and still exercised on its own fresh trip by journey-traveler.spec.ts's
+ * uncovered-branch test, under the same Stripe-test-mode gate
+ * (hasStripeTestKey / STRIPE_UNAVAILABLE) the checkout journeys use.
+ * Occasions are still reported, not inserted: they are authored through the
+ * Plus flow, outside this account/entitlement seed.
  *
  * Verification pre-seed (Persona Lane B): real Stripe Identity/KYB cannot run
  * in a CI container, and `resolvePublishVerification`
@@ -92,6 +96,16 @@
 import crypto from "node:crypto";
 import { db, pool } from "../server/db";
 import { sql } from "drizzle-orm";
+import { storage } from "../server/storage";
+import { grantTripPass } from "../server/services/trip-entitlement.service";
+import { PLAN_KEYS, requirePlan } from "../server/services/plans.service";
+
+// Deterministic lookup key for the Trip-Pass persona's seeded trip — found by (user_id, title)
+// on re-run rather than a hardcoded trip id, matching the occasion-dedup pattern
+// journey-traveler.spec.ts already uses. Kept distinct from the ad-hoc "Trip Pass Kyoto Trip"
+// title journey-traveler.spec.ts's own uncovered-branch test creates via the API, so the two
+// never collide on a title lookup.
+const TRIP_PASS_SEED_TRIP_TITLE = "Trip Pass Kyoto Trip (seeded entitlement)";
 
 const APPLY = process.argv.includes("--apply");
 const PASSWORD = "TestPass123!";
@@ -194,6 +208,10 @@ const MEMBERSHIPS: Membership[] = [
 // Deliberately minimal: only the fields resolvePublishVerification and the wizard's
 // category/derived fields need. `status` is left at its schema default ('pending') —
 // this seed stands in for Stripe Identity/KYB only, never for a human admin review.
+//
+// The forms tables do not enforce one row per user. Provider reads therefore use the
+// oldest row (created_at, then id) as the canonical application; the provider seed
+// must update that same row rather than upserting a second fixed-ID row.
 type ExpertFormSeed = {
   key: string;
   personaKey: string;
@@ -210,6 +228,11 @@ type ProviderFormSeed = {
   businessType: string;
 };
 
+type ExistingExpertForm = {
+  id: string;
+  status: string | null;
+  created_at: string | null;
+};
 const EXPERT_FORMS: ExpertFormSeed[] = [
   {
     key: "gion-local-expert-form",
@@ -245,13 +268,6 @@ const PROVIDER_FORMS: ProviderFormSeed[] = [
     businessType: "Transportation",
   },
 ];
-
-type ExpertFormReconciliation = {
-  personaKey: string;
-  survivorId: string;
-  removedIds: string[];
-};
-
 function looksLocal(url: string): boolean {
   try {
     const host = new URL(url).hostname;
@@ -272,6 +288,9 @@ function periodEnd(days: number): string {
   return end.toISOString();
 }
 
+function fixedExpertFormId(form: ExpertFormSeed): string {
+  return `persona-kyoto-${form.key}`;
+}
 async function resolvePersonaIds(): Promise<Map<string, string>> {
   const result = await db.execute(sql`
     SELECT id, email
@@ -337,14 +356,15 @@ async function main(): Promise<void> {
           `GET /api/provider/verification-status — not the form's own identity/business fields above)`,
       );
     }
+    await reportExistingExpertForms();
     console.log(
-      "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant. " +
-        "trip_entitlements EXISTS (migration 262) but its sole writer grantTripPass() " +
-        "(server/services/trip-entitlement.service.ts) requires a real Stripe-verified " +
-        "PaymentIntent id and carries no manual/beta source vocabulary (unlike " +
-        "plan_memberships.source) — this seed does not become a second writer of that " +
-        "§19a-protected column. journey-traveler.spec.ts exercises the real purchase+confirm " +
-        "flow under Stripe test mode instead.",
+      `WOULD UPSERT trip ${TRIP_PASS_SEED_TRIP_TITLE} for kyoto-trip-pass-traveler (via storage.createTrip, found-or-created by user_id+title)`,
+    );
+    console.log(
+      "WOULD GRANT trip_entitlements via grantTripPass({source:'manual'}) on that trip " +
+        "(ledger 2026-08-29-trip-pass-provenance) — status=active, source_payment_id=NULL, " +
+        "allowances_snapshot mirrors the plans.trip_pass row (§19a-sanctioned manual grant, " +
+        "not a raw INSERT).",
     );
     console.log("UNSUPPORTED/OMITTED: Plus occasion row (created through the authenticated Plus flow).");
     console.log("NOT IN SCOPE: marketplace content, services, templates, trips, bookings, approvals.");
@@ -353,7 +373,6 @@ async function main(): Promise<void> {
 
   const password = hashPassword(PASSWORD);
   const acceptedAt = new Date().toISOString();
-  const expertFormReconciliations: ExpertFormReconciliation[] = [];
 
   await db.transaction(async (tx) => {
     const personaIds = new Map<string, string>();
@@ -438,49 +457,13 @@ async function main(): Promise<void> {
       const persona = PERSONAS.find((p) => p.key === form.personaKey);
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
-      // A persona can already have a real application created by the product flow (and that
-      // application can be the one an approval, offering, or storefront journey references).
-      // local_expert_forms has no row-level foreign keys from those user-owned records, so the
-      // lifecycle status is the only row-local signal we can safely use: preserve exactly one
-      // approved row, refuse to guess when multiple approved rows exist, and otherwise prefer
-      // the stable seed id. This makes the seed self-healing without deleting user-owned
-      // offerings or a claimed handle.
-      const existingForms = await tx.execute(sql`
-        SELECT id, status, created_at
-        FROM local_expert_forms
-        WHERE user_id = ${userId}
-        ORDER BY created_at ASC NULLS LAST, id ASC
-        FOR UPDATE
-      `);
-      const rows = existingForms.rows.map((row) => ({
-        id: String(row.id),
-        status: row.status == null ? null : String(row.status),
-        createdAt: row.created_at == null ? null : String(row.created_at),
-      }));
-      const approvedRows = rows.filter((row) => row.status === "approved");
-      if (approvedRows.length > 1) {
-        throw new Error(
-          `[seed-personas] REFUSED to reconcile ${form.personaKey}: multiple approved ` +
-            `local_expert_forms rows (${approvedRows.map((row) => row.id).join(", ")}). ` +
-            "Both may have dependent product state; review manually rather than guessing.",
+      const reconciliation = await reconcileExpertForm(tx, form, userId);
+      if (reconciliation.removedIds.length > 0) {
+        console.warn(
+          `[seed-personas] reconciled ${form.key}: ` +
+            `kept ${reconciliation.survivorId}; removed duplicate rows ${reconciliation.removedIds.join(",")}`,
         );
       }
-
-      const expectedId = `persona-kyoto-${form.key}`;
-      const survivor =
-        approvedRows[0] ??
-        rows.find((row) => row.id === expectedId) ??
-        rows[0] ??
-        { id: expectedId, status: null, createdAt: null };
-      const removedIds = rows.filter((row) => row.id !== survivor.id).map((row) => row.id);
-      if (removedIds.length > 0) {
-        await tx.execute(sql`
-          DELETE FROM local_expert_forms
-          WHERE user_id = ${userId}
-            AND id IN (${sql.join(removedIds.map((id) => sql`${id}`), sql`, `)})
-        `);
-      }
-      expertFormReconciliations.push({ personaKey: form.personaKey, survivorId: survivor.id, removedIds });
 
       await tx.execute(sql`
         INSERT INTO local_expert_forms (
@@ -489,7 +472,7 @@ async function main(): Promise<void> {
           identity_verification_status, identity_verified_at, created_at
         )
         VALUES (
-          ${survivor.id},
+          ${reconciliation.survivorId},
           ${userId},
           ${form.expertType},
           ${persona.firstName},
@@ -505,12 +488,15 @@ async function main(): Promise<void> {
           now()
         )
         ON CONFLICT (id) DO UPDATE SET
-          user_id = EXCLUDED.user_id,
           expert_type = EXCLUDED.expert_type,
+          first_name = EXCLUDED.first_name,
+          last_name = EXCLUDED.last_name,
+          email = EXCLUDED.email,
           country = EXCLUDED.country,
           city = EXCLUDED.city,
           neighborhoods = EXCLUDED.neighborhoods,
           local_specialties = EXCLUDED.local_specialties,
+          bio = EXCLUDED.bio,
           identity_verification_status = 'verified',
           identity_verified_at = COALESCE(local_expert_forms.identity_verified_at, EXCLUDED.identity_verified_at)
       `);
@@ -521,38 +507,53 @@ async function main(): Promise<void> {
       const persona = PERSONAS.find((p) => p.key === form.personaKey);
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
-      await tx.execute(sql`
-        INSERT INTO service_provider_forms (
-          id, user_id, business_name, name, email, mobile, country, city, address,
-          business_type, description,
-          identity_verification_status, identity_verified_at, business_verification_status,
-          created_at
-        )
-        VALUES (
-          ${`persona-kyoto-${form.key}`},
-          ${userId},
-          ${form.businessName},
-          ${`${persona.firstName} ${persona.lastName}`},
-          ${persona.email},
-          '+81-75-000-0000',
-          'Japan',
-          'Kyoto',
-          'Kyoto, Japan',
-          ${form.businessType},
-          ${persona.bio},
-          'verified',
-          ${verifiedAt},
-          'verified',
-          now()
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          business_name = EXCLUDED.business_name,
-          business_type = EXCLUDED.business_type,
-          city = EXCLUDED.city,
-          identity_verification_status = 'verified',
-          identity_verified_at = COALESCE(service_provider_forms.identity_verified_at, EXCLUDED.identity_verified_at),
-          business_verification_status = 'verified'
+      // There is no unique constraint on service_provider_forms.user_id. Resolve the
+      // same canonical row used by provider reads before inserting the fixed seed row,
+      // so a pre-existing application cannot be shadowed by a second row.
+      const existing = await tx.execute(sql`
+        SELECT id
+        FROM service_provider_forms
+        WHERE user_id = ${userId}
+        ORDER BY created_at ASC NULLS FIRST, id ASC
+        LIMIT 1
       `);
+      const existingId = existing.rows[0]?.id;
+
+      if (existingId) {
+        await tx.execute(sql`
+          UPDATE service_provider_forms
+          SET identity_verification_status = 'verified',
+              identity_verified_at = COALESCE(identity_verified_at, ${verifiedAt}),
+              business_verification_status = 'verified'
+          WHERE id = ${existingId}
+        `);
+      } else {
+        await tx.execute(sql`
+          INSERT INTO service_provider_forms (
+            id, user_id, business_name, name, email, mobile, country, city, address,
+            business_type, description,
+            identity_verification_status, identity_verified_at, business_verification_status,
+            created_at
+          )
+          VALUES (
+            ${`persona-kyoto-${form.key}`},
+            ${userId},
+            ${form.businessName},
+            ${`${persona.firstName} ${persona.lastName}`},
+            ${persona.email},
+            '+81-75-000-0000',
+            'Japan',
+            'Kyoto',
+            'Kyoto, Japan',
+            ${form.businessType},
+            ${persona.bio},
+            'verified',
+            ${verifiedAt},
+            'verified',
+            now()
+          )
+        `);
+      }
 
       // Category-level publish gate (SEPARATE from the service_provider_forms identity/business
       // verification above): client/src/components/ServiceForm.tsx's
@@ -578,7 +579,63 @@ async function main(): Promise<void> {
     }
   });
 
+  for (const reconciliation of expertFormReconciliations) {
+    console.log(
+      `RECONCILED expert_form ${reconciliation.personaKey}: survivor=${reconciliation.survivorId} ` +
+        `removed=${reconciliation.removedIds.length > 0 ? reconciliation.removedIds.join(",") : "none"}`,
+    );
+  }
+
   const personaIds = await resolvePersonaIds();
+
+  // ── Trip Pass persona: seeded trip + manual-provenance entitlement ───────────
+  // (ledger 2026-08-29-trip-pass-provenance). Both writes go through the REAL product
+  // functions (storage.createTrip / grantTripPass) — see the module header for why this is
+  // the one sanctioned exception to "never insert marketplace content" above.
+  const tripPassUserId = personaIds.get("kyoto-trip-pass-traveler");
+  if (!tripPassUserId) throw new Error("Unable to resolve kyoto-trip-pass-traveler after account upsert.");
+
+  const [existingTripRow] = (
+    await db.execute(sql`
+      SELECT id FROM trips WHERE user_id = ${tripPassUserId} AND title = ${TRIP_PASS_SEED_TRIP_TITLE} LIMIT 1
+    `)
+  ).rows;
+
+  let tripPassTripId: string;
+  if (existingTripRow?.id) {
+    tripPassTripId = String(existingTripRow.id);
+  } else {
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() + 30);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 5);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    const newTrip = await storage.createTrip({
+      userId: tripPassUserId,
+      title: TRIP_PASS_SEED_TRIP_TITLE,
+      destination: "Kyoto",
+      startDate: fmt(start),
+      endDate: fmt(end),
+      status: "draft",
+    });
+    tripPassTripId = newTrip.id;
+  }
+
+  // FROZEN snapshot, mirroring the real Stripe-confirm grant in trip-pass.routes.ts — the
+  // plans row's CURRENT allowances plus the ruled one-revision benefit. No priceCentsPaid
+  // field: unlike a Stripe grant, nothing was actually captured, and inventing an amount here
+  // would misrepresent this as a payment (§13 — never claim a fact with no fact behind it).
+  const tripPassPlan = await requirePlan(PLAN_KEYS.TRIP_PASS);
+  const { entitlement: tripPassEntitlement } = await grantTripPass({
+    tripId: tripPassTripId,
+    source: "manual",
+    allowancesSnapshot: {
+      ...(tripPassPlan.allowances as Record<string, unknown>),
+      revisionsRemaining: 1,
+      planName: tripPassPlan.name,
+    },
+  });
+
   const memberships = await db.execute(sql`
     SELECT pm.plan_key, pm.status, pm.source, u.email
     FROM plan_memberships pm
@@ -589,15 +646,31 @@ async function main(): Promise<void> {
   `);
 
   const forms = await db.execute(sql`
-    SELECT 'expert' AS kind, u.email, lef.expert_type AS detail, lef.identity_verification_status AS identity
+    SELECT 'expert' AS kind, u.email, lef.expert_type AS detail, lef.id AS form_id,
+           lef.identity_verification_status AS identity,
+           NULL::text AS business, NULL::text AS provider_verification_status,
+           NULL::boolean AS background_check_confirmed
     FROM local_expert_forms lef
     JOIN users u ON u.id = lef.user_id
     WHERE lef.id LIKE 'persona-kyoto-%-form'
     UNION ALL
-    SELECT 'provider' AS kind, u.email, spf.business_type AS detail, spf.identity_verification_status AS identity
-    FROM service_provider_forms spf
-    JOIN users u ON u.id = spf.user_id
-    WHERE spf.id LIKE 'persona-kyoto-%-form'
+    SELECT 'provider' AS kind, u.email, spf.business_type AS detail, spf.id AS form_id,
+           spf.identity_verification_status AS identity,
+           spf.business_verification_status AS business,
+           u.provider_verification_status,
+           u.background_check_confirmed
+    FROM users u
+    JOIN LATERAL (
+      SELECT *
+      FROM service_provider_forms
+      WHERE service_provider_forms.user_id = u.id
+      ORDER BY created_at ASC NULLS FIRST, id ASC
+      LIMIT 1
+    ) spf ON true
+    WHERE u.email IN (${sql.join(PROVIDER_FORMS.map((form) => {
+      const persona = PERSONAS.find((p) => p.key === form.personaKey);
+      return sql`${persona?.email ?? ""}`;
+    }), sql`, `)})
     ORDER BY email
   `);
 
@@ -611,7 +684,12 @@ async function main(): Promise<void> {
   }
   for (const row of forms.rows) {
     console.log(
-      `SEEDED ${row.kind}_form ${row.email}: detail=${row.detail} identity_verification_status=${row.identity}`,
+      `SEEDED ${row.kind}_form ${row.email}: id=${row.form_id} detail=${row.detail} ` +
+        `identity_verification_status=${row.identity}` +
+        (row.kind === "provider"
+          ? ` business_verification_status=${row.business} provider_verification_status=${row.provider_verification_status} ` +
+            `background_check_confirmed=${row.background_check_confirmed}`
+          : ""),
     );
   }
   const providerClearance = await db.execute(sql`
@@ -628,8 +706,10 @@ async function main(): Promise<void> {
     );
   }
   console.log(
-    "UNSUPPORTED/OMITTED (by design, §19a): Trip Pass per-trip entitlement grant — see the " +
-      "module header. journey-traveler.spec.ts exercises the real Stripe-gated purchase flow.",
+    `SEEDED trip_pass entitlement: trip_id=${tripPassTripId} status=${tripPassEntitlement.status} ` +
+      `source=${tripPassEntitlement.source} source_payment_id=${tripPassEntitlement.sourcePaymentId ?? "NULL"} ` +
+      `(ledger 2026-08-29-trip-pass-provenance; the Stripe-gated purchase flow is still separately ` +
+      `exercised by journey-traveler.spec.ts's uncovered-branch test on its own fresh trip).`,
   );
   console.log("UNSUPPORTED/OMITTED: Plus occasion row (created through the authenticated Plus flow).");
   console.log("NOT IN SCOPE: marketplace content, services, templates, trips, bookings, approvals.");
@@ -643,3 +723,95 @@ main()
   .finally(async () => {
     await pool.end();
   });
+
+async function reconcileExpertForm(
+  tx: typeof db,
+  form: ExpertFormSeed,
+  userId: string,
+): Promise<{ survivorId: string; removedIds: string[] }> {
+  const fixedId = fixedExpertFormId(form);
+
+  // Serialize concurrent persona-seed runs for this user. This is intentionally
+  // scoped to the seed's development-only writer; it does not weaken the
+  // production guard above or mutate any shared production state.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
+
+  const existing = await tx.execute(sql`
+    SELECT id, status, created_at
+    FROM local_expert_forms
+    WHERE user_id = ${userId}
+    ORDER BY created_at ASC NULLS LAST, id ASC
+    FOR UPDATE
+  `);
+  const rows = existing.rows as ExistingExpertForm[];
+  const approvedRows = rows.filter((row) => row.status === "approved");
+  if (approvedRows.length > 1) {
+    throw new Error(
+      `[seed-personas] REFUSED to reconcile ${form.personaKey}: multiple approved ` +
+        `local_expert_forms rows (${approvedRows.map((row) => row.id).join(", ")}). ` +
+        "Both may have dependent product state; review manually rather than guessing.",
+    );
+  }
+
+  // A persona can already have a real application created by the product flow,
+  // and that application can be the one an approval, offering, or storefront
+  // journey references. Preserve one approved row instead of replacing it with
+  // the deterministic seed row; otherwise prefer the fixed row and then the
+  // oldest existing row.
+  const survivor =
+    approvedRows[0] ??
+    rows.find((row) => row.id === fixedId) ??
+    rows[0] ??
+    { id: fixedId, status: null, created_at: null };
+  const removedIds = rows.filter((row) => row.id !== survivor.id).map((row) => row.id);
+  if (removedIds.length > 0) {
+    await tx.execute(sql`
+      DELETE FROM local_expert_forms
+      WHERE user_id = ${userId}
+        AND id IN (${sql.join(removedIds.map((id) => sql`${id}`), sql`, `)})
+    `);
+  }
+
+  return { survivorId: survivor.id, removedIds };
+}
+
+async function reportExistingExpertForms(): Promise<void> {
+  const result = await db.execute(sql`
+    SELECT lef.user_id, u.email, lef.id, lef.status, lef.created_at
+    FROM local_expert_forms lef
+    JOIN users u ON u.id = lef.user_id
+    WHERE u.email IN (${sql.join(EXPERT_FORMS.map((form) => {
+      const persona = PERSONAS.find((candidate) => candidate.key === form.personaKey);
+      return sql`${persona?.email ?? ""}`;
+    }), sql`, `)})
+    ORDER BY u.email, lef.created_at NULLS FIRST, lef.id
+  `);
+
+  const rowsByEmail = new Map<string, typeof result.rows>();
+  for (const row of result.rows) {
+    const email = String(row.email);
+    const rows = rowsByEmail.get(email) ?? [];
+    rows.push(row);
+    rowsByEmail.set(email, rows);
+  }
+
+  for (const form of EXPERT_FORMS) {
+    const persona = PERSONAS.find((candidate) => candidate.key === form.personaKey);
+    if (!persona) continue;
+    const rows = rowsByEmail.get(persona.email) ?? [];
+    const ids = rows.map((row) => String(row.id));
+    if (rows.length > 1) {
+      console.log(
+        `DUPLICATE local_expert_forms ${form.key}: count=${rows.length} ids=${ids.join(",")} ` +
+          `report-only; --apply will preserve one approved row when present, otherwise converge to ${fixedExpertFormId(form)}`,
+      );
+    } else if (rows.length === 1) {
+      console.log(
+        `EXISTING local_expert_forms ${form.key}: id=${ids[0]} status=${String(rows[0].status ?? "null")} ` +
+          `(report-only; --apply will converge it to ${fixedExpertFormId(form)})`,
+      );
+    } else {
+      console.log(`MISSING local_expert_forms ${form.key}: --apply will insert ${fixedExpertFormId(form)}`);
+    }
+  }
+}

@@ -98,22 +98,52 @@ test.describe("supply-provider — Kyoto provider persona", () => {
 
     // ── Step 3: seed-verified profile — assert, then exercise a REAL edit on top ────────────
     const formRow = await scalar<string>(
-      `SELECT identity_verification_status FROM service_provider_forms WHERE user_id = $1`,
+      `SELECT identity_verification_status FROM service_provider_forms
+       WHERE user_id = $1 ORDER BY created_at ASC NULLS FIRST, id ASC LIMIT 1`,
       [actor.id],
     );
     const bizVerified = await scalar<string>(
-      `SELECT business_verification_status FROM service_provider_forms WHERE user_id = $1`,
+      `SELECT business_verification_status FROM service_provider_forms
+       WHERE user_id = $1 ORDER BY created_at ASC NULLS FIRST, id ASC LIMIT 1`,
       [actor.id],
     );
-    const cityRow = await scalar<string>(`SELECT city FROM service_provider_forms WHERE user_id = $1`, [actor.id]);
+    const providerVerified = await scalar<string>(
+      `SELECT provider_verification_status FROM users WHERE id = $1`,
+      [actor.id],
+    );
+    const backgroundConfirmed = await scalar<string>(
+      `SELECT background_check_confirmed::text FROM users WHERE id = $1`,
+      [actor.id],
+    );
+    const cityRow = await scalar<string>(
+      `SELECT city FROM service_provider_forms
+       WHERE user_id = $1 ORDER BY created_at ASC NULLS FIRST, id ASC LIMIT 1`,
+      [actor.id],
+    );
     const statusRes = await request.get(`${BASE_URL}/api/provider-application`);
     expect(statusRes.status()).toBe(200);
     const statusBody = await statusRes.json();
+    expect(statusBody.identityVerificationStatus).toBe("verified");
+    expect(statusBody.businessVerificationStatus).toBe("verified");
+    expect(statusBody.providerVerificationStatus).toBe("verified");
+    expect(statusBody.backgroundCheckConfirmed).toBe(true);
     report.record({
       action: "assert seed-verified provider profile (identity + business)",
-      ui: `GET /api/provider-application 200, identityVerificationStatus=${statusBody?.identityVerificationStatus}`,
-      db: `service_provider_forms.identity_verification_status=${formRow} business_verification_status=${bizVerified} city=${cityRow}`,
-      verdict: formRow === "verified" && bizVerified === "verified" && cityRow === KYOTO ? "PASS" : "FAIL",
+      ui: `GET /api/provider-application 200, identityVerificationStatus=${statusBody?.identityVerificationStatus} ` +
+        `businessVerificationStatus=${statusBody?.businessVerificationStatus} ` +
+        `providerVerificationStatus=${statusBody?.providerVerificationStatus} ` +
+        `backgroundCheckConfirmed=${statusBody?.backgroundCheckConfirmed}`,
+      db: `service_provider_forms.identity_verification_status=${formRow} ` +
+        `business_verification_status=${bizVerified} users.provider_verification_status=${providerVerified} ` +
+        `background_check_confirmed=${backgroundConfirmed} city=${cityRow}`,
+      verdict:
+        formRow === "verified" &&
+        bizVerified === "verified" &&
+        providerVerified === "verified" &&
+        backgroundConfirmed === "true" &&
+        cityRow === KYOTO
+          ? "PASS"
+          : "FAIL",
     });
 
     // Real edit path: PATCH officeLocation (Kyoto Station coordinates) — proves a live write on
