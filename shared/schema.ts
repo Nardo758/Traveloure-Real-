@@ -2027,6 +2027,18 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   totalEarnings: true,
   pendingPayout: true,
   payoutSchedule: true,
+  // §19 class (ruling 46, same MI-1 sibling sweep as the block above): the identity-verification
+  // family was likewise mass-assignable — `insertLocalExpertFormSchema.parse(req.body)` is spread
+  // verbatim into create/update at POST /api/expert-application and POST /api/expert-forms, and
+  // `resolvePublishVerification` treats `identityVerificationStatus === "verified"` as (half of) the
+  // publish gate — so a crafted `{ identityVerificationStatus: "verified" }` body could self-verify
+  // and bypass the wall. The two SANCTIONED writers are `storage.updateFormIdentityVerification`
+  // (the dedicated setter) and the Stripe/Persona webhook (server/routes/webhooks.routes.ts) —
+  // never this generic create/update path. Layer 2 (storage strip) covers `as any` callers a
+  // type-level omit cannot reach.
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
 }).extend({
   // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
   // The admin approval path copies expertType into users.role verbatim, so an unvalidated
@@ -2083,7 +2095,24 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
     });
   }
 });
-export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+// §19 class (ruling 46, MI-1 sibling sweep — same shape as insertLocalExpertFormSchema above):
+// the identity- and business-verification family was mass-assignable on the create path (there is
+// no general updateServiceProviderForm — provider updates use targeted setters, so the create
+// route at POST /api/provider-application is the one reachable body-parse site).
+// `resolvePublishVerification` treats these as (half of) the publish gate, so a crafted body could
+// self-verify. Sole sanctioned writers: `storage.updateFormIdentityVerification` /
+// `storage.updateProviderBusinessVerificationByInquiry`, and the Stripe/Persona webhook.
+export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({
+  id: true,
+  userId: true,
+  status: true,
+  rejectionMessage: true,
+  createdAt: true,
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
+  businessVerificationStatus: true,
+});
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
 // MI-1 (provider money-hardening lane, ruling 42): `revenueShareRate` is a COMMISSION SPLIT and is
@@ -2097,7 +2126,20 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true }).extend({
+// §PS18-completeness-guard layer 1 (2026-08-29-privileged-field-completeness): `approvalStatus`,
+// `submittedAt`, `reviewedAt`, `reviewedBy`, `rejectionReason` are the F2/D1a approval-lifecycle
+// family — the same class as `revenueShareRate`/`deliverableUploadedAt` above. `approvalStatus`
+// already had a full layer-2 strip on BOTH create (`createProviderService`'s born-state clamp,
+// case C16b's sibling) and update (`updateProviderService`'s `{approvalStatus: _as, ...}`
+// destructure, C16b itself) — this closes the missing layer-1 half so every caller is covered,
+// not just the two that currently exist. `submittedAt`/`reviewedAt`/`reviewedBy`/`rejectionReason`
+// had NO strip on the CREATE path at all (`createProviderService` spread them through unstripped
+// via `...serviceWithoutRate`) — a client POST could self-attribute a fabricated
+// review/rejection on their own brand-new `submitted` listing (approvalStatus itself stays safely
+// clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
+// approve/reject writers below unconditionally overwrite all four the moment a real review
+// happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -4456,7 +4498,31 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
 // never client-settable via this schema. Every create route strips whatever the client sent and
 // re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true });
+// §PS18-completeness-guard (2026-08-29-privileged-field-completeness): `routingStatus` /
+// `bookingId` are the checkout-claim machine's OWN state — the same shape as
+// `service_bookings.stripePaymentIntentId` (§19a). `routingStatus` is atomically flipped to
+// 'purchased' (with `bookingId` stamped alongside) ONLY by the checkout-confirm path
+// (`server/services/item-routing.service.ts`, `server/routes/routing.routes.ts`'s validated
+// transition endpoint), via raw `db.update(itineraryItems)` calls that never go through
+// `storage.createItineraryItem`/`updateItineraryItem` at all — so omitting them here costs those
+// legitimate writers nothing, and NEITHER has any legitimate direct caller among
+// createItineraryItem's six call sites (verified by inspection). Found unstripped on BOTH create
+// call sites (`insertItineraryItemSchema.safeParse({...req.body, tripId})` in trips.routes.ts and
+// routes.ts) and — more importantly — on the canonical PATCH route
+// (`PATCH /api/trips/:tripId/itinerary-items/:itemId`), which bypasses this schema entirely via a
+// raw `req.body` destructure that stripped only id/tripId/createdAt/updatedAt/suggestedBy/origin.
+// A traveler/expert with ordinary write access to their OWN trip could POST or PATCH an item with
+// `routingStatus: "purchased"` and an ARBITRARY `bookingId` (no ownership check) — a fabricated
+// "this was purchased" state with zero payment, and a booking-id link to a row they may not own.
+// Layer 2 (storage.createItineraryItem / updateItineraryItem strip) is what actually closes the
+// PATCH route, since it bypasses this schema — same "layer 2 covers the caller layer 1 can't
+// reach" shape as `stripFormVerificationFields` (§19). `bookingStatus` (a looser, purely
+// descriptive sibling column with a confirmed legitimate direct caller —
+// `content.routes.ts`'s affiliate-booking-confirm flow sets it at create time — and no proven
+// money-decision read) is DELIBERATELY left alone here; it is grandfathered in the completeness
+// guard pending a separate, narrower investigation. Found by
+// `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -7400,6 +7466,41 @@ export const planMemberships = pgTable("plan_memberships", {
   index("plan_memberships_user_plan_idx").on(table.userId, table.planKey),
 ]);
 export type PlanMembership = typeof planMemberships.$inferSelect;
+
+// ─── Trip entitlements (the one PER-TRIP entitlement record) ─────────────────
+// Ruling 2026-08-29-trip-pass, migration 262. Trip Pass is per-trip: for its ONE trip it
+// grants unlimited optimizer runs + AI Concierge tasks (charge suppression), one expert
+// revision (snapshot-recorded, unenforced until the expert-flow lane), and the traveler
+// service-fee waiver (the rails-waiver mechanism, basis 'trip_pass'). It NEVER discounts
+// commissions and it is deliberately NOT plan_memberships (user-level, Plus/Pro).
+//   · allowances_snapshot is FROZEN at purchase from the plans row — later price/allowance
+//     changes never alter a sold pass.
+//   · ONE active pass per trip (partial unique index below); a second purchase is rejected
+//     BEFORE any PaymentIntent.
+//   · source_payment_id is PAYMENT IDENTITY (§19a): written ONLY by the server-side grant
+//     path from a Stripe-verified PaymentIntent. There is deliberately NO createInsertSchema
+//     for this table — nothing here is ever parsed off a request body (#PS18 posture).
+// Both partial unique indexes are DECLARED here (deploy-push durability rule) and must stay
+// byte-identical to migration 262's CREATE INDEX statements.
+export const tripEntitlements = pgTable("trip_entitlements", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'trip_pass'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'revoked'
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  sourcePaymentId: varchar("source_payment_id", { length: 255 }),
+  allowancesSnapshot: jsonb("allowances_snapshot").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("trip_entitlements_active_trip_uniq")
+    .on(table.tripId)
+    .where(sql`${table.status} = 'active'`),
+  uniqueIndex("trip_entitlements_source_payment_uniq")
+    .on(table.sourcePaymentId)
+    .where(sql`${table.sourcePaymentId} IS NOT NULL`),
+]);
+export type TripEntitlement = typeof tripEntitlements.$inferSelect;
 
 // ─── Plus occasions (the member's recurring/one-off personal dates) ──────────
 // Ledger 2026-08-27-plus-is-delivery, migration 260. For each ACTIVE occasion whose date is

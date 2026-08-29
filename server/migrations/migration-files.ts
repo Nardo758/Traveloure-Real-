@@ -1290,8 +1290,13 @@ export const MIGRATION_FILES = [
   // the storefront's resolveEarnerLocation provider fallback. Declared in shared/schema.ts
   // (deploy-push rule); no CHECK, no backfill.
   "261_service_provider_forms_city.sql",
-  // 262: additive-nullable gem-promotion candidate columns on local_knowledge_nuggets
+  // 262 — Trip Pass per-trip entitlement (ruling 2026-08-29-trip-pass): trip_entitlements
+  // with one-active-per-trip + one-per-PaymentIntent partial unique indexes, BOTH declared
+  // in shared/schema.ts (deploy-push durability rule). Additive, no CHECK, no backfill.
+  "262_trip_entitlements.sql",
+  // 263: additive-nullable gem-promotion candidate columns on local_knowledge_nuggets
   // (2026-08-29-replit-gem-audit ruling 4). Declared in shared/schema.ts (deploy-push
   // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
-  "262_nugget_gem_promotion.sql",
+  // Renumbered from 262 during merge with main — 262 was claimed by 262_trip_entitlements.sql.
+  "263_nugget_gem_promotion.sql",
 ] as const;
