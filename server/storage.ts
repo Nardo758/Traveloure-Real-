@@ -223,7 +223,7 @@ export interface IStorage {
 
   // Vendors
 
-  getVendors(category?: string, city?: string): Promise<VendorWithCreator[]>;
+  getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
@@ -1566,7 +1566,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(category?: string, city?: string): Promise<VendorWithCreator[]> {
+  async getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
+    const conditions = [
+      category ? eq(vendors.category, category) : undefined,
+      city ? eq(vendors.city, city) : undefined,
+      createdById ? eq(vendors.createdById, createdById) : undefined,
+    ].filter((condition): condition is NonNullable<typeof condition> => condition !== undefined);
     const rows = await db
       .select({
         vendor: vendors,
@@ -1578,17 +1583,12 @@ export class DatabaseStorage implements IStorage {
         },
       })
       .from(vendors)
-      .leftJoin(users, eq(vendors.createdById, users.id));
-    let result = rows.map(({ vendor, creator }) => ({
+      .leftJoin(users, eq(vendors.createdById, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    const result = rows.map(({ vendor, creator }) => ({
       ...vendor,
       createdBy: creator?.id ? creator : null,
     }));
-    if (category) {
-      result = result.filter(v => v.category === category);
-    }
-    if (city) {
-      result = result.filter(v => v.city === city);
-    }
     return result;
   }
 
