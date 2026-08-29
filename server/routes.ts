@@ -1965,7 +1965,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/vendors", isAuthenticated, isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
-      const vendor = await storage.createVendor(input);
+      const creatorId = getUserId(req);
+      if (!creatorId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      // Creator provenance is immutable application metadata: it comes from the authenticated
+      // session, never from request JSON. insertVendorSchema also omits createdById defensively.
+      const vendor = await storage.createVendor({ ...input, createdById: creatorId });
       res.status(201).json(vendor);
     } catch (err) {
       if (err instanceof z.ZodError) {

@@ -1299,4 +1299,7 @@ export const MIGRATION_FILES = [
   // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
   // Renumbered from 262 during merge with main — 262 was claimed by 262_trip_entitlements.sql.
   "263_nugget_gem_promotion.sql",
+  // 264: creator provenance on vendors — server-authored created_by_id from the authenticated
+  // session. Additive-nullable with no backfill; NULL means legacy origin is unknown.
+  "264_vendor_creation_provenance.sql",
 ] as const;
