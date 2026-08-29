@@ -10,6 +10,7 @@
  * concurrent/overlapping runs are safe and idempotent — a second pass matches nothing.
  */
 import { storage } from "../storage";
+import { runBackgroundJob } from "./background-job-runner";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — clearance windows are day-scale, so this is ample
 const FIRST_RUN_DELAY_MS = 2 * 60 * 1000; // 2 min after startup, once the DB has settled
@@ -31,8 +32,16 @@ class EarningsReleaseSchedulerService {
       return;
     }
     console.log("[EarningsRelease] Starting earnings release scheduler");
-    setTimeout(() => { void this.runRelease(); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { void this.runRelease(); }, CHECK_INTERVAL_MS);
+    setTimeout(() => {
+      void runBackgroundJob("earnings-release", () => this.runRelease()).catch((err) =>
+        console.error("[EarningsRelease] scheduled pass failed:", err),
+      );
+    }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => {
+      void runBackgroundJob("earnings-release", () => this.runRelease()).catch((err) =>
+        console.error("[EarningsRelease] scheduled pass failed:", err),
+      );
+    }, CHECK_INTERVAL_MS);
     console.log(`[EarningsRelease] Scheduled to run every ${CHECK_INTERVAL_MS / (60 * 1000)} minutes`);
   }
 
