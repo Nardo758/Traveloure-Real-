@@ -642,7 +642,7 @@ function SlipActions({
         });
         return;
       }
-      if (outcome.kind === "free_rerun") {
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
         // 24h free re-run (server-side canRunOptimizer) — nothing to charge.
         await runComparison(undefined, pinnedAnchor);
         confirmedPinnedAnchorRef.current = undefined;
