@@ -20,6 +20,11 @@ import { EditTripPanel } from "@/components/trip/edit-trip-panel";
  *   the EditTripPanel or explicit page actions.
  */
 
+// Chrome earn grammar (ruling 2026-08-28-chrome-alignment): mono for eyebrow/counts,
+// Inter (the app default) for the trip name and buttons. Shell restyle only — every
+// data source, testid and handler below is unchanged.
+const STRIP_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
 const MARKETING_PATHS = new Set([
   "/", "/about", "/pricing", "/faq", "/how-it-works", "/features",
   "/careers", "/press", "/blog", "/help", "/support",
@@ -120,36 +125,63 @@ export function TripStrip() {
 
   return (
     <div
-      className="w-full border-b border-primary/15 bg-primary/[0.04]"
+      className="w-full border-b"
+      style={{ background: "var(--earn-ground)", borderColor: "var(--earn-border)" }}
       data-testid="trip-strip"
     >
-      <div className="container mx-auto px-4 py-1.5 flex items-center gap-2 flex-wrap text-sm">
+      <div className="container mx-auto min-h-[44px] px-4 py-1.5 flex items-center gap-2 flex-wrap text-sm">
+        {/* Ruling 2026-08-28-chrome-alignment: the strip's eyebrow is one of the chrome's
+            three ratified coral touches (Sign In, BETA pill, this). */}
+        <span
+          className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.12em] shrink-0"
+          style={{ fontFamily: STRIP_MONO, color: "var(--earn-coral-ink)" }}
+          aria-hidden="true"
+        >
+          Your Trip
+        </span>
         <span
           className="flex items-center gap-1.5 font-semibold shrink-0"
+          style={{ color: "var(--earn-ink)" }}
           data-testid="trip-strip-lead"
           data-invite-aware={inviteAware ? "true" : undefined}
         >
-          {inviteAware ? <Heart className="w-3.5 h-3.5 text-primary" /> : <MapPin className="w-3.5 h-3.5 text-primary" />}
+          {inviteAware ? (
+            <Heart className="w-3.5 h-3.5 text-[color:var(--earn-teal-ink)]" />
+          ) : (
+            <MapPin className="w-3.5 h-3.5 text-[color:var(--earn-muted)]" />
+          )}
           {/* no `capitalize` on the invite lead — the event title keeps its own casing */}
           <span className={inviteAware ? undefined : "capitalize"}>{lead}</span>
         </span>
 
         {destination && vocab === "travel" && (
-          <span className="inline-flex items-center rounded-full border border-primary/20 bg-background px-3 py-0.5 text-xs font-medium" data-testid="trip-strip-destination">
+          <span
+            className="inline-flex items-center rounded-full border px-3 py-0.5 text-xs"
+            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-ink)" }}
+            data-testid="trip-strip-destination"
+          >
             {destination}
           </span>
         )}
 
         {dateLabel && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-background px-3 py-0.5 text-xs" data-testid="trip-strip-dates">
-            <Calendar className="w-3 h-3 text-muted-foreground" />
+          <span
+            className="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs"
+            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-muted)" }}
+            data-testid="trip-strip-dates"
+          >
+            <Calendar className="w-3 h-3 text-[color:var(--earn-faint)]" />
             {dateLabel}
           </span>
         )}
 
         {hasTravelers && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-background px-3 py-0.5 text-xs" data-testid="trip-strip-party">
-            <Users className="w-3 h-3 text-muted-foreground" />
+          <span
+            className="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs"
+            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-muted)" }}
+            data-testid="trip-strip-party"
+          >
+            <Users className="w-3 h-3 text-[color:var(--earn-faint)]" />
             {partyLabel}
           </span>
         )}
@@ -157,28 +189,41 @@ export function TripStrip() {
         {cartCount > 0 && (
           <Link
             href="/cart"
-            className="inline-flex items-center gap-1 rounded-full border border-primary/35 bg-background px-3 py-0.5 text-xs font-semibold hover:bg-primary/10 transition-colors"
+            className="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs font-semibold hover:bg-[color:var(--earn-teal-wash)] transition-colors"
+            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-teal)" }}
             data-testid="trip-strip-cart"
           >
-            <ShoppingCart className="w-3 h-3 text-primary" />
-            {cartCount} · ${cartTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            <ShoppingCart className="w-3 h-3 text-[color:var(--earn-teal)]" />
+            <span style={{ color: "var(--earn-ink)" }}>{cartCount}</span>
+            <span aria-hidden="true" style={{ color: "var(--earn-faint)" }}>·</span>
+            <span style={{ color: "var(--earn-teal-ink)" }}>
+              ${cartTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
           </Link>
         )}
 
         <span className="ml-auto shrink-0">
           {locked ? (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" data-testid="trip-strip-locked">
+            <span
+              className="inline-flex items-center gap-1 text-xs"
+              style={{ fontFamily: STRIP_MONO, color: "var(--earn-muted)" }}
+              data-testid="trip-strip-locked"
+            >
               <Lock className="w-3 h-3" /> locked during payment
             </span>
           ) : ctx.tripId ? (
-            <Link href={`/trip/${ctx.tripId}`} className="text-xs font-semibold text-primary hover:underline" data-testid="trip-strip-edit">
+            <Link
+              href={`/trip/${ctx.tripId}`}
+              className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
+              data-testid="trip-strip-edit"
+            >
               {marketing ? "Continue planning ›" : "Edit trip ›"}
             </Link>
           ) : (
             <button
               type="button"
               onClick={() => setEditOpen(true)}
-              className="text-xs font-semibold text-primary hover:underline"
+              className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
               data-testid="trip-strip-edit"
             >
               {marketing ? "Continue planning ›" : "Edit ›"}

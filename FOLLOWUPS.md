@@ -313,3 +313,11 @@ not built:
   (hero, earn, final). When Plus sales flip ON, Join-Plus becomes a coral button and the count
   goes to 4 — the mock's own note anticipates this; needs a one-line ruling at flip time
   (which section yields, or 4 is accepted).
+
+### FU — Branch-protection enforcement source (2026-08-28 hardening)
+Ruleset `21765961` ("Protect main…") is the intended single enforcement source for `main`
+(1 approval · stale-dismissal · last-push approval · conversation resolution · 3 required
+checks · no force-push/delete). Classic branch protection is retained as a duplicate layer
+until the ruleset's bypass path is live-verified; once confirmed, delete the classic layer
+(`DELETE /repos/.../branches/main/protection`) so rulesets are the single source of truth.
+Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
