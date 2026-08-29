@@ -75,8 +75,13 @@ test.describe("Cart conversion → /plans/:tripId redirect (Suite 6)", () => {
     console.log("[cart-checkout-redirect] PASS cart.tsx redirect uses /plans/:tripId");
   });
 
-  // ── B. EnhancedPlanningModal.tsx uses the correct singular /trip/ route ──
-  test("EnhancedPlanningModal.tsx uses /trip/${…} (singular) — not /trips/${…}", () => {
+  // ── B. EnhancedPlanningModal.tsx fallback lands on the slip, never /trips/ ──
+  // Ruling 2026-08-28-single-planning-entry replaced the modal's defensive
+  // no-comparisonId fallback: it now lands on the PLANNING surface
+  // (setLocation(`/plans/${tripId}`)), never the details card mid-flow. The
+  // original bug this suite guards — the plural /trips/${…} typo that 404'd —
+  // stays guarded.
+  test("EnhancedPlanningModal.tsx fallback uses /plans/${…} — never /trips/${…}", () => {
     const src = readSource(MODAL_FILE);
 
     expect(
@@ -85,11 +90,11 @@ test.describe("Cart conversion → /plans/:tripId redirect (Suite 6)", () => {
     ).toBe(false);
 
     expect(
-      /setLocation\(`\/trip\/\$\{/.test(src),
-      "EnhancedPlanningModal.tsx does not contain setLocation(`/trip/${…}`) — the post-planning redirect may be broken."
+      /setLocation\(`\/plans\/\$\{/.test(src),
+      "EnhancedPlanningModal.tsx does not contain setLocation(`/plans/${…}`) — the post-planning fallback may be broken (ruling 2026-08-28-single-planning-entry)."
     ).toBe(true);
 
-    console.log("[cart-checkout-redirect] PASS EnhancedPlanningModal.tsx redirect uses /trip/:id");
+    console.log("[cart-checkout-redirect] PASS EnhancedPlanningModal.tsx fallback uses /plans/:tripId");
   });
 
   // ── C. App.tsx declares both targets ─────────────────────────────────────
