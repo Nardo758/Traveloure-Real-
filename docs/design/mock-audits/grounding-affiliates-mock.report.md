@@ -21,8 +21,8 @@ The ratified affiliate ledgers govern over mock pixels. This report covers water
 | MATCH | Active market registry rows are loaded and live reconcile is bounded, best-effort, and registry-materializing. | `server/services/affiliate-grounding.service.ts:46-89,92-105,109-130` |
 | MATCH | CTA requires `affiliate_bookable` and a real token, and posts to the opaque-token booking rail; no raw outbound call exists. | `client/src/components/plancard/affiliate-booking.ts:34-45`; `client/src/components/plancard/AffiliateBookButton.tsx:31,40`; `grep -rn "window.open" client/src/components/plancard/affiliate-booking.ts server/services/affiliate-grounding.service.ts` produced no matches |
 | MATCH | Affiliate product FK is nullable/set-null and server-owned by insert-schema omission. | `shared/schema.ts:4158,4566` |
-| DIVERGENCE | Loader and resolver do not exclude unclassified booking types before linking; the client guard only suppresses the CTA after an affiliate link has already been created. | `server/services/affiliate-grounding.service.ts:65-86`; `server/services/slip-grounding.service.ts:117-124`; `client/src/components/plancard/affiliate-booking.ts:40-45` |
+| MATCH | Loader and resolver exclude unclassified booking types before linking; the client guard independently fails closed if an invalid affiliate payload reaches the card. | `server/services/affiliate-grounding.service.ts`; `server/services/slip-grounding.service.ts`; `server/services/slip-grounding-match.ts`; `client/src/components/plancard/affiliate-booking.ts` |
 
 ## Follow-up candidates
 
-Add an eligibility gate before affiliate linking for `affiliate_bookable` and `in_platform_bookable`; unclassified rows must fall through to DMO/honest suggestion.
+The eligibility gate before affiliate linking covers `affiliate_bookable` and `in_platform_bookable`; unclassified rows fall through to DMO/honest suggestion, with client-side CTA tests retaining the second fail-closed boundary.
