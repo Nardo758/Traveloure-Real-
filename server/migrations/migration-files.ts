@@ -1310,8 +1310,8 @@ export const MIGRATION_FILES = [
   // Renumbered from 264 during merge with main — 264 was claimed by
   // 264_trip_entitlement_source.sql.
   "265_vendor_creation_provenance.sql",
-  // 266: one current provider application per user. Rejected/deleted/deactivated rows remain
+  // 268: one current provider application per user. Rejected/deleted/deactivated rows remain
   // review/account history; only duplicate current rows are removed before the partial unique
   // index is installed. The index is also declared in shared/schema.ts for publish durability.
-  "266_provider_application_current_unique.sql",
+  "268_provider_application_current_unique.sql",
 ] as const;
