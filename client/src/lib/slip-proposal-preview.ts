@@ -23,8 +23,6 @@
  * where it's allowed (map annotation / day-km legend) and is deliberately not modelled here.
  */
 
-import { estWalkMinutes } from "@shared/geo";
-
 /** The one leg field these helpers read (kept import-free so the tests need no page types). */
 export interface PreviewLegLike {
   estimatedDurationMinutes?: number | null;
@@ -58,6 +56,31 @@ export interface AnchorLineInputs {
   /** Optional persisted scoring counts. Omit the fragment when these are unavailable. */
   within15MinCount?: number | null;
   locatedStops?: number | null;
+  totalStops?: number | null;
+}
+
+export interface CoordinateCoverage {
+  locatedStops: number;
+  totalStops: number;
+  complete: boolean;
+}
+
+export function coordinateCoverage(
+  items: Array<{ latitude?: string | number | null; longitude?: string | number | null }> | null | undefined,
+): CoordinateCoverage {
+  const totalStops = items?.length ?? 0;
+  const locatedStops = (items ?? []).filter((item) => {
+    if (item.latitude == null || item.longitude == null) return false;
+    const lat = Number(item.latitude);
+    const lng = Number(item.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng)
+      && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  }).length;
+  return {
+    locatedStops,
+    totalStops,
+    complete: totalStops > 0 && locatedStops === totalStops,
+  };
 }
 
 const ANCHOR_TYPE_LABELS: Record<string, string> = {
@@ -69,10 +92,9 @@ const ANCHOR_TYPE_LABELS: Record<string, string> = {
 /**
  * Format the compact anchor readout shown on a proposal card.
  *
- * `anchorMedianMeters` is a straight-line median from the server's scoring rail, so the displayed
- * minutes are derived from the shared 80 m/min walking estimate. Missing or malformed fields are
- * omitted rather than replaced with a guessed value. Older variant rows do not persist the
- * located-stop counts, so that fragment is optional.
+ * `anchorMedianMeters` is a straight-line median from the server's scoring rail. It is shown as
+ * distance only when coordinate coverage is complete; partial/legacy coverage never produces a
+ * precise headline. Regional spreads are stated plainly rather than converted to walking time.
  */
 export function formatAnchorLine(input: AnchorLineInputs): string | null {
   const type = typeof input.anchorType === "string"
@@ -88,8 +110,29 @@ export function formatAnchorLine(input: AnchorLineInputs): string | null {
       : typeof input.anchorMedianMeters === "string" && input.anchorMedianMeters.trim() !== ""
         ? parseFloat(input.anchorMedianMeters)
         : null;
-  if (medianMeters != null && Number.isFinite(medianMeters) && medianMeters >= 0) {
-    parts.push(`${Math.max(0, Math.round(estWalkMinutes(medianMeters)))} min median`);
+  const locatedStops = input.locatedStops;
+  const totalStops = input.totalStops;
+  const hasCoverage = Number.isInteger(locatedStops) && Number.isInteger(totalStops)
+    && (locatedStops as number) >= 0 && (totalStops as number) > 0
+    && (locatedStops as number) <= (totalStops as number);
+  const completeCoverage = hasCoverage && locatedStops === totalStops;
+
+  if (hasCoverage) {
+    parts.push(`${locatedStops}/${totalStops} stops located`);
+  }
+  if (
+    completeCoverage &&
+    medianMeters != null &&
+    Number.isFinite(medianMeters) &&
+    medianMeters >= 0
+  ) {
+    const distance = medianMeters < 1000
+      ? `${Math.round(medianMeters)} m`
+      : `${(medianMeters / 1000).toFixed(1)} km`;
+    if (medianMeters > 25_000) parts.push("regional spread");
+    parts.push(`${distance} median direct distance`);
+  } else if (hasCoverage && !completeCoverage) {
+    parts.push("anchor distance omitted");
   }
 
   if (input.anchorType?.trim().toLowerCase() === "neighborhood") {
@@ -99,12 +142,10 @@ export function formatAnchorLine(input: AnchorLineInputs): string | null {
   }
 
   const within15MinCount = input.within15MinCount;
-  const locatedStops = input.locatedStops;
   if (
+    completeCoverage &&
     Number.isInteger(within15MinCount) &&
-    Number.isInteger(locatedStops) &&
     (within15MinCount as number) >= 0 &&
-    (locatedStops as number) > 0 &&
     (within15MinCount as number) <= (locatedStops as number)
   ) {
     parts.push(`${within15MinCount}/${locatedStops} stops ≤ 15 min`);

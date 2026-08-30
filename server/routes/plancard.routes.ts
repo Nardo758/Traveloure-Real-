@@ -164,7 +164,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
           status: "planned",
           dayNumber: item.dayNumber,
           startTime: item.startTime || "",
-          durationMinutes: item.duration || 60,
+          durationMinutes: item.duration ?? null,
           locationName: item.location || "",
           estimatedCost: item.price ? String(item.price) : null,
           currency: "USD",

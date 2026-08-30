@@ -1327,4 +1327,8 @@ export const MIGRATION_FILES = [
   // default, and for the separate (unfixed here, needs decision-maker sign-off) missing
   // partial-unique-index gap this investigation also surfaced.
   "266_upsell_endorsements_schema_drift.sql",
+  // 267: persistent Google geocode cache for optimizer-created activities. Additive table +
+  // unique provider/query-hash index, both declared in shared/schema.ts; status vocabulary is
+  // app-enforced with no CHECK. Successful and negative results have bounded TTLs.
+  "267_optimizer_geocode_cache.sql",
 ] as const;

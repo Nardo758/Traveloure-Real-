@@ -24,6 +24,7 @@ import {
   hasHeadlineClaim,
   formatMinutes,
   formatAnchorLine,
+  coordinateCoverage,
 } from "../slip-proposal-preview.ts";
 
 describe("sumLegMinutes — located-leg transit minutes, §13 omission", () => {
@@ -180,7 +181,7 @@ describe("formatMinutes", () => {
 });
 
 describe("formatAnchorLine — honest anchor metadata", () => {
-  it("formats the type, name, walking estimate, and persisted stop counts", () => {
+  it("formats complete coverage and median direct distance", () => {
     assert.strictEqual(
       formatAnchorLine({
         anchorType: "hotel",
@@ -188,23 +189,24 @@ describe("formatAnchorLine — honest anchor metadata", () => {
         anchorMedianMeters: 2240,
         within15MinCount: 3,
         locatedStops: 5,
+        totalStops: 5,
       }),
-      "Hotel · Hotel Kanra Kyoto · 28 min median · 3/5 stops ≤ 15 min",
+      "Hotel · Hotel Kanra Kyoto · 5/5 stops located · 2.2 km median direct distance · 3/5 stops ≤ 15 min",
     );
   });
 
   it("uses the human label for neighborhood and activity anchors", () => {
     assert.strictEqual(
-      formatAnchorLine({ anchorType: "neighborhood", anchorName: "Gion", anchorMedianMeters: "720" }),
-      "Neighborhood · Gion · 9 min median · stay anywhere in-area",
+      formatAnchorLine({ anchorType: "neighborhood", anchorName: "Gion", anchorMedianMeters: "720", locatedStops: 4, totalStops: 4 }),
+      "Neighborhood · Gion · 4/4 stops located · 720 m median direct distance · stay anywhere in-area",
     );
     assert.strictEqual(
-      formatAnchorLine({ anchorType: "activity", anchorName: "Tea ceremony", anchorMedianMeters: 0 }),
-      "Activity · Tea ceremony · 0 min median · the day pivots on it",
+      formatAnchorLine({ anchorType: "activity", anchorName: "Tea ceremony", anchorMedianMeters: 0, locatedStops: 2, totalStops: 2 }),
+      "Activity · Tea ceremony · 2/2 stops located · 0 m median direct distance · the day pivots on it",
     );
   });
 
-  it("omits the count fragment when located-stop counts are unavailable", () => {
+  it("omits a precise median when located-stop counts are unavailable", () => {
     assert.strictEqual(
       formatAnchorLine({
         anchorType: "hotel",
@@ -213,7 +215,30 @@ describe("formatAnchorLine — honest anchor metadata", () => {
         within15MinCount: null,
         locatedStops: null,
       }),
-      "Hotel · A real hotel · 10 min median",
+      "Hotel · A real hotel",
+    );
+  });
+
+  it("qualifies partial coverage and regional spread", () => {
+    assert.strictEqual(
+      formatAnchorLine({
+        anchorType: "activity",
+        anchorName: "Regional base",
+        anchorMedianMeters: 220_000,
+        locatedStops: 2,
+        totalStops: 10,
+      }),
+      "Activity · Regional base · 2/10 stops located · anchor distance omitted · the day pivots on it",
+    );
+    assert.strictEqual(
+      formatAnchorLine({
+        anchorType: "hotel",
+        anchorName: "Regional hotel",
+        anchorMedianMeters: 220_000,
+        locatedStops: 10,
+        totalStops: 10,
+      }),
+      "Hotel · Regional hotel · 10/10 stops located · regional spread · 220.0 km median direct distance",
     );
   });
 
@@ -228,5 +253,15 @@ describe("formatAnchorLine — honest anchor metadata", () => {
       formatAnchorLine({ anchorType: "hotel", anchorName: "Bad data", anchorMedianMeters: "not-a-number" }),
       "Hotel · Bad data",
     );
+  });
+});
+
+describe("coordinateCoverage", () => {
+  it("counts only complete, finite, in-range coordinate pairs", () => {
+    assert.deepStrictEqual(coordinateCoverage([
+      { latitude: "35.0", longitude: "135.7" },
+      { latitude: null, longitude: null },
+      { latitude: 91, longitude: 20 },
+    ]), { locatedStops: 1, totalStops: 3, complete: false });
   });
 });

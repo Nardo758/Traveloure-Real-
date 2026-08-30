@@ -339,6 +339,15 @@
   }
   .flow svg { width: 16px; height: 16px; color: var(--accent-fg); flex: none; }
   .flow b { color: var(--ink); font-weight: 600; }
+  .adoption-choice {
+    display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    margin:4px 0 16px; padding:12px 14px; border:1px solid var(--save-br);
+    background:var(--save-bg); border-radius:12px;
+  }
+  .adoption-choice-copy { display:flex; flex-direction:column; gap:2px; }
+  .adoption-choice-copy b { font-size:13.5px; }
+  .adoption-choice-copy span { font-size:12px; color:var(--muted); }
+  .adoption-choice-count { font-family:var(--mono); font-size:11px; color:var(--save-fg); white-space:nowrap; }
 </style>
 
 <div class="wrap">
@@ -356,7 +365,7 @@
 
   <p class="eyebrow">Optimization · Review before applying</p>
   <h1>Three ways to sharpen your Kyoto plan</h1>
-  <p class="sub">Each version is a <b>complete plan rebuilt around one location</b> — a hotel, a neighborhood, or a keystone activity. That anchor is the trip’s common denominator, so the days radiate from it. Your plan stays untouched: every version is saved as its own trip, and you can adopt one outright or pull single stops across with the <b>+</b> ticks.</p>
+  <p class="sub">Each version is a <b>complete plan rebuilt around one location</b> — a hotel, a neighborhood, or a keystone activity. That anchor is the trip’s common denominator, so the days radiate from it. Your plan stays untouched until you confirm: adopt an entire proposal, or choose one or several stops with the <b>+</b> ticks.</p>
 
   <!-- STEP 1: the slip's own action row — where the journey starts -->
   <div class="slip-panel">
@@ -387,6 +396,14 @@
       <p><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></svg>2 purchased items pinned in all</p>
       <p>1 item excluded (with Kenji, your expert)</p>
     </div>
+  </div>
+
+  <div class="adoption-choice" data-testid="adoption-choice">
+    <div class="adoption-choice-copy">
+      <b>Choose what to bring into your plan</b>
+      <span>Adopt an entire optimized plan, or pick only the stops you want with <b>+</b>.</span>
+    </div>
+    <span class="adoption-choice-count" data-testid="adoption-selection-count">0 stops selected</span>
   </div>
 
   <!-- trending + seasonal context -->
@@ -428,7 +445,13 @@
         </ul>
         <div class="card-foot">
           <button class="btn ghost">Keep this plan</button>
-          <div class="tray" data-testid="adopt-tray"><b>Your plan is the landing spot.</b> Stops you pick with <b>+</b> land here for one confirm.<span class="hint">Desktop: you can also drag a stop onto this card.</span></div>
+          <div class="tray" data-testid="adopt-tray">
+            <b>Your plan is the landing spot.</b>
+            <span data-testid="adopt-tray-copy">Pick stops with <b>+</b> from any proposal and they will land here.</span>
+            <span class="hint">You can adopt a whole proposal with its card button, or confirm selected stops here.</span>
+            <span class="selected-stops" data-testid="selected-stops" hidden></span>
+            <button class="btn adopt-selected" data-testid="adopt-selected" disabled>Adopt selected stops</button>
+          </div>
         </div>
       </div>
     </div>
@@ -453,13 +476,13 @@
           <li><span class="t">11:00</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
           <li><span class="t">13:30</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
           <li class="day-sep">Day 2 · Arashiyama</li>
-          <li><span class="t">10:00</span><span class="n"><span class="new">Arashiyama at dawn</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$0</span></li>
+           <li><span class="t">10:00</span><span class="n"><span class="new">Arashiyama at dawn</span><button class="adopt-tick" data-testid="adopt-tick-arashiyama" data-stop="Arashiyama at dawn" data-plan="Calm Mornings" aria-label="Select Arashiyama at dawn" aria-pressed="false" title="Select this stop to adopt">+</button></span><span class="p">$0</span></li>
           <li><span class="t">11:30</span><span class="n">Sagano boat ride</span><span class="p">$110</span></li>
           <li class="day-sep">Day 3 · Evening</li>
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
         </ul>
         <div class="card-foot">
-          <button class="btn adopt">Select this plan</button>
+          <button class="btn adopt adopt-whole" data-testid="adopt-whole-v1" data-plan="Calm Mornings">Adopt entire plan</button>
         </div>
       </div>
     </div>
@@ -480,16 +503,16 @@
         <ul class="items">
           <li class="day-sep">Day 1 · from the base</li>
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
-          <li><span class="t">12:00</span><span class="n"><span class="new">Nishiki Market crawl</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$40</span></li>
+           <li><span class="t">12:00</span><span class="n"><span class="new">Nishiki Market crawl</span><button class="adopt-tick" data-testid="adopt-tick-nishiki" data-stop="Nishiki Market crawl" data-plan="Riverside Focus" aria-label="Select Nishiki Market crawl" aria-pressed="false" title="Select this stop to adopt">+</button></span><span class="p">$40</span></li>
           <li><span class="t">15:00</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
-          <li><span class="t">18:30</span><span class="n"><span class="new">Pontocho supper</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$0</span></li>
+           <li><span class="t">18:30</span><span class="n"><span class="new">Pontocho supper</span><button class="adopt-tick" data-testid="adopt-tick-pontocho" data-stop="Pontocho supper" data-plan="Riverside Focus" aria-label="Select Pontocho supper" aria-pressed="false" title="Select this stop to adopt">+</button></span><span class="p">$0</span></li>
           <li class="day-sep">Day 2 · Arashiyama</li>
           <li><span class="t">10:00</span><span class="n">Arashiyama bamboo</span><span class="p">$0</span></li>
           <li class="day-sep">Day 3 · Evening</li>
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
         </ul>
         <div class="card-foot">
-          <button class="btn adopt">Select this plan</button>
+          <button class="btn adopt adopt-whole" data-testid="adopt-whole-v2" data-plan="Riverside Focus">Adopt entire plan</button>
         </div>
       </div>
     </div>
@@ -514,21 +537,21 @@
           <li><span class="t">11:30</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
           <li><span class="t">14:00</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
           <li class="day-sep">Day 2 · Arashiyama</li>
-          <li><span class="t">09:30</span><span class="n"><span class="new">Private transfer</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$150</span></li>
+           <li><span class="t">09:30</span><span class="n"><span class="new">Private transfer</span><button class="adopt-tick" data-testid="adopt-tick-transfer" data-stop="Private transfer" data-plan="Fewer Hops" aria-label="Select Private transfer" aria-pressed="false" title="Select this stop to adopt">+</button></span><span class="p">$150</span></li>
           <li><span class="t">11:00</span><span class="n">Arashiyama + boat</span><span class="p">$110</span></li>
           <li class="day-sep">Day 3 · Evening</li>
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
         </ul>
         <div class="card-foot">
-          <button class="btn adopt">Select this plan</button>
+          <button class="btn adopt adopt-whole" data-testid="adopt-whole-v3" data-plan="Fewer Hops">Adopt entire plan</button>
         </div>
       </div>
     </div>
 
   </div>
 
-  <!-- ===== FINALIZE MODAL — pops when the user clicks "Finalize plan" ===== -->
-  <p class="modal-caption">▼ The two popups in this flow — <b>Optimize this plan</b> (left) and <b>Finalize plan</b> (right)</p>
+  <!-- ===== MODAL SHOWCASE — optimization, adoption, and finalization ===== -->
+  <p class="modal-caption">▼ The popups in this flow — <b>Optimize this plan</b>, <b>Adopt selected stops</b>, and <b>Finalize plan</b></p>
   <div class="modal-showcase">
 
     <!-- LEFT: static snapshot of the Optimize (Build-around) modal (no JS testids — the live one is the popup) -->
@@ -570,6 +593,27 @@
       </div>
     </div>
 
+    <!-- CENTER: selection confirmation -->
+    <div class="modal-demo">
+      <div class="modal" role="dialog" aria-label="Adopt selected stops preview" data-testid="adopt-selected-modal-preview">
+        <div class="modal-head">
+          <h3>Bring these into your plan?</h3>
+          <button class="modal-x" aria-label="Close">✕</button>
+        </div>
+        <p class="modal-sub">Only the selected stops change. Everything else in your current plan stays as it is.</p>
+        <div class="selected-preview">
+          <span class="selected-preview-label">From optimized proposals</span>
+          <b>Arashiyama at dawn</b>
+          <b>Pontocho supper</b>
+        </div>
+        <div class="modal-foot">
+          <button class="btn ghost">Back</button>
+          <button class="btn primary">Adopt 2 selected stops</button>
+        </div>
+        <p class="modal-note">One confirmation adds the selected items to your existing plan. Nothing is purchased.</p>
+      </div>
+    </div>
+
     <!-- RIGHT: the Finalize modal -->
     <div class="modal-demo">
     <div class="modal" role="dialog" aria-label="Finalize your plan" data-testid="finalize-modal">
@@ -601,7 +645,7 @@
     </div>
   </div>
 
-  <p class="foot-note" data-testid="compare-footer">Each version works best taken <b>whole</b> — it is a complete plan balanced around its base. <b>Selecting a version applies it to your slip in place</b> and gives you access to it as your working plan: your purchased, in-checkout and with-expert stops stay put, and only the still-in-planning stops are rebuilt around the new anchor. Every version is saved as a <b>proposal you can revisit</b>, not a separate trip, and nothing is purchased by applying. <em>(Pulling single stops across with per-stop <b>+</b> ticks is planned — see ledger <code>2026-08-26-per-stop-adopt-deferred</code>.)</em></p>
+  <p class="foot-note" data-testid="compare-footer">Each version works best taken <b>whole</b> — it is a complete plan balanced around its base. You can <b>adopt the entire version</b>, or select a few stops with <b>+</b> and confirm only those pieces. Purchased, in-checkout and with-expert stops stay put; anything you do not select stays in your current plan. Every version is saved as a <b>proposal you can revisit</b>, not a separate trip, and nothing is purchased by adopting.</p>
 
   <!-- honesty legend -->
   <div class="legend">
@@ -635,7 +679,7 @@
     </div>
   </div>
 
-  <p class="mock-note">Adopt the Optimization — the ratified slip-review board, kept intact, extended with anchor-built versions (hotel / neighborhood / activity), full-plan reading, keep-original + saved-as-new, per-stop + adopt ticks, and the Optimize + Finalize popups.</p>
+  <p class="mock-note">Adopt the Optimization — the ratified slip-review board, extended with anchor-built versions (hotel / neighborhood / activity), whole-plan adoption, selected-stop adoption, keep-original, and the Optimize + Finalize popups.</p>
 
 </div>
 
@@ -685,6 +729,23 @@
   </div>
 </div>
 
+<!-- ===== LIVE POPUP: confirms either a whole proposal or selected stops ===== -->
+<div class="scrim adopt-scrim" style="display:none" data-testid="adopt-selection-scrim">
+  <div class="modal pop" role="dialog" aria-modal="true" aria-label="Confirm adoption" data-testid="adopt-selection-modal">
+    <div class="modal-head">
+      <h3 data-testid="adopt-selection-title">Bring these into your plan?</h3>
+      <button class="modal-x" aria-label="Close">✕</button>
+    </div>
+    <p class="modal-sub" data-testid="adopt-selection-copy">Only the selected stops change. Everything else in your current plan stays as it is.</p>
+    <div class="selected-preview" data-testid="adopt-selection-items"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-testid="adopt-selection-back">Back</button>
+      <button class="btn primary" data-testid="adopt-selection-confirm">Adopt selected stops</button>
+    </div>
+    <p class="modal-note">Adoption changes only your still-in-planning items. Purchased, in-checkout, and with-expert items stay put; nothing is purchased here.</p>
+  </div>
+</div>
+
 <style>
   .scrim { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start; justify-content:center;
     padding:6vh 18px 40px; background:rgba(20,20,15,.5); backdrop-filter:blur(2px); overflow:auto; }
@@ -703,6 +764,14 @@
   .card-base .bm { color:var(--muted); font-weight:400; font-family:var(--mono); font-size:10.5px; }
   .items .day-sep { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); padding:9px 0 3px; }
   .adopt-tick { margin-left:7px; width:18px; height:18px; border-radius:999px; border:1.5px solid var(--save-br); background:var(--save-bg); color:var(--save-fg); font-size:12px; font-weight:700; line-height:1; cursor:pointer; vertical-align:middle; padding:0; }
+  .adopt-tick.on { background:var(--save-fg); border-color:var(--save-fg); color:var(--save-bg); box-shadow:0 0 0 2px var(--save-br); }
+  .adopt-selected { margin-top:8px; width:100%; justify-content:center; padding:7px 10px; font-size:12px; }
+  .adopt-selected:disabled { opacity:.5; cursor:not-allowed; }
+  .selected-stops { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
+  .selected-stop { display:inline-flex; align-items:center; padding:3px 7px; border-radius:999px; background:var(--surface); border:1px solid var(--save-br); color:var(--save-fg); font-size:11px; }
+  .selected-preview { display:flex; flex-direction:column; gap:7px; margin:14px 0 2px; padding:11px 12px; border:1px solid var(--save-br); border-radius:10px; background:var(--save-bg); }
+  .selected-preview-label { font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:2px; }
+  .selected-preview b { font-size:13px; font-weight:600; }
 </style>
 
 <style>
@@ -930,9 +999,74 @@
 })();
 </script>
 
+<script>
+(function(){
+  var ticks=[].slice.call(document.querySelectorAll('.adopt-tick'));
+  var selectedCount=document.querySelector('[data-testid="adoption-selection-count"]');
+  var selectedStops=document.querySelector('[data-testid="selected-stops"]');
+  var selectedButton=document.querySelector('[data-testid="adopt-selected"]');
+  var scrim=document.querySelector('[data-testid="adopt-selection-scrim"]');
+  var modalTitle=document.querySelector('[data-testid="adopt-selection-title"]');
+  var modalCopy=document.querySelector('[data-testid="adopt-selection-copy"]');
+  var modalItems=document.querySelector('[data-testid="adopt-selection-items"]');
+  var modalConfirm=document.querySelector('[data-testid="adopt-selection-confirm"]');
+  var closeButtons=scrim ? [].slice.call(scrim.querySelectorAll('.modal-x,[data-testid="adopt-selection-back"]')) : [];
+  var selected=[];
+
+  function close(){ if(scrim) scrim.style.display='none'; }
+  function open(mode,plan){
+    if(!scrim) return;
+    var names=mode==='whole'
+      ? [plan+' · all still-in-planning stops']
+      : selected.map(function(item){return item.name;});
+    var count=names.length;
+    if(modalTitle) modalTitle.textContent=mode==='whole' ? 'Adopt '+plan+'?' : 'Bring these into your plan?';
+    if(modalCopy) modalCopy.textContent=mode==='whole'
+      ? 'This replaces the still-in-planning portion of your current plan with the complete optimized version.'
+      : 'Only the selected stops change. Everything else in your current plan stays as it is.';
+    if(modalItems) modalItems.innerHTML='<span class="selected-preview-label">'+(mode==='whole' ? 'Complete optimized version' : 'Selected from optimized proposals')+'</span>'+names.map(function(name){return '<b>'+name+'</b>';}).join('');
+    if(modalConfirm) modalConfirm.textContent=mode==='whole' ? 'Adopt entire plan' : 'Adopt '+count+' selected stop'+(count===1?'':'s');
+    scrim.style.display='flex';
+  }
+  function render(){
+    var count=selected.length;
+    if(selectedCount) selectedCount.textContent=count+' stop'+(count===1?'':'s')+' selected';
+    if(selectedStops){
+      selectedStops.hidden=count===0;
+      selectedStops.innerHTML=selected.map(function(item){return '<span class="selected-stop">'+item.name+'</span>';}).join('');
+    }
+    if(selectedButton){
+      selectedButton.disabled=count===0;
+      selectedButton.textContent=count ? 'Adopt '+count+' selected stop'+(count===1?'':'s') : 'Adopt selected stops';
+    }
+  }
+  ticks.forEach(function(tick){
+    tick.addEventListener('click',function(){
+      var name=tick.getAttribute('data-stop');
+      var index=selected.findIndex(function(item){return item.name===name;});
+      if(index>=0) selected.splice(index,1);
+      else selected.push({name:name,plan:tick.getAttribute('data-plan')});
+      tick.classList.toggle('on',index<0);
+      tick.setAttribute('aria-pressed',index<0?'true':'false');
+      render();
+    });
+  });
+  document.querySelectorAll('.adopt-whole').forEach(function(button){
+    button.addEventListener('click',function(){open('whole',button.getAttribute('data-plan'));});
+  });
+  if(selectedButton) selectedButton.addEventListener('click',function(){if(selected.length) open('selected');});
+  closeButtons.forEach(function(button){button.addEventListener('click',close);});
+  if(scrim) scrim.addEventListener('click',function(event){if(event.target===scrim) close();});
+  if(modalConfirm) modalConfirm.addEventListener('click',function(){close();});
+  document.addEventListener('keydown',function(event){if(event.key==='Escape' && scrim && scrim.style.display!=='none') close();});
+  render();
+})();
+</script>
+
 <style>
-  .modal-showcase { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
-  @media (max-width:900px){ .modal-showcase { grid-template-columns:1fr; } }
+  .modal-showcase { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; align-items:start; }
+  @media (max-width:1100px){ .modal-showcase { grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:700px){ .modal-showcase { grid-template-columns:1fr; } }
   .modal-showcase .modal-demo { margin:0; }
   .modal-showcase .modal { max-width:none; }
 </style>

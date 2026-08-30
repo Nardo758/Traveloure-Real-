@@ -5,6 +5,17 @@
 // a deterministic string matcher, nothing else. The service imports similarity/MATCH_THRESHOLD from
 // here; the test imports them from here too.
 
+/** Only these ratified affiliate classifications may create an itinerary grounding link. */
+export const AFFILIATE_GROUNDING_BOOKING_TYPES = [
+  "affiliate_bookable",
+  "in_platform_bookable",
+] as const;
+export type AffiliateGroundingBookingType = (typeof AFFILIATE_GROUNDING_BOOKING_TYPES)[number];
+
+export function isAffiliateGroundingBookingType(value: unknown): value is AffiliateGroundingBookingType {
+  return AFFILIATE_GROUNDING_BOOKING_TYPES.some((type) => type === value);
+}
+
 // Conservative threshold (Q4). A normalized exact/contains name hit scores 1.0; a strong token
 // overlap can clear the bar; weak overlap never does. Fail-closed: below this, no link.
 export const MATCH_THRESHOLD = 0.82;
@@ -57,4 +68,28 @@ export function similarity(a: string, b: string): number {
   for (const t of ta) if (bset[t]) inter++;
   if (inter < 2) return 0;
   return inter / (ta.length + tb.length - inter);
+}
+
+export interface AffiliateGroundingCandidate {
+  id: string;
+  name: string | null | undefined;
+  latitude: string | null;
+  longitude: string | null;
+  bookingType: string | null | undefined;
+}
+
+/** Find the best eligible affiliate match without allowing unclassified inventory to win. */
+export function findBestEligibleAffiliateProduct(
+  itemName: string,
+  products: readonly AffiliateGroundingCandidate[],
+): AffiliateGroundingCandidate & { score: number } | null {
+  let best: (AffiliateGroundingCandidate & { score: number }) | null = null;
+  for (const product of products) {
+    if (!isAffiliateGroundingBookingType(product.bookingType)) continue;
+    const score = similarity(itemName, product.name ?? "");
+    if (score >= MATCH_THRESHOLD && (!best || score > best.score)) {
+      best = { ...product, score };
+    }
+  }
+  return best;
 }
