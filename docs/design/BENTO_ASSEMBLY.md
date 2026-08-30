@@ -1,0 +1,193 @@
+# City feed — Bento assembly spec
+
+**Status:** ratified 2026-08-27 · **Applies to:** `/discover/location/:city` (`client/src/pages/discover-location.tsx`, `client/src/components/city-feed-card*.tsx`, `client/src/components/feed/*`) · **Visual:** `docs/design/marketplace-experts-earn-grammar-mock.html`, frame "City feed" · **Supersedes** the geometry lines in `MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §3.13 and the `2026-08-25-city-feed-bento`, `2026-08-26-bento-compact-density`, `2026-08-26-neighbourhood-ready-made-fill` rulings where they differ.
+
+This document is the oracle. `playwright/tests/discover-tabs.spec.ts` (bento block) asserts each numbered rule against the Kyoto fixture; the Replit real-data pass proves the same rules on Mumbai and Kyoto. When the mock and this document disagree, this document wins; when this document and the composition engine disagree, the engine wins (see §0).
+
+---
+
+## 0. What the bento does not decide
+
+The bento is a **layout** over a list the composition engine has already built. It never:
+
+- adds, removes, or reorders composed items (the one exception is §3.5, append-only);
+- computes floors, demand, trend, or crowd (server-side: `demand-floors.config.ts`, R16, R3);
+- decides which neighbourhoods exist or their order (`feed-composition.ts` → `sections[]`);
+- fetches anything the page doesn't already fetch.
+
+Invariant, asserted in the spec: for every section, the sequence of composed item ids rendered as tiles is identical to the sequence before the bento existed, with §3.5 fills appended after it.
+
+---
+
+## 1. Tile types
+
+Exactly one tile type per feed item kind. Type determines span, content contract, and action row. Nothing is inferred from position.
+
+| Type | Item kind(s) | Span | Photo band | Tag(s) on band | Title | Meta line (§5) | Action row (§4) |
+|---|---|---|---|---|---|---|---|
+| **Anchor** | lead expert (§2) | 2×2 | cover image, dark gradient overlay; gradient only if no image | none | role eyebrow (`LOCAL EXPERT`) + Fraunces 28 name | one-line bio (≤ 120 chars, truncate) | coral `Plan with {first name}[ · from $N]` · outline `View profile` |
+| **Ready-made** | ready-made / expert template | 2×1, photo-left 40% | listing image; gradient fallback | `READY-MADE · {N} DAYS` | coral eyebrow theme + title | `{City} · {N} days` then `$X · ★ r (n) · s sold` | teal `Get this trip` |
+| **Gem** | `gems[]` | 1×1 | image; tinted gradient fallback | `HIDDEN GEM` (green) + `Trending` (gold) when score ≥ 85 | name | `gem score {N} · best for {x}` | navy `Add to trip` · outline `Ask an expert` |
+| **Service** | `services[]`, platform recommendation | 1×1 | image; gradient fallback | kind (`GUIDED WALK`, `PHOTOGRAPHY`…) + price pill `$N` | name | `{duration} · {source}` | teal `Book now` · navy `Add to trip` |
+| **Partner** | affiliate recommendation | 1×1 | image; gradient fallback | `PAID PARTNER` (gold) + price pill | name | `via {Partner}` or `recommended for this trip type` | gold `Book on {Partner}` (`Book on partner` if unnamed) · navy `Add to trip` |
+| **External** | external stub | 1×1 | dusk gradient (never an image we don't own) | `FROM THE WEB · NOT BOOKABLE HERE` | name | source domain + attribution line | outline `View source` only |
+| **Viewpoint** | not-bookable place / event without a booking rail | 1×1 | image or dusk gradient | `NOT BOOKABLE` (green wash) | name | `Free viewpoint · best {time}` / `{date}` | navy `Add to trip` · outline `Ask an expert` |
+| **Wanted** | `service_requests` | 1×1 | none — dashed gold panel | `WANTED HERE` (gold mono eyebrow) | request title | `{n} travelers asked this month. No provider yet.` | gold `Offer this` · outline `Ask an expert` |
+| **Panel** | earn, concierge, add-on agent | 1×1 | none — `--earn-ground` panel | mono eyebrow (`EARN ON TRAVELOURE`, `CONCIERGE`) | Fraunces 16 line | ≤ 2 lines copy | **one** CTA: navy for earn/add-on, coral for concierge (the paid step) |
+
+Rules:
+- A tile is never a different span than its type says. No stretching, no demotion.
+- A tile with no image gets a tinted gradient keyed to its kind; no glyph or emoji in the band.
+- Partner and External tiles **never** link to a storefront (§13/§16).
+- `Trending` requires `gemScore ≥ 85` on the 0–100 scale; `gemScore` of `0` or null means unscored (no badge, no fact).
+
+---
+
+## 2. Anchor selection
+
+Exactly one anchor per section, chosen in this order; the first match wins; if none, the section has **no anchor** and starts at §3.3.
+
+1. Lead **local expert** scoped to the neighbourhood (an expert whose `expertForm.neighborhoods` includes it), highest rating, ties → most offerings.
+2. Local expert for the city.
+3. Trip planner for the city.
+4. None.
+
+**Event planners are never anchors on a destination feed.** Providers are never anchors (their tiles are Service tiles).
+
+The anchor tile's `from $N` fragment renders only when the expert has a priced planning offer (`expertLowestPrice`); otherwise the CTA is `Plan with {name}`.
+
+---
+
+## 3. Section assembly
+
+Grid: 4 columns at ≥ 1000px, 2 at 560–999, 1 below 560. Rows: `minmax(0, auto)` — height follows content, nothing clips. Gap 14px.
+
+Order of operations, per section, on the composed item list `L` (in engine order):
+
+1. **Pull the anchor** (§2) out of `L` if present; place at columns 1–2, rows 1–2.
+2. **Pull the first ready-made** out of `L` if present; place as 2×1 in the first slot that fits: with an anchor, that is columns 3–4 row 1 if two 1×1s aren't already there — otherwise the first full-width-2 gap after the anchor's rows. Without an anchor, columns 1–2 row 1.
+3. **Place the rest of `L` as 1×1**, in order, left to right, top to bottom, into the first free cell each time. Order of placement equals order in `L`; only geometry varies.
+4. **Never stretch.** A 1×1 stays 1×1 even when it is the last tile in a row.
+5. **Fill a short last row**, append-only, in this order, each used at most once per section and the city-wide ready-made at most once per page:
+   1. city-wide ready-made (2×1, labelled `{City}-wide`) — only if the section had no ready-made in step 2 and two adjacent cells are free;
+   2. a wanted slot for this neighbourhood not already placed;
+   3. an earn panel.
+   If none apply, the row stays short.
+6. **Empty section** (after chip filtering, or no items): the section does not render.
+
+Filtering (§6) runs before step 1 on `L`; assembly is recomputed from the filtered list.
+
+---
+
+## 4. Action row grammar
+
+Three states, decided by the item, never by position:
+
+| State | When | Buttons |
+|---|---|---|
+| Platform-bookable | item has a Traveloure booking rail (`bookingMode` / offering id) | teal `Book now` · navy `Add to trip` |
+| Affiliate | `sourceType = affiliate` / partner | gold-wash `Book on {Partner}` · navy `Add to trip` |
+| Not bookable | everything else | navy `Add to trip` · outline `Ask an expert` |
+
+- Compact tiles carry **two** buttons. The third action (`Ask an expert` on bookable tiles, website/globe) exists only at full density.
+- Coral appears **once per section**: the anchor CTA. The concierge panel's `Optimize` is the only other coral on the page and only when a concierge panel is present.
+- The tile body is the link to the item's detail; buttons stop propagation.
+- `Add to trip` → existing cart mutation; label chain `Add → Added`; `TripStrip` chip increments.
+- `Ask an expert` → expert handoff carrying `destination` and `neighborhood`.
+- `Book on {Partner}` → partner URL with the affiliate attribution; `POST /api/upsell/click` before navigation.
+
+---
+
+## 4a. Info affordance (not a button)
+
+"More info" is never a button — a third button would crowd the two-button action row (§4) and take a color, breaking the rule that color encodes action state. The detail path is tertiary and styled as text/affordance:
+
+- **Card body opens detail.** The tile's photo + title + meta area is itself the link to the item's detail page; the two action buttons `stopPropagation`. This is the primary "more info" path and needs no separate control — just a discoverability cue: a small `ⓘ` (lucide `info`, 14px, `--earn-muted`) in the tile's top-right corner of the photo band, and `cursor:pointer` on the body.
+- **Bodiless tiles** (wanted slot, earn/concierge/add-on panels — no detail page to open) carry a **mono text link** instead: `More info →` in Geist Mono, `--earn-teal-ink`, under the meta line, same treatment as the source row — never bordered, never colored as a button.
+- Never both: a tile with a tappable body shows the `ⓘ` cue; a bodiless panel shows the mono link. One info path per tile.
+
+Color note: **green (`--earn-green`) is status-only** — `✓ In your trip`, the `Hidden gem` tag — and never appears on a button or a link. The five hues each mean one thing: coral = the section's one primary CTA, teal = platform-bookable, gold = affiliate, navy = add/secondary, green = owned/confirmed status. No sixth color, no reuse.
+
+---
+
+## 5. Meta line grammar
+
+One mono line per compact tile, built from fragments joined by ` · `. A fragment is **dropped** when its field is null, empty, or `0`; the **label goes with its value** (never a label without a value, never a bare value without its label where the type defines one).
+
+| Type | Fragments in order |
+|---|---|
+| Gem | `gem score {N}` · `best for {bestFor}` |
+| Service | `{duration}` · `{source}` (source per §7) |
+| Partner | `via {Partner}` · `recommended for this trip type` |
+| External | `{domain}` · attribution |
+| Viewpoint | `Free viewpoint` · `best {time}` |
+| Ready-made | line 1 `{City} · {N} days`; line 2 `${price}` · `★ {rating} ({count})` · `{sold} sold` |
+| Anchor | bio only |
+
+Numbers: prices `$N` (no cents unless non-zero), ratings one decimal, gem score integer, counts integer.
+
+---
+
+## 6. Section chrome and page chrome
+
+Every rendered section, in order:
+
+1. Coral mono eyebrow `{NEIGHBOURHOOD} · {n}` where `n` = tiles rendered after filtering.
+2. Fraunces 24 heading: authored `editorialTitle` → `headline` → `tagline` → `{Neighbourhood}`.
+3. Right-aligned `See all in {nb} →` — sets `?neighborhood=<slug>` (§8).
+
+Above the first section: the **jump list** (mono): `All neighbourhoods · Gion · Arashiyama · …`, one entry per rendered section, active entry filled when `?neighborhood=` is set.
+
+Page top, in order: band (Palmtree tile; coral mono eyebrow `DESTINATION · {country} · TREND {n} · CROWD {level}`, each fragment dropped when null; Fraunces 30 city; one-line sub from authored copy → seasonal line → `Local experts, bookable services, and what's on in {city}`; Marketplace rail with Destinations filled) → two-field search (`What do you need help with in {city}?` · where = city + dates from `TripStrip`, read-only · `Filters +`) → gem chips (`All gems · Eat · Do · Stay · Services · Experts · Events · Photo spots · Vibe`, mono count badges, live-stock only, `All gems` default) → jump list → sections.
+
+No `← Back`, no stats row, no "Active filters" row. Secondary filters (price, sort) live in the `Filters +` popover only.
+
+---
+
+## 7. Source row / link resolution
+
+Every seller-bearing tile links back to its source, in this order: claimed handle → `/s/:handle`; expert without handle → `/experts/:id`; provider without handle → `/providers` card; affiliate/external → partner label only, never a storefront. Anchor `View profile` → `/experts/:id`. Ready-made author → same resolution.
+
+---
+
+## 8. Filters and URL state
+
+- Gem chip: filters every section's `L` by kind before assembly; empty sections drop; `All gems` restores. Local state, no history entry.
+- `See all in {nb}` / `?neighborhood=<slug>`: renders only that section; jump list marks it; gem chips compose within it; browser back clears. Real `href` for middle-click; SPA nav on click.
+- Two-field search "where": reads `useTripContext()` only; **never** calls the setter. Changing the trip is `EditTripPanel`'s job.
+- Price / sort (popover): apply to `L` before assembly; a price filter ignores unpriced editorial tiles; an explicit sort disables the anchor float (anchor is then placed in its sorted position as a 1×1 expert tile).
+
+---
+
+## 9. Density
+
+- Feed tiles: compact (this document). Title single-line truncate; meta one line; two buttons.
+- Anchor: full copy as specified in §1.
+- The same components at `density="full"` on `/services`, `/ready-made`, storefront, expert profile — byte-identical to before the bento.
+
+---
+
+## 10. Proof matrix
+
+| Rule | Fixture assertion | Real-data proof |
+|---|---|---|
+| §0 order invariant | item-id sequence pre/post per section | — |
+| §1 spans by type | `data-col-span` / `data-row-span` per tile | Mumbai first section capture |
+| §2 anchor priority | fixture with (a) neighbourhood-scoped local expert, (b) city-only local expert, (c) planner only, (d) event planner only → no anchor | Mumbai (planner vs event planner) |
+| §3.2 ready-made placement beside anchor | Gion frame | Kyoto |
+| §3.4 no stretch | filtered single tile stays 1×1 | `Eat` on Mumbai |
+| §3.5 fill order, once-per-page | Arashiyama gets `{City}-wide`; Nishiki does not | Kyoto |
+| §4 three states, coral once | count coral buttons = 1 per section | capture |
+| §5 label-with-value | gem tile with `bestFor` null shows `gem score N` only; score 0 shows nothing | Kyoto gems |
+| §6 chrome present on real data | eyebrow, heading, See-all, jump list present | Mumbai — Bandra/Colaba (`playwright/tests/discover-bento-real-data.spec.ts`) |
+| §7 source links | partner tile has no `/s/` link; expert tile links `/experts/:id` or `/s/` | Mumbai |
+| §8 search read-only | trip context unchanged after typing | fixture |
+
+---
+
+## 11. Known deviations to close (as of `9ba9c99b`, Mumbai capture)
+
+1. §2 — event planner rendered as anchor (Rhea Desai). Priority not implemented.
+2. §6 — CLOSED 2026-08-27 (see `2026-08-27-neighbourhood-slug-match` in DECISIONS.md). Root cause was not the chrome fallback chain (`editorialTitle → headline → tagline → description → name`, already correct) — it was that Mumbai's Bandra/Colaba gems/services were seeded with the neighbourhood's display name instead of its slug, so location-view.service.ts's raw-equality join against `cityNeighborhoods.slug` zeroed their gemCount/serviceCount/gems, dropping the whole neighbourhood (chrome included) out of the client feed. Fixed by normalizing both sides of the join (`normalizeNeighborhoodKey`) and correcting the seed data to store slugs. Known residual: the heading text itself falls back to `description`, and Bandra's (and two Kyoto rows') seeded `description` is a leftover centroid-placeholder string, not editorial copy — chrome renders, but that specific heading text is a seed-data quality issue, not a rendering bug; not fixed here (out of this commit's sanctioned scope, and pre-existing in Kyoto too).
+3. §5 — gem tiles show bare `85`; `gem score` label dropped.
+4. §3.5 — no ready-made fill outside Kyoto is **correct** (DB constraint) and not a deviation.

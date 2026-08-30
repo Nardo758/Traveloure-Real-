@@ -392,9 +392,25 @@ export async function getLocalKnowledgeNuggets(expertId: string): Promise<any[]>
 }
 
 export async function createLocalKnowledgeNugget(values: Record<string, any>): Promise<any> {
-  const [row] = await db.insert(localKnowledgeNuggets).values(values as any).returning();
+  // §19 layer 2 (beside the insert-schema .omit): the gem-promotion cluster is
+  // server-authored only — strip it here so every caller (including internal
+  // `as any` ones a type-level omit cannot reach) is covered. Written ONLY by
+  // the propose/approve/reject handlers (2026-08-29-replit-gem-audit ruling 4).
+  const {
+    promotionStatus: _ps,
+    promotionSubmittedAt: _psa,
+    promotionReviewedBy: _prb,
+    promotionReviewedAt: _pra,
+    promotionReviewNote: _prn,
+    promotedGemId: _pgi,
+    ...safe
+  } = values;
+  const [row] = await db.insert(localKnowledgeNuggets).values(safe as any).returning();
   return row;
 }
+
+// Nugget → gem promotion transitions live in gem-promotion.service.ts (ruling 4) —
+// one service owns the promotion_status rail; nothing here writes those columns.
 
 export async function getLocalKnowledgeNuggetById(id: string, expertId: string): Promise<any | null> {
   const [row] = await db.select().from(localKnowledgeNuggets)

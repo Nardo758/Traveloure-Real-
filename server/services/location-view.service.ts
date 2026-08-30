@@ -18,11 +18,14 @@
  */
 
 import { db } from "../db";
+import { resolveCanonicalCity } from "../utils/canonical-city";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
+import { toGemTeaser } from "@shared/gem-teaser";
+import type { GemCuratedBy } from "@shared/gem-curated-by";
 import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
 import {
   DEFAULT_RESOLUTION_CLASS,
@@ -53,11 +56,68 @@ import { sortByFeaturedAdjusted } from "./featured-sort";
  *    into some city (§13). It becomes visible by its owner naming a neighborhood, not by us
  *    inferring one.
  */
+/**
+ * 2026-08-27-neighbourhood-slug-match — gems/services store a free-text
+ * `neighborhood` value; some rows use the seeded slug ("gion"), others the
+ * display name ("Bandra", "Fort / Kala Ghoda"), and slugs themselves mix
+ * hyphens and underscores ("kawaramachi-sanjo" vs "fushimi_inari"). A raw
+ * equality join against `cityNeighborhoods.slug` silently drops any
+ * mismatched row from that neighbourhood's gemCount/serviceCount/gems —
+ * which then drops the neighbourhood out of the client feed entirely (its
+ * section chrome disappears along with the content). Normalize BOTH sides
+ * the same way before comparing so slug-vs-name and hyphen-vs-underscore
+ * differences collapse to one key. This is a matching fix, not a
+ * composition change — these rows were always meant to be members.
+ */
+export function normalizeNeighborhoodKey(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 function cityScopePredicate(cityName: string) {
   return or(
     eq(providerServices.city, cityName),
     and(isNull(providerServices.city), ilike(providerServices.location, `%${cityName}%`)),
   );
+}
+
+/** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null.
+ *  Canonical shape lives in @shared/gem-curated-by; re-exported for server callers. */
+export type { GemCuratedBy };
+
+/**
+ * Gem attribution (2026-08-29 Replit-audit ruling 1): reuse the EXISTING
+ * `travel_pulse_hidden_gems.curated_by_expert_id` column — never fabricate a
+ * byline. A gem gets `curatedBy` ONLY when its curator id resolves to a real
+ * user row (soft FK, so a dangling id yields null, not a guessed name — §13).
+ * One bulk users lookup for the whole gem set; no N+1.
+ */
+export async function attachGemAttribution<T extends { curatedByExpertId?: string | null }>(
+  rows: T[],
+): Promise<Array<T & { curatedBy: GemCuratedBy | null }>> {
+  const curatorIds = Array.from(
+    new Set(rows.map((r) => r.curatedByExpertId).filter((id): id is string => !!id)),
+  );
+  const curatorById = new Map<string, GemCuratedBy>();
+  if (curatorIds.length > 0) {
+    const curatorRows = await db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+      })
+      .from(users)
+      .where(inArray(users.id, curatorIds));
+    for (const row of curatorRows) curatorById.set(row.id, row);
+  }
+  return rows.map((row) => ({
+    ...row,
+    curatedBy: (row.curatedByExpertId && curatorById.get(row.curatedByExpertId)) || null,
+  }));
 }
 
 export interface SectionResult<T> {
@@ -212,6 +272,15 @@ class LocationViewService {
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
+    // Case-insensitive city match: normalize the incoming name to its canonical
+    // stored casing FIRST, so a mis-cased URL (/kyoto) resolves the same non-empty
+    // feed as /Kyoto. The marketplace reads below use case-sensitive `eq()` against
+    // the title-case canonical ("Kyoto"); without this, `kyoto` returned an HTTP-200
+    // but partially-EMPTY feed (neighborhoods/gems/services all []). An unknown city
+    // is left unchanged ⇒ honestly empty (§13). Done before the cache key so all
+    // casings of one city share a cache entry.
+    cityName = (await resolveCanonicalCity(cityName)) ?? cityName;
+
     // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
     // v5: payload shape change — adds externalStubs (Trailhead T4.3 published scraped stubs).
     const cacheKey = `v5|${cityName}:${country ?? ""}`;
@@ -293,30 +362,48 @@ class LocationViewService {
             ),
           )
           .groupBy(providerServices.neighborhood),
-        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood
+        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood.
+        // DESC by gemScore (fixed Aug 29 2026): this was ascending, so the per-neighborhood
+        // `.slice(0, 6)` below kept each neighborhood's six WORST gems — every sibling gem
+        // query (travelpulse.service getHiddenGems, /api/cities/gems) sorts DESC.
         db
           .select()
           .from(travelPulseHiddenGems)
           .where(eq(travelPulseHiddenGems.city, cityName))
-          .orderBy(travelPulseHiddenGems.gemScore),
+          .orderBy(desc(travelPulseHiddenGems.gemScore)),
       ]);
 
+      // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
+      // above — so a row's raw neighborhood value can be the slug OR the display
+      // name (and either hyphen or underscore word-separators) and still match.
       const gemCountMap = new Map<string, number>();
       for (const row of gemRows) {
-        if (row.neighborhood) gemCountMap.set(row.neighborhood, row.count);
+        if (row.neighborhood) {
+          const key = normalizeNeighborhoodKey(row.neighborhood);
+          gemCountMap.set(key, (gemCountMap.get(key) ?? 0) + row.count);
+        }
       }
 
       const svcCountMap = new Map<string, number>();
       for (const row of svcRows) {
-        if (row.neighborhood) svcCountMap.set(row.neighborhood, row.count);
+        if (row.neighborhood) {
+          const key = normalizeNeighborhoodKey(row.neighborhood);
+          svcCountMap.set(key, (svcCountMap.get(key) ?? 0) + row.count);
+        }
       }
 
-      // Group gems by neighborhood slug for the gems[] embed
+      // Group gems by normalized neighborhood key for the gems[] embed.
+      // Attribution attached first so nested gems[] carry curatedBy (ruling 1),
+      // then each row is projected to the ruled TEASER set (ruling 3) — the
+      // deep fields (address, mention ratios, mainstream forecast, discovery
+      // status) never leave the server on this surface.
+      const attributedCityGems = (await attachGemAttribution(allCityGems)).map(toGemTeaser);
       const gemsBySlug = new Map<string, any[]>();
-      for (const gem of allCityGems) {
+      for (const gem of attributedCityGems) {
         if (gem.neighborhood) {
-          if (!gemsBySlug.has(gem.neighborhood)) gemsBySlug.set(gem.neighborhood, []);
-          gemsBySlug.get(gem.neighborhood)!.push(gem);
+          const key = normalizeNeighborhoodKey(gem.neighborhood);
+          if (!gemsBySlug.has(key)) gemsBySlug.set(key, []);
+          gemsBySlug.get(key)!.push(gem);
         }
       }
 
@@ -370,12 +457,13 @@ class LocationViewService {
 
       return neighborhoods.map((n) => {
         const expertRow = localExpertByNeighborhood.get(n.id) ?? null;
+        const nKey = normalizeNeighborhoodKey(n.slug);
         return {
           ...n,
-          gemCount: gemCountMap.get(n.slug) ?? 0,
-          serviceCount: svcCountMap.get(n.slug) ?? 0,
+          gemCount: gemCountMap.get(nKey) ?? 0,
+          serviceCount: svcCountMap.get(nKey) ?? 0,
           // bookability is DERIVED (never stored) via the single shared resolver.
-          gems: (gemsBySlug.get(n.slug) ?? [])
+          gems: (gemsBySlug.get(nKey) ?? [])
             .slice(0, 6)
             .map((gem) => ({ ...gem, bookability: resolveBookability(gem) })),
           localExpert: expertRow
@@ -391,12 +479,17 @@ class LocationViewService {
       });
     })();
 
-    // DB hidden gems for the city — all placeTypes, all neighborhoods
+    // DB hidden gems for the city — all placeTypes, all neighborhoods.
+    // DESC by gemScore (fixed Aug 29 2026 — was ascending; see the bulk fetch above).
     const gemsPromise = db
       .select()
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
-      .orderBy(travelPulseHiddenGems.gemScore)
+      .orderBy(desc(travelPulseHiddenGems.gemScore))
+      // Attribution (ruling 1) attached, then the ruled TEASER projection
+      // (ruling 3) — deep fields never leave the server on this surface.
+      .then((rows) => attachGemAttribution(rows))
+      .then((rows) => rows.map(toGemTeaser))
       // bookability is DERIVED (never stored) via the single shared resolver.
       .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
 

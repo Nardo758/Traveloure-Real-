@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
+import { PlanningProvider } from "@/contexts/PlanningContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
@@ -32,6 +33,7 @@ const Vendors = lazy(() => import("@/pages/vendors"));
 const ExecutiveAssistant = lazy(() => import("@/pages/executive-assistant"));
 const HowItWorks = lazy(() => import("@/pages/how-it-works"));
 const Pricing = lazy(() => import("@/pages/pricing"));
+const PlusOccasions = lazy(() => import("@/pages/plus-occasions"));
 const About = lazy(() => import("@/pages/about"));
 const EarnPage = lazy(() => import("@/pages/earn"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -108,6 +110,7 @@ const AdminTourismAnalytics = lazy(() => import("@/pages/admin/tourism-analytics
 const AdminPayouts = lazy(() => import("@/pages/admin/payouts"));
 const AdminNeighborhoodBackfill = lazy(() => import("@/pages/admin/neighborhood-backfill"));
 const AdminGemPhotoBackfill = lazy(() => import("@/pages/admin/gem-photo-backfill"));
+const AdminGemCandidates = lazy(() => import("@/pages/admin/gem-candidates"));
 const AdminReviewModeration = lazy(() => import("@/pages/admin/review-moderation"));
 const AdminDestinationEvents = lazy(() => import("@/pages/admin/destination-events"));
 const AdminServiceRequests = lazy(() => import("@/pages/admin/service-requests"));
@@ -407,16 +410,16 @@ function Router() {
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
       </Route>
-      {/* Public earner storefront — the mockup's /s/{handle} "one link that books and pays".
-          /p/:handle remains a legacy-compatible entry point for existing shared links. */}
+      {/* Public earner storefront — one canonical path for experts and providers.
+          /p/:handle remains a legacy-compatible SPA entry point while the server redirects it. */}
       <Route path="/s/:handle">
         {() => <StorefrontPage />}
       </Route>
       <Route path="/p/:handle">
         {() => <StorefrontPage />}
       </Route>
-      {/* Public directory of provider BUSINESSES — links into each business's own
-          storefront above (/p/:handle). Separate from /services (individual listings). */}
+      {/* Public directory of provider BUSINESSES — links into each business's canonical
+          storefront above (/s/:handle). Separate from /services (individual listings). */}
       <Route path="/providers">
         <Layout><ProvidersDirectoryPage /></Layout>
       </Route>
@@ -464,11 +467,6 @@ function Router() {
         {(params: any) => <Redirect to={`/discover/location/${params.slug}`} />}
       </Route>
 
-      {/* Phase B: Legacy route redirect — /city/:slug → /discover/location/:slug for bookmark continuity */}
-      <Route path="/city/:city">
-        {({ city }) => <Redirect to={`/discover/location/${city}`} />}
-      </Route>
-
       <Route path="/services/:id">
         <PageErrorBoundary fallbackHeading="Service Not Found">
           <ServiceDetailPage />
@@ -503,6 +501,9 @@ function Router() {
       </Route>
       <Route path="/inbox">
         {() => <ProtectedRoute component={InboxPage} />}
+      </Route>
+      <Route path="/plus/occasions">
+        {() => <Layout><ProtectedRoute component={PlusOccasions} /></Layout>}
       </Route>
       <Route path="/contracts/:id">
         <PageErrorBoundary fallbackHeading="Contract Not Found">
@@ -1143,6 +1144,9 @@ function Router() {
       <Route path="/admin/gem-photo-backfill">
         {() => <ProtectedRoute component={AdminGemPhotoBackfill} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/gem-candidates">
+        {() => <ProtectedRoute component={AdminGemCandidates} requiredRole="admin" />}
+      </Route>
       <Route path="/admin/review-moderation">
         {() => <ProtectedRoute component={AdminReviewModeration} requiredRole="admin" />}
       </Route>
@@ -1283,13 +1287,18 @@ function App() {
           <SignInModalProvider>
             <ActiveConsoleProvider>
               <TooltipProvider>
-                <Toaster />
-                <LocaleSync />
-                <GuestCartMigrator />
-                <AuthReturnToRestorer />
-                <MaintenanceGate>
-                  <Router />
-                </MaintenanceGate>
+                {/* Single planning entry (ruling 2026-08-28-single-planning-entry):
+                    mounted ONCE, above the router, so every surface's CTA reaches
+                    the same chooser via usePlanning(). */}
+                <PlanningProvider>
+                  <Toaster />
+                  <LocaleSync />
+                  <GuestCartMigrator />
+                  <AuthReturnToRestorer />
+                  <MaintenanceGate>
+                    <Router />
+                  </MaintenanceGate>
+                </PlanningProvider>
               </TooltipProvider>
             </ActiveConsoleProvider>
           </SignInModalProvider>

@@ -2887,73 +2887,86 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── Basics — ONE card (ruling 114). Mock fidelity (Aug 17): the offering is a COMPACT
-          field paired with "Name it" in a two-column top row, not a card-header identity — the
-          mock's own layout. Selection logic, category derivation and the single Change path are
-          unchanged; only the presentation moved. ── */}
-      <Card>
+      {/* ── Basics — ONE card (ruling 114). A selected provider offering owns the card-header
+          identity so the provider can confirm the listing before editing its details. The
+          unselected state keeps the compact picker in the form body, as before. ── */}
+      <Card data-testid="card-service-basics">
         <CardHeader>
-          <CardTitle>{isEditMode ? "Edit service" : "Create new service"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-
-          {/* ── Mock row1 — What are you offering? | Name it ─────────────────────────────────── */}
-          <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start space-y-6 lg:space-y-0">
-            {/* Offering — compact, provider-only (experts pick a Service Tier below instead). */}
-            {role === "provider" ? (
-              <div>
-                <Label>What are you offering? *</Label>
-                {formData.serviceOfferingTypeId && selectedProviderOffering ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mt-2 w-full justify-between font-normal"
-                      onClick={() => {
-                        setRequestOfferingConfirmedName(null);
-                        setOfferingPickerOpen(true);
-                      }}
-                      data-testid="button-reopen-offering-picker"
-                      aria-label={`Change offering from ${selectedProviderOffering.display_name}`}
+          {role === "provider" && selectedProviderOffering ? (
+            <div
+              className="flex items-start justify-between gap-3 flex-wrap"
+              data-testid="offering-identity-header"
+            >
+              <div className="min-w-0 space-y-1">
+                <CardTitle className="truncate" data-testid="text-selected-offering-name">
+                  {selectedProviderOffering.display_name}
+                </CardTitle>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Badge variant="secondary" className="rounded-full" data-testid="chip-offering-category">
+                    {selectedCategory?.name ?? selectedProviderOfferingLabel ?? "Category unavailable"}
+                  </Badge>
+                  {selectedProviderOffering.tagline && (
+                    <span
+                      className="text-xs text-muted-foreground"
+                      data-testid="text-selected-offering-tagline"
                     >
-                      <span className="truncate">{selectedProviderOffering.display_name}</span>
-                      <ChevronRight className="ml-2 h-4 w-4 shrink-0 rotate-90 text-muted-foreground" aria-hidden="true" />
-                    </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-2 w-full justify-start font-normal text-muted-foreground"
-                    onClick={() => setOfferingPickerOpen(true)}
-                    data-testid="button-choose-offering"
-                  >
-                    Choose an offering — driver, guide, chef…
-                  </Button>
-                )}
-                {/* Category shown as help beneath, exactly as the mock draws it — resolved from
-                    the offering, never asked twice. The unresolved case still gets its honest
-                    failure banner (rendered below, in the Category block). */}
-                {formData.serviceOfferingTypeId && !offeringCategoryUnresolved ? (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-offering-category-help">
-                    Category: {selectedCategory?.name ?? "—"}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Sets your category and links this listing to the /earn catalog. Required before
-                    publishing; you can save a draft without one and finish later.
-                  </p>
-                )}
-                {requestOfferingConfirmedName && selectedProviderOffering?.offering_type_key === "custom_other_offering" && (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-request-offering-confirmed">
+                      {selectedProviderOffering.tagline}
+                    </span>
+                  )}
+                </div>
+                {requestOfferingConfirmedName && selectedProviderOffering.offering_type_key === "custom_other_offering" && (
+                  <p className="text-xs font-normal text-muted-foreground" data-testid="text-request-offering-confirmed">
                     Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
                   </p>
                 )}
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRequestOfferingConfirmedName(null);
+                  setOfferingPickerOpen(true);
+                }}
+                data-testid="button-reopen-offering-picker"
+              >
+                Change
+              </Button>
+            </div>
+          ) : (
+            <CardTitle>{isEditMode ? "Edit service" : "Create new service"}</CardTitle>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-6">
+
+          {/* ── Mock row1 — What are you offering? | Name it ───────────────────────────────────
+              Once selected, the offering moves to the card header; the pre-pick field remains
+              unchanged so the first step still has a clear picker entry point. ── */}
+          <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start space-y-6 lg:space-y-0">
+            {/* Offering — compact, provider-only (experts pick a Service Tier below instead). */}
+            {role === "provider" && !selectedProviderOffering ? (
+              <div>
+                <Label>What are you offering? *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-2 w-full justify-start font-normal text-muted-foreground"
+                  onClick={() => setOfferingPickerOpen(true)}
+                  data-testid="button-choose-offering"
+                >
+                  Choose an offering — driver, guide, chef…
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Sets your category and links this listing to the /earn catalog. Required before
+                  publishing; you can save a draft without one and finish later.
+                </p>
+              </div>
             ) : (
-              <div className="hidden lg:block" aria-hidden="true" />
+              role === "provider" ? null : <div className="hidden lg:block" aria-hidden="true" />
             )}
 
             {/* Name it — the mock's short imperative label + one line of help. */}
-            <div>
+            <div className={role === "provider" && selectedProviderOffering ? "lg:col-span-2" : undefined}>
               <Label htmlFor="name">Name it *</Label>
               <Input
                 id="name"
@@ -2961,6 +2974,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 onChange={(e) => set("name", e.target.value)}
                 placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
                 className="mt-2"
+                data-testid="service-name"
               />
               <p className="text-xs text-muted-foreground mt-1">Travelers see this first.</p>
             </div>
@@ -3003,15 +3017,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <span className="text-sm font-medium" data-testid="text-derived-category">
                   {selectedCategory?.name ?? (offeringCategoryUnresolved ? "Not resolvable" : "—")}
                 </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => set("serviceOfferingTypeId", "")}
-                  data-testid="button-change-offering"
-                >
-                  Change offering
-                </Button>
               </div>
             ) : (
               <Select
@@ -3053,8 +3058,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     can't file your listing under one — and a listing without a category can't be
                     published. This is our problem to fix, not yours: please contact support with
                     this listing's name. In the meantime your work is safe{isEditMode ? " — Save Draft keeps it" : " (drafts autosave)"},
-                    or use <strong>Change offering</strong> to pick a different one and publish
-                    today.
+                    or use <strong>Change</strong> in the Basics header to pick a different one and
+                    publish today.
                   </p>
                 </div>
               </div>
@@ -3411,6 +3416,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
               rows={4}
               className="mt-2"
+              data-testid="service-description"
             />
             {/* Mock's live counter — an honest count naming the checklist's real ask: the 140+
                 row (`description140`, service-form-required.ts) now exists and reads this same
@@ -3504,6 +3510,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               onChange={(e) => set("duration", e.target.value)}
               placeholder={role === "expert" ? "e.g., 2 hours, 3 days, 1 week" : "e.g., 30 minutes, 2 hours, same-day"}
               className="mt-2"
+              data-testid="service-duration"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Asked once — travelers see this exactly as you write it.

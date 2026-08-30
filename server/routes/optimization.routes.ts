@@ -15,6 +15,7 @@
  */
 
 import { Router } from "express";
+import { coversAction } from "../services/trip-entitlement.service";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
@@ -266,6 +267,17 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       });
     }
 
+    // Trip Pass (ruling 2026-08-29-trip-pass): a covered trip's optimizer runs are
+    // INCLUDED — no PaymentIntent is ever created. Entitlement checked server-side here
+    // (the client never asserts coverage). The durable record is the active
+    // trip_entitlements row + the absence of a PI, matching the free-rerun precedent
+    // (fee_ledger's amount<>0 CHECK forbids a literal $0 row — suppression is
+    // covered_by:trip_pass in the response/log, never a zero ledger row).
+    if (tripId && (await coversAction(String(tripId), "optimizer_run"))) {
+      console.log(`[trip-pass] optimizer charge suppressed (covered_by:trip_pass) trip=${tripId}`);
+      return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
+    }
+
     // 24-hour free re-run check
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [recent] = await db
@@ -406,7 +418,9 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
     if (pi.metadata?.type !== "optimization_fee") {
       return res.status(400).json({ error: "invalid_payment_type", message: "PaymentIntent is not an optimization fee." });
     }
-    if (pi.metadata?.userId && pi.metadata.userId !== userId) {
+    // Fail closed: only an intent explicitly bound to this session user may mutate ledgers.
+    // Legacy/malformed intents with no owner metadata must not be attributed to the caller.
+    if (!pi.metadata?.userId || pi.metadata.userId !== userId) {
       return res.status(403).json({ error: "payment_belongs_to_another_user" });
     }
 

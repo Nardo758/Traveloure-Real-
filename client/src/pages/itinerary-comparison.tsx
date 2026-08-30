@@ -76,12 +76,15 @@ import { Anchor } from "lucide-react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
 import type { SlipData } from "@/components/plancard/SlipView";
+import { ProposalComparisonMap } from "@/components/plancard/ProposalComparisonMap";
 import {
   sumLegMinutes,
   parseTotal,
   computeProposalPreview,
   hasHeadlineClaim,
   formatMinutes,
+  formatAnchorLine,
+  coordinateCoverage,
   type ProposalPreview,
 } from "@/lib/slip-proposal-preview";
 
@@ -97,6 +100,8 @@ interface VariantItem {
   price: string;
   rating: string;
   location: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   duration: number;
   travelTimeFromPrevious: number;
   isReplacement: boolean;
@@ -165,6 +170,9 @@ interface Variant {
   items: VariantItem[];
   metrics: VariantMetric[];
   days?: VariantDay[];
+  anchorType?: string | null;
+  anchorName?: string | null;
+  anchorMedianMeters?: string | number | null;
 }
 
 // Mirrors server/services/trip-segmentation.service.ts's SegmentationProposal DTO — display-only
@@ -577,13 +585,21 @@ function ProposalColumnContainer({
     baselineTotalUsd,
     variantTotalUsd: parseTotal(variant.totalCost),
     baselineDriveMinutes,
-    variantDriveMinutes: sumLegMinutes(legs),
+    variantDriveMinutes: coordinateCoverage(variant.items).complete ? sumLegMinutes(legs) : null,
   });
   const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
 
   return (
     <div className="flex flex-col gap-2">
-      {showPreview && <ProposalPreviewStrip preview={preview} variantId={boardId} />}
+      {isBaselineColumn ? (
+        <div
+          className="min-h-6"
+          aria-hidden="true"
+          data-testid="proposal-preview-strip-baseline"
+        />
+      ) : showPreview ? (
+        <ProposalPreviewStrip preview={preview} variantId={boardId} />
+      ) : null}
     <PlanCard
       stage="proposal"
       trip={{
@@ -598,6 +614,13 @@ function ProposalColumnContainer({
          eyebrow: isBaselineColumn ? "Your current plan" : undefined,
          displayName: isBaselineColumn ? "As you built it" : undefined,
          tagline: isBaselineColumn ? "The order you planned, unchanged." : (variant.description || null),
+          anchorLine: formatAnchorLine({
+            anchorType: variant.anchorType,
+            anchorName: variant.anchorName,
+            anchorMedianMeters: variant.anchorMedianMeters,
+             locatedStops: coordinateCoverage(variant.items).locatedStops,
+             totalStops: coordinateCoverage(variant.items).totalStops,
+          }),
          isBaseline: isBaselineColumn,
         recommended,
          totalCostUsd: parseTotal(variant.totalCost),
@@ -611,9 +634,11 @@ function ProposalColumnContainer({
           startTime: it.startTime || it.timeSlot || null,
           name: it.name,
           price: it.price ?? null,
+           isNew: it.isReplacement,
         })),
         legsSummary,
-         applyLabel: isBaselineColumn ? "Keep this plan" : `Apply ${variant.name}`,
+         locationCoverage: coordinateCoverage(variant.items),
+          applyLabel: isBaselineColumn ? "Keep this plan" : "Select this plan",
         onApply,
         applying,
       }}
@@ -640,42 +665,81 @@ function ProposalPreviewStrip({
   const { money, driveTime } = preview;
   return (
     <div
-      className="flex flex-wrap items-center gap-2 text-xs"
+      className="flex min-h-6 flex-wrap items-center gap-2 text-xs"
       data-testid={`proposal-preview-${variantId}`}
     >
       {money && money.direction !== "same" && (
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium",
-            money.direction === "saves"
-              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
+            money.direction === "saves" ? "review-chip--save" : "review-chip--caution",
           )}
-          data-testid={`proposal-preview-money-${variantId}`}
+          data-testid="proposal-preview-money"
         >
-          <DollarSign className="w-3 h-3" />
-          {money.direction === "saves"
-            ? `Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
-            : `Costs $${money.amountUsd.toLocaleString()} more`}
+          <span data-testid={`proposal-preview-money-${variantId}`}>
+            <DollarSign className="inline h-3 w-3" />
+            {money.direction === "saves"
+              ? ` Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
+              : ` Costs $${money.amountUsd.toLocaleString()} more`}
+          </span>
         </span>
       )}
       {driveTime && driveTime.direction !== "same" && (
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium",
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
             driveTime.direction === "saves"
-              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+              ? "review-chip--save"
+              : "review-chip--caution",
           )}
-          data-testid={`proposal-preview-drivetime-${variantId}`}
+          data-testid="proposal-preview-drivetime"
         >
-          <Clock className="w-3 h-3" />
-          {driveTime.direction === "saves"
-            ? `${formatMinutes(driveTime.minutes)} less travel`
-            : `${formatMinutes(driveTime.minutes)} more travel`}
+          <span data-testid={`proposal-preview-drivetime-${variantId}`}>
+            <Clock className="inline h-3 w-3" />
+            {driveTime.direction === "saves"
+              ? ` ${formatMinutes(driveTime.minutes)} less travel`
+              : ` ${formatMinutes(driveTime.minutes)} more travel`}
+          </span>
         </span>
       )}
     </div>
+  );
+}
+
+function ReviewHonestyLegend() {
+  const rules = [
+    ["save", "Money saved", "Baseline vs proposal total; shown only with a real positive baseline."],
+    ["caution", "Costs more, said plainly", "A pricier proposal shows “Costs $40 more” beside its time saving."],
+    ["save", "Shorter drive time", "Sum of located transport-leg minutes; time only — distance is never a headline."],
+    ["omit", "Omitted when unknown", "A stop not located ⇒ no drive-time chip; baseline shows no chips."],
+    ["recommended", "Trending & in season", "Live signals; each line disappears when empty."],
+    ["recommended", "You confirm — nothing auto-applies", "One deliberate click via apply-to-trip; original preserved, nothing charged."],
+  ] as const;
+
+  return (
+    <section
+      className="mb-6 rounded-xl border p-4 review-panel"
+      data-testid="compare-honesty-legend"
+      aria-labelledby="compare-honesty-heading"
+    >
+      <h2 id="compare-honesty-heading" className="mb-3 font-semibold">
+        How the preview stays honest
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rules.map(([tone, title, copy]) => (
+          <div key={title} className="flex items-start gap-2 text-xs text-muted-foreground">
+            <span
+              className={`review-legend-dot--${tone} mt-1.5 h-2 w-2 shrink-0 rounded-full`}
+              aria-hidden="true"
+            />
+            <p>
+              <strong className="font-medium text-foreground">{title}</strong>
+              <span className="block mt-0.5">{copy}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -846,7 +910,13 @@ export default function ItineraryComparisonPage() {
     });
   };
 
-  const { data, isLoading, refetch } = useQuery<ComparisonData>({
+  const {
+    data,
+    isLoading,
+    isError: isComparisonReadError,
+    error: comparisonReadError,
+    refetch,
+  } = useQuery<ComparisonData>({
     queryKey: ["/api/itinerary-comparisons", id],
     enabled: !!id && !!user,
     refetchInterval: (query) => {
@@ -1167,6 +1237,38 @@ export default function ItineraryComparisonPage() {
     return null;
   }
 
+  const comparisonReadForbidden =
+    isComparisonReadError &&
+    comparisonReadError instanceof Error &&
+    /^403:/.test(comparisonReadError.message);
+
+  if (comparisonReadForbidden) {
+    return (
+      <div
+        className="itinerary-comparison-page mx-auto flex min-h-[50vh] max-w-2xl items-center justify-center p-6"
+        data-testid="comparison-access-denied"
+      >
+        <Card className="w-full border-destructive/50 bg-destructive/5">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="mx-auto mb-4 h-12 w-12 text-destructive" />
+            <h1 className="mb-2 text-xl font-semibold">You don&apos;t have access to this optimization review</h1>
+            <p className="mb-6 text-muted-foreground">
+              This review may belong to another account, or you may no longer have permission to view it.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/my-trips")}
+              data-testid="button-back-to-my-plans"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to My Plans
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const isGenerating = data?.comparison?.status === "generating";
   const hasFailed = data?.comparison?.status === "failed";
   const isPendingPayment = data?.comparison?.status === "pending_payment";
@@ -1190,12 +1292,14 @@ export default function ItineraryComparisonPage() {
   const generationProducedNoProposals =
     !autoApply &&
     data?.comparison?.status === "generated" &&
-    hasVariants &&
+    data?.variants != null &&
     aiVariants.length === 0;
 
   // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
   const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
-  const baselineDriveMinutes = sumLegMinutes(baselineLegs);
+  const baselineDriveMinutes = coordinateCoverage(userVariant?.items).complete
+    ? sumLegMinutes(baselineLegs)
+    : null;
 
   // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
   // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
@@ -1261,13 +1365,20 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
+    <div className={cn(
+      "itinerary-comparison-page max-w-7xl mx-auto p-6",
+      slipTripId && "review-board",
+    )}>
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            {slipTripId && <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary mb-1">Optimization · Review before applying</p>}
+            {slipTripId && (
+              <p className="review-eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.16em]">
+                Optimization · Review before applying
+              </p>
+            )}
             <h1 className="text-2xl md:text-3xl font-bold" data-testid={slipTripId ? "review-title" : undefined}>
               {slipTripId ? `Three ways to sharpen your ${primaryCity || data?.comparison?.destination || "trip"} plan` : (data?.comparison?.title || "Itinerary Comparison")}
             </h1>
@@ -1474,7 +1585,7 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
-        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
+        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && !generationProducedNoProposals && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -1601,8 +1712,8 @@ export default function ItineraryComparisonPage() {
                 footer sentence. NO routing actions, NO per-item apply, NO save-for-later. ── */}
             {slipTripId && (
               <>
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4" data-testid="compare-header">
-                  <p className="font-mono text-sm text-muted-foreground">
+                <div className="review-panel flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4 rounded-xl border p-4" data-testid="compare-header">
+                  <p className="review-mono text-sm text-muted-foreground" data-testid="review-slip-line">
                     {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
                     {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
                     {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
@@ -1613,16 +1724,16 @@ export default function ItineraryComparisonPage() {
                         <p className="flex items-center gap-1.5 md:justify-end">
                           <Anchor className="w-3.5 h-3.5" />
                           {anchoredItems.length === 1
-                            ? `${anchoredItems[0].name} pinned in all`
+                            ? "1 purchased item pinned in all"
                             : `${anchoredItems.length} purchased items pinned in all`}
                         </p>
                       )}
                       {withExpertRows.length > 0 && (
                         <p data-testid="compare-exclusion-note">
                           {withExpertRows.length === 1
-                            ? `${withExpertRows[0].a.name} excluded`
+                            ? "1 item excluded"
                             : `${withExpertRows.length} items excluded`}{" "}
-                          ({slipExpertFirstName ? `with ${slipExpertFirstName}` : "with your expert"})
+                          ({slipExpertFirstName ? `with ${slipExpertFirstName}, your expert` : "with your expert"})
                         </p>
                       )}
                     </div>
@@ -1645,12 +1756,12 @@ export default function ItineraryComparisonPage() {
                   if (trending.length === 0 && !seasonal) return null;
                   return (
                     <div
-                      className="mb-4 rounded-lg border bg-muted/40 p-3 space-y-2"
+                      className="review-panel mb-4 space-y-2 rounded-xl border p-3"
                       data-testid="slip-optimize-preview-context"
                     >
                       {trending.length > 0 && (
                         <div className="flex items-start gap-2 text-sm" data-testid="preview-trending-now">
-                          <TrendingUp className="w-4 h-4 mt-0.5 text-green-600 shrink-0" />
+                          <TrendingUp className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-green-ink)" }} />
                           <p>
                             <span className="font-medium">
                               Trending now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
@@ -1661,7 +1772,7 @@ export default function ItineraryComparisonPage() {
                       )}
                       {seasonal && (
                         <div className="flex items-start gap-2 text-sm" data-testid="preview-seasonal">
-                          <Calendar className="w-4 h-4 mt-0.5 text-purple-600 shrink-0" />
+                          <Calendar className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-teal-ink)" }} />
                           <p>
                             <span className="font-medium">Popular around your travel dates: </span>
                             {seasonal}
@@ -1683,7 +1794,18 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <ProposalComparisonMap
+                  proposals={aiVariants.map((variant, index) => ({
+                    id: variant.id,
+                    name: variant.name || `Proposal ${index + 1}`,
+                    items: variant.items,
+                  }))}
+                />
+
+                <div
+                  className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-4 mb-4"
+                  data-testid="review-proposal-grid"
+                >
                   {specColumns.slice(0, 4).map((variant, index) => (
                     <ProposalColumnContainer
                       key={variant.id}
@@ -1719,10 +1841,10 @@ export default function ItineraryComparisonPage() {
                 </div>
 
                 {/* Verbatim, load-bearing copy (§4 Spec C). */}
-                <p className="text-sm text-muted-foreground text-center mb-6" data-testid="compare-footer">
-                  Applying a variant updates the slip in place — the other two are discarded.
-                  Nothing is purchased by applying.
+                <p className="review-footer mb-6 pt-4 text-center text-sm" data-testid="compare-footer">
+                  Each version works best taken whole; your original is preserved; nothing is purchased by applying.
                 </p>
+                <ReviewHonestyLegend />
                 {applyError && (
                   <div
                     className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"
@@ -1799,7 +1921,7 @@ export default function ItineraryComparisonPage() {
             {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
                 slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
             {!slipTripId && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-6 mb-6">
               {/* Skeleton for user variant if still loading */}
               {isGenerating && !userVariant && (
                 <Card className="border-dashed opacity-80">

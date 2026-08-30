@@ -286,6 +286,37 @@ export async function resolveRailsForItem(opts: {
  * The ledger must record the rate that was CHARGED, so the resolution travels with the row rather
  * than being asked again. It is server-derived in full — no client value reaches it.
  */
+/**
+ * Trip Pass traveler-fee waiver (ruling 2026-08-29-trip-pass): the SAME mechanism as the
+ * provider-link waiver — resolveTravelerServiceFee({waived:true}) plus the counterfactual —
+ * with basis 'trip_pass' instead of 'rails'. Second trigger, no forked fee math (§18 rule 1).
+ * Returns null when the fee band is unresolvable (honest absence, §13) — the checkout then
+ * records nothing rather than a guessed waiver. Same honesty caveat as rails:
+ * billedOnDirectPathToday=false — the traveler fee is resolver-only on the direct path today,
+ * so this is a counterfactual record, not suppressed real billing.
+ */
+export async function resolveTripPassFeeWaiver(
+  itemSubtotal: number,
+): Promise<Record<string, unknown> | null> {
+  if (!Number.isFinite(itemSubtotal) || itemSubtotal < 0) return null;
+  try {
+    const waiver = await resolveTravelerServiceFee(itemSubtotal, { waived: true });
+    const counterfactual = await resolveTravelerServiceFee(itemSubtotal);
+    return {
+      waived: true,
+      basis: "trip_pass",
+      bandId: waiver.bandId,
+      bandKey: waiver.bandKey,
+      rate: waiver.rate,
+      wouldHaveBeenAmount: round2(counterfactual.amount),
+      wouldHaveBeenCapApplied: counterfactual.capApplied,
+      billedOnDirectPathToday: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function railsSnapshot(resolution: RailsItemResolution): Record<string, unknown> {
   return {
     attributed: resolution.attributed,

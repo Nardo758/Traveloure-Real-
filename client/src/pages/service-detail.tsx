@@ -47,7 +47,6 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { format, addMonths, subMonths, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
@@ -747,24 +746,24 @@ export default function ServiceDetailPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-[#f8faf9] pb-16" style={{ fontFamily: '"DM Sans", "Inter", sans-serif' }}>
+      <div className="min-h-screen bg-[var(--earn-ground)] pb-16" style={{ fontFamily: '"Inter", system-ui, sans-serif' }}>
         <div className="max-w-[1180px] mx-auto px-6 py-2">
           {/* Breadcrumb — continuity mock's crumb row. Two distinct elements carry the two
               pre-existing testids: an icon "back" affordance (button-back) and the text "Home"
               crumb (breadcrumb-home) — both still land on /discover, as before. */}
           <nav
-            className="flex items-center flex-wrap gap-[7px] pt-5 pb-5 text-[#738091] text-[12px]"
+            className="flex items-center flex-wrap gap-[7px] pt-5 pb-5 text-[color:var(--earn-muted)] text-[12px]"
             aria-label="Breadcrumb"
           >
             <Link
               href="/discover"
               aria-label="Back to services"
               data-testid="button-back"
-              className="inline-flex items-center justify-center w-7 h-7 rounded-[8px] border border-[#dfe7e4] bg-white text-[#738091] hover:text-[#f34d6e] hover:border-[#f5a8b9] transition-colors mr-1"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-[8px] border border-[color:var(--earn-border)] bg-white text-[color:var(--earn-muted)] hover:text-[color:var(--earn-coral-ink)] hover:border-[color:var(--earn-coral-border)] transition-colors mr-1"
             >
               <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
             </Link>
-            <Link href="/discover" className="hover:text-[#f34d6e] transition-colors" data-testid="breadcrumb-home">
+            <Link href="/discover" className="hover:text-[color:var(--earn-coral-ink)] transition-colors" data-testid="breadcrumb-home">
               Home
             </Link>
             {providerVerification?.handle && (
@@ -772,7 +771,7 @@ export default function ServiceDetailPage() {
                 <span aria-hidden="true">/</span>
                 <Link
                   href={`/s/${providerVerification.handle}`}
-                  className="hover:text-[#f34d6e] transition-colors"
+                  className="hover:text-[color:var(--earn-coral-ink)] transition-colors"
                   data-testid="breadcrumb-storefront"
                 >
                   @{providerVerification.handle}
@@ -780,7 +779,7 @@ export default function ServiceDetailPage() {
               </>
             )}
             <span aria-hidden="true">/</span>
-            <strong className="text-[#193752] font-semibold" data-testid="breadcrumb-service-name">
+            <strong className="text-[color:var(--earn-navy)] font-semibold" data-testid="breadcrumb-service-name">
               {service.serviceName}
             </strong>
           </nav>
@@ -789,11 +788,11 @@ export default function ServiceDetailPage() {
               exists (§13 — never a stock/fabricated photo), beside the title/kicker/badges/meta
               note. Mirrors the ratified continuity mock's hero anatomy. */}
           <section
-            className="grid lg:grid-cols-[minmax(0,1.32fr)_minmax(275px,0.68fr)] min-h-[220px] lg:min-h-[292px] border border-[#dfe7e4] rounded-2xl overflow-hidden bg-[#e6f1ef] shadow-[0_10px_28px_rgba(25,55,82,0.05)]"
+            className="grid lg:grid-cols-[minmax(0,1.32fr)_minmax(275px,0.68fr)] min-h-[220px] lg:min-h-[292px] border border-[color:var(--earn-border)] rounded-2xl overflow-hidden bg-[var(--earn-teal-wash)] shadow-[0_10px_28px_rgba(25,55,82,0.05)]"
             aria-label="Service overview"
           >
             {service.serviceImage ? (
-              <div className="relative bg-[#e6f1ef]" data-testid="img-hero">
+              <div className="relative bg-[var(--earn-teal-wash)]" data-testid="img-hero">
                 <img
                   src={service.serviceImage}
                   alt={service.serviceName}
@@ -803,18 +802,18 @@ export default function ServiceDetailPage() {
             ) : (
               <div
                 className="relative overflow-hidden min-h-[220px]"
-                style={{ background: "linear-gradient(135deg, #daeae7 0%, #f8ddcf 52%, #f7c6c4 100%)" }}
+                style={{ background: "linear-gradient(135deg, var(--earn-teal-wash) 0%, var(--earn-gold-wash) 52%, var(--earn-coral-border) 100%)" }}
                 aria-hidden="true"
               />
             )}
-            <div className="flex flex-col justify-center px-6 py-7 lg:px-8 bg-[#fffaf5] border-t lg:border-t-0 lg:border-l border-black/[0.08]">
+            <div className="flex flex-col justify-center px-6 py-7 lg:px-8 bg-[var(--earn-gold-wash)] border-t lg:border-t-0 lg:border-l border-black/[0.08]">
               {(service.deliveryMethod || displayLocation) && (
-                <span className="text-[#f34d6e] text-[10px] font-bold tracking-[0.1em] uppercase mb-2.5">
+                <span className="text-[color:var(--earn-coral-ink)] text-[10px] font-bold tracking-[0.1em] uppercase mb-2.5">
                   {[service.deliveryMethod?.replace(/_/g, " "), displayLocation].filter(Boolean).join(" · ")}
                 </span>
               )}
               <h1
-                className="text-[#193752] font-semibold text-[26px] lg:text-[38px] leading-[1.06] tracking-[-0.04em]"
+                className="text-[color:var(--earn-navy)] font-semibold text-[26px] lg:text-[38px] leading-[1.06] tracking-[-0.04em]"
                 style={{ fontFamily: "Fraunces, serif" }}
                 data-testid="text-service-name"
               >
@@ -840,13 +839,13 @@ export default function ServiceDetailPage() {
                 </Badge>
               )}
               {service.shortDescription && (
-                <p className="mt-3.5 text-[#738091] text-[13px] leading-[1.5]">{service.shortDescription}</p>
+                <p className="mt-3.5 text-[color:var(--earn-muted)] text-[13px] leading-[1.5]">{service.shortDescription}</p>
               )}
               {(providerVerification?.identityVerified || providerVerification?.businessVerified) && (
                 <div className="flex gap-[7px] flex-wrap items-center mt-4">
                   {providerVerification?.identityVerified && (
                     <span
-                      className="inline-flex items-center gap-[5px] rounded-full border border-[#b9ded8] bg-[#eaf7f5] text-[#247d78] text-[10px] font-bold px-2 py-[5px]"
+                      className="inline-flex items-center gap-[5px] rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[10px] font-bold px-2 py-[5px]"
                       title="Provider identity verified"
                       data-testid="badge-identity-verified"
                     >
@@ -855,7 +854,7 @@ export default function ServiceDetailPage() {
                   )}
                   {providerVerification?.businessVerified && (
                     <span
-                      className="inline-flex items-center gap-[5px] rounded-full border border-[#b9ded8] bg-[#eaf7f5] text-[#247d78] text-[10px] font-bold px-2 py-[5px]"
+                      className="inline-flex items-center gap-[5px] rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[10px] font-bold px-2 py-[5px]"
                       title="Provider business verified"
                       data-testid="badge-business-verified"
                     >
@@ -864,13 +863,13 @@ export default function ServiceDetailPage() {
                   )}
                 </div>
               )}
-              <div className="flex items-center gap-[13px] flex-wrap mt-3.5 text-[#738091] text-[12px]">
+              <div className="flex items-center gap-[13px] flex-wrap mt-3.5 text-[color:var(--earn-muted)] text-[12px]">
                 {displayLocation && (
                   <span className="inline-flex items-center gap-[5px]" data-testid="text-location">
                     <MapPin className="w-3.5 h-3.5" /> {displayLocation}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-[5px] text-[#a67015] font-bold" data-testid="text-rating">
+                <span className="inline-flex items-center gap-[5px] text-[color:var(--earn-gold-ink)] font-bold" data-testid="text-rating">
                   <Star className="w-3.5 h-3.5" fill="currentColor" />
                   {service.reviewCount > 0 ? `${rating.toFixed(1)} (${service.reviewCount} reviews)` : "New"}
                 </span>
@@ -886,7 +885,7 @@ export default function ServiceDetailPage() {
               {isRoom && service.property && (
                 <Link
                   href={`/services/${service.property.id}`}
-                  className="inline-flex items-center gap-1 text-[12px] text-[#247d78] hover:underline mt-3 w-fit font-medium"
+                  className="inline-flex items-center gap-1 text-[12px] text-[color:var(--earn-teal-ink)] hover:underline mt-3 w-fit font-medium"
                   data-testid="link-room-property"
                 >
                   <BedDouble className="w-3.5 h-3.5" />
@@ -903,7 +902,7 @@ export default function ServiceDetailPage() {
               {service.galleryImages.map((url, idx) => (
                 <div
                   key={idx}
-                  className="rounded-[10px] overflow-hidden border border-[#dfe7e4] aspect-square"
+                  className="rounded-[10px] overflow-hidden border border-[color:var(--earn-border)] aspect-square"
                   data-testid={`img-gallery-${idx}`}
                 >
                   <img src={url} alt={`${service.serviceName} photo ${idx + 1}`} className="w-full h-full object-cover" />
@@ -919,7 +918,7 @@ export default function ServiceDetailPage() {
             <div className="order-2 lg:order-1 grid gap-4">
               <DetailCard>
                 <SectionHeading>About this service</SectionHeading>
-                <p className="text-[#344454] text-[13px] leading-[1.65] max-w-[680px]" data-testid="text-description">
+                <p className="text-[color:var(--earn-ink)] text-[13px] leading-[1.65] max-w-[680px]" data-testid="text-description">
                   {service.description || service.shortDescription || "No description available"}
                 </p>
                 {(service.deliveryTimeframe ||
@@ -995,7 +994,7 @@ export default function ServiceDetailPage() {
                     {accessNotesText && (
                       <GoodToKnowRow icon={Info} testId="text-access-notes">
                         Access: {accessNotesText}
-                        <span className="block text-[11px] text-[#738091] mt-0.5">
+                        <span className="block text-[11px] text-[color:var(--earn-muted)] mt-0.5">
                           Shown in the host&apos;s own words. No accessibility standard is claimed on their behalf.
                         </span>
                       </GoodToKnowRow>
@@ -1037,19 +1036,19 @@ export default function ServiceDetailPage() {
                     )}
                   </ul>
                   {hasHouseRules && (
-                    <div className="mt-4 pt-4 border-t border-[#dfe7e4]" data-testid="text-house-rules">
-                      <p className="text-[12.5px] font-semibold text-[#193752] mb-1">House rules</p>
-                      <p className="text-[12.5px] text-[#738091] whitespace-pre-line leading-[1.5]">{service.houseRules}</p>
+                    <div className="mt-4 pt-4 border-t border-[color:var(--earn-border)]" data-testid="text-house-rules">
+                      <p className="text-[12.5px] font-semibold text-[color:var(--earn-navy)] mb-1">House rules</p>
+                      <p className="text-[12.5px] text-[color:var(--earn-muted)] whitespace-pre-line leading-[1.5]">{service.houseRules}</p>
                     </div>
                   )}
                   {showAmenities && (
-                    <div className="mt-4 pt-4 border-t border-[#dfe7e4]" data-testid="list-amenities">
-                      <p className="text-[12.5px] font-semibold text-[#193752] mb-2">Amenities</p>
+                    <div className="mt-4 pt-4 border-t border-[color:var(--earn-border)]" data-testid="list-amenities">
+                      <p className="text-[12.5px] font-semibold text-[color:var(--earn-navy)] mb-2">Amenities</p>
                       <div className="flex flex-wrap gap-1.5">
                         {service.amenities!.map((a) => (
                           <span
                             key={a}
-                            className="inline-flex items-center rounded-full bg-[#eaf7f5] text-[#247d78] text-[11px] font-medium px-2.5 py-1"
+                            className="inline-flex items-center rounded-full bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[11px] font-medium px-2.5 py-1"
                             data-testid={`badge-amenity-${a}`}
                           >
                             {a}
@@ -1079,7 +1078,7 @@ export default function ServiceDetailPage() {
                       <SectionHeading>Location &amp; route</SectionHeading>
                       {isApproximate && (
                         <span
-                          className="text-[10px] font-normal border border-[#dfe7e4] rounded-full px-2 py-0.5 text-[#738091] -mt-3"
+                          className="text-[10px] font-normal border border-[color:var(--earn-border)] rounded-full px-2 py-0.5 text-[color:var(--earn-muted)] -mt-3"
                           data-testid="badge-approximate-location"
                         >
                           Approximate area
@@ -1087,11 +1086,11 @@ export default function ServiceDetailPage() {
                       )}
                     </div>
                     {isApproximate && (
-                      <p className="text-[11px] text-[#738091] mb-3" data-testid="text-approximate-location-note">
+                      <p className="text-[11px] text-[color:var(--earn-muted)] mb-3" data-testid="text-approximate-location-note">
                         The exact address is shared after booking. This circle shows the general neighborhood only.
                       </p>
                     )}
-                    <div className="rounded-[10px] overflow-hidden border border-[#dfe7e4]">
+                    <div className="rounded-[10px] overflow-hidden border border-[color:var(--earn-border)]">
                       <ServiceLocationMap
                         pin={servicePin}
                         pinLabel={isApproximate ? "Approximate area" : (service.meetingPoint || service.serviceName)}
@@ -1106,7 +1105,7 @@ export default function ServiceDetailPage() {
                     </div>
                     {routeStops.length > 0 && (
                       <div className="mt-4">
-                        <p className="text-[12.5px] font-semibold text-[#193752] mb-2" data-testid="text-route-summary">
+                        <p className="text-[12.5px] font-semibold text-[color:var(--earn-navy)] mb-2" data-testid="text-route-summary">
                           Route — {locatedStops.length} of {routeStops.length} stops located
                         </p>
                         <ol className="space-y-[7px]">
@@ -1119,12 +1118,12 @@ export default function ServiceDetailPage() {
                                 className="flex items-center gap-2 text-[12.5px]"
                                 data-testid={`route-stop-${s.position}`}
                               >
-                                <span className="w-5 h-5 rounded-full bg-[#f34d6e] text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+                                <span className="w-5 h-5 rounded-full bg-[var(--earn-coral-ink)] text-white text-[11px] font-bold flex items-center justify-center shrink-0">
                                   {s.position}
                                 </span>
-                                <span className="text-[#738091]">{s.name}</span>
+                                <span className="text-[color:var(--earn-muted)]">{s.name}</span>
                                 {parseLatLng(s.latitude, s.longitude) === null && (
-                                  <span className="text-[10px] border border-[#dfe7e4] rounded-full px-1.5 py-0.5 text-[#738091]">
+                                  <span className="text-[10px] border border-[color:var(--earn-border)] rounded-full px-1.5 py-0.5 text-[color:var(--earn-muted)]">
                                     not on map
                                   </span>
                                 )}
@@ -1134,20 +1133,20 @@ export default function ServiceDetailPage() {
                       </div>
                     )}
                     {(service.meetingPoint || service.pickupAddress || service.dropOffPoint) && (
-                      <div className="mt-4 space-y-1 text-[12px] text-[#738091]">
+                      <div className="mt-4 space-y-1 text-[12px] text-[color:var(--earn-muted)]">
                         {service.meetingPoint && (
                           <p data-testid="text-map-meeting-point">
-                            <span className="font-semibold text-[#193752]">Meet:</span> {service.meetingPoint}
+                            <span className="font-semibold text-[color:var(--earn-navy)]">Meet:</span> {service.meetingPoint}
                           </p>
                         )}
                         {service.pickupAddress && (
                           <p data-testid="text-map-pickup">
-                            <span className="font-semibold text-[#193752]">Pickup:</span> {service.pickupAddress}
+                            <span className="font-semibold text-[color:var(--earn-navy)]">Pickup:</span> {service.pickupAddress}
                           </p>
                         )}
                         {service.dropOffPoint && (
                           <p data-testid="text-map-dropoff">
-                            <span className="font-semibold text-[#193752]">Drop-off:</span> {service.dropOffPoint}
+                            <span className="font-semibold text-[color:var(--earn-navy)]">Drop-off:</span> {service.dropOffPoint}
                           </p>
                         )}
                       </div>
@@ -1159,7 +1158,7 @@ export default function ServiceDetailPage() {
               {hasTiers && (
                 <DetailCard data-testid="card-pricing-tiers">
                   <SectionHeading>Pricing Tiers</SectionHeading>
-                  <div className="divide-y divide-[#dfe7e4]">
+                  <div className="divide-y divide-[color:var(--earn-border)]">
                     {service.pricingTiers!.map((tier, idx) => (
                       <div
                         key={idx}
@@ -1167,10 +1166,10 @@ export default function ServiceDetailPage() {
                         data-testid={`pricing-tier-${idx}`}
                       >
                         <div className="flex-1">
-                          <p className="font-medium text-[#193752] text-[13px]">{tier.label}</p>
-                          {tier.description && <p className="text-[12px] text-[#738091] mt-0.5">{tier.description}</p>}
+                          <p className="font-medium text-[color:var(--earn-navy)] text-[13px]">{tier.label}</p>
+                          {tier.description && <p className="text-[12px] text-[color:var(--earn-muted)] mt-0.5">{tier.description}</p>}
                         </div>
-                        <p className="font-semibold text-[16px] text-[#193752] shrink-0">
+                        <p className="font-semibold text-[16px] text-[color:var(--earn-navy)] shrink-0">
                           {fmtPrice(Number(tier.price))}
                         </p>
                       </div>
@@ -1184,14 +1183,14 @@ export default function ServiceDetailPage() {
                   <SectionHeading>What&apos;s Included</SectionHeading>
                   <ul className="space-y-2">
                     {service.whatIncluded?.map((item, index) => (
-                      <li key={index} className="flex items-start gap-2 text-[12.5px] text-[#344454]">
-                        <CheckCircle className="w-4 h-4 text-[#f34d6e] mt-0.5 shrink-0" />
+                      <li key={index} className="flex items-start gap-2 text-[12.5px] text-[color:var(--earn-ink)]">
+                        <CheckCircle className="w-4 h-4 text-[color:var(--earn-coral-ink)] mt-0.5 shrink-0" />
                         <span>{item}</span>
                       </li>
                     ))}
                     {hasRevisions && (
-                      <li className="flex items-start gap-2 text-[12.5px] text-[#344454]" data-testid="text-revisions-included">
-                        <CheckCircle className="w-4 h-4 text-[#f34d6e] mt-0.5 shrink-0" />
+                      <li className="flex items-start gap-2 text-[12.5px] text-[color:var(--earn-ink)]" data-testid="text-revisions-included">
+                        <CheckCircle className="w-4 h-4 text-[color:var(--earn-coral-ink)] mt-0.5 shrink-0" />
                         <span>
                           {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"} included
                         </span>
@@ -1199,10 +1198,10 @@ export default function ServiceDetailPage() {
                     )}
                     {service.includesExpertNotes && (
                       <li
-                        className="flex items-start gap-2 text-[12.5px] text-[#344454]"
+                        className="flex items-start gap-2 text-[12.5px] text-[color:var(--earn-ink)]"
                         data-testid="text-includes-expert-notes"
                       >
-                        <CheckCircle className="w-4 h-4 text-[#f34d6e] mt-0.5 shrink-0" />
+                        <CheckCircle className="w-4 h-4 text-[color:var(--earn-coral-ink)] mt-0.5 shrink-0" />
                         <span>Includes personalized expert notes</span>
                       </li>
                     )}
@@ -1214,13 +1213,13 @@ export default function ServiceDetailPage() {
               {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
                 <DetailCard data-testid="card-bundle-components">
                   <div className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-[#247d78]" />
+                    <Package className="w-5 h-5 text-[color:var(--earn-teal-ink)]" />
                     <SectionHeading>What&apos;s inside this bundle</SectionHeading>
                   </div>
-                  <p className="text-[11px] text-[#738091] mb-3">
+                  <p className="text-[11px] text-[color:var(--earn-muted)] mb-3">
                     This is one bundle price — it&apos;s not a sum of these components&apos; individual prices.
                   </p>
-                  <div className="divide-y divide-[#dfe7e4]">
+                  <div className="divide-y divide-[color:var(--earn-border)]">
                     {service.bundleComponents.map((component, index) => {
                       const href = bundleComponentHref(component);
                       const methodLabel = bundleComponentMethodLabel(component);
@@ -1237,21 +1236,21 @@ export default function ServiceDetailPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p
-                                className={`font-medium text-[13px] ${component.available ? "text-[#193752]" : "text-[#738091]"}`}
+                                className={`font-medium text-[13px] ${component.available ? "text-[color:var(--earn-navy)]" : "text-[color:var(--earn-muted)]"}`}
                               >
                                 {component.serviceName}
                               </p>
                               {methodLabel && (
-                                <span className="text-[10px] border border-[#dfe7e4] rounded-full px-2 py-0.5 text-[#738091] capitalize">
+                                <span className="text-[10px] border border-[color:var(--earn-border)] rounded-full px-2 py-0.5 text-[color:var(--earn-muted)] capitalize">
                                   {methodLabel}
                                 </span>
                               )}
                             </div>
                             {component.available && component.shortDescription && (
-                              <p className="text-[12px] text-[#738091] mt-0.5">{component.shortDescription}</p>
+                              <p className="text-[12px] text-[color:var(--earn-muted)] mt-0.5">{component.shortDescription}</p>
                             )}
                             {!component.available && (
-                              <p className="text-[12px] text-[#738091] mt-0.5">Currently unavailable</p>
+                              <p className="text-[12px] text-[color:var(--earn-muted)] mt-0.5">Currently unavailable</p>
                             )}
                           </div>
                         </div>
@@ -1261,7 +1260,7 @@ export default function ServiceDetailPage() {
                           key={key}
                           href={href}
                           data-testid={`bundle-component-${component.available ? component.id : index}`}
-                          className="block hover:bg-[#f8faf9] rounded-md px-2 -mx-2 transition-colors"
+                          className="block hover:bg-[var(--earn-ground)] rounded-md px-2 -mx-2 transition-colors"
                         >
                           {body}
                         </Link>
@@ -1279,26 +1278,26 @@ export default function ServiceDetailPage() {
               {service.productShape === "property" && Array.isArray(service.rooms) && service.rooms.length > 0 && (
                 <DetailCard data-testid="card-property-rooms">
                   <div className="flex items-center gap-2">
-                    <BedDouble className="w-5 h-5 text-[#247d78]" />
+                    <BedDouble className="w-5 h-5 text-[color:var(--earn-teal-ink)]" />
                     <SectionHeading>Rooms</SectionHeading>
                   </div>
-                  <div className="divide-y divide-[#dfe7e4]">
+                  <div className="divide-y divide-[color:var(--earn-border)]">
                     {service.rooms.map((room) => (
                       <Link
                         key={room.id}
                         href={`/services/${room.id}`}
                         data-testid={`property-room-${room.id}`}
-                        className="flex items-center justify-between gap-3 py-3 hover:bg-[#f8faf9] rounded-md px-2 -mx-2 transition-colors"
+                        className="flex items-center justify-between gap-3 py-3 hover:bg-[var(--earn-ground)] rounded-md px-2 -mx-2 transition-colors"
                       >
                         <div className="min-w-0">
-                          <p className="font-medium text-[13px] text-[#193752] truncate">{room.serviceName}</p>
+                          <p className="font-medium text-[13px] text-[color:var(--earn-navy)] truncate">{room.serviceName}</p>
                           {room.shortDescription && (
-                            <p className="text-[12px] text-[#738091] mt-0.5 truncate">{room.shortDescription}</p>
+                            <p className="text-[12px] text-[color:var(--earn-muted)] mt-0.5 truncate">{room.shortDescription}</p>
                           )}
                         </div>
-                        <p className="font-semibold shrink-0 whitespace-nowrap text-[13px] text-[#193752]">
+                        <p className="font-semibold shrink-0 whitespace-nowrap text-[13px] text-[color:var(--earn-navy)]">
                           From {fmtPrice(Number(room.price))}{" "}
-                          <span className="font-normal text-[#738091] text-[11px]">/ night</span>
+                          <span className="font-normal text-[color:var(--earn-muted)] text-[11px]">/ night</span>
                         </p>
                       </Link>
                     ))}
@@ -1310,19 +1309,19 @@ export default function ServiceDetailPage() {
               {ownerPackages.length > 0 && (
                 <DetailCard data-testid="card-owner-packages">
                   <div className="flex items-center gap-2 mb-3">
-                    <BookOpen className="w-5 h-5 text-[#247d78]" />
+                    <BookOpen className="w-5 h-5 text-[color:var(--earn-teal-ink)]" />
                     <SectionHeading>Ready made trips by this expert</SectionHeading>
                   </div>
                   <div className="grid gap-3">
                     {ownerPackages.slice(0, 3).map((pkg: any) => (
                       <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
                         <div
-                          className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-[#dfe7e4] hover:border-[#f5a8b9] cursor-pointer transition-colors"
+                          className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-[color:var(--earn-border)] hover:border-[color:var(--earn-coral-border)] cursor-pointer transition-colors"
                           data-testid={`owner-package-${pkg.id}`}
                         >
                           <div className="min-w-0">
-                            <p className="font-medium text-[13px] text-[#193752] truncate">{pkg.title}</p>
-                            <div className="flex items-center gap-3 text-[11px] text-[#738091] mt-1">
+                            <p className="font-medium text-[13px] text-[color:var(--earn-navy)] truncate">{pkg.title}</p>
+                            <div className="flex items-center gap-3 text-[11px] text-[color:var(--earn-muted)] mt-1">
                               <span className="flex items-center gap-1">
                                 <MapPin className="w-3 h-3" /> {pkg.destination}
                               </span>
@@ -1331,7 +1330,7 @@ export default function ServiceDetailPage() {
                               </span>
                             </div>
                           </div>
-                          <p className="font-bold text-[#f34d6e] whitespace-nowrap text-[13px]">${pkg.price}</p>
+                          <p className="font-bold text-[color:var(--earn-coral-ink)] whitespace-nowrap text-[13px]">${pkg.price}</p>
                         </div>
                       </Link>
                     ))}
@@ -1339,21 +1338,42 @@ export default function ServiceDetailPage() {
                 </DetailCard>
               )}
 
-              {/* MP-2 return path — "show me everything this seller offers". */}
-              <StorefrontLink
-                handle={providerVerification?.handle}
-                sellerNoun="seller"
-                data-testid="link-service-storefront"
-              />
+              {/* MP-2 return path — "show me everything this seller offers".
+                  The handle comes only from public verification; an unclaimed seller
+                  gets no dead or guessed storefront link. */}
+              {providerVerification?.handle && (
+                <DetailCard data-testid="link-service-storefront-card" className="py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-coral-ink)]"
+                        style={{ fontFamily: "Geist Mono, ui-monospace, monospace" }}
+                      >
+                        More from this seller
+                      </p>
+                      <p className="mt-1 text-[13px] leading-snug text-[color:var(--earn-muted)]">
+                        See the other services and trip plans from @{providerVerification.handle}.
+                      </p>
+                    </div>
+                    <Link
+                      href={`/s/${providerVerification.handle}`}
+                      className="inline-flex min-h-[42px] shrink-0 items-center justify-center rounded-[8px] bg-[var(--earn-navy)] px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-[var(--earn-teal-ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal-ink)] focus-visible:ring-offset-2"
+                      data-testid="link-service-storefront"
+                    >
+                      Open storefront
+                    </Link>
+                  </div>
+                </DetailCard>
+              )}
 
               <DetailCard>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <SectionHeading>Reviews</SectionHeading>
                   {service.reviewCount > 0 && (
-                    <div className="flex items-center gap-1 text-[13px] font-normal text-[#a67015] -mt-3">
+                    <div className="flex items-center gap-1 text-[13px] font-normal text-[color:var(--earn-gold-ink)] -mt-3">
                       <Star className="w-4 h-4" fill="currentColor" />
                       <span>{rating.toFixed(1)}</span>
-                      <span className="text-[#738091]">({service.reviewCount})</span>
+                      <span className="text-[color:var(--earn-muted)]">({service.reviewCount})</span>
                     </div>
                   )}
                 </div>
@@ -1363,7 +1383,7 @@ export default function ServiceDetailPage() {
                     <Skeleton className="h-20 w-full" />
                   </div>
                 ) : !reviews || reviews.length === 0 ? (
-                  <p className="text-[#738091] text-[13px] text-center py-8">
+                  <p className="text-[color:var(--earn-muted)] text-[13px] text-center py-8">
                     No reviews yet. Be the first to review this service!
                   </p>
                 ) : (
@@ -1381,18 +1401,18 @@ export default function ServiceDetailPage() {
                 and the fee disclosure — all in one sticky sidebar column. */}
             <div className="order-1 lg:order-2">
               <DetailCard className="lg:sticky lg:top-4">
-                <div className="flex items-baseline gap-[7px] flex-wrap border-b border-[#dfe7e4] pb-[17px]">
+                <div className="flex items-baseline gap-[7px] flex-wrap border-b border-[color:var(--earn-border)] pb-[17px]">
                   <strong
-                    className="text-[#193752] text-[30px] leading-none"
+                    className="text-[color:var(--earn-navy)] text-[30px] leading-none"
                     style={{ fontFamily: "Fraunces, serif" }}
                     data-testid="text-price"
                   >
                     {priceLabel}
                   </strong>
-                  <span className="text-[#738091] text-[11px]">{priceSubLabel}</span>
+                  <span className="text-[color:var(--earn-muted)] text-[11px]">{priceSubLabel}</span>
                   {(service.bookingsCount ?? 0) > 0 && (
                     <span
-                      className="w-full text-[#738091] text-[10px] flex items-center gap-1"
+                      className="w-full text-[color:var(--earn-muted)] text-[10px] flex items-center gap-1"
                       data-testid="text-bookings-count"
                     >
                       <Users className="w-3 h-3" />
@@ -1405,7 +1425,7 @@ export default function ServiceDetailPage() {
                   {isRoom ? (
                     <>
                       <Button
-                        className="w-full min-h-[42px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1432,7 +1452,7 @@ export default function ServiceDetailPage() {
 
                       <Button
                         variant="outline"
-                        className="w-full min-h-[42px] rounded-[8px] bg-[#193752] hover:bg-[#193752]/90 border border-[#193752] text-white font-bold text-[12px]"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1451,7 +1471,7 @@ export default function ServiceDetailPage() {
                   ) : (
                     <>
                       <Button
-                        className="w-full min-h-[42px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1478,7 +1498,7 @@ export default function ServiceDetailPage() {
 
                       <Button
                         variant="outline"
-                        className="w-full min-h-[42px] rounded-[8px] bg-[#193752] hover:bg-[#193752]/90 border border-[#193752] text-white font-bold text-[12px]"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1498,7 +1518,7 @@ export default function ServiceDetailPage() {
 
                   <Button
                     variant="ghost"
-                    className="w-full min-h-[42px] rounded-[8px] border border-[#dfe7e4] bg-white hover:bg-[#f8faf9] text-[#193752] font-bold text-[12px]"
+                    className="w-full min-h-[42px] rounded-[8px] border border-[color:var(--earn-border)] bg-white hover:bg-[var(--earn-ground)] text-[color:var(--earn-navy)] font-bold text-[12px]"
                     disabled={!providerVerification?.displayName}
                     onClick={() =>
                       askExpert({
@@ -1516,46 +1536,46 @@ export default function ServiceDetailPage() {
                 </div>
 
                 {/* Direct-Booking trust panel. */}
-                <div className="p-[14px] rounded-[10px] bg-[#f5f8f7] text-left" data-testid="section-direct-booking">
-                  <div className="flex items-center gap-[7px] text-[13px] font-semibold text-[#193752]">
-                    <Handshake className="w-4 h-4 text-[#247d78]" />
+                <div className="p-[14px] rounded-[10px] bg-[var(--earn-chip)] text-left" data-testid="section-direct-booking">
+                  <div className="flex items-center gap-[7px] text-[13px] font-semibold text-[color:var(--earn-navy)]">
+                    <Handshake className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
                     Direct Booking
                   </div>
-                  <p className="text-[11px] text-[#738091] leading-[1.45] mt-2 mb-[11px]">
+                  <p className="text-[11px] text-[color:var(--earn-muted)] leading-[1.45] mt-2 mb-[11px]">
                     You&apos;re booking directly with the provider. Payment is processed securely through Traveloure.
                   </p>
                   {hasAnyTrustLine && (
                     <ul className="grid gap-2">
                       {providerVerification?.identityVerified && (
-                        <li className="flex items-center gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-identity">
-                          <ShieldCheck className="w-[13px] h-[13px] text-[#247d78] shrink-0" />
+                        <li className="flex items-center gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-identity">
+                          <ShieldCheck className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0" />
                           Identity verified
                         </li>
                       )}
                       {providerVerification?.businessVerified && (
-                        <li className="flex items-center gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-business">
-                          <Building2 className="w-[13px] h-[13px] text-[#247d78] shrink-0" />
+                        <li className="flex items-center gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-business">
+                          <Building2 className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0" />
                           Business verified
                         </li>
                       )}
                       {hasMeetingPoint && (
                         <li
-                          className="flex items-start gap-[7px] text-[10px] text-[#344454]"
+                          className="flex items-start gap-[7px] text-[10px] text-[color:var(--earn-ink)]"
                           data-testid="trust-line-meeting-point"
                         >
-                          <MapPin className="w-[13px] h-[13px] text-[#247d78] shrink-0 mt-0.5" />
+                          <MapPin className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0 mt-0.5" />
                           <span>Meets at: {service.meetingPoint}</span>
                         </li>
                       )}
                       {hasPickupAddress && (
-                        <li className="flex items-start gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-pickup">
-                          <MapPin className="w-[13px] h-[13px] text-[#247d78] shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-pickup">
+                          <MapPin className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0 mt-0.5" />
                           <span>Pickup: {service.pickupAddress}</span>
                         </li>
                       )}
                       {hasTransportSignal && (
-                        <li className="flex items-center gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-transport">
-                          <Car className="w-[13px] h-[13px] text-[#247d78] shrink-0" />
+                        <li className="flex items-center gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-transport">
+                          <Car className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0" />
                           {service.transportProvided === "yes"
                             ? "Transport provided by the host"
                             : "Transport not provided — arrange your own"}
@@ -1565,18 +1585,18 @@ export default function ServiceDetailPage() {
                   )}
                 </div>
 
-                <Separator className="my-4 bg-[#dfe7e4]" />
+                <Separator className="my-4 bg-[var(--earn-border)]" />
 
                 {isRoom ? (
                   /* §17 Product Builder — PROPERTY rung: a room books a NIGHT RANGE. */
                   <div className="mb-1" data-testid="card-room-stay">
-                    <div className="flex items-center gap-2 text-[13px] font-semibold text-[#193752] mb-2">
-                      <BedDouble className="w-4 h-4 text-[#247d78]" />
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--earn-navy)] mb-2">
+                      <BedDouble className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
                       Pick your dates
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-[11px] text-[#738091]" id="label-room-checkin">
+                        <label className="text-[11px] text-[color:var(--earn-muted)]" id="label-room-checkin">
                           Check-in
                         </label>
                         <Popover open={roomCheckInOpen} onOpenChange={setRoomCheckInOpen}>
@@ -1585,10 +1605,10 @@ export default function ServiceDetailPage() {
                               type="button"
                               variant="outline"
                               aria-labelledby="label-room-checkin"
-                              className="w-full justify-start font-normal text-[12.5px] h-10 border-[#dfe7e4] rounded-[7px]"
+                              className="w-full justify-start font-normal text-[12.5px] h-10 border-[color:var(--earn-border)] rounded-[7px]"
                               data-testid="button-room-checkin"
                             >
-                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#738091]" />
+                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-[color:var(--earn-muted)]" />
                               {roomCheckIn ? format(new Date(`${roomCheckIn}T00:00:00`), "MMM d, yyyy") : "Select date"}
                             </Button>
                           </PopoverTrigger>
@@ -1608,14 +1628,14 @@ export default function ServiceDetailPage() {
                               disabled={isRoomCheckInDisabled}
                               data-testid="calendar-room-checkin"
                             />
-                            <p className="px-3 pb-3 text-[11px] text-[#738091] border-t border-[#dfe7e4] pt-2">
+                            <p className="px-3 pb-3 text-[11px] text-[color:var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2">
                               Grayed-out nights are already booked or not yet published.
                             </p>
                           </PopoverContent>
                         </Popover>
                       </div>
                       <div>
-                        <label className="text-[11px] text-[#738091]" id="label-room-checkout">
+                        <label className="text-[11px] text-[color:var(--earn-muted)]" id="label-room-checkout">
                           Check-out
                         </label>
                         <Popover open={roomCheckOutOpen} onOpenChange={setRoomCheckOutOpen}>
@@ -1625,10 +1645,10 @@ export default function ServiceDetailPage() {
                               variant="outline"
                               aria-labelledby="label-room-checkout"
                               disabled={!roomCheckIn}
-                              className="w-full justify-start font-normal text-[12.5px] h-10 border-[#dfe7e4] rounded-[7px] disabled:opacity-50"
+                              className="w-full justify-start font-normal text-[12.5px] h-10 border-[color:var(--earn-border)] rounded-[7px] disabled:opacity-50"
                               data-testid="button-room-checkout"
                             >
-                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#738091]" />
+                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-[color:var(--earn-muted)]" />
                               {roomCheckOut ? format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy") : "Select date"}
                             </Button>
                           </PopoverTrigger>
@@ -1646,7 +1666,7 @@ export default function ServiceDetailPage() {
                               disabled={isRoomCheckOutDisabled}
                               data-testid="calendar-room-checkout"
                             />
-                            <p className="px-3 pb-3 text-[11px] text-[#738091] border-t border-[#dfe7e4] pt-2">
+                            <p className="px-3 pb-3 text-[11px] text-[color:var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2">
                               Grayed-out dates would include a night that&apos;s already booked.
                             </p>
                           </PopoverContent>
@@ -1654,13 +1674,13 @@ export default function ServiceDetailPage() {
                       </div>
                     </div>
                     {roomCalendarLoading && (
-                      <p className="text-[11px] text-[#738091] mb-1">Loading real availability…</p>
+                      <p className="text-[11px] text-[color:var(--earn-muted)] mb-1">Loading real availability…</p>
                     )}
                     {roomNights > 0 && (
-                      <p className="text-[13px] text-[#344454]" data-testid="text-room-nights">
+                      <p className="text-[13px] text-[color:var(--earn-ink)]" data-testid="text-room-nights">
                         {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(roomEstimatedTotal)}{" "}
                         {stayRatesLoading ? "(estimating…)" : "estimated total"}
-                        {roomHasMixedRates && <span className="text-[#738091]"> (rates vary by night)</span>}
+                        {roomHasMixedRates && <span className="text-[color:var(--earn-muted)]"> (rates vary by night)</span>}
                       </p>
                     )}
                     {roomNights > 30 && (
@@ -1681,15 +1701,15 @@ export default function ServiceDetailPage() {
                     {/* C2/C3: read-only availability calendar with slot selection. */}
                     <div className="mb-4" data-testid="card-availability">
                       <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                        <div className="flex items-center gap-2 text-[13px] font-semibold text-[#193752]">
-                          <CalendarCheck className="w-4 h-4 text-[#247d78]" />
+                        <div className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--earn-navy)]">
+                          <CalendarCheck className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
                           Availability
                         </div>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 border border-[#dfe7e4] rounded-[6px] text-[#738091] hover:text-[#f34d6e]"
+                            className="h-6 w-6 border border-[color:var(--earn-border)] rounded-[6px] text-[color:var(--earn-muted)] hover:text-[color:var(--earn-coral-ink)]"
                             onClick={() =>
                               setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
                             }
@@ -1699,7 +1719,7 @@ export default function ServiceDetailPage() {
                             <ChevronLeft className="w-3.5 h-3.5" />
                           </Button>
                           <span
-                            className="text-[11px] font-bold text-[#193752] w-24 text-center"
+                            className="text-[11px] font-bold text-[color:var(--earn-navy)] w-24 text-center"
                             data-testid="text-availability-month"
                           >
                             {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
@@ -1707,7 +1727,7 @@ export default function ServiceDetailPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 border border-[#dfe7e4] rounded-[6px] text-[#738091] hover:text-[#f34d6e]"
+                            className="h-6 w-6 border border-[color:var(--earn-border)] rounded-[6px] text-[color:var(--earn-muted)] hover:text-[color:var(--earn-coral-ink)]"
                             onClick={() =>
                               setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
                             }
@@ -1734,17 +1754,17 @@ export default function ServiceDetailPage() {
                                 onClick={() => setSelectedSlot(isSelected ? null : day)}
                                 className={`flex w-full items-center justify-between gap-2 rounded-[8px] border px-[10px] py-[10px] text-[11px] text-left transition-colors ${
                                   fullyBooked
-                                    ? "opacity-60 cursor-not-allowed border-[#dfe7e4] bg-[#f7f8f8]"
+                                    ? "opacity-60 cursor-not-allowed border-[color:var(--earn-border)] bg-[var(--earn-chip)]"
                                     : isSelected
-                                      ? "border-[#f34d6e] bg-[#fff0f3]"
-                                      : "border-[#dfe7e4] hover:border-[#f5a8b9]"
+                                      ? "border-[color:var(--earn-coral-ink)] bg-[var(--earn-coral-bg)]"
+                                      : "border-[color:var(--earn-border)] hover:border-[color:var(--earn-coral-border)]"
                                 }`}
                                 data-testid={`availability-day-${day.date}`}
                               >
-                                <span className="font-semibold text-[#193752]">
+                                <span className="font-semibold text-[color:var(--earn-navy)]">
                                   {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
                                   {day.startTime && (
-                                    <span className="text-[#738091] font-normal ml-1.5">
+                                    <span className="text-[color:var(--earn-muted)] font-normal ml-1.5">
                                       {day.startTime}
                                       {day.endTime ? `–${day.endTime}` : ""}
                                     </span>
@@ -1753,7 +1773,7 @@ export default function ServiceDetailPage() {
                                 <span className="flex items-center gap-1.5">
                                   {isSelected && (
                                     <span
-                                      className="text-[9px] px-1.5 py-0 rounded-full bg-[#f34d6e] text-white font-bold"
+                                      className="text-[9px] px-1.5 py-0 rounded-full bg-[var(--earn-coral-ink)] text-white font-bold"
                                       data-testid={`badge-slot-selected-${day.date}`}
                                     >
                                       Selected
@@ -1761,7 +1781,7 @@ export default function ServiceDetailPage() {
                                   )}
                                   <span
                                     className={`text-[9px] px-1.5 py-0 rounded-full font-bold ${
-                                      fullyBooked ? "border border-[#dfe7e4] text-[#738091]" : "bg-[#eaf7f5] text-[#247d78]"
+                                      fullyBooked ? "border border-[color:var(--earn-border)] text-[color:var(--earn-muted)]" : "bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
                                     }`}
                                   >
                                     {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
@@ -1772,7 +1792,7 @@ export default function ServiceDetailPage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-[#738091] text-[11px]" data-testid="text-no-availability">
+                        <p className="text-[color:var(--earn-muted)] text-[11px]" data-testid="text-no-availability">
                           No availability published yet for this month. Contact the provider to check dates.
                         </p>
                       )}
@@ -1780,16 +1800,16 @@ export default function ServiceDetailPage() {
 
                     {/* Preferred date/time — optional fallback. */}
                     <div className="grid grid-cols-2 gap-2 mb-1">
-                      <div className="col-span-2 flex items-center gap-[6px] text-[11px] font-bold text-[#193752]">
-                        <Calendar className="w-3.5 h-3.5 text-[#247d78]" />
-                        Or request a date &amp; time <span className="font-normal text-[#738091]">(optional)</span>
+                      <div className="col-span-2 flex items-center gap-[6px] text-[11px] font-bold text-[color:var(--earn-navy)]">
+                        <Calendar className="w-3.5 h-3.5 text-[color:var(--earn-teal-ink)]" />
+                        Or request a date &amp; time <span className="font-normal text-[color:var(--earn-muted)]">(optional)</span>
                       </div>
                       <input
                         type="date"
                         min={todayStr}
                         value={bookingDate}
                         onChange={(e) => setBookingDate(e.target.value)}
-                        className="rounded-[7px] border border-[#dfe7e4] bg-white px-[8px] py-[8px] text-[10px] text-[#193752]"
+                        className="rounded-[7px] border border-[color:var(--earn-border)] bg-white px-[8px] py-[8px] text-[10px] text-[color:var(--earn-navy)]"
                         data-testid="input-booking-date"
                         aria-label="Preferred date"
                       />
@@ -1798,7 +1818,7 @@ export default function ServiceDetailPage() {
                         value={bookingTime}
                         onChange={(e) => setBookingTime(e.target.value)}
                         disabled={!bookingDate}
-                        className="rounded-[7px] border border-[#dfe7e4] bg-white px-[8px] py-[8px] text-[10px] text-[#193752] disabled:bg-[#f1f3f2] disabled:cursor-not-allowed"
+                        className="rounded-[7px] border border-[color:var(--earn-border)] bg-white px-[8px] py-[8px] text-[10px] text-[color:var(--earn-navy)] disabled:bg-[var(--earn-chip)] disabled:cursor-not-allowed"
                         data-testid="input-booking-time"
                         aria-label="Preferred time"
                       />
@@ -1807,30 +1827,30 @@ export default function ServiceDetailPage() {
                 )}
 
                 {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy. */}
-                <div className="mt-4 pt-4 border-t border-[#dfe7e4] space-y-1.5" data-testid="section-cancellation-policy">
-                  <div className="flex items-center gap-2 text-[13px] font-semibold text-[#193752]">
-                    <ShieldCheck className="w-4 h-4 text-[#247d78]" />
+                <div className="mt-4 pt-4 border-t border-[color:var(--earn-border)] space-y-1.5" data-testid="section-cancellation-policy">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--earn-navy)]">
+                    <ShieldCheck className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
                     Cancellation policy
                   </div>
                   {service.cancellationPolicyType ? (
-                    <p className="text-[11px] text-[#738091]" data-testid="text-cancellation-policy-type">
+                    <p className="text-[11px] text-[color:var(--earn-muted)]" data-testid="text-cancellation-policy-type">
                       {CANCELLATION_POLICY_TYPE_LABELS[service.cancellationPolicyType] ?? service.cancellationPolicyType}
                     </p>
                   ) : (
-                    <p className="text-[11px] text-[#738091]" data-testid="text-cancellation-policy-unset">
+                    <p className="text-[11px] text-[color:var(--earn-muted)]" data-testid="text-cancellation-policy-unset">
                       Contact the provider about cancellations before booking.
                     </p>
                   )}
                   {service.cancellationPolicy && (
-                    <p className="text-[10px] text-[#738091]" data-testid="text-cancellation-policy-detail">
+                    <p className="text-[10px] text-[color:var(--earn-muted)]" data-testid="text-cancellation-policy-detail">
                       {service.cancellationPolicy}
                     </p>
                   )}
                 </div>
 
                 {/* Provider commission transparency (§8: no hardcoded rate literal). */}
-                <div className="mt-4 p-3 rounded-[10px] bg-[#f5f8f7]">
-                  <p className="text-[11px] text-[#738091] text-center">
+                <div className="mt-4 p-3 rounded-[10px] bg-[var(--earn-chip)]">
+                  <p className="text-[11px] text-[color:var(--earn-muted)] text-center">
                     A platform service fee is deducted from each booking; the provider receives the remainder.
                   </p>
                 </div>
@@ -1863,7 +1883,7 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
   if (review.status === "removed") {
     return (
       <div
-        className="border-b border-[#dfe7e4] last:border-0 pb-4 last:pb-0 text-[12.5px] text-[#738091] italic"
+        className="border-b border-[color:var(--earn-border)] last:border-0 pb-4 last:pb-0 text-[12.5px] text-[color:var(--earn-muted)] italic"
         data-testid={`card-review-${review.id}`}
       >
         This review has been removed by a moderator.
@@ -1873,42 +1893,42 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
 
   return (
     <>
-      <div className="border-b border-[#dfe7e4] last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
+      <div className="border-b border-[color:var(--earn-border)] last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
         <div className="flex items-start gap-3">
-          <div className="flex items-center justify-center w-[34px] h-[34px] rounded-full bg-[#e6f1ef] text-[#247d78] shrink-0">
+          <div className="flex items-center justify-center w-[34px] h-[34px] rounded-full bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] shrink-0">
             <User className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <div className="flex items-center gap-0.5 text-[#a67015]">
+              <div className="flex items-center gap-0.5 text-[color:var(--earn-gold-ink)]">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <Star key={star} className="w-3.5 h-3.5" fill={star <= review.rating ? "currentColor" : "none"} stroke="currentColor" />
                 ))}
               </div>
               {review.isVerified && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf7f5] text-[#247d78] text-[10px] font-semibold px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[10px] font-semibold px-2 py-0.5">
                   <CheckCircle className="w-3 h-3" /> Verified
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-[#738091] mb-1">{format(new Date(review.createdAt), "MMM d, yyyy")}</p>
+            <p className="text-[11px] text-[color:var(--earn-muted)] mb-1">{format(new Date(review.createdAt), "MMM d, yyyy")}</p>
             {review.reviewText && (
-              <p className="text-[12.5px] text-[#344454] leading-[1.5]" data-testid={`text-review-${review.id}`}>
+              <p className="text-[12.5px] text-[color:var(--earn-ink)] leading-[1.5]" data-testid={`text-review-${review.id}`}>
                 {review.reviewText}
               </p>
             )}
             {review.responseText && (
-              <div className="mt-3 pl-4 border-l-2 border-[#247d78]/20">
-                <p className="text-[11px] text-[#738091] mb-1">Provider Response:</p>
-                <p className="text-[12.5px] text-[#344454]" data-testid={`text-response-${review.id}`}>
+              <div className="mt-3 pl-4 border-l-2 border-[color:var(--earn-teal-ink)]/20">
+                <p className="text-[11px] text-[color:var(--earn-muted)] mb-1">Provider Response:</p>
+                <p className="text-[12.5px] text-[color:var(--earn-ink)]" data-testid={`text-response-${review.id}`}>
                   {review.responseText}
                 </p>
               </div>
             )}
             {review.providerReply && (
-              <div className="mt-3 rounded-[8px] bg-[#f6f8f7] px-3 py-2" data-testid={`block-provider-reply-${review.id}`}>
-                <p className="text-[10px] font-semibold text-[#193752] mb-1">Response from the provider</p>
-                <p className="text-[12px] text-[#738091] leading-[1.45]" data-testid={`text-provider-reply-${review.id}`}>
+              <div className="mt-3 rounded-[8px] bg-[var(--earn-chip)] px-3 py-2" data-testid={`block-provider-reply-${review.id}`}>
+                <p className="text-[10px] font-semibold text-[color:var(--earn-navy)] mb-1">Response from the provider</p>
+                <p className="text-[12px] text-[color:var(--earn-muted)] leading-[1.45]" data-testid={`text-provider-reply-${review.id}`}>
                   {review.providerReply}
                 </p>
               </div>
@@ -1917,7 +1937,7 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
           {user && review.travelerId !== user.id && (
             <button
               onClick={() => setFlagOpen(true)}
-              className="text-[#738091] hover:text-red-600 transition-colors p-1 rounded"
+              className="text-[color:var(--earn-muted)] hover:text-red-600 transition-colors p-1 rounded"
               title="Report this review"
               data-testid={`button-flag-review-${review.id}`}
             >
@@ -1958,13 +1978,12 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
   );
 }
 
-// ── Page-local presentation helpers (continuity design, docs/design/service-detail-continuity/) ──
-// Transcribed from artifacts/mockup-sandbox/.../ServiceDetailContinuity.tsx's own token
-// vocabulary (navy #193752 / coral #f34d6e / teal #247d78 / gold #a67015 on a #f8faf9 ground,
-// Fraunces headings + DM Sans body) as page-scoped Tailwind arbitrary values — same pattern as
-// the Catalog/Workstation rebuilds (docs/DECISIONS.md rows 110–111). Not extracted to a shared
-// file: this lane is pure-client and page-scoped while sibling lanes rebuild storefront.tsx and
-// experts.tsx concurrently.
+// ── Page-local presentation helpers (earn grammar, docs/design/service-detail-continuity/) ──
+// Re-tokened to the --earn-* palette (2026-08-25-marketplace-earn-grammar): navy → --earn-navy,
+// coral → --earn-coral-ink, teal → --earn-teal-ink, gold → --earn-gold-ink, borders → --earn-border,
+// on the --earn-ground ground; Fraunces editorial headings + Inter body (SPEC §1). The Aug-24
+// continuity skeleton (crumb → split hero → panels → sticky buy) is unchanged — this is a palette +
+// body-font transcription of it, page-scoped as Tailwind arbitrary values (rows 110–111 pattern).
 function DetailCard({
   children,
   className = "",
@@ -1976,7 +1995,7 @@ function DetailCard({
 }) {
   return (
     <section
-      className={`border border-[#dfe7e4] rounded-[13px] bg-white p-[22px] shadow-[0_4px_18px_rgba(25,55,82,0.025)] ${className}`}
+      className={`border border-[color:var(--earn-border)] rounded-[13px] bg-white p-[22px] shadow-[0_4px_18px_rgba(25,55,82,0.025)] ${className}`}
       data-testid={dataTestId}
     >
       {children}
@@ -1987,7 +2006,7 @@ function DetailCard({
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h2
-      className="text-[20px] leading-[1.15] font-semibold text-[#193752] tracking-[-0.03em] mb-[13px]"
+      className="text-[20px] leading-[1.15] font-semibold text-[color:var(--earn-navy)] tracking-[-0.03em] mb-[13px]"
       style={{ fontFamily: "Fraunces, serif" }}
     >
       {children}
@@ -2005,8 +2024,8 @@ function GoodToKnowRow({
   testId?: string;
 }) {
   return (
-    <li className="flex items-start gap-[9px] text-[#344454] text-[12.5px] leading-[1.4]" data-testid={testId}>
-      <Icon className="w-4 h-4 text-[#247d78] shrink-0 mt-0.5" aria-hidden="true" />
+    <li className="flex items-start gap-[9px] text-[color:var(--earn-ink)] text-[12.5px] leading-[1.4]" data-testid={testId}>
+      <Icon className="w-4 h-4 text-[color:var(--earn-teal-ink)] shrink-0 mt-0.5" aria-hidden="true" />
       <span>{children}</span>
     </li>
   );
@@ -2014,9 +2033,9 @@ function GoodToKnowRow({
 
 function Fact({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
-    <div className="border-t border-[#dfe7e4] pt-[9px]" data-testid={testId}>
-      <strong className="block mb-[3px] text-[#193752] text-[13px] font-semibold capitalize">{value}</strong>
-      <span className="text-[#738091] text-[11px]">{label}</span>
+    <div className="border-t border-[color:var(--earn-border)] pt-[9px]" data-testid={testId}>
+      <strong className="block mb-[3px] text-[color:var(--earn-navy)] text-[13px] font-semibold capitalize">{value}</strong>
+      <span className="text-[color:var(--earn-muted)] text-[11px]">{label}</span>
     </div>
   );
 }

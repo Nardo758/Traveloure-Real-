@@ -71,6 +71,21 @@ const RATE_COL_RE = /(?:^|[^A-Za-z])(rate|share|commission|split)s?(?![a-z])|(?:
 // stripped by ruling 42 — but a status is not a linkage id and widening this to every `stripe*`
 // column would make the predicate unusable rather than more truthful).
 const PAYMENT_ID_COL_RE = /^(stripe[A-Z]\w*Id|paymentIntentId)$/;
+// VERIFICATION-STATUS column predicate (§19, ruling 46 sibling) — the same schema-mediated pass,
+// one class wider again. `local_expert_forms.identityVerificationStatus` /
+// `service_provider_forms.businessVerificationStatus` taught that "server-verified-only" is not
+// only a payment-identity property: `resolvePublishVerification` treats these as (half of) the
+// publish gate, so a client-settable `identityVerificationStatus: "verified"` self-verifies and
+// bypasses it, the same shape as a client-settable rate or PaymentIntent id. Matches the
+// identity-/business-verification family (`identityVerificationSessionId`, `identityVerificationStatus`,
+// `identityVerifiedAt`, `businessVerificationStatus`, …) and nothing else: anchored on an
+// `identity`/`business` prefix immediately followed by `Verification…` or `VerifiedAt`, so it does
+// NOT match `verificationRequired` (service_categories — an admin-set category flag, not a per-row
+// verdict), `isVerified`/`verifiedByUser`/`verifiedByExpert` (different tables, different meaning),
+// or `verifiedInfluencer` (the pre-existing admin-managed influencer flag, already omitted
+// separately). Sole sanctioned setters carry `money-derive-ok` on the COLUMN line, same as the
+// other two passes.
+const VERIFICATION_COL_RE = /^(identity|business)(Verification\w*|VerifiedAt)$/;
 
 // ─── Commission literal guard ────────────────────────────────────────────────
 // Numeric literals that express the 90/10 or 75/25 commission split must only
@@ -127,6 +142,18 @@ function selfTest() {
     ['canReceivePayments', PAYMENT_ID_COL_RE, false, 'a payments-adjacent boolean is not an id'],
     ['tripId', PAYMENT_ID_COL_RE, false, 'an ordinary FK must not be flagged'],
     ['travelerId', PAYMENT_ID_COL_RE, false, 'an ordinary identity column — §14 handles it, not this pass'],
+    // VERIFICATION-STATUS column predicate (§19, this fix).
+    ['identityVerificationSessionId', VERIFICATION_COL_RE, true, 'the local_expert_forms/service_provider_forms session id'],
+    ['identityVerificationStatus', VERIFICATION_COL_RE, true, 'the publish-gate status field itself'],
+    ['identityVerifiedAt', VERIFICATION_COL_RE, true, 'the verification timestamp'],
+    ['businessVerificationStatus', VERIFICATION_COL_RE, true, 'the provider-only business verification status'],
+    // Negatives: near-miss column names that must NOT be flagged, or the predicate is unusable.
+    ['verificationRequired', VERIFICATION_COL_RE, false, 'service_categories admin flag — no identity/business prefix'],
+    ['isVerified', VERIFICATION_COL_RE, false, 'a different table\'s generic verified flag'],
+    ['verifiedByUser', VERIFICATION_COL_RE, false, 'wrong prefix shape (suffix, not identity/business-prefixed)'],
+    ['verifiedInfluencer', VERIFICATION_COL_RE, false, 'the pre-existing admin-managed influencer flag, already omitted separately'],
+    ['lastVerifiedAt', VERIFICATION_COL_RE, false, '"last", not "identity"/"business" — a different column'],
+    ['businessRegistrationNumber', VERIFICATION_COL_RE, false, '"business" prefix but not verification — must not over-match'],
   ];
   let bad = 0;
   for (const [subject, re, expected, why] of cases) {
@@ -140,6 +167,7 @@ function selfTest() {
   console.log(
     `self-test OK (${cases.length} predicate fixtures: rate/share/commission/split positives, ` +
     `payment-identity positives (stripe<Thing>Id / paymentIntentId — ruling 46), ` +
+    `verification-status positives (identity/businessVerification*, identityVerifiedAt — §19), ` +
     `substring-collision + status/grant/FK negatives, §14 no-regression)`,
   );
   process.exit(0);
@@ -244,8 +272,13 @@ if (fs.existsSync(path.join(ROOT, SCHEMA_FILE))) {
   const schemaLines = schemaSrc.split('\n');
 
   // table name -> [{col, line, why}] of PRIVILEGED, non-exempt columns.
-  // Two predicates, one pass: rate-bearing (ruling 42) and payment-identity (ruling 46). Both are
-  // the same class — a privileged column a client can set because a denylist schema forgot it.
+  // Three predicates, one pass: rate-bearing (ruling 42), payment-identity (ruling 46), and
+  // verification-status (§19, this fix). All three are the same class — a privileged column a
+  // client can set because a denylist schema forgot it. `timestamp` is in the type list (beside
+  // the original numeric/string/jsonb set) so a column like `identityVerifiedAt` is recognised —
+  // widening it is safe for the other two predicates too: neither RATE_COL_RE nor PAYMENT_ID_COL_RE
+  // matches any existing timestamp column name in this schema (verified by inspection when this
+  // predicate was added).
   const tableRateCols = {};
   let curTable = null;
   schemaLines.forEach((l, i) => {
@@ -253,12 +286,14 @@ if (fs.existsSync(path.join(ROOT, SCHEMA_FILE))) {
     if (t) { curTable = t[1]; tableRateCols[curTable] = []; return; }
     if (!curTable) return;
     if (/^\}\)/.test(l)) { curTable = null; return; }
-    const c = l.match(/^\s{2}(\w+):\s*(?:decimal|numeric|integer|real|doublePrecision|varchar|text|jsonb)\(/);
+    const c = l.match(/^\s{2}(\w+):\s*(?:decimal|numeric|integer|real|doublePrecision|varchar|text|jsonb|timestamp)\(/);
     if (!c || l.includes(ALLOW)) return;
     if (RATE_COL_RE.test(c[1])) {
       tableRateCols[curTable].push({ col: c[1], line: i + 1, why: 'rate-bearing (ruling 42)' });
     } else if (PAYMENT_ID_COL_RE.test(c[1])) {
       tableRateCols[curTable].push({ col: c[1], line: i + 1, why: 'payment-identity, server-verified actors only (ruling 46)' });
+    } else if (VERIFICATION_COL_RE.test(c[1])) {
+      tableRateCols[curTable].push({ col: c[1], line: i + 1, why: 'verification-status, server-verified actors only (§19)' });
     }
   });
 
@@ -314,7 +349,8 @@ if (rateAssignViolations.length) {
   failed = true;
   console.error('❌ Privileged-field mass-assignment guard: a client-parsed insert schema EXPOSES a privileged column.');
   console.error('   Rates resolve from fee_bands ONLY and are never client-settable (ruling 42); a PaymentIntent/');
-  console.error('   Stripe-object id is written only by a SERVER-VERIFIED actor (rulings 41/46).');
+  console.error('   Stripe-object id (rulings 41/46) or an identity-/business-verification verdict (§19) is');
+  console.error('   written only by a SERVER-VERIFIED actor.');
   console.error('   Fix: add `<column>: true` to that schema\'s .omit({…}) and derive/strip server-side —');
   console.error('   and prefer a pick-based ALLOWLIST schema at the route, so the next privileged column is');
   console.error('   unreachable by default rather than reachable until someone remembers to omit it.');
@@ -363,12 +399,16 @@ console.log(
   '     payout/checkout-NAMED files — any other rate value, or the same value elsewhere, is invisible.\n' +
   '   · The privileged-field mass-assignment pass reads shared/schema.ts only: a privileged field on a\n' +
   '     HAND-WRITTEN zod object (not createInsertSchema) or in another schema file is out of scope, as is\n' +
-  '     any rate column whose name contains none of rate/share/commission/split and any payment-identity\n' +
-  '     column not spelled stripe<Thing>Id / paymentIntentId (a `status`, a boolean grant, or an amount\n' +
-  '     column is NOT covered — ruling 42 stripped that family by NAME, not by predicate).\n' +
-  '   · It only knows the RATE and PAYMENT-IDENTITY classes. Every other privileged column an\n' +
-  '     .omit()-based schema forgets — an amount, a status, an authorization grant (#PS16) — is still\n' +
-  '     reachable and still invisible here. That is the standing class ruling 46 records, and the\n' +
-  '     structural answer is a pick-based ALLOWLIST schema, which no grep can substitute for.\n' +
-  '   · Nothing here proves the resolved rate is CORRECT — only that the client did not choose it.'
+  '     any rate column whose name contains none of rate/share/commission/split, any payment-identity\n' +
+  '     column not spelled stripe<Thing>Id / paymentIntentId, and any verification-status column not\n' +
+  '     prefixed identity/business + Verification…/VerifiedAt (a GENERIC `status`, a boolean grant, or an\n' +
+  '     amount column is still NOT covered — ruling 42 stripped those families by NAME, not by predicate;\n' +
+  '     §19 narrowly added ONE more named family, not a general status predicate).\n' +
+  '   · It only knows the RATE, PAYMENT-IDENTITY and VERIFICATION-STATUS classes. Every other privileged\n' +
+  '     column an .omit()-based schema forgets — an amount, an arbitrary status, an authorization grant\n' +
+  '     (#PS16) — is still reachable and still invisible here. That is the standing class ruling 46\n' +
+  '     records, and the structural answer is a pick-based ALLOWLIST schema, which no grep can substitute\n' +
+  '     for.\n' +
+  '   · Nothing here proves the resolved rate/verification verdict is CORRECT — only that the client did\n' +
+  '     not choose it.'
 );

@@ -97,6 +97,8 @@ const menuGroups = [
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
       { title: "Message Reports", href: "/admin/message-moderation", icon: ShieldAlert },
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
+      // Nugget → gem review + scoring queue (2026-08-29-replit-gem-audit ruling 4).
+      { title: "Gem Candidates", href: "/admin/gem-candidates", icon: Sparkles },
       { title: "Service Requests", href: "/admin/service-requests", icon: Inbox },
     ],
   },

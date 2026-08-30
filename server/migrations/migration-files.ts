@@ -23,10 +23,16 @@
  * 052  `052_phase5_expert_endorsements.sql` is excluded. It is a superseded
  *      duplicate schema attempt for `upsell_expert_endorsements` whose columns
  *      (service_id, offering_type_key, city_key, active) diverge from the live
- *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The baseline
- *      migration (000) creates the table from the real schema, so when 052 runs
- *      the table already exists without an `active` column — its partial indexes
- *      would crash. Do NOT register or execute this file.
+ *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). CORRECTION
+ *      (found by the 2026-08-29 upsell-endorsements drift investigation): the
+ *      claim that "baseline migration (000) creates the table from the real
+ *      schema" was WRONG — 052's CREATE TABLE was folded into 000 verbatim, so
+ *      baseline carries 052's OLD shape too, not the current Drizzle shape. The
+ *      real reason 052 stays excluded is unchanged (it would crash re-running
+ *      052's own CREATE TABLE / partial indexes against a table that already
+ *      exists) — but the live Drizzle columns were genuinely missing from the
+ *      whole migration chain until `266_upsell_endorsements_schema_drift.sql`
+ *      added them. Do NOT register or execute this file.
  *
  * 051  `051_affiliate_booking_trip_link.sql` was renamed
  *      060_affiliate_booking_trip_link.sql to eliminate the duplicate 051_
@@ -1271,4 +1277,58 @@ export const MIGRATION_FILES = [
   // slip resolver (rung 02: catalog → affiliate → DMO); declared in shared/schema.ts.
   "256_itinerary_item_affiliate_grounding.sql",
   "257_itinerary_variant_anchor.sql",
+  // 258: pricing foundation reconciliation (ledger 2026-08-27-plans-reconcile). Establishes
+  // the plans baseline on a clean database, reconciles pre-existing plan rows, widens fee-band
+  // value types, and inserts missing shared pricing rows without rewriting existing values.
+  "258_plans_reconcile.sql",
+  // 259: production recorded the original fee-band seed but is missing all four provider
+  // commission bands. Insert only absent ratified rows; existing admin configuration wins.
+  "259_provider_fee_bands_reconcile.sql",
+  // 260: Plus occasions (ledger 2026-08-27-plus-is-delivery). Additive schema only —
+  // users.home_city; plan_memberships (the one user-level entitlement record, read by this
+  // lane's delivery gate and populated later by the checkout lane); occasions; and the
+  // occasion_drafts idempotency ledger (CLAIM → generate → PROMOTE). No DB CHECK / no NOT NULL
+  // on existing rows / no default backfill → no publish-time push trap. All declared in
+  // shared/schema.ts (publish-trap rule).
+  "260_plus_occasions.sql",
+  // 261: additive-nullable service_provider_forms.city (intake-fixes C4; renumbered from 260
+  // after #605 claimed it) — the discrete city the provider intake already collects; read by
+  // the storefront's resolveEarnerLocation provider fallback. Declared in shared/schema.ts
+  // (deploy-push rule); no CHECK, no backfill.
+  "261_service_provider_forms_city.sql",
+  // 262 — Trip Pass per-trip entitlement (ruling 2026-08-29-trip-pass): trip_entitlements
+  // with one-active-per-trip + one-per-PaymentIntent partial unique indexes, BOTH declared
+  // in shared/schema.ts (deploy-push durability rule). Additive, no CHECK, no backfill.
+  "262_trip_entitlements.sql",
+  // 263: additive-nullable gem-promotion candidate columns on local_knowledge_nuggets
+  // (2026-08-29-replit-gem-audit ruling 4). Declared in shared/schema.ts (deploy-push
+  // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
+  // Renumbered from 262 during merge with main — 262 was claimed by 262_trip_entitlements.sql.
+  "263_nugget_gem_promotion.sql",
+  // 264: trip_entitlements.source (ledger 2026-08-29-trip-pass-provenance), mirroring
+  // plan_memberships.source ('stripe' | 'manual' | 'beta'). Additive, DEFAULT 'stripe' —
+  // no CHECK (publish-trap rule; vocabulary enforced by grantTripPass, service-layer).
+  // Backfills every pre-existing row to 'stripe' (correct: the only writer before this
+  // lane was the Stripe-verified confirm path). Declared in shared/schema.ts.
+  "264_trip_entitlement_source.sql",
+  // 265: creator provenance on vendors — server-authored created_by_id from the authenticated
+  // session. Additive-nullable with no backfill; NULL means legacy origin is unknown.
+  // Renumbered from 264 during merge with main — 264 was claimed by
+  // 264_trip_entitlement_source.sql.
+  "265_vendor_creation_provenance.sql",
+  // 266: schema.ts-vs-migration-chain drift fix for upsell_expert_endorsements — the
+  // inverse publish-trap. 052_phase5_expert_endorsements.sql (folded into baseline 000)
+  // created an EARLIER design of this table; shared/schema.ts was later redesigned to
+  // scope/trip_id/neighborhood_id/offering_id/category_key (+ an expert_id -> users FK)
+  // but no migration ever carried that redesign — so a migration-built DB (CI, fresh
+  // dev) lacks these, while a Replit deploy-push DB (schema.ts-canonical) likely has
+  // them. Additive/idempotent; matches schema.ts's declared nullability exactly. See the
+  // migration file's header for the safety argument on adding NOT NULL columns with no
+  // default, and for the separate (unfixed here, needs decision-maker sign-off) missing
+  // partial-unique-index gap this investigation also surfaced.
+  "266_upsell_endorsements_schema_drift.sql",
+  // 267: persistent Google geocode cache for optimizer-created activities. Additive table +
+  // unique provider/query-hash index, both declared in shared/schema.ts; status vocabulary is
+  // app-enforced with no CHECK. Successful and negative results have bounded TTLs.
+  "267_optimizer_geocode_cache.sql",
 ] as const;

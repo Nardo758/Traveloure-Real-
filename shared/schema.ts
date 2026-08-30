@@ -522,6 +522,11 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   mobile: varchar("mobile", { length: 50 }).notNull(),
   whatsapp: varchar("whatsapp", { length: 50 }),
   country: varchar("country", { length: 100 }).notNull(),
+  // Intake-fixes C4 (migration 261, ratified Aug 27 2026): the discrete city the provider
+  // intake already collects (previously concatenated into `address` and lost). Nullable —
+  // NULL renders as no location line on the storefront (§13), never a guessed city. Read by
+  // resolveEarnerLocation's provider fallback (storefront.routes.ts).
+  city: varchar("city", { length: 100 }),
   address: text("address").notNull(),
   bookingLink: text("booking_link"),
   gst: varchar("gst", { length: 100 }),
@@ -1381,6 +1386,9 @@ export const vendors = pgTable("vendors", {
   imageUrl: varchar("image_url", { length: 1000 }),
   status: varchar("status", { length: 30 }).default("active"),
   metadata: jsonb("metadata").default({}),
+  // Immutable server-authored creator provenance. Nullable because rows created before this
+  // column was introduced have an honestly unknown origin; do not fabricate a backfill.
+  createdById: varchar("created_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1986,7 +1994,14 @@ export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertCha
   });
 export const insertTouristPlaceResultSchema = createInsertSchema(touristPlaceResults).omit({ id: true });
 export const insertHelpGuideTripSchema = createInsertSchema(helpGuideTrips).omit({ id: true, userId: true, createdAt: true });
-export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
+// Creator provenance is derived from the authenticated session by POST /api/vendors and is
+// deliberately absent from this request schema so a client cannot submit or override it.
+export const insertVendorSchema = createInsertSchema(vendors).omit({
+  id: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
@@ -2022,6 +2037,18 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   totalEarnings: true,
   pendingPayout: true,
   payoutSchedule: true,
+  // §19 class (ruling 46, same MI-1 sibling sweep as the block above): the identity-verification
+  // family was likewise mass-assignable — `insertLocalExpertFormSchema.parse(req.body)` is spread
+  // verbatim into create/update at POST /api/expert-application and POST /api/expert-forms, and
+  // `resolvePublishVerification` treats `identityVerificationStatus === "verified"` as (half of) the
+  // publish gate — so a crafted `{ identityVerificationStatus: "verified" }` body could self-verify
+  // and bypass the wall. The two SANCTIONED writers are `storage.updateFormIdentityVerification`
+  // (the dedicated setter) and the Stripe/Persona webhook (server/routes/webhooks.routes.ts) —
+  // never this generic create/update path. Layer 2 (storage strip) covers `as any` callers a
+  // type-level omit cannot reach.
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
 }).extend({
   // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
   // The admin approval path copies expertType into users.role verbatim, so an unvalidated
@@ -2078,7 +2105,24 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
     });
   }
 });
-export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+// §19 class (ruling 46, MI-1 sibling sweep — same shape as insertLocalExpertFormSchema above):
+// the identity- and business-verification family was mass-assignable on the create path (there is
+// no general updateServiceProviderForm — provider updates use targeted setters, so the create
+// route at POST /api/provider-application is the one reachable body-parse site).
+// `resolvePublishVerification` treats these as (half of) the publish gate, so a crafted body could
+// self-verify. Sole sanctioned writers: `storage.updateFormIdentityVerification` /
+// `storage.updateProviderBusinessVerificationByInquiry`, and the Stripe/Persona webhook.
+export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({
+  id: true,
+  userId: true,
+  status: true,
+  rejectionMessage: true,
+  createdAt: true,
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
+  businessVerificationStatus: true,
+});
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
 // MI-1 (provider money-hardening lane, ruling 42): `revenueShareRate` is a COMMISSION SPLIT and is
@@ -2092,7 +2136,20 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true }).extend({
+// §PS18-completeness-guard layer 1 (2026-08-29-privileged-field-completeness): `approvalStatus`,
+// `submittedAt`, `reviewedAt`, `reviewedBy`, `rejectionReason` are the F2/D1a approval-lifecycle
+// family — the same class as `revenueShareRate`/`deliverableUploadedAt` above. `approvalStatus`
+// already had a full layer-2 strip on BOTH create (`createProviderService`'s born-state clamp,
+// case C16b's sibling) and update (`updateProviderService`'s `{approvalStatus: _as, ...}`
+// destructure, C16b itself) — this closes the missing layer-1 half so every caller is covered,
+// not just the two that currently exist. `submittedAt`/`reviewedAt`/`reviewedBy`/`rejectionReason`
+// had NO strip on the CREATE path at all (`createProviderService` spread them through unstripped
+// via `...serviceWithoutRate`) — a client POST could self-attribute a fabricated
+// review/rejection on their own brand-new `submitted` listing (approvalStatus itself stays safely
+// clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
+// approve/reject writers below unconditionally overwrite all four the moment a real review
+// happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -2301,6 +2358,15 @@ export type UserAndExpertChat = typeof userAndExpertChats.$inferSelect;
 export type TouristPlaceResult = typeof touristPlaceResults.$inferSelect;
 export type HelpGuideTrip = typeof helpGuideTrips.$inferSelect;
 export type Vendor = typeof vendors.$inferSelect;
+export type VendorCreator = {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+};
+export type VendorWithCreator = Vendor & {
+  createdBy: VendorCreator | null;
+};
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;
@@ -2831,6 +2897,28 @@ export const locationCache = pgTable("location_cache", {
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
 });
+
+// Optimizer activity geocoding cache (migration 267). Additive and declared here with the
+// migration's exact unique-index name per the publish-trap rule. `status` is app-enforced
+// (`success` | `miss`) with deliberately no DB CHECK.
+export const optimizerGeocodeCache = pgTable("optimizer_geocode_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: varchar("provider", { length: 32 }).notNull().default("google"),
+  queryHash: varchar("query_hash", { length: 64 }).notNull(),
+  normalizedQuery: text("normalized_query").notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  formattedAddress: text("formatted_address"),
+  locationType: varchar("location_type", { length: 40 }),
+  resultTypes: jsonb("result_types").notNull().default([]),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("optimizer_geocode_cache_provider_query_hash_uniq")
+    .on(table.provider, table.queryHash),
+]);
 
 // ============ FEVER EVENT CACHE TABLE ============
 // Caches Fever events from Impact.com to reduce API calls and improve performance
@@ -4451,7 +4539,31 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
 // never client-settable via this schema. Every create route strips whatever the client sent and
 // re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true });
+// §PS18-completeness-guard (2026-08-29-privileged-field-completeness): `routingStatus` /
+// `bookingId` are the checkout-claim machine's OWN state — the same shape as
+// `service_bookings.stripePaymentIntentId` (§19a). `routingStatus` is atomically flipped to
+// 'purchased' (with `bookingId` stamped alongside) ONLY by the checkout-confirm path
+// (`server/services/item-routing.service.ts`, `server/routes/routing.routes.ts`'s validated
+// transition endpoint), via raw `db.update(itineraryItems)` calls that never go through
+// `storage.createItineraryItem`/`updateItineraryItem` at all — so omitting them here costs those
+// legitimate writers nothing, and NEITHER has any legitimate direct caller among
+// createItineraryItem's six call sites (verified by inspection). Found unstripped on BOTH create
+// call sites (`insertItineraryItemSchema.safeParse({...req.body, tripId})` in trips.routes.ts and
+// routes.ts) and — more importantly — on the canonical PATCH route
+// (`PATCH /api/trips/:tripId/itinerary-items/:itemId`), which bypasses this schema entirely via a
+// raw `req.body` destructure that stripped only id/tripId/createdAt/updatedAt/suggestedBy/origin.
+// A traveler/expert with ordinary write access to their OWN trip could POST or PATCH an item with
+// `routingStatus: "purchased"` and an ARBITRARY `bookingId` (no ownership check) — a fabricated
+// "this was purchased" state with zero payment, and a booking-id link to a row they may not own.
+// Layer 2 (storage.createItineraryItem / updateItineraryItem strip) is what actually closes the
+// PATCH route, since it bypasses this schema — same "layer 2 covers the caller layer 1 can't
+// reach" shape as `stripFormVerificationFields` (§19). `bookingStatus` (a looser, purely
+// descriptive sibling column with a confirmed legitimate direct caller —
+// `content.routes.ts`'s affiliate-booking-confirm flow sets it at create time — and no proven
+// money-decision read) is DELIBERATELY left alone here; it is grandfathered in the completeness
+// guard pending a separate, narrower investigation. Found by
+// `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -7306,7 +7418,7 @@ export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema
 export const feeBands = pgTable("fee_bands", {
   id: uuid("id").primaryKey().defaultRandom(),
   bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
-  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat'
+  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat' | 'flat_cents' | 'count' | 'rule'
   defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
   minRate: decimal("min_rate", { precision: 10, scale: 4 }),
   maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
@@ -7320,6 +7432,8 @@ export const feeBands = pgTable("fee_bands", {
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   updatedBy: varchar("updated_by", { length: 255 }),
+  asOfDate: date("as_of_date"),
+  reviewDate: date("review_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -7330,6 +7444,172 @@ export const feeBands = pgTable("fee_bands", {
 export type FeeBand = typeof feeBands.$inferSelect;
 export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
+
+// ─── Plan pricing ledger ─────────────────────────────────────────────────────
+// Every purchasable plan is a row. `priceCents` is authoritative for plan
+// pricing; interval='trip' denotes a per-trip entitlement rather than a
+// recurring subscription.
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  name: text("name").notNull(),
+  priceCents: integer("price_cents").notNull(),
+  interval: varchar("interval", { length: 20 }).notNull(),
+  allowances: jsonb("allowances").notNull().default({}),
+  active: boolean("active").notNull().default(true),
+  effectiveFrom: date("effective_from").notNull(),
+  betaFreeUntil: date("beta_free_until"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type Plan = typeof plans.$inferSelect;
+// #PS18 (ruling 46, §19): new insert schemas must be .pick()-based allowlists,
+// never .omit()-based denylists — the omit-schema-ratchet guard fails any net-new
+// denylist call site. This lists every client-writable column explicitly.
+export const insertPlanSchema = createInsertSchema(plans).pick({
+  key: true,
+  name: true,
+  priceCents: true,
+  interval: true,
+  allowances: true,
+  active: true,
+  effectiveFrom: true,
+  betaFreeUntil: true,
+});
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
+
+// ─── Plan memberships (the one user-level entitlement record) ────────────────
+// Introduced by the Plus-occasions lane (ledger 2026-08-27-plus-is-delivery, migration 260)
+// as the minimal contract the delivery gate needs. It is the SINGLE entitlement table for the
+// recurring/annual plans — plan_key 'plus_annual' | 'pro_monthly' (the same row serves Pro's
+// beta-free grant via source='beta'). Trip Pass stays PER-TRIP and is deliberately NOT here.
+//   · THIS lane READS it: isActivePlus(userId) = a row with status='active' AND
+//     current_period_end > now() (see server/services/plan-membership.service.ts).
+//   · The separate Plus-checkout lane later WRITES source='stripe' rows from the Stripe
+//     subscription webhook — it POPULATES this table, it does not redefine it.
+//   · Proof / manual grants are source='manual'; Pro beta grants source='beta'.
+// No UNIQUE(user, plan): a user accrues history (lapsed → re-subscribed) as separate rows, and
+// isActivePlus matches ANY live row. No DB CHECK on status/plan_key/source — validated app-side
+// (migration-181/195 publish-trap posture). Declared here per the publish-trap rule.
+export const planMemberships = pgTable("plan_memberships", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'plus_annual' | 'pro_monthly'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'lapsed' | 'cancelled'
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  source: varchar("source", { length: 20 }).notNull().default("manual"), // 'stripe' | 'manual' | 'beta'
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("plan_memberships_user_idx").on(table.userId),
+  index("plan_memberships_user_plan_idx").on(table.userId, table.planKey),
+]);
+export type PlanMembership = typeof planMemberships.$inferSelect;
+
+// ─── Trip entitlements (the one PER-TRIP entitlement record) ─────────────────
+// Ruling 2026-08-29-trip-pass, migration 262. Trip Pass is per-trip: for its ONE trip it
+// grants unlimited optimizer runs + AI Concierge tasks (charge suppression), one expert
+// revision (snapshot-recorded, unenforced until the expert-flow lane), and the traveler
+// service-fee waiver (the rails-waiver mechanism, basis 'trip_pass'). It NEVER discounts
+// commissions and it is deliberately NOT plan_memberships (user-level, Plus/Pro).
+//   · allowances_snapshot is FROZEN at purchase from the plans row — later price/allowance
+//     changes never alter a sold pass.
+//   · ONE active pass per trip (partial unique index below); a second purchase is rejected
+//     BEFORE any PaymentIntent.
+//   · source_payment_id is PAYMENT IDENTITY (§19a): written ONLY by the server-side grant
+//     path from a Stripe-verified PaymentIntent. There is deliberately NO createInsertSchema
+//     for this table — nothing here is ever parsed off a request body (#PS18 posture).
+//   · source (ledger 2026-08-29-trip-pass-provenance, migration 264) records PROVENANCE —
+//     'stripe' | 'manual' | 'beta', mirroring plan_memberships.source. No DB CHECK
+//     (publish-trap rule); the vocabulary is enforced by grantTripPass, service-layer.
+//     The manual/beta path is now a first-class §19a-sanctioned writer: grantTripPass
+//     requires a real source_payment_id for 'stripe' and requires source_payment_id be
+//     NULL for 'manual'/'beta' — a manual grant never carries a fabricated payment id.
+// Both partial unique indexes are DECLARED here (deploy-push durability rule) and must stay
+// byte-identical to migration 262's CREATE INDEX statements.
+export const tripEntitlements = pgTable("trip_entitlements", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'trip_pass'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'revoked'
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  sourcePaymentId: varchar("source_payment_id", { length: 255 }),
+  source: varchar("source", { length: 20 }).notNull().default("stripe"), // 'stripe' | 'manual' | 'beta'
+  allowancesSnapshot: jsonb("allowances_snapshot").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("trip_entitlements_active_trip_uniq")
+    .on(table.tripId)
+    .where(sql`${table.status} = 'active'`),
+  uniqueIndex("trip_entitlements_source_payment_uniq")
+    .on(table.sourcePaymentId)
+    .where(sql`${table.sourcePaymentId} IS NOT NULL`),
+]);
+export type TripEntitlement = typeof tripEntitlements.$inferSelect;
+
+// ─── Plus occasions (the member's recurring/one-off personal dates) ──────────
+// Ledger 2026-08-27-plus-is-delivery, migration 260. For each ACTIVE occasion whose date is
+// within the 14-day lead window, the occasion-drafts scheduler builds ONE AI-Concierge draft
+// slip from the member's home city and notifies them. template_key selects the occasion
+// template (date_night | birthday | proposal | celebration | …); recurrence drives the next
+// cycle. No DB CHECK on template_key/recurrence — validated app-side (publish-trap posture).
+export const occasions = pgTable("occasions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  templateKey: varchar("template_key", { length: 64 }).notNull(),
+  occasionDate: date("occasion_date").notNull(),
+  recurrence: varchar("recurrence", { length: 20 }).notNull().default("none"), // 'none'|'annual'|'biweekly'
+  label: varchar("label", { length: 200 }),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("occasions_user_idx").on(table.userId),
+  index("occasions_active_date_idx").on(table.active, table.occasionDate),
+]);
+export type Occasion = typeof occasions.$inferSelect;
+// #PS18 (§19): new insert schemas are .pick()-based allowlists. user_id is NOT picked — it is
+// stamped server-side from the session (§14 identity), never trusted from the body.
+export const insertOccasionSchema = createInsertSchema(occasions).pick({
+  templateKey: true,
+  occasionDate: true,
+  recurrence: true,
+  label: true,
+  active: true,
+});
+export type InsertOccasion = z.infer<typeof insertOccasionSchema>;
+
+// ─── Occasion drafts (the idempotency ledger) ────────────────────────────────
+// One row per occasion per generated cycle — the ledger that makes the scheduler idempotent so
+// a re-run, an hourly pass, or a double-fire (external endpoint + in-process timer) produces
+// exactly ONE draft. It follows the §15 CLAIM → generate → PROMOTE spine:
+//   · claim: INSERT ... ON CONFLICT (occasion_id, cycle_key) DO NOTHING RETURNING — only the
+//     winner generates; a loser skips. claimed_at is the lease stamp.
+//   · promote: generated_at + trip_id are stamped ONLY after the trip is written, via an atomic
+//     conditional (WHERE generated_at IS NULL). A stale claim (crashed before generating) is
+//     reclaimed after a TTL, never rolled back (§15b).
+// The dedupe key is (occasion_id, cycle_key). cycle_key is the concrete target occurrence date
+// (YYYY-MM-DD), so it is unique per cycle for ANY recurrence (annual/biweekly/none) — a bare
+// year cannot express a biweekly cycle. occasion_year is retained as a report/convenience field.
+// Never client-reachable (server-only inserts) → no createInsertSchema here.
+export const occasionDrafts = pgTable("occasion_drafts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  occasionId: varchar("occasion_id").notNull().references(() => occasions.id, { onDelete: "cascade" }),
+  cycleKey: varchar("cycle_key", { length: 32 }).notNull(),
+  occasionYear: integer("occasion_year").notNull(),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  claimedAt: timestamp("claimed_at").defaultNow(), // §15 claim/lease time
+  generatedAt: timestamp("generated_at"), // set only after the trip is written (promotion)
+  notifiedAt: timestamp("notified_at"), // set only after the reminder email is enqueued
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("occasion_drafts_occasion_cycle_unique").on(table.occasionId, table.cycleKey),
+  index("occasion_drafts_occasion_idx").on(table.occasionId),
+]);
+export type OccasionDraft = typeof occasionDrafts.$inferSelect;
 
 // platform_settings: key/value rows for cross-cutting flags.
 // First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
@@ -7694,11 +7974,40 @@ export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
   targetAudience: text("target_audience"),
   notFor: text("not_for"),
   seasonality: jsonb("seasonality").default([]), // array of knowledgeSeasonEnum
+
+  // ── Gem-promotion candidate path (2026-08-29-replit-gem-audit ruling 4; migration 262) ──
+  // A nugget PROPOSED as a hidden gem enters the admin review + scoring queue.
+  // Vocabulary is the §10 shared-queue set, app-enforced (NULL = never proposed;
+  // 'submitted' | 'approved' | 'rejected') — no DB CHECK (migration-181 publish-trap
+  // posture). PRIVILEGED FIELDS (§19): none of these are client-settable — they are
+  // omitted from insertLocalKnowledgeNuggetSchema, stripped in createLocalKnowledgeNugget,
+  // absent from the PATCH allowlist, and written ONLY by the propose/approve/reject
+  // handlers' atomic conditional updates. Provenance: on approval the born gem's
+  // curated_by_expert_id = this row's expert_user_id — carried through the rail,
+  // never typed in (ruling 1: no fabricated attribution).
+  promotionStatus: varchar("promotion_status", { length: 20 }),
+  promotionSubmittedAt: timestamp("promotion_submitted_at"),
+  promotionReviewedBy: varchar("promotion_reviewed_by", { length: 255 }),
+  promotionReviewedAt: timestamp("promotion_reviewed_at"),
+  promotionReviewNote: text("promotion_review_note"),
+  promotedGemId: varchar("promoted_gem_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  // §19: the promotion cluster is server-authored only — never client-settable.
+  promotionStatus: true,
+  promotionSubmittedAt: true,
+  promotionReviewedBy: true,
+  promotionReviewedAt: true,
+  promotionReviewNote: true,
+  promotedGemId: true,
+});
 export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
 export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;
 

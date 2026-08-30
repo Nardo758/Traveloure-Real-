@@ -1,0 +1,159 @@
+# Marketplace + Experts & Services — earn grammar (SPEC)
+
+**Status:** ratified 2026-08-25 · **Visual of record:** `docs/design/marketplace-experts-earn-grammar-mock.html` · `audited@f06356f7`
+
+This file is the transcription contract. The HTML mock is what the result must look like; this file is what an agent may and may not change to get there. When they disagree, the HTML wins on appearance and this file wins on scope.
+
+---
+
+## 0. Rulings (append to `docs/DECISIONS.md`, `[advisory]` unless marked)
+
+| Slug | Ruling |
+|---|---|
+| `2026-08-25-marketplace-earn-grammar` | All public Marketplace and Experts & Services surfaces use the `--earn-*` token palette (`client/src/index.css:71-91`). Fraunces for editorial headings only; Geist Mono for labels and numbers; Inter for body and buttons. Emoji retired from mastheads. |
+| `2026-08-25-nav-icons` | One source object (`NAV_LEAF_ICONS`, `client/src/components/layout.tsx`) feeds desktop dropdown, mobile sheet, and page mastheads. Map: Destinations `Palmtree` · Ready-Made `Gem` · Events `Ticket` · Services `ConciergeBell` · Service Providers `ShoppingBag` · Local Experts `Lamp` · Trip Planners `Waypoints` · Event Planners `Wine`. No `Send`/`Plane`/`Navigation`/arrow glyphs; no `Compass`/`Store`/`MapPin`/`Calendar` in a masthead. |
+| `2026-08-25-surface-rail` | Every Marketplace band carries a four-link rail (Destinations · Ready-Made · Events · Services); every FIND HELP band carries a four-link rail (Providers · Local Experts · Trip Planners · Event Planners) replacing the role pills. Plain links to routes, current one filled navy — not a tab with state (`2026-08-23-marketplace-ungroup` holds). |
+| `2026-08-25-two-field-search` | List surfaces use "What do you need help with?" + "Where are you going?" + Filters. "Where" pre-fills from `TripStrip` destination when a trip is in progress. Browse never writes: search filters the page, never mutates the trip. |
+| `2026-08-25-card-family` | One card family across Services, Ready-Made, storefront, expert profile, destinations, city feed: photo (one tag + price/score) · title · meta · facts row (3 cols, mono) · source row · action row. Three action states: platform (`Book now` teal + `Add to trip` navy), affiliate (`Book on {Partner}` gold + `Add to trip`), not-bookable (`Add to trip` + `Ask an expert`). |
+| `2026-08-25-card-source-link` | Every card and detail page links back to its source. Resolution: claimed handle → `/s/:handle`; expert without handle → `/experts/:id`; provider without handle → their `/providers` card; destination → lead local expert, else "Ask a trip planner". Affiliate items → partner label only, never a storefront (§13). Never plain text, never a dead link. |
+| `2026-08-25-open-card-skeleton` | Every open card uses the ready-made detail skeleton: crumb → title block with byline → split hero → content panels → sticky action panel. Events body exempt. |
+| `2026-08-25-events-as-designed` | `/events` body and calendar unchanged. Header adopts the shared masthead + rail only. |
+| `2026-08-25-discover-shell-removed` | Legacy tabbed Discover shell (`!surface` mode, `?tab=`, `articles` tab) removed from `discover.tsx`. `/discover` stays redirect-only. |
+| `2026-08-25-discover-transcribe-in-place` | `discover.tsx` is not split this cycle. Split filed as FOLLOWUP. |
+| `2026-08-25-experts-tabs-three-roles` | Service Providers is a nav item and rail link, never an experts tab. `experts.tsx` stays three roles. |
+| `2026-08-25-providers-directory-live` | Supersedes the "parked until ≥10 storefronts" ruling. `/providers` is live with honest per-market count and an empty-market state. Test accounts to populate ≥3 storefronts per launch market. |
+| `2026-08-25-citycard-converge` | `CityCard` stays one component, two variants. `pulse` rebuilt on the family skeleton; `season` untouched. Consumers (`CityGrid`, `TrendingCities`, `GlobalCalendar`) unchanged. |
+| `2026-08-25-city-feed-bento` | `/discover/location/:city` renders each neighbourhood as a bento grid: one 2×2 anchor (lead expert, else top ready-made), one 2×1 (ready-made), rest 1×1, complete rows. Bento decides shape only; `feed-composition-config` and demand engine decide membership and order. Inline feed cards replaced by family cards. |
+| `2026-08-25-landing-after-marketplace` | Landing page restyle is lane 5, after lanes 1–4 land. |
+
+`[guarded]` items ship in their lane: testid-count check per page; `tsc` new-error 0 against baseline; no `.css` under `client/src/pages`.
+
+---
+
+## 1. Tokens, type, icons
+
+**Colours** — `--earn-*` only. No hex literals in JSX; no Replit `--ink/--paper/--coral/--line` vars. Mapping from artifacts CSS: `--paper`→`--earn-ground`, `--fg-card`→`--earn-card`, `--line`→`--earn-border`, `--ink`→`--earn-ink`, `--body`→`#3C4652` via `text-[#3C4652]` is **not** allowed — use `--earn-ink` at 85% or `--earn-muted`; `--coral`→`--earn-coral-ink`, `--teal`→`--earn-teal`, `--gold`→`--earn-gold`.
+
+**Type** — `font-family` via existing Tailwind config or inline `style={{fontFamily}}` as `experts.tsx` does today:
+- Fraunces 600: band title (30px), section heading (24px), detail title (40px), hero name (30px), panel h3 (18px).
+- Geist Mono: eyebrows (10.5px, tracking .12em, uppercase), photo tags (9.5px), facts row values (13px/600) and labels (10px), prices (13px; 30px/600 in buy panel), counts/badges, rail links (12px/500), crumbs (11.5px), handles, fee lines, `.kv` rows.
+- Inter: everything else.
+
+**Icons** — lucide only, per `2026-08-25-nav-icons`. Masthead tile: `w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[var(--earn-teal-ink)]`, glyph 22px. Nav tile: 36px / 18px glyph.
+
+**Coral** is the single primary CTA per panel (`Book on Traveloure`, `Get this trip`, `Plan with {name}`, `Optimize`). Teal is `Book now` / `View profile` on cards. Navy is `Add to trip` / `Add to cart` / `Plan this destination`. Gold wash is affiliate. Green is verified/positive. Never two coral buttons in one panel.
+
+---
+
+## 2. Shared patterns
+
+### Band (every list surface)
+```
+[tile 42] [Fraunces title 30]                          [eyebrow: MARKETPLACE | FIND HELP]
+          [one-line sub, --earn-muted 14px]            [rail: 4 links, current navy]
+```
+`py-[26px]` top / `pb-[22px]`, `border-b --earn-border`, white on `--earn-ground`. Same left edge on all surfaces (this is the Events header fix).
+
+### Two-field search (list surfaces except Events)
+`grid-cols-[1.4fr_1fr_auto]`: "What do you need help with?" · "Where are you going?" (pre-filled from `TripStrip` when present, shown right-aligned bold) · `Filters +` button. Maps to the page's existing query params; no new params.
+
+### Chips
+Only categories/themes/neighbourhoods with live stock; count badge mono; active = teal fill. Under the chips, mono caption: "Chips render only for … with live stock. Counts are real, never the full taxonomy."
+
+### Section
+Coral mono eyebrow with count (`FOOD & CULINARY · 9`) · Fraunces heading (editorial line, not the category name) · right: mono `31 matches · recommended` and/or `See all N →` coral.
+
+### Card (family)
+```
+photo 140px  [tag top-left mono] [availability/score/price bottom-right or top-right]
+body: [verified line green mono] title 15/600 · meta 12 · facts row (3 cols) · source row · action row
+```
+Facts row: `border-t --earn-border`, values mono 13/600, labels mono 10. Action row: `border-t dashed --earn-border-dash`, state line mono 9.5 uppercase (`BOOK ON TRAVELOURE` teal-ink / `BOOK ON TIQETS` gold-ink), two buttons equal width, `Ask an expert` link below.
+
+### Open card (detail)
+`crumb` (mono) → `dhead` grid `1fr 260px`: eyebrow + Fraunces 40 + lede | byline (source link, mono sub) → split hero `1fr 300px` → `two` grid `1fr 340px`: panels | sticky buy panel.
+
+### Empty state
+Dashed border, tile glyph, Fraunces 18 line, one sentence, one or two buttons that go somewhere. Never a blank grid.
+
+---
+
+## 3. Per-surface contract
+
+### 3.1 `/services` — `discover.tsx` `surface="services"` (lane 1)
+Band (ConciergeBell) · rail · two-field search · category chips · sections per category with editorial heading · family cards with 3 action states · source row per `card-source-link`.
+**Preserve:** `/api/discover`, `/api/service-categories`, `/api/catalog/activities-gyg`, `/api/cart`; `ServiceCard` cart + comparison mutations; expert handoff params (`showExperts`, `destination`, `country`, `experienceType`, `tripId`, `startDate`, `endDate`, `source=quick-start`); the **load-bearing** testids only. **Testid contract (updated 2026-08-25, services commit):** the 66 pre-shell count fell to **59** when Phase 1 removed the legacy shell (retired `cta-how-it-works`, the 4 `tab-*`, `card-influencer-*`, `button-view-all-creators`). The services family-card rebuild retires **11** card DECORATION testids (`badge-heat-score`, `badge-hot`, `badge-top-expert`, `badge-reviews`, `img-provider-avatar`, `badge-expert-notes`, `badge-revisions`, `stat-reviews`, `stats-footer`, `stat-rating`, `text-provider-rating` — grep-proven asserted by **zero** playwright/`__tests__`/CI-gate specs) and adds the four-link `marketplace-route-*` rail. Net **52 rendered** (49 unique source identities — the rail is one `marketplace-route-${key}` id rendering 4 links). The card keeps its 7 load-bearing ids (`card-service`, `link-service`, `text-service-name`, `text-location`, `text-provider-name`, `link-provider-storefront`, `button-add-to-cart`); decoration ids were never behavior. The marketplace-surfaces gate (`discover-tabs.spec.ts`) is the arbiter of what is load-bearing.
+**Needs from server (Phase 0 check):** seller `expertId`/`providerId` on discover rows so source link can resolve without handle. Add in-lane if absent.
+**Remove:** `!surface` branches, `selectedTab`/`urlTab`, `TabsList`, `articles` `TabsContent`, dead imports.
+
+### 3.2 `/ready-made` — `surface="packages"` (lane 1)
+Band (Gem) · rail · theme chips (live stock only) · theme shelves (ratified `ready-made-by-theme`) · card: photo + market tag + price, coral mono theme eyebrow, title, `Kyoto · 7 days · by @handle` (always linked), role pill + `N stays · M items`, `Get this trip` teal full-width.
+**Preserve:** `/api/ready-made` + `planType` filter, `insideCounts` display, disabled-with-reason when `price_cents` null. The Ready-Made surface shows purchasable ready-made trips only; the expert templates shelf was removed in `d52af1f8`. Expert templates remain on expert profiles and storefront `Templates` tabs. **Server (added 2026-08-25, packages commit):** the `/api/ready-made` feed row now carries `authorId` (already-joined `readyMadeTrips.authorId`) so the card source-link resolves a handle-less author to their `/experts/:id` profile — never plain text (`card-source-link`). `insideCounts` (already returned) now surfaces on the shelf card as `N items`; there is no `stays` field, so the mock's "N stays" is not rendered (§13). **Testid contract:** the Ready-Made card keeps `rm-shelf-card-*` + `link-rm-author-*`; no id was added or dropped on that surface. `discover.tsx` has 47 raw / 47 unique source `data-testid` occurrences after the shelf removal.
+
+### 3.3 `/destinations` — `surface="travelpulse"` (lane 1 band; lane 3 cards)
+Band (Palmtree) · rail · section "Cities with momentum this month" · `CityGrid` unchanged, `CityCard pulse` rebuilt (lane 3).
+
+### 3.4 `/events` — `surface="events"` (lane 1, header only)
+Band (Ticket) · rail. **Nothing else changes.** Empty state must render per §2 when the market has none.
+
+### 3.5 `/services/:id` — `service-detail.tsx` (lane 1)
+Open-card skeleton. Split hero: photo left with service-type tag; title panel right with coral eyebrow `PRIVATE EXPERIENCE · KYOTO`, Fraunces title, lede, verified pills, location + rating (mono). Panels: About (with 3-col facts), Good to know (2-col icon list), `More from @handle` (3 mini cards + `Open storefront`). Buy panel: price mono 30 · `per experience` · sub line · `Book on Traveloure` coral · `Add to cart` navy · `Contact provider` outline · Direct-booking box (green checks).
+**Preserve:** booking handler, cart mutation (label chain Add → Added), contact navigation, storefront link, fee lines from resolver.
+**Status (2026-08-25, lane 1 Phase 3):** the Aug-24 continuity skeleton (`2026-08-24-service-detail-continuity`) already matches the open-card skeleton, so Phase 3 is a **re-tokening**: continuity hex → `--earn-*` palette (196 arbitrary-value swaps), Fraunces headings (already present) + **Inter** body — LANDED. Testid contract **unchanged** (89 raw / 81 unique; re-tokening touches no testid, structure or handler). **DEFERRED (decision-maker, pixel-guided):** the Geist-Mono label/number pass (eyebrows, facts, prices, crumbs, pills, fee lines) is a focused follow-up after the `/services/:id` ROOTPREVIEW — filed in `FOLLOWUPS.md`.
+
+### 3.6 `/ready-made/:id` — shipped 2026-08-24 (reference; no lane)
+Reference skeleton. Only change: byline `Built by {name} →` becomes a link per `card-source-link`.
+
+### 3.7 Nav — `layout.tsx`, `nav-config.ts` (lane 2, phase 1)
+`NAV_LEAF_ICONS` gets the eight entries; fallback stays `MapPin` for anything not listed. Desktop dropdown renders the tile + name + description; mobile sheet renders tile + name. Labels/hrefs untouched.
+
+### 3.8 `/experts?role=…` — `experts.tsx` (lane 2)
+Band (Lamp for local_expert; Waypoints for travel_expert; Wine for event_planner — tile follows `?role=`) · FIND HELP rail with live counts as mono badges (`/api/experts/counts`) **replacing** the role pill switcher · two-field search ("what" → specialty/experience-type, "where" → destination) · specialty + neighbourhood chips · section · shipped expert card + 3-col facts (`from $N plan it for me` · rating/reviews · offerings) · cross-sell shelf "Or start with a trip they already built" = `/api/ready-made` filtered by author ids on the page.
+**Preserve:** `?role=` routing, `/api/experts` + counts, all filter state, load-more, `tab-role-*` testids re-homed onto the rail links (same ids), empty state for 0 results with "Find a trip planner instead".
+**Exclude:** artifacts' 4th `service_provider` tab, `providerStorefronts` query.
+
+### 3.9 `/experts/:id` — `expert-detail.tsx` (lane 2)
+Open-card skeleton with hero: cover, avatar overlap, eyebrow `LOCAL EXPERT · KYOTO`, Fraunces name, handle line (mono) + `Identity verified`, bio, neighbourhood + language pills, facts row (offerings · rating · responds · since, mono). Body: `Choose your starting point` tabs All/Services/Templates/Ready-made · family cards. Sidebar: `PLAN IT FOR ME` panel (coral `Plan with {name}`, `Ask a quick question`, response time, consultation).
+**Preserve:** expert + review queries, offering category switch, booking navigation, request-help-with-trip mutation, contact, consultation scheduling, claimed-storefront redirect. 11 literal testids + dynamic offering ids.
+
+### 3.10 `/s/:handle` — `storefront.tsx` (lane 2) — **money page**
+Same hero as 3.9 with eyebrow `SERVICE PROVIDER STOREFRONT` / `LOCAL EXPERT STOREFRONT`, `Verified business`. Body: `Book directly` (services) · `Guided itineraries` (templates) · `Buy the whole plan` (ready-made), search-this-storefront field. Sidebar: `Came from a provider link?` panel reading resolved attribution — `Traveler service fee: Waived`, `Repeat with this seller: Rails rate`.
+**Preserve:** storefront query, provider/expert route distinction, redirects, message CTA, share clipboard, offering links, book handler (proof stops at confirm), server OG injection on `/s/:handle`. 30 literal testids + dynamic.
+**Sidebar reads resolved values only; never computes fees.**
+
+### 3.11 `/providers` — `providers-directory.tsx` (lane 2)
+Band (ShoppingBag) · FIND HELP rail · two-field search · section `Providers · Kyoto · N` "Book the business directly" · experts-card grammar (initials avatar, name, location, honest rating "New" until reviews, category + neighbourhood pills, `Message` / `View storefront` teal) · `?market=` filter · empty-market state ("No providers in {market} yet" → `Browse {other} providers`, `Find a local expert`).
+**Preserve:** `/api/provider-storefronts` only; link `/s/:handle`; 12 testids.
+
+### 3.12 `CityCard` pulse — `components/travelpulse/CityCard.tsx` (lane 3)
+Photo 130px: tag (priority: `dealAlert` coral > `alertCount` coral-bg > season/trend label), `Trend NN` score bottom-left mono, `✓ In your trip` green bottom-right when `inTrip`. Body: city Fraunces-free (15/600), meta `country · highlight` (coral text when alerts), facts row crowd · best time · experts (+ 4th `avgPrice ↓` green when `priceChangePct<0`), source row lead expert or "Ask a trip planner", action `Plan this destination` navy (opens existing trip-attach dialog) + `Ask an expert`.
+**Drop from card:** `trendingSpots`, `hiddenGems`, `vibeTags`, `experiences[]`, `activeTravelers`, `Plane` icon (`CityCard.tsx:219,235`), `isHot` badge (Trend ≥ 85 implies it).
+**Preserve:** `variant="season"` byte-identical; `onPrimary` dialog flow, `button-plan-now-*`, `button-add-to-queue-*`, `button-select-trip-*`, `button-sign-in-prompt`; `playwright/tests/discover-tabs.spec.ts` green. Add `density="compact"` prop for `TrendingCities` (photo 80, tag, score, title, one-line facts, no action row).
+
+### 3.13 `/discover/location/:city` — `discover-location.tsx` (lane 4; Phase 2c/2d/2e amendments applied)
+**Phase 2e:** bento tiles render the family card at `density="compact"` (2026-08-26-bento-compact-density — 84px photo band, single-line title, ONE mono meta line, a TWO-button action row: `Book now`+`Add to trip` when bookable, else `Add to trip`+`Ask an expert`; ready-made 2×1 → `Get this trip` teal → `/ready-made/:id`); full density stays on `/services`, `/ready-made`, storefront and expert-profile. `See all in {nb} →` is a FILTER (2026-08-26-see-all-is-filter — sets `?neighborhood=<slug>`, renders only that section, the jump list flips to `All neighbourhoods` + active-fill, gem chips compose within, back clears). Behaviour matrix: `docs/design/lane4/BEHAVIOR_MATRIX.md`.
+Band: Palmtree tile, **coral** mono eyebrow `DESTINATION · JAPAN · TREND 92 · CROWD HIGH` (Phase 2d: the coral-only rule governs BUTTONS — text eyebrows are coral-ink as drawn; the ONE coral button stays the anchor CTA), city Fraunces 30, sub = the **authored destination line** when one exists (same copy chain the section headings read), else the seasonal line, else "Local experts, bookable services, and what's on in {city}." — never "Plan your trip to…". **No ← Back, no stats row** (the rail/browser cover back; crowd level lives in the eyebrow, counts on the chips) — the first section eyebrow starts within ~one search-row height of the chips. Two-field search (what pre-labelled "in {city}", where = city + dates from strip); Filters popover holds **price + sort only**. Visible `spine-filter-bar` chip rail (All gems · Eat · Do · Stay · Services · Experts · Events · Photo spots · Vibe — teal fill active, mono live-stock count badges); a chip filters **every bento to that kind** and neighbourhoods with no matches **drop out**. Mono jump list (`Gion · Arashiyama · …`, anchor links) above the first section. Per neighbourhood: **ONE rendering** — the bento section (coral mono eyebrow `GION · 6`, editorial heading — tagline/description fallback, `See all in Gion →`); the legacy header card + "IN {nb}" tile list are gone, the neighbourhood's gems are bento tiles carrying a mono green-wash `Hidden gem` tag. A wanted slot renders **inside the neighbourhood it names**.
+**Bento (Phase 2d geometry):** `grid-cols-4 gap-[14px]`, rows `minmax(172px,auto)` — a row sizes to the family card, a tile never clips. A tile is ONE row; the **lead-EXPERT anchor alone is `col-span-2 row-span-2`** (the mock's full-section-height lead, content bottom-aligned so the name never hits the top edge). Anchor = lead expert (dark gradient, neutral role badge, Fraunces 28 white name, lede, coral `Plan with {name} · from $N` — **the ONE coral BUTTON on the surface** — + outline `View profile`), else top ready-made **kept 2×1 photo-left** (every ready-made is `col-span-2` photo-left, including as fallback anchor). **No tile ever stretches past `col-span-2`; a short last row is honest** (mid-grid holes avoided by widening a 1-wide tile by one column, never past 2). Content tiles are single-column on the **family grammar** (photo band — kind gradient ALONE as the no-photo fallback, no glyph, no grey box — · title · meta · 3-col mono facts row (area = display name or omitted, never a slug) · source row · three-state action row `Book now` teal / `Add to trip` navy / `Ask an expert` outline; the card is the link, no "More info" text links, never "Not bookable" beside a bookable action): service (family mini), partner ticket (gold `Tickets`), not-bookable viewpoint (green `Hidden gem` tag), wanted slot (dashed, gold eyebrow, gold `Offer this` / `Ask an expert`), earn panel (`--earn-ground`, coral eyebrow, navy CTA), add-on panels.
+**Replace:** inline `RecommendationCard`, `PackageCard`, `LeadExpertCard`, `FillerCard` with family cards; restyle `WantedSlotCard`, `EarnCard`, `AddOnAgentCard` to panel grammar.
+**Preserve, untouched:** `feed-composition-config`, demand engine, floors (5/10/25 server-side), R16 predicate, R3 count suppression, all queries (`/api/discover/location`, `/api/experts`, `/api/expert-templates`, `/api/services/demand`, `/api/travelpulse/media`), neighbourhood grouping (`sections.push({type:"neighborhood"})`), hero section testids.
+
+### 3.14 Landing — `landing.tsx` (lane 5, after 1–4)
+Fraunces hero on `--earn-ground`; `TrendingCities` inherits lane 3; entry strip for the two dropdowns using the eight icons; any featured strip uses family cards. Spec'd in its own dispatch after lane 4.
+
+---
+
+## 4. Proof conditions (every lane)
+
+- Root preview (port 5000) on real dev data, screenshot to `docs/design/<lane>/<surface>-ROOTPREVIEW.png`, nothing else committed under `docs/design/`.
+- Behavioral: each preserved handler fires (cart chip in `TripStrip` updates; dialog opens; navigation lands; filters narrow results).
+- `grep -c data-testid` per file equals the contract count; `tab-role-*` ids present on rail links.
+- `tsc` new-error count 0 vs baseline; `.css` files under `client/src/pages` = 0; `grep -rn "Plane" client/src/components/travelpulse/CityCard.tsx` = 0.
+- Money pages: proof stops at checkout confirm. Never complete a purchase.
+- `TripStrip` and header untouched: `git diff --stat` shows no change to `layout.tsx` outside `NAV_LEAF_ICONS` (lane 2) and none to `trip-strip.tsx`.
+
+## 5. FOLLOWUPS (file, never absorb)
+- Split `discover.tsx` per surface.
+- Custom-drawn icon marks (replace lucide set) — design task.
+- Audit `TrendingCities` / `TravelPulsePanel` after lane 3.
+- Test accounts: ≥3 provider storefronts per launch market.
+- `artifacts/traveloure/` removal after lanes 1–4.

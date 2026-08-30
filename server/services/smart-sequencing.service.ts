@@ -971,6 +971,10 @@ export interface SequencedActivity {
    *  Carried through reordering/anchoring so the variant-item insert can persist the catalog
    *  link. Undefined for an AI-invented or external activity (§13 — NULL, never a guess). */
   providerServiceId?: string;
+  /** Real coordinates already consumed by geographic sequencing. Baseline reconciliation carries
+   * these through for free-text stops that have a traveler-confirmed pin but no catalog service. */
+  latitude?: number;
+  longitude?: number;
   name: string;
   serviceType: string;
   startTime?: string;

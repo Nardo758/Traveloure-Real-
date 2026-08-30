@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Link } from "wouter";
 import { Plus, Loader2, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -83,6 +84,7 @@ const CTA_CARDS = [
 ];
 
 export default function Dashboard() {
+  const { open: openPlanning } = usePlanning();
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
   const { data: notificationsData, isLoading: notifLoading } = useQuery<Notification[]>({
@@ -154,7 +156,7 @@ export default function Dashboard() {
       <DashboardLayout>
         <div className="py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
@@ -422,16 +424,15 @@ export default function Dashboard() {
                   <p className="mb-4" style={{ color: "#7A7A72" }}>
                     Start planning your next adventure!
                   </p>
-                  <Link href="/experiences">
-                    <Button
-                      className="text-white"
-                      style={{ background: "#E85D55" }}
-                      data-testid="button-first-plan"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Plan
-                    </Button>
-                  </Link>
+                  <Button
+                    className="text-white"
+                    style={{ background: "#E85D55" }}
+                    onClick={() => openPlanning()}
+                    data-testid="button-first-plan"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Plan
+                  </Button>
                 </CardContent>
               </Card>
             )}

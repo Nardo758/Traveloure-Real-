@@ -39,6 +39,7 @@ import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
+import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -100,7 +101,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant,
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 // Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
-import { resolvePinnedAnchor, parsePinnedAnchorInput } from "./services/anchor-candidates";
+import { resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -173,6 +174,7 @@ import reviewRepliesRoutes from "./routes/review-replies.routes";
 // per the file-ownership split (sibling owns statements.routes.ts + provider/earnings.tsx only).
 import statementsRoutes from "./routes/statements.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
+import discoverRedirectRoutes from "./routes/discover-redirect.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
 import calendarRoutes from "./routes/calendar.routes";
@@ -192,6 +194,11 @@ import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
+import pricingRoutes from "./routes/pricing.routes";
+import landingRoutes from "./routes/landing.routes";
+import tripPassRoutes from "./routes/trip-pass.routes";
+import occasionsRoutes from "./routes/occasions.routes";
+import internalRoutes from "./routes/internal.routes";
 import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -924,6 +931,14 @@ export async function registerRoutes(
     }
   })();
 
+  // Pricing display bundle (Phase 1 of the /pricing rebuild lane) — public, read-only.
+  app.use(pricingRoutes);
+
+  // Landing hero bento (landing-build lane Phase 1) — public, read-only, honest-null legs.
+  app.use(landingRoutes);
+  // Trip Pass purchase/status (ruling 2026-08-29-trip-pass).
+  app.use(tripPassRoutes);
+
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);
 
@@ -1062,6 +1077,11 @@ export async function registerRoutes(
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
 
+  // GET /discover/location/:city — 301 to canonical city casing (case-match fix).
+  // Server page route: must beat the SPA catch-all, so mounted here in registerRoutes
+  // (which runs before setupVite/mountSpaFallback). Unknown/already-canonical ⇒ next().
+  app.use(discoverRedirectRoutes);
+
   // Ready-Made Trips authoring (Phase 1) — POST /api/expert/ready-made + workspace-context mode
   // resolution. Author auth = explicit authorId check (never getTripRole). Mounted per §9.
   app.use(readyMadeRoutes);
@@ -1081,6 +1101,15 @@ export async function registerRoutes(
   // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;
   // mounting restores it (caught by the unmounted-router guard). Routes carry full /api paths.
   app.use(savedItemsRoutes);
+
+  // Plus occasions (ledger 2026-08-27-plus-is-delivery): the member intake surface — /api/occasions
+  // CRUD, /api/me/home-city, /api/plus/config. Session-scoped, owner-gated; routes carry full /api
+  // paths. The internal drafts trigger is a SEPARATE machine-to-machine router below.
+  app.use(occasionsRoutes);
+  // Internal machine-to-machine trigger — POST /internal/run-occasion-drafts, auth'd by
+  // INTERNAL_JOB_SECRET (NOT a user session). The authoritative daily runner on Autoscale (fired by
+  // the GitHub Actions cron / another external cron); the in-process timer is defense-in-depth only.
+  app.use(internalRoutes);
 
   // Traveler service requests ("request a service that doesn't exist yet"):
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests
@@ -1918,18 +1947,62 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Vendors Routes
   app.get("/api/vendors", async (req, res) => {
-    const { category, city } = req.query;
+    const { category, city, createdById } = req.query;
     const vendorList = await storage.getVendors(
       category as string | undefined, 
-      city as string | undefined
+      city as string | undefined,
+      createdById as string | undefined,
     );
     res.json(vendorList);
   });
 
-  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+  // Admin-only offline audit export. Creator provenance is read-only: the export derives
+  // display fields from the existing nullable createdById relationship and never backfills
+  // or changes that immutable source field.
+  app.get("/api/admin/vendors/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const vendorList = await storage.getVendors();
+      const csv = formatVendorAuditCsv(vendorList);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="vendor-creator-export-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      return res.send(csv);
+    } catch (err) {
+      console.error("Admin vendor export error:", err);
+      return res.status(500).json({ message: "Failed to export vendors" });
+    }
+  });
+
+  // CLAUDE.md §2/§19 gap (endpoint-auth completeness sweep, Aug 29 2026): this route was
+  // `isAuthenticated`-only — any signed-in traveler could POST a live, publicly-listed vendor row
+  // (`GET /api/vendors` above is fully public and `vendors.status` defaults `'active'`, so the row
+  // is immediately world-visible). NOT admin-only by design: `client/src/pages/vendors.tsx` gates
+  // its "Add Vendor" dialog on `isPlanner` (PLANNER_ROLES = admin + EARNER_ROLES + the "provider"
+  // client alias), so `requireAdmin` here would break the legitimate expert/provider add-vendor
+  // flow — `isEarner` (shared/roles.ts `isEarnerRole` = expert-family OR provider, plus admin) is
+  // the server-side mirror of that same UI gate, queried from the SESSION (never `req.body`, §14).
+  app.post("/api/vendors", isAuthenticated, isEarner, async (req, res) => {
     try {
       const input = insertVendorSchema.parse(req.body);
-      const vendor = await storage.createVendor(input);
+      const creatorId = getUserId(req);
+      if (!creatorId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      // Creator provenance is immutable application metadata: it comes from the authenticated
+      // session, never from request JSON. insertVendorSchema also omits createdById defensively.
+      const vendor = await storage.createVendor({ ...input, createdById: creatorId });
       res.status(201).json(vendor);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1952,6 +2025,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(form ? pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS) : null);
   });
 
+  // Intake bio mirror (intake-fixes C1/C2, decision-maker ratified Aug 27 2026): onboarding
+  // writes the bio to users.bio IN ADDITION to the role form, mirroring what the profile
+  // editor already does (see the PATCH profile handler's userUpdates.bio below) — because the
+  // public storefront (/s/:handle) and the /api/experts browse listing read users.bio, which
+  // onboarding previously never filled. The read stays on users.bio; the intake fills it.
+  // Unconditional overwrite matches the editor's posture (the newest submission is the newest
+  // statement); empty/absent bio never writes (§13 — no fabricated empty-string bio). Failure
+  // is logged, never fails the submission — the form row is already committed, and the
+  // backfill script (scripts/backfill-users-bio.cjs) sweeps up any missed mirror.
+  async function mirrorBioToUsersRow(userId: string, bio: unknown): Promise<void> {
+    if (typeof bio !== "string" || bio.trim().length === 0) return;
+    try {
+      await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+    } catch (e: any) {
+      console.error("[intake-bio-mirror] users.bio mirror failed:", e?.message);
+    }
+  }
+
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
@@ -1970,6 +2061,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "pending",
             rejectionMessage: null,
           });
+          await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
             (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
@@ -1989,6 +2081,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      await mirrorBioToUsersRow(userId, input.bio);
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
@@ -2027,6 +2120,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "pending",
             rejectionMessage: null,
           });
+          await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
             (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
@@ -2045,6 +2139,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      await mirrorBioToUsersRow(userId, input.bio);
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
@@ -2108,7 +2203,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const form = await storage.getServiceProviderForm(userId);
-    res.json(form || null);
+    const [userRow] = await db
+      .select({
+        providerVerificationStatus: users.providerVerificationStatus,
+        backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    // The application row carries identity/business verification; the account row
+    // carries the separate category/background gate. Return both from the same
+    // canonical application read so seed reports and provider clients can compare
+    // one complete verification state.
+    res.json(
+      form
+        ? {
+            ...form,
+            providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+            backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
+          }
+        : null,
+    );
   });
 
   // Submit provider application
@@ -2123,6 +2238,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
+      // Intake-fixes C2 (ratified): service_provider_forms.description IS the provider's
+      // public bio — mirror it into users.bio, the column /s/:handle and the directory read.
+      // The description column stays the form's field; it is no longer collected-never-read.
+      await mirrorBioToUsersRow(userId, input.description);
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2187,6 +2306,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
+      // Intake-fixes C2: mirror description → users.bio (see /api/provider-application above).
+      await mirrorBioToUsersRow(userId, input.description);
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2261,9 +2382,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
+      const [form] = await db
+        .select()
+        .from(serviceProviderForms)
+        .where(eq(serviceProviderForms.userId, userId))
+        .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
+        .limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
+      const [userRow] = await db
+        .select({
+          providerVerificationStatus: users.providerVerificationStatus,
+          backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
       const steps = [
         {
@@ -2321,6 +2455,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         businessVerificationStatus: bizStatus,
         businessCountry: (form as any)?.businessCountry,
+        providerVerificationStatus: userRow?.providerVerificationStatus ?? "pending",
+        backgroundCheckConfirmed: userRow?.backgroundCheckConfirmed ?? false,
         form: form ? {
           id: form.id,
           status: form.status,
@@ -4606,7 +4742,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // PATCH /api/expert/photo — Save the expert's profile photo.
+  // PATCH /api/expert/photo — the SHARED earner profile-photo rail (intake-fixes C3).
+  // Deliberately isAuthenticated-only, NOT role-gated: it writes the caller's own
+  // users.profileImageUrl and nothing else, so expert AND provider profile editors both
+  // reuse it (expert/profile.tsx, provider/profile.tsx). The "expert" in the path is
+  // historical; do not fork a parallel provider endpoint.
   // Accepts a base64 data URL; server-side validation of type + decoded size.
   app.patch("/api/expert/photo", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
@@ -8482,7 +8622,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId, pinnedAnchor: rawPinnedAnchor } = req.body;
 
       // SECURITY: `tripId` is caller-supplied and is persisted onto the comparison row, which
       // downstream handlers (notably POST /api/itinerary-comparisons/:id/apply-to-trip, which
@@ -8645,6 +8785,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           }
         }
 
+        const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
+          rawPinnedAnchor,
+          baselineItems,
+        );
+
         generateOptimizedItineraries(
           comparison.id,
           userId,
@@ -8665,7 +8810,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           undefined,
           undefined,
           tripPreferencesForCreate,
-          fixedCommitments
+          fixedCommitments,
+          resolvedPinnedAnchor,
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
@@ -8983,26 +9129,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       // 1c: resolve the traveler's "build around THIS" pin (if any) against the SAME baseline the
-      // optimizer will use — `baselineItems` already carries real coordinates on the trip path
-      // (loadTripOptimizerInputs). Unresolvable ⇒ undefined ⇒ the optimizer auto-picks anchors (§13,
-      // never fabricated). Runs after the pay gate; the response was already sent.
-      const pinnedAnchorInput = parsePinnedAnchorInput(rawPinnedAnchor);
-      let resolvedPinnedAnchor:
-        | NonNullable<Awaited<ReturnType<typeof resolvePinnedAnchor>>>
-        | undefined;
-      if (pinnedAnchorInput) {
-        const anchorStops = baselineItems.map((b: any) => {
-          const lat = b.latitude != null ? parseFloat(String(b.latitude)) : NaN;
-          const lng = b.longitude != null ? parseFloat(String(b.longitude)) : NaN;
-          return {
-            id: String(b.id),
-            name: b.name ?? b.title ?? "Stop",
-            lat: Number.isFinite(lat) ? lat : null,
-            lng: Number.isFinite(lng) ? lng : null,
-          };
-        });
-        resolvedPinnedAnchor = (await resolvePinnedAnchor(pinnedAnchorInput, anchorStops)) ?? undefined;
-      }
+      // optimizer will use. Unresolvable ⇒ undefined ⇒ auto anchors (§13, never fabricated).
+      // Runs after the pay gate; the response was already sent.
+      const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
+        rawPinnedAnchor,
+        baselineItems,
+      );
 
       generateOptimizedItineraries(
         comparisonId,
@@ -10299,7 +10431,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-            name: g.name,
+            // travel_pulse_hidden_gems has no `name` column — the field is placeName
+            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
+            name: g.placeName,
             description: g.description,
             gemScore: g.gemScore,
           })),

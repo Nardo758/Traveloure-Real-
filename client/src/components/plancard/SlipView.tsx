@@ -28,6 +28,7 @@ import {
   Share2,
   ShoppingCart,
   Sparkles,
+  Ticket,
   Undo2,
   Users,
 } from "lucide-react";
@@ -38,7 +39,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-import { createComparison } from "@/lib/create-comparison";
+import {
+  createComparison,
+  type ComparisonPinnedAnchor,
+} from "@/lib/create-comparison";
 import {
   confirmOptimizationPayment,
   requestOptimizationGate,
@@ -64,6 +68,7 @@ import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { MapControlCenter } from "./MapControlCenter";
+import { BuildAroundDialog } from "./BuildAroundDialog";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -454,7 +459,7 @@ function TransitionLogFooter({
   );
 }
 
-// ── Finalize / Reopen (ruling R-F) ───────────────────────────────────────────────────────
+// ── Adopt Optimization / Reopen (ruling R-F) ─────────────────────────────────────────────
 
 /** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
  *  uses, so client and scheduler agree on when Trip Card becomes primary. */
@@ -479,14 +484,14 @@ function useFinalizeMutation(tripId: string) {
           title: "Trip Card is ready",
           description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
             data.stagedCount > 1 ? "aren't" : "isn't"
-          } booked yet. You can finalize now and book them later.`,
+          } booked yet. You can adopt this optimization now and book them later.`,
         });
       } else {
-        toast({ title: "Trip Card is ready", description: "Your plan is finalized." });
+        toast({ title: "Trip Card is ready", description: "Your optimization is adopted." });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Couldn't finalize plan", description: err?.message || "Please try again", variant: "destructive" });
+      toast({ title: "Couldn't adopt optimization", description: err?.message || "Please try again", variant: "destructive" });
     },
   });
 }
@@ -573,6 +578,14 @@ function SlipActions({
   const [optimizing, setOptimizing] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
+  const [buildAroundOpen, setBuildAroundOpen] = useState(false);
+  // Display-honesty fix (ledger 2026-08-29-persona-coverage-complete's filed finding):
+  // startOptimization used to treat `covered_by_pass` identically to the ordinary
+  // `free_rerun` — same silent proceed, no label distinguishing "this is free because you
+  // have a Trip Pass" from "this is free because of the 24h window". Server truth only
+  // (server/routes/optimization.routes.ts ~L276 `coveredByTripPass`); never inferred client-side.
+  const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
+  const confirmedPinnedAnchorRef = useRef<ComparisonPinnedAnchor | undefined>(undefined);
 
   const optimizableCount = countOptimizableItems(activities);
   const optimizeDisabledReason = slipOptimizeDisabledReason({
@@ -584,7 +597,10 @@ function SlipActions({
 
   // Guarded by optimizeDisabledReason: destination/dates are real trip fields here, never
   // invented (§13) — the action is disabled until they exist.
-  async function runComparison(optimizationPaymentId?: string) {
+  async function runComparison(
+    optimizationPaymentId?: string,
+    pinnedAnchor?: ComparisonPinnedAnchor,
+  ) {
     setCreatingComparison(true);
     try {
       const comparison = await createComparison({
@@ -595,6 +611,7 @@ function SlipActions({
         ...(trip.travelers ? { travelers: trip.travelers } : {}),
         tripId: trip.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
+        ...(pinnedAnchor ? { pinnedAnchor } : {}),
       });
       // REVIEW-FIRST (ledger 2026-08-22-slip-optimize-review-first, decision-maker ratified):
       // a slip-originated optimization lands as a PROPOSAL the traveler reviews — money saved,
@@ -610,13 +627,20 @@ function SlipActions({
 
   async function handleOptimize() {
     if (optimizing || creatingComparison || optimizeDisabledReason) return;
+    setBuildAroundOpen(true);
+  }
+
+  async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
+    if (optimizing || creatingComparison || optimizeDisabledReason) return;
     setOptimizing(true);
+    setLastOptimizeCoveredByPass(false);
     try {
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
         destination: trip.destination || undefined,
       });
       if (outcome.kind === "refused") {
+        confirmedPinnedAnchorRef.current = undefined;
         // Fix #971's pre-flight — surface the server's own reason, never swallowed.
         toast({
           title: "Nothing to optimize yet",
@@ -626,9 +650,12 @@ function SlipActions({
         });
         return;
       }
-      if (outcome.kind === "free_rerun") {
-        // 24h free re-run (server-side canRunOptimizer) — nothing to charge.
-        await runComparison();
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
+        // 24h free re-run (server-side canRunOptimizer) — nothing to charge. `covered_by_pass`
+        // gets the "Included in your Trip Pass" label alongside the free-run treatment.
+        if (outcome.kind === "covered_by_pass") setLastOptimizeCoveredByPass(true);
+        await runComparison(undefined, pinnedAnchor);
+        confirmedPinnedAnchorRef.current = undefined;
         return;
       }
       if (outcome.kind === "payment_sheet") {
@@ -640,16 +667,18 @@ function SlipActions({
         title: "Couldn't start optimization",
         description: err?.message || "Please try again",
       });
+      confirmedPinnedAnchorRef.current = undefined;
     } finally {
       setOptimizing(false);
     }
   }
 
   async function handleSheetSuccess(paymentIntentId: string) {
+    const pinnedAnchor = confirmedPinnedAnchorRef.current;
     setPaySheet(null);
     try {
       await confirmOptimizationPayment(paymentIntentId);
-      await runComparison(paymentIntentId);
+      await runComparison(paymentIntentId, pinnedAnchor);
     } catch (err: any) {
       // Payment went through but the comparison didn't build — the server's 24h free
       // re-run window covers the retry, so say so honestly instead of a dead generic.
@@ -658,6 +687,8 @@ function SlipActions({
         title: "Failed to generate itinerary",
         description: err?.message || "Your payment is recorded — try Optimize again (free re-run).",
       });
+    } finally {
+      confirmedPinnedAnchorRef.current = undefined;
     }
   }
 
@@ -748,9 +779,37 @@ function SlipActions({
           </Button>
         </span>
       )}
+      {isOwner && lastOptimizeCoveredByPass && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
+          data-testid="trip-pass-covered-label"
+        >
+          <Ticket className="w-3.5 h-3.5" />
+          Included in your Trip Pass
+        </span>
+      )}
+      <BuildAroundDialog
+        open={buildAroundOpen}
+        tripId={trip.id}
+        busy={optimizing || creatingComparison}
+        onOpenChange={setBuildAroundOpen}
+        onConfirm={(pinnedAnchor) => {
+          confirmedPinnedAnchorRef.current = pinnedAnchor;
+          setBuildAroundOpen(false);
+          void startOptimization(pinnedAnchor);
+        }}
+      />
       {/* A1 payment sheet — the same StripeCheckout surface cart.tsx mounts for this fee,
           in a dialog. The fee amount shown comes from the server-created PaymentIntent. */}
-      <Dialog open={!!paySheet} onOpenChange={(open) => { if (!open) setPaySheet(null); }}>
+      <Dialog
+        open={!!paySheet}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPaySheet(null);
+            confirmedPinnedAnchorRef.current = undefined;
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Pay optimization fee</DialogTitle>
@@ -765,22 +824,25 @@ function SlipActions({
               bookingIds={[]}
               onSuccess={handleSheetSuccess}
               onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
-              onCancel={() => setPaySheet(null)}
+              onCancel={() => {
+                setPaySheet(null);
+                confirmedPinnedAnchorRef.current = undefined;
+              }}
             />
           )}
         </DialogContent>
       </Dialog>
-      {/* Finalize is owner-gated server-side (verifyTripOwnership) — never render it for a
-          non-owner viewer. Once finalized, the primary banner (above) owns the finalize/reopen
+      {/* Adopt Optimization is owner-gated server-side (verifyTripOwnership) — never render it for a
+          non-owner viewer. Once adopted, the primary banner (above) owns the finalize/reopen
           affordance — no duplicate control here. */}
       {isOwner && !trip.finalizedAt && (
         <Button
           size="sm"
           onClick={() => finalizeMutation.mutate()}
           disabled={finalizeMutation.isPending}
-          data-testid="slip-action-finalize"
+          data-testid="slip-action-adopt-optimization"
         >
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Finalize plan
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Adopt Optimization
         </Button>
       )}
     </div>

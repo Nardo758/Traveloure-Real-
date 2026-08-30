@@ -36,6 +36,7 @@ import { fxRateRefreshScheduler } from "./services/fx-rate-refresh.service";
 import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
 import { emailOutboxScheduler } from "./services/email-outbox.service";
+import { occasionDraftsScheduler } from "./services/occasion-drafts-scheduler.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { getStripeSecretKey } from "./utils/stripe-key";
@@ -59,6 +60,7 @@ import {
   adminRateLimiter,
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
+import { runBackgroundJob } from "./services/background-job-runner";
 
 const app = express();
 const httpServer = createServer(app);
@@ -609,6 +611,13 @@ if (process.env.NODE_ENV === "production") {
     emailOutboxScheduler.start();
     logger.info("Email outbox retry scheduler started");
 
+    // Plus occasion-drafts (ledger 2026-08-27-plus-is-delivery). DEFENSE-IN-DEPTH ONLY — the
+    // authoritative runner is POST /internal/run-occasion-drafts fired by a daily external trigger,
+    // because Autoscale won't hold an in-process cron. Idempotent by the occasion_drafts ledger, so
+    // this timer and the endpoint firing in the same window still produce one draft per cycle.
+    occasionDraftsScheduler.start();
+    logger.info("Occasion drafts scheduler started");
+
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();
 
@@ -622,8 +631,7 @@ if (process.env.NODE_ENV === "production") {
       void (async () => {
         const { travelPulseService } = await import("./services/travelpulse.service");
         const run = () =>
-          travelPulseService
-            .refreshStaleAICities()
+          runBackgroundJob("travelpulse-daily-refresh", () => travelPulseService.refreshStaleAICities())
             .then((r) => logger.info(r, "[travelpulse] daily AI refresh pass"))
             .catch((err) => logger.error({ err }, "[travelpulse] daily AI refresh failed"));
         await run();
@@ -632,16 +640,22 @@ if (process.env.NODE_ENV === "production") {
     }, 2 * 60 * 60 * 1000);
 
     setTimeout(() => {
-      runStripeReconciliation();
-      setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
+      const run = () =>
+        runBackgroundJob("stripe-reconciliation", () => runStripeReconciliation())
+          .catch((err) => logger.error({ err }, "[reconciliation] scheduled pass failed"));
+      void run();
+      setInterval(() => void run(), 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
 
     // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
     // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
     setTimeout(() => {
-      void runAvailabilityMaterializationSweep();
+      const run = () =>
+        runBackgroundJob("availability-materialization", () => runAvailabilityMaterializationSweep())
+          .catch((err) => logger.error({ err }, "[availability-materializer] scheduled pass failed"));
+      void run();
       setInterval(() => {
-        void runAvailabilityMaterializationSweep();
+        void run();
       }, 24 * 60 * 60 * 1000);
     }, 90 * 60 * 1000);
 
@@ -649,9 +663,12 @@ if (process.env.NODE_ENV === "production") {
     // (unmet_demand_slip + slip_funnel), REPLACE-BY-DATE/idempotent. Same delayed-first-pass +
     // 24h cadence; all math in the L6 demand-rollup.service.ts (R16 synthetic filter applied there).
     setTimeout(() => {
-      void runDemandRollup();
+      const run = () =>
+        runBackgroundJob("demand-rollup", () => runDemandRollup())
+          .catch((err) => logger.error({ err }, "[demand-rollup] scheduled pass failed"));
+      void run();
       setInterval(() => {
-        void runDemandRollup();
+        void run();
       }, 24 * 60 * 60 * 1000);
     }, 95 * 60 * 1000);
 
@@ -659,9 +676,12 @@ if (process.env.NODE_ENV === "production") {
     // market dropped below the public floor or whose template was bumped. Runs just AFTER the rollup
     // recompute (105 min delayed first pass) so it evaluates fresh figures, then daily.
     setTimeout(() => {
-      void runOnepagerRevalidation();
+      const run = () =>
+        runBackgroundJob("onepager-revalidation", () => runOnepagerRevalidation())
+          .catch((err) => logger.error({ err }, "[onepager-revalidate] scheduled pass failed"));
+      void run();
       setInterval(() => {
-        void runOnepagerRevalidation();
+        void run();
       }, 24 * 60 * 60 * 1000);
     }, 105 * 60 * 1000);
 
@@ -676,13 +696,13 @@ if (process.env.NODE_ENV === "production") {
     // is a no-op by construction (§15 atomic conditional + migration-203 DB-guarded idempotent
     // mint), so an overlapping or repeated pass is safe. First pass is delayed to clear startup.
     setTimeout(() => {
-      void runBookingAutoCompletion().catch((err) =>
-        logger.error({ err }, "[auto-complete] first pass failed"),
-      );
-      setInterval(() => {
-        void runBookingAutoCompletion().catch((err) =>
+      const run = () =>
+        runBackgroundJob("booking-auto-completion", () => runBookingAutoCompletion()).catch((err) =>
           logger.error({ err }, "[auto-complete] scheduled pass failed"),
         );
+      void run();
+      setInterval(() => {
+        void run();
       }, 60 * 60 * 1000);
     }, 3 * 60 * 1000);
 
@@ -691,7 +711,7 @@ if (process.env.NODE_ENV === "production") {
     // competes with startup; runs ONCE per boot (a "per boot" cap, not a recurring interval —
     // the admin-approve hook already covers new approvals, this only mops up backlog/misses).
     setTimeout(() => {
-      runDmoExtractionWarmupSweep().catch((err) =>
+      void runBackgroundJob("dmo-extraction-warmup", () => runDmoExtractionWarmupSweep()).catch((err) =>
         logger.error({ err }, "[dmo-extraction-warmup] sweep failed unexpectedly"),
       );
     }, 60 * 1000);
@@ -703,9 +723,12 @@ if (process.env.NODE_ENV === "production") {
       const msUntilFirst = next2amUtc.getTime() - now.getTime();
       logger.info({ nextRunAt: next2amUtc.toISOString() }, "Nightly QA scheduled");
       setTimeout(() => {
-        runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+        const run = () =>
+          runBackgroundJob("nightly-qa", () => runNightlyQA("scheduled"))
+            .catch(err => logger.error({ err }, "Nightly QA failed"));
+        void run();
         setInterval(() => {
-          runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+          void run();
         }, 24 * 60 * 60 * 1000);
       }, msUntilFirst);
     })();

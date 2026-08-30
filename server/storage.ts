@@ -5,10 +5,11 @@ import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
+import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
 import { sanitizeText } from "./utils/text-sanitizer";
 import { 
-  trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
+  trips, occasions, occasionDrafts, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints, servicePickupRoutePoints,
   type ServiceRoutePoint,
@@ -45,7 +46,7 @@ import {
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
   type UserAndExpertChat, type HelpGuideTrip,
-  type Vendor, type InsertVendor,
+  type Vendor, type VendorWithCreator, type InsertVendor,
   type LocalExpertForm, type InsertLocalExpertForm,
   type ServiceProviderForm, type InsertServiceProviderForm,
   type ProviderService, type InsertProviderService,
@@ -142,6 +143,7 @@ import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
 import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
 import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
+import { resolveOccasionTemplate } from "./services/occasion-templates";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -169,7 +171,7 @@ export interface BookingStatusNotification {
 
 export interface IStorage {
   // Trips
-  getTrips(userId?: string): Promise<Trip[]>;
+  getTrips(userId?: string, status?: string): Promise<TripListItem[]>;
 
   getTrip(id: string): Promise<Trip | undefined>;
 
@@ -222,11 +224,11 @@ export interface IStorage {
 
   // Vendors
 
-  getVendors(category?: string, city?: string): Promise<Vendor[]>;
+  getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
-  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  createVendor(vendor: InsertVendor & { createdById: string }): Promise<Vendor>;
 
   // Local Expert Forms
 
@@ -1282,15 +1284,72 @@ export interface IStorage {
   getCustomVenuesPage(userId: string | undefined, tripId: string | undefined, experienceType: string | undefined, limit: number, offset: number): Promise<{ venues: CustomVenue[]; total: number }>;
 }
 
+// §19 layer 2 (ruling 46, same placement rationale as updateProviderService's approval-lifecycle
+// and MI-1 strips): the identity/business-verification family on local_expert_forms /
+// service_provider_forms is omitted at the schema layer (layer 1), but an internal caller that
+// spreads a body with an `as any` cast (e.g. a test fixture, or a future call site) bypasses that
+// type-level guard. Stripped here in STORAGE so every caller is covered, regardless of which of
+// the two tables' object shape is passed in — a table missing one of these columns (e.g.
+// local_expert_forms has no businessVerificationStatus) just drops nothing for that key. The sole
+// sanctioned writers remain `updateFormIdentityVerification` and
+// `updateProviderBusinessVerificationByInquiry` below, and the Stripe/Persona webhook — none of
+// which route through this helper.
+export function stripFormVerificationFields<T extends Record<string, unknown>>(form: T): T {
+  const {
+    identityVerificationSessionId: _ivsid,
+    identityVerificationStatus: _ivs,
+    identityVerifiedAt: _iva,
+    businessVerificationStatus: _bvs,
+    ...safe
+  } = form as Record<string, unknown>;
+  return safe as T;
+}
+
+// §PS18-completeness-guard layer 2 (2026-08-29-privileged-field-completeness): routingStatus /
+// bookingId are the checkout-claim machine's own state (see the `insertItineraryItemSchema`
+// comment in shared/schema.ts for the full finding) — omitted at the schema layer (layer 1), but
+// the canonical `PATCH /api/trips/:tripId/itinerary-items/:itemId` route bypasses that schema
+// entirely (a raw `req.body` destructure) and calls `updateItineraryItem` directly, so THIS strip
+// is what actually protects that route. Extracted as a standalone pure function (matching
+// `stripFormVerificationFields`'s placement) so it is unit-testable without a live DB.
+export function stripItineraryItemRoutingFields<T extends Record<string, unknown>>(item: T): T {
+  const {
+    routingStatus: _rs,
+    bookingId: _bid,
+    ...safe
+  } = item as Record<string, unknown>;
+  return safe as T;
+}
+
 export class DatabaseStorage implements IStorage {
   // Trips
-  async getTrips(userId?: string, status?: string): Promise<Trip[]> {
+  async getTrips(userId?: string, status?: string): Promise<TripListItem[]> {
     if (!userId) return [];
     const conditions = [eq(trips.userId, userId)];
     if (status) {
       conditions.push(eq(trips.status, status));
     }
-    return await db.select().from(trips).where(and(...conditions));
+    const rows = await db
+      .select({
+        trip: trips,
+        occasionLabel: occasions.label,
+        occasionDate: occasions.occasionDate,
+        occasionTemplateKey: occasions.templateKey,
+      })
+      .from(trips)
+      .leftJoin(occasionDrafts, eq(occasionDrafts.tripId, trips.id))
+      .leftJoin(occasions, eq(occasions.id, occasionDrafts.occasionId))
+      .where(and(...conditions));
+
+    return rows.map(({ trip, occasionLabel, occasionDate, occasionTemplateKey }) => ({
+      ...trip,
+      occasion: occasionDate && occasionTemplateKey
+        ? {
+            label: occasionLabel?.trim() || resolveOccasionTemplate(occasionTemplateKey).defaultLabel,
+            date: occasionDate,
+          }
+        : null,
+    }));
   }
 
   async getTrip(id: string): Promise<Trip | undefined> {
@@ -1508,14 +1567,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(category?: string, city?: string): Promise<Vendor[]> {
-    let result = await db.select().from(vendors);
-    if (category) {
-      result = result.filter(v => v.category === category);
-    }
-    if (city) {
-      result = result.filter(v => v.city === city);
-    }
+  async getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
+    const conditions = [
+      category ? eq(vendors.category, category) : undefined,
+      city ? eq(vendors.city, city) : undefined,
+      createdById ? eq(vendors.createdById, createdById) : undefined,
+    ].filter((condition): condition is NonNullable<typeof condition> => condition !== undefined);
+    const rows = await db
+      .select({
+        vendor: vendors,
+        creator: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        },
+      })
+      .from(vendors)
+      .leftJoin(users, eq(vendors.createdById, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    const result = rows.map(({ vendor, creator }) => ({
+      ...vendor,
+      createdBy: creator?.id ? creator : null,
+    }));
     return result;
   }
 
@@ -1524,7 +1598,7 @@ export class DatabaseStorage implements IStorage {
     return vendor;
   }
 
-  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+  async createVendor(vendor: InsertVendor & { createdById: string }): Promise<Vendor> {
     const [newVendor] = await db.insert(vendors).values(vendor).returning();
     return newVendor;
   }
@@ -1543,6 +1617,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm> {
+    // §19 layer 2: strip the verification family before it ever reaches the insert — covers the
+    // `as any` internal callers a type-level schema `.omit()` cannot reach.
+    form = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     // Same clamp as createServiceProviderForm: offering_type_key FKs into expert_offering_types
     // (migration 107); an unknown key from a stale /earn link must not fail the application.
     if (form.offeringTypeKey) {
@@ -1556,8 +1633,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined> {
+    // §19 layer 2: same strip as createLocalExpertForm — see stripFormVerificationFields.
+    const safeForm = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     const [updated] = await db.update(localExpertForms)
-      .set(form)
+      .set(safeForm)
       .where(eq(localExpertForms.id, id))
       .returning();
     return updated;
@@ -1763,7 +1842,14 @@ export class DatabaseStorage implements IStorage {
 
   // Service Provider Forms
   async getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined> {
-    const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId));
+    // service_provider_forms has no unique user_id constraint. Keep this canonical
+    // ordering aligned with the persona seed and publish-verification resolver.
+    const [form] = await db
+      .select()
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, userId))
+      .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
+      .limit(1);
     return form;
   }
 
@@ -1775,6 +1861,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm> {
+    // §19 layer 2: strip the identity/business-verification family — see stripFormVerificationFields.
+    form = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     // offering_type_key is an FK into service_offering_types (migration 107). The value rides
     // in from the /earn card's URL param — clamp unknown/stale keys to null so a bad shared
     // link degrades to "no offering hint" instead of failing the whole signup on the FK.
@@ -2204,9 +2292,18 @@ export class DatabaseStorage implements IStorage {
     // Creation provenance (2026-08-23-provenance-creation): created_via/source_ref are stamped
     // EXPLICITLY below (omitted from the insert schema — never client-set), defaulting to 'wizard'
     // (this is the ServiceForm's create path; other rails pass their own via the opts).
+    // §PS18-completeness-guard (2026-08-29-privileged-field-completeness): submittedAt/reviewedAt/
+    // reviewedBy/rejectionReason are the CREATE half of the same approval-lifecycle family as
+    // approvalStatus (clamped explicitly below) — this table had NO strip for these four on
+    // create at all (unlike updateProviderService, which already dropped them), so a client POST
+    // could self-attribute a fabricated "reviewed by ___" / rejection reason onto their own
+    // brand-new submitted listing. Stripped here so every caller is covered, same placement as
+    // the revenueShareRate strip above.
     const {
       revenueShareRate: _clientRate, pendingChanges: _pcCreate, editReviewStatus: _ersCreate,
-      createdVia: _cvOpt, sourceRef: _srOpt, ...serviceWithoutRate
+      createdVia: _cvOpt, sourceRef: _srOpt,
+      submittedAt: _saCreate, reviewedAt: _raCreate, reviewedBy: _rbCreate, rejectionReason: _rrCreate,
+      ...serviceWithoutRate
     } = service as Record<string, unknown>;
 
     const [newService] = await db.insert(providerServices)
@@ -3422,14 +3519,16 @@ export class DatabaseStorage implements IStorage {
     // Enrich page results with real provider name, profile image, portfolio-wide avg rating,
     // and businessName from service_provider_forms as a secondary name fallback when the
     // users row has no firstName/lastName set.
-    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null })[] = pageServices;
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null; providerRole?: string | null })[] = pageServices;
     if (pageServices.length > 0) {
       const userIds = [...new Set(pageServices.map(s => s.userId))];
       const [userRows, ratingRows, formRows] = await Promise.all([
         db
           // handle: MP-2 storefront return path — nullable (migration 136); the client
           // renders no link when null (StorefrontLink rule 1: no dead /p/ links).
-          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, handle: users.handle })
+          // role: lets the client resolve a handle-less source link (2026-08-25-card-source-link)
+          // — expert-family → /experts/:id, service_provider → their /providers card.
+          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, handle: users.handle, role: users.role })
           .from(users)
           .where(inArray(users.id, userIds)),
         db
@@ -3475,6 +3574,9 @@ export class DatabaseStorage implements IStorage {
           providerRating: avgRating != null ? String(avgRating) : null,
           providerBusinessName,
           providerHandle: u?.handle ?? null,
+          // Seller role for source-link resolution (2026-08-25-card-source-link);
+          // classified client-side via @shared/roles isExpertRole/isProviderRole.
+          providerRole: u?.role ?? null,
         };
       });
     }
@@ -6861,14 +6963,27 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder), asc(itineraryItems.startTime));
   }
 
+  // §PS18-completeness-guard layer 2 (2026-08-29-privileged-field-completeness): routingStatus /
+  // bookingId are stripped here too — the schema omit (layer 1) is what protects the two
+  // `insertItineraryItemSchema.safeParse(req.body)` create sites, but the canonical
+  // `PATCH /api/trips/:tripId/itinerary-items/:itemId` route bypasses this schema entirely (a raw
+  // `req.body` destructure) and calls `updateItineraryItem` directly, so THIS strip is the only
+  // thing protecting that route. The sole legitimate writer of these two
+  // (`server/services/item-routing.service.ts` / the validated transition endpoint in
+  // `routing.routes.ts`) uses its own raw `db.update(itineraryItems)` calls and never calls either
+  // of these two methods, so stripping here costs it nothing. `bookingStatus` is deliberately NOT
+  // stripped — `content.routes.ts`'s affiliate-booking-confirm flow is a real, legitimate direct
+  // caller that sets it at create time (see the schema comment).
   async createItineraryItem(item: InsertItineraryItem & { tripId: string }): Promise<ItineraryItem> {
-    const [created] = await db.insert(itineraryItems).values(item).returning();
+    const safeItem = stripItineraryItemRoutingFields(item as Record<string, unknown>);
+    const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     return created;
   }
 
   async updateItineraryItem(id: string, updates: Partial<InsertItineraryItem>): Promise<ItineraryItem | undefined> {
+    const safeUpdates = stripItineraryItemRoutingFields(updates as Record<string, unknown>);
     const [updated] = await db.update(itineraryItems)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(itineraryItems.id, id))
       .returning();
     return updated;

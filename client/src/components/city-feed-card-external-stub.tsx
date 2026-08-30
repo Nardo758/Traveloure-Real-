@@ -78,7 +78,11 @@ function isOsmLicensed(license: string | null): boolean {
   return l.includes("osm") || l.includes("odbl") || l.includes("openstreetmap");
 }
 
-export function CityFeedCardExternalStub({ stub, city }: { stub: ExternalStubData; city: string }) {
+// Phase 2e Part A (2026-08-26-bento-compact-density): `density` is accepted so the
+// bento call site can pass it uniformly. This card already meets the compact spec
+// (~200px, shortDescription at line-clamp-2, honesty label + View source + ODbL
+// attribution preserved), so full and compact render the same.
+export function CityFeedCardExternalStub({ stub, city }: { stub: ExternalStubData; city: string; density?: "full" | "compact" }) {
   const locatedPlaces = stub.places.filter((p) => p.latitude != null && p.longitude != null);
 
   const cta = resolveStubCta(stub);

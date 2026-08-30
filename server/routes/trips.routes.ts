@@ -137,6 +137,64 @@ function getReqUserId(req: any): string | undefined {
   return getUserId(req)!;
 }
 
+function optimizerItemsToNamedStops(
+  baselineItems: Array<{
+    id?: unknown;
+    name?: unknown;
+    title?: unknown;
+    latitude?: unknown;
+    longitude?: unknown;
+  }>,
+): NamedStop[] {
+  return baselineItems.map((item) => {
+    const latitude = item.latitude != null ? Number(item.latitude) : NaN;
+    const longitude = item.longitude != null ? Number(item.longitude) : NaN;
+    return {
+      id: String(item.id),
+      name:
+        typeof item.name === "string"
+          ? item.name
+          : typeof item.title === "string"
+            ? item.title
+            : "Stop",
+      lat: Number.isFinite(latitude) ? latitude : null,
+      lng: Number.isFinite(longitude) ? longitude : null,
+    };
+  });
+}
+
+interface TripAnchorCandidatesDependencies {
+  getTrip: typeof storage.getTrip;
+  loadTripInputs: typeof loadTripOptimizerInputs;
+  rankAnchors: typeof loadRankedAnchors;
+}
+
+export function createTripAnchorCandidatesHandler(
+  dependencies: TripAnchorCandidatesDependencies = {
+    getTrip: storage.getTrip.bind(storage),
+    loadTripInputs: loadTripOptimizerInputs,
+    rankAnchors: loadRankedAnchors,
+  },
+) {
+  return async (req: any, res: any) => {
+    try {
+      const userId = getReqUserId(req);
+      const trip = await dependencies.getTrip(req.params.id);
+      if (!trip || trip.userId !== userId) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const inputs = await dependencies.loadTripInputs(trip.id);
+      const stops = optimizerItemsToNamedStops(inputs.baselineItems);
+      const ranked = await dependencies.rankAnchors(trip.destination, stops, { limit: 8 });
+      return res.json(ranked);
+    } catch (error) {
+      console.error("Error loading trip anchor candidates:", error);
+      return res.status(500).json({ message: "Failed to load anchor candidates" });
+    }
+  };
+}
+
 // SECURITY (§13 trip-data IDOR class): POST /api/trips/:tripId/vendors/bulk-email is an
 // OUTBOUND-MAIL primitive — it fans caller-authored subject/body out to real vendor
 // addresses under the platform's sending identity. Authorization alone does not bound
@@ -672,17 +730,21 @@ async function buildAnchorStops(
   if (!comparison.tripId) return [];
   try {
     const inputs = await loadTripOptimizerInputs(comparison.tripId);
-    return inputs.baselineItems.map((b: any) => ({
-      id: String(b.id),
-      name: b.name ?? "Stop",
-      lat: b.latitude != null ? b.latitude : null,
-      lng: b.longitude != null ? b.longitude : null,
-    }));
+    return optimizerItemsToNamedStops(inputs.baselineItems);
   } catch (err) {
     console.warn("[anchor-stops] trip load failed (non-critical):", (err as Error).message);
     return [];
   }
 }
+
+// Phase 3: pre-create candidate read for the Slip popup. Owner-gated by the trip itself and scored
+// against the exact optimizer baseline the create handler will use. Read-only: no comparison row,
+// payment, or generation is started here.
+router.get(
+  "/api/trips/:id/anchor-candidates",
+  isAuthenticated,
+  createTripAnchorCandidatesHandler(),
+);
 
 // Phase 1c: rank real anchor candidates (hotel / neighborhood / activity) for the Optimize popup.
 router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, async (req, res) => {
@@ -810,7 +872,9 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-            name: g.name,
+            // travel_pulse_hidden_gems has no `name` column — the field is placeName
+            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
+            name: g.placeName,
             description: g.description,
             gemScore: g.gemScore,
           })),
@@ -3189,9 +3253,9 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
 // advisor ‖ trip author ‖ audit-logged admin) with `requireWriteAccess: true` — the same §12
 // posture ("a PENDING advisor may not write") the itinerary-item mutation routes above use — since
 // this endpoint mutates trip-visible content exactly like they do. This is a deliberately BROADER
-// gate than the private-notes PATCH it mirrors in shape (that one is assignment-only, a known
-// narrower gap — see this file's PATCH itinerary-items handler for the same owner/author/advisor
-// posture already established elsewhere in this router).
+// gate than the private-notes PATCH it mirrors in shape (that one is advisor-only; since Aug 29
+// 2026 its advisor branch resolves against the same §12 WRITE allow-list — the earlier
+// assignment-existence-only check let a pending/rejected advisor write private build notes).
 router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;

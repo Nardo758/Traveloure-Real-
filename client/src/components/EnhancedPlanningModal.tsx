@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, CheckCircle, Gem, LogIn } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { useToast } from "@/hooks/use-toast";
 import { useQuery } from '@tanstack/react-query';
 import { getQueryFn } from '@/lib/queryClient';
 
@@ -84,6 +85,7 @@ export default function EnhancedPlanningModal({
   userId,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const { data: authUser } = useQuery<{ id: string } | null>({
     queryKey: ["/api/auth/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
@@ -286,15 +288,24 @@ export default function EnhancedPlanningModal({
 
       const data = await response.json();
 
-      // The backend should create a comparison and return the comparisonId
+      // The backend creates the comparison INSIDE the snapshot transaction
+      // (saveGeneratedItinerarySnapshot, content-query.service.ts) and the
+      // endpoint's one success exit always returns comparisonId — so the branch
+      // below is defensive only (Phase 0 of ruling 2026-08-28-single-planning-entry
+      // verified no server path returns 200 without it).
       if (data.comparisonId) {
         // Close modal and redirect to comparison page
         onClose();
         setLocation(`/itinerary-comparison/${data.comparisonId}`);
       } else if (data.tripId) {
-        // Fallback: if only tripId is returned, redirect to trip view
+        // Defensive fallback: land on the PLANNING surface for the trip, never
+        // the details card mid-flow (the slip is the canonical planning address).
+        toast({
+          title: "Itinerary saved",
+          description: "The optimized comparison isn't ready — continuing on your plan.",
+        });
         onClose();
-        setLocation(`/trip/${data.tripId}`);
+        setLocation(`/plans/${data.tripId}`);
       } else {
         throw new Error('No comparison or trip ID returned from server');
       }

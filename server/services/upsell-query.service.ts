@@ -344,7 +344,7 @@ export async function rankAndLog(
       const lookup = await db.execute(sql`
         SELECT offering_type_key, display_name, tagline
         FROM service_offering_types
-        WHERE offering_type_key = ANY(${ids})
+        WHERE offering_type_key = ANY(${pgTextArray(ids)}::text[])
       `);
       for (const r of (lookup.rows ?? [])) {
         const row = r as any;
@@ -385,7 +385,7 @@ export async function loadEndorsementsForContext(
           ON en.expert_id = e.expert_id
          AND en.neighborhood_id = e.neighborhood_id
         WHERE e.scope = 'neighborhood'
-          AND e.neighborhood_id = ANY(${neighborhoodIds})
+          AND e.neighborhood_id = ANY(${pgTextArray(neighborhoodIds)}::text[])
           AND en.is_lead = true
       `);
       for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
@@ -538,7 +538,7 @@ export async function getExpertEndorsements(
       WHERE expert_id = ${expertId}
         AND (
           (scope = 'trip' AND trip_id = ${tripId}) OR
-          (scope = 'neighborhood' AND neighborhood_id = ANY(${neighborhoodIds ?? []}::TEXT[]))
+          (scope = 'neighborhood' AND neighborhood_id = ANY(${pgTextArray(neighborhoodIds ?? [])}::TEXT[]))
         )
       ORDER BY created_at DESC
     `);
@@ -636,15 +636,24 @@ export async function insertImpression(
 }
 
 export async function markImpressionClicked(
-  tripId: string,
+  tripId: string | null,
   surface: string,
   offeringId: string,
 ): Promise<void> {
+  // Marks ONLY the single most-recent matching impression (flipping a whole window
+  // would inflate CTR — the exact metric this instruments). A null tripId is the
+  // public/discover case: the impression was written with trip_id NULL, so match
+  // trip_id IS NULL. A non-null tripId scopes to that trip (cart/checkout),
+  // preserving the previous behaviour exactly.
   await db.execute(sql`
     UPDATE upsell_impressions SET clicked = true
     WHERE id = (
       SELECT id FROM upsell_impressions
-      WHERE trip_id = ${tripId} AND surface = ${surface} AND offering_id = ${offeringId}
+      WHERE surface = ${surface} AND offering_id = ${offeringId}
+        AND (
+          (${tripId}::text IS NULL AND trip_id IS NULL)
+          OR trip_id = ${tripId}
+        )
       ORDER BY shown_at DESC
       LIMIT 1
     )

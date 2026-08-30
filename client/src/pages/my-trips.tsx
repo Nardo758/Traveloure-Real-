@@ -20,6 +20,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function formatOccasionDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return format(new Date(year, month - 1, day), "MMM d");
+}
+
 const eventTypeIcons: Record<string, any> = {
   vacation: Plane,
   wedding: Heart,
@@ -72,7 +79,7 @@ export default function MyTrips() {
       <DashboardLayout>
         <div className="container mx-auto px-4 py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
@@ -149,10 +156,10 @@ export default function MyTrips() {
               <Icon className={`${viewMode === "list" ? "w-8 h-8" : "w-12 h-12"} text-primary`} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
+              <div className="flex flex-wrap items-start gap-2 mb-2">
+                <div className="min-w-0 flex-[1_1_14rem]">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <h3 className="min-w-0 max-w-full font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
                       {trip.title}
                     </h3>
                     {/* Slip identity — render ONLY when the trips-list response carries a
@@ -165,6 +172,19 @@ export default function MyTrips() {
                         {trip.trackingNumber}
                       </span>
                     )}
+                    {trip.occasion && (
+                      <span
+                        className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          background: "var(--earn-gold-wash)",
+                          color: "var(--earn-gold-ink)",
+                          fontFamily: EARN_MONO,
+                        }}
+                        data-testid={`chip-occasion-${trip.id}`}
+                      >
+                        {trip.occasion.label} · {formatOccasionDate(trip.occasion.date)}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {format(start, "MMM d")} - {format(end, "MMM d, yyyy")} • {trip.destination}
@@ -172,15 +192,15 @@ export default function MyTrips() {
                 </div>
                 {/* Phase chip — same date-derived logic as the section buckets (§13 honest-or-absent). */}
                 {isCompleted ? (
-                  <Badge variant="secondary" className="flex-shrink-0">
+                  <Badge variant="secondary" className="ml-auto flex-shrink-0">
                     <Star className="w-3 h-3 mr-1" /> Completed
                   </Badge>
                 ) : isUpcoming ? (
-                  <Badge className="flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
+                  <Badge className="ml-auto flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
                     {daysAway} days away
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="flex-shrink-0">
+                  <Badge variant="outline" className="ml-auto flex-shrink-0">
                     Underway
                   </Badge>
                 )}
@@ -189,7 +209,7 @@ export default function MyTrips() {
               {!isCompleted && progress !== null && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Trip progress</span>
+                    <span className="text-muted-foreground">Plan progress</span>
                     <span className="font-medium text-foreground dark:text-white">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
@@ -229,7 +249,7 @@ export default function MyTrips() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-            My plans
+            My Plans
           </h1>
           <Button
             className="bg-primary hover:bg-primary/90 text-white"
@@ -343,12 +363,12 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Past trips */}
+        {/* Past plans */}
         {pastTrips.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground dark:text-white flex items-center gap-2">
-                Past trips ({pastTrips.length})
+                Past plans ({pastTrips.length})
               </h2>
               <Button variant="ghost" className="text-primary" data-testid="button-show-all-completed">
                 Show All <ChevronRight className="w-4 h-4 ml-1" />
@@ -384,7 +404,7 @@ export default function MyTrips() {
               <p className="text-muted-foreground mb-4">
                 {searchQuery || typeFilter !== "all" || statusFilter !== "all"
                   ? "Try adjusting your filters"
-                  : "Start planning your next adventure!"}
+                  : "Start one, or let an occasion bring you one."}
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
                 <Button

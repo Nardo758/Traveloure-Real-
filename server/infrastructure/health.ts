@@ -4,6 +4,7 @@ import { pool } from "../db";
 import { logger } from "./logger";
 import { getCircuitBreakerStatus } from "./circuit-breaker";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { getBackgroundJobStats } from "../services/background-job-runner";
 
 interface HealthCheck {
   status: "healthy" | "unhealthy" | "degraded";
@@ -22,9 +23,10 @@ interface HealthStatus {
 async function checkDatabase(): Promise<HealthCheck> {
   const start = Date.now();
   try {
-    const client = await pool.connect();
-    await client.query("SELECT 1");
-    client.release();
+    // pool.query owns and releases its client even when SELECT 1 fails. Using
+    // pool.connect() here previously leaked a checked-out client on that error
+    // path, eventually making background jobs time out while acquiring a slot.
+    await pool.query("SELECT 1");
     return {
       status: "healthy",
       latency: Date.now() - start,
@@ -65,6 +67,15 @@ async function checkDatabasePool(): Promise<HealthCheck> {
       message: error instanceof Error ? error.message : "Unknown error",
     };
   }
+}
+
+function checkBackgroundJobs(): HealthCheck {
+  const { activeJobs, maxConcurrentJobs, running } = getBackgroundJobStats();
+  return {
+    status: activeJobs >= maxConcurrentJobs ? "degraded" : "healthy",
+    message: `Background jobs: ${activeJobs}/${maxConcurrentJobs} active` +
+      (running.length > 0 ? ` (${running.join(", ")})` : ""),
+  };
 }
 
 async function checkMemory(): Promise<HealthCheck> {
@@ -165,6 +176,7 @@ export function createHealthRouter(): Router {
       const checks = {
         database: await checkDatabase(),
         database_pool: await checkDatabasePool(),
+        background_jobs: checkBackgroundJobs(),
         memory: await checkMemory(),
         external_apis: await checkExternalAPIs(),
         ...serviceChecks,

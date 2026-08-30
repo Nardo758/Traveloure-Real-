@@ -49,3 +49,14 @@
 - [Playwright WebKit on Nix](webkit-playwright-nix-runtime.md) — bundled WPE can launch yet hang on EGL; use GTK under Xvfb and preserve the external library path.
 - [Provider storefront URL contract](provider-storefront-url-contract.md) — Public storefronts use `/s/:handle`; retain `/p/:handle` for legacy shared links.
 - [Field Guide recovery](field-guide-recovery.md) — a workspace reset can drop the multi-artifact preview while its complete source remains recoverable in Git history.
+- [Local Playwright Chromium runtime](playwright-chromium-nix-runtime.md) — CLI Chromium cannot launch without libglib; use the managed browser verifier unless Nix dependencies change.
+- [Server Vitest under client-root Vite](server-vitest-client-root.md) — server Vitest suites need an explicit repo-root config with aliases; fail on zero tests.
+- [Earn demo market constraint](earn-demo-market-constraint.md) — ready-made listings are currently Kyoto-only; count non-Kyoto skips until a ruling and migration widen the contract.
+- [Neighbourhood slug matching](neighbourhood-slug-matching.md) — free-text neighbourhood joins must normalize both sides or a mismatch silently drops the whole neighbourhood (and its chrome) from the feed.
+- [Lane branch HEAD reset risk](lane-branch-head-reset-risk.md) — an unrelated task-agent merge elsewhere can silently move this workspace's git HEAD off a lane branch back to main mid-session; push lane branches to origin early.
+- [tsc baseline ratchet gap](tsc-baseline-ratchet-gap.md) — a PR clean on its own branch can still push main's live tsc count over TSC_BASELINE if main already drifted; never bump the baseline to hide it.
+- [Bento card-shell ownership](bento-card-shell-ownership.md) — spanning Bento grid items own the visual shell; cards inside retain only content and interaction semantics.
+- [Post-login Playwright handoff](post-login-playwright-handoff.md) — URL-based login helpers can resolve before the destination document is ready; live-data tests must wait for document readiness.
+- [Expert search field contract](expert-search-field-contract.md) — destination URLs hydrate Where only; What stays independent free text filtering within the scoped results.
+- [Background scheduler resilience](background-scheduler-resilience.md) — claim timers before first runs, cap aggregate concurrency, retry transient DB failures only, and never leak health clients.
+- [Proposal map provider policy](proposal-map-provider-policy.md) — Google is primary in-app; Leaflet/OSM is only the keyless or share/export fallback, with no invented locations or routes.

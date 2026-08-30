@@ -30,25 +30,35 @@ import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
+import { formatExpertResponseTime } from "@/lib/expert-response-time";
 
 // Continuity design tokens — the same values as artifacts/mockup-sandbox's
 // _shared/continuity.css :root, applied directly (that file is a design
 // reference, not app code) so this page reads as one system with the rest of
 // the marketplace-continuity direction and with expert-card.tsx's browse
 // card. See docs/DECISIONS.md ledger row 2026-08-24-experts-continuity.
-const INK = "#111827";
-const MUTED = "#667085";
-const LINE = "#e4e7ec";
-const PINK = "#fb3b63";
-const PINK_SOFT = "#fff0f3";
-const GOLD = "#b54708";
-const GREEN_BG = "#ecfdf3";
-const GREEN_INK = "#027a48";
-const GREEN_BORDER = "#b7ebd1";
+// Earn palette (SPEC §1) — the page routes its colours through these consts in
+// style={{}}, so pointing them at the --earn-* tokens re-tokens the whole surface.
+const INK = "var(--earn-ink)";
+const MUTED = "var(--earn-muted)";
+const LINE = "var(--earn-border)";
+const PINK = "var(--earn-coral-ink)";
+const PINK_SOFT = "var(--earn-coral-bg)";
+const GOLD = "var(--earn-gold-ink)";
+const GREEN_BG = "var(--earn-teal-wash)";
+const GREEN_INK = "var(--earn-green-ink)";
+const GREEN_BORDER = "var(--earn-coral-border)";
+const NAVY = "var(--earn-navy)";
+const FRAUNCES = "'Fraunces', Georgia, serif";
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const ROLE_LABELS: Record<string, string> = {
   local_expert: "Local expert",
   travel_expert: "Trip planner",
+  // Intake-fixes C5 (latent-bug ruling): `trip_planner` is not a stored role — the trip
+  // planner IS `travel_expert` — but a literal that slips through must render "Trip
+  // planner", never fall to the generic "Expert".
+  trip_planner: "Trip planner",
   event_planner: "Event planner",
 };
 
@@ -356,10 +366,15 @@ export default function ExpertDetailPage() {
       ? expert.expertRating
       : expert.averageRating ? parseFloat(expert.averageRating) : 0;
   const totalReviews = expert.expertReviewCount ?? expert.reviewCount ?? reviews.length ?? 0;
-  const responseTime = expert.expertForm?.responseTime || "< 24 hours";
+  // §13 (decision-maker, Phase 0): NO hardcoded "< 24 hours" — the responds fact is
+  // shown only when the expert actually stated a response time; null ⇒ omitted.
+  const responseTime = formatExpertResponseTime(expert.expertForm?.responseTime);
   const languages = expert.expertForm?.languages || ["English"];
   const specializations = expert.expertForm?.specializations || [];
   const destinations = expert.expertForm?.destinations || [];
+  // Eyebrow market label (e.g. "LOCAL EXPERT · KYOTO") — the expert's city, else their
+  // first listed destination; blank when neither exists (§13, never "[object Location]").
+  const heroLocation: string = expert.expertForm?.city || destinations[0] || "";
   const bio = expert.expertForm?.bio || "Experienced local expert ready to help plan your perfect trip.";
   const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
   const localityProof: string = expert.expertForm?.localityProof || "";
@@ -375,6 +390,20 @@ export default function ExpertDetailPage() {
   const verified = expert.verified === true;
   const idVerified = expert.expertForm?.identityVerificationStatus === "verified";
   const roleLabel = expert.role ? (ROLE_LABELS[expert.role] || "Expert") : "Expert";
+  // Member-since (§13 honest-omit): read the real users.createdAt; render only when it
+  // parses to a valid year, never a fabricated "member since —".
+  const memberSinceYear: number | null = (() => {
+    if (!expert.createdAt) return null;
+    const y = new Date(expert.createdAt).getFullYear();
+    return Number.isFinite(y) ? y : null;
+  })();
+  // Cover image (D2): the expert's own storefront cover if they set one; the hero falls
+  // back to the brand gradient when absent (honest-omit — never another expert's photo).
+  const coverImageUrl: string | null =
+    typeof expert.preferences?.storefront?.coverImageUrl === "string" &&
+    expert.preferences.storefront.coverImageUrl.trim().length > 0
+      ? expert.preferences.storefront.coverImageUrl
+      : null;
 
   // Unified offering catalogs (§13: real fields only, no invented ratings/prices).
   const serviceOfferings: UnifiedOffering[] = services.map((s: any) => ({
@@ -447,7 +476,7 @@ export default function ExpertDetailPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen" style={{ background: "#f8fafc" }}>
+      <div className="min-h-screen" style={{ background: "var(--earn-ground)" }}>
         <div className="w-full px-4" style={{ maxWidth: 1180, margin: "0 auto" }}>
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 py-4 text-[12px]" style={{ color: MUTED }}>
@@ -460,17 +489,27 @@ export default function ExpertDetailPage() {
 
           {/* Hero */}
           <section className="overflow-hidden rounded-[14px] border bg-white" style={{ borderColor: LINE, boxShadow: "0 8px 28px rgba(17,24,39,.04)" }}>
-            <div className="h-[120px] w-full" style={{ background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }} />
-            <div className="grid gap-4 px-5 pb-5 sm:grid-cols-[76px_1fr_auto] sm:items-start">
+            <div
+              className="h-[120px] w-full bg-cover bg-center"
+              style={
+                coverImageUrl
+                  ? { backgroundImage: `url(${JSON.stringify(coverImageUrl)})` }
+                  : { background: "linear-gradient(100deg, rgba(20,44,65,.85), rgba(251,59,99,.35))" }
+              }
+              data-testid="expert-cover"
+            />
+            <div className="grid gap-4 px-5 pb-5 sm:grid-cols-[76px_1fr] sm:items-start">
               <Avatar className="h-[76px] w-[76px] shrink-0 border-4 border-white shadow-lg" style={{ marginTop: -32 }}>
-                <AvatarImage src={expert.profileImage} alt={fullName} />
+                <AvatarImage src={expert.profileImageUrl} alt={fullName} />
                 <AvatarFallback className="text-xl font-bold">{initials}</AvatarFallback>
               </Avatar>
 
               <div className="pt-2 sm:pt-3.5">
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: MUTED }}>{roleLabel} storefront</p>
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}>
+                  {roleLabel}{heroLocation ? ` · ${heroLocation}` : ""}
+                </p>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                  <h1 className="text-[26px] font-bold tracking-tight" style={{ color: INK }}>{fullName || "Expert"}</h1>
+                  <h1 className="text-[30px] font-semibold tracking-tight" style={{ color: NAVY, fontFamily: FRAUNCES }}>{fullName || "Expert"}</h1>
                   {verified && <CheckCircle className="h-5 w-5 fill-blue-500 text-blue-500" data-testid="icon-verified" />}
                   {idVerified && (
                     <Badge className="bg-blue-600 text-white" title="Identity verified via Stripe Identity">
@@ -485,22 +524,36 @@ export default function ExpertDetailPage() {
                     </Badge>
                   )}
                 </div>
-                <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: "#475467" }}>{bio}</p>
+                <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: MUTED }}>{bio}</p>
 
-                <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-bold">
-                  {totalReviews > 0 ? (
-                    <span className="inline-flex items-center gap-1" style={{ color: GOLD }}>
-                      <Star className="h-3.5 w-3.5 fill-current" /> {averageRating.toFixed(1)} <span className="font-medium" style={{ color: MUTED }}>· {totalReviews} reviews</span>
-                    </span>
-                  ) : (
-                    <span style={{ color: MUTED }}>New expert · no reviews yet</span>
+                {/* Facts row (§3.9): offerings · rating · responds · member since. Each fact
+                    renders only from a real field — responds appears when the expert stated a
+                    response time, member-since when users.createdAt parses (§13, honest-omit). */}
+                <div className="mt-3 flex flex-wrap items-stretch gap-x-6 gap-y-2 border-t pt-3" style={{ borderColor: LINE }}>
+                  <div>
+                    <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>{allOfferings.length}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>offerings</div>
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>
+                      {totalReviews > 0 ? `${averageRating.toFixed(1)} (${totalReviews})` : "New"}
+                    </div>
+                    <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>
+                      {totalReviews > 0 ? "rating" : "no reviews yet"}
+                    </div>
+                  </div>
+                  {responseTime && (
+                    <div>
+                      <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>{responseTime}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>responds</div>
+                    </div>
                   )}
-                  <span className="inline-flex items-center gap-1" style={{ color: "#475467" }}>
-                    <Briefcase className="h-3.5 w-3.5" /> {expert.completedTrips || 0} trips completed
-                  </span>
-                  <span className="inline-flex items-center gap-1" style={{ color: "#475467" }}>
-                    <Clock className="h-3.5 w-3.5" /> {responseTime} response time
-                  </span>
+                  {memberSinceYear !== null && (
+                    <div data-testid="fact-member-since">
+                      <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }}>{memberSinceYear}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>member since</div>
+                    </div>
+                  )}
                 </div>
 
                 {(destinations.length > 0 || languages.length > 0) && (
@@ -547,90 +600,40 @@ export default function ExpertDetailPage() {
                   </div>
                 )}
               </div>
-
-              <div className="flex gap-2 pt-2 sm:pt-3.5 sm:flex-col">
-                {handoffTripId && services.length > 0 && (
-                  <button
-                    className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-[12px] font-bold text-white whitespace-nowrap"
-                    style={{ background: PINK, boxShadow: "0 4px 12px rgba(251,59,99,.18)" }}
-                    onClick={handleRequestHelpWithPlan}
-                    disabled={requestHelpMutation.isPending || requestHelpMutation.isSuccess}
-                    data-testid="button-request-help-with-plan"
-                  >
-                    <Briefcase className="h-3.5 w-3.5" />
-                    {requestHelpMutation.isSuccess ? "Request sent" : requestHelpMutation.isPending ? "Sending…" : "Share plan & request help"}
-                  </button>
-                )}
-                <button
-                  className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-[12px] font-bold whitespace-nowrap"
-                  style={
-                    handoffTripId && services.length > 0
-                      ? { border: "1px solid #d0d5dd", color: "#344054", background: "#fff" }
-                      : { background: PINK, color: "#fff", boxShadow: "0 4px 12px rgba(251,59,99,.18)" }
-                  }
-                  onClick={handleContactExpert}
-                  data-testid="button-contact-expert"
-                >
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  Contact expert
-                </button>
-                <div className="flex gap-2">
-                  <button className="inline-flex h-8 w-8 items-center justify-center rounded-md border" style={{ borderColor: "#d0d5dd" }} aria-label="Save expert">
-                    <Heart className="h-3.5 w-3.5" style={{ color: "#344054" }} />
-                  </button>
-                  <button className="inline-flex h-8 w-8 items-center justify-center rounded-md border" style={{ borderColor: "#d0d5dd" }} aria-label="Share expert">
-                    <Share2 className="h-3.5 w-3.5" style={{ color: "#344054" }} />
-                  </button>
-                </div>
-              </div>
             </div>
           </section>
 
-          {/* Summary strip — real facts only (§13) */}
-          {summaryTiles.length > 0 && (
-            <div className="mt-6 flex flex-wrap items-center gap-0 border-y py-4" style={{ borderColor: LINE }}>
-              {summaryTiles.map((tile, idx) => (
-                <div key={idx} className="pr-5" style={{ borderRight: idx < summaryTiles.length - 1 ? `1px solid ${LINE}` : undefined, marginRight: 20 }}>
-                  <strong className="block text-[20px] tracking-tight" style={{ color: INK }}>{tile.value}</strong>
-                  <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: MUTED }}>{tile.label}</span>
-                </div>
-              ))}
-              {offeringKindsPresent.length > 1 && (
-                <div className="ml-auto flex max-w-sm items-start gap-2 text-[11px] leading-relaxed" style={{ color: "#475467" }}>
-                  <Sparkles className="h-4 w-4 shrink-0" style={{ color: GOLD }} />
-                  <span><b style={{ color: INK }}>More than one way to plan with {expert.firstName || "them"}</b><br />{offeringKindsPresent.join(" · ")}</span>
-                </div>
-              )}
-            </div>
+          {/* About — the bio promoted into its own labeled section below the hero, above
+              Offerings, so a trust-scanning visitor can find "who is this person" without
+              hunting through the hero card. The hero keeps its own bio line as the one-line
+              hook; this is the fuller story (same text today — same treatment across local
+              expert profiles, trip planner profiles, and the provider storefront). Honest-
+              omit: the fallback copy above (`bio`) always yields a real string today, but
+              this section still guards on the raw source field so it degrades to nothing if
+              that ever changes to allow a genuinely empty bio. */}
+          {expert.expertForm?.bio && (
+            <section className="mt-6 rounded-[14px] border bg-white px-6 py-5" style={{ borderColor: LINE }} data-testid="expert-about">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}>
+                About
+              </p>
+              <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: INK }}>{bio}</p>
+            </section>
           )}
 
+          {/* Body — open-card two-grid (§3.9): content panels on the left, the sticky
+              PLAN IT FOR ME panel on the right (facts now live in the hero, so the old
+              summary strip is retired). */}
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px] lg:items-start">
+            <div className="min-w-0 space-y-8">
+
           {/* Offerings */}
-          <section className="mt-8">
+          <section className="">
             <div className="mb-4 flex items-end justify-between gap-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: MUTED }}>Ways to work with {expert.firstName || "this expert"}</p>
-                <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: INK }}>What {expert.firstName || "they"} can offer</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}>Choose your starting point</p>
+                <h2 className="text-[24px] font-semibold tracking-tight" style={{ color: NAVY, fontFamily: FRAUNCES }}>Ways to work with {expert.firstName || "this expert"}</h2>
               </div>
-              <p className="text-[12px]" style={{ color: MUTED }}>{visibleOfferings.length} {visibleOfferings.length === 1 ? "offering" : "offerings"}</p>
-            </div>
-
-            {/* Quick-book strip — starting price + schedule shortcut, always present */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border p-3.5" style={{ borderColor: LINE, background: "#fff" }}>
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: MUTED }}>Starting from</p>
-                <p className="text-[20px] font-bold" style={{ color: INK }}>
-                  {services[0]?.price ? `$${services[0].price}` : "Contact for pricing"}
-                </p>
-                {services.length > 0 && <p className="text-[11px]" style={{ color: MUTED }}>{services[0]?.serviceName || "Custom service"}</p>}
-              </div>
-              <button
-                className="inline-flex items-center gap-1.5 rounded-md px-4 py-2.5 text-[12px] font-bold text-white"
-                style={{ background: PINK, boxShadow: "0 4px 12px rgba(251,59,99,.18)" }}
-                onClick={handleScheduleConsultation}
-                data-testid="button-schedule-consultation"
-              >
-                <Calendar className="h-3.5 w-3.5" /> Schedule consultation
-              </button>
+              <p className="text-[12px]" style={{ color: MUTED, fontFamily: EARN_MONO }}>{visibleOfferings.length} {visibleOfferings.length === 1 ? "offering" : "offerings"}</p>
             </div>
 
             {categories.length > 1 && (
@@ -766,29 +769,70 @@ export default function ExpertDetailPage() {
             )}
           </section>
 
-          {/* Conversation CTA */}
-          <section
-            className="mt-10 grid grid-cols-[45px_1fr_auto] items-center gap-3.5 rounded-[14px] border p-5"
-            style={{ borderColor: "#ffd1da", background: "linear-gradient(100deg,#fff5f6,#fff)" }}
-          >
-            <div className="flex h-[45px] w-[45px] items-center justify-center rounded-full text-[13px] font-extrabold text-white" style={{ background: "#153b59" }}>
-              {initials || "?"}
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: MUTED }}>A good place to begin</p>
-              <h2 className="mt-1 text-[16px] font-semibold" style={{ color: INK }}>Have a trip in mind, but not a format yet?</h2>
-              <p className="mt-1 max-w-lg text-[11px] leading-relaxed" style={{ color: MUTED }}>
-                Tell {expert.firstName || "them"} what you're hoping to feel, eat, or discover — a conversation can point you to the right offering.
-              </p>
-            </div>
-            <button
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[12px] font-bold text-white"
-              style={{ background: PINK, boxShadow: "0 4px 12px rgba(251,59,99,.18)" }}
-              onClick={handleContactExpert}
-            >
-              <MessageCircle className="h-3.5 w-3.5" /> Start a conversation
-            </button>
-          </section>
+            </div>{/* /main column */}
+
+            {/* PLAN IT FOR ME — sticky sidebar (§3.9). Consolidates the plan / ask /
+                share-plan actions moved out of the hero + quick-book strip. Coral is the
+                single primary CTA in the panel (§1): when the share-plan action is present
+                it takes coral and "Plan with" falls back to navy, so there are never two. */}
+            <aside className="lg:sticky lg:top-6">
+              <div className="rounded-[14px] border bg-[var(--earn-card)] p-4" style={{ borderColor: LINE, boxShadow: "0 8px 28px rgba(17,24,39,.04)" }}>
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}>Plan it for me</p>
+                <p className="mt-1 text-[13px] leading-snug" style={{ color: MUTED }}>
+                  Work with {expert.firstName || "this expert"} directly — a plan built around your trip.
+                </p>
+                {services.length > 0 && (
+                  <div className="mt-3 border-t pt-3" style={{ borderColor: LINE }}>
+                    <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: MUTED, fontFamily: EARN_MONO }}>Starting from</p>
+                    <p className="text-[26px] font-semibold leading-tight" style={{ color: INK, fontFamily: EARN_MONO }}>
+                      {services[0]?.price ? `$${services[0].price}` : "Contact for pricing"}
+                    </p>
+                    {services[0]?.serviceName && <p className="text-[11px]" style={{ color: MUTED }}>{services[0].serviceName}</p>}
+                  </div>
+                )}
+                <div className="mt-4 flex flex-col gap-2">
+                  {handoffTripId && services.length > 0 && (
+                    <button
+                      className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
+                      style={{ background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }}
+                      onClick={handleRequestHelpWithPlan}
+                      disabled={requestHelpMutation.isPending || requestHelpMutation.isSuccess}
+                      data-testid="button-request-help-with-plan"
+                    >
+                      <Briefcase className="h-3.5 w-3.5" />
+                      {requestHelpMutation.isSuccess ? "Request sent" : requestHelpMutation.isPending ? "Sending…" : "Share plan & request help"}
+                    </button>
+                  )}
+                  <button
+                    className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
+                    style={
+                      handoffTripId && services.length > 0
+                        ? { background: NAVY }
+                        : { background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }
+                    }
+                    onClick={handleScheduleConsultation}
+                    data-testid="button-schedule-consultation"
+                  >
+                    <Calendar className="h-3.5 w-3.5" /> Plan with {expert.firstName || "them"}
+                  </button>
+                  <button
+                    className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3.5 py-2.5 text-[12px] font-bold"
+                    style={{ borderColor: LINE, color: INK, background: "var(--earn-card)" }}
+                    onClick={handleContactExpert}
+                    data-testid="button-contact-expert"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" /> Ask a quick question
+                  </button>
+                </div>
+                {responseTime && (
+                  <div className="mt-3 flex items-center justify-between border-t pt-3 text-[11px]" style={{ borderColor: LINE, fontFamily: EARN_MONO }}>
+                    <span style={{ color: MUTED }}>Responds</span>
+                    <span className="font-semibold" style={{ color: INK }}>{responseTime}</span>
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>{/* /open-card two-grid */}
 
           {/* Safety strip */}
           <section className="mt-8 grid grid-cols-1 gap-5 border-t pt-6 pb-14 sm:grid-cols-3" style={{ borderColor: LINE }}>

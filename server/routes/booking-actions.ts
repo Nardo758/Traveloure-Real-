@@ -13,7 +13,7 @@ import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
-import { isTripAdvisor, TRIP_ADVISOR_ACCESS_STATUSES } from '../utils/trip-advisor';
+import { isTripAdvisor, isTripAdvisorWithWriteAccess, TRIP_ADVISOR_ACCESS_STATUSES, tripAdvisorStatusGrantsAccess } from '../utils/trip-advisor';
 import { logItemTransition } from '../services/item-transition-log.service';
 import { getUserId } from '../utils/auth';
 import { sanitizeInput } from '../utils/sanitize';
@@ -1537,9 +1537,13 @@ router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { tripId } = req.params;
-    const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+    // §12 (hardened Aug 29 2026): the advisor branch resolves against the WRITE
+    // allow-list (accepted/assigned), not bare assignment existence — a pending
+    // or rejected advisor could previously reach the private build notes through
+    // this rail, the one §21 endpoint the allow-list had missed.
+    const advisorHasWriteAccess = await isTripAdvisorWithWriteAccess(tripId, userId);
     // Authoring mode (ready-made brief §2): the author reads their own build's notes.
-    if (!assignment && !(await isTripAuthor(tripId, userId))) {
+    if (!advisorHasWriteAccess && !(await isTripAuthor(tripId, userId))) {
       return res.status(403).json({ message: "Not authorized to view notes for this trip" });
     }
     const expertNotes = await storage.getTripExpertNotes(tripId);
@@ -1550,15 +1554,19 @@ router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
   }
 });
 
-// PATCH /api/trips/:tripId/expert-notes — auto-save (assigned expert only).
+// PATCH /api/trips/:tripId/expert-notes — auto-save. §12: WRITE-access advisor
+// only (accepted/assigned — isTripAdvisorWithWriteAccess), same as every other
+// advisor mutation path; previously any advisor ROW (pending/rejected included)
+// passed. The ready-made-author branch stays GET-only, as before.
 router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { tripId } = req.params;
     const { expertNotes } = req.body;
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
-    const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
-    if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+    if (!(await isTripAdvisorWithWriteAccess(tripId, userId))) {
+      return res.status(403).json({ message: "Not assigned to this trip" });
+    }
     // #1123: sanitize even though the field is private today (self-XSS only) —
     // closes the hole before the notes are ever surfaced to another viewer.
     await storage.updateTrip(tripId, { expertNotes: sanitizeInput(expertNotes) });
@@ -1576,8 +1584,20 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const { tripId } = req.params;
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
-    if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+    // §12 same-class fix: existence alone let a REJECTED advisor read commission figures.
+    // Deliberately the READ predicate, not the write one — this is a read surface, and §12
+    // keeps `pending` on read surfaces (an invited expert previewing the gig before accepting);
+    // only rejected/unknown statuses now fall through. Flagged for decision-maker confirmation.
+    if (!assignment || !tripAdvisorStatusGrantsAccess(assignment.status)) {
+      return res.status(403).json({ message: "Not assigned to this trip" });
+    }
 
+    // This endpoint is a fully fortified door to an empty room: auth-gated (§12 pending-advisor
+    // read gate, #623, above), confirmed display-only (itineraryItems.bookingStatus is
+    // client-settable but no money path reads it — see the grandfather note in
+    // scripts/check-privileged-field-completeness.cjs), and consumed by no client yet (future:
+    // the fee-attribution sidebar DISPLAY lane from the marketplace audit). When that lane lands,
+    // switch the filter below off bookingStatus onto routingStatus/bookingId presence.
     const allItems = await storage.getItineraryItems(tripId);
     const CONFIRMED_STATUSES = ["planned", "confirmed", "in_progress", "booked"];
     const items = allItems.filter((item: any) =>

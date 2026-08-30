@@ -117,6 +117,25 @@ function assertParamRouteRedirect(
   ).toBe(true);
 }
 
+function assertRouteDoesNotRedirect(src: string, routePath: string, note = "") {
+  const escapedPath = routePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const routePattern = new RegExp(`path="${escapedPath}"[\\s\\S]{0,600}?</Route>`, "m");
+  const match = src.match(routePattern);
+
+  expect(
+    match !== null,
+    `[STATIC] App.tsx has no <Route path="${routePath}">.` + (note ? ` (${note})` : "")
+  ).toBe(true);
+
+  if (!match) return;
+
+  expect(
+    match[0],
+    `[STATIC] ${routePath} is canonical and must render its page rather than redirect.` +
+      (note ? ` (${note})` : "")
+  ).not.toContain("<Redirect");
+}
+
 // ---------------------------------------------------------------------------
 // Static analysis: each deprecated redirect must be bound to its route block
 // ---------------------------------------------------------------------------
@@ -135,12 +154,17 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
   });
 
   test("/city/:slug → /discover/location/:slug (parameterised)", () => {
+    const app = readApp();
     assertParamRouteRedirect(
-      readApp(),
+      app,
       "/city/:slug",
       "/discover/location/",
       "legacy city deep-link"
     );
+    expect(
+      app.match(/<Route\s+path="\/city\/:[^"]+"/g) ?? [],
+      "App.tsx must declare exactly one canonical /city/:parameter route"
+    ).toHaveLength(1);
     console.log("[deprecated-route-redirects] PASS /city/:slug → /discover/location/:slug");
   });
 
@@ -217,25 +241,38 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /expert/service-wizard → /expert/services/new");
   });
 
-  test("/expert/performance → /expert/analytics?tab=performance", () => {
-    assertRouteRedirect(readApp(), "/expert/performance", "/expert/analytics?tab=performance");
-    console.log("[deprecated-route-redirects] PASS /expert/performance → /expert/analytics?tab=performance");
+  test("/expert/performance is the canonical performance page", () => {
+    assertRouteDoesNotRedirect(
+      readApp(),
+      "/expert/performance",
+      "analytics now redirects into this page"
+    );
+    console.log("[deprecated-route-redirects] PASS /expert/performance is canonical");
   });
 
-  test("/expert/revenue-optimization → /expert/analytics?tab=revenue-optimization", () => {
+  test("/expert/revenue-optimization → /expert/performance?tab=analytics&sub=revenue-optimization", () => {
     assertRouteRedirect(
       readApp(),
       "/expert/revenue-optimization",
-      "/expert/analytics?tab=revenue-optimization"
+      "/expert/performance?tab=analytics&sub=revenue-optimization"
     );
     console.log(
-      "[deprecated-route-redirects] PASS /expert/revenue-optimization → /expert/analytics?tab=revenue-optimization"
+      "[deprecated-route-redirects] PASS /expert/revenue-optimization → /expert/performance?tab=analytics&sub=revenue-optimization"
     );
   });
 
-  test("/expert/leaderboard → /expert/analytics?tab=leaderboard", () => {
-    assertRouteRedirect(readApp(), "/expert/leaderboard", "/expert/analytics?tab=leaderboard");
-    console.log("[deprecated-route-redirects] PASS /expert/leaderboard → /expert/analytics?tab=leaderboard");
+  test("/expert/leaderboard → /expert/performance?tab=analytics&sub=leaderboard", () => {
+    assertRouteRedirect(
+      readApp(),
+      "/expert/leaderboard",
+      "/expert/performance?tab=analytics&sub=leaderboard"
+    );
+    console.log("[deprecated-route-redirects] PASS /expert/leaderboard → /expert/performance?tab=analytics&sub=leaderboard");
+  });
+
+  test("/expert/analytics → /expert/performance?tab=analytics", () => {
+    assertRouteRedirect(readApp(), "/expert/analytics", "/expert/performance?tab=analytics");
+    console.log("[deprecated-route-redirects] PASS /expert/analytics → /expert/performance?tab=analytics");
   });
 
   // ── Provider redirects ───────────────────────────────────────────────────
@@ -299,9 +336,9 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /services-provider → /become-provider");
   });
 
-  test("/credits-billing → /credits", () => {
-    assertRouteRedirect(readApp(), "/credits-billing", "/credits");
-    console.log("[deprecated-route-redirects] PASS /credits-billing → /credits");
+  test("/credits-billing → /dashboard", () => {
+    assertRouteRedirect(readApp(), "/credits-billing", "/dashboard");
+    console.log("[deprecated-route-redirects] PASS /credits-billing → /dashboard");
   });
 
   test("/checkout → /cart", () => {
@@ -441,6 +478,10 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
 
   test("/checkout → /cart", async ({ page }) => {
     await assertRedirectsTo(page, "/checkout", "/cart");
+  });
+
+  test("/credits-billing → /dashboard", async ({ page }) => {
+    await assertRedirectsTo(page, "/credits-billing", "/dashboard");
   });
 
   test("/city/tokyo → /discover/location/tokyo (parameterised)", async ({ page }) => {

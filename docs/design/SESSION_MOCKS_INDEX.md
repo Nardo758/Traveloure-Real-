@@ -19,7 +19,7 @@ All features below are merged to `main` (HEAD at authoring: `6509fa2b`).
 | `storefront-discovery-mock.html` | Storefront reachability round 2 + partner-card rule | storefront routes + `unified-result-card` |
 | `concierge-revision-mock.html` | Concierge revision flow (sign-off mock) | concierge entitlement spine + slip card |
 | `concierge-revision-p3-mock.html` | Concierge revision P3 — admin dispute + no-self-serve-refund + listing promise | `server/routes` admin dispute path, `ready-made-purchase.service.ts` |
-| `adopt-optimization-mock.html` | "Build around a location" + adopt flow (`2026-08-23-optimizer-anchors` / `-pinned-anchor`; Phases 2–5 in progress) | `server/services/anchor-scoring.ts`, `anchor-candidates*.ts`, `server/itinerary-optimizer.ts`, `GET/POST /api/itinerary-comparisons/:id/anchor-candidates` + `/generate` |
+| `adopt-optimization-mock.html` | "Build around a location" + adopt flow (`2026-08-23-optimizer-anchors` / `-pinned-anchor`; 1c shipped · client completion (V3, anchor line, popup) dispatched · server items pending R-A/B/C) | `server/services/anchor-scoring.ts`, `anchor-candidates*.ts`, `server/itinerary-optimizer.ts`, `GET/POST /api/itinerary-comparisons/:id/anchor-candidates` + `/generate` |
 
 ## Verifying a mock against the build
 
@@ -32,3 +32,31 @@ grep -q "Book via your Traveloure agent" client/src/components/plancard/Affiliat
 ```
 
 See the session hand-off message / PR description for the full per-mock verification dispatch.
+
+---
+
+## Earn grammar — Marketplace + Experts & Services (2026-08-25 session)
+
+Ratified 2026-08-25 (`audited@f06356f7`). The transcription lanes 1–5 build against this mock; it is
+**not yet reflected in merged code** at index time (unlike the Aug 22–23 table above, which is merged).
+
+| Mock | Feature / ledger | Target code (built by lanes 1–5) |
+|------|------------------|----------------------------------|
+| `marketplace-experts-earn-grammar-mock.html` | Earn-grammar transcription (`2026-08-25-marketplace-earn-grammar` + 14 sibling rulings, SPEC §0); Ready-Made frame: expert-templates shelf superseded 2026-08-26. | `client/src/pages/discover.tsx`, `service-detail.tsx`, `experts.tsx`, `expert-detail.tsx`, `storefront.tsx`, `providers-directory.tsx`, `discover-location.tsx`; `components/travelpulse/CityCard.tsx`; `components/layout.tsx` (`NAV_LEAF_ICONS`) |
+| `BENTO_ASSEMBLY.md` | City-feed bento assembly oracle (`2026-08-27-bento-assembly-spec`), including the ordered proof matrix for Mumbai and Kyoto; supersedes prior bento geometry where it differs. | `client/src/pages/discover-location.tsx`, `client/src/components/city-feed-card*.tsx`, `client/src/components/feed/*`, `playwright/tests/discover-tabs.spec.ts` |
+
+- **Spec of record:** `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` — the transcription contract (what a lane may and may not change).
+- **Visual of record:** `docs/design/marketplace-experts-earn-grammar-mock.html` — what the result must look like.
+- Both are read-only through the lanes.
+
+---
+
+## Chrome alignment — header / Your Trip strip / footer (2026-08-28 session)
+
+Ratified 2026-08-28 (ledger `2026-08-28-chrome-alignment`); **merged code came first** (PRs #616 + #617),
+the mock below is the post-merge reconstruction of the ratified Variant A frames — where mock and merged
+code disagree, the merged code is authoritative.
+
+| Mock | Feature / ledger | Merged code |
+|------|------------------|-------------|
+| `chrome-alignment-mock.html` | Chrome earn-grammar reskin, Variant A (`2026-08-28-chrome-alignment`): ground chrome, white reserved for cards, 3 chrome corals (Sign In · strip eyebrow · BETA pill), footer as the white card closing the page. | `client/src/components/layout.tsx`; `client/src/components/trip/trip-strip.tsx`; `client/src/components/ui/traveloure-logo.tsx`; `client/public/traveloure-logo-mono.svg` |

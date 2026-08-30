@@ -4,6 +4,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -109,6 +110,7 @@ function formatTime(timeStr?: string | null): string {
 }
 
 export default function ItineraryViewPage() {
+  const { open: openPlanning } = usePlanning();
   const { token } = useParams<{ token: string }>();
   const [location, navigate] = useLocation();
   const { toast } = useToast();
@@ -752,7 +754,7 @@ export default function ItineraryViewPage() {
             <p className="text-sm text-muted-foreground mb-3">
               Plan your own trip with Traveloure
             </p>
-            <Button onClick={() => window.location.href = "/"} data-testid="button-plan-trip">
+            <Button onClick={() => openPlanning()} data-testid="button-plan-trip">
               Plan My Trip
             </Button>
           </div>

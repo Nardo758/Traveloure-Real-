@@ -23,9 +23,11 @@ import {
   validateRailsRef,
   resolveRailsForItem,
   railsSnapshot,
+  resolveTripPassFeeWaiver,
   logRailsRefusal,
   type RailsItemResolution,
 } from "../services/rails-attribution.service";
+import { coversAction } from "../services/trip-entitlement.service";
 // 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6): a DIRECT provider booking
 // prices through the same D1 resolver the rails lane uses, so `fee_bands` is the single authority
 // on every provider charge path — not just the attributed one (ruling 68 §5's owed item).
@@ -1257,6 +1259,30 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         );
       }
 
+      // ── Trip Pass traveler-fee waiver (ruling 2026-08-29-trip-pass) ──────────────────────
+      // Server-side entitlement check (the client never asserts coverage). Reuses the rails
+      // waiver mechanism with basis 'trip_pass'; a line ALREADY waived by the provider link
+      // keeps its rails waiver — one waiver per line, rails first. Best-effort: a failure
+      // here means fees price at the full (i.e. current: unbilled) rate, never a guess.
+      const tripPassWaiverByItemId = new Map<string, Record<string, unknown>>();
+      try {
+        if (tripId && (await coversAction(String(tripId), "traveler_service_fee"))) {
+          for (const item of cartData) {
+            if (!item.service) continue;
+            const rails = railsByItemId.get(item.id);
+            if (rails?.travelerFeeWaiver) continue;
+            const w = await resolveTripPassFeeWaiver(resolveItemBaseAmount(item, stayRatesByItemId));
+            if (w) tripPassWaiverByItemId.set(item.id, w);
+          }
+        }
+      } catch (tpErr: any) {
+        tripPassWaiverByItemId.clear();
+        console.error(
+          `[checkout] trip-pass waiver pre-pass failed — no waiver recorded:`,
+          tpErr?.message ?? tpErr,
+        );
+      }
+
       // ── 1C DIRECT-LANE RATE (docs/DECISIONS.md ruling 69 disposition 6) ─────────────────────
       // The SECOND pre-pass, on the SAME shape and for the same reason as the rails one: the two
       // charge loops below resolve rates twice and two more surfaces quote the same cart, so the
@@ -1508,6 +1534,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               // it. The fee-ledger row is written from this snapshot at the authorization stamp, so
               // an admin re-pricing a band mid-checkout cannot rewrite what was charged.
               ...(itemRails2 ? { railsAttribution: railsSnapshot(itemRails2) } : {}),
+              // Trip Pass (ruling 2026-08-29-trip-pass): the pass's traveler-fee waiver,
+              // snapshotted on the row it covers — basis 'trip_pass' beside rails' own
+              // basis, same counterfactual honesty (the fee is not billed on the direct
+              // path today; this records what WOULD have been charged and why it is 0).
+              ...(tripPassWaiverByItemId.get(item.id)
+                ? { tripPassFeeWaiver: tripPassWaiverByItemId.get(item.id) }
+                : {}),
               // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
               // posture and for the same reason — a line that fell back to the legacy lane must
               // SAY so on the row, or a later reader would infer a D1 charge that never happened
@@ -1792,10 +1825,45 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
+      // ── Trip Pass awareness (display-honesty fix, ledger 2026-08-29-persona-coverage-complete's
+      // filed finding: "fee-preview does not consider trip_entitlements at all") ─────────────────
+      // Optional `?tripId=` query param, ownership-checked on the SAME pattern as the existing
+      // `?tripId=` precedent (server/routes/trip-context.routes.ts `resolveTripIdParam`): absent →
+      // byte-identical pre-existing behavior, no client change required; malformed → 400; present
+      // but not the session user's own trip → 404 (doesn't exist) / 403 (someone else's) — never a
+      // silent guess (§13). This is a READ-only ownership check; the preview never writes.
+      const tripIdRaw = req.query?.tripId;
+      let previewTripId: string | undefined;
+      if (tripIdRaw !== undefined) {
+        const parsedTripId = z.string().min(1).max(64).safeParse(tripIdRaw);
+        if (!parsedTripId.success) {
+          return res.status(400).json({ message: "Invalid tripId" });
+        }
+        previewTripId = parsedTripId.data;
+        const owned = await verifyTripOwnership(previewTripId, userId);
+        if (!owned) {
+          const ownedTrip = await storage.getTrip(previewTripId);
+          if (!ownedTrip) return res.status(404).json({ message: "Trip not found" });
+          return res.status(403).json({ message: "Not authorized to access this trip" });
+        }
+      }
+      // §18 rule 1 — derivation delegates: the SAME entitlement check the real charge path calls
+      // (POST /api/checkout, ~L1269 `coversAction(..., "traveler_service_fee")`), never a
+      // re-implementation. Best-effort: an entitlement-lookup failure never fails the preview, it
+      // just means no waiver is shown (mirrors the checkout pre-pass's own try/catch posture).
+      let previewTripPassCovered = false;
+      if (previewTripId) {
+        try {
+          previewTripPassCovered = await coversAction(previewTripId, "traveler_service_fee");
+        } catch (tpCoverErr: any) {
+          console.error("Fee preview: trip-pass coverage check failed:", tpCoverErr?.message ?? tpCoverErr);
+        }
+      }
+
       const cartData = await storage.getCartItems(userId);
 
       if (cartData.length === 0) {
-        return res.json({ subtotal: 0, platformFeeTotal: 0, conciergeFeeTotal: 0, total: 0, itemCount: 0 });
+        return res.json({ subtotal: 0, platformFeeTotal: 0, conciergeFeeTotal: 0, total: 0, itemCount: 0, tripPassFeeWaiver: null });
       }
 
       const safeParseRate = (value: any, fallback: number): number => {
@@ -1868,6 +1936,12 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       // S11 (§14, ledger row 107): the SAME resolver checkout's charge loop calls — a stay's
       // preview cannot quote a number the checkout won't actually charge.
       const previewStayRates = await resolveStayNightlyRates(cartData);
+      // Trip Pass waiver aggregation across the cart — same per-item resolver call the checkout's
+      // pre-pass makes (resolveTripPassFeeWaiver), summed here because this endpoint's whole
+      // response is cart-level aggregates (subtotal/platformFeeTotal/…), not per-item rows.
+      let previewWaivedItemCount = 0;
+      let previewWouldHaveBeenAmountTotal = 0;
+      let previewWaiverBandKey: string | null = null;
 
       for (const item of cartData) {
         if (!item.service) continue;
@@ -1922,6 +1996,23 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         // here; the checkout is where it becomes a hard 400).
         const psc = previewSurcharges.get(item.id);
         if (psc?.eligible) previewSurchargeTotal += psc.amount;
+
+        // Trip Pass waiver record — SAME function the charge path calls (§18 rule 1), never
+        // recomputed here. billedOnDirectPathToday is false on the resolver's own record (the D3
+        // traveler-service-fee is not yet billed on the direct path today), so this never changes
+        // platformFeeTotal above — it is the same informational parity the booking row carries.
+        if (previewTripPassCovered) {
+          try {
+            const w = await resolveTripPassFeeWaiver(itemPrice);
+            if (w) {
+              previewWaivedItemCount += 1;
+              previewWouldHaveBeenAmountTotal += Number(w.wouldHaveBeenAmount ?? 0);
+              previewWaiverBandKey = (w.bandKey as string | null) ?? previewWaiverBandKey;
+            }
+          } catch (tpWaiverErr: any) {
+            console.error("Fee preview: trip-pass waiver resolution failed for an item:", tpWaiverErr?.message ?? tpWaiverErr);
+          }
+        }
       }
 
       const previewSurcharge = Math.round(previewSurchargeTotal * 100) / 100;
@@ -1932,6 +2023,19 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         travelSurcharge: previewSurcharge,
         total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal + previewSurcharge) * 100) / 100,
         itemCount: cartData.filter(i => i.service).length,
+        // Mirrors resolveTripPassFeeWaiver's per-item shape (waived/basis/billedOnDirectPathToday),
+        // summed across the cart. null when no tripId was given or the trip has no active pass —
+        // never a guessed waiver.
+        tripPassFeeWaiver: previewWaivedItemCount > 0
+          ? {
+              waived: true,
+              basis: "trip_pass",
+              bandKey: previewWaiverBandKey,
+              itemCount: previewWaivedItemCount,
+              wouldHaveBeenAmountTotal: Math.round(previewWouldHaveBeenAmountTotal * 100) / 100,
+              billedOnDirectPathToday: false,
+            }
+          : null,
       });
     } catch (err) {
       console.error("Fee preview error:", err);

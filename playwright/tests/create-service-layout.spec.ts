@@ -193,6 +193,47 @@ test.describe('Create-service wizard layout', () => {
     expect(row2Shared).toBe(true);
   });
 
+  // ── Test 1b: the selected offering becomes the Basics identity header ───────
+  // The picker remains the same on the first interaction; after selection the
+  // header is the single source of truth for offering name, category and tagline.
+  test('Basics step: selected offering is clear in the header with one Change action', async ({ page }) => {
+    if (!fs.existsSync(PROVIDER_AUTH_FILE)) {
+      test.skip(true, 'Auth file missing — run global-setup first.');
+      return;
+    }
+
+    await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
+    await expectOnStep(page, 'Basics');
+
+    await page.getByTestId('button-choose-offering').click();
+    const picker = page.getByTestId('provider-offering-picker');
+    await expect(picker).toBeVisible();
+
+    const firstOffering = picker.locator('[data-testid^="option-offering-"]').first();
+    await expect(firstOffering).toBeVisible();
+    const offeringSpans = firstOffering.locator('span');
+    const offeringName = (await offeringSpans.first().innerText()).trim();
+    const offeringTagline = (await offeringSpans.count()) > 1
+      ? (await offeringSpans.nth(1).innerText()).trim()
+      : '';
+
+    await firstOffering.click();
+
+    const identityHeader = page.getByTestId('offering-identity-header');
+    await expect(identityHeader).toBeVisible();
+    await expect(page.getByTestId('text-selected-offering-name')).toHaveText(offeringName);
+    await expect(page.getByTestId('chip-offering-category')).toBeVisible();
+    await expect(page.getByTestId('button-reopen-offering-picker')).toHaveText('Change');
+    await expect(page.getByTestId('button-reopen-offering-picker')).toHaveCount(1);
+    await expect(page.getByTestId('button-choose-offering')).toHaveCount(0);
+    if (offeringTagline) {
+      await expect(page.getByTestId('text-selected-offering-tagline')).toHaveText(offeringTagline);
+    }
+
+    await page.getByTestId('button-reopen-offering-picker').click();
+    await expect(picker).toBeVisible();
+  });
+
   // ── Test 2: Capacity + Logistics layout (walks the wizard via client-state ──
   //    step advance; creates no server draft, so cleanup is defensively inert) ──
   test('Capacity: party-size inline + Seating in same grid row; Logistics: note leads, map above address', async ({ page }) => {

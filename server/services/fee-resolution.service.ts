@@ -26,10 +26,43 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import type { FeeRateSource } from "@shared/schema";
-
-/** Band keys this resolver names. Values live in `fee_bands`; only the KEYS are code. */
-export const TRAVELER_SERVICE_FEE_BAND = "traveler_service_fee";
-export const PROVIDER_RAILS_BAND = "provider_rails";
+import {
+  CONCIERGE_AI_TASK_BAND,
+  CONCIERGE_BOOKING_CAP_BAND,
+  CONCIERGE_BOOKING_PERCENT_BAND,
+  CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,
+  PLUS_TASK_ALLOWANCE_BAND,
+  PROVIDER_COMMERCIAL_BAND,
+  PROVIDER_LIMITED_BAND,
+  PROVIDER_MODERATE_BAND,
+  PROVIDER_PRO_BAND_STEP,
+  PROVIDER_PREMIUM_BAND,
+  PROVIDER_RAILS_BAND,
+  READY_MADE_PLATFORM_BAND,
+  TRAVELER_SERVICE_FEE_BAND,
+} from "./fee-band-requirements";
+export {
+  CONCIERGE_AI_TASK_BAND,
+  CONCIERGE_BOOKING_CAP_BAND,
+  CONCIERGE_BOOKING_PERCENT_BAND,
+  CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,
+  PLUS_TASK_ALLOWANCE_BAND,
+  PROVIDER_COMMERCIAL_BAND,
+  PROVIDER_LIMITED_BAND,
+  PROVIDER_MODERATE_BAND,
+  PROVIDER_PRO_BAND_STEP,
+  PROVIDER_PREMIUM_BAND,
+  PROVIDER_RAILS_BAND,
+  READY_MADE_PLATFORM_BAND,
+  TRAVELER_SERVICE_FEE_BAND,
+} from "./fee-band-requirements";
+// FeeBandRateType is the canonical rate_type union (fee-band-requirements.ts:
+// 'percent' | 'flat' | 'flat_cents' | 'count' | 'rule', matched to the migration-258
+// CHECK). Import it LOCALLY so requireBandType can name it (a bare `export … from`
+// re-export makes it visible to importers but creates no local binding — that gap
+// was the "Cannot find name 'FeeBandRateType'" error), then re-export for consumers.
+import type { FeeBandRateType } from "./fee-band-requirements";
+export type { FeeBandRateType };
 
 export interface BandRow {
   id: string;
@@ -82,6 +115,30 @@ export async function requireBand(bandKey: string): Promise<BandRow> {
   }
   return band;
 }
+
+/**
+ * Typed accessors for non-commission pricing rows. `requireBand` remains the
+ * percent-only provider/traveler commission path; these accessors prevent a
+ * count or rule row from being silently interpreted as currency.
+ */
+export async function requireBandType(
+  bandKey: string,
+  expectedType: FeeBandRateType,
+): Promise<BandRow> {
+  const band = await readBand(bandKey);
+  if (!band) throw new BandResolutionError(bandKey, "no active row in fee_bands");
+  if (band.rateType !== expectedType) {
+    throw new BandResolutionError(
+      bandKey,
+      `rate_type='${band.rateType}', expected '${expectedType}'`,
+    );
+  }
+  return band;
+}
+
+export const requireFlatCentsBand = (bandKey: string) => requireBandType(bandKey, "flat_cents");
+export const requireCountBand = (bandKey: string) => requireBandType(bandKey, "count");
+export const requireRuleBand = (bandKey: string) => requireBandType(bandKey, "rule");
 
 export interface ProviderRateInput {
   /** The service's category id — the D1 path to the band. */

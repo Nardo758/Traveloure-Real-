@@ -193,6 +193,8 @@ export interface PlanCardActivity {
   vendorPhone?: string | null;
   /** itinerary_items.confirmationNumber (falls back to bookingReference) — null until a real booking exists. */
   confirmationNumber?: string | null;
+  /** Explicit sourced/authored activity time. Null means the schedule still needs a duration. */
+  durationMinutes?: number | null;
   /**
    * Trip-Canon Lane 1 Phase 1d (W7) — `itinerary_items.routing_status`, present only on the trip
    * producer (a variant snapshot/generated-itinerary fallback item is not on the routing state
@@ -429,6 +431,8 @@ export interface ProposalVariantItem {
   startTime?: string | null;
   name: string;
   price?: string | null;
+  /** Server-provided replacement marker; styled as new without adding an adopt action. */
+  isNew?: boolean;
 }
 
 /** Muted transport summary — count + cost from SERVER-computed leg values only. */
@@ -452,6 +456,8 @@ export interface PlanCardProposalData {
   /** Optional current-plan label/name overrides for review-first presentation. */
   eyebrow?: string;
   displayName?: string;
+  /** Honest server-derived anchor readout; null/undefined renders no anchor line. */
+  anchorLine?: string | null;
   perPersonTotal?: string | null;
   /** Server-derived total used by the review board; omitted when unavailable. */
   totalCostUsd?: number | null;
@@ -461,6 +467,8 @@ export interface PlanCardProposalData {
   items: ProposalVariantItem[];
   /** Null/undefined while legs are loading or when the variant has none. */
   legsSummary?: ProposalLegsSummary | null;
+  /** Existing-coordinate coverage. Partial coverage qualifies and suppresses travel headlines. */
+  locationCoverage?: { locatedStops: number; totalStops: number };
   applyLabel: string;
   onApply: () => void;
   applying?: boolean;

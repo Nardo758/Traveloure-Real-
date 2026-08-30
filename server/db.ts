@@ -20,6 +20,11 @@ export const pool = new Pool({
 
 pool.on("error", (err) => {
   console.error("Unexpected database pool error:", err);
+  console.error("Database pool state at error:", {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  });
 });
 
 pool.on("connect", () => {

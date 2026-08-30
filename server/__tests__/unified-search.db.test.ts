@@ -56,7 +56,9 @@ const { pool } = await import("../db");
 const { storage } = await import("../storage");
 
 // ── Fixture IDs (populated in before()) ─────────────────────────────────────
-let userId: string;
+let userId: string;          // seller role 'provider'
+let expertUserId: string;    // seller role 'local_expert' — source-link role test
+let svcExpertRole: string;   // a service owned by the expert seller
 // main fixture services
 let svcBambooName: string;   // A – name contains "Bamboo Forest Walk"
 let svcBambooDesc: string;   // B – name is unrelated, description mentions "bamboo forest"
@@ -108,6 +110,13 @@ before(async () => {
   await pool.query(
     `INSERT INTO users (id, email, role) VALUES ($1,$2,'provider')`,
     [userId, `search-test-${userId}@test.dev`],
+  );
+  // A second seller with an EXPERT-family role, to prove the enriched row carries the
+  // seller's role (source-link resolution, 2026-08-25-card-source-link).
+  expertUserId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO users (id, email, role) VALUES ($1,$2,'local_expert')`,
+    [expertUserId, `search-expert-${expertUserId}@test.dev`],
   );
 
   // ── Service A: "Bamboo Forest Walk" – primary FTS + trigram fixture
@@ -175,6 +184,18 @@ before(async () => {
     4.0,
   );
 
+  // ── Expert-owned service. price 15 / rating 3.0 keep it out of the price & rating
+  // filter windows below, so those tests are unaffected; name shares no trigrams with
+  // the FTS/trigram query fixtures.
+  svcExpertRole = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO provider_services
+       (id, user_id, service_name, description, location, price, average_rating,
+        status, approval_status, delivery_method)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'active','approved','pdf')`,
+    [svcExpertRole, expertUserId, "Expert Guided Heritage Stroll", "Private guided walk.", mainLoc, 15, 3.0],
+  );
+
   // ── 7 packages (limit in runPkgSearch is 6 — packagesTotal must report 7)
   for (let i = 1; i <= 7; i++) {
     const id = crypto.randomUUID();
@@ -192,10 +213,10 @@ after(async () => {
     );
   }
   await pool.query(
-    `DELETE FROM provider_services WHERE user_id = $1`,
-    [userId],
+    `DELETE FROM provider_services WHERE user_id = ANY($1::varchar[])`,
+    [[userId, expertUserId]],
   );
-  await pool.query(`DELETE FROM users WHERE id = $1`, [userId]);
+  await pool.query(`DELETE FROM users WHERE id = ANY($1::varchar[])`, [[userId, expertUserId]]);
   await pool.end();
 });
 
@@ -342,6 +363,33 @@ describe("unifiedSearch – SQL-side price & rating filters", () => {
     assert.ok(!ids.includes(svcCheap), "rating 3.8 must be excluded by minRating=4.0");
     assert.ok(ids.includes(svcMid),    "rating 4.2 must pass minRating=4.0");
     assert.ok(ids.includes(svcPricey), "rating 5.0 must pass minRating=4.0");
+  });
+});
+
+describe("unifiedSearch – seller role for source-link resolution (2026-08-25-card-source-link)", () => {
+  it("enriched service rows carry providerRole from the seller's users.role", async () => {
+    // /api/discover spreads unifiedSearch's result verbatim, so this row-shape assertion
+    // is the route contract: the client resolves a handle-less source link by role
+    // (expert-family → /experts/:id, service_provider → their /providers card).
+    const result = await storage.unifiedSearch({ location: mainLoc });
+    const byId = new Map(result.services.map((s: any) => [s.id, s]));
+
+    const provRow = byId.get(svcBambooName);
+    assert.ok(provRow, "provider-owned service must be in results");
+    assert.strictEqual(
+      (provRow as any).providerRole,
+      "provider",
+      "provider-owned service row must carry providerRole 'provider'",
+    );
+
+    const expertRow = byId.get(svcExpertRole);
+    assert.ok(expertRow, "expert-owned service must be in results");
+    assert.strictEqual(
+      (expertRow as any).providerRole,
+      "local_expert",
+      "expert-owned service row must carry providerRole 'local_expert' — the field that lets " +
+      "the client route a handle-less source link to /experts/:id vs /providers",
+    );
   });
 });
 
