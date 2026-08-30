@@ -61,10 +61,13 @@ export default function Experiences() {
   const multiCityParam = searchParams.get("multiCity");
   const destinationsParam = searchParams.get("destinations");
 
-  // R-C: /experiences is now a host for the intake panel — it opens automatically on
-  // arrival; the grid below (still a real, routed browse surface) stays reachable if the
-  // traveler closes the panel instead of creating a plan.
-  const [intakeOpen, setIntakeOpen] = useState(true);
+  // Ruling 2026-08-28-single-planning-entry, extended by the walkthrough harness'
+  // finding F-T1 (2026-08-30): a ROUTE never auto-opens the planning chooser/intake.
+  // /experiences is a real, routed browse surface FIRST — the intake panel opens only
+  // from this page's own CTA or an explicit ?plan=1 deep-link, never on bare arrival, so
+  // a traveler who navigated here to browse is never blocked by a modal they didn't ask
+  // for (the dead-end class the single-entry lane exists to remove).
+  const [intakeOpen, setIntakeOpen] = useState(() => searchParams.get("plan") === "1");
 
   const { data: experienceTypes, isLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
@@ -90,7 +93,7 @@ export default function Experiences() {
       />
       <div className="min-h-screen bg-background">
         <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background py-16 sm:py-24">
-          <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+          <div className="absolute inset-0 bg-grid-pattern opacity-5 pointer-events-none" />
           <div className="container mx-auto px-4">
             <motion.div 
               className="max-w-3xl mx-auto text-center"
@@ -122,6 +125,16 @@ export default function Experiences() {
                   <Clock className="h-4 w-4 text-primary" />
                   <span>Step-by-Step Guidance</span>
                 </div>
+              </div>
+              <div className="mt-8">
+                <Button
+                  size="lg"
+                  onClick={() => setIntakeOpen(true)}
+                  data-testid="button-experiences-start-plan"
+                >
+                  Start a new plan
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
             </motion.div>
           </div>
