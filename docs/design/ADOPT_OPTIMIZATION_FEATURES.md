@@ -1,7 +1,7 @@
 > **Reading rules (binding).** This file is the feature inventory of the mock. It is not a styling authority. Where it conflicts with `ADOPT_OPTIMIZATION_SPEC.md` or a ledger ruling, the spec/ruling wins:
 >
 > - §2 Design system → superseded by `2026-08-25-marketplace-earn-grammar`. Fonts: Fraunces / Inter / Geist Mono. Tokens: `--earn-*`. Semantic mapping keeps its meaning with earn colours: save/positive → `--earn-green-ink` + wash; caution/costs-more → `--earn-gold-ink` + wash; recommended/brand → `--earn-teal-ink` + wash. No purple, no `--accent-*`.
-> - §3.9 adopt tray + per-stop `+` ticks → **PLANNED, not built** (R-A `2026-08-26-per-stop-adopt-deferred`; [DM] decision owed). §3.10 "saved as its own trip" → **superseded**: versions are proposals, not trips (R-B `2026-08-26-variants-are-proposals`). Adopt **applies in place and "gives access"** (R-C `2026-08-26-adopt-applies-in-place`); §4.2 Finalize note reworded. §3.12 "saved-as-new" → superseded by R-B. Whole-plan Apply is the shipped path; do not build the per-stop tick.
+> - §3.9 adopt tray + per-stop `+` ticks are now part of the **mock's intended choice model**: keep the current plan, adopt an entire proposal, or adopt one/many selected stops. The live app still supports whole-plan Apply only; this mock/docs pass does not add a server rail. §3.10 "saved as its own trip" remains **superseded**: versions are proposals, not trips (R-B `2026-08-26-variants-are-proposals`). Adopt **applies in place and "gives access"** (R-C `2026-08-26-adopt-applies-in-place`); §4.2 Finalize note reworded. §3.12 "saved-as-new" remains superseded by R-B.
 > - §4.1 custom location "geocoded … used as you type" → client never geocodes; submits `{type, name}`; server resolves or omits (SPEC §2.3.5).
 > - §5 "Candidate data is illustrative" → candidates come only from `GET /api/trips/:id/anchor-candidates` (pre-comparison) or `GET /api/itinerary-comparisons/:id/anchor-candidates` (rerun).
 > - §8 testids are targets for new elements; existing production testids are never renamed.
@@ -22,10 +22,10 @@
 The screen lets a plan owner **optimize an itinerary and review the result before anything is applied**. The optimizer produces **three complete plans, each rebuilt around one anchor location** (a hotel, a neighborhood, or a keystone activity). The owner can:
 
 - **Adopt a whole version** (its card button), or
-- **Pull single stops** across with per‑stop **`+` ticks** into their own plan, or
+- **Select one stop, several stops, or a portion of a proposal** with per‑stop **`+` ticks**, then adopt the selected set in one confirmation, or
 - **Keep the original** untouched.
 
-Nothing is charged or applied by viewing. Optimization is **a paid, confirm‑gated step**; applying is **one deliberate action** (`apply-to-trip`). Every claim on screen is **derived server‑side and omitted when unknown** (CLAUDE.md §13).
+Nothing is charged or applied by viewing. Optimization is **a paid, confirm‑gated step**; adopting either a complete proposal or a selected set is **one deliberate confirmation**. Every claim on screen is **derived server‑side and omitted when unknown** (CLAUDE.md §13).
 
 The flow is two steps: **Step 1 — the slip's action row** (where the journey starts) → **Step 2 — review the proposals**.
 
@@ -144,13 +144,15 @@ The base row states **what the plan is built around** plus a **fit median** (med
 Sub‑grid: icon + `.ak` (mono uppercase kind) / `.an` (bold name) / `.bm` (mono muted median line).
 
 ### 3.9 Card actions
-- Proposal: **`.btn.adopt`** — "Select this plan" (green save styling; recommended card gets a resting shadow).
+- Proposal: **`.btn.adopt.adopt-whole`** — "Adopt entire plan" (green save styling; recommended card gets a resting shadow).
 - Baseline: **`.btn.ghost`** — "Keep this plan."
-- **Adopt tray** (`.tray`, baseline only, `data-testid="adopt-tray"`): dashed green box — *"Your plan is the landing spot. Stops you pick with **+** land here for one confirm."* + desktop hint *"you can also drag a stop onto this card."*
-- **`.adopt-tick`** (`+`) — **PLANNED, not built** (R-A `2026-08-26-per-stop-adopt-deferred`): an 18px round green pill on newly-introduced stops labelled "Pull just this stop into your plan." The shipped review UI is whole-plan Apply only.
+- **Adopt tray** (`.tray`, baseline only, `data-testid="adopt-tray"`): dashed green box where selected stops accumulate. It displays selected stop chips and enables **"Adopt N selected stops"** only after at least one selection.
+- **`.adopt-tick`** (`+`): an 18px round green toggle on newly introduced stops. One or many ticks may be active across proposals, covering individual-item and selected-portion adoption.
+- Whole-plan and selected-stop adoption both open the same confirmation pattern, with copy that states exactly what changes and what remains in the current plan.
+- This interaction is the **mock target**. The live review UI remains whole-plan Apply only until a separate implementation adds the partial-adoption rail.
 
 ### 3.10 Footnote (`.foot-note`, `data-testid="compare-footer"`)
-Reiterates: each version works best taken **whole**; **selecting a version applies it in place and gives you access** to it (R-C); versions are **proposals, not separate trips** (R-B — supersedes "saved as its own trip"); **nothing purchased by applying**. Per-stop `+` ticks are **planned** (R-A).
+Reiterates: each version works best taken **whole**, but the owner may adopt the entire version or select one/many stops; unselected content remains in the current plan. Versions are **proposals, not separate trips** (R-B — supersedes "saved as its own trip"), and **nothing is purchased by adopting**.
 
 ### 3.11 Honesty legend (`.legend`) — §13 in the UI
 Heading *"How the preview stays honest"* + a 6‑cell grid, each with a colored `.dot` (save/caution/accent/omit) and a short rule:
@@ -159,10 +161,10 @@ Heading *"How the preview stays honest"* + a 6‑cell grid, each with a colored 
 3. **Shorter drive time** — sum of located transport‑leg minutes; **time only — distance is never a headline** (§21 L3).
 4. **Omitted when unknown** — a stop not located ⇒ no drive‑time chip; baseline shows no chips.
 5. **Trending & in season** — live signals; each line disappears when empty.
-6. **You confirm — nothing auto‑applies** — one deliberate click via `apply-to-trip`; original preserved, nothing charged.
+6. **You confirm — nothing auto‑applies** — the chosen whole plan or selected set is named before one deliberate confirmation; nothing is purchased.
 
 ### 3.12 Mock note (`.mock-note`)
-Italic caption summarizing the ratified scope: slip‑review board **kept intact**, extended with anchor‑built versions (hotel/neighborhood/activity), full‑plan reading, keep‑original + saved‑as‑new, per‑stop + adopt ticks, and the Optimize + Finalize popups.
+Italic caption summarizing the target scope: anchor‑built versions (hotel/neighborhood/activity), whole‑plan adoption, selected‑stop adoption, keep‑original, and the Optimize + Finalize popups.
 
 ---
 
@@ -196,13 +198,14 @@ Contents:
 
 ## 5. Interactive behavior (vanilla JS)
 
-Two IIFEs power the live popup:
+Three IIFEs power the mock interactions:
 
 1. **Anchor picker** — a `DATA` map of `hotel` / `neighborhood` / `activity`, each `{label, items:[{n,s,f,good,best}]}`. Clicking a type tile calls `selectType()`:
    - **Auto** hides the list/label/custom and clears the chosen anchor.
    - A type **renders its candidate list** (`renderList`), auto‑selects the first, wires radio selection, and updates the Generate button label to *"Generate 3 versions around <name>."*
    - Candidate data is illustrative (Kyoto hotels, neighborhoods, and **every stop on the plan** for Activity — which is why the list scrolls).
 2. **Scrim controller** — opens on `.tbtn.optimize` click; closes on ✕ / Cancel / Generate / backdrop / Escape.
+3. **Adoption controller** — toggles per-stop `+` buttons with `aria-pressed`, updates the selected-stop count and baseline tray, and opens a shared confirmation popup for either **Adopt entire plan** or **Adopt N selected stops**.
 
 > These are mock interactions. In the app the candidate lists, medians, and geocoding come from the server (§14); the mock only demonstrates the UX.
 
@@ -216,7 +219,7 @@ Two IIFEs power the live popup:
 | **§14 server‑derived** | "fit" median scored live against the plan; amounts from the optimizer, never the client |
 | **§21 L3** | drive‑time is **time only** — distance is never a headline claim |
 | **Paid, confirm‑gated** | Optimize charges on tap; modal note "you confirm before anything runs or is charged" |
-| **Apply is deliberate** | one click via `apply-to-trip`; original preserved; nothing purchased by applying |
+| **Adoption is deliberate** | whole-plan or selected-stop choice is named in a confirmation; nothing is purchased by adopting |
 | **Owner‑only** | Optimize button is owner‑only, greyed with a reason when nothing to optimize |
 
 ---
@@ -233,7 +236,7 @@ Two IIFEs power the live popup:
 
 ## 8. Key `data-testid` hooks (for build parity / e2e)
 
-`slip-optimize-preview-context`, `preview-trending-now`, `preview-seasonal`, `proposal-column-baseline`, `proposal-column-v1..v3`, `proposal-preview-money`, `proposal-preview-drivetime`, `adopt-tray`, `compare-footer`, `optimize-scrim`, `optimize-modal`, `opt-auto`, `opt-hotel`, `opt-neighborhood`, `opt-activity`, `anchor-list`, `as-candidate-1..6`, `anchor-custom`, `build-around-confirm`, `finalize-modal`, `finalize-self`, `finalize-booking-agent`, `finalize-expert`, `finalize-concierge`, `button-finalize-confirm`.
+`slip-optimize-preview-context`, `preview-trending-now`, `preview-seasonal`, `proposal-column-baseline`, `proposal-column-v1..v3`, `proposal-preview-money`, `proposal-preview-drivetime`, `adoption-choice`, `adoption-selection-count`, `adopt-tray`, `selected-stops`, `adopt-selected`, `adopt-tick-*`, `adopt-whole-v1..v3`, `adopt-selection-scrim`, `adopt-selection-modal`, `adopt-selection-title`, `adopt-selection-items`, `adopt-selection-confirm`, `compare-footer`, `optimize-scrim`, `optimize-modal`, `opt-auto`, `opt-hotel`, `opt-neighborhood`, `opt-activity`, `anchor-list`, `as-candidate-1..6`, `anchor-custom`, `build-around-confirm`, `finalize-modal`, `finalize-self`, `finalize-booking-agent`, `finalize-expert`, `finalize-concierge`, `button-finalize-confirm`.
 
 ---
 
