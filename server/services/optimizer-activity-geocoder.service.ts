@@ -97,6 +97,7 @@ const databaseCache: GeocodeCacheAdapter = {
 };
 
 function finiteCoordinate(value: unknown): number | null {
+  if (value == null || (typeof value === "string" && value.trim() === "")) return null;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -181,6 +182,12 @@ export async function resolveOptimizerActivityCoordinates(
     const baseline = (activity.providerServiceId && baselineByService.get(activity.providerServiceId))
       || baselineByName.get(activity.name.trim().toLowerCase());
     if (copyCoordinates(activity, baseline)) continue;
+
+    // An AI-created activity has no trusted identity behind its name/location text. Do not turn
+    // that text into a guessed pin. A providerServiceId is only accepted by the optimizer after
+    // it has been matched to an offered catalog service, so linked activities retain the existing
+    // geocoding fallback when their trusted source has no stored coordinates.
+    if (!activity.providerServiceId) continue;
 
     const normalizedQuery = normalizedQueryFor(activity, destination);
     if (!normalizedQuery) continue;
