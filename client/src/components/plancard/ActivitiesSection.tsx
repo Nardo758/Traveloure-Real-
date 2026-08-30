@@ -651,6 +651,18 @@ export function ActivitiesSection({
                         ${a.cost}
                       </span>
                     )}
+                    <span
+                      className={`ml-2 inline-flex items-center gap-1 font-medium ${
+                        a.durationMinutes == null
+                          ? "text-amber-700 dark:text-amber-400"
+                          : "text-muted-foreground"
+                      }`}
+                      data-testid={`text-activity-duration-${a.id}`}
+                    >
+                      {a.durationMinutes == null
+                        ? "Duration needed"
+                        : `${a.durationMinutes} min activity`}
+                    </span>
                   </div>
 
                   {/* §5 — vendor phone + confirmation number: real data only, rendered when

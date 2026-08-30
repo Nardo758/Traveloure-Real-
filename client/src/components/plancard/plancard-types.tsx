@@ -193,6 +193,8 @@ export interface PlanCardActivity {
   vendorPhone?: string | null;
   /** itinerary_items.confirmationNumber (falls back to bookingReference) — null until a real booking exists. */
   confirmationNumber?: string | null;
+  /** Explicit sourced/authored activity time. Null means the schedule still needs a duration. */
+  durationMinutes?: number | null;
   /**
    * Trip-Canon Lane 1 Phase 1d (W7) — `itinerary_items.routing_status`, present only on the trip
    * producer (a variant snapshot/generated-itinerary fallback item is not on the routing state
@@ -465,6 +467,8 @@ export interface PlanCardProposalData {
   items: ProposalVariantItem[];
   /** Null/undefined while legs are loading or when the variant has none. */
   legsSummary?: ProposalLegsSummary | null;
+  /** Existing-coordinate coverage. Partial coverage qualifies and suppresses travel headlines. */
+  locationCoverage?: { locatedStops: number; totalStops: number };
   applyLabel: string;
   onApply: () => void;
   applying?: boolean;

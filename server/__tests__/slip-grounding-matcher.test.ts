@@ -12,7 +12,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { similarity, MATCH_THRESHOLD } = await import("../services/slip-grounding-match");
+const {
+  similarity,
+  MATCH_THRESHOLD,
+  findBestEligibleAffiliateProduct,
+  isAffiliateGroundingBookingType,
+} = await import("../services/slip-grounding-match");
 
 test("exact and contains matches clear the threshold", () => {
   assert.ok(similarity("Kiyomizu-dera", "Kiyomizu-dera") >= MATCH_THRESHOLD, "identical");
@@ -37,4 +42,60 @@ test("empty / whitespace names never match", () => {
   assert.equal(similarity("", "Kiyomizu-dera"), 0);
   assert.equal(similarity("   ", "Anything"), 0);
   assert.equal(similarity("Activity", ""), 0);
+});
+
+test("only ratified affiliate booking classifications can ground", () => {
+  assert.equal(isAffiliateGroundingBookingType("affiliate_bookable"), true);
+  assert.equal(isAffiliateGroundingBookingType("in_platform_bookable"), true);
+  assert.equal(isAffiliateGroundingBookingType("informational"), false);
+  assert.equal(isAffiliateGroundingBookingType(null), false);
+  assert.equal(isAffiliateGroundingBookingType(""), false);
+});
+
+test("an unclassified affiliate match falls through to an eligible candidate", () => {
+  const best = findBestEligibleAffiliateProduct("Kyoto Bamboo Walking Tour", [
+    {
+      id: "unclassified",
+      name: "Kyoto Bamboo Walking Tour",
+      latitude: "35.017",
+      longitude: "135.671",
+      bookingType: null,
+    },
+    {
+      id: "eligible",
+      name: "Kyoto Bamboo Walking Tour (small group)",
+      latitude: "35.018",
+      longitude: "135.672",
+      bookingType: "affiliate_bookable",
+    },
+  ]);
+  assert.equal(best?.id, "eligible");
+});
+
+test("unclassified-only affiliate inventory does not ground", () => {
+  assert.equal(
+    findBestEligibleAffiliateProduct("Kyoto Bamboo Walking Tour", [
+      {
+        id: "unclassified",
+        name: "Kyoto Bamboo Walking Tour",
+        latitude: null,
+        longitude: null,
+        bookingType: "informational",
+      },
+    ]),
+    null,
+  );
+});
+
+test("in-platform affiliate inventory remains an eligible grounding match", () => {
+  const best = findBestEligibleAffiliateProduct("Kyoto Tea Ceremony Experience", [
+    {
+      id: "platform",
+      name: "Kyoto Tea Ceremony Experience",
+      latitude: null,
+      longitude: null,
+      bookingType: "in_platform_bookable",
+    },
+  ]);
+  assert.equal(best?.id, "platform");
 });

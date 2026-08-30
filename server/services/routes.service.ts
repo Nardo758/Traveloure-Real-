@@ -127,9 +127,88 @@ export interface ParsedTransitStep {
   endLocation?: { lat: number; lng: number };
 }
 
+export interface DrivingRouteRequest {
+  origin: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  /** RFC 3339. Google requires a future departure for traffic-aware routing. */
+  departureTime: string;
+}
+
+export interface ParsedDrivingRoute {
+  distanceMeters: number;
+  durationSeconds: number;
+  durationMinutes: number;
+  polyline?: string;
+  provider: "google_routes";
+  routingPreference: "TRAFFIC_AWARE";
+  retrievedAt: string;
+}
+
 function parseDuration(durationString: string): number {
   const match = durationString.match(/(\d+)s/);
   return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
+ * Authoritative activity-to-activity driving route. There is deliberately no geometric fallback:
+ * callers must surface an unavailable route rather than presenting a straight-line estimate as a
+ * real drive time.
+ */
+export async function getTrafficAwareDrivingRoute(
+  request: DrivingRouteRequest,
+): Promise<ParsedDrivingRoute | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    console.error("[Routes] GOOGLE_MAPS_API_KEY not configured");
+    return null;
+  }
+
+  const fieldMask = [
+    "routes.duration",
+    "routes.distanceMeters",
+    "routes.polyline.encodedPolyline",
+  ].join(",");
+
+  try {
+    const response = await fetch(ROUTES_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": fieldMask,
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: request.origin.lat, longitude: request.origin.lng } } },
+        destination: { location: { latLng: { latitude: request.destination.lat, longitude: request.destination.lng } } },
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_AWARE",
+        departureTime: request.departureTime,
+        computeAlternativeRoutes: false,
+        languageCode: "en-US",
+        units: "METRIC",
+      }),
+    });
+    if (!response.ok) {
+      console.error("[Routes] driving route failed:", response.status, await response.text());
+      return null;
+    }
+    const data = await response.json() as { routes?: Array<{ duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }> };
+    const route = data.routes?.[0];
+    const durationSeconds = route?.duration ? parseDuration(route.duration) : 0;
+    if (!route || !Number.isFinite(route.distanceMeters) || !durationSeconds) return null;
+    return {
+      distanceMeters: route.distanceMeters!,
+      durationSeconds,
+      durationMinutes: Math.max(1, Math.ceil(durationSeconds / 60)),
+      polyline: route.polyline?.encodedPolyline,
+      provider: "google_routes",
+      routingPreference: "TRAFFIC_AWARE",
+      retrievedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("[Routes] driving route request failed:", error);
+    return null;
+  }
 }
 
 function parseTransitRoute(route: TransitRoute): ParsedTransitRoute {

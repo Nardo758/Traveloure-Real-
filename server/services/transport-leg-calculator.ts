@@ -1,5 +1,6 @@
 import { db } from "../db";
-import { transportLegs, mapsExportCache } from "../../shared/schema";
+import { transportLegs, mapsExportCache, itineraryVariantItems } from "../../shared/schema";
+import { propagateActivitySchedule } from "./activity-schedule.service";
 import { getDestinationProfile, type DestinationTransportProfile, type TransportModeConfig } from "../data/transport-profiles";
 import { populateBookingOptionsForVariant } from "./transport-booking-options.service";
 import {
@@ -9,6 +10,7 @@ import {
   type ActivityPoint,
 } from "./maps-url-builder";
 import { eq } from "drizzle-orm";
+import { getTrafficAwareDrivingRoute } from "./routes.service";
 
 export interface ActivityLocation {
   id: string;
@@ -18,6 +20,8 @@ export interface ActivityLocation {
   scheduledTime: string;
   dayNumber: number;
   order: number;
+  /** RFC 3339 departure computed from the trip date/schedule when available. */
+  departureTime?: string;
 }
 
 interface TransportAlternative {
@@ -48,6 +52,9 @@ export interface TransportLegResult {
   energyCost: number;
   linkedProductId?: string;
   linkedProductUrl?: string;
+  routeProvider: "google_routes";
+  routeRetrievedAt: string;
+  userSelectedMode?: string | null;
 }
 
 export interface UserTransportPrefs {
@@ -58,6 +65,36 @@ export interface UserTransportPrefs {
   budgetTier: "budget" | "moderate" | "luxury";
 }
 
+export interface SameDayActivityPair {
+  from: ActivityLocation;
+  to: ActivityLocation;
+  dayNumber: number;
+  legOrder: number;
+}
+
+/** Activity legs never bridge overnight boundaries; an inter-day transfer needs explicit intent. */
+export function buildSameDayActivityPairs(activities: ActivityLocation[]): SameDayActivityPair[] {
+  const dayGroups: Record<number, ActivityLocation[]> = {};
+  for (const activity of activities) {
+    if (!dayGroups[activity.dayNumber]) dayGroups[activity.dayNumber] = [];
+    dayGroups[activity.dayNumber].push(activity);
+  }
+
+  const pairs: SameDayActivityPair[] = [];
+  for (const dayNumber of Object.keys(dayGroups).map(Number).sort((a, b) => a - b)) {
+    const sorted = dayGroups[dayNumber].sort((a, b) => a.order - b.order);
+    for (let index = 0; index < sorted.length - 1; index++) {
+      pairs.push({
+        from: sorted[index],
+        to: sorted[index + 1],
+        dayNumber,
+        legOrder: index + 1,
+      });
+    }
+  }
+  return pairs;
+}
+
 const DEFAULT_PREFS: UserTransportPrefs = {
   prioritize: "time",
   avoidModes: [],
@@ -65,6 +102,43 @@ const DEFAULT_PREFS: UserTransportPrefs = {
   accessibility: false,
   budgetTier: "moderate",
 };
+
+const REGIONAL_DISTANCE_KM = 20;
+const REGIONAL_SPEED_KMH = {
+  road: 70,
+  transit: 55,
+  rail: 90,
+  water: 35,
+} as const;
+
+function regionalModeSpeed(mode: string, configuredSpeed: number): number | null {
+  const normalized = mode.toLowerCase();
+  if (normalized.includes("train") || normalized.includes("rail")) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.rail);
+  }
+  if (
+    normalized.includes("taxi") ||
+    normalized.includes("rideshare") ||
+    normalized.includes("car") ||
+    normalized.includes("driver")
+  ) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.road);
+  }
+  if (
+    normalized.includes("transit") ||
+    normalized.includes("bus") ||
+    normalized.includes("coach")
+  ) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.transit);
+  }
+  if (
+    normalized.includes("ferry") ||
+    normalized.includes("boat")
+  ) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.water);
+  }
+  return null;
+}
 
 export async function calculateTransportLegs(
   variantId: string,
@@ -75,26 +149,21 @@ export async function calculateTransportLegs(
   const prefs = { ...DEFAULT_PREFS, ...userPrefs };
   const profile = getDestinationProfile(destination);
 
-  const dayGroups: Record<number, ActivityLocation[]> = {};
-  for (const act of activities) {
-    if (!dayGroups[act.dayNumber]) dayGroups[act.dayNumber] = [];
-    dayGroups[act.dayNumber].push(act);
-  }
-
   const allLegs: TransportLegResult[] = [];
-
-  for (const dayNum of Object.keys(dayGroups).map(Number).sort((a, b) => a - b)) {
-    const sorted = dayGroups[dayNum].sort((a, b) => a.order - b.order);
-
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const from = sorted[i];
-      const to = sorted[i + 1];
-      const leg = computeSingleLeg(from, to, dayNum, i + 1, profile, prefs);
-      allLegs.push(leg);
-    }
+  for (const pair of buildSameDayActivityPairs(activities)) {
+    const leg = await computeSingleLeg(
+      pair.from,
+      pair.to,
+      pair.dayNumber,
+      pair.legOrder,
+      profile,
+      prefs,
+    );
+    if (leg) allLegs.push(leg);
   }
 
   await persistTransportLegs(variantId, allLegs, destination);
+  await persistRoutedVariantSchedule(variantId, allLegs);
   await generateAndCacheMapsUrls(variantId, activities, allLegs);
 
   // Populate booking options for all persisted legs (fire and complete)
@@ -107,6 +176,58 @@ export async function calculateTransportLegs(
   return allLegs;
 }
 
+async function persistRoutedVariantSchedule(
+  variantId: string,
+  legs: TransportLegResult[],
+): Promise<void> {
+  const items = await db
+    .select()
+    .from(itineraryVariantItems)
+    .where(eq(itineraryVariantItems.variantId, variantId))
+    .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+  const { updates, unresolved } = propagateActivitySchedule(
+    items.map((item, index) => ({
+      id: item.id,
+      dayNumber: item.dayNumber,
+      order: item.sortOrder ?? index,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      durationMinutes: item.duration,
+    })),
+    legs,
+  );
+  const unresolvedByActivity = new Map(
+    unresolved.map((entry) => [entry.activityId, entry.reason]),
+  );
+
+  await Promise.all(
+    updates.map((update) => {
+      const item = items.find((candidate) => candidate.id === update.id);
+      const existingMetadata =
+        item?.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+          ? item.metadata as Record<string, unknown>
+          : {};
+      const unresolvedReason = unresolvedByActivity.get(update.id);
+      return db
+        .update(itineraryVariantItems)
+        .set({
+          startTime: update.startTime,
+          endTime: update.endTime,
+          // Google route output is authoritative. Model-supplied travelTimeFromPrevious is
+          // overwritten with the routed value, or NULL when no honest route exists.
+          travelTimeFromPrevious: update.travelTimeFromPrevious,
+          metadata: {
+            ...existingMetadata,
+            logisticsSchedule: unresolvedReason
+              ? { status: "unresolved", reason: unresolvedReason }
+              : { status: "resolved" },
+          },
+        })
+        .where(eq(itineraryVariantItems.id, update.id));
+    }),
+  );
+}
+
 /**
  * THE leg-computation entry point for callers that persist legs themselves (§18 L4 trip-scoped
  * legs). It is the SAME engine `calculateTransportLegs` uses — `computeSingleLeg` below, with the
@@ -117,15 +238,15 @@ export async function calculateTransportLegs(
  * Pure: no DB write, no maps cache, no booking-option population. Callers own persistence (the
  * trip path writes trip-scoped rows born 'proposed'; the variant path keeps its own pipeline).
  */
-export function computeTransportLeg(
+export async function computeTransportLeg(
   from: ActivityLocation,
   to: ActivityLocation,
   dayNumber: number,
   legOrder: number,
   destination: string,
   userPrefs: Partial<UserTransportPrefs> = {}
-): TransportLegResult {
-  return computeSingleLeg(
+): Promise<TransportLegResult | null> {
+  return await computeSingleLeg(
     from,
     to,
     dayNumber,
@@ -135,87 +256,36 @@ export function computeTransportLeg(
   );
 }
 
-function computeSingleLeg(
+async function computeSingleLeg(
   from: ActivityLocation,
   to: ActivityLocation,
   dayNumber: number,
   legOrder: number,
   profile: DestinationTransportProfile,
   userPrefs: UserTransportPrefs
-): TransportLegResult {
-  const distanceMeters = haversineDistance(from.lat, from.lng, to.lat, to.lng);
-  const distanceKm = distanceMeters / 1000;
-  const departureHour = parseHour(from.scheduledTime);
-
-  const evaluations: Array<TransportAlternative & { _score: number }> = [];
-
-  for (const modeConfig of profile.availableModes) {
-    if (!modeConfig.available) continue;
-    if (userPrefs.avoidModes.includes(modeConfig.mode)) continue;
-
-    const endHour = modeConfig.availableHours.end === 24 ? 24 : modeConfig.availableHours.end;
-    if (departureHour < modeConfig.availableHours.start || departureHour >= endHour) continue;
-
-    if (userPrefs.accessibility && modeConfig.accessibilityScore < 50) continue;
-
-    const realDistanceKm = distanceKm * 1.3;
-    const travelMinutes = (realDistanceKm / modeConfig.averageSpeedKmh) * 60;
-    const totalMinutes = Math.max(1, Math.ceil(travelMinutes + modeConfig.waitTimeMinutes));
-
-    let costUsd: number | null = null;
-    if (modeConfig.baseCostPerKm > 0 || modeConfig.flagFall > 0) {
-      costUsd = Math.round((modeConfig.flagFall + realDistanceKm * modeConfig.baseCostPerKm) * 100) / 100;
-    }
-
-    const energyCost = Math.min(20, Math.ceil(realDistanceKm * modeConfig.energyCostPerKm));
-    const score = scoreModeForUser(modeConfig, totalMinutes, costUsd, energyCost, userPrefs);
-
-    evaluations.push({
-      mode: modeConfig.mode,
-      durationMinutes: totalMinutes,
-      costUsd,
-      energyCost,
-      reason: "",
-      _score: score,
-    });
-  }
-
-  if (evaluations.length === 0) {
-    const walkMins = Math.max(1, Math.ceil((distanceKm * 1.3 / 4.5) * 60));
-    evaluations.push({
-      mode: "walk",
-      durationMinutes: walkMins,
-      costUsd: null,
-      energyCost: Math.min(20, Math.ceil(distanceKm * 3)),
-      reason: "Only available mode",
-      _score: 50,
-    });
-  }
-
-  evaluations.sort((a, b) => b._score - a._score);
-
-  evaluations.forEach((e, i) => {
-    if (i === 0) {
-      e.reason = "Best match for your preferences";
-    } else if (e.costUsd === null || e.costUsd === 0) {
-      e.reason = "Free option";
-    } else if (evaluations[0].durationMinutes > e.durationMinutes) {
-      e.reason = "Fastest option";
-    } else if (e.costUsd !== null && evaluations[0].costUsd !== null && e.costUsd < evaluations[0].costUsd) {
-      e.reason = "Cheapest option";
-    } else {
-      e.reason = "Alternative option";
-    }
+): Promise<TransportLegResult | null> {
+  // Google only accepts future departures for traffic-aware routing. A schedule without a usable
+  // calendar timestamp is routed shortly in the future rather than silently converted from a
+  // date-less wall clock in the server timezone.
+  const requestedDeparture = from.departureTime ? new Date(from.departureTime) : null;
+  const departureTime =
+    requestedDeparture && Number.isFinite(requestedDeparture.getTime()) && requestedDeparture.getTime() > Date.now()
+      ? requestedDeparture.toISOString()
+      : new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const routed = await getTrafficAwareDrivingRoute({
+    origin: { lat: from.lat, lng: from.lng },
+    destination: { lat: to.lat, lng: to.lng },
+    departureTime,
   });
-
-  const best = evaluations[0];
-  const alternatives = evaluations.slice(1).map(e => ({
-    mode: e.mode,
-    durationMinutes: e.durationMinutes,
-    costUsd: e.costUsd,
-    energyCost: e.energyCost,
-    reason: e.reason,
-  }));
+  if (!routed) return null;
+  const distanceMeters = routed.distanceMeters;
+  const distanceKm = distanceMeters / 1000;
+  const drivingConfig = profile.availableModes.find((mode) =>
+    /drive|car|taxi|rideshare/i.test(mode.mode),
+  );
+  const estimatedCostUsd = drivingConfig && (drivingConfig.baseCostPerKm > 0 || drivingConfig.flagFall > 0)
+    ? Math.round((drivingConfig.flagFall + distanceKm * drivingConfig.baseCostPerKm) * 100) / 100
+    : null;
 
   return {
     fromActivityId: from.id,
@@ -230,11 +300,13 @@ function computeSingleLeg(
     legOrder,
     distanceMeters: Math.round(distanceMeters),
     distanceDisplay: formatDistance(distanceMeters),
-    recommendedMode: best.mode,
-    estimatedDurationMinutes: best.durationMinutes,
-    estimatedCostUsd: best.costUsd,
-    alternativeModes: alternatives,
-    energyCost: best.energyCost,
+    recommendedMode: "driving",
+    estimatedDurationMinutes: routed.durationMinutes,
+    estimatedCostUsd,
+    alternativeModes: [],
+    energyCost: 0,
+    routeProvider: routed.provider,
+    routeRetrievedAt: routed.retrievedAt,
   };
 }
 

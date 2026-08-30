@@ -28,6 +28,7 @@ import {
   Share2,
   ShoppingCart,
   Sparkles,
+  Ticket,
   Undo2,
   Users,
 } from "lucide-react";
@@ -458,7 +459,7 @@ function TransitionLogFooter({
   );
 }
 
-// ── Finalize / Reopen (ruling R-F) ───────────────────────────────────────────────────────
+// ── Adopt Optimization / Reopen (ruling R-F) ─────────────────────────────────────────────
 
 /** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
  *  uses, so client and scheduler agree on when Trip Card becomes primary. */
@@ -483,14 +484,14 @@ function useFinalizeMutation(tripId: string) {
           title: "Trip Card is ready",
           description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
             data.stagedCount > 1 ? "aren't" : "isn't"
-          } booked yet. You can finalize now and book them later.`,
+          } booked yet. You can adopt this optimization now and book them later.`,
         });
       } else {
-        toast({ title: "Trip Card is ready", description: "Your plan is finalized." });
+        toast({ title: "Trip Card is ready", description: "Your optimization is adopted." });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Couldn't finalize plan", description: err?.message || "Please try again", variant: "destructive" });
+      toast({ title: "Couldn't adopt optimization", description: err?.message || "Please try again", variant: "destructive" });
     },
   });
 }
@@ -578,6 +579,12 @@ function SlipActions({
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
+  // Display-honesty fix (ledger 2026-08-29-persona-coverage-complete's filed finding):
+  // startOptimization used to treat `covered_by_pass` identically to the ordinary
+  // `free_rerun` — same silent proceed, no label distinguishing "this is free because you
+  // have a Trip Pass" from "this is free because of the 24h window". Server truth only
+  // (server/routes/optimization.routes.ts ~L276 `coveredByTripPass`); never inferred client-side.
+  const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
   const confirmedPinnedAnchorRef = useRef<ComparisonPinnedAnchor | undefined>(undefined);
 
   const optimizableCount = countOptimizableItems(activities);
@@ -626,6 +633,7 @@ function SlipActions({
   async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
     if (optimizing || creatingComparison || optimizeDisabledReason) return;
     setOptimizing(true);
+    setLastOptimizeCoveredByPass(false);
     try {
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
@@ -643,7 +651,9 @@ function SlipActions({
         return;
       }
       if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
-        // 24h free re-run (server-side canRunOptimizer) — nothing to charge.
+        // 24h free re-run (server-side canRunOptimizer) — nothing to charge. `covered_by_pass`
+        // gets the "Included in your Trip Pass" label alongside the free-run treatment.
+        if (outcome.kind === "covered_by_pass") setLastOptimizeCoveredByPass(true);
         await runComparison(undefined, pinnedAnchor);
         confirmedPinnedAnchorRef.current = undefined;
         return;
@@ -769,6 +779,15 @@ function SlipActions({
           </Button>
         </span>
       )}
+      {isOwner && lastOptimizeCoveredByPass && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
+          data-testid="trip-pass-covered-label"
+        >
+          <Ticket className="w-3.5 h-3.5" />
+          Included in your Trip Pass
+        </span>
+      )}
       <BuildAroundDialog
         open={buildAroundOpen}
         tripId={trip.id}
@@ -813,17 +832,17 @@ function SlipActions({
           )}
         </DialogContent>
       </Dialog>
-      {/* Finalize is owner-gated server-side (verifyTripOwnership) — never render it for a
-          non-owner viewer. Once finalized, the primary banner (above) owns the finalize/reopen
+      {/* Adopt Optimization is owner-gated server-side (verifyTripOwnership) — never render it for a
+          non-owner viewer. Once adopted, the primary banner (above) owns the finalize/reopen
           affordance — no duplicate control here. */}
       {isOwner && !trip.finalizedAt && (
         <Button
           size="sm"
           onClick={() => finalizeMutation.mutate()}
           disabled={finalizeMutation.isPending}
-          data-testid="slip-action-finalize"
+          data-testid="slip-action-adopt-optimization"
         >
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Finalize plan
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Adopt Optimization
         </Button>
       )}
     </div>

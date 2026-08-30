@@ -27,7 +27,7 @@
 
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
-import { transportLegs } from "@shared/schema";
+import { itineraryItems, transportLegs } from "@shared/schema";
 import { storage } from "../storage";
 import { CHAUFFEURED_MODES } from "@shared/trip-plan";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
@@ -37,6 +37,7 @@ import {
   type UserTransportPrefs,
 } from "./transport-leg-calculator";
 import { getTravelerProfile, effectiveProfileToTransportPrefs } from "./traveler-profile.service";
+import { propagateActivitySchedule } from "./activity-schedule.service";
 
 /** The `proposal_status` vocabulary (mirrors the migration-154 DB CHECK). */
 export const LEG_PROPOSAL_STATUSES = ["proposed", "confirmed"] as const;
@@ -60,8 +61,8 @@ export interface TripLegSkip {
   fromTitle: string;
   toItemId: string;
   toTitle: string;
-  /** Only reason in v1 — one or both endpoints have no usable coordinates. */
-  reason: "missing_coordinates";
+  /** Honest omission: geometry is missing, or the engine has no plausible mode for this pair. */
+  reason: "missing_coordinates" | "route_unavailable";
 }
 
 export interface TripLegGenerationResult {
@@ -73,6 +74,11 @@ export interface TripLegGenerationResult {
   replacedProposed: number;
   /** Item pairs that could not be routed honestly (§13) — the L4b editor's honest empty state. */
   skipped: TripLegSkip[];
+  /** Schedule gaps that remain unresolved after routing; callers must surface these for review. */
+  scheduleUnresolved: Array<{
+    activityId: string;
+    reason: "missing_departure" | "missing_duration" | "route_unavailable" | "day_boundary" | "schedule_conflict";
+  }>;
 }
 
 /** A real coordinate, or null. Rejects null/NaN/out-of-range and the (0,0) "Null Island" sentinel. */
@@ -149,6 +155,7 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
 
   const skipped: TripLegSkip[] = [];
   const rows: Array<typeof transportLegs.$inferInsert> = [];
+  const routedResults: Awaited<ReturnType<typeof computeTransportLeg>>[] = [];
   let keptConfirmed = 0;
 
   for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
@@ -198,7 +205,19 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
         order: i + 1,
       };
 
-      const leg = computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+      const leg = await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+      if (!leg) {
+        skipped.push({
+          dayNumber,
+          fromItemId: from.id,
+          fromTitle: from.title,
+          toItemId: to.id,
+          toTitle: to.title,
+          reason: "route_unavailable",
+        });
+        continue;
+      }
+      routedResults.push(leg);
 
       rows.push({
         // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).
@@ -238,11 +257,64 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
     }
   });
 
+  const scheduleLegs = [
+    ...existing.filter((leg) => leg.proposalStatus === "confirmed"),
+    ...routedResults.filter((leg): leg is NonNullable<typeof leg> => leg !== null),
+  ];
+  const { updates, unresolved: scheduleUnresolved } = propagateActivitySchedule(
+    items.map((item, index) => ({
+      id: item.id,
+      dayNumber: item.dayNumber,
+      order: item.sortOrder ?? index,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      durationMinutes: item.durationMinutes,
+    })),
+    scheduleLegs,
+  );
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const routeByTarget = new Map(
+    routedResults
+      .filter((leg): leg is NonNullable<typeof leg> => leg !== null)
+      .map((leg) => [leg.toActivityId, leg]),
+  );
+  await Promise.all(
+    updates.map((update) => {
+      const item = itemById.get(update.id);
+      // Paid and in-checkout commitments are fixed points. Recalculation may route around them,
+      // but it never rewrites their stored schedule.
+      if (!item || item.routingStatus === "purchased" || item.routingStatus === "ready_for_checkout") {
+        return Promise.resolve();
+      }
+      const routed = routeByTarget.get(update.id);
+      const scheduleValues: Partial<typeof itineraryItems.$inferInsert> = {
+        startTime: update.startTime,
+        endTime: update.endTime,
+        updatedAt: new Date(),
+      };
+      if (routed) {
+        scheduleValues.travelFromPrevious = {
+          mode: "driving",
+          durationMinutes: routed.estimatedDurationMinutes,
+          distanceMeters: routed.distanceMeters,
+          provider: routed.routeProvider,
+          retrievedAt: routed.routeRetrievedAt,
+          status: "available",
+        };
+      }
+      return db
+        .update(itineraryItems)
+        .set(scheduleValues)
+        .where(eq(itineraryItems.id, update.id));
+    }),
+  );
+
   return {
     created: rows.length,
     keptConfirmed,
     replacedProposed: staleProposedIds.length,
     skipped,
+    scheduleUnresolved,
   };
 }
 

@@ -47,9 +47,14 @@ import {
   type EffectiveTravelerProfile,
 } from "./services/traveler-profile.service";
 import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
+import { reconcileVariantWithBaseline } from "./services/optimizer-variant-reconciliation.service";
 import { loadRankedAnchors } from "./services/anchor-candidates";
 import { pickAutoAnchors } from "./services/anchor-candidates-map";
 import type { AnchorScore } from "./services/anchor-scoring";
+import {
+  createOptimizerGeocodeBudget,
+  resolveOptimizerActivityCoordinates,
+} from "./services/optimizer-activity-geocoder.service";
 
 // grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
 // grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
@@ -177,6 +182,8 @@ export interface ItineraryItem {
   location?: string;
   duration?: number;
   dayNumber?: number;
+  startTime?: string;
+  endTime?: string;
   timeSlot?: string;
   /** Lane 5a Defect 3: the catalog row behind this baseline item, when there is one.
    *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
@@ -1178,7 +1185,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           name: item.name || `Stop ${idx + 1}`,
           lat: parseFloat(item.latitude as unknown as string),
           lng: parseFloat(item.longitude as unknown as string),
-          scheduledTime: item.startTime || "09:00",
+          scheduledTime: item.startTime || "",
+          durationMinutes: item.duration,
           dayNumber: item.dayNumber,
           order: item.sortOrder ?? idx,
         }));
@@ -1210,7 +1218,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     ).join('\n');
 
     const compactBaseline = baselineItems.map(item =>
-      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
+      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration != null ? `${item.duration}min` : "duration needed"}, ${item.location || 'TBD'})`
     ).join('\n');
 
     // ── Marquee / signature item detection ────────────────────────────────────
@@ -1346,7 +1354,7 @@ Respond with valid JSON in this exact format:
           "rating": 4.5,
           "location": "Paris, France",
           "duration": 180,
-          "travelTimeFromPrevious": 15,
+          "travelTimeFromPrevious": null,
           "isReplacement": true,
           "replacementReason": "Similar experience at 30% lower cost",
           "originalServiceId": "service-id-if-applicable"
@@ -1421,6 +1429,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
     );
     const coordsForService = (serviceId: string | null | undefined) =>
       (serviceId && serviceCoordsById.get(serviceId)) || { latitude: null, longitude: null };
+    const geocodeBudget = createOptimizerGeocodeBudget(12);
 
     await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
@@ -1437,7 +1446,9 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         dayNumber: item.dayNumber,
         timeSlot: item.timeSlot,
         description: item.description,
-        travelTimeFromPrevious: item.travelTimeFromPrevious,
+        // Google Routes overwrites this after persistence. Model-supplied travel times are never
+        // treated as schedule facts.
+        travelTimeFromPrevious: undefined,
         isReplacement: item.isReplacement,
         replacementReason: item.replacementReason
       }));
@@ -1453,8 +1464,20 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         );
       }
 
+      // Lane C1 — whole-plan completeness. The model is allowed to move or replace every
+      // optimizable item, but it is not allowed to make one disappear. Reconcile against the
+      // canonical trip baseline after purchased echoes are stripped and before sequencing, so
+      // omitted baseline items are carried through unchanged and participate in ordering/metrics.
+      const { items: completeActivities, carriedThrough } =
+        reconcileVariantWithBaseline(activitiesAfterCommitmentStrip, baselineItems);
+      if (carriedThrough > 0) {
+        console.warn(
+          `[optimizer] variant "${variant.name}": carried through ${carriedThrough} omitted baseline item(s) unchanged`,
+        );
+      }
+
       // Apply smart sequencing to reorder activities
-      const sequencingResult = reorderItinerary(activitiesAfterCommitmentStrip);
+      const sequencingResult = reorderItinerary(completeActivities);
       let reorderedItems = sequencingResult.reorderedItems;
       const methodologyNotes = [...sequencingResult.allMethodologyNotes];
       const sequencingScore = sequencingResult.overallScore;
@@ -1488,6 +1511,18 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         }
         reorderedItems = anchorAdjusted;
       }
+
+      // Resolve honest coordinates before persistence and transport-leg calculation. Catalog and
+      // canonical baseline coordinates win. Only a validated catalog-linked activity may use the
+      // bounded, cached Google fallback; an unlinked AI invention remains NULL/NULL and never
+      // becomes a guessed city-centre pin (§13/§22c).
+      await resolveOptimizerActivityCoordinates(
+        reorderedItems,
+        baselineItems,
+        serviceCoordsById,
+        destination,
+        geocodeBudget,
+      );
 
       // Lane 6 residue R1 (drop policy a, rulings 4/15): a variant that omits any in-checkout
       // (`ready_for_checkout`) baseline item is INVALID — rejected here, before any row is
@@ -1566,15 +1601,19 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             const activityNotes = methodologyNotes.filter(
               n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
             );
-            const coords = coordsForService(item.providerServiceId);
+            const catalogCoords = coordsForService(item.providerServiceId);
             return {
               variantId: newVariant.id,
               // Lane 5a Defect 3: the catalog link, validated above against the services actually
               // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
               providerServiceId: item.providerServiceId ?? null,
               // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
-              latitude: coords.latitude,
-              longitude: coords.longitude,
+              latitude: item.latitude != null
+                ? item.latitude.toString()
+                : catalogCoords.latitude,
+              longitude: item.longitude != null
+                ? item.longitude.toString()
+                : catalogCoords.longitude,
               dayNumber: item.dayNumber,
               timeSlot: item.timeSlot,
               startTime: item.startTime,
@@ -1586,7 +1625,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
               rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
               location: item.location,
               duration: item.duration,
-              travelTimeFromPrevious: item.travelTimeFromPrevious,
+              travelTimeFromPrevious: null,
               isReplacement: item.isReplacement,
               replacementReason: item.replacementReason,
               metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
@@ -1782,7 +1821,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             name: item.name || `Stop ${idx + 1}`,
             lat: parseFloat(item.latitude as unknown as string),
             lng: parseFloat(item.longitude as unknown as string),
-            scheduledTime: item.startTime || "09:00",
+            scheduledTime: item.startTime || "",
+            durationMinutes: item.duration,
             dayNumber: item.dayNumber,
             order: item.sortOrder ?? idx,
           }));

@@ -144,9 +144,6 @@ function toNumber(value: string | number | null | undefined): number | undefined
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** The cart read's hardcoded duration, kept ONLY as the fallback for an item with no real one. */
-const DEFAULT_DURATION_MINUTES = 120;
-
 /**
  * Load the optimizer's inputs from a trip. The caller is responsible for authorizing the trip
  * FIRST (`authorizeTripLogistics`) — this function performs no authorization and must never be
@@ -206,9 +203,13 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
       // flow onto the baseline variant items so `calculateTransportLegs` can actually run.
       latitude: toNumber(item.latitude ?? service?.latitude ?? null),
       longitude: toNumber(item.longitude ?? service?.longitude ?? null),
-      duration: item.durationMinutes ?? DEFAULT_DURATION_MINUTES,
+      // Missing stays missing. The optimizer may research an explicit duration, but this adapter
+      // never fabricates one merely to make schedule arithmetic convenient.
+      duration: item.durationMinutes ?? undefined,
       // REAL day number — a NOT NULL column. The cart read invented this.
       dayNumber: item.dayNumber,
+      startTime: item.startTime ?? undefined,
+      endTime: item.endTime ?? undefined,
       timeSlot: deriveTimeSlot(item.startTime, index),
       // Drop policy a (Lane 6 residue): an in-checkout item is schedule-movable but never
       // droppable — the generator rejects any variant that omits it (fail-closed, ruling 15).

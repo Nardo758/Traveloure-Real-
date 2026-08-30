@@ -23,10 +23,16 @@
  * 052  `052_phase5_expert_endorsements.sql` is excluded. It is a superseded
  *      duplicate schema attempt for `upsell_expert_endorsements` whose columns
  *      (service_id, offering_type_key, city_key, active) diverge from the live
- *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). The baseline
- *      migration (000) creates the table from the real schema, so when 052 runs
- *      the table already exists without an `active` column — its partial indexes
- *      would crash. Do NOT register or execute this file.
+ *      Drizzle schema (scope, trip_id, neighborhood_id, offering_id). CORRECTION
+ *      (found by the 2026-08-29 upsell-endorsements drift investigation): the
+ *      claim that "baseline migration (000) creates the table from the real
+ *      schema" was WRONG — 052's CREATE TABLE was folded into 000 verbatim, so
+ *      baseline carries 052's OLD shape too, not the current Drizzle shape. The
+ *      real reason 052 stays excluded is unchanged (it would crash re-running
+ *      052's own CREATE TABLE / partial indexes against a table that already
+ *      exists) — but the live Drizzle columns were genuinely missing from the
+ *      whole migration chain until `266_upsell_endorsements_schema_drift.sql`
+ *      added them. Do NOT register or execute this file.
  *
  * 051  `051_affiliate_booking_trip_link.sql` was renamed
  *      060_affiliate_booking_trip_link.sql to eliminate the duplicate 051_
@@ -1310,6 +1316,21 @@ export const MIGRATION_FILES = [
   // Renumbered from 264 during merge with main — 264 was claimed by
   // 264_trip_entitlement_source.sql.
   "265_vendor_creation_provenance.sql",
+  // 266: schema.ts-vs-migration-chain drift fix for upsell_expert_endorsements — the
+  // inverse publish-trap. 052_phase5_expert_endorsements.sql (folded into baseline 000)
+  // created an EARLIER design of this table; shared/schema.ts was later redesigned to
+  // scope/trip_id/neighborhood_id/offering_id/category_key (+ an expert_id -> users FK)
+  // but no migration ever carried that redesign — so a migration-built DB (CI, fresh
+  // dev) lacks these, while a Replit deploy-push DB (schema.ts-canonical) likely has
+  // them. Additive/idempotent; matches schema.ts's declared nullability exactly. See the
+  // migration file's header for the safety argument on adding NOT NULL columns with no
+  // default, and for the separate (unfixed here, needs decision-maker sign-off) missing
+  // partial-unique-index gap this investigation also surfaced.
+  "266_upsell_endorsements_schema_drift.sql",
+  // 267: persistent Google geocode cache for optimizer-created activities. Additive table +
+  // unique provider/query-hash index, both declared in shared/schema.ts; status vocabulary is
+  // app-enforced with no CHECK. Successful and negative results have bounded TTLs.
+  "267_optimizer_geocode_cache.sql",
   // 268: one current provider application per user. Rejected/deleted/deactivated rows remain
   // review/account history; only duplicate current rows are removed before the partial unique
   // index is installed. The index is also declared in shared/schema.ts for publish durability.

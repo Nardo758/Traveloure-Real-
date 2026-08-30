@@ -10,6 +10,7 @@ import { db } from "../db";
 import { affiliateProducts } from "@shared/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { sharedCache } from "./shared-cache.service";
+import { isAffiliateGroundingBookingType } from "./slip-grounding-match";
 
 // Lane 2b — best-effort live-feed reconcile freshness window. A city ingested within this window is
 // treated as fresh (registry current), so at most one reconcile per city per window regardless of
@@ -41,7 +42,8 @@ export interface GroundableAffiliateProduct {
  * (`is_active`). Returns raw rows the resolver matches by name/geo; empty when the market has no
  * active affiliate inventory (§13 — the rung then simply falls through to DMO). Coordinates come from
  * the row's `coordinates` jsonb, flattened to lat/lng strings so the resolver's coord-copy is
- * uniform across all three rungs.
+ * uniform across all three rungs. Only ratified bookable classifications are returned; informational
+ * and unclassified rows belong on other content surfaces and must not become itinerary grounding.
  */
 export async function getAffiliateProductsForMarket(
   destination: string | null | undefined,
@@ -69,6 +71,7 @@ export async function getAffiliateProductsForMarket(
   const dest = (destination ?? "").toLowerCase();
   return rows
     .filter((r) => {
+      if (!isAffiliateGroundingBookingType(r.bookingType)) return false;
       const c = (r.city ?? "").toLowerCase();
       const loc = (r.location ?? "").toLowerCase();
       return c.includes(needle) || loc.includes(needle) || (dest && (c.includes(dest) || loc.includes(dest)));
@@ -147,6 +150,7 @@ export async function getAffiliateProductById(id: string): Promise<GroundableAff
     .where(eq(affiliateProducts.id, id))
     .limit(1);
   if (!r) return null;
+  if (!isAffiliateGroundingBookingType(r.bookingType)) return null;
   const coord = r.coordinates as { lat?: number; lng?: number } | null;
   return {
     id: r.id,
@@ -177,6 +181,7 @@ export async function getAffiliateProductsByIds(ids: string[]): Promise<Map<stri
     .from(affiliateProducts)
     .where(inArray(affiliateProducts.id, ids));
   for (const r of rows) {
+    if (!isAffiliateGroundingBookingType(r.bookingType)) continue;
     const coord = r.coordinates as { lat?: number; lng?: number } | null;
     out.set(r.id, {
       id: r.id,
