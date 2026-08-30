@@ -301,3 +301,29 @@ test.describe('T10 — No-results state', () => {
     await expect(page.getByTestId('button-clear-filters')).toBeVisible();
   });
 });
+
+test.describe('/local-experts keeps its heading when empty (walkthrough F-E1, 2026-08-30)', () => {
+  // Ruling 2026-08-30: the A8 zero-results fallback must never silently retitle the page.
+  // /local-experts is an explicit local_expert choice — the heading stays "Local Expert",
+  // an honest empty state shows, and the role that DOES have supply renders below, labeled.
+  test('heading stays Local Experts, honest empty state, labeled fallback below', async ({ page }) => {
+    await page.goto(`${BASE_URL}/local-experts`, { waitUntil: 'domcontentloaded' });
+    // The band heading is the local-expert copy — NOT retitled to the trip-planner heading.
+    await expect(page.getByRole('heading', { name: /Find Your Perfect Local Expert/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('heading', { name: /Work with a Trip Planner/i })).toHaveCount(0);
+
+    // Given the flagship market currently has zero published local experts, the honest empty
+    // state and the labeled fallback both render. (If locals get published, this self-heals to
+    // real local-expert cards — so only assert the fallback when the empty state is showing.)
+    const empty = page.getByTestId('experts-empty-heading');
+    if (await empty.count()) {
+      await expect(empty).toContainText(/No local experts have published/i);
+      const fallback = page.getByTestId('section-role-fallback');
+      await expect(fallback).toBeVisible({ timeout: 10_000 });
+      // Labeled as what they actually are — a role name, not this page's identity.
+      await expect(page.getByTestId('text-fallback-role-label')).toContainText(/Trip Planners/i);
+    }
+  });
+});

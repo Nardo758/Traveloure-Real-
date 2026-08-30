@@ -123,6 +123,12 @@ export default function ExpertsPage() {
   const [location, navigate] = useLocation();
   const searchString = useSearch();
 
+  // The /local-experts route is itself an explicit local_expert choice (like ?role=),
+  // so the A8 zero-results auto-switch below must never relabel it (walkthrough finding
+  // F-E1, ruling 2026-08-30): never rename the room because it's empty. /experts stays
+  // the generic entry where A8 may still help a first-time visitor.
+  const routeRole = location === "/local-experts" ? "local_expert" : null;
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDestination, setSelectedDestination] = useState("All Destinations");
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
@@ -230,12 +236,16 @@ export default function ExpertsPage() {
   useEffect(() => {
     if (!roleCounts) return;
     if (new URLSearchParams(searchString).get("role")) return;
+    // F-E1 (ruling 2026-08-30): a role-specific ROUTE (/local-experts) is an explicit
+    // choice — never silently switch away from it. The empty state + a labeled fallback
+    // section below keep the visitor un-stranded WITHOUT relabeling the page.
+    if (routeRole) return;
     if ((roleCounts[selectedRole] ?? 0) > 0) return;
     const roleWithData = Object.keys(roleLabels).find((r) => (roleCounts[r] ?? 0) > 0);
     if (roleWithData && roleWithData !== selectedRole) {
       setSelectedRole(roleWithData);
     }
-  }, [roleCounts]);
+  }, [roleCounts, routeRole]);
 
   // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
@@ -249,6 +259,27 @@ export default function ExpertsPage() {
       const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
+      return res.json();
+    },
+  });
+
+  // F-E1 (ruling 2026-08-30): when the requested role has no published supply, keep this
+  // page honest (empty state, heading unchanged) and offer the roles that DO have supply
+  // BELOW, labeled as what they are — never by relabeling this page. Self-heals as experts
+  // publish. The fallback role is the first OTHER role with a non-zero count.
+  const fallbackRole =
+    !isLoadingCounts && roleCounts && (roleCounts[selectedRole] ?? 0) === 0
+      ? Object.keys(roleLabels).find((r) => r !== selectedRole && (roleCounts[r] ?? 0) > 0) ?? null
+      : null;
+  const { data: fallbackExperts = [] } = useQuery<any[]>({
+    queryKey: ["/api/experts", "role-fallback", selectedDestination, fallbackRole],
+    enabled: !!fallbackRole,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
+      if (fallbackRole) params.set("role", fallbackRole);
+      const res = await fetch(`/api/experts?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch fallback experts");
       return res.json();
     },
   });
@@ -750,12 +781,20 @@ export default function ExpertsPage() {
               <div className="w-16 h-16 rounded-full bg-[#F3F4F6] flex items-center justify-center">
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
               </div>
-              <h3 className="text-lg font-semibold" style={{ color: "#111827" }}>
-                {selectedRole === "event_planner" ? "No event planners found" : "No experts found"}
+              <h3 className="text-lg font-semibold" style={{ color: "#111827" }} data-testid="experts-empty-heading">
+                {selectedRole === "event_planner"
+                  ? "No event planners found"
+                  : selectedRole === "local_expert"
+                  ? `No local experts have published${selectedDestination !== "All Destinations" ? ` in ${selectedDestination}` : ""} yet`
+                  : "No experts found"}
               </h3>
               <p className="text-muted-foreground">
                 {selectedRole === "event_planner"
                   ? "Try a trip planner instead, or adjust your filters."
+                  : selectedRole === "local_expert"
+                  ? fallbackRole
+                    ? "As locals publish their guides they'll show here — meanwhile, here's who's available now."
+                    : "As locals publish their guides they'll show here."
                   : "Try adjusting your filters or search terms"}
               </p>
               {selectedRole === "event_planner" && (
@@ -781,6 +820,41 @@ export default function ExpertsPage() {
               >
                 Clear all filters
               </button>
+            </div>
+          )}
+
+          {/* F-E1 fallback (ruling 2026-08-30): the requested role has no supply, so the
+              roles that DO render here, labeled as what they are — the page keeps its own
+              heading, the visitor is never stranded, and nothing is silently relabeled. */}
+          {sortedExperts.length === 0 && fallbackRole && fallbackExperts.length > 0 && (
+            <div className="mt-8" data-testid="section-role-fallback">
+              <div className="mb-4">
+                <p
+                  className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]"
+                  style={{ fontFamily: EARN_MONO }}
+                  data-testid="text-fallback-role-label"
+                >
+                  {roleLabels[fallbackRole] ?? "Experts"} · {fallbackExperts.length}
+                </p>
+                <h2
+                  className="text-[22px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  Available now in the marketplace
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {fallbackExperts.slice(0, 8).map((expert: any, idx: number) => (
+                  <motion.div
+                    key={expert.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                  >
+                    <ExpertCard expert={expert} showServices={true} />
+                  </motion.div>
+                ))}
+              </div>
             </div>
           )}
 
