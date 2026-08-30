@@ -1,0 +1,265 @@
+name: Walkthrough Weekly (autonomous persona inspection)
+
+# The site inspecting itself. On a schedule, a headless Claude Code agent walks ONE
+# persona's goal across the real screens of a freshly-built bundle backed by a THROWAWAY
+# Postgres, judges every screen against the ratified oracle (docs/DECISIONS.md, CLAUDE.md,
+# the mocks + mock-audits, the grammar specs, the persona journeys + matrix), and files
+# findings. It is the half of the quality system that hunts what nobody wrote a
+# deterministic test for.
+#
+# Ruling 2026-08-30-autonomous-walkthroughs. Skill: .claude/skills/walkthrough/SKILL.md.
+# Matrix: docs/testing/WALKTHROUGH_MATRIX.md. Command: .claude/commands/walkthrough.md.
+#
+# THE LINE (enforced by the skill, restated here because CI is where autonomy is real):
+# the walk is READ-ONLY against the app; booking in test mode STOPS at confirm; it NEVER
+# runs against production; it NEVER merges; it NEVER fixes anything without a ratified
+# ruling. This workflow's own output is a DRAFT report PR — a human merges it, or not.
+#
+# Env posture is lifted from persona-nightly.yml verbatim (throwaway Postgres service,
+# ./.github/actions/ci-db-setup, production build, Playwright chromium, prod server +
+# /api/ready wait, scripts/seed-personas.ts, FAIL-CLOSED on any sk_live_ Stripe key). The
+# one addition is the agent step, gated on ANTHROPIC_API_KEY.
+
+on:
+  schedule:
+    # Weekly, Mondays 08:00 UTC — after the nightly journey/persona suites, so the three
+    # throwaway-DB workflows never contend for the same runner window.
+    # (For twice-weekly, add a second cron e.g. '0 8 * * 4' — Thursdays.)
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      persona:
+        description: 'Persona row to walk (next | guest | traveler | trip-pass | plus | expert | provider | admin)'
+        required: false
+        default: 'next'
+
+concurrency:
+  group: walkthrough-weekly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write        # push the report branch
+  pull-requests: write   # open the draft report PR
+
+jobs:
+  walkthrough:
+    name: walk one persona, judge, file findings
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require an Anthropic API key (this workflow cannot walk without one)
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set. Add it under Settings -> Secrets and variables -> Actions before this workflow can run. The walkthrough agent needs it to drive the browser and judge screens."
+            exit 1
+          fi
+          echo "ANTHROPIC_API_KEY present — proceeding."
+
+      - name: Fail closed on a live Stripe key (a walk must never be able to charge a real card)
+        run: |
+          for VAR_NAME in STRIPE_SECRET_KEY STRIPE_SECRET_KEY_TEST; do
+            VALUE="${!VAR_NAME:-}"
+            if [[ "$VALUE" == sk_live_* ]]; then
+              echo "::error::$VAR_NAME is shaped like a LIVE Stripe key (sk_live_...). A walkthrough must never be capable of a real charge."
+              exit 1
+            fi
+          done
+          echo "Stripe secrets are not live-shaped (or unset) — safe to proceed."
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_SECRET_KEY_TEST: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.VITE_STRIPE_PUBLISHABLE_KEY }}
+
+      - name: Set up CI database (migrations, sessions table, ci-admin for the admin walk)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Absent real key -> non-functional stub -> the ruling-38 negative money contract.
+          # A walk stops at confirm regardless, so no real charge is ever possible here.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          # The APP's own AI key is a stub — the site under test must not make real model
+          # calls. The AGENT DRIVING the walk uses ANTHROPIC_API_KEY (below), a different
+          # process from the server.
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Seed Kyoto personas (scripts/seed-personas.ts --apply)
+        run: npx tsx scripts/seed-personas.ts --apply
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Create the report branch
+        id: branch
+        run: |
+          RUN_DATE=$(date -u +%Y-%m-%d)
+          PERSONA="${{ github.event.inputs.persona || 'next' }}"
+          BRANCH="walkthrough/${RUN_DATE}-${PERSONA}-${{ github.run_id }}"
+          git config user.name  "walkthrough-bot"
+          git config user.email "walkthrough-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          echo "branch=$BRANCH"  >> "$GITHUB_OUTPUT"
+          echo "persona=$PERSONA" >> "$GITHUB_OUTPUT"
+          echo "run_date=$RUN_DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Walk the persona (headless Claude Code agent)
+        id: walk
+        run: |
+          set -o pipefail
+          npx --yes @anthropic-ai/claude-code@latest \
+            -p "/walkthrough ${{ steps.branch.outputs.persona }}" \
+            --permission-mode acceptEdits \
+            --dangerously-skip-permissions \
+            --allowedTools "Bash,Read,Write,Edit,Grep,Glob" \
+            --output-format text 2>&1 | tee walk-agent.log
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+
+      - name: Commit any uncommitted report + shots (the skill commits, this is a backstop)
+        id: commit
+        if: always()
+        run: |
+          git add -A docs/testing/walkthroughs/ 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "walkthrough: ${{ steps.branch.outputs.run_date }} ${{ steps.branch.outputs.persona }} run report" || true
+          fi
+          # Is there anything on this branch beyond origin/main worth a PR?
+          if git rev-parse --verify --quiet origin/main >/dev/null; then BASE=origin/main; else BASE=HEAD~1; fi
+          if git log "$BASE"..HEAD --oneline | grep -q .; then
+            echo "has_commits=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_commits=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push branch and open the draft report PR
+        if: always() && steps.commit.outputs.has_commits == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          git push -u origin "$BRANCH"
+          REPORT=$(ls -t docs/testing/walkthroughs/*.md 2>/dev/null | head -1 || true)
+          BODY=$(mktemp)
+          {
+            echo "Autonomous persona walkthrough — **${{ steps.branch.outputs.persona }}** (${{ steps.branch.outputs.run_date }})."
+            echo ""
+            echo "Ruling \`2026-08-30-autonomous-walkthroughs\`. Read-only walk; findings are disposed by class in the report. **This PR is the report — a human decides what merges.** BUG/DESIGN findings that warrant a fix get their own separate draft PR from an agent session; SPEC-GAP/JUDGMENT are escalations for the decision-maker."
+            echo ""
+            if [ -n "$REPORT" ]; then echo "Report: \`$REPORT\`"; fi
+            echo ""
+            echo "---"
+            echo "_Generated by [Claude Code](https://claude.ai/code)_"
+          } > "$BODY"
+          gh pr create \
+            --draft \
+            --base main \
+            --head "$BRANCH" \
+            --title "Walkthrough — ${{ steps.branch.outputs.persona }} (${{ steps.branch.outputs.run_date }})" \
+            --body-file "$BODY" || echo "::warning::gh pr create failed (branch is pushed; open the PR manually)."
+
+      - name: Upload the walk log + screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkthrough-${{ steps.branch.outputs.run_date }}-${{ steps.branch.outputs.persona }}
+          path: |
+            walk-agent.log
+            docs/testing/walkthroughs/
+          retention-days: 14
+
+      - name: Verdict
+        if: always()
+        run: |
+          echo "### Walkthrough Weekly — ${{ steps.branch.outputs.persona }} (${{ steps.branch.outputs.run_date }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.walk.outcome }}" = "success" ]; then
+            echo "Agent walk: ✅ completed." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Agent walk: ❌ did not complete cleanly — see the **walk-agent.log** artifact." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.commit.outputs.has_commits }}" = "1" ]; then
+            echo "Report PR: opened as a draft off branch \`${{ steps.branch.outputs.branch }}\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report was produced — the walk stalled before writing one. Check the log." >> "$GITHUB_STEP_SUMMARY"
+          fi
