@@ -88,6 +88,34 @@ test.describe("Single planning entry — chooser", () => {
   }
 });
 
+test.describe("No route auto-opens the intake (walkthrough F-T1, 2026-08-30)", () => {
+  // Ruling 2026-08-28-single-planning-entry extended: a ROUTE never auto-opens the
+  // planning chooser/intake. /experiences is a browse surface first; the intake panel
+  // opens only from its CTA or an explicit ?plan=1 deep-link, never on bare arrival.
+  test("/experiences loads with NO intake panel open", async ({ page }) => {
+    await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
+    // The page's own browse content renders...
+    await expect(page.getByRole("heading", { name: /Plan Your Perfect Experience/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    // ...and the intake modal is NOT blocking it.
+    await expect(page.getByTestId("intake-panel")).toHaveCount(0);
+  });
+
+  test("the page CTA opens the intake panel", async ({ page }) => {
+    await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
+    const cta = page.getByTestId("button-experiences-start-plan");
+    await cta.waitFor({ state: "visible", timeout: 15_000 });
+    await cta.click();
+    await expect(page.getByTestId("intake-panel")).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("?plan=1 deep-link opens the intake panel on arrival", async ({ page }) => {
+    await page.goto(`${BASE_URL}/experiences?plan=1`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("intake-panel")).toBeVisible({ timeout: 15_000 });
+  });
+});
+
 test.describe("Single planning entry — authed branches", () => {
   test("myself branch creates a draft trip and lands on the slip (/plans/:tripId)", async ({ page }) => {
     await registerUser(page);
