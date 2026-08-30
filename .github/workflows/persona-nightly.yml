@@ -6,12 +6,17 @@ name: Persona Nightly (Kyoto marketplace personas — Lane B)
 # persona seed (scripts/seed-personas.ts) and the four-suite supply-before-demand ordering
 # docs/testing/PERSONA_LANE_B_HANDOFF.md requires.
 #
-# ORDERING (the handoff's "Required ordering", non-negotiable): seed -> supply-expert ->
-# supply-provider -> journey-guest -> journey-traveler -> the SAME four suites again for
-# idempotence. Demand journeys (guest/traveler) read Kyoto inventory the supply suites create —
+# ORDERING (the handoff's "Required ordering", non-negotiable, EXTENDED by the persona-coverage
+# dispatch): seed -> supply-expert -> supply-provider -> journey-traveler (entitlements — the
+# free-traveler catalog checkout AND the Trip-Pass covered/uncovered branches, both needing the
+# supply suites' inventory) -> journey-guest (demand) -> journey-handoff (expert grant/accept/
+# edit) -> journey-plus (occasion draft-run delivery) -> the SAME six suites again for
+# idempotence. Demand/entitlement journeys read Kyoto inventory the supply suites create —
 # running them out of order, or in parallel across files, would let Playwright's default file
-# ordering silently break the dependency. Each suite therefore runs as its OWN
-# `playwright test <file>` step, in the exact order above, twice.
+# ordering silently break the dependency. journey-handoff and journey-plus have no supply
+# dependency of their own (self-contained personas/admin-approval flows) and run after demand per
+# the dispatch's placement. Each suite therefore runs as its OWN `playwright test <file>` step,
+# in the exact order above, twice.
 #
 # NON-BLOCKING, BUT NOT INVISIBLE (journey-suite.yml precedent, carried forward verbatim): this
 # workflow is not a `pull_request` check, so it can never gate a merge — but that is exactly why
@@ -39,7 +44,7 @@ on:
     # journey-suite.yml (whose `push` trigger is permanent, on `main`), this workflow's ONLY
     # `push` trigger is this temporary branch entry — REMOVE THIS ENTIRE `push:` BLOCK when this
     # branch merges to main; `schedule` + `workflow_dispatch` are the permanent triggers.
-    branches: [claude/persona-lane-b-suites]
+    branches: [claude/persona-lane-b-suites, claude/persona-coverage-2]
   schedule:
     # Nightly at 09:00 UTC — after journey-suite.yml's 07:00 UTC run, so the two throwaway-DB
     # nightly workflows never contend for the same Postgres/runner window.
@@ -55,7 +60,7 @@ permissions:
 
 jobs:
   personas:
-    name: personas (supply-expert, supply-provider, journey-guest, journey-traveler x2)
+    name: personas (supply-expert, supply-provider, journey-traveler, journey-guest, journey-handoff, journey-plus x2)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     services:
@@ -138,6 +143,12 @@ jobs:
           XAI_API_KEY: xai-ci-stub-no-real-calls
           ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
           RESEND_API_KEY: re_ci_stub_no_real_calls
+          # journey-plus.spec.ts's draft-run trigger (POST /internal/run-occasion-drafts) needs
+          # this to match what the TEST PROCESS reads from its own env (see the "1/2 —
+          # journey-plus" / "2/2 — journey-plus" steps below) — sourced from the repo secret,
+          # never a literal (server/routes/internal.routes.ts 503s when unset; the spec asserts
+          # that honest negative rather than failing when the secret isn't configured).
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           ALLOW_TEST_ACCOUNTS: '1'
@@ -207,6 +218,20 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
 
+      - name: 1/2 — journey-traveler (entitlements — free-traveler checkout + Trip-Pass covered/uncovered)
+        id: run-journey-traveler-1
+        run: npx playwright test playwright/tests/personas/journey-traveler.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
       - name: 1/2 — journey-guest
         id: run-journey-guest-1
         run: npx playwright test playwright/tests/personas/journey-guest.spec.ts --project=chromium
@@ -221,9 +246,9 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
 
-      - name: 1/2 — journey-traveler
-        id: run-journey-traveler-1
-        run: npx playwright test playwright/tests/personas/journey-traveler.spec.ts --project=chromium
+      - name: 1/2 — journey-handoff
+        id: run-journey-handoff-1
+        run: npx playwright test playwright/tests/personas/journey-handoff.spec.ts --project=chromium
         env:
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
@@ -234,6 +259,24 @@ jobs:
           CI: 'true'
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 1/2 — journey-plus
+        id: run-journey-plus-1
+        run: npx playwright test playwright/tests/personas/journey-plus.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+          # Same secret the server was started with above — the test process reads this
+          # directly (POST /internal/run-occasion-drafts, authenticated by a shared secret,
+          # not a session). Unset here as on the server -> the spec asserts the honest 503.
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
 
       - name: Re-seed (idempotent) before the second pass
         id: seed-personas-2
@@ -269,6 +312,20 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
 
+      - name: 2/2 — journey-traveler (idempotence pass)
+        id: run-journey-traveler-2
+        run: npx playwright test playwright/tests/personas/journey-traveler.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
       - name: 2/2 — journey-guest (idempotence pass)
         id: run-journey-guest-2
         run: npx playwright test playwright/tests/personas/journey-guest.spec.ts --project=chromium
@@ -283,9 +340,9 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
 
-      - name: 2/2 — journey-traveler (idempotence pass)
-        id: run-journey-traveler-2
-        run: npx playwright test playwright/tests/personas/journey-traveler.spec.ts --project=chromium
+      - name: 2/2 — journey-handoff (idempotence pass)
+        id: run-journey-handoff-2
+        run: npx playwright test playwright/tests/personas/journey-handoff.spec.ts --project=chromium
         env:
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
@@ -296,6 +353,21 @@ jobs:
           CI: 'true'
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: 2/2 — journey-plus (idempotence pass)
+        id: run-journey-plus-2
+        run: npx playwright test playwright/tests/personas/journey-plus.spec.ts --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
 
       - name: Upload report (Playwright HTML report + persona journey JSON reports)
         if: always()
@@ -327,21 +399,27 @@ jobs:
 
           echo "| supply-expert | $(verdict '${{ steps.run-supply-expert-1.outcome }}') | $(verdict '${{ steps.run-supply-expert-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
           echo "| supply-provider | $(verdict '${{ steps.run-supply-provider-1.outcome }}') | $(verdict '${{ steps.run-supply-provider-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| journey-traveler (entitlements) | $(verdict '${{ steps.run-journey-traveler-1.outcome }}') | $(verdict '${{ steps.run-journey-traveler-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
           echo "| journey-guest | $(verdict '${{ steps.run-journey-guest-1.outcome }}') | $(verdict '${{ steps.run-journey-guest-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| journey-traveler | $(verdict '${{ steps.run-journey-traveler-1.outcome }}') | $(verdict '${{ steps.run-journey-traveler-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| journey-handoff | $(verdict '${{ steps.run-journey-handoff-1.outcome }}') | $(verdict '${{ steps.run-journey-handoff-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| journey-plus | $(verdict '${{ steps.run-journey-plus-1.outcome }}') | $(verdict '${{ steps.run-journey-plus-2.outcome }}') |" >> "$GITHUB_STEP_SUMMARY"
 
           FAILED=0
           for OUTCOME in \
             "${{ steps.seed-personas.outcome }}" \
             "${{ steps.run-supply-expert-1.outcome }}" \
             "${{ steps.run-supply-provider-1.outcome }}" \
-            "${{ steps.run-journey-guest-1.outcome }}" \
             "${{ steps.run-journey-traveler-1.outcome }}" \
+            "${{ steps.run-journey-guest-1.outcome }}" \
+            "${{ steps.run-journey-handoff-1.outcome }}" \
+            "${{ steps.run-journey-plus-1.outcome }}" \
             "${{ steps.seed-personas-2.outcome }}" \
             "${{ steps.run-supply-expert-2.outcome }}" \
             "${{ steps.run-supply-provider-2.outcome }}" \
+            "${{ steps.run-journey-traveler-2.outcome }}" \
             "${{ steps.run-journey-guest-2.outcome }}" \
-            "${{ steps.run-journey-traveler-2.outcome }}"; do
+            "${{ steps.run-journey-handoff-2.outcome }}" \
+            "${{ steps.run-journey-plus-2.outcome }}"; do
             if [ "$OUTCOME" = "failure" ] || [ "$OUTCOME" = "cancelled" ]; then FAILED=1; fi
           done
 

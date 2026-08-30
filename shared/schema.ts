@@ -7506,6 +7506,12 @@ export type PlanMembership = typeof planMemberships.$inferSelect;
 //   · source_payment_id is PAYMENT IDENTITY (§19a): written ONLY by the server-side grant
 //     path from a Stripe-verified PaymentIntent. There is deliberately NO createInsertSchema
 //     for this table — nothing here is ever parsed off a request body (#PS18 posture).
+//   · source (ledger 2026-08-29-trip-pass-provenance, migration 264) records PROVENANCE —
+//     'stripe' | 'manual' | 'beta', mirroring plan_memberships.source. No DB CHECK
+//     (publish-trap rule); the vocabulary is enforced by grantTripPass, service-layer.
+//     The manual/beta path is now a first-class §19a-sanctioned writer: grantTripPass
+//     requires a real source_payment_id for 'stripe' and requires source_payment_id be
+//     NULL for 'manual'/'beta' — a manual grant never carries a fabricated payment id.
 // Both partial unique indexes are DECLARED here (deploy-push durability rule) and must stay
 // byte-identical to migration 262's CREATE INDEX statements.
 export const tripEntitlements = pgTable("trip_entitlements", {
@@ -7515,6 +7521,7 @@ export const tripEntitlements = pgTable("trip_entitlements", {
   status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'revoked'
   grantedAt: timestamp("granted_at").notNull().defaultNow(),
   sourcePaymentId: varchar("source_payment_id", { length: 255 }),
+  source: varchar("source", { length: 20 }).notNull().default("stripe"), // 'stripe' | 'manual' | 'beta'
   allowancesSnapshot: jsonb("allowances_snapshot").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

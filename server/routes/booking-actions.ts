@@ -1592,6 +1592,12 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
       return res.status(403).json({ message: "Not assigned to this trip" });
     }
 
+    // This endpoint is a fully fortified door to an empty room: auth-gated (§12 pending-advisor
+    // read gate, #623, above), confirmed display-only (itineraryItems.bookingStatus is
+    // client-settable but no money path reads it — see the grandfather note in
+    // scripts/check-privileged-field-completeness.cjs), and consumed by no client yet (future:
+    // the fee-attribution sidebar DISPLAY lane from the marketplace audit). When that lane lands,
+    // switch the filter below off bookingStatus onto routingStatus/bookingId presence.
     const allItems = await storage.getItineraryItems(tripId);
     const CONFIRMED_STATUSES = ["planned", "confirmed", "in_progress", "booked"];
     const items = allItems.filter((item: any) =>

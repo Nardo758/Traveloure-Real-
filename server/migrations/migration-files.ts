@@ -1299,11 +1299,19 @@ export const MIGRATION_FILES = [
   // rule); no CHECK (app-enforced vocabulary), no backfill; §19 server-authored only.
   // Renumbered from 262 during merge with main — 262 was claimed by 262_trip_entitlements.sql.
   "263_nugget_gem_promotion.sql",
-  // 264: creator provenance on vendors — server-authored created_by_id from the authenticated
+  // 264: trip_entitlements.source (ledger 2026-08-29-trip-pass-provenance), mirroring
+  // plan_memberships.source ('stripe' | 'manual' | 'beta'). Additive, DEFAULT 'stripe' —
+  // no CHECK (publish-trap rule; vocabulary enforced by grantTripPass, service-layer).
+  // Backfills every pre-existing row to 'stripe' (correct: the only writer before this
+  // lane was the Stripe-verified confirm path). Declared in shared/schema.ts.
+  "264_trip_entitlement_source.sql",
+  // 265: creator provenance on vendors — server-authored created_by_id from the authenticated
   // session. Additive-nullable with no backfill; NULL means legacy origin is unknown.
-  "264_vendor_creation_provenance.sql",
-  // 265: one current provider application per user. Rejected/deleted/deactivated rows remain
+  // Renumbered from 264 during merge with main — 264 was claimed by
+  // 264_trip_entitlement_source.sql.
+  "265_vendor_creation_provenance.sql",
+  // 266: one current provider application per user. Rejected/deleted/deactivated rows remain
   // review/account history; only duplicate current rows are removed before the partial unique
   // index is installed. The index is also declared in shared/schema.ts for publish durability.
-  "265_provider_application_current_unique.sql",
+  "266_provider_application_current_unique.sql",
 ] as const;

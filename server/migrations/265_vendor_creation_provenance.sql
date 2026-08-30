@@ -1,4 +1,6 @@
--- 264: Creator provenance on vendors.
+-- 265: Creator provenance on vendors.
+-- Renumbered from 264 during merge with main — 264 was claimed by
+-- 264_trip_entitlement_source.sql (ledger 2026-08-29-trip-pass-provenance).
 -- New rows receive created_by_id from the authenticated session in POST /api/vendors;
 -- request JSON cannot set or override it. Additive-nullable because legacy rows have no
 -- trustworthy creator identity: NULL means "created before this column / origin unknown".
