@@ -176,6 +176,7 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
     'paymentDetails', 'cardInfo', 'billingAddress',       // legacy/speculative — no live column, kept harmless
     'paymentIntentId', 'stripeSessionId',                 // wrong-cased/nonexistent — kept harmless
     'stripePaymentIntentId', 'stripeDepositIntentId', 'stripeBalanceIntentId', // the REAL columns (§19a)
+    'idempotencyKey',                                     // §19a payment-identity sibling: the Stripe idempotency key must not round-trip to an earner role either
   ];
   for (const field of sensitiveFields) {
     if (field in sanitized) {
