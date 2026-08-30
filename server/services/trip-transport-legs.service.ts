@@ -61,7 +61,7 @@ export interface TripLegSkip {
   toItemId: string;
   toTitle: string;
   /** Honest omission: geometry is missing, or the engine has no plausible mode for this pair. */
-  reason: "missing_coordinates" | "no_plausible_transport_mode";
+  reason: "missing_coordinates" | "route_unavailable";
 }
 
 export interface TripLegGenerationResult {
@@ -198,7 +198,7 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
         order: i + 1,
       };
 
-      const leg = computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+      const leg = await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
       if (!leg) {
         skipped.push({
           dayNumber,
@@ -206,7 +206,7 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
           fromTitle: from.title,
           toItemId: to.id,
           toTitle: to.title,
-          reason: "no_plausible_transport_mode",
+          reason: "route_unavailable",
         });
         continue;
       }

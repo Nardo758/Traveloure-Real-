@@ -9,6 +9,7 @@ import {
   type ActivityPoint,
 } from "./maps-url-builder";
 import { eq } from "drizzle-orm";
+import { getTrafficAwareDrivingRoute } from "./routes.service";
 
 export interface ActivityLocation {
   id: string;
@@ -18,6 +19,8 @@ export interface ActivityLocation {
   scheduledTime: string;
   dayNumber: number;
   order: number;
+  /** RFC 3339 departure computed from the trip date/schedule when available. */
+  departureTime?: string;
 }
 
 interface TransportAlternative {
@@ -48,6 +51,9 @@ export interface TransportLegResult {
   energyCost: number;
   linkedProductId?: string;
   linkedProductUrl?: string;
+  routeProvider: "google_routes";
+  routeRetrievedAt: string;
+  userSelectedMode?: string | null;
 }
 
 export interface UserTransportPrefs {
@@ -144,7 +150,7 @@ export async function calculateTransportLegs(
 
   const allLegs: TransportLegResult[] = [];
   for (const pair of buildSameDayActivityPairs(activities)) {
-    const leg = computeSingleLeg(
+    const leg = await computeSingleLeg(
       pair.from,
       pair.to,
       pair.dayNumber,
@@ -178,15 +184,15 @@ export async function calculateTransportLegs(
  * Pure: no DB write, no maps cache, no booking-option population. Callers own persistence (the
  * trip path writes trip-scoped rows born 'proposed'; the variant path keeps its own pipeline).
  */
-export function computeTransportLeg(
+export async function computeTransportLeg(
   from: ActivityLocation,
   to: ActivityLocation,
   dayNumber: number,
   legOrder: number,
   destination: string,
   userPrefs: Partial<UserTransportPrefs> = {}
-): TransportLegResult | null {
-  return computeSingleLeg(
+): Promise<TransportLegResult | null> {
+  return await computeSingleLeg(
     from,
     to,
     dayNumber,
@@ -196,96 +202,36 @@ export function computeTransportLeg(
   );
 }
 
-function computeSingleLeg(
+async function computeSingleLeg(
   from: ActivityLocation,
   to: ActivityLocation,
   dayNumber: number,
   legOrder: number,
   profile: DestinationTransportProfile,
   userPrefs: UserTransportPrefs
-): TransportLegResult | null {
-  const distanceMeters = haversineDistance(from.lat, from.lng, to.lat, to.lng);
-  const distanceKm = distanceMeters / 1000;
-  const isRegional = distanceKm >= REGIONAL_DISTANCE_KM;
-  const departureHour = parseHour(from.scheduledTime);
-
-  const evaluations: Array<TransportAlternative & { _score: number }> = [];
-
-  for (const modeConfig of profile.availableModes) {
-    if (!modeConfig.available) continue;
-    if (userPrefs.avoidModes.includes(modeConfig.mode)) continue;
-
-    const endHour = modeConfig.availableHours.end === 24 ? 24 : modeConfig.availableHours.end;
-    if (departureHour < modeConfig.availableHours.start || departureHour >= endHour) continue;
-
-    if (userPrefs.accessibility && modeConfig.accessibilityScore < 50) continue;
-
-    const realDistanceKm = distanceKm * 1.3;
-    const normalizedMode = modeConfig.mode.toLowerCase();
-    const isWalk = normalizedMode === "walk" || normalizedMode.includes("walking");
-    const regionalSpeed = isRegional
-      ? regionalModeSpeed(modeConfig.mode, modeConfig.averageSpeedKmh)
-      : null;
-    if (isRegional && regionalSpeed == null) continue;
-
-    const effectiveSpeed = regionalSpeed ?? modeConfig.averageSpeedKmh;
-    const travelMinutes = (realDistanceKm / effectiveSpeed) * 60;
-    const totalMinutes = Math.max(1, Math.ceil(travelMinutes + modeConfig.waitTimeMinutes));
-    // A walk that exceeds the traveler's own limit is not an option. Previously the scorer could
-    // still choose a free multi-hour/multi-day walk after every long mode's time score hit zero.
-    if (isWalk && totalMinutes > userPrefs.maxWalkMinutes) continue;
-
-    let costUsd: number | null = null;
-    if (modeConfig.baseCostPerKm > 0 || modeConfig.flagFall > 0) {
-      costUsd = Math.round((modeConfig.flagFall + realDistanceKm * modeConfig.baseCostPerKm) * 100) / 100;
-    }
-
-    const energyCost = Math.min(20, Math.ceil(realDistanceKm * modeConfig.energyCostPerKm));
-    const score = scoreModeForUser(modeConfig, totalMinutes, costUsd, energyCost, userPrefs);
-
-    evaluations.push({
-      mode: modeConfig.mode,
-      durationMinutes: totalMinutes,
-      costUsd,
-      energyCost,
-      reason: "",
-      _score: score,
-    });
-  }
-
-  // Honest absence: no plausible mode means no persisted leg, never an invented walking fallback.
-  if (evaluations.length === 0) return null;
-
-  // Regional transfers are utility travel: choose the fastest plausible motorized mode. Local
-  // legs retain the preference-weighted scorer.
-  evaluations.sort((a, b) =>
-    isRegional
-      ? (a.durationMinutes - b.durationMinutes) || (b._score - a._score)
-      : b._score - a._score
-  );
-
-  evaluations.forEach((e, i) => {
-    if (i === 0) {
-      e.reason = isRegional ? "Fastest plausible regional option" : "Best match for your preferences";
-    } else if (e.costUsd === null || e.costUsd === 0) {
-      e.reason = "Free option";
-    } else if (evaluations[0].durationMinutes > e.durationMinutes) {
-      e.reason = "Fastest option";
-    } else if (e.costUsd !== null && evaluations[0].costUsd !== null && e.costUsd < evaluations[0].costUsd) {
-      e.reason = "Cheapest option";
-    } else {
-      e.reason = "Alternative option";
-    }
+): Promise<TransportLegResult | null> {
+  // Google only accepts future departures for traffic-aware routing. A schedule without a usable
+  // calendar timestamp is routed shortly in the future rather than silently converted from a
+  // date-less wall clock in the server timezone.
+  const requestedDeparture = from.departureTime ? new Date(from.departureTime) : null;
+  const departureTime =
+    requestedDeparture && Number.isFinite(requestedDeparture.getTime()) && requestedDeparture.getTime() > Date.now()
+      ? requestedDeparture.toISOString()
+      : new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const routed = await getTrafficAwareDrivingRoute({
+    origin: { lat: from.lat, lng: from.lng },
+    destination: { lat: to.lat, lng: to.lng },
+    departureTime,
   });
-
-  const best = evaluations[0];
-  const alternatives = evaluations.slice(1).map(e => ({
-    mode: e.mode,
-    durationMinutes: e.durationMinutes,
-    costUsd: e.costUsd,
-    energyCost: e.energyCost,
-    reason: e.reason,
-  }));
+  if (!routed) return null;
+  const distanceMeters = routed.distanceMeters;
+  const distanceKm = distanceMeters / 1000;
+  const drivingConfig = profile.availableModes.find((mode) =>
+    /drive|car|taxi|rideshare/i.test(mode.mode),
+  );
+  const estimatedCostUsd = drivingConfig && (drivingConfig.baseCostPerKm > 0 || drivingConfig.flagFall > 0)
+    ? Math.round((drivingConfig.flagFall + distanceKm * drivingConfig.baseCostPerKm) * 100) / 100
+    : null;
 
   return {
     fromActivityId: from.id,
@@ -300,11 +246,13 @@ function computeSingleLeg(
     legOrder,
     distanceMeters: Math.round(distanceMeters),
     distanceDisplay: formatDistance(distanceMeters),
-    recommendedMode: best.mode,
-    estimatedDurationMinutes: best.durationMinutes,
-    estimatedCostUsd: best.costUsd,
-    alternativeModes: alternatives,
-    energyCost: best.energyCost,
+    recommendedMode: "driving",
+    estimatedDurationMinutes: routed.durationMinutes,
+    estimatedCostUsd,
+    alternativeModes: [],
+    energyCost: 0,
+    routeProvider: routed.provider,
+    routeRetrievedAt: routed.retrievedAt,
   };
 }
 

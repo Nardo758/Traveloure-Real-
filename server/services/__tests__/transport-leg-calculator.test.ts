@@ -10,8 +10,16 @@ const prefs = {
   budgetTier: "moderate" as const,
 };
 
-test("regional legs use a plausible motorized estimate, never walking", () => {
-  const leg = computeTransportLeg(
+function mockGoogleRoute(distanceMeters: number, durationSeconds: number) {
+  process.env.GOOGLE_MAPS_API_KEY = "test-key";
+  global.fetch = async () => new Response(JSON.stringify({
+    routes: [{ distanceMeters, duration: `${durationSeconds}s`, polyline: { encodedPolyline: "abc" } }],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+}
+
+test("uses Google traffic-aware driving distance and duration", async () => {
+  mockGoogleRoute(481_000, 21_600);
+  const leg = await computeTransportLeg(
     { id: "a", name: "A", lat: 36.2704233, lng: -121.8080556, scheduledTime: "09:00", dayNumber: 2, order: 0 },
     { id: "b", name: "B", lat: 34.0549076, lng: -118.242643, scheduledTime: "12:00", dayNumber: 2, order: 1 },
     2,
@@ -20,13 +28,16 @@ test("regional legs use a plausible motorized estimate, never walking", () => {
     prefs,
   );
   assert.ok(leg);
-  assert.notEqual(leg.recommendedMode, "walk");
-  assert.ok(leg.estimatedDurationMinutes >= 300);
-  assert.ok(leg.estimatedDurationMinutes <= 600);
+  assert.equal(leg.recommendedMode, "driving");
+  assert.equal(leg.distanceMeters, 481_000);
+  assert.equal(leg.estimatedDurationMinutes, 360);
+  assert.equal(leg.routeProvider, "google_routes");
 });
 
-test("walking is excluded when it exceeds maxWalkMinutes", () => {
-  const leg = computeTransportLeg(
+test("returns honest absence when Google routing is unavailable", async () => {
+  process.env.GOOGLE_MAPS_API_KEY = "test-key";
+  global.fetch = async () => new Response("unavailable", { status: 503 });
+  const leg = await computeTransportLeg(
     { id: "a", name: "A", lat: 35.0, lng: 135.0, scheduledTime: "09:00", dayNumber: 1, order: 0 },
     { id: "b", name: "B", lat: 35.02, lng: 135.0, scheduledTime: "10:00", dayNumber: 1, order: 1 },
     1,
@@ -34,8 +45,7 @@ test("walking is excluded when it exceeds maxWalkMinutes", () => {
     "default",
     prefs,
   );
-  assert.ok(leg);
-  assert.notEqual(leg.recommendedMode, "walk");
+  assert.equal(leg, null);
 });
 
 test("activity pairs stay within a day and never imply an overnight transfer", () => {
