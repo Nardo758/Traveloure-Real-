@@ -60,8 +60,8 @@ export interface TripLegSkip {
   fromTitle: string;
   toItemId: string;
   toTitle: string;
-  /** Only reason in v1 — one or both endpoints have no usable coordinates. */
-  reason: "missing_coordinates";
+  /** Honest omission: geometry is missing, or the engine has no plausible mode for this pair. */
+  reason: "missing_coordinates" | "no_plausible_transport_mode";
 }
 
 export interface TripLegGenerationResult {
@@ -199,6 +199,17 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
       };
 
       const leg = computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+      if (!leg) {
+        skipped.push({
+          dayNumber,
+          fromItemId: from.id,
+          fromTitle: from.title,
+          toItemId: to.id,
+          toTitle: to.title,
+          reason: "no_plausible_transport_mode",
+        });
+        continue;
+      }
 
       rows.push({
         // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).

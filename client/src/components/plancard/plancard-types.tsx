@@ -465,6 +465,8 @@ export interface PlanCardProposalData {
   items: ProposalVariantItem[];
   /** Null/undefined while legs are loading or when the variant has none. */
   legsSummary?: ProposalLegsSummary | null;
+  /** Existing-coordinate coverage. Partial coverage qualifies and suppresses travel headlines. */
+  locationCoverage?: { locatedStops: number; totalStops: number };
   applyLabel: string;
   onApply: () => void;
   applying?: boolean;

@@ -104,11 +104,7 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
           >
             <Anchor className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span
-              title={
-                proposal.anchorLine.includes(" min median")
-                  ? "Estimated walking time from straight-line distance at 80 m/min"
-                  : undefined
-              }
+              title="Anchor distance is straight-line geometry, not a routed travel time."
             >
               {proposal.anchorLine}
             </span>
@@ -170,6 +166,17 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
         ))}
         {/* Muted transport summary — server-computed leg count + cost only. Nothing renders
             while unknown/absent (§13 — never a guessed figure). */}
+        {proposal.locationCoverage && proposal.locationCoverage.totalStops > 0 && (
+          <p
+            className="border-t border-[var(--earn-border)] pt-1 text-xs text-muted-foreground"
+            data-testid={`proposal-location-coverage-${proposal.variantId}`}
+          >
+            {proposal.locationCoverage.locatedStops} of {proposal.locationCoverage.totalStops} stops located
+            {proposal.locationCoverage.locatedStops < proposal.locationCoverage.totalStops
+              ? " · travel estimate based on located stops only"
+              : ""}
+          </p>
+        )}
         {proposal.legsSummary && proposal.legsSummary.count > 0 && (
           <p className="flex items-center gap-1.5 border-t border-[var(--earn-border)] pt-1 text-xs text-muted-foreground" data-testid={`proposal-legs-${proposal.variantId}`}>
             <Car className="w-3.5 h-3.5" />

@@ -84,6 +84,7 @@ import {
   hasHeadlineClaim,
   formatMinutes,
   formatAnchorLine,
+  coordinateCoverage,
   type ProposalPreview,
 } from "@/lib/slip-proposal-preview";
 
@@ -584,7 +585,7 @@ function ProposalColumnContainer({
     baselineTotalUsd,
     variantTotalUsd: parseTotal(variant.totalCost),
     baselineDriveMinutes,
-    variantDriveMinutes: sumLegMinutes(legs),
+    variantDriveMinutes: coordinateCoverage(variant.items).complete ? sumLegMinutes(legs) : null,
   });
   const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
 
@@ -617,6 +618,8 @@ function ProposalColumnContainer({
             anchorType: variant.anchorType,
             anchorName: variant.anchorName,
             anchorMedianMeters: variant.anchorMedianMeters,
+             locatedStops: coordinateCoverage(variant.items).locatedStops,
+             totalStops: coordinateCoverage(variant.items).totalStops,
           }),
          isBaseline: isBaselineColumn,
         recommended,
@@ -634,6 +637,7 @@ function ProposalColumnContainer({
            isNew: it.isReplacement,
         })),
         legsSummary,
+         locationCoverage: coordinateCoverage(variant.items),
           applyLabel: isBaselineColumn ? "Keep this plan" : "Select this plan",
         onApply,
         applying,
@@ -1293,7 +1297,9 @@ export default function ItineraryComparisonPage() {
 
   // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
   const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
-  const baselineDriveMinutes = sumLegMinutes(baselineLegs);
+  const baselineDriveMinutes = coordinateCoverage(userVariant?.items).complete
+    ? sumLegMinutes(baselineLegs)
+    : null;
 
   // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
   // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
