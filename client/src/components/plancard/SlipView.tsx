@@ -68,6 +68,7 @@ import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { MapControlCenter } from "./MapControlCenter";
+import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import {
   EXPERT_NOTE_TINT,
@@ -577,6 +578,9 @@ function SlipActions({
   // cart is required here.
   const [optimizing, setOptimizing] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
+  // After adopting the optimization, the Finalize chooser asks "how do you want to book it?"
+  // (ratified mock "Adopt the Optimization" → Finalize modal). Opened only on a fresh finalize.
+  const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
   // Display-honesty fix (ledger 2026-08-29-persona-coverage-complete's filed finding):
@@ -838,13 +842,27 @@ function SlipActions({
       {isOwner && !trip.finalizedAt && (
         <Button
           size="sm"
-          onClick={() => finalizeMutation.mutate()}
+          onClick={() =>
+            finalizeMutation.mutate(undefined, {
+              // Open the Finalize "how do you want to book it?" chooser on a fresh adopt only —
+              // never on an already-finalized re-click (the hook's own onSuccess handles toasts).
+              onSuccess: (data) => {
+                if (!data.alreadyFinalized) setFinalizeModalOpen(true);
+              },
+            })
+          }
           disabled={finalizeMutation.isPending}
           data-testid="slip-action-adopt-optimization"
         >
           <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Adopt Optimization
         </Button>
       )}
+      <FinalizeBookingModal
+        open={finalizeModalOpen}
+        onOpenChange={setFinalizeModalOpen}
+        trip={{ id: trip.id, destination: trip.destination, travelers: trip.travelers }}
+        activities={activities}
+      />
     </div>
   );
 }
