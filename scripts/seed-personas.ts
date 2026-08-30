@@ -374,6 +374,14 @@ async function main(): Promise<void> {
   const password = hashPassword(PASSWORD);
   const acceptedAt = new Date().toISOString();
 
+  // Collected inside the transaction (expert-form verification pre-seed) and reported
+  // after it commits, so the per-persona reconciliation summary survives past the tx scope.
+  const expertFormReconciliations: Array<{
+    personaKey: string;
+    survivorId: string;
+    removedIds: string[];
+  }> = [];
+
   await db.transaction(async (tx) => {
     const personaIds = new Map<string, string>();
 
@@ -458,6 +466,11 @@ async function main(): Promise<void> {
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
       const reconciliation = await reconcileExpertForm(tx, form, userId);
+      expertFormReconciliations.push({
+        personaKey: form.personaKey,
+        survivorId: reconciliation.survivorId,
+        removedIds: reconciliation.removedIds,
+      });
       if (reconciliation.removedIds.length > 0) {
         console.warn(
           `[seed-personas] reconciled ${form.key}: ` +
