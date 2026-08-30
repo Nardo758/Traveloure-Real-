@@ -47,6 +47,7 @@ import {
   type EffectiveTravelerProfile,
 } from "./services/traveler-profile.service";
 import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
+import { reconcileVariantWithBaseline } from "./services/optimizer-variant-reconciliation.service";
 import { loadRankedAnchors } from "./services/anchor-candidates";
 import { pickAutoAnchors } from "./services/anchor-candidates-map";
 import type { AnchorScore } from "./services/anchor-scoring";
@@ -177,6 +178,8 @@ export interface ItineraryItem {
   location?: string;
   duration?: number;
   dayNumber?: number;
+  startTime?: string;
+  endTime?: string;
   timeSlot?: string;
   /** Lane 5a Defect 3: the catalog row behind this baseline item, when there is one.
    *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
@@ -1453,8 +1456,20 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         );
       }
 
+      // Lane C1 — whole-plan completeness. The model is allowed to move or replace every
+      // optimizable item, but it is not allowed to make one disappear. Reconcile against the
+      // canonical trip baseline after purchased echoes are stripped and before sequencing, so
+      // omitted baseline items are carried through unchanged and participate in ordering/metrics.
+      const { items: completeActivities, carriedThrough } =
+        reconcileVariantWithBaseline(activitiesAfterCommitmentStrip, baselineItems);
+      if (carriedThrough > 0) {
+        console.warn(
+          `[optimizer] variant "${variant.name}": carried through ${carriedThrough} omitted baseline item(s) unchanged`,
+        );
+      }
+
       // Apply smart sequencing to reorder activities
-      const sequencingResult = reorderItinerary(activitiesAfterCommitmentStrip);
+      const sequencingResult = reorderItinerary(completeActivities);
       let reorderedItems = sequencingResult.reorderedItems;
       const methodologyNotes = [...sequencingResult.allMethodologyNotes];
       const sequencingScore = sequencingResult.overallScore;
@@ -1566,15 +1581,23 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             const activityNotes = methodologyNotes.filter(
               n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
             );
-            const coords = coordsForService(item.providerServiceId);
+            const catalogCoords = coordsForService(item.providerServiceId);
+            const reconciledItem = item as SequencedActivity & {
+              latitude?: number;
+              longitude?: number;
+            };
             return {
               variantId: newVariant.id,
               // Lane 5a Defect 3: the catalog link, validated above against the services actually
               // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
               providerServiceId: item.providerServiceId ?? null,
               // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
-              latitude: coords.latitude,
-              longitude: coords.longitude,
+              latitude: reconciledItem.latitude != null
+                ? reconciledItem.latitude.toString()
+                : catalogCoords.latitude,
+              longitude: reconciledItem.longitude != null
+                ? reconciledItem.longitude.toString()
+                : catalogCoords.longitude,
               dayNumber: item.dayNumber,
               timeSlot: item.timeSlot,
               startTime: item.startTime,
