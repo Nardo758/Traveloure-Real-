@@ -1,8 +1,8 @@
 # Audit brief — Adopt the Optimization (slip-review board + Build-around anchors)
 
 **Mock:** `docs/design/adopt-optimization-mock.html` (open in a browser; theme-aware light/dark)
-**Ledger:** `2026-08-22-slip-optimize-review-first`, `2026-08-23-optimizer-three-variants`, `2026-08-23-optimizer-anchors`, `2026-08-23-optimizer-pinned-anchor`, `2026-08-23-optimizer-pin-liveroute`, `2026-08-25-optimizer-pin-on-create`, `2026-08-25-two-modes`, `2026-08-26-variants-are-proposals` (resolves R-B), `2026-08-26-adopt-applies-in-place` (resolves R-C), `2026-08-26-per-stop-adopt-deferred` (R-A, still open)
-**Status:** PARTIALLY shipped. Phases 0/1/1b/1c (server anchor scoring + candidates + pinned-anchor generate) are merged. Client completion (V3 column, anchor line, Build-around popup) is DISPATCHED per `docs/design/ADOPT_OPTIMIZATION_SPEC.md` — status at authoring unknown to this brief; verify against the code, not the spec's own claim. Server items (per-stop adopt R-A, Finalize handoff R-C mechanism) are PENDING a decision-maker ruling on R-A only — R-B and R-C are already ruled (see behaviors 8–9). **Do not flag anything in the "Pending" subsection below as missing** — it is scoped out on purpose.
+**Ledger:** `2026-08-22-slip-optimize-review-first`, `2026-08-23-optimizer-three-variants`, `2026-08-23-optimizer-anchors`, `2026-08-23-optimizer-pinned-anchor`, `2026-08-23-optimizer-pin-liveroute`, `2026-08-25-optimizer-pin-on-create`, `2026-08-25-two-modes`, `2026-08-26-variants-are-proposals` (resolves R-B), `2026-08-26-adopt-applies-in-place` (resolves R-C), `2026-08-26-per-stop-adopt-deferred` (historical live-scope deferral; mock choice model clarified 2026-08-30)
+**Status:** PARTIALLY shipped. Phases 0/1/1b/1c (server anchor scoring + candidates + pinned-anchor generate) are merged. The mock now ratifies three owner choices: keep the current plan, adopt an entire proposal, or adopt one/many selected stops. The live partial-adoption rail is still not built and is outside this mock/docs-only pass. Verify shipped behavior against the code, not the mock.
 **Live surfaces:**
 - `server/services/anchor-scoring.ts`, `shared/geo.ts` (pure scorer)
 - `server/services/anchor-candidates.ts`, `server/services/anchor-candidates-map.ts` (candidate loading + `parsePinnedAnchorInput`)
@@ -24,13 +24,13 @@
 7. Money-saved and drive-time chips are **omitted, not zero-filled**, when there's no real baseline or a stop isn't located (e.g. "Riverside Focus" shows no travel chip in the mock, on purpose).
 8. Drive-time is **time only** — distance is never a headline claim (§21 L3), consistent across this mock and CLAUDE.md ruling 21.
 9. Trending/seasonal context lines (`data-testid="preview-trending-now"`, `preview-seasonal`) each **disappear when there's nothing real to show** — never a placeholder sentence.
-10. **Selecting a version applies it to the slip in place** and gives the owner access to it as their working plan — purchased/in-checkout/with-expert stops stay put, only still-in-planning stops are rebuilt (`2026-08-26-adopt-applies-in-place`, resolves R-C). This SUPERSEDES the mock's own footer copy about "saved as its own trip" / a separate copy — see Known divergences.
+10. The mock presents three deliberate outcomes: **Keep this plan**, **Adopt entire plan**, or select one/many stops with **`+`** and confirm **Adopt N selected stops**. Whole-plan adoption rebuilds only still-in-planning content; partial adoption changes only the selected set. Purchased/in-checkout/with-expert stops stay put.
 11. Every optimizer version is a **proposal** (`itinerary_variants` row under `itinerary_comparisons`), not a separate trip (`2026-08-26-variants-are-proposals`, resolves R-B). Nothing purchased by applying — optimization is a separate earlier paid gate.
 12. Optimize disabled-reasons and owner-only gating are unchanged; the dialog never calls `/generate` until Confirm — no pre-fetch of generation.
 
-### Dispatched/pending — do not flag as missing
-13. **Per-stop `+` adopt ticks** (pulling a single stop from a proposal into the baseline plan) — `2026-08-26-per-stop-adopt-deferred` (R-A), decision-maker ruling still owed. The shipped review UI is whole-plan Apply only; `ProposalColumn.tsx`'s Apply button is documented as "the ONLY action." The mock keeps the `+` glyph for illustration, but its own footer copy no longer promises the tick works.
-14. The **adopt tray** (`data-testid="adopt-tray"`, baseline-only dashed box inviting drag-and-drop) is part of the same deferred R-A feature — planned, not built.
+### Mock-target behavior not yet shipped — do not confuse appearance with implementation
+13. **Per-stop `+` adopt ticks** are interactive in the mock and may select one item or a batch across proposals. The live review UI remains whole-plan Apply only until a partial-adoption contract is implemented.
+14. The **adopt tray** (`data-testid="adopt-tray"`) displays selected stop chips, a count, and a disabled-until-needed **Adopt N selected stops** action. This is the target UX, not evidence of a live endpoint.
 15. The **Finalize popup**'s specific handoff mechanism (Booking agent / Travel expert / Concierge "hands them a copy") — the mechanism is ruled (`2026-08-26-adopt-applies-in-place`'s "gives access" framing extends here: it grants `trip_expert_advisors` access, it does not copy the trip) but the popup's own client wiring may still be mid-build per the spec's Phase dispatch — verify current wiring state in code rather than assuming either way.
 16. V3 column, the anchor line under each version card (`{Hotel|Neighborhood|Activity} · {name} · {min} min median · {k}/{N} stops ≤ 15 min`), and the popup's full candidate-list UI are the client lane's own deliverables per `ADOPT_OPTIMIZATION_SPEC.md` §2 — confirm what has actually landed in `itinerary-comparison.tsx` / `BuildAroundDialog.tsx` rather than assuming the spec's dispatch is fully executed.
 17. `client/src/lib/anchor-format.ts` (the pure `formatAnchorLine` formatter named in the spec) was **not found in the repo at audit time** — if still absent, that specific piece of the client lane has not landed; do not treat its absence alone as evidence the whole lane is unbuilt, but do report it as a concrete gap against the spec.
@@ -58,7 +58,7 @@ test -f client/src/lib/anchor-format.ts && echo "anchor-format.ts exists" || ech
 # Client: omitted-not-zero-filled deltas
 grep -n "money saved\|driveTime\|null" client/src/lib/slip-proposal-preview.ts
 
-# Per-stop adopt tick should NOT be wired to a real endpoint yet (R-A pending)
+# Partial-adoption mock controls exist; verify separately that no live endpoint is being claimed
 grep -rn "adopt-tick\|variants/:vid/items" client/src/components/plancard/ProposalColumn.tsx server/routes.ts server/routes/*.ts
 ```
 
@@ -66,6 +66,6 @@ Route to open: a trip's Slip (`/plans/:id`) → "Optimize this plan" → Build-a
 
 ## Known divergences / notes
 
-- The mock's own footer text about "every version is saved as its own trip" and "saved-as-new" is **superseded** by `2026-08-26-variants-are-proposals` (R-B) and `2026-08-26-adopt-applies-in-place` (R-C) — the ratified behavior is "proposal you can revisit" + "applies in place / gives access," not a separate trip. Audit the code against the ledger rulings, not the mock's literal footer sentence.
+- Versions remain **proposals, not separate trips** under `2026-08-26-variants-are-proposals` (R-B). The mock footer now matches that ruling and no longer promises saved-as-new copies.
 - `ADOPT_OPTIMIZATION_FEATURES.md`'s own header states it is superseded by the SPEC and ledger rulings wherever they conflict — treat the FEATURES doc as historical context, the SPEC + ledger as authoritative for scope/behavior, and the mock HTML as authoritative for appearance only.
-- Do not raise R-A (per-stop adopt) as a missing feature; it is explicitly awaiting a decision-maker ruling before any lane may build it.
+- Do not report the mock's partial-adoption controls as shipped. The intended behavior is now clear, but this pass deliberately changes no live client, API, or persistence path.
