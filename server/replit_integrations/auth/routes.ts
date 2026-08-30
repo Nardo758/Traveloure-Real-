@@ -6,6 +6,7 @@ import { db } from "../../db";
 import { eq, inArray, sql as drizzleSql } from "drizzle-orm";
 import { users } from "@shared/models/auth";
 import { localExpertForms, serviceProviderForms, expertRequests, trips } from "@shared/schema";
+import { sanitizeText } from "../../utils/text-sanitizer";
 
 const CURRENT_TERMS_VERSION = "1.0";
 const CURRENT_PRIVACY_VERSION = "1.0";
@@ -13,7 +14,7 @@ const CURRENT_PRIVACY_VERSION = "1.0";
 // Sanitize user object to remove sensitive fields before sending to client
 function sanitizeUser(user: any) {
   if (!user) return user;
-  const { password, ...safeUser } = user;
+  const { password, instagramAccessToken, ...safeUser } = user;
   return safeUser;
 }
 
@@ -24,12 +25,12 @@ const acceptTermsSchema = z.object({
 
 // Profile update schema
 const updateProfileSchema = z.object({
-  firstName: z.string().min(1).optional(),
-  lastName: z.string().min(1).optional(),
-  bio: z.string().max(500).optional(),
+  firstName: z.string().trim().min(1).max(100).transform(sanitizeText).optional(),
+  lastName: z.string().trim().min(1).max(100).transform(sanitizeText).optional(),
+  bio: z.string().max(500).transform(sanitizeText).optional(),
   profileImageUrl: z.string().url().optional().nullable(),
-  specialties: z.array(z.string()).optional(),
-  preferredCurrency: z.string().length(3).optional(),
+  specialties: z.array(z.string().trim().min(1).max(100).transform(sanitizeText)).max(30).optional(),
+  preferredCurrency: z.string().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()).optional(),
 });
 
 // Register auth-specific routes

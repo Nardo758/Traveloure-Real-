@@ -14,7 +14,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
-import { populateBookingOptionsForVariant, populateBookingOptionsForLeg } from "../services/transport-booking-options.service";
+import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions } from "../services/transport-booking-options.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 
@@ -464,6 +464,34 @@ router.patch(
     }
   }
 );
+
+/**
+ * GET /api/transport-options
+ *
+ * Returns destination-level transport options (platform providers + affiliate
+ * deep-links) without requiring a trip leg or itinerary. Used by the Transfers
+ * tab in the experience builder to let users add transport to their cart.
+ *
+ * Query params:
+ *   destination  — required
+ *   travelers    — optional number (default 1)
+ *   startDate    — optional ISO date string
+ */
+router.get("/api/transport-options", async (req, res) => {
+  try {
+    const { destination, travelers, startDate } = req.query;
+    if (!destination || typeof destination !== "string") {
+      return res.status(400).json({ error: "destination is required" });
+    }
+    const travelersNum = travelers ? parseInt(String(travelers), 10) : 1;
+    const startDateStr = typeof startDate === "string" ? startDate : undefined;
+    const options = await getDestinationTransportOptions(destination, travelersNum, startDateStr);
+    return res.json(options);
+  } catch (error) {
+    console.error("[transport-options] Error fetching destination transport options:", error);
+    return res.status(500).json({ error: "Failed to fetch transport options" });
+  }
+});
 
 /**
  * POST /api/transport-booking-options/seed/test-variant

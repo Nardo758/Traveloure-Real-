@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
@@ -98,8 +99,8 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
         eaUserId,
         clientUserId: foundUser?.id ?? null,
         clientEmail: email,
-        displayName: displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email),
-        notes: notes ?? null,
+        displayName: sanitizeText(displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email)) as string,
+        notes: sanitizeText(notes ?? null),
       });
 
       res.status(201).json(created);
@@ -128,7 +129,7 @@ router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
 
-      const updated = await updateEaClientRelationship(id, updates);
+      const updated = await updateEaClientRelationship(id, sanitizeStringFields(updates));
       res.json(updated);
     } catch (err) {
       console.error("[EA] updateClient error:", err);
@@ -158,10 +159,12 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const { id } = req.params;
-      const { title, message } = z.object({
+      const raw = z.object({
         title: z.string().min(1).max(255),
         message: z.string().min(1),
       }).parse(req.body);
+      const title = sanitizeText(raw.title) as string;
+      const message = sanitizeText(raw.message) as string;
 
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
@@ -203,7 +206,7 @@ router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
 router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaExecutiveSchema.parse({ ...req.body, eaUserId });
+      const body = sanitizeStringFields(insertEaExecutiveSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaExecutive(body));
     } catch (err) {
       console.error("[EA] createExecutive error:", err);
@@ -217,7 +220,7 @@ router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
-      res.json(await updateEaExecutive(req.params.id, req.body));
+      res.json(await updateEaExecutive(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateExecutive error:", err);
       res.status(500).json({ message: "Failed to update executive" });
@@ -262,11 +265,11 @@ router.post("/api/ea/events", isAuthenticated, async (req, res) => {
       // only ever carries a string — coerce here rather than relaxing the
       // schema, so an invalid date is still rejected by z.date()'s NaN check.
       const rawDate = req.body?.date;
-      const body = insertEaEventSchema.parse({
+      const body = sanitizeStringFields(insertEaEventSchema.parse({
         ...req.body,
         eaUserId,
         date: rawDate ? new Date(rawDate) : undefined,
-      });
+      }));
       res.status(201).json(await createEaEvent(body));
     } catch (err) {
       console.error("[EA] createEvent error:", err);
@@ -280,7 +283,7 @@ router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaEventById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Event not found" });
-      res.json(await updateEaEvent(req.params.id, req.body));
+      res.json(await updateEaEvent(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateEvent error:", err);
       res.status(500).json({ message: "Failed to update event" });
@@ -318,7 +321,7 @@ router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
 router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId });
+      const body = sanitizeStringFields(insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaTravelArrangement(body));
     } catch (err) {
       console.error("[EA] createTravel error:", err);
@@ -332,7 +335,7 @@ router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaTravelArrangementById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Travel arrangement not found" });
-      res.json(await updateEaTravelArrangement(req.params.id, req.body));
+      res.json(await updateEaTravelArrangement(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateTravel error:", err);
       res.status(500).json({ message: "Failed to update travel arrangement" });
@@ -370,7 +373,7 @@ router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
 router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaGiftSchema.parse({ ...req.body, eaUserId });
+      const body = sanitizeStringFields(insertEaGiftSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaGift(body));
     } catch (err) {
       console.error("[EA] createGift error:", err);
@@ -384,7 +387,7 @@ router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaGiftById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Gift not found" });
-      res.json(await updateEaGift(req.params.id, req.body));
+      res.json(await updateEaGift(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateGift error:", err);
       res.status(500).json({ message: "Failed to update gift" });
@@ -422,7 +425,7 @@ router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
 router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaSavedVenueSchema.parse({ ...req.body, eaUserId });
+      const body = sanitizeStringFields(insertEaSavedVenueSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaSavedVenue(body));
     } catch (err) {
       console.error("[EA] createVenue error:", err);
@@ -436,7 +439,7 @@ router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaSavedVenueById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Venue not found" });
-      res.json(await updateEaSavedVenue(req.params.id, req.body));
+      res.json(await updateEaSavedVenue(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateVenue error:", err);
       res.status(500).json({ message: "Failed to update venue" });
@@ -474,7 +477,7 @@ router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
 router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaCommunicationSchema.parse({ ...req.body, eaUserId });
+      const body = sanitizeStringFields(insertEaCommunicationSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaCommunication(body));
     } catch (err) {
       console.error("[EA] createCommunication error:", err);
@@ -514,7 +517,7 @@ router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
 router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaAiTaskSchema.parse({ ...req.body, eaUserId });
+      const body = sanitizeStringFields(insertEaAiTaskSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaAiTask(body));
     } catch (err) {
       console.error("[EA] createAiTask error:", err);
@@ -528,7 +531,7 @@ router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaAiTaskById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "AI task not found" });
-      const updates: Record<string, any> = { ...req.body };
+      const updates: Record<string, any> = sanitizeStringFields({ ...req.body });
       if (req.body.status === "approved") updates.approvedAt = new Date();
       if (req.body.status === "rejected") updates.rejectedAt = new Date();
       res.json(await updateEaAiTask(req.params.id, updates));

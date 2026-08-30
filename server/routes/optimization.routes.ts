@@ -29,10 +29,11 @@ import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import Stripe from "stripe";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(getStripeSecretKey() || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
@@ -261,7 +262,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     if (isDisabled) {
       return res.status(400).json({
         error: "ai_concierge_disabled",
-        message: "AI Concierge is currently disabled for this experience type.",
+        message: "Platform Concierge is currently disabled for this experience type.",
       });
     }
 

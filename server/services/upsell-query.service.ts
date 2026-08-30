@@ -452,7 +452,8 @@ export async function resolveNeighborhoodCity(neighborhoodId: string): Promise<s
       SELECT city, slug FROM city_neighborhoods WHERE id = ${neighborhoodId} LIMIT 1
     `);
     return (nbh.rows?.[0] as any)?.city ?? null;
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-query] Failed to resolve city from neighborhood — returning null:", err);
     return null;
   }
 }
@@ -542,7 +543,8 @@ export async function getExpertEndorsements(
       ORDER BY created_at DESC
     `);
     return result.rows ?? [];
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-query] Failed to load upsell candidates — returning empty list:", err);
     return [];
   }
 }
@@ -683,7 +685,8 @@ export async function getFeedCompositionConfig(): Promise<typeof FEED_CONFIG_DEF
       recLabel: kvMap.feed_rec_label ?? FEED_CONFIG_DEFAULTS.recLabel,
       recAffiliateLabel: kvMap.feed_rec_affiliate_label ?? FEED_CONFIG_DEFAULTS.recAffiliateLabel,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-query] Failed to load feed composition config — using defaults:", err);
     return { ...FEED_CONFIG_DEFAULTS };
   }
 }

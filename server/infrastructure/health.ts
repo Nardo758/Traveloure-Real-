@@ -1,7 +1,9 @@
 import { Router, Request, Response } from "express";
+import v8 from "v8";
 import { pool } from "../db";
 import { logger } from "./logger";
 import { getCircuitBreakerStatus } from "./circuit-breaker";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 interface HealthCheck {
   status: "healthy" | "unhealthy" | "degraded";
@@ -67,12 +69,16 @@ async function checkDatabasePool(): Promise<HealthCheck> {
 
 async function checkMemory(): Promise<HealthCheck> {
   const used = process.memoryUsage();
+  const { heap_size_limit } = v8.getHeapStatistics();
+
   const heapUsedMB = Math.round(used.heapUsed / 1024 / 1024);
-  const heapTotalMB = Math.round(used.heapTotal / 1024 / 1024);
+  const heapLimitMB = Math.round(heap_size_limit / 1024 / 1024);
   const rssMB = Math.round(used.rss / 1024 / 1024);
-  
-  const utilizationPercent = (used.heapUsed / used.heapTotal) * 100;
-  
+
+  // Compare against the real V8 heap limit, not the elastic heapTotal, so an
+  // idle server never reports unhealthy just because V8 hasn't grown the heap yet.
+  const utilizationPercent = (used.heapUsed / heap_size_limit) * 100;
+
   let status: "healthy" | "unhealthy" | "degraded" = "healthy";
   if (utilizationPercent > 85) {
     status = "degraded";
@@ -80,10 +86,10 @@ async function checkMemory(): Promise<HealthCheck> {
   if (utilizationPercent > 95) {
     status = "unhealthy";
   }
-  
+
   return {
     status,
-    message: `Heap: ${heapUsedMB}MB/${heapTotalMB}MB (${utilizationPercent.toFixed(1)}%), RSS: ${rssMB}MB`,
+    message: `Heap: ${heapUsedMB}MB/${heapLimitMB}MB limit (${utilizationPercent.toFixed(1)}%), RSS: ${rssMB}MB`,
   };
 }
 
@@ -125,6 +131,7 @@ async function checkExternalAPIs(): Promise<HealthCheck> {
       message: `${breakerNames.length} circuit breakers active`,
     };
   } catch {
+    // Circuit breaker module unavailable — surface a degraded message rather than crashing the health endpoint.
     return {
       status: "healthy",
       message: "Circuit breaker status unavailable",
@@ -150,8 +157,8 @@ export function createHealthRouter(): Router {
           message: process.env.ANTHROPIC_API_KEY ? "ANTHROPIC_API_KEY present" : "ANTHROPIC_API_KEY missing",
         },
         stripe: {
-          status: process.env.STRIPE_SECRET_KEY ? "healthy" : "degraded",
-          message: process.env.STRIPE_SECRET_KEY ? "STRIPE_SECRET_KEY present" : "STRIPE_SECRET_KEY missing",
+          status: getStripeSecretKey() ? "healthy" : "degraded",
+          message: getStripeSecretKey() ? "Stripe key present" : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset)",
         },
       };
 

@@ -43,6 +43,10 @@ import { eq, and, isNull, sql, gte, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks, serviceBookings } from "@shared/schema";
 import { SHARE_FRAMES, SHARE_FRAME_LABEL, UNTAGGED_FRAME_LABEL, type ShareFrame } from "@shared/share-frames";
+// Ledger 90 (FP-5, M1/M2): the ONE money-bearing status predicate every earner surface shares.
+// Both aggregations below summed EVERY booking row regardless of status, so an unauthorized
+// §15b claim (nothing charged, no PaymentIntent) was reported as revenue.
+import { EARNING_BOOKING_STATUSES } from "@shared/booking-visibility";
 
 const router = Router();
 
@@ -259,7 +263,7 @@ router.get("/r/:code", async (req, res) => {
     if (targetType === "storefront") {
       const [owner] = await db.select({ handle: users.handle }).from(users).where(eq(users.id, row.ownerUserId)).limit(1);
       if (!owner?.handle) return res.redirect(302, "/discover");
-      return res.redirect(302, `/p/${owner.handle}${ref}`);
+      return res.redirect(302, `/s/${owner.handle}${ref}`);
     }
     if (targetType === "service") return res.redirect(302, `/services/${row.targetId}${ref}`);
     if (targetType === "template") return res.redirect(302, `/expert-templates/${row.targetId}${ref}`);
@@ -283,6 +287,10 @@ const RANGE_DAYS = [7, 30, 90, 365] as const;
  * off a shared code, never another earner's sale through the same code (a code is scoped
  * to one owner already via the create-time ownership check, but this belt-and-suspenders
  * filter keeps the read honest even if that ever changes).
+ *
+ * Ledger 90 (FP-5, M2): `bookings`/`revenue` count MONEY-BEARING rows only
+ * (`EARNING_BOOKING_STATUSES`, shared/booking-visibility.ts) — the same predicate the Money page,
+ * the Inbox and `earnings-by-source` read. An unauthorized §15b claim is never attributed revenue.
  *
  * Honesty note (§13): `clicks` on short_links is a lifetime counter — there is no per-day
  * click log (S5 explicitly does not build one). So `clicks` in this payload is ALWAYS
@@ -326,7 +334,14 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
 
     const codes = links.map((l) => l.code);
     // Single aggregate query across all of the caller's codes — bookings/revenue grouped
-    // by acquisition_ref, scoped to (a) this earner's own bookings and (b) the date range.
+    // by acquisition_ref, scoped to (a) this earner's own bookings, (b) the date range, and
+    // (c) MONEY-BEARING statuses only (ledger 90 / FP-5 M2).
+    //
+    // (c) was missing entirely until FP-5. The exercise read $0 here only by accident — the one
+    // unauthorized claim on that bench carried `source='direct'` and a NULL `acquisition_ref`, so
+    // it landed in no link bucket. A checkout that fails the same way AFTER a tracked-link click
+    // would have reported unpaid revenue against that link: the exact number an earner uses to
+    // decide where to spend. Attributed revenue must count money that exists.
     const bookingRows = await db
       .select({
         code: serviceBookings.acquisitionRef,
@@ -339,6 +354,7 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
           eq(serviceBookings.providerId, userId),
           inArray(serviceBookings.acquisitionRef, codes),
           gte(serviceBookings.createdAt, since),
+          inArray(serviceBookings.status, [...EARNING_BOOKING_STATUSES]),
         ),
       )
       .groupBy(serviceBookings.acquisitionRef);
@@ -436,6 +452,10 @@ const SOURCE_LABEL: Record<SourceBucket, string> = {
  * returns booking count + gross booking revenue (`total_amount`) per bucket, lifetime — no date
  * range, no per-day breakdown; the smallest honest version of this split.
  *
+ * Ledger 90 (FP-5, M1): rows are filtered to MONEY-BEARING statuses
+ * (`EARNING_BOOKING_STATUSES`, shared/booking-visibility.ts) — the same predicate the Money page
+ * and link-analytics read. `count` therefore means "paid bookings", not "rows on disk".
+ *
  * §13 honesty note: `source` defaults to 'direct' at the column level, so every booking created
  * BEFORE S4 shipped reads 'direct' whether or not it was genuinely a direct/organic acquisition —
  * that default is a column default, not a measurement. The payload always carries
@@ -454,7 +474,15 @@ router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) 
         revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
       })
       .from(serviceBookings)
-      .where(eq(serviceBookings.providerId, userId))
+      .where(
+        and(
+          eq(serviceBookings.providerId, userId),
+          // Ledger 90 (FP-5, M1): money-bearing statuses ONLY. Without this the panel rendered
+          // "Direct · 1 booking · $95.00" for a never-charged §15b claim, on the same page whose
+          // ledger correctly read $0.00.
+          inArray(serviceBookings.status, [...EARNING_BOOKING_STATUSES]),
+        ),
+      )
       .groupBy(sql`coalesce(${serviceBookings.source}, 'direct')`);
 
     const bySource = new Map<string, { count: number; revenue: number }>();

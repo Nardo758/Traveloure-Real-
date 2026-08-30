@@ -59,17 +59,31 @@ function collectWorkflowText(dir) {
     .join("\n");
 }
 
+/**
+ * A ledger row id. NEW rows use a DATE-SLUG key (`2026-08-16-ledger-ids`) because the old
+ * "claim the next free number" rule made a collision structural: two lanes opened on the same
+ * day both take the next integer, and the loser has to renumber AND chase every cross-reference
+ * that named the number. Three such collisions happened in one night (rows 120/121/122). The
+ * numeric series stays valid forever — those ids are cited across the briefs and must not move.
+ */
+const ID_ALT = String.raw`\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d+|R-[A-Z]`;
+const ROW_ID_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|\s*[\d-]+\s*\|\s*(\[[^\]]+\])\s*\|`);
+const ROW_ID_PREFIX_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|`);
+
 function parseLedger(text) {
   const entries = [];
   const ids = [];
   const malformed = [];
   for (const line of text.split("\n")) {
     // Table rows: | <id> | <date> | [tag] | ...
-    const row = line.match(/^\|\s*(\d+|R-[A-Z])\s*\|\s*[\d-]+\s*\|\s*(\[[^\]]+\])\s*\|/);
+    // IDs come in three shapes: the DATE-SLUG key new rows use (2026-08-16-some-lane),
+    // the frozen numeric series (1..122), and the closed Console Realign letters (R-A).
+    // The slug alternative is listed FIRST so `\d+` cannot half-match a date-slug's year.
+    const row = line.match(ROW_ID_RE);
     if (!row) {
       // A table-ish line mentioning guarded/advisory that failed to parse is a
       // malformed ledger row — reject loudly rather than silently skipping it.
-      if (/^\|\s*(\d+|R-[A-Z])\s*\|/.test(line) && /\[(guarded|advisory)/i.test(line) === false && /guarded|advisory/i.test(line)) {
+      if (ROW_ID_PREFIX_RE.test(line) && /\[(guarded|advisory)/i.test(line) === false && /guarded|advisory/i.test(line)) {
         malformed.push(line.trim().slice(0, 120));
       }
       continue;
@@ -98,9 +112,10 @@ function lint({ ledgerText, workflowText }) {
 
   for (const m of malformed) failures.push(`Malformed ledger row (unparseable tag — fix, don't skip): ${m}`);
 
-  const numeric = ids.filter((i) => /^\d+$/.test(i));
-  const dupes = numeric.filter((v, i) => numeric.indexOf(v) !== i);
-  if (dupes.length) failures.push(`Duplicate numeric ruling ids (append-only violated): ${[...new Set(dupes)].join(", ")}`);
+  // Every id shape, not just numeric: a duplicated date-slug is the same append-only violation,
+  // and catching it HERE is the point of the scheme — CI fails instead of a human renumbering.
+  const dupes = ids.filter((v, i) => ids.indexOf(v) !== i);
+  if (dupes.length) failures.push(`Duplicate ruling ids (append-only violated): ${[...new Set(dupes)].join(", ")}`);
 
   if (entries.length === 0) failures.push("No [guarded: ...] entries parsed from the ledger — tag format drifted?");
 
@@ -125,6 +140,8 @@ function selfTest() {
     "| 3 | 2026-01-01 | [guarded: matrix-lint, deferred:some-lane] | x | y |",
     "| 4 | 2026-01-01 | [advisory] | x | y |",
     "| R-A | 2026-01-01 | [advisory] | x |",
+    // The date-slug key new rows use — must parse exactly like the numeric series.
+    "| 2026-01-01-some-lane | 2026-01-01 | [guarded: real-guard] | x | y |",
   ].join("\n");
   const workflowText = "run: node scripts/real-guard.cjs";
   const { failures, warnings } = lint({ ledgerText, workflowText });
@@ -135,6 +152,26 @@ function selfTest() {
     warnings[0].includes("matrix-lint");
   const dupe = lint({ ledgerText: ledgerText + "\n| 2 | 2026-01-01 | [advisory] | x | y |", workflowText });
   const ok2 = dupe.failures.some((f) => f.includes("Duplicate"));
+  // §18d fixtures for the date-slug key (the whole point of the scheme).
+  // (a) a slug row's [guarded] tag is linted like any other — a ghost guard on it still fails.
+  const slugGhost = lint({
+    ledgerText: "| 2026-01-01-slug-lane | 2026-01-01 | [guarded: ghost-guard] | x | y |",
+    workflowText,
+  });
+  const ok6 = slugGhost.failures.some((f) => f.includes("2026-01-01-slug-lane") && f.includes("ghost-guard"));
+  // (b) a DUPLICATED slug fails, exactly as a duplicated number does. This is the collision the
+  //     scheme exists to make impossible-by-construction and CI-caught if it happens anyway.
+  const slugDupe = lint({
+    ledgerText: ledgerText + "\n| 2026-01-01-some-lane | 2026-01-01 | [advisory] | x | y |",
+    workflowText,
+  });
+  const ok7 = slugDupe.failures.some((f) => f.includes("Duplicate") && f.includes("2026-01-01-some-lane"));
+  // (c) a malformed slug row is REJECTED, not silently skipped — same posture as the numeric one.
+  const slugBad = lint({
+    ledgerText: ledgerText + "\n| 2026-01-01-bad-lane | 2026-01-01 | guarded: naked-tag | x | y |",
+    workflowText,
+  });
+  const ok8 = slugBad.failures.some((f) => f.includes("Malformed"));
   // Negative: guard name only in a comment / job name must NOT count as in-CI.
   const yamlCommentOnly = [
     "jobs:",
@@ -155,11 +192,15 @@ function selfTest() {
     workflowText,
   });
   const ok5 = bad.failures.some((f) => f.includes("Malformed"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5) {
-    console.error("SELF-TEST FAILED", { ok, ok2, ok3, ok4, ok5, failures, warnings, dupe: dupe.failures, bad: bad.failures });
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8) {
+    console.error("SELF-TEST FAILED", {
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8,
+      failures, warnings, dupe: dupe.failures, bad: bad.failures,
+      slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
+    });
     process.exit(1);
   }
-  console.log("self-test OK (incl. comment/job-name negatives, block scalars, malformed-row rejection)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed)");
   process.exit(0);
 }
 

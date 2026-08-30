@@ -23,9 +23,11 @@ async function hashPassword(password: string): Promise<string> {
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const [salt, key] = hash.split(":");
+    if (!salt || !key || !/^[0-9a-f]{128}$/i.test(key)) return resolve(false);
     crypto.scrypt(password, salt, 64, (err, derivedKey) => {
       if (err) reject(err);
-      resolve(key === derivedKey.toString("hex"));
+      const expected = Buffer.from(key, "hex");
+      resolve(expected.length === derivedKey.length && crypto.timingSafeEqual(expected, derivedKey));
     });
   });
 }
@@ -44,16 +46,21 @@ const validUserTypes = [
 ] as const;
 
 const registerSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Invalid email address").max(254, "Email is too long"),
+  // Cap password length too: bcrypt only reads the first 72 bytes, and an unbounded
+  // password is a cheap CPU-DoS vector (hashing a multi-MB string). 8..200 is ample.
+  password: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
+  firstName: z.string().trim().min(1, "First name is required").max(100, "First name is too long"),
+  lastName: z.string().trim().min(1, "Last name is required").max(100, "Last name is too long"),
   userType: z.enum(validUserTypes).optional().default("user"), // accepted but ignored server-side
 });
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
-  password: z.string().trim().min(1, "Password is required"),
+  // Do NOT .trim() the password: registration stores it verbatim (no trim), so trimming
+  // here both (a) lets a whitespace-padded variant of a correct password authenticate and
+  // (b) locks out anyone whose real password has leading/trailing spaces. Compare exactly.
+  password: z.string().min(1, "Password is required"),
 });
 
 export function setupEmailAuth(app: Express): void {
@@ -121,7 +128,7 @@ export function setupEmailAuth(app: Express): void {
         funnelStage: "T1_ACCOUNT_CREATED",
         source: (req.body.source as string) || "direct",
         refToken: (req.body.refToken as string) || undefined,
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks signup */ });
 
       // Fire-and-forget verification email. Failure here MUST NOT block signup —
       // the user can request a resend later. RESEND_API_KEY absence is logged
@@ -297,7 +304,7 @@ export function setupEmailAuth(app: Express): void {
   }
 
   const forgotPasswordSchema = z.object({
-    email: z.string().email("Invalid email address"),
+    email: z.string().email("Invalid email address").max(254, "Email is too long"),
   });
 
   app.post("/api/auth/forgot-password", async (req, res) => {
@@ -359,8 +366,10 @@ export function setupEmailAuth(app: Express): void {
   });
 
   const resetPasswordSchema = z.object({
-    token: z.string().min(32, "Invalid reset token"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    token: z.string().min(32, "Invalid reset token").max(128, "Invalid reset token"),
+    // Cap length: hashPassword runs scrypt on this verbatim — an unbounded value is a
+    // CPU/memory DoS vector on this public endpoint. Matches the register cap; no trim.
+    newPassword: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
   });
 
   app.post("/api/auth/reset-password", async (req, res) => {
@@ -377,45 +386,35 @@ export function setupEmailAuth(app: Express): void {
       const tokenHash = hashToken(token);
       const now = new Date();
 
-      // Look up by hash; must be unused and unexpired.
-      const tokenRow = await db
-        .select()
-        .from(passwordResetTokens)
-        .where(and(
-          eq(passwordResetTokens.tokenHash, tokenHash),
-          isNull(passwordResetTokens.usedAt),
-          gt(passwordResetTokens.expiresAt, now),
-        ))
-        .then((r) => r[0]);
+      const hashedPassword = await hashPassword(newPassword);
+      const resetApplied = await db.transaction(async (tx) => {
+        // Claim the token atomically. Concurrent replays race on this conditional
+        // UPDATE; exactly one can transition used_at from NULL.
+        const [claimed] = await tx
+          .update(passwordResetTokens)
+          .set({ usedAt: now })
+          .where(and(
+            eq(passwordResetTokens.tokenHash, tokenHash),
+            isNull(passwordResetTokens.usedAt),
+            gt(passwordResetTokens.expiresAt, now),
+          ))
+          .returning({ userId: passwordResetTokens.userId });
+        if (!claimed) return false;
 
-      if (!tokenRow) {
+        await tx.update(users).set({ password: hashedPassword }).where(eq(users.id, claimed.userId));
+        // Session invalidation is part of the same transaction and covers both
+        // Passport user shapes. A failure rolls back the password/token change.
+        await tx.execute(drizzleSql`
+          DELETE FROM sessions
+          WHERE sess->'passport'->'user'->'claims'->>'sub' = ${claimed.userId}
+             OR sess->'passport'->'user'->>'id' = ${claimed.userId}
+        `);
+        return true;
+      });
+      if (!resetApplied) {
         return res.status(400).json({
           message: "This reset link is invalid or has expired. Please request a new one.",
         });
-      }
-
-      const hashedPassword = await hashPassword(newPassword);
-      await db
-        .update(users)
-        .set({ password: hashedPassword })
-        .where(eq(users.id, tokenRow.userId));
-
-      // Mark token used (single-use) — keep the row for audit, just flag it.
-      await db
-        .update(passwordResetTokens)
-        .set({ usedAt: now })
-        .where(eq(passwordResetTokens.id, tokenRow.id));
-
-      // Invalidate ALL existing sessions for this user — anyone who knew the
-      // old password (or stole a session) is now locked out.
-      try {
-        await db.execute(drizzleSql`
-          DELETE FROM sessions
-          WHERE sess->'passport'->'user'->'claims'->>'sub' = ${tokenRow.userId}
-        `);
-      } catch (sessErr) {
-        // Non-fatal — password is already changed; session-kill is defense-in-depth.
-        console.warn("[auth/reset-password] session invalidation failed:", sessErr);
       }
 
       res.json({
@@ -482,7 +481,7 @@ export function setupEmailAuth(app: Express): void {
   });
 
   const verifyEmailSchema = z.object({
-    token: z.string().min(32, "Invalid verification token"),
+    token: z.string().min(32, "Invalid verification token").max(128, "Invalid verification token"),
   });
 
   // POST /api/auth/verify-email — public; client posts the raw token from the

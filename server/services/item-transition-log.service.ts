@@ -97,7 +97,19 @@ export type TransitionEventType =
   // the booking row (`bookingDetails.completion`) and WHO fired it is `actorType`. from/to carry
   // the BOOKING statuses (like `checkout_payment_confirmed`), not an item's routing_status.
   // 17 chars — fits event_type varchar(30) (migration 171).
-  | "booking_completed";
+  | "booking_completed"
+  // Partner Demand Data lane R15 (ledger 2026-08-17-partner-demand-r15-transition-log): the
+  // HARD-DELETE of an itinerary item — the removal signal R2 named, closed by EXTENDING this
+  // vocabulary rather than building a parallel `itinerary_item_events` table. Written in the
+  // SAME transaction as the delete at EVERY hard-delete path so the pair is all-or-nothing
+  // (ruling 18) — a removal the diary missed would corrupt every downstream demand figure.
+  // `itemId` carries the id of the row being deleted (the log outlives it — `item_id` is
+  // nullable-no-FK by design, "history outlives the item"). `fromStatus` carries the item's
+  // `routing_status` at deletion (its last known state); `toStatus` is NULL (removed = no next
+  // state). Market is NOT stored here — it derives at the rollup via `trip_id → trips.market_slug`
+  // (L6/R15: a diary row is history, never a report; no denormalized market column). 12 chars —
+  // fits event_type varchar(30) (migration 171).
+  | "item_removed";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

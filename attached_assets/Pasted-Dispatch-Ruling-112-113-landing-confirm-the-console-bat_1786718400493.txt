@@ -1,0 +1,30 @@
+Dispatch — Ruling 112/113 landing: confirm the console batch in the real environment + separate Workstation from Catalog
+Purpose: Branch claude/provider-console-batch-exercise-viater carries the ruling-112 implementation (ten ratified conformance rulings — DECISIONS.md row 112, proofs in docs/testing/PROVIDER_BATCH_EXERCISE_RUN2.md §8) plus ruling 113, which is recorded but NOT yet implemented. Your job: merge-ready confirmation of the 112 batch in the Replit environment (real Maps key, real Stripe test keys — things the authoring bench lacked), and the implementation of ruling 113. Read CLAUDE.md (§23 is new) and DECISIONS.md rows 112–113 before touching anything.
+
+Ground rules
+
+Work on this branch (or a child of it). Never push to main. No schema changes beyond what's already there (migrations 214/215 are additive-nullable, no CHECKs, columns declared in shared/schema.ts — the publish-push trap is pre-cleared; do not add any CHECK).
+Lockfile purity: never commit after a bare npm install without the scrub running (postinstall handles it — verify package-lock.json has zero replit.local URLs before every commit).
+tsc error count is a baseline of 170 — your diff adds zero. Guards must stay green: node scripts/check-money-endpoints.cjs, node scripts/check-unmounted-routers.cjs, node scripts/check-decision-guards.cjs.
+The ledger (DECISIONS.md) is append-only; tag vocabulary is [advisory]/[guarded: …] only.
+Part 1 — Confirm ruling 112 in this environment (fix only what's broken; each item gets a one-line PASS/FAIL with evidence)
+
+Boot: migrations report 216/216; columns min_stay_nights, pending_changes, edit_review_status exist.
+Q3 zones — the one thing the authoring bench could not see (no Maps key there): create a test in-person listing, confirm a meeting pin via the real LocationPointPicker, author 2 surcharge tiers in Pricing & fees, and confirm the dashed amber zone rings + fee popups render on BOTH the create-flow Logistics map and the Catalog map view. Screenshot both. Rings must only appear around a confirmed pin; no distances shown anywhere (§13).
+Q8 edit-split, full arc in this env: safe edit (price) applies instantly on an approved listing; name edit stages (editReview.stagedKeys) with live+public name unchanged; admin queue shows the edit-review card with the staged patch; approve applies; reject discards; Catalog shows "Live + Edit in review"; a client-injected pendingChanges never lands (check the row).
+Q5: day dropdown clickable inside the availability drawer; duplicate weekly windows return the 400 message (not a 409); "Next available" chip; Calendar → "Edit availability →" opens the drawer.
+Q4 autosave survives a tab close/reopen; Q6 min-stay + band copy reach the traveler property page; Q7 rail cards navigate; Q9 Distribute inline handle/bio saves (bio lands in users.bio); R3 notifications appear in Inbox → Notifications after an approve AND a reject.
+Part 2 — Implement ruling 113 (the structural separation)
+
+Workstation is the CREATION area. Catalog is the DISPLAY & OPERATING area. Never conflate the two.
+
+One door: every "Add New Service" affordance routes to /provider/workstation first — Catalog's header button, Catalog's empty state, the Dashboard quick action, Playbook's "list your first service," and any onboarding link. Grep for every link/navigate to /provider/services/new outside Workstation and the wizard itself; none may remain. (The Workstation ladder and its category quick-start tiles remain the only wizard entry points.)
+Wizard identity: the create/edit flow's breadcrumb and back-link read Workstation › New service (today: "My Services / New Service"). "Back" from the create flow lands on Workstation; "Finish later"/post-publish still land on Catalog (the listing now exists — it's being operated).
+What does NOT move: the per-listing availability editor stays on Catalog (§22b — slots/blackouts are day-to-day operation, ruling 113 says so explicitly); Catalog's read-only map preview stays; CARD SHOWS/storefront toggles stay. Do not relocate any authoring surface into Catalog or any operating surface into Workstation.
+Update the Catalog empty-state copy if it still implies creation happens there.
+Part 3 — Verify + hand back
+
+Re-run the three guards + tsc (170); run npx tsx --test client/src/lib/__tests__/pricing-fees.test.ts (43/43).
+Append your confirmation results as a short §9 in docs/testing/PROVIDER_BATCH_EXERCISE_RUN2.md (PASS/FAIL table + the two zone screenshots into docs/testing/assets/provider-batch-run2/).
+Commit messages cite rulings 112/113. Push to the branch. Do not create a PR and do not merge — the decision-maker reviews first.
+What NOT to do: no new migrations or CHECK constraints; no re-litigating rows 112/113 (they're ratified — if something looks wrong, flag it in §9, don't "fix" the ruling); no touching traveloure_batch/traveloure_batch2 fixture docs; no deleting the Kyoto batch fixtures if this env has them; no npm install commits without the lockfile scrub; HARD STOP at the pushed branch + §9 results.

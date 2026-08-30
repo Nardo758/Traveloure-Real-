@@ -1,5 +1,6 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
+import { useTrip } from "@/hooks/use-trips";
 import { useAuth } from "@/hooks/use-auth";
 import { isEarnerRole } from "@shared/roles";
 import { getRoleHomePath } from "@/lib/role-utils";
@@ -9,18 +10,43 @@ import { Input } from "@/components/ui/input";
 import {
   Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock, Wifi, WifiOff,
   PackageCheck, Eye, Lightbulb, CheckCircle2, AlertCircle, MessageCircle, FileText,
+  MoreVertical, Flag, ShieldOff, ShieldCheck, Bell,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
 import { buildConversationId, useMarkConversationRead } from "@/hooks/use-message-read";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 interface RealtimeMessage {
   id: string;
@@ -44,6 +70,9 @@ interface DisplayExpert {
   /** Set only for earner-mode conversation partners (audit A4) — the last real message in the
    *  thread, shown in the list card instead of a fabricated rating/location for a client. */
   lastMessage?: string;
+  /** ISO timestamp of the last real message in a conversation, used for the Inbox-style
+   * recency cue in the shared conversation rail. */
+  lastMessageAt?: string | null;
   /** True for earner-mode conversation partners — swaps the "browse an expert" card layout
    *  (rating/location/specialties) for a real thread-preview layout. */
   isConversationPartner?: boolean;
@@ -150,10 +179,21 @@ export default function Chat() {
   const { toast } = useToast();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
-  const expertIdFromUrl = urlParams.get("expertId");
+  // Ledger 90 (FP-5, I3): `?provider=` is accepted as an ALIAS for `?expertId=`. The service-detail
+  // "Contact Provider" CTA linked to `/chat?provider=<userId>` for its whole life and this file has
+  // never read that param, so the most prominent way for a traveler to reach a provider dropped
+  // them on the browse directory with no composer. The CTA itself now uses the canonical rail
+  // (useAskExpert → `?expertId=` + `?name=`), and this alias catches every link already out in the
+  // world — a shared URL, a bookmark, a chat history. There is ONE conversation rail here, not two:
+  // `provider_services` is role-agnostic, so a listing's owner may be a provider or an expert, and
+  // the thread is the same `user_and_expert_chats` row either way.
+  const expertIdFromUrl = urlParams.get("expertId") ?? urlParams.get("provider");
   // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
   // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
   const clientIdFromUrl = urlParams.get("clientId");
+  // tripId: forwarded from My Plans so this shared surface can restore trip context and select
+  // the assigned expert when an accepted advisor relationship exists.
+  const tripIdFromUrl = urlParams.get("tripId");
   // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
   const aboutFromUrl = urlParams.get("about");
   // name/avatar: optional display fallback for expertIdFromUrl (see fallbackExpert below) —
@@ -246,10 +286,22 @@ export default function Chat() {
       languages: [],
       responseTime: "",
       lastMessage: t.lastMessage ?? undefined,
+      lastMessageAt: t.lastMessageAt,
       isConversationPartner: true,
       unreadCount: t.unreadCount,
     }));
   }, [isEarner, conversationThreads]);
+
+  // Inbox threads are role-agnostic: a traveler may be talking with either an expert or a
+  // service provider. Prefer the real thread already returned by /api/chats over the
+  // expert-directory lookup, which intentionally cannot resolve provider profiles.
+  const threadExpertFromUrl = useMemo(
+    () =>
+      expertIdFromUrl
+        ? conversationPartners.find((partner) => String(partner.id) === String(expertIdFromUrl)) ?? null
+        : null,
+    [conversationPartners, expertIdFromUrl],
+  );
 
   // Traveler-mode browse directory (real experts + any deep-linked expert not already in the
   // list). Kept separate from conversationPartners so the two can render as distinct groups
@@ -311,6 +363,76 @@ export default function Chat() {
 
   const [message, setMessage] = useState("");
   const [selectedExpert, setSelectedExpert] = useState<DisplayExpert | null>(null);
+  const handledInitialSelectionRef = useRef<string | null>(null);
+
+  // ── Block / report state ─────────────────────────────────────────────────
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ messageId?: string; type: "message" | "user" } | null>(null);
+  const [reportReason, setReportReason] = useState<string>("spam");
+  const [reportDetails, setReportDetails] = useState("");
+
+  const { data: blockStatus, refetch: refetchBlockStatus } = useQuery<{ blockedByMe: boolean; blocked: boolean }>({
+    queryKey: ["/api/messages/block/status", selectedExpert?.id],
+    queryFn: async () => {
+      if (!selectedExpert) return { blockedByMe: false, blocked: false };
+      const res = await fetch(`/api/messages/block/status/${selectedExpert.id}`, { credentials: "include" });
+      if (!res.ok) return { blockedByMe: false, blocked: false };
+      return res.json();
+    },
+    enabled: !!selectedExpert?.id && !!user?.id,
+  });
+
+  const blockMutation = useMutation({
+    mutationFn: (targetId: string) => apiRequest("POST", `/api/messages/block/${targetId}`, {}),
+    onSuccess: () => {
+      refetchBlockStatus();
+      toast({ title: "User blocked", description: "You will no longer receive messages from this person." });
+    },
+    onError: () => toast({ title: "Failed to block user", variant: "destructive" }),
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: (targetId: string) => apiRequest("DELETE", `/api/messages/block/${targetId}`, {}),
+    onSuccess: () => {
+      refetchBlockStatus();
+      toast({ title: "User unblocked", description: "You can now exchange messages again." });
+    },
+    onError: () => toast({ title: "Failed to unblock user", variant: "destructive" }),
+  });
+
+  const reportMutation = useMutation({
+    mutationFn: ({
+      type,
+      messageId,
+      reason,
+      details,
+    }: {
+      type: "message" | "user";
+      messageId?: string;
+      reason: string;
+      details: string;
+    }) => {
+      const url =
+        type === "message" && messageId
+          ? `/api/messages/report/message/${messageId}`
+          : `/api/messages/report/user/${selectedExpert?.id}`;
+      return apiRequest("POST", url, { reason, details: details || undefined });
+    },
+    onSuccess: () => {
+      setReportDialogOpen(false);
+      setReportTarget(null);
+      setReportDetails("");
+      toast({ title: "Report submitted", description: "Our moderation team will review this shortly." });
+    },
+    onError: () => toast({ title: "Failed to submit report", variant: "destructive" }),
+  });
+
+  const openReportDialog = (type: "message" | "user", messageId?: string) => {
+    setReportTarget({ type, messageId });
+    setReportReason("spam");
+    setReportDetails("");
+    setReportDialogOpen(true);
+  };
   const partnerAssignedTrip = useMemo(
     () =>
       selectedExpert
@@ -333,6 +455,30 @@ export default function Chat() {
     staleTime: 60_000,
   });
 
+  const tripAdvisor = useMemo(
+    () =>
+      tripIdFromUrl
+        ? (travelerTripAdvisors ?? []).find(
+            (advisor) =>
+              String(advisor.trip_id) === String(tripIdFromUrl) && advisor.status === "accepted",
+          ) ?? null
+        : null,
+    [tripIdFromUrl, travelerTripAdvisors],
+  );
+
+  // My Plans only knows the trip. Resolve the same expert display record used by direct Inbox
+  // links so both entry points converge on one selected conversation.
+  const { data: tripLinkedExpert } = useQuery<DisplayExpert | null>({
+    queryKey: ["/api/experts", tripAdvisor?.expert_id],
+    queryFn: async () => {
+      const res = await fetch(`/api/experts/${tripAdvisor?.expert_id}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return mapExpertToDisplay(await res.json());
+    },
+    enabled: !isEarner && !!tripAdvisor?.expert_id && !expertIdFromUrl,
+  });
+  const initialLinkedExpert = threadExpertFromUrl ?? effectiveLinkedExpert ?? tripLinkedExpert;
+
   // The trip actually shared with the OPEN conversation partner, resolved from real assignment
   // data only (never guessed — §13). Earner (expert) side reuses partnerAssignedTrip above
   // (already resolved from /api/expert/assigned-trips, accepted-only); a provider earner has no
@@ -346,6 +492,11 @@ export default function Chat() {
     );
     return match?.trip_id ?? null;
   }, [selectedExpert, isEarner, isExpertUser, partnerAssignedTrip, travelerTripAdvisors]);
+
+  // Preserve a valid My Plans trip context even before an expert is selected. Once a shared
+  // conversation is open, sharedTripId remains the authoritative relationship-based value.
+  const selectedTripId = sharedTripId ?? tripIdFromUrl;
+  const { data: selectedTrip } = useTrip(!isEarner ? (selectedTripId ?? "") : "");
 
   // The same GET /api/notifications the bell page (notifications.tsx) and Inbox "Updates" tab
   // (inbox.tsx) already read — no new endpoint for the events themselves, only for the
@@ -392,11 +543,24 @@ export default function Chat() {
     }
   }, [aboutFromUrl]);
 
+  // A deep link should select its target once. It must not reassert that selection after the
+  // traveler deliberately chooses another thread in the same rail. Resetting the handled key
+  // when the URL context changes still makes links from Inbox and My Plans switch conversations.
+  const initialSelectionKey = expertIdFromUrl
+    ? `expert:${expertIdFromUrl}`
+    : tripIdFromUrl
+      ? `trip:${tripIdFromUrl}`
+      : null;
   useEffect(() => {
-    if (effectiveLinkedExpert && !selectedExpert) {
-      setSelectedExpert(effectiveLinkedExpert);
+    if (!initialSelectionKey) {
+      handledInitialSelectionRef.current = null;
+      return;
     }
-  }, [effectiveLinkedExpert]);
+    if (!initialLinkedExpert || handledInitialSelectionRef.current === initialSelectionKey) return;
+
+    setSelectedExpert(initialLinkedExpert);
+    handledInitialSelectionRef.current = initialSelectionKey;
+  }, [initialLinkedExpert, initialSelectionKey]);
 
   // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
   // client's name so the relevant conversation thread is surfaced immediately.
@@ -412,6 +576,15 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+
+  // A11y focus management: when a conversation is opened (mouse or keyboard), move focus
+  // to the message input so keyboard users can type immediately.
+  useEffect(() => {
+    if (selectedExpert) {
+      messageInputRef.current?.focus();
+    }
+  }, [selectedExpert?.id]);
 
   // W5-E: mark-read wiring. A "conversation" server-side (server/routes/messages.ts,
   // server/services/messages.service.ts) is keyed by the sorted pair of participant user ids —
@@ -461,9 +634,14 @@ export default function Chat() {
   }, [selectedExpert]);
 
   const handleWsError = useCallback((error: string) => {
+    // Distinguish a policy block from an infrastructure failure so the user
+    // understands they are blocked rather than experiencing a network error.
+    const isBlocked = error.toLowerCase().includes("cannot send messages");
     toast({
-      title: "Message failed",
-      description: error || "Failed to send message. Please try again.",
+      title: isBlocked ? "Message not delivered" : "Message failed",
+      description: isBlocked
+        ? error
+        : (error || "Failed to send message. Please try again."),
       variant: "destructive",
     });
   }, [toast]);
@@ -540,19 +718,28 @@ export default function Chat() {
       transition={{ delay: index * 0.05 }}
     >
       <Card
-        className={`cursor-pointer transition-all hover:shadow-md ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open conversation with ${expert.name}`}
+        className={`cursor-pointer transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
         onClick={() => setSelectedExpert(expert)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedExpert(expert);
+          }
+        }}
         data-testid={`card-expert-${expert.id}`}
       >
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Avatar className="w-12 h-12">
+        <CardContent className="px-3 py-2.5">
+          <div className="flex items-start gap-2.5">
+            <Avatar className="w-9 h-9">
               <AvatarImage src={expert.avatar} alt={expert.name} />
               <AvatarFallback>{expert.name[0]}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-slate-900 dark:text-white truncate">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                   {expert.name}
                 </h3>
                 {/* W5-E: per-thread unread indicator — real count from useConversationThreads
@@ -567,16 +754,23 @@ export default function Chat() {
                 )}
               </div>
               {expert.isConversationPartner ? (
-                expert.lastMessage && (
-                  <p className="text-sm text-muted-foreground truncate mt-1">
-                    {expert.lastMessage}
-                  </p>
-                )
+                <>
+                  {expert.lastMessage && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {expert.lastMessage}
+                    </p>
+                  )}
+                  {expert.lastMessageAt && (
+                    <p className="text-[11px] leading-4 text-muted-foreground mt-0.5">
+                      {formatDistanceToNow(new Date(expert.lastMessageAt), { addSuffix: true })}
+                    </p>
+                  )}
+                </>
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-2">
                     {expert.rating !== null ? (
-                      <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
+                      <div className="flex items-center gap-1 text-amber-500 text-xs shrink-0">
                         <Star className="w-3 h-3 fill-current" />
                         {expert.rating.toFixed(1)}
                       </div>
@@ -584,13 +778,13 @@ export default function Chat() {
                       <span className="text-xs text-muted-foreground shrink-0">New</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                     <MapPin className="w-3 h-3" />
                     {expert.location}
                   </div>
-                  <div className="flex flex-wrap gap-1 mt-2">
+                  <div className="flex flex-wrap gap-1 mt-1">
                     {expert.specialties.slice(0, 2).map(spec => (
-                      <Badge key={spec} variant="secondary" className="text-xs">
+                      <Badge key={spec} variant="secondary" className="h-5 px-1.5 text-[11px]">
                         {spec}
                       </Badge>
                     ))}
@@ -634,9 +828,19 @@ export default function Chat() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">
-                {isEarner ? "Messages" : "Expert Chat"}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">
+                  {isEarner ? "Messages" : "Expert Chat"}
+                </h1>
+                {!isEarner && (
+                  <Link href="/inbox?tab=updates">
+                    <Button variant="outline" size="sm" data-testid="button-view-updates">
+                      <Bell className="w-3.5 h-3.5 mr-1.5" />
+                      Updates
+                    </Button>
+                  </Link>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">
                 {isEarner ? "Conversations with your clients" : "Connect with local experts for your trips"}
               </p>
@@ -677,12 +881,12 @@ export default function Chat() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-3 pr-4">
+                  <div className="space-y-2 pl-1.5 pr-4">
                     {filteredExperts.map((expert, index) => renderExpertCard(expert, index))}
                   </div>
                 )
               ) : (
-                <div className="space-y-5 pr-4">
+                <div className="space-y-5 pl-1.5 pr-4">
                   {/* Your conversations — real threads first (W1-B) */}
                   <div>
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-2">
@@ -698,7 +902,7 @@ export default function Chat() {
                     ) : filteredConversations.length === 0 ? (
                       <p className="text-sm text-muted-foreground px-1">No conversations match your search.</p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {filteredConversations.map((expert, index) => renderExpertCard(expert, index))}
                       </div>
                     )}
@@ -712,7 +916,7 @@ export default function Chat() {
                     {filteredDirectory.length === 0 ? (
                       <p className="text-sm text-muted-foreground px-1">No experts match your search.</p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {filteredDirectory.map((expert, index) => renderExpertCard(expert, index))}
                       </div>
                     )}
@@ -736,6 +940,18 @@ export default function Chat() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-slate-900 dark:text-white">{selectedExpert.name}</h3>
+                        {selectedTrip && selectedTripId && (
+                          <Link href={`/plans/${selectedTripId}`}>
+                            <Badge
+                              variant="outline"
+                              className="text-xs cursor-pointer hover:bg-accent"
+                              data-testid="badge-chat-trip-context"
+                            >
+                              <MapPin className="w-3 h-3 mr-1" />
+                              {selectedTrip.title || selectedTrip.destination || "Trip"}
+                            </Badge>
+                          </Link>
+                        )}
                         {/* F3 (workstation-flows audit): when this conversation partner is a client
                             with an active assignment, jump straight into the trip's workstation. */}
                         {partnerAssignedTrip && (
@@ -788,10 +1004,51 @@ export default function Chat() {
                       </div>
                     </div>
                     <Button variant="outline" size="sm" data-testid="button-view-profile">View Profile</Button>
+                    {/* Block / report user — conversation header actions */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" data-testid="button-conversation-actions">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => openReportDialog("user")}
+                          data-testid="button-report-user"
+                        >
+                          <Flag className="w-3.5 h-3.5 mr-2 text-orange-500" />
+                          Report {selectedExpert.name}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {blockStatus?.blockedByMe ? (
+                          <DropdownMenuItem
+                            onClick={() => unblockMutation.mutate(String(selectedExpert.id))}
+                            data-testid="button-unblock-user"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 mr-2 text-green-500" />
+                            Unblock {selectedExpert.name}
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => blockMutation.mutate(String(selectedExpert.id))}
+                            data-testid="button-block-user"
+                          >
+                            <ShieldOff className="w-3.5 h-3.5 mr-2" />
+                            Block {selectedExpert.name}
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   {/* Messages */}
-                  <ScrollArea className="flex-1 min-h-0 p-4">
+                  <ScrollArea
+                    className="flex-1 min-h-0 p-4"
+                    role="log"
+                    aria-live="polite"
+                    aria-label="Message thread"
+                  >
                     {timelineItems.length > 0 ? (
                       <div className="space-y-4">
                         {timelineItems.map((item) =>
@@ -822,6 +1079,30 @@ export default function Chat() {
                                     {item.chat.createdAt && format(new Date(item.chat.createdAt), "h:mm a")}
                                   </div>
                                 </div>
+                                {/* Message actions — only shown on incoming messages */}
+                                {item.chat.senderId !== user?.id && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100 flex-shrink-0 self-center"
+                                        data-testid={`button-message-actions-${item.chat.id}`}
+                                      >
+                                        <MoreVertical className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start">
+                                      <DropdownMenuItem
+                                        onClick={() => openReportDialog("message", item.chat.id)}
+                                        data-testid={`button-report-message-${item.chat.id}`}
+                                      >
+                                        <Flag className="w-3.5 h-3.5 mr-2 text-orange-500" />
+                                        Report message
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
                               </div>
                             </div>
                           ),
@@ -842,31 +1123,46 @@ export default function Chat() {
                     )}
                   </ScrollArea>
 
-                  {/* Input */}
+                  {/* Input — replaced by a notice when a block is active in either direction */}
                   <div className="p-4 border-t border-border flex-shrink-0">
-                    <form 
-                      onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                      className="flex gap-3"
-                    >
-                      <Input
-                        value={message}
-                        onChange={handleInputChange}
-                        placeholder="Type your message..."
-                        className="flex-1"
-                        data-testid="input-message"
-                      />
-                      <Button 
-                        type="submit" 
-                        disabled={sendMessageMutation.isPending || !message.trim()}
-                        data-testid="button-send"
+                    {blockStatus?.blocked ? (
+                      <div
+                        className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground"
+                        data-testid="blocked-message-notice"
                       >
-                        {sendMessageMutation.isPending ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <Send className="w-5 h-5" />
-                        )}
-                      </Button>
-                    </form>
+                        <ShieldOff className="w-4 h-4 text-destructive" />
+                        {blockStatus.blockedByMe
+                          ? `You have blocked ${selectedExpert.name}. Unblock to send messages.`
+                          : "Messaging is not available for this conversation."}
+                      </div>
+                    ) : (
+                      <form 
+                        onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                        className="flex gap-3"
+                      >
+                        <Input
+                          ref={messageInputRef}
+                          value={message}
+                          onChange={handleInputChange}
+                          placeholder="Type your message..."
+                          className="flex-1"
+                          aria-label="Message"
+                          data-testid="input-message"
+                        />
+                        <Button 
+                          type="submit" 
+                          disabled={sendMessageMutation.isPending || !message.trim()}
+                          aria-label="Send message"
+                          data-testid="button-send"
+                        >
+                          {sendMessageMutation.isPending ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Send className="w-5 h-5" />
+                          )}
+                        </Button>
+                      </form>
+                    )}
                   </div>
                 </>
               ) : (
@@ -888,6 +1184,68 @@ export default function Chat() {
           </div>
         </div>
       </div>
+
+      {/* Report dialog — shared for message-level and user-level reports */}
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent data-testid="dialog-report">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="w-4 h-4 text-orange-500" />
+              {reportTarget?.type === "message" ? "Report message" : `Report ${selectedExpert?.name ?? "user"}`}
+            </DialogTitle>
+            <DialogDescription>
+              Our moderation team will review this report. Reports are confidential.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reason</label>
+              <Select value={reportReason} onValueChange={setReportReason}>
+                <SelectTrigger data-testid="select-report-reason">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="spam">Spam</SelectItem>
+                  <SelectItem value="harassment">Harassment or threats</SelectItem>
+                  <SelectItem value="inappropriate">Inappropriate content</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Additional details (optional)</label>
+              <Textarea
+                placeholder="Tell us more about what happened…"
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                className="min-h-[80px] text-sm"
+                maxLength={1000}
+                data-testid="textarea-report-details"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                reportMutation.mutate({
+                  type: reportTarget?.type ?? "user",
+                  messageId: reportTarget?.messageId,
+                  reason: reportReason,
+                  details: reportDetails,
+                })
+              }
+              disabled={reportMutation.isPending}
+              data-testid="button-submit-report"
+            >
+              {reportMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Submit report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

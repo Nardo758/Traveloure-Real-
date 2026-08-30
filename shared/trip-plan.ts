@@ -298,6 +298,23 @@ export interface TripPlanActivity {
   comments: number;
   suggestedBy: string | null;
   changes: TripPlanActivityChange[];
+
+  /**
+   * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate) — present ONLY when the item was grounded
+   * to an `affiliate_bookable` affiliate product AND a fresh opaque bookingToken was minted for it
+   * at assembly time (§16 — the affiliate URL is never emitted; the token round-trips through the
+   * booking-agent rail server-side). Absent on every other item, so a producer/level that grounds
+   * nothing is byte-identical to before this field existed (§13). The client PlanCardActivity
+   * declares the same shape.
+   */
+  affiliateBooking?: {
+    productId: string;
+    bookingToken: string;
+    bookingType: string;
+    partnerName?: string | null;
+    title?: string | null;
+    price?: number | null;
+  };
 }
 
 /** Real booking data for a chauffeured leg. Emitted only when a booked/confirmed option exists. */

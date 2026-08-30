@@ -16,12 +16,13 @@
 import { Router } from "express";
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { and, eq, gte, ilike, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimit } from "../middleware/rateLimiter";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
+import { z } from "zod";
 import {
   demandSignalEvents,
   providerServices,
@@ -29,10 +30,26 @@ import {
   destinationEvents,
   shortLinks,
   serviceBookings,
-  DEMAND_SIGNAL_EVENT_KINDS,
+  users,
+  partnerDemandRollup,
+  dmoRawContent,
+  serviceCategories,
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
+import { readPartnerDemandRollup, readAdminDemandRollup, readTopDemandSignal } from "../services/demand-rollup.service";
+import { buildDemandRollupFacts, type DemandRollupFacts } from "../services/demand-rollup.compute";
+import { DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
+import { getMarketByKey } from "../services/trend-engine/operating-markets";
+import { generateOnepagerDraft, resolveOnepagerModel } from "../services/demand-onepager.service";
+import { ONEPAGER_TEMPLATE_VERSION } from "../services/demand-onepager.render";
+import {
+  listOnepagerControl,
+  approveOnepager,
+  withdrawOnepager,
+  getOnepagerApproval,
+  isApprovalKept,
+} from "../services/demand-onepager.admin";
 
 const router = Router();
 
@@ -101,7 +118,20 @@ async function deriveMarket(userId: string): Promise<string | null> {
 
 const SIGNAL_MIN_EVENTS = 3;
 
-const SIGNAL_LABELS: Record<DemandSignalEventKind, string> = {
+// The demand-NOT-MET signal kinds that surface on the business-advisor trending panel. The
+// research-interaction kinds (layer_toggled, research_circle_tapped — 2A.5) share the
+// demand_signal_events TABLE but are Market Research map telemetry, not demand-not-met signals, so
+// they are deliberately EXCLUDED from this surface (§13 — a map layer toggle is never presented as
+// unmet demand). Keying SIGNAL_LABELS and the loop below on this subset (not the full vocabulary)
+// means a newly-registered non-demand kind cannot leak here without a deliberate addition.
+const DEMAND_NOT_MET_SIGNAL_KINDS = [
+  "stay_anchor_miss",
+  "places_fallthrough",
+  "no_stay_flag",
+  "search_unfilled",
+] as const satisfies readonly DemandSignalEventKind[];
+
+const SIGNAL_LABELS: Record<(typeof DEMAND_NOT_MET_SIGNAL_KINDS)[number], string> = {
   stay_anchor_miss: "Trips built here found no platform stays nearby",
   places_fallthrough: "Experience searches fell through to outside sources",
   no_stay_flag: "Trips were flagged for missing lodging",
@@ -142,7 +172,7 @@ async function getDemandSignals(market: string): Promise<{ signals: DemandSignal
   }
 
   const signals: DemandSignalRow[] = [];
-  for (const kind of DEMAND_SIGNAL_EVENT_KINDS) {
+  for (const kind of DEMAND_NOT_MET_SIGNAL_KINDS) {
     const entry = byKind.get(kind);
     if (!entry || entry.total < SIGNAL_MIN_EVENTS) continue;
     let detail: string | undefined;
@@ -347,6 +377,14 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
   return { serviceCount: rows.length, passed: passedTotal, total: applicableTotal, topGaps };
 }
 
+// Money-realized booking statuses that count toward the earner's benchmark revenue/bookings.
+// Matches the reconciliation job's PAID_EQUIVALENT_STATUSES (server/jobs/stripeReconciliation.ts)
+// verbatim — the codebase's canonical "this is realized money" set — so no new scope is invented
+// here. A `payment_pending`/`pending`/`cancelled`/`refunded` row is NOT realized revenue (§15b),
+// so it is excluded; `deposit_paid` is likewise excluded because its full `totalAmount` is not yet
+// collected (only the deposit is), and counting the full amount would overstate revenue (§13).
+export const BENCHMARK_REVENUE_STATUSES = ["confirmed", "in_progress", "completed", "delivered", "disputed"];
+
 interface BenchmarkFacts {
   activeServiceCount: number;
   totalRevenue: number;
@@ -365,19 +403,30 @@ interface BenchmarkFacts {
  * too noisy to be honest, so `status: "no_data"` with no fabricated fallback (§13), same posture
  * as the source endpoint.
  */
-async function getBenchmarkFacts(userId: string): Promise<BenchmarkFacts> {
+export async function getBenchmarkFacts(userId: string): Promise<BenchmarkFacts> {
   const services = await db
     .select({
       categoryId: providerServices.categoryId,
-      totalRevenue: providerServices.totalRevenue,
-      bookingsCount: providerServices.bookingsCount,
       status: providerServices.status,
     })
     .from(providerServices)
     .where(eq(providerServices.userId, userId));
 
-  const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
-  const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+  // §14 / Locked-Decision-3: revenue is a REAL SUM over the provider's `service_bookings` rows,
+  // NEVER the banned `provider_services.totalRevenue` denorm. Same shape the getLinkStatsFacts
+  // sibling uses (SUM(totalAmount) + count over serviceBookings). Only money-realized statuses
+  // count — an unauthorized `payment_pending` claim (§15b) is not revenue — so an earner with no
+  // paid bookings reports 0 honestly (§13) rather than a stale denorm figure.
+  const bookingRows = await db
+    .select({
+      bookings: sql<number>`count(*)::int`,
+      revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+    })
+    .from(serviceBookings)
+    .where(and(eq(serviceBookings.providerId, userId), inArray(serviceBookings.status, BENCHMARK_REVENUE_STATUSES)));
+
+  const totalRevenue = Number(bookingRows[0]?.revenue ?? 0);
+  const totalBookings = Number(bookingRows[0]?.bookings ?? 0);
 
   const categoryCounts = new Map<string, number>();
   for (const s of services) {
@@ -472,25 +521,36 @@ async function getLinkStatsFacts(userId: string): Promise<LinkStatsFacts> {
   return { totalClicks, totalBookings, totalRevenue, conversionRate: totalClicks > 0 ? totalBookings / totalClicks : null };
 }
 
+// 3.4 Item 2.2 — the L6 rollup demand figures ride into the advisor prompt WITH their governance
+// labels (R5/R19/R20), so the model can never blend units or sum dispositions. The labeling is a
+// PURE function in the L6 module (buildDemandRollupFacts — unit-tested with no DB); this route only
+// supplies the server-aggregated, floor-cleared summary to it.
+async function getDemandRollupFacts(userId: string): Promise<DemandRollupFacts> {
+  const rollup = await readPartnerDemandRollup(userId);
+  return buildDemandRollupFacts(rollup.summary);
+}
+
 interface BusinessAdvisorFacts {
   market: string | null;
   listingHealth: ListingHealthSummary | null;
   benchmarks: BenchmarkFacts;
   linkStats: LinkStatsFacts;
   demand: { signals: DemandSignalRow[]; crowd: CrowdMonthRow[] | null; events: UpcomingEventRow[] | null };
+  demandRollup: DemandRollupFacts; // 3.4 Item 2.2 — labeled L6 figures (R5/R19/R20)
 }
 
 /** Assembles the FACTS object server-side and a stable factsHash over it, in one pass — mirrors
  *  assembleFacts() in advisor.routes.ts's narration pattern (no AI call here). */
 async function assembleBusinessAdvisorFacts(userId: string): Promise<{ facts: BusinessAdvisorFacts; factsHash: string }> {
   const market = await deriveMarket(userId);
-  const [listingHealth, benchmarks, linkStats, demandResult, crowd, events] = await Promise.all([
+  const [listingHealth, benchmarks, linkStats, demandResult, crowd, events, demandRollup] = await Promise.all([
     getListingHealthSummary(userId),
     getBenchmarkFacts(userId),
     getLinkStatsFacts(userId),
     market ? getDemandSignals(market) : Promise.resolve({ signals: [] as DemandSignalRow[], lowSignal: true }),
     market ? getCrowd(market) : Promise.resolve(null),
     market ? getUpcomingEvents(market) : Promise.resolve(null),
+    getDemandRollupFacts(userId),
   ]);
 
   const facts: BusinessAdvisorFacts = {
@@ -499,6 +559,7 @@ async function assembleBusinessAdvisorFacts(userId: string): Promise<{ facts: Bu
     benchmarks,
     linkStats,
     demand: { signals: demandResult.signals, crowd, events },
+    demandRollup,
   };
   const factsHash = crypto.createHash("sha1").update(JSON.stringify(facts)).digest("hex");
   return { facts, factsHash };
@@ -515,6 +576,7 @@ Rules:
 - If listingHealth.topGaps is non-empty, mention closing the biggest gap first.
 - If benchmarks.status is "no_data", say so honestly rather than comparing to a number.
 - If demand.signals is non-empty, connect at least one signal to a concrete next step.
+- demandRollup carries the market's unmet-demand figures. OBEY demandRollup.rulesNote exactly: NEVER blend a service dollar figure (serviceDollars) with a stay count (stayTrips/stayNights), and NEVER sum "requested" (live) with "missed" (expired) demand — report each in its own kind and unit, or not at all.
 - Write plain prose. No markdown, no bullet lists, no headers.`;
 
 router.post("/api/me/business-advisor", aiRateLimit, isAuthenticated, async (req, res) => {
@@ -593,6 +655,307 @@ router.get("/api/me/business-advisor", isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error("[demand] business-advisor GET error:", error);
     res.status(500).json({ message: "Failed to fetch business advice" });
+  }
+});
+
+// ── Partner Demand 2B.3: floor-enforced rollup reads (ledger 2026-08-18-partner-demand-2b) ──────
+// Both read through the ONE L6 module (demand-rollup.service.ts) — no demand math here. Floors are
+// enforced in the service (below → no_data), the R16 synthetic-trip predicate is inherited, and the
+// response carries per-figure `n` + `cadence` so a Phase-3 surface renders the honesty furniture
+// without recomputing anything.
+
+// PARTNER-scoped: the caller's own markets only; the UNMAPPED bucket is excluded (R13 admin-only).
+router.get("/api/me/demand-rollup", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    // R20: optional ±WINDOW override. Malformed values are ignored server-side (default applies);
+    // no other query param is read, so this is purely additive to the 2B contract.
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    const out = await readPartnerDemandRollup(userId, { from, to });
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/me/demand-rollup error:", error);
+    res.status(500).json({ message: "Failed to fetch demand rollup" });
+  }
+});
+
+// PARTNER Today card (3.4 Item 2.1): the ONE highest-value demand signal, selected server-side
+// (R19-honest, floor-cleared only) so the dashboard renders a single card with no client math.
+router.get("/api/me/demand-rollup/top", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const out = await readTopDemandSignal(userId);
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/me/demand-rollup/top error:", error);
+    res.status(500).json({ message: "Failed to fetch top demand signal" });
+  }
+});
+
+// Trailhead T4.5(b): ONE honest line for the provider Market Research surface — external (scraped)
+// content is now findable in a market+category where no platform provider offers it yet. A PRESENCE
+// signal only: NO count is shown (R16 — a below-floor count is never surfaced), so the line states a
+// fact, not a number. The negative "no platform provider offers it yet" claim is made per external
+// contentType only when NO active+approved provider service in that market carries a category whose
+// slug/name matches that contentType token (§13 — a category we cannot match is omitted, never guessed
+// as covered-or-uncovered). Keyed by the market slug the page already holds.
+router.get("/api/me/market-external-content", isAuthenticated, async (req, res) => {
+  try {
+    const marketKey = typeof req.query.market === "string" ? req.query.market : "";
+    const market = marketKey ? getMarketByKey(marketKey) : undefined;
+    if (!market) return res.json({ market: marketKey || null, lines: [] });
+    const cityName = market.cityName;
+
+    // Published external stubs in this market, grouped by contentType (the category grain).
+    const stubRows = await db
+      .select({ contentType: dmoRawContent.contentType })
+      .from(dmoRawContent)
+      .where(and(
+        eq(dmoRawContent.discoverPageVisible, true),
+        ilike(dmoRawContent.city, cityName),
+        sql`${dmoRawContent.status} NOT IN ('rejected','quarantined')`,
+        eq(dmoRawContent.inventoryClass, "external"),
+      ));
+    if (stubRows.length === 0) return res.json({ market: cityName, lines: [] });
+
+    // Category coverage in this market: the category slug/name of every active+approved provider
+    // service tied to the city. Used ONLY to suppress a line whose category is already served.
+    const coverageRows = await db
+      .select({ slug: serviceCategories.slug, name: serviceCategories.name })
+      .from(providerServices)
+      .leftJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
+      .where(and(
+        eq(providerServices.status, "active"),
+        eq(providerServices.approvalStatus, "approved"),
+        or(eq(providerServices.city, cityName), ilike(providerServices.location, `%${cityName}%`)),
+      ));
+    const coveredTokens = Array.from(
+      new Set(coverageRows.flatMap((r) => [r.slug, r.name].filter(Boolean).map((s) => String(s).toLowerCase()))),
+    );
+    const isCovered = (contentType: string) => {
+      const t = contentType.toLowerCase();
+      return coveredTokens.some((tok) => tok === t || tok.includes(t) || t.includes(tok));
+    };
+
+    // Distinct external contentTypes with NO matching provider coverage → one honest line each.
+    const uncovered = Array.from(new Set(stubRows.map((s) => s.contentType))).filter((ct) => !isCovered(ct));
+    const lines = uncovered.map((category) => ({
+      market: cityName,
+      category,
+      // No count (R16) — a presence fact, not a number.
+      text: `Travelers can now find ${category} content in ${cityName} — no platform provider offers it yet`,
+    }));
+
+    res.json({ market: cityName, lines });
+  } catch (error) {
+    console.error("[demand] /api/me/market-external-content error:", error);
+    res.status(500).json({ message: "Failed to fetch market external content" });
+  }
+});
+
+// ADMIN variant: every market incl. the unmapped bucket (R13). Inherits the §2 blanket admin guard
+// (`app.use("/api/admin", adminApiGuard)`, mounted before this router) — no per-route opt-in (§2).
+router.get("/api/admin/demand-rollup", async (req, res) => {
+  try {
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    const out = await readAdminDemandRollup({ from, to });
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/admin/demand-rollup error:", error);
+    res.status(500).json({ message: "Failed to fetch admin demand rollup" });
+  }
+});
+
+// ADMIN 3.5 Item 3 — demand-rollup HEALTH (observability, not a demand figure). Row counts +
+// freshness so ops can tell a healthy quiet day from a scheduler that stopped running (the §17
+// "silence must be distinguishable" posture, applied to the rollup table). Inherits the §2 admin
+// guard. No floor/metric math here — just counts and the latest computed_at.
+router.get("/api/admin/demand-rollup/health", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        metric: partnerDemandRollup.metric,
+        count: sql<number>`count(*)::int`,
+        latest: sql<string | null>`max(${partnerDemandRollup.computedAt})`,
+      })
+      .from(partnerDemandRollup)
+      .groupBy(partnerDemandRollup.metric);
+    const totals = await db
+      .select({
+        totalRows: sql<number>`count(*)::int`,
+        markets: sql<number>`count(distinct ${partnerDemandRollup.marketSlug})::int`,
+        latest: sql<string | null>`max(${partnerDemandRollup.computedAt})`,
+      })
+      .from(partnerDemandRollup);
+    res.json({
+      totalRows: Number(totals[0]?.totalRows ?? 0),
+      distinctMarkets: Number(totals[0]?.markets ?? 0),
+      lastComputedAt: totals[0]?.latest ?? null,
+      byMetric: rows.map((r) => ({ metric: r.metric, count: Number(r.count), lastComputedAt: r.latest ?? null })),
+    });
+  } catch (error) {
+    console.error("[demand] /api/admin/demand-rollup/health error:", error);
+    res.status(500).json({ message: "Failed to fetch demand rollup health" });
+  }
+});
+
+// ADMIN 3.5 Item 3 — the demand suppression floors, READ-ONLY, served FROM CONFIG (no literals on
+// the client). R27: the tier keys on WHO reads a figure, not the cell's grain. These are config-set
+// (server/config/demand-floors.config.ts) and moved ONLY by the decision-maker in code — there is no
+// DB override and this endpoint never writes; a Leon-editable, audit-logged floor control is a
+// separate ratified change (it would need a floors table, escalate per Coordination Prevention).
+router.get("/api/admin/demand-floors", async (_req, res) => {
+  res.json({
+    editable: false,
+    source: "server/config/demand-floors.config.ts",
+    windowDays: DEMAND_WINDOW_DAYS,
+    tiers: [
+      { audience: "own_book", floor: DEMAND_FLOORS.ownBook, label: "Own book", scope: "Shown to the party the figure is ABOUT (a partner viewing their own market/listing). The lowest bar." },
+      { audience: "cross_partner", floor: DEMAND_FLOORS.crossPartner, label: "Cross-partner", scope: "Shown to someone OTHER than its subject — admin cross-partner views, the recruitment one-pager." },
+      { audience: "sold", floor: DEMAND_FLOORS.sold, label: "Sold", scope: "A figure in a SOLD dataset. The highest bar; nothing renders it today." },
+    ],
+  });
+});
+
+// ADMIN Phase 4 — the recruitment one-pager control (R32). R18 is LIFTED; generation is live. All
+// routes below are /api/admin/* and therefore behind the §2 blanket admin guard (default-deny, DB
+// role lookup — never a request value). Distribution is OUT OF SCOPE: this ends at "an approved PDF
+// exists, retrievable by an admin"; external use stays locked behind Leon's artifact-one review.
+
+// List: every operating market with its qualification + approval state (non-qualifying markets carry
+// qualifies:false so the UI shows the honest line, never a disabled mystery button).
+router.get("/api/admin/demand/onepager", async (_req, res) => {
+  try {
+    res.json({ markets: await listOnepagerControl(), templateVersion: ONEPAGER_TEMPLATE_VERSION });
+  } catch (error) {
+    console.error("[demand] onepager control list error:", error);
+    res.status(500).json({ message: "Failed to load one-pager control" });
+  }
+});
+
+// Generate a DRAFT PDF for a market (watermarked). 422 when the market does not clear the public floor.
+router.post("/api/admin/demand/onepager/:market/generate", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    if (!getMarketByKey(market)) return res.status(404).json({ message: "Unknown market" });
+    const draft = await generateOnepagerDraft(market);
+    if (!draft) return res.status(422).json({ message: "Market does not clear the public floor — no artifact" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="onepager-${market}-draft.pdf"`);
+    res.send(draft.pdf);
+  } catch (error) {
+    console.error("[demand] onepager generate error:", error);
+    res.status(500).json({ message: "Failed to generate draft" });
+  }
+});
+
+// Approve a market's one-pager (R32; audit-logged). 422 when it does not qualify.
+router.post("/api/admin/demand/onepager/:market/approve", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    if (!getMarketByKey(market)) return res.status(404).json({ message: "Unknown market" });
+    const approval = await approveOnepager(market, { userId: getUserId(req)!, role: "admin" });
+    res.json({ approved: true, approval });
+  } catch (error: any) {
+    if (String(error?.message ?? "").includes("does not clear")) {
+      return res.status(422).json({ message: "Market does not clear the public floor — cannot approve" });
+    }
+    console.error("[demand] onepager approve error:", error);
+    res.status(500).json({ message: "Failed to approve" });
+  }
+});
+
+// Withdraw an approval (R32; audit-logged).
+router.post("/api/admin/demand/onepager/:market/withdraw", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    await withdrawOnepager(market, { userId: getUserId(req)!, role: "admin" });
+    res.json({ withdrawn: true });
+  } catch (error) {
+    console.error("[demand] onepager withdraw error:", error);
+    res.status(500).json({ message: "Failed to withdraw" });
+  }
+});
+
+// The retrievable APPROVED PDF (R32 "approved PDF exists, retrievable by an admin"). Renders WITHOUT
+// the DRAFT watermark only when the approval is still KEPT (template current + still clears floor);
+// otherwise 409 with the reason (an admin who lost approval via re-validation sees why).
+router.get("/api/admin/demand/onepager/:market/pdf", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    if (!getMarketByKey(market)) return res.status(404).json({ message: "Unknown market" });
+    const approval = await getOnepagerApproval(market);
+    if (!approval) return res.status(409).json({ message: "Not approved" });
+    const model = await resolveOnepagerModel(market);
+    if (!isApprovalKept(approval, model, ONEPAGER_TEMPLATE_VERSION)) {
+      return res.status(409).json({ message: "Approval no longer valid (market below floor or template changed)" });
+    }
+    const draft = await generateOnepagerDraft(market, {}, { watermark: null });
+    if (!draft) return res.status(409).json({ message: "Market does not clear the public floor" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="onepager-${market}.pdf"`);
+    res.send(draft.pdf);
+  } catch (error) {
+    console.error("[demand] onepager approved-pdf error:", error);
+    res.status(500).json({ message: "Failed to retrieve approved one-pager" });
+  }
+});
+
+// ── Market Research layer prefs — the registry rail (R25-final.1; ledger 3.1c, R25-final) ────────
+// ONE route, TWO concerns kept distinct: (1) the DURABLE per-user layer toggle is upserted into the
+// GENERAL prefs store (`users.preferences.settings.researchLayers` — the same store /api/me/preferences
+// uses; NOT a new table, per the grep-before-create rule), so layers persist across a partner's phone
+// and desktop; (2) the OBSERVABLE `layer_toggled` signal fires via `logDemandSignal`, fire-and-forget.
+// The log must NEVER fail the pref write — the isolation `logDemandSignal` already guarantees.
+// `research_circle_tapped` will ride this same route when the map circles arrive.
+const researchPrefsSchema = z
+  .object({
+    layerId: z.string().trim().min(1).max(40),
+    visible: z.boolean(),
+    market: z.string().trim().max(40).optional(),
+  })
+  .strict();
+
+router.get("/api/me/research-prefs", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const [me] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
+    const layers = (((me?.preferences as any)?.settings?.researchLayers) ?? {}) as Record<string, boolean>;
+    res.json({ layers });
+  } catch (error) {
+    console.error("[demand] /api/me/research-prefs read error:", error);
+    res.status(500).json({ message: "Failed to load research layer preferences" });
+  }
+});
+
+router.post("/api/me/research-prefs", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const parsed = researchPrefsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid research layer preference", errors: parsed.error.flatten() });
+    }
+    const { layerId, visible, market } = parsed.data;
+
+    // (1) DURABLE — read-modify-write the jsonb, matching /api/me/preferences' own pattern.
+    const [me] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
+    const current = ((me?.preferences as any) ?? {});
+    const settings = current.settings ?? {};
+    const researchLayers: Record<string, boolean> = { ...(settings.researchLayers ?? {}), [layerId]: visible };
+    await db
+      .update(users)
+      .set({ preferences: { ...current, settings: { ...settings, researchLayers } } })
+      .where(eq(users.id, userId));
+
+    // (2) OBSERVABLE — fire-and-forget; isolated so a signal-write failure never fails the pref write (§13).
+    logDemandSignal({ kind: "layer_toggled", market: market ?? null, context: { layerId, visible } });
+
+    res.json({ layers: researchLayers });
+  } catch (error) {
+    console.error("[demand] /api/me/research-prefs write error:", error);
+    res.status(500).json({ message: "Failed to save research layer preference" });
   }
 });
 

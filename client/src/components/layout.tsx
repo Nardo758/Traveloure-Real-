@@ -7,10 +7,11 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { 
   Map, 
   Award,
-  Compass, 
+  Compass,
   MessageSquare, 
   LogOut, 
   Menu, 
@@ -69,15 +70,17 @@ import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  "By Location":       MapPin,
-  "By Date":           Calendar,
+  "Destinations":      MapPin,
+  "Events":            Calendar,
   "Local Experts":     MapPin,
   "Trip Planners":     User,
-  // MP-1: the services tab is role-agnostic (experts sell there too), so the
-  // leaf is "Browse Services", not "Service Providers". "Ready Made Trips" uses
-  // Award to match the tab trigger's own icon in discover.tsx.
-  "Browse Services":   Building2,
-  "Ready Made Trips":  Award,
+  // The four Marketplace tabs use the canonical NOUN vocabulary (ledger
+  // 2026-08-23-discover-vocabulary): Destinations · Ready-Made Trips · Events ·
+  // Services. These icon keys MUST track nav-config.ts's `name` values; the
+  // services tab is role-agnostic (experts sell there too), and Ready-Made Trips
+  // uses Award to match its tab trigger's icon in discover.tsx.
+  "Services":          Building2,
+  "Ready-Made Trips":  Award,
   "Travel Planning":   Plane,
   "Romantic Getaways": Sparkles,
   "Date Night":        Wine,
@@ -143,6 +146,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   const recentCities = useRecentlyViewed();
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
+  const [location] = useLocation();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -201,6 +205,13 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
+
+  // A wouter navigation preserves this component instance, so close the menu
+  // explicitly when a child link changes the route. Without this, the old
+  // Marketplace menu can remain painted over the newly selected surface.
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location]);
 
   const slugify = (str: string) => str.toLowerCase().replace(/\s+/g, '-');
 
@@ -274,6 +285,8 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                 : "left-0 w-72"
             )}
             style={sections.length > 2 ? megaStyle : {}}
+            onPointerDown={() => setIsOpen(false)}
+            onClickCapture={() => setIsOpen(false)}
           >
             <div className={cn(
               "py-3",
@@ -332,6 +345,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                         role="menuitem"
                         className={sharedClass}
                         data-testid={`link-nav-${slugify(child.name)}`}
+                        onClick={() => setIsOpen(false)}
                       >
                         {inner}
                       </Link>
@@ -358,6 +372,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                         FOCUS_RING
                       )}
                       data-testid={`link-recent-city-${c.slug}`}
+                        onClick={() => setIsOpen(false)}
                     >
                       <MapPin className="w-3 h-3 shrink-0" aria-hidden="true" />
                       {c.name}
@@ -485,12 +500,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 aria-label={t("homeAria")}
                 data-testid="link-logo"
               >
-                <div className="flex items-center gap-1.5">
-                  <Compass className="h-6 w-6 text-primary" aria-hidden="true" />
-                  <span className="font-bold text-xl tracking-tight text-foreground uppercase">
-                    Traveloure
-                  </span>
-                </div>
+                <TraveloureLogo />
                 <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20" aria-hidden="true">
                   BETA
                 </span>
@@ -742,11 +752,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
             <div className="lg:col-span-2">
-              <div className="flex items-center gap-2 mb-4" aria-hidden="true">
-                <div className="bg-gradient-to-br from-[#FF385C] to-[#FF8E53] p-2.5 rounded-xl shadow-lg">
-                  <Compass className="h-5 w-5 text-white" />
-                </div>
-                <span className="font-display font-bold text-xl text-foreground">Traveloure</span>
+              <div className="flex items-center mb-4" aria-hidden="true">
+                <TraveloureLogo className="h-8" />
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
                 {t("footer.tagline")}

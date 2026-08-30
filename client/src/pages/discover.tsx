@@ -58,6 +58,14 @@ import {
   Zap,
   Trophy,
   CheckCircle,
+  Mountain,
+  Cake,
+  Gem,
+  Flower2,
+  Music,
+  Landmark,
+  Umbrella,
+  ShoppingBag,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -68,9 +76,117 @@ import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
-import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { planTypeLabel, planTypeDisplay } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { CatalogItem } from "@/types/catalog";
+
+// Ready-Made shelf DTO (GET /api/ready-made) — teaser fields only; the itinerary stays behind
+// the purchase→clone gate.
+type ReadyMadeShelfListing = {
+  id: string;
+  title: string;
+  planType: string | null;
+  planTypeCustom: string | null;
+  market: string;
+  durationDays: number;
+  pricingMode: string;
+  priceCents: number | null;
+  heroImageUrl: string | null;
+  authorName: string;
+  authorHandle: string | null;
+  section: "trips_by_locals" | "advisor";
+};
+
+// Theme chip/shelf ICONS only — presentational metadata. Labels always come from the shared
+// vocabulary (planTypeLabel/planTypeDisplay, shared/ready-made-plan-types.ts), never restated
+// here, so a vocabulary change can't drift this file's text.
+const READY_MADE_THEME_ICONS: Record<string, typeof Award> = {
+  hiking_itinerary: Mountain,
+  road_trip_itinerary: Car,
+  city_itinerary: Building2,
+  food_culture_itinerary: UtensilsCrossed,
+  birthday_plan: Cake,
+  wedding_plan: Heart,
+  proposal_plan: Gem,
+  corporate_retreat_plan: Briefcase,
+  adventure_outdoors: Compass,
+  romance_honeymoon: Heart,
+  family_trip: Users,
+  wellness_retreat: Flower2,
+  photography_tour: Camera,
+  nightlife_entertainment: Music,
+  cultural_heritage: Landmark,
+  beach_island: Umbrella,
+  festival_seasonal: PartyPopper,
+  shopping_style: ShoppingBag,
+  custom: Sparkles,
+};
+
+/** Chip/shelf heading for a theme KEY (aggregate label — per-listing custom text stays on the
+ *  card via planTypeDisplay). `custom` aggregates as "Custom themes"; untyped grandfathers as
+ *  "More trips". */
+function readyMadeThemeHeading(key: string): string {
+  if (key === "custom") return "Custom themes";
+  return planTypeLabel(key) ?? "More trips";
+}
+
+/**
+ * Ready-Made shelf card, theme-first: the theme is the eyebrow (per-listing custom text via
+ * planTypeDisplay), the author type is a badge. The author row lives OUTSIDE the detail-page
+ * link so the storefront link is a real, un-nested anchor — StorefrontLink's Discover-card
+ * constraint solved by structure. No handle → plain text, never a dead /s/ link (rule 1).
+ */
+function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
+  return (
+    <Card
+      className="overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col"
+      data-testid={`rm-shelf-card-${l.id}`}
+    >
+      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer">
+        {/* D3: h-40 aligns the card image height with the Itinerary Templates grid below. */}
+        {l.heroImageUrl && (
+          <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
+        )}
+        <CardContent className="p-4 pb-2">
+          <div className="text-[11px] uppercase tracking-wide text-primary font-semibold">
+            {planTypeDisplay(l.planType, l.planTypeCustom)}
+          </div>
+          <div className="font-semibold truncate">{l.title}</div>
+          <div className="text-sm text-muted-foreground">
+            {l.market} · {l.durationDays} days
+          </div>
+          <div className="mt-2 font-bold">
+            {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
+            {l.pricingMode === "per_traveler" && (
+              <span className="text-xs font-normal text-muted-foreground"> /traveler</span>
+            )}
+          </div>
+        </CardContent>
+      </Link>
+      <div className="px-4 pb-3 pt-1 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+        <span className="truncate">
+          by{" "}
+          {l.authorHandle ? (
+            <Link
+            href={`/s/${l.authorHandle}`}
+              className="font-medium text-primary hover:underline"
+              data-testid={`link-rm-author-${l.id}`}
+            >
+              {l.authorName}
+            </Link>
+          ) : (
+            l.authorName
+          )}
+        </span>
+        <Badge variant="secondary" className="shrink-0 text-[10px] uppercase tracking-wide">
+          {l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner"}
+        </Badge>
+      </div>
+    </Card>
+  );
+}
 
 type ServiceCategory = {
   id: string;
@@ -101,11 +217,17 @@ type Service = {
   providerFirstName?: string | null;
   providerLastName?: string | null;
   providerImageUrl?: string | null;
+  providerRating?: string | null;
+  providerBusinessName?: string | null;
+  /** MP-2 storefront return path — null when the owner has no claimed handle (no /s/ page). */
+  providerHandle?: string | null;
 };
 
 type DiscoverResult = {
   services: Service[];
   total: number;
+  packagesTotal?: number;
+  suggestion?: string | null;
 };
 
 interface CartData {
@@ -180,6 +302,12 @@ function ServiceCard({
   isAddingToCart?: boolean;
   isAdded?: boolean;
 }) {
+  // D1c (lane nav-storefront): programmatic navigation for the provider-name deep link.
+  // The whole image header is wrapped in a <Link> (below), so the storefront affordance
+  // must NOT be an <a> — nested anchors are invalid HTML (the StorefrontLink doc rule).
+  // Pattern precedent: expert-card.tsx neighbourhood chips (preventDefault + stopPropagation
+  // on a non-anchor child inside a clickable parent).
+  const [, navigateTo] = useLocation();
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
@@ -211,12 +339,16 @@ function ServiceCard({
     return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
   };
 
-  // Build real provider display name from API data
-  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || "Provider";
+  // Build real provider display name from API data.
+  // Fallback chain: firstName+lastName → businessName (from service_provider_forms) → "Provider"
+  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || service.providerBusinessName || "Provider";
   const providerImageUrl = service.providerImageUrl || null;
 
-  // Initials fallback for providers without a profile photo
-  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase() || "P";
+  // Initials fallback for providers without a profile photo.
+  // When no first/last name is set, use the first letter of the business name instead.
+  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase()
+    || service.providerBusinessName?.[0]?.toUpperCase()
+    || "P";
 
   const getStatusColor = (rating: number) => {
     if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
@@ -337,7 +469,48 @@ function ServiceCard({
                   {service.serviceName}
                 </h3>
                 <div className="flex items-center gap-2 text-white/90 text-sm">
-                  <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  {/* Storefront deep link (D1) — only when the owner has a claimed handle
+                      (StorefrontLink rule 1: never a dead /p/ link). Rendered as a
+                      keyboard-operable span, not an <a>: this block sits inside the card's
+                      <Link>, and nesting anchors is invalid HTML. */}
+                  {service.providerHandle ? (
+                    <span
+                      role="link"
+                      tabIndex={0}
+                      className="font-medium underline-offset-2 hover:underline cursor-pointer"
+                      title={`See everything @${service.providerHandle} offers`}
+                      data-testid={`link-provider-storefront-${service.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+    navigateTo(`/s/${service.providerHandle}`);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+      navigateTo(`/s/${service.providerHandle}`);
+                        }
+                      }}
+                    >
+                      {providerName}
+                    </span>
+                  ) : (
+                    <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  )}
+                  {service.providerRating && parseFloat(service.providerRating) > 0 && (
+                    <>
+                      <span className="text-white/60">•</span>
+                      <span
+                        className="flex items-center gap-0.5"
+                        data-testid={`text-provider-rating-${service.id}`}
+                        title={`Provider portfolio rating: ${parseFloat(service.providerRating).toFixed(1)}/5`}
+                      >
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        <span className="text-amber-300 font-semibold">{parseFloat(service.providerRating).toFixed(1)}</span>
+                      </span>
+                    </>
+                  )}
                   <span className="text-white/60">•</span>
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
@@ -465,7 +638,52 @@ function ServiceCard({
   );
 }
 
-export default function DiscoverPage() {
+/**
+ * Marketplace un-group (decision-maker ratified Aug 23, ledger
+ * 2026-08-23-marketplace-ungroup): each Marketplace surface is its OWN page —
+ * /destinations, /ready-made, /events, /services — reached straight from the nav
+ * dropdown, with NO tab bar (the grouped header is gone). `surface` pins this
+ * component to one surface: the tab bar is not rendered, the masthead titles
+ * itself for that surface, and ?tab= is ignored. Without `surface` the legacy
+ * tabbed shell still works (only the /discover redirect uses that path now).
+ */
+export type MarketplaceSurface = "travelpulse" | "packages" | "events" | "services";
+
+// Each surface masthead follows the ratified Ready-Made-by-Theme band (artifact
+// 5c827895): a Fraunces serif title with a leading emoji + a muted one-line sub.
+// `emoji` is the band-title glyph (🏅 is the one the mock itself draws).
+const SURFACE_META: Record<MarketplaceSurface, { emoji: string; title: string; subtitle: string; url: string; seoTitle: string }> = {
+  travelpulse: {
+    emoji: "📍",
+    title: "Destinations",
+    subtitle: "Explore destinations & trending cities.",
+    url: "/destinations",
+    seoTitle: "Destinations — Trending Cities & Travel Intel",
+  },
+  packages: {
+    emoji: "🏅",
+    title: "Ready-Made Trips",
+    subtitle: "Buy a complete trip built around an experience — it becomes your own editable plan.",
+    url: "/ready-made",
+    seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
+  },
+  events: {
+    emoji: "📅",
+    title: "Events",
+    subtitle: "Upcoming events & activities around the world.",
+    url: "/events",
+    seoTitle: "Events — Festivals & Travel Calendar",
+  },
+  services: {
+    emoji: "🛎️",
+    title: "Services",
+    subtitle: "Book tours, photography, transport & more — we assemble & optimize your trip.",
+    url: "/services",
+    seoTitle: "Services — Tours, Photography, Transport & More",
+  },
+};
+
+export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface } = {}) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
@@ -485,20 +703,25 @@ export default function DiscoverPage() {
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("rating");
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [minRating, setMinRating] = useState(0);
-  const [page, setPage] = useState(0);
+  const initialQuery = urlParams.get("q") || "";
+  const readNumberParam = (name: string) => {
+    const value = Number(urlParams.get(name));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const initialPage = Math.max(0, (Number.parseInt(urlParams.get("page") || "1", 10) || 1) - 1);
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [locationFilter, setLocationFilter] = useState(urlParams.get("location") || expertHandoffDestination);
+  const [selectedCategory, setSelectedCategory] = useState(urlParams.get("categoryId") || "all");
+  const [sortBy, setSortBy] = useState(urlParams.get("sortBy") || "rating");
+  const [minPrice, setMinPrice] = useState(readNumberParam("minPrice"));
+  const [maxPrice, setMaxPrice] = useState(readNumberParam("maxPrice"));
+  const [minRating, setMinRating] = useState(readNumberParam("minRating"));
+  const [page, setPage] = useState(initialPage);
+  const hasMountedSearch = useRef(false);
   const limit = 12;
 
   // Trip packages state
-  const [tripSearchQuery, setTripSearchQuery] = useState("");
-  const [selectedTripCategory, setSelectedTripCategory] = useState("all");
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showAllPackages, setShowAllPackages] = useState(false);
 
@@ -519,21 +742,57 @@ export default function DiscoverPage() {
   const rawUrlTab = urlParams.get("tab") || "travelpulse";
   const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
   const urlCity = urlParams.get("city") || "";
-  const [activeTab, setActiveTab] = useState(urlTab);
+  // A surface page is PINNED — ?tab= never overrides it (the /discover redirect
+  // is what maps old ?tab= links onto the right surface route).
+  //
+  // `activeTab` is DERIVED from `surface`, not just seeded from it: navigating
+  // between surface routes (/services → /destinations) reuses this same
+  // DiscoverPage instance (both routes render Layout > DiscoverPage), so the
+  // useState initializer does NOT re-run and the effect below (gated on
+  // `!surface`) does NOT fire. If the tab lived only in state it would go stale —
+  // the masthead (which reads `surface`) would update while the body (which reads
+  // the tab) would not. Deriving keeps the two in lockstep with no render flash.
+  const [selectedTab, setSelectedTab] = useState(urlTab);
+  const activeTab = surface ?? selectedTab;
 
-  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks)
+  // Sync the selected tab whenever the URL ?tab= param changes (legacy tabbed
+  // shell only — surface pages are fixed by their route and ignore ?tab=).
   useEffect(() => {
-    setActiveTab(urlTab);
-  }, [urlTab]);
+    if (!surface) setSelectedTab(urlTab);
+  }, [urlTab, surface]);
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-      setPage(0);
+      if (hasMountedSearch.current) setPage(0);
+      else hasMountedSearch.current = true;
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Keep the full discovery state addressable so refreshes, shares, and a
+  // browser-back return from a detail page restore the same result set.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const setOrDelete = (name: string, value: string, omit = false) => {
+      if (!value || omit) params.delete(name);
+      else params.set(name, value);
+    };
+    setOrDelete("q", debouncedQuery);
+    setOrDelete("location", locationFilter);
+    setOrDelete("categoryId", selectedCategory, selectedCategory === "all");
+    setOrDelete("minPrice", String(minPrice), minPrice <= 0);
+    setOrDelete("maxPrice", String(maxPrice), maxPrice <= 0);
+    setOrDelete("minRating", String(minRating), minRating <= 0);
+    setOrDelete("sortBy", sortBy, sortBy === "rating");
+    setOrDelete("page", String(page + 1), page === 0);
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
+      window.history.replaceState(window.history.state, "", nextUrl);
+    }
+  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page]);
 
   // Track search events for tourism analytics
   useEffect(() => {
@@ -599,43 +858,81 @@ export default function DiscoverPage() {
 
   // Expert Templates Query
   // Phase-4 shelf: approved cloneable store listings (server-gated teaser feed).
-  const { data: readyMadeShelfData } = useQuery<{ listings: Array<{
-    id: string; title: string; planType: string | null; market: string; durationDays: number;
-    pricingMode: string; priceCents: number | null; heroImageUrl: string | null;
-    authorName: string; section: "trips_by_locals" | "advisor";
-  }> }>({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
+  // Theme-first redesign (ledger 2026-08-22-ready-made-themes): the shelf organizes around the
+  // listing's declared theme (plan_type — required at submit, closed vocabulary); the author
+  // type demotes to a card badge. This unfiltered feed stays mounted as the source of the chip
+  // rail's REAL per-theme counts.
+  const { data: readyMadeShelfData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+    queryKey: ["/api/ready-made"],
+    staleTime: 60_000,
+  });
   const readyMadeShelf = readyMadeShelfData?.listings;
+
+  // One theme selected → the server-validated filter. Vocabulary keys ride ?planType=; an
+  // expert-minted theme (ledger 2026-08-22-expert-minted-themes) rides ?customLabel= — the
+  // author's own label is the category, matched against stored data server-side. While the
+  // filtered fetch loads, the client-side subset of the already-fetched feed renders instantly —
+  // same rows by construction (same read-gate, same predicate), so there is no flash of wrong
+  // content. Group-key shapes: "all" | <vocab key> | "custom:<normalized label>" | "custom"
+  // (label-less custom rows) | "__untyped__".
+  const [selectedTheme, setSelectedTheme] = useState<string>("all");
+  const selectedCustomLabel = selectedTheme.startsWith("custom:")
+    ? selectedTheme.slice("custom:".length)
+    : null;
+  const readyMadeThemeUrl = selectedCustomLabel
+    ? `/api/ready-made?customLabel=${encodeURIComponent(selectedCustomLabel)}`
+    : `/api/ready-made?planType=${encodeURIComponent(selectedTheme)}`;
+  const { data: readyMadeThemeData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+    queryKey: [readyMadeThemeUrl],
+    // The plain "custom" group (label-less rows) filters client-side only: ?planType=custom
+    // would also return every LABELED custom listing — a different set than the shelf shows.
+    enabled: selectedTheme !== "all" && selectedTheme !== "custom",
+    staleTime: 60_000,
+  });
+
+  // Themes present in the live feed, in feed order (badge-first, then approval recency), with
+  // real counts — chips render only for themes that actually have stock (§13: no empty aisles,
+  // never the full 20-key vocabulary as decoration). Expert-minted themes are FIRST-CLASS:
+  // each distinct custom label is its own group (key "custom:<normalized>", display label =
+  // the author's casing at first occurrence) — an expert who types a new theme has created a
+  // browsable category, not a card in a generic bucket. Label-less custom rows keep the plain
+  // "custom" group; untyped grandfathers group under a chip-less trailing shelf.
+  const readyMadeThemes = useMemo(() => {
+    const order: string[] = [];
+    const byTheme = new Map<string, ReadyMadeShelfListing[]>();
+    const customLabels = new Map<string, string>();
+    for (const l of readyMadeShelf ?? []) {
+      let key: string;
+      if (l.planType === "custom") {
+        const label = (l.planTypeCustom ?? "").trim();
+        if (label) {
+          key = `custom:${label.toLowerCase()}`;
+          if (!customLabels.has(key)) customLabels.set(key, label);
+        } else {
+          key = "custom";
+        }
+      } else {
+        key = l.planType ?? "__untyped__";
+      }
+      if (!byTheme.has(key)) {
+        byTheme.set(key, []);
+        order.push(key);
+      }
+      byTheme.get(key)!.push(l);
+    }
+    return { order, byTheme, customLabels };
+  }, [readyMadeShelf]);
+
+  // One display-name resolution for group keys, vocab and expert-minted alike.
+  const themeHeadingFor = (key: string): string =>
+    readyMadeThemes.customLabels.get(key) ?? readyMadeThemeHeading(key);
 
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
   });
 
-  // Trending destinations from TravelPulse (replaces hardcoded trip packages)
-  const { data: trendingCitiesData, isLoading: trendingLoading } = useQuery<{ cities: any[]; count: number }>({
-    queryKey: ["/api/travelpulse/cities"],
-  });
-
-  // Map trending cities to trip package format for the Trip Packages tab
-  const trendingTrips = useMemo(() => {
-    if (!trendingCitiesData?.cities?.length) return [];
-    return trendingCitiesData.cities.map((city: any, idx: number) => ({
-      id: idx + 1,
-      title: `Discover ${city.cityName}`,
-      destination: `${city.cityName}, ${city.country}`,
-      duration: city.aiOptimalDuration || "5 days",
-      travelers: "2-4",
-      category: city.vibeTags?.[0] || "adventure",
-      rating: city.pulseScore ? (city.pulseScore / 20).toFixed(1) : "4.5",
-      reviews: city.activeTravelers || 0,
-      price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999, // fee-literal-ok: hotel price display fallback, not optimize fee
-      originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
-      highlights: (city.aiMustSeeAttractions || []).slice(0, 3),
-      expertPick: city.trendingScore > 70,
-      imageUrl: city.imageUrl || `https://picsum.photos/seed/city-${city.cityName?.toLowerCase() || 'travel'}/600/400`,
-      vibeTags: city.vibeTags?.slice(0, 3) || [],
-      citySlug: city.cityName?.toLowerCase().replace(/\s+/g, "-"),
-    }));
-  }, [trendingCitiesData]);
+  // TravelPulse city data is consumed directly by the <CityGrid> component in the
+  // travelpulse tab — no mapping needed here.
   
   // Experts query for handoff - fetch experts filtered by destination/experience type
   const expertsApiUrl = useMemo(() => {
@@ -650,6 +947,22 @@ export default function DiscoverPage() {
     queryKey: [expertsApiUrl],
     enabled: showExperts,
   });
+
+  // Partner catalog activities — fetched when the user has narrowed to a location.
+  // Results are shown below the native service grid so real prices (e.g. "$89") are
+  // visible instead of tier symbols; uses catalogItemToUnifiedResult + UnifiedResultGrid.
+  const { data: catalogActivityData, isLoading: catalogActivitiesLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/activities-gyg", locationFilter],
+    enabled: !!locationFilter && activeTab === "services",
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination: locationFilter, limit: "8" });
+      const res = await fetch(`/api/catalog/activities-gyg?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Catalog fetch failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const catalogActivities = (catalogActivityData?.items ?? []).map(catalogItemToUnifiedResult);
   
   // Auto-scroll to experts section when coming from quick-start
   useEffect(() => {
@@ -798,17 +1111,6 @@ export default function DiscoverPage() {
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
 
-  // Trip filtering (uses API-driven trending data with hardcoded fallback)
-  const filteredTrips = trendingTrips.filter((trip: any) => {
-    const matchesSearch =
-      tripSearchQuery === "" ||
-      trip.title.toLowerCase().includes(tripSearchQuery.toLowerCase()) ||
-      trip.destination.toLowerCase().includes(tripSearchQuery.toLowerCase());
-    const matchesCategory =
-      selectedTripCategory === "all" || trip.category === selectedTripCategory;
-    return matchesSearch && matchesCategory;
-  });
-
   const toggleFavorite = (id: number) => {
     setFavorites((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
@@ -819,19 +1121,19 @@ export default function DiscoverPage() {
 
   return (
     <>
-      <SEOHead 
-        title="Discover Services & Experiences"
+      <SEOHead
+        title={surface ? SURFACE_META[surface].seoTitle : "Discover Services & Experiences"}
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
-        url="/discover"
+        url={surface ? SURFACE_META[surface].url : "/discover"}
       />
       <div className="min-h-screen bg-background">
 
         {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
             title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
-            row beneath. py-9 = the ratified middle between the old compact py-6
-            single-row and the /experts py-12 masthead. Change the pattern in BOTH
-            places or not at all. */}
+            row beneath. py-5 = compacted (decision-maker Aug 23: the py-9 masthead
+            pushed page content too far down). Change the pattern in BOTH places or not
+            at all — /experts carries the identical band. */}
         {/* Funnel PR1: the whole header region (hero + tab bar) lives inside ONE Tabs
             root so the tab bar renders INSIDE the hero band (Radix TabsList needs the
             Tabs context). The sections between the hero and the TabsContents are
@@ -840,28 +1142,54 @@ export default function DiscoverPage() {
             AI-Suggestions button, Plan-Experience button, and the standalone banner
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
+        <Tabs value={activeTab} onValueChange={setSelectedTab} className="w-full">
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
+            {/* Surface masthead = the ratified Ready-Made-by-Theme band (artifact
+                5c827895, decision-maker Aug 23): a Fraunces serif title with a leading
+                emoji + a muted one-line sub, left-aligned, content immediately below. NO
+                search bar except on Services (the only surface whose query it actually
+                feeds) and NO instructional-ad banner (removed per the same ruling — the
+                pitch was funnel copy, not surface content). Fraunces is applied inline
+                (loaded in index.html) because --font-serif is a runtime theme token, not a
+                static one. The legacy tabbed shell keeps its old centered sans masthead +
+                search + ad; it is reachable only through the /discover redirect. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-5"
+              className={surface ? "text-left" : "text-center mb-4"}
             >
-              <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
-                Explore Services & Ready Made Trips
+              <h1
+                className={surface
+                  ? "flex items-center gap-2.5 flex-wrap text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)]"
+                  : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
+                style={surface ? { fontFamily: "'Fraunces', Georgia, serif" } : undefined}
+              >
+                {surface ? (
+                  <>
+                    <span aria-hidden="true">{SURFACE_META[surface].emoji}</span>
+                    {/* testid lives on the text span (not the h1) so masthead
+                        assertions stay an exact match — the emoji is decorative. */}
+                    <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
+                  </>
+                ) : (
+                  <span data-testid="text-page-title">Explore Services &amp; Ready-Made Trips</span>
+                )}
               </h1>
-              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1.5">
-                Expert services, ready-made trips, and AI-powered recommendations.
+              <p className={surface
+                ? "text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]"
+                : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
+                {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
               </p>
             </motion.div>
+            {(!surface || surface === "services") && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="max-w-3xl mx-auto"
+              className={surface ? "mt-3" : "max-w-3xl mx-auto"}
             >
-              <div className="relative">
+              <div className={surface ? "relative max-w-xl" : "relative"}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search services, destinations..."
@@ -871,10 +1199,11 @@ export default function DiscoverPage() {
                   data-testid="input-search"
                 />
               </div>
-              {/* The instructional ad — tells users what to DO (the funnel's one pitch) */}
+              {/* The instructional ad — legacy tabbed shell only (funnel's one pitch). */}
+              {!surface && (
               <button
                 type="button"
-                onClick={() => setActiveTab("services")}
+                onClick={() => setSelectedTab("services")}
                 className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 data-testid="cta-how-it-works"
               >
@@ -889,8 +1218,12 @@ export default function DiscoverPage() {
                   Browse services <ArrowRight className="w-4 h-4" />
                 </span>
               </button>
-              {/* Tab bar — inside the hero band (merged header) */}
-              <div className="relative mt-4">
+              )}
+              {/* Tab bar — legacy tabbed shell ONLY. A surface page renders NO tab bar
+                  (the grouped header is the thing the un-group removes); navigation
+                  between surfaces is the nav dropdown. */}
+              {!surface && (
+              <div className="relative mt-3">
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <TabsTrigger
                     value="travelpulse"
@@ -898,7 +1231,7 @@ export default function DiscoverPage() {
                     data-testid="tab-travelpulse"
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">By&nbsp;</span>Location
+                    Destinations
                   </TabsTrigger>
                   <TabsTrigger
                     value="packages"
@@ -906,7 +1239,7 @@ export default function DiscoverPage() {
                     data-testid="tab-packages"
                   >
                     <Award className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
+                    <span className="hidden sm:inline">Ready-Made&nbsp;</span>Trips
                   </TabsTrigger>
                   <TabsTrigger
                     value="events"
@@ -914,7 +1247,7 @@ export default function DiscoverPage() {
                     data-testid="tab-events"
                   >
                     <Calendar className="w-4 h-4 mr-2" />
-                    By Date
+                    Events
                   </TabsTrigger>
                   <TabsTrigger
                     value="services"
@@ -922,12 +1255,14 @@ export default function DiscoverPage() {
                     data-testid="tab-services"
                   >
                     <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
+                    Services
                   </TabsTrigger>
                 </TabsList>
                 <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
               </div>
+              )}
             </motion.div>
+            )}
           </div>
         </section>
 
@@ -1338,78 +1673,224 @@ export default function DiscoverPage() {
                       <div className="text-center py-16" data-testid="services-no-results">
                         <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No services found</h3>
-                        <p className="text-muted-foreground mb-4">
-                          Try adjusting your search or filters
-                        </p>
+                        {result?.suggestion ? (
+                          <p className="text-muted-foreground mb-4" data-testid="text-search-suggestion">
+                            Did you mean{" "}
+                            <button
+                              type="button"
+                              className="text-primary font-medium underline underline-offset-2 hover:no-underline"
+                              onClick={() => {
+                                setSearchQuery(result.suggestion!);
+                                setPage(0);
+                              }}
+                              data-testid="button-search-suggestion"
+                            >
+                              {result.suggestion}
+                            </button>
+                            ?
+                          </p>
+                        ) : (
+                          <p className="text-muted-foreground mb-4">
+                            Try adjusting your search or filters
+                          </p>
+                        )}
                         <Button variant="outline" onClick={clearFilters}>
                           Clear Filters
                         </Button>
                       </div>
                     )}
+
+                  {/* Partner catalog activities — only shown when a location is filtered.
+                      Uses UnifiedResultGrid + catalogItemToUnifiedResult so real numeric
+                      prices (e.g. "$89") are displayed instead of tier symbols. */}
+                  {locationFilter && (catalogActivitiesLoading || catalogActivities.length > 0) && (
+                    <div className="mt-10" data-testid="section-partner-activities">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Ticket className="h-4 w-4 text-primary" />
+                        <h2 className="text-lg font-semibold">
+                          Activities in {locationFilter}
+                        </h2>
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                          via Partners
+                        </Badge>
+                      </div>
+                      <UnifiedResultGrid
+                        results={catalogActivities}
+                        destination={locationFilter}
+                        isLoading={catalogActivitiesLoading}
+                        showInquiryButton={false}
+                      />
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
+                {/* D3 (lane nav-storefront): the tab's content is width-aligned to the hero
+                    band (max-w-6xl) — the surrounding shared container is max-w-[1400px]
+                    for the other tabs, which left this tab visibly wider than its own
+                    header. Scoped here so the services tab keeps its wide grid. */}
+                <div className="max-w-6xl mx-auto">
                 {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
                     sectioned by author type per the ratified store model. Surfaced now that the buy
                     loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
-                    the shelf is empty — never an empty aisle. */}
+                    the shelf is empty — never an empty aisle.
+                    D3 naming: ready_made_trips = "Ready-Made Trips" (the purchasable ready-made
+                    products); the author-type sections become subheadings under that one banner,
+                    ending the heading collision with the expert_templates section below (now
+                    "Itinerary Templates", the storefront vocabulary). */}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
-                    {(["trips_by_locals", "advisor"] as const).map((section) => {
-                      const rows = readyMadeShelf.filter((l) => l.section === section);
-                      if (rows.length === 0) return null;
-                      return (
-                        <div key={section} className="mb-8">
-                          <h2 className="text-xl font-semibold mb-1">
-                            {section === "trips_by_locals" ? "Trips by Locals" : "Trips by Trip Planners"}
-                          </h2>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            {section === "trips_by_locals"
-                              ? "Complete trips built by vetted local experts — buy one and it becomes your own editable plan"
-                              : "Complete trips built by travel advisors — yours to edit after purchase"}
-                          </p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {rows.map((l) => (
-                              <Link key={l.id} href={`/ready-made/${l.id}`}>
-                                <Card className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow h-full" data-testid={`rm-shelf-card-${l.id}`}>
-                                  {l.heroImageUrl && (
-                                    <img src={l.heroImageUrl} alt={l.title} className="w-full h-36 object-cover" />
-                                  )}
-                                  <CardContent className="p-4">
-                                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                      {planTypeLabel(l.planType) ?? "Trip plan"}
-                                    </div>
-                                    <div className="font-semibold truncate">{l.title}</div>
-                                    <div className="text-sm text-muted-foreground">
-                                      {l.market} · {l.durationDays} days · by {l.authorName}
-                                    </div>
-                                    <div className="mt-2 font-bold">
-                                      {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
-                                      {l.pricingMode === "per_traveler" && <span className="text-xs font-normal text-muted-foreground"> /traveler</span>}
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              </Link>
-                            ))}
+                    {/* On the /ready-made SURFACE the masthead already reads
+                        "🏅 Ready-Made Trips" with this exact sub — so this section
+                        header would be a literal duplicate. Show it only in the
+                        legacy tabbed shell, where the masthead is generic. */}
+                    {!surface && (
+                    <div className="mb-4">
+                      <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Award className="w-5 h-5 text-primary" />
+                        Ready-Made Trips
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Buy a complete trip built around an experience — it becomes your own editable plan
+                      </p>
+                    </div>
+                    )}
+
+                    {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
+                        live stock render, with real counts — never the full 20-key vocabulary
+                        as empty aisles (§13). Order follows the feed (badge-first, recency). */}
+                    <div className="flex flex-wrap gap-2 mb-6" data-testid="rail-ready-made-themes">
+                      <Button
+                        variant={selectedTheme === "all" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSelectedTheme("all")}
+                        data-testid="button-theme-chip-all"
+                      >
+                        All experiences
+                      </Button>
+                      {readyMadeThemes.order
+                        .filter((key) => key !== "__untyped__")
+                        .map((key) => {
+                          // Expert-minted groups ("custom:<label>") wear the Sparkles mark;
+                          // their testid is slugified since author labels aren't DOM-safe.
+                          const isMinted = key.startsWith("custom:");
+                          const Icon = isMinted
+                            ? Sparkles
+                            : READY_MADE_THEME_ICONS[key] ?? Award;
+                          const testKey = isMinted
+                            ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
+                            : key;
+                          const count = readyMadeThemes.byTheme.get(key)?.length ?? 0;
+                          return (
+                            <Button
+                              key={key}
+                              variant={selectedTheme === key ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setSelectedTheme(key)}
+                              data-testid={`button-theme-chip-${testKey}`}
+                            >
+                              <Icon className="w-3.5 h-3.5 mr-1.5" />
+                              {themeHeadingFor(key)}
+                              <span className="ml-1.5 text-xs opacity-70">{count}</span>
+                            </Button>
+                          );
+                        })}
+                    </div>
+
+                    {selectedTheme === "all" ? (
+                      // Theme shelves — the experience is the organizing idea; author type is a
+                      // badge on the card (the old "Trips by Locals"/"Trips by Trip Planners"
+                      // sections demoted, not lost).
+                      readyMadeThemes.order.map((key) => {
+                        const rows = readyMadeThemes.byTheme.get(key) ?? [];
+                        if (rows.length === 0) return null;
+                        const sectionKey = key.startsWith("custom:")
+                          ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
+                          : key;
+                        return (
+                          <div key={key} className="mb-8" data-testid={`section-theme-${sectionKey}`}>
+                            <div className="flex items-baseline gap-3 mb-3">
+                              <h3 className="text-lg font-semibold">{themeHeadingFor(key)}</h3>
+                              {rows.length > 3 && (
+                                <button
+                                  type="button"
+                                  className="ml-auto text-sm font-medium text-primary hover:underline"
+                                  onClick={() => setSelectedTheme(key)}
+                                  data-testid={`button-theme-see-all-${sectionKey}`}
+                                >
+                                  See all {rows.length} →
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {rows.slice(0, 3).map((l) => (
+                                <ReadyMadeThemeCard key={l.id} listing={l} />
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      (() => {
+                        // Server-filtered rows once loaded; the client-side subset of the same
+                        // gated feed renders instantly meanwhile (same predicate by construction).
+                        // Expert-minted keys match on the normalized author label; the plain
+                        // "custom" group (label-less rows) is client-side only by design.
+                        const filteredRows =
+                          readyMadeThemeData?.listings ??
+                          (readyMadeShelf ?? []).filter((l) =>
+                            selectedCustomLabel !== null
+                              ? l.planType === "custom" &&
+                                (l.planTypeCustom ?? "").trim().toLowerCase() === selectedCustomLabel
+                              : selectedTheme === "custom"
+                                ? l.planType === "custom" && !(l.planTypeCustom ?? "").trim()
+                                : l.planType === selectedTheme,
+                          );
+                        return (
+                          <>
+                            <div
+                              className="flex items-center gap-3 flex-wrap rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 mb-4 text-sm"
+                              data-testid="bar-theme-filter"
+                            >
+                              <span>
+                                Showing <strong>{filteredRows.length}</strong>{" "}
+                                {themeHeadingFor(selectedTheme)} trip{filteredRows.length === 1 ? "" : "s"}
+                              </span>
+                              <button
+                                type="button"
+                                className="ml-auto font-medium text-primary underline"
+                                onClick={() => setSelectedTheme("all")}
+                                data-testid="button-theme-clear"
+                              >
+                                Show all experiences
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {filteredRows.map((l) => (
+                                <ReadyMadeThemeCard key={l.id} listing={l} />
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()
+                    )}
                   </div>
                 )}
 
-                {/* Ready Made Trips Section (traveler-facing label = "Ready Made Trips"; seller console keeps "templates") */}
+                {/* Itinerary Templates Section — expert_templates (D3 naming: matches the
+                    storefront's "Itinerary Templates" lane; "Ready-Made Trips" is the
+                    ready_made_trips shelf above, a different product). */}
                 <div className="mb-10">
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <Award className="w-5 h-5 text-primary" />
-                        Ready Made Trips
+                        <BookOpen className="w-5 h-5 text-primary" />
+                        Itinerary Templates
                       </h2>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Buy a complete, ready-made trip crafted by verified local experts
+                        Guided itineraries crafted by verified experts — buy the plan and travel it your way
                       </p>
                     </div>
                     {expertTemplates && expertTemplates.length > 0 && (
@@ -1422,9 +1903,9 @@ export default function DiscoverPage() {
                   {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
                     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
                       <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <h3 className="font-semibold text-gray-700 mb-1">No ready-made trips published yet</h3>
+                      <h3 className="font-semibold text-gray-700 mb-1">No itinerary templates published yet</h3>
                       <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-                        Verified experts can publish ready-made trips here for travelers to purchase.
+                        Verified experts can publish itinerary templates here for travelers to purchase.
                       </p>
                       {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
                         <Link href="/expert/workspace">
@@ -1445,7 +1926,9 @@ export default function DiscoverPage() {
 
                   {(expertTemplates && expertTemplates.length > 0) && (
                     <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* D3: breakpoints + gap aligned with the Ready-Made shelf grid above
+                        (sm:2 / lg:3, gap-4) — the tab's two grids now share one rhythm. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {(showAllPackages ? expertTemplates : expertTemplates.slice(0, 6)).map((template, idx) => (
                         <motion.div
                           key={template.id}
@@ -1557,7 +2040,7 @@ export default function DiscoverPage() {
                             <>Show fewer</>
                           ) : (
                             <>
-                              View all {expertTemplates.length} trips
+                              View all {expertTemplates.length} templates
                               <ArrowRight className="w-4 h-4 ml-2" />
                             </>
                           )}
@@ -1572,13 +2055,14 @@ export default function DiscoverPage() {
                 {templatesLoading && (
                   <div className="mb-10">
                     <Skeleton className="h-6 w-48 mb-6" />
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {[1, 2, 3].map((i) => (
                         <Skeleton key={i} className="h-72 rounded-lg" />
                       ))}
                     </div>
                   </div>
                 )}
+                </div>
 
               </TabsContent>
 
@@ -1707,7 +2191,9 @@ export default function DiscoverPage() {
 
               {/* TravelPulse Tab */}
               <TabsContent value="travelpulse">
-                <CityGrid selectedCityName={urlCity} />
+                {/* On the /destinations SURFACE the masthead is the page header, so
+                    suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
+                <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />
               </TabsContent>
           </div>
         </section>

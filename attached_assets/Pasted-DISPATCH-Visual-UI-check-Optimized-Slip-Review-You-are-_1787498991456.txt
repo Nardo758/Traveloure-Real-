@@ -1,0 +1,37 @@
+DISPATCH — Visual UI check: Optimized Slip Review
+
+You are doing a visual conformance pass: compare the built UI against the ratified mock. Do not redesign or change the design — report mismatches, don't "fix" them unilaterally.
+
+Reference mock: open docs/design/optimized-slip-review-mock.html in a browser (it's theme-aware — check both light and dark). It's a design-handoff page: the rendered mock UI is the comparison target; the "How the preview stays honest" section is annotation, not a UI element to find.
+
+Reach the built surface:
+
+Launch the app (dev server). Log in as a seeded user.
+Open a trip that has a plan, hit "Optimize this plan" to generate proposals, and land on /itinerary-comparison/:id. If a comparison record already exists from seed data, navigate straight to /itinerary-comparison/<id>.
+Screenshot the full page in light and dark at desktop width, plus a mobile-width capture.
+Compare these elements (each has a stable data-testid):
+
+#	Mock element	Locate by	Check
+1	Trip context header ("Kyoto, 5 days" style)	page header	present, shows real trip title + day count
+2	Baseline column — "Your current plan / As you built it / unchanged / start here"	proposal-column-baseline	leftmost; labeled as the untouched original
+3	Three proposal columns w/ names + one-line rationale	proposal-column-v1/-v2/-v3	each has a distinct name + a rationale line
+4	"Recommended" badge on one proposal	in a proposal-column-*	exactly one, matches mock placement
+5	Money preview chip ("Money saved" / "Costs $40 more")	proposal-preview-money-<variant>	value shown plainly; a cost increase is stated, not hidden
+6	Drive-time preview chip ("Shorter drive time")	proposal-preview-drivetime-<variant>	present when known
+7	Honesty: chip omitted when unknown	(absence)	a proposal missing money/drivetime data shows no chip — never a "$0" or "0 min" placeholder
+8	Preview context block (trending / seasonal)	slip-optimize-preview-context, preview-trending-now, preview-seasonal	rows render only with real signal
+9	Per-proposal Apply CTA ("Apply Calm Mornings" etc.)	apply button → apply-to-trip	one deliberate click per column
+10	"Keep this plan" (keep original)	button-keep-original	present; exits without applying
+11	Footer copy	compare-footer	matches mock tone
+Honesty rules the design encodes (flag any violation):
+
+Baseline column is the plan as built, never reordered.
+Any unknown metric (money/drive-time/context) is omitted, never faked with a zero or placeholder.
+A cost increase is shown explicitly ("Costs more, said plainly"), never suppressed.
+Apply is a single explicit action per proposal — no auto-apply.
+Deliverables:
+
+Screenshots (light, dark, mobile).
+A pass/fail table using the 11 rows above.
+A short list of mismatches (layout, copy, missing/extra element, color) with the data-testid and what differs from the mock.
+Do not modify code or the mock. If something can't be reached (e.g. no comparison record), say so and note what blocked it — don't guess.

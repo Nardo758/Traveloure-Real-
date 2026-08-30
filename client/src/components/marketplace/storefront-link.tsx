@@ -25,6 +25,10 @@
  * belongs on the DETAIL page, which is where a traveler forms the "more from
  * them" intent anyway.
  */
+// React default import: required for the node-side render proofs (tsx --test compiles
+// JSX to React.createElement — the same reason city-feed-card-external-stub.tsx has it).
+// Vite's automatic runtime is unaffected.
+import React from "react";
 import { Link } from "wouter";
 import { Store, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -61,7 +65,7 @@ export function StorefrontLink({
   // Rule 1: no handle → no storefront → render nothing at all.
   if (!handle) return null;
 
-  const href = `/p/${handle}`;
+  const href = `/s/${handle}`;
   const displayName = name || `@${handle}`;
   // Don't repeat the handle in the subtitle when it is already the title.
   const subtitle = name

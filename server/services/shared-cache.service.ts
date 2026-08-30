@@ -60,12 +60,13 @@ export class SharedCachePrimitive {
     const expiresAt = new Date(Date.now() + ttlMs);
     const compositeKey = dbKey(namespace, key);
     try {
+      const now = new Date();
       await db
         .insert(travelpayoutsCache)
-        .values({ brand: namespace, cacheKey: compositeKey, data: data as any, expiresAt })
+        .values({ brand: namespace, cacheKey: compositeKey, data: data as any, expiresAt, refreshedAt: now })
         .onConflictDoUpdate({
           target: travelpayoutsCache.cacheKey,
-          set: { data: data as any, expiresAt, brand: namespace },
+          set: { data: data as any, expiresAt, brand: namespace, refreshedAt: now },
         });
     } catch (err) {
       console.warn(`[Cache] Write error ${namespace}:${key}:`, err instanceof Error ? err.message : err);

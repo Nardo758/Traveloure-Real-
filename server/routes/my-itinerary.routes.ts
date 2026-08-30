@@ -16,6 +16,7 @@ import {
   mapServiceTypeToCategory
 } from "../services/smart-sequencing.service";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { generateIcsContent } from "../utils/ics-calendar";
 
 const router = Router();
 
@@ -248,7 +249,7 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     const items = await storage.getOrderedVariantItemsByVariantId(variant.id);
     
     // Generate .ics content
-    const icsContent = generateICSContent(comparison, items);
+    const icsContent = generateIcsContent(comparison, items);
     
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="traveloure-${id}.ics"`);
@@ -527,76 +528,6 @@ function getDaysBetween(start: string, end: string): number {
   const endDate = new Date(end);
   const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-}
-
-// Generate ICS calendar content
-function generateICSContent(comparison: any, items: any[]): string {
-  const lines: string[] = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Traveloure//Travel Itinerary//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    `X-WR-CALNAME:${comparison.title || comparison.destination} Trip`,
-  ];
-  
-  const startDate = new Date(comparison.startDate);
-  
-  for (const item of items) {
-    const eventDate = new Date(startDate);
-    eventDate.setDate(eventDate.getDate() + item.dayNumber - 1);
-    
-    // Parse start time (format: "09:00" or "9:00 AM")
-    let hours = 9, minutes = 0;
-    if (item.startTime) {
-      const timeParts = item.startTime.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM)?/i);
-      if (timeParts) {
-        hours = parseInt(timeParts[1]);
-        minutes = parseInt(timeParts[2] || '0');
-        if (timeParts[3]?.toUpperCase() === 'PM' && hours < 12) hours += 12;
-        if (timeParts[3]?.toUpperCase() === 'AM' && hours === 12) hours = 0;
-      }
-    }
-    
-    const eventStart = new Date(eventDate);
-    eventStart.setHours(hours, minutes, 0, 0);
-    
-    const duration = item.duration || 60;
-    const eventEnd = new Date(eventStart.getTime() + duration * 60 * 1000);
-    
-    const uid = `${item.id || crypto.randomUUID()}@traveloure.com`;
-    
-    lines.push('BEGIN:VEVENT');
-    lines.push(`UID:${uid}`);
-    lines.push(`DTSTAMP:${formatICSDate(new Date())}`);
-    lines.push(`DTSTART:${formatICSDate(eventStart)}`);
-    lines.push(`DTEND:${formatICSDate(eventEnd)}`);
-    lines.push(`SUMMARY:${escapeICS(item.name)}`);
-    if (item.description) {
-      lines.push(`DESCRIPTION:${escapeICS(item.description)}`);
-    }
-    if (item.location) {
-      lines.push(`LOCATION:${escapeICS(item.location)}`);
-    }
-    lines.push(`CATEGORIES:${item.serviceType || 'Activity'}`);
-    lines.push('END:VEVENT');
-  }
-  
-  lines.push('END:VCALENDAR');
-  
-  return lines.join('\r\n');
-}
-
-function formatICSDate(date: Date): string {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-}
-
-function escapeICS(text: string): string {
-  return text
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n');
 }
 
 export default router;

@@ -1,20 +1,26 @@
 name: Discover Tabs Gate
 
-# Guards against regressions in the /discover page tab system.
+# Guards against regressions in the MARKETPLACE SURFACES (Marketplace un-group,
+# ledger 2026-08-23-marketplace-ungroup).
 #
-# Background: discover-tabs.spec.ts (18 tests) covers all critical behaviour of
-# the /discover page — hero band visibility, TravelPulse tab active by default,
-# client-side tab switching (URL must NOT change), URL deep-linking via ?tab=,
-# Browse Services filter inputs and quick-cat chips, add-to-cart toast feedback,
-# and the expert handoff banner (?source=quick-start&showExperts=true).
+# Background: discover-tabs.spec.ts is now the marketplace-surfaces suite. Each
+# surface is its OWN page with NO tab bar — /destinations, /ready-made, /events,
+# /services — and /discover survives only as a smart redirect (?tab= maps onto
+# the surface route; other query params forwarded). The suite covers: each
+# surface's masthead + content with the retired tab triggers absent from the
+# DOM, all redirect mappings incl. param forwarding, Services filters and
+# quick-cat chips, add-to-cart toast feedback, the expert handoff banner
+# (/services?source=quick-start&showExperts=true), and 375px mobile rendering.
 # Without a CI gate a breaking change to discover.tsx or its sub-components
 # silently merges without any automated signal.
 #
 # Jobs:
 #   discover-tabs-smoke — full browser + API end-to-end test.
-#     Starts a local dev server, runs all 18 tests in discover-tabs.spec.ts
-#     against a real browser (Chromium) hitting http://localhost:5000.
-#     No authentication setup required — all /discover tabs are publicly visible.
+#     Starts a local dev server, runs discover-tabs.spec.ts against a real
+#     browser (Chromium) hitting http://localhost:5000.
+#     No authentication setup required — all surfaces are publicly visible.
+#     (Workflow/job/spec names kept from the tabbed era so the REQUIRED
+#     status context "discover-tabs-smoke" is undisturbed.)
 #
 # Status contexts (for branch-protection required checks):
 #   * discover-tabs-smoke — safe to mark as a REQUIRED check.
@@ -39,8 +45,8 @@ jobs:
   # discover-tabs-smoke: browser end-to-end test.
   #
   # Starts the dev server (tsx server/index.ts), waits for /api/ready,
-  # then runs all 18 tests in discover-tabs.spec.ts against Chromium.
-  # No PW_AUTH_SETUP — the /discover page requires no login.
+  # then runs the marketplace-surfaces suite in discover-tabs.spec.ts against
+  # Chromium. No PW_AUTH_SETUP — the surfaces require no login.
   # ─────────────────────────────────────────────────────────────────────────
   discover-tabs-smoke:
     # NOTE: this job name must EXACTLY equal the branch-protection required-status
@@ -140,15 +146,15 @@ jobs:
           pgrep -a tsx || true
           exit 1
 
-      - name: Discover tabs smoke test (all 18 tests)
-        # Runs all 18 tests across the 6 suites in discover-tabs.spec.ts:
-        #   1. Page load — hero band visible, travelpulse tab active by default
-        #   2. Client-side tab switching — URL must NOT change on tab click
-        #   3. URL deep-linking via ?tab=<value> — correct tab active on load
-        #   4. Browse Services — filter bar inputs and quick-cat chips
-        #   5. Add to cart — feedback toast appears on button click
-        #   6. Expert handoff banner — conditional on ?source=quick-start&showExperts=true
-        # No auth setup required — all tabs are publicly visible.
+      - name: Marketplace surfaces smoke test
+        # Runs the 6 suites in discover-tabs.spec.ts (marketplace-surfaces suite):
+        #   1. Surface pages — own masthead + content, retired tab bar absent from DOM
+        #   2. /discover redirects — ?tab= mapping + query-param forwarding
+        #   3. /services filters — filter bar inputs and quick-cat chips
+        #   4. Add to cart — feedback toast appears on button click
+        #   5. Expert handoff banner — /services?source=quick-start&showExperts=true
+        #   6. Mobile 375px — masthead + content visible, no tab bar
+        # No auth setup required — all surfaces are publicly visible.
         run: npx playwright test discover-tabs --project=chromium
         env:
           BASE_URL: http://localhost:5000
@@ -184,10 +190,10 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> **discover-tabs-smoke**: runs all 18 tests in `discover-tabs.spec.ts` against a local dev server.',
-              '> Covers: hero band visibility, TravelPulse tab active by default, client-side tab switching (URL must NOT change), URL deep-linking via `?tab=`, Browse Services filter bar and quick-cat chips, add-to-cart toast feedback, and the expert handoff banner (`?source=quick-start&showExperts=true`).',
-              '> No authentication required — all `/discover` tabs are publicly visible.',
-              allGreen ? '' : '> A red gate means the /discover tab system is broken — fix `client/src/pages/discover.tsx` or its sub-components before merging.',
+              '> **discover-tabs-smoke**: runs the marketplace-surfaces suite in `discover-tabs.spec.ts` against a local dev server.',
+              '> Covers: each surface page (/destinations, /ready-made, /events, /services) rendering its own masthead + content with NO tab bar, the /discover redirect mappings (`?tab=` → surface route, params forwarded), Services filters and quick-cat chips, add-to-cart toast feedback, the expert handoff banner, and 375px mobile rendering.',
+              '> No authentication required — all surfaces are publicly visible.',
+              allGreen ? '' : '> A red gate means a Marketplace surface is broken — fix `client/src/pages/discover.tsx`, `client/src/App.tsx`, or their sub-components before merging.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,

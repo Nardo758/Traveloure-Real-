@@ -11,6 +11,9 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
+// Ledger 90 (FP-5, S2): the effective payout threshold is resolved by ONE helper, shared with
+// POST /api/payouts/request — so the Money page's copy and the server's refusal cannot diverge.
+import { MIN_PAYOUT_CENTS, effectivePayoutMinimumCents } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import {
   getLocalExpertFormByUserId, getServiceProviderFormByUserId, getProviderVerificationStatus,
@@ -209,6 +212,13 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
     try {
       const userId = getUserId(req)!;
       const summary = await storage.getProviderEarningsSummary(userId);
+      // Ledger 90 (FP-5, S2): the EFFECTIVE payout threshold, server-derived, so the Money page
+      // can state one number instead of printing a hardcoded "$10.00" the server may not be the
+      // one enforcing. `effective` = max(platform floor, the earner's own Settings minimum) —
+      // computed by the same helper `POST /api/payouts/request` gates on, so the button's copy and
+      // the server's refusal can never disagree. §14: read from the session user's own row only.
+      const settingsRow = await storage.getProviderSettings(userId); // money-derive-ok: own settings row
+      const effectiveMinimumCents = effectivePayoutMinimumCents(settingsRow?.minimumPayoutAmount);
       // Return both legacy field names and the names the payouts UI expects
       res.json({
         ...summary,
@@ -216,6 +226,11 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
         availableForPayout: summary.available,
         pendingPayout: summary.pending,
         commissionRate: summary.total > 0 ? (summary.paidOut / summary.total) : 0,
+        payoutMinimum: {
+          platformFloorCents: MIN_PAYOUT_CENTS,
+          effectiveCents: effectiveMinimumCents,
+          source: effectiveMinimumCents > MIN_PAYOUT_CENTS ? "provider_setting" : "platform_floor",
+        },
       });
     } catch (error: any) {
       console.error("Provider earnings summary error:", error);

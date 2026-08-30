@@ -92,6 +92,7 @@ import { serviceBookings, providerServices, users } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
 import { logger } from "../infrastructure/logger";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 /** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
  *  PaymentElement, short enough that held inventory comes back the same session. */
@@ -333,8 +334,8 @@ export type StripeIntentLookup = (
 /** Default lookup: bounded `paymentIntents.list` around the claim's creation time, matched on the
  *  `bookingIds` metadata `createPaymentIntent` writes. Immediately consistent (unlike Search). */
 export const defaultStripeIntentLookup: StripeIntentLookup = async (bookingId, createdAt) => {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("STRIPE_SECRET_KEY unset — cannot consult Stripe");
+  const key = getStripeSecretKey();
+  if (!key) throw new Error("STRIPE_SECRET_KEY (or STRIPE_SECRET_KEY_TEST) unset — cannot consult Stripe");
   const stripe = new Stripe(key, { apiVersion: "2024-12-18.acacia" as any });
   const from = Math.floor(createdAt.getTime() / 1000) - 300; // 5 min of clock skew tolerance
   const to = Math.floor(createdAt.getTime() / 1000) + 3600; // the attempt cannot be an hour late
@@ -463,6 +464,36 @@ export async function sweepExpiredCheckoutClaims(opts?: {
 }
 
 /**
+ * RELEASE-ALL-NIGHTS hotfix (§18b-class defect, confirmed by the S11 design lane).
+ *
+ * THE BUG: a multi-night room stay claims ONE `vendor_availability_slots` row PER NIGHT (all-or-
+ * nothing, `payments.routes.ts`'s C3 claim loop) but historically stamped only the FIRST night's
+ * id onto the booking's `slotId` column (`firstNightSlotId` — "one representative id", by
+ * design, for every OTHER consumer that expects a booking to carry at most one slot). Every
+ * release path (this module's `voidClaim`, `refundServiceBooking`, `updateServiceBookingStatus`)
+ * released only `slotId` — nights 2..N leaked `booked_count` permanently, with no code path in
+ * the repo to return it.
+ *
+ * THE FIX: the claim spine now ALSO writes `bookingDetails.claimedSlotIds` — the complete
+ * per-night list — at claim time (payments.routes.ts). `slotId` is UNCHANGED (still the first
+ * night, for full backward compatibility with every other consumer keyed on it). This helper is
+ * the ONE place that decides what to release: the full list when present, else the single
+ * `slotId` — so a PRE-FIX row (no `claimedSlotIds` in its `bookingDetails`) releases EXACTLY as
+ * it always did, and a POST-FIX row releases every night. All three release paths call this
+ * function so they cannot drift from each other.
+ */
+export function deriveClaimedSlotIds(
+  bookingDetails: Record<string, unknown> | null | undefined,
+  slotId: string | null | undefined,
+): string[] {
+  const claimed = bookingDetails?.["claimedSlotIds"];
+  if (Array.isArray(claimed) && claimed.length > 0 && claimed.every((id) => typeof id === "string" && id)) {
+    return claimed as string[];
+  }
+  return slotId ? [slotId] : [];
+}
+
+/**
  * Void ONE provisional claim: atomic conditional status flip, slot release, and the diary row —
  * all in ONE transaction so reclaimed inventory is auditable rather than silently reappearing
  * (rulings 12/16/18; the flip and its log entry are an atomic pair, exactly like
@@ -475,6 +506,12 @@ export async function sweepExpiredCheckoutClaims(opts?: {
  * The slot release mirrors `storage.releaseSlot` inline rather than calling it, because that
  * helper runs on the module-level `db` and would therefore land OUTSIDE this transaction — a
  * crash between the flip and the release would leak the capacity the sweep exists to reclaim.
+ *
+ * RELEASE-ALL-NIGHTS hotfix: releases the FULL `deriveClaimedSlotIds` set (every night of a
+ * multi-night stay), not just `row.slotId` (the first night). Still ONE UPDATE, still inside this
+ * same transaction, still gated by the SAME claimed-rows==0 guard above — a stay's whole set of
+ * slots is released iff (and only iff) this call actually won the void race, exactly as the
+ * single-slot case always worked.
  */
 async function voidClaim(
   row: ProvisionalClaimRow,
@@ -500,7 +537,8 @@ async function voidClaim(
       }
 
       let slotsReleased = 0;
-      if (row.slotId) {
+      const slotIdsToRelease = deriveClaimedSlotIds(row.bookingDetails, row.slotId);
+      if (slotIdsToRelease.length > 0) {
         await tx.execute(sql`
           UPDATE vendor_availability_slots
           SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
@@ -511,9 +549,9 @@ async function voidClaim(
                 ELSE status
               END,
               updated_at = NOW()
-          WHERE id = ${row.slotId}
+          WHERE id IN (${sql.join(slotIdsToRelease.map((id) => sql`${id}`), sql`, `)})
         `);
-        slotsReleased = 1;
+        slotsReleased = slotIdsToRelease.length;
       }
 
       // Ruling 12/16/18: the reclaim is an auditable event. Item-grained when the claim carried a

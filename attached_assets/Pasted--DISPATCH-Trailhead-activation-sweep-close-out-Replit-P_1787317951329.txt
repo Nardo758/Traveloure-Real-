@@ -1,0 +1,34 @@
+ DISPATCH — Trailhead activation + sweep close-out (Replit)
+PHASE 1 — Land the sweep (~10 min)
+1a. Merge the 4 open PRs in THIS order (order matters only for clean ledger merges — #524 installs the merge=union driver that makes the rest painless):
+
+If any shows a ledger conflict before #524 lands, merge #524 first and the conflict disappears.
+
+1b. Admin actions for #524 (Settings, one-time):
+
+Create the label ⚑ replit-pending (Settings → Labels). If you prefer the plain replit-pending, update CANONICAL in scripts/check-replit-pending-label.cjs.
+Add these three status contexts to .github/branch-protection.json + the Tier-1 table in .github/CI_GATES.md (needs the BRANCH_PROTECTION_PAT): ledger-union-merge, replit-pending-gate, spec-arming-gate. Until added, they run but don't block.
+1c. Sync main:
+
+Boot once — watch for migrations 245/246/247 applying, and [DMOIngest] Scheduler disabled.
+
+PHASE 2 — The ignition sitting (A2, ~45 min) — full detail in docs/findings/trailhead-t2-ignition-dispatch.md §0–7 + trailhead-t4-walkthrough.md
+Baseline shot — screenshot the empty Kyoto discover feed → save docs/findings/assets/kyoto-discover-baseline-preignition.png. (Keep-forever; the empty state never returns.)
+Confirm Tavily price — dashboard vs $0.008. Recompute in the doc if different; the receipt of record is 40 credits × $0.008 = $0.32 vs the $150 cap.
+Registry seed (idempotent, no scrape): run server/seeds/dmo-anchor-registry-sync.seed.ts.
+Ignite — set env DMO_INGEST_ENABLED=1 (Kyoto-scoped), reboot → expect the scheduler-enabled log line.
+Run the batch — POST /api/admin/dmo/ingest-kyoto → capture the run log + $ receipt.
+Prove zero traveler-visible (§6 SQL in the doc) → expect 0.
+Single-stub path test — hidden → POST /api/admin/dmo/publish/:id → traveler render → click-out fires /api/affiliates/track → (flip back or note).
+Fill the T2.4 pack (docs/findings/trailhead-t2-batch-review.md): batch quality (10-stub fidelity), plan diff, dup/junk rate, and record the VERDICT — directory or destination (the gut read) + the Edinburgh call.
+HARD STOP: paste me the run log, the §6 zero proof, and the verdict — I confirm the born-hidden invariant held before you flip anything to bulk.
+
+PHASE 3 — T0 fills (A3) — into docs/findings/trailhead-t0-catalog-check.md
+Minimum: item 1 (Booking/Agoda/Hostelworld ride the existing Travelpayouts partner ID) + item 2 (Klook activation). These scope T3's affiliate rung — unfilled = those programs stay dark (self-unlock). Items 3–5 as convenient.
+
+PHASE 4 — First pass + match review (A4, after the bulk-flip) — docs/findings/trailhead-t3-first-pass-dispatch.md
+Bulk-flip the approved batch (capture the after discover shot, same viewport).
+POST /api/admin/dmo/resolve → review the R-T3-e match-evidence table (every provider/affiliate match + confidence + evidence).
+HARD STOP — send me the table. The thresholds (name 0.72, geo 0.75km) are unvalidated guesses; tuning them is B1, which I run against your real table. Approve → render consumes → the loop is live end-to-end.
+PHASE 5 — Spotlight verify (B3, independent — anytime after #523 merges)
+Expect: forward-90 Kyoto rows exist (exit 0). The R33 spotlight self-unlocks.

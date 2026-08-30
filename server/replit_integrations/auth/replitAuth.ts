@@ -233,7 +233,11 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         req.logout(() => {});
         return res.status(403).json({ message: "This account has been deleted" });
       }
-      if (dbUser?.isSuspended) {
+      if (!dbUser) {
+        req.logout(() => {});
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      if (dbUser.isSuspended) {
         req.logout(() => {});
         return res.status(403).json({
           message: "Your account has been suspended. Please contact support.",
@@ -241,7 +245,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         });
       }
     } catch (err) {
-      console.warn("[isAuthenticated] account-status DB check failed (fail-open):", (err as any)?.message);
+      console.error("[isAuthenticated] account-status DB check failed (fail-closed):", (err as any)?.message);
+      return res.status(503).json({ message: "Authentication service temporarily unavailable" });
     }
   }
 

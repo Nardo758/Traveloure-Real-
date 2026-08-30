@@ -1,0 +1,370 @@
+{
+  "light": {
+    "url": "http://127.0.0.1:5000/itinerary-comparison/0924f013-499e-418b-aae4-ac17a0b6b364",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "htmlClass": "",
+    "computed": {
+      "background": "rgb(249, 250, 251)",
+      "foreground": "rgb(17, 24, 39)"
+    },
+    "header": "Three ways to sharpen your Osaka plan",
+    "headerSubline": "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is.",
+    "columns": [
+      {
+        "testid": "proposal-column-baseline",
+        "text": "Your current planAs you built itThe order you planned, unchanged.$60Day 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Keep this plan"
+      },
+      {
+        "testid": "proposal-column-v1",
+        "text": "Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.$45Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-v2",
+        "text": "RecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.$110Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      }
+    ],
+    "recommended": [
+      {
+        "testid": "proposal-recommended-v2",
+        "text": "Recommended"
+      }
+    ],
+    "money": [
+      {
+        "testid": "proposal-preview-money-v1",
+        "text": "Saves $15 (25% less)"
+      },
+      {
+        "testid": "proposal-preview-money-v2",
+        "text": "Costs $50 more"
+      }
+    ],
+    "drive": [],
+    "previewContext": null,
+    "trending": null,
+    "seasonal": null,
+    "keepOriginal": [
+      {
+        "testid": "button-keep-original",
+        "text": "Keep my original plan"
+      }
+    ],
+    "footer": "Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.",
+    "applyButtons": [
+      {
+        "testid": "button-apply-variant-v1",
+        "text": "Apply Budget Optimizer"
+      },
+      {
+        "testid": "button-apply-variant-v2",
+        "text": "Apply Experience Enhancer"
+      }
+    ],
+    "allTestIds": [
+      "link-sidebar-logo",
+      "link-sidebar-home",
+      "link-sidebar-my-plans",
+      "link-sidebar-ai-planner",
+      "link-sidebar-discover",
+      "link-sidebar-experts",
+      "link-sidebar-bookings",
+      "link-sidebar-my-events",
+      "link-sidebar-trip-cart",
+      "link-sidebar-inbox",
+      "badge-sidebar-inbox-unread",
+      "link-sidebar-profile",
+      "button-sidebar-logout",
+      "button-dashboard-sidebar-toggle",
+      "link-logo",
+      "button-notifications",
+      "badge-unread-count",
+      "button-user-menu",
+      "user-avatar-fallback",
+      "button-back",
+      "review-title",
+      "review-intro",
+      "banner-segmentation-recommendation",
+      "text-segmentation-rationale",
+      "text-segmentation-summary",
+      "text-segmentation-apply-note",
+      "compare-header",
+      "proposal-column-baseline",
+      "proposal-total-baseline",
+      "proposal-row-variant-e676ad4c-5ef6-4b87-9c4c-c4e2faf113dd",
+      "proposal-row-variant-83b75890-49fa-4720-a8e4-084e5b54458b",
+      "proposal-row-variant-165889b2-2c2a-4534-a595-7ede8595ca44",
+      "proposal-row-variant-98f07781-9138-4b3b-95a1-4113e3eb06c6",
+      "button-apply-variant-baseline",
+      "proposal-preview-v1",
+      "proposal-preview-money-v1",
+      "proposal-column-v1",
+      "proposal-total-v1",
+      "proposal-row-variant-bc74f37b-92a5-4cb8-8d7e-fdc945a36ee2",
+      "proposal-row-variant-3034501b-02c2-46eb-b54c-e305428acbad",
+      "proposal-row-variant-2a9b0217-9269-41bb-a054-460aee185662",
+      "button-apply-variant-v1",
+      "proposal-preview-v2",
+      "proposal-preview-money-v2",
+      "proposal-column-v2",
+      "proposal-recommended-v2",
+      "proposal-total-v2",
+      "proposal-row-variant-631ed3b5-a488-495a-a1c5-cf6456fea424",
+      "proposal-row-variant-2e45faf1-79d7-4379-943b-d454624834c1",
+      "proposal-row-variant-48f4d469-f8fe-4c09-a298-748f63ef4d2e",
+      "button-apply-variant-v2",
+      "compare-footer",
+      "dislike-loop-panel",
+      "feedback-chip-too_expensive",
+      "feedback-chip-too_packed",
+      "feedback-chip-wrong_areas",
+      "feedback-chip-wrong_vibe",
+      "button-rerun-with-feedback",
+      "button-dislike-expert",
+      "button-keep-original"
+    ]
+  },
+  "dark": {
+    "url": "http://127.0.0.1:5000/itinerary-comparison/0924f013-499e-418b-aae4-ac17a0b6b364",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "htmlClass": "",
+    "computed": {
+      "background": "rgb(20, 20, 15)",
+      "foreground": "rgb(237, 236, 228)"
+    },
+    "header": "Three ways to sharpen your Osaka plan",
+    "headerSubline": "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is.",
+    "columns": [
+      {
+        "testid": "proposal-column-baseline",
+        "text": "Your current planAs you built itThe order you planned, unchanged.$60Day 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Keep this plan"
+      },
+      {
+        "testid": "proposal-column-v1",
+        "text": "Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.$45Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-v2",
+        "text": "RecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.$110Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      }
+    ],
+    "recommended": [
+      {
+        "testid": "proposal-recommended-v2",
+        "text": "Recommended"
+      }
+    ],
+    "money": [
+      {
+        "testid": "proposal-preview-money-v1",
+        "text": "Saves $15 (25% less)"
+      },
+      {
+        "testid": "proposal-preview-money-v2",
+        "text": "Costs $50 more"
+      }
+    ],
+    "drive": [],
+    "previewContext": null,
+    "trending": null,
+    "seasonal": null,
+    "keepOriginal": [
+      {
+        "testid": "button-keep-original",
+        "text": "Keep my original plan"
+      }
+    ],
+    "footer": "Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.",
+    "applyButtons": [
+      {
+        "testid": "button-apply-variant-v1",
+        "text": "Apply Budget Optimizer"
+      },
+      {
+        "testid": "button-apply-variant-v2",
+        "text": "Apply Experience Enhancer"
+      }
+    ],
+    "allTestIds": [
+      "link-sidebar-logo",
+      "link-sidebar-home",
+      "link-sidebar-my-plans",
+      "link-sidebar-ai-planner",
+      "link-sidebar-discover",
+      "link-sidebar-experts",
+      "link-sidebar-bookings",
+      "link-sidebar-my-events",
+      "link-sidebar-trip-cart",
+      "link-sidebar-inbox",
+      "badge-sidebar-inbox-unread",
+      "link-sidebar-profile",
+      "button-sidebar-logout",
+      "button-dashboard-sidebar-toggle",
+      "link-logo",
+      "button-notifications",
+      "badge-unread-count",
+      "button-user-menu",
+      "user-avatar-fallback",
+      "button-back",
+      "review-title",
+      "review-intro",
+      "banner-segmentation-recommendation",
+      "text-segmentation-rationale",
+      "text-segmentation-summary",
+      "text-segmentation-apply-note",
+      "compare-header",
+      "proposal-column-baseline",
+      "proposal-total-baseline",
+      "proposal-row-variant-e676ad4c-5ef6-4b87-9c4c-c4e2faf113dd",
+      "proposal-row-variant-83b75890-49fa-4720-a8e4-084e5b54458b",
+      "proposal-row-variant-165889b2-2c2a-4534-a595-7ede8595ca44",
+      "proposal-row-variant-98f07781-9138-4b3b-95a1-4113e3eb06c6",
+      "button-apply-variant-baseline",
+      "proposal-preview-v1",
+      "proposal-preview-money-v1",
+      "proposal-column-v1",
+      "proposal-total-v1",
+      "proposal-row-variant-bc74f37b-92a5-4cb8-8d7e-fdc945a36ee2",
+      "proposal-row-variant-3034501b-02c2-46eb-b54c-e305428acbad",
+      "proposal-row-variant-2a9b0217-9269-41bb-a054-460aee185662",
+      "button-apply-variant-v1",
+      "proposal-preview-v2",
+      "proposal-preview-money-v2",
+      "proposal-column-v2",
+      "proposal-recommended-v2",
+      "proposal-total-v2",
+      "proposal-row-variant-631ed3b5-a488-495a-a1c5-cf6456fea424",
+      "proposal-row-variant-2e45faf1-79d7-4379-943b-d454624834c1",
+      "proposal-row-variant-48f4d469-f8fe-4c09-a298-748f63ef4d2e",
+      "button-apply-variant-v2",
+      "compare-footer",
+      "dislike-loop-panel",
+      "feedback-chip-too_expensive",
+      "feedback-chip-too_packed",
+      "feedback-chip-wrong_areas",
+      "feedback-chip-wrong_vibe",
+      "button-rerun-with-feedback",
+      "button-dislike-expert",
+      "button-keep-original"
+    ]
+  },
+  "mobile": {
+    "url": "http://127.0.0.1:5000/itinerary-comparison/0924f013-499e-418b-aae4-ac17a0b6b364",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "htmlClass": "",
+    "computed": {
+      "background": "rgb(249, 250, 251)",
+      "foreground": "rgb(17, 24, 39)"
+    },
+    "header": "Three ways to sharpen your Osaka plan",
+    "headerSubline": "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is.",
+    "columns": [
+      {
+        "testid": "proposal-column-baseline",
+        "text": "Your current planAs you built itThe order you planned, unchanged.$60Day 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Keep this plan"
+      },
+      {
+        "testid": "proposal-column-v1",
+        "text": "Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.$45Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-v2",
+        "text": "RecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.$110Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      }
+    ],
+    "recommended": [
+      {
+        "testid": "proposal-recommended-v2",
+        "text": "Recommended"
+      }
+    ],
+    "money": [
+      {
+        "testid": "proposal-preview-money-v1",
+        "text": "Saves $15 (25% less)"
+      },
+      {
+        "testid": "proposal-preview-money-v2",
+        "text": "Costs $50 more"
+      }
+    ],
+    "drive": [],
+    "previewContext": null,
+    "trending": null,
+    "seasonal": null,
+    "keepOriginal": [
+      {
+        "testid": "button-keep-original",
+        "text": "Keep my original plan"
+      }
+    ],
+    "footer": "Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.",
+    "applyButtons": [
+      {
+        "testid": "button-apply-variant-v1",
+        "text": "Apply Budget Optimizer"
+      },
+      {
+        "testid": "button-apply-variant-v2",
+        "text": "Apply Experience Enhancer"
+      }
+    ],
+    "allTestIds": [
+      "button-dashboard-sidebar-toggle",
+      "link-logo",
+      "button-notifications",
+      "badge-unread-count",
+      "button-user-menu",
+      "user-avatar-fallback",
+      "button-back",
+      "review-title",
+      "review-intro",
+      "banner-segmentation-recommendation",
+      "text-segmentation-rationale",
+      "text-segmentation-summary",
+      "text-segmentation-apply-note",
+      "compare-header",
+      "proposal-column-baseline",
+      "proposal-total-baseline",
+      "proposal-row-variant-e676ad4c-5ef6-4b87-9c4c-c4e2faf113dd",
+      "proposal-row-variant-83b75890-49fa-4720-a8e4-084e5b54458b",
+      "proposal-row-variant-165889b2-2c2a-4534-a595-7ede8595ca44",
+      "proposal-row-variant-98f07781-9138-4b3b-95a1-4113e3eb06c6",
+      "button-apply-variant-baseline",
+      "proposal-preview-v1",
+      "proposal-preview-money-v1",
+      "proposal-column-v1",
+      "proposal-total-v1",
+      "proposal-row-variant-bc74f37b-92a5-4cb8-8d7e-fdc945a36ee2",
+      "proposal-row-variant-3034501b-02c2-46eb-b54c-e305428acbad",
+      "proposal-row-variant-2a9b0217-9269-41bb-a054-460aee185662",
+      "button-apply-variant-v1",
+      "proposal-preview-v2",
+      "proposal-preview-money-v2",
+      "proposal-column-v2",
+      "proposal-recommended-v2",
+      "proposal-total-v2",
+      "proposal-row-variant-631ed3b5-a488-495a-a1c5-cf6456fea424",
+      "proposal-row-variant-2e45faf1-79d7-4379-943b-d454624834c1",
+      "proposal-row-variant-48f4d469-f8fe-4c09-a298-748f63ef4d2e",
+      "button-apply-variant-v2",
+      "compare-footer",
+      "dislike-loop-panel",
+      "feedback-chip-too_expensive",
+      "feedback-chip-too_packed",
+      "feedback-chip-wrong_areas",
+      "feedback-chip-wrong_vibe",
+      "button-rerun-with-feedback",
+      "button-dislike-expert",
+      "button-keep-original"
+    ]
+  }
+}

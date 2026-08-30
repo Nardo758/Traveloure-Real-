@@ -15,6 +15,7 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { sanitizeStringFields } from "../utils/text-sanitizer";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -98,7 +99,20 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
       });
     }
 
-    await storage.updateLocalExpertFormType(userId, expertType);
+    // Capture current role before the update so the audit record is complete.
+    const [currentUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    const oldRole = currentUser?.role ?? null;
+
+    // ATOMIC: the storage method wraps form-type update, role update, and
+    // audit insert in one transaction — if the audit insert fails, the role
+    // switch rolls back too (a role change without a record must never happen).
+    await storage.updateLocalExpertFormType(userId, expertType, {
+      actorId: userId,
+      actorRole: oldRole ?? "expert",
+      oldRole,
+      reason: "expert_self_switch",
+    });
+
     res.json({ success: true, expertType });
   } catch (err) {
     console.error("Error updating expert role:", err);
@@ -373,7 +387,8 @@ router.post("/api/me/services/:serviceId/slots/range", isAuthenticated, async (r
 // ─── Next availability (Backoffice C1) ──────────────────────────────────────────────────────
 //
 // `vendor_availability_slots` is the CANONICAL table for concrete, dated bookable slots
-// (roadmap ⛭ decision 3 — `provider_availability` is deprecated/dead, never read here).
+// (roadmap ⛭ decision 3 — `provider_availability` was deprecated/dead and is now DROPPED,
+// Partner Demand 2C / migration 242).
 // One grouped query — MIN(date) over future, not-fully-booked slots, GROUP BY serviceId —
 // scoped to the caller's OWN provider_services ids (never trusts ids from the client), so
 // this never N+1s regardless of how many offerings the My Offerings table renders.
@@ -617,7 +632,8 @@ router.post("/api/expert/knowledge-nuggets", isAuthenticated, requireLocalExpert
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
     }
-    res.status(201).json(await createLocalKnowledgeNugget(parsed.data));
+    const sanitized = sanitizeStringFields(parsed.data);
+    res.status(201).json(await createLocalKnowledgeNugget(sanitized));
   } catch (err) {
     console.error("[Knowledge Nuggets] create error:", err);
     res.status(500).json({ message: "Failed to create knowledge nugget" });
@@ -636,7 +652,7 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalE
       if (key in req.body) updates[key] = req.body[key];
     }
     updates.updatedAt = new Date();
-    res.json(await updateLocalKnowledgeNugget(id, updates));
+    res.json(await updateLocalKnowledgeNugget(id, sanitizeStringFields(updates)));
   } catch (err) {
     console.error("[Knowledge Nuggets] update error:", err);
     res.status(500).json({ message: "Failed to update knowledge nugget" });

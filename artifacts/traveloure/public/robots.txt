@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /
+
+# Private / authenticated-only surfaces — no crawl value, some leak UI state
+Disallow: /admin
+Disallow: /api/
+Disallow: /checkout
+Disallow: /bookings
+Disallow: /dashboard
+Disallow: /messages
+Disallow: /settings
+Disallow: /profile
+Disallow: /onboarding
+Disallow: /expert-workspace
+Disallow: /provider
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /itinerary-view/
+
+Sitemap: https://traveloure.com/sitemap.xml

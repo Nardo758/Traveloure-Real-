@@ -399,6 +399,111 @@
   }
 }
 
+/*
+ * Optimized plan review dark surface.
+ *
+ * This page is also reached from a share/bookmark flow where the app theme
+ * class may not have been initialized yet. Keep the browser-preference rule
+ * alongside the .dark rule so both theme mechanisms produce the same
+ * readable, warm-neutral review surface as the approved mock.
+ */
+.itinerary-comparison-page {
+  color-scheme: light;
+}
+
+.dark .itinerary-comparison-page {
+  color-scheme: dark;
+  --background: 60 17% 7%; /* #14140F */
+  --foreground: 60 11% 91%; /* #EDECE4 */
+  --card: 60 10% 11%; /* #1D1D18 */
+  --card-foreground: 60 11% 91%;
+  --popover: 60 10% 11%;
+  --popover-foreground: 60 11% 91%;
+  --muted: 60 10% 14%; /* #24241E */
+  --muted-foreground: 60 5% 58%; /* #9A9A8F */
+  --border: 60 8% 18%; /* #2E2E27 */
+  --input: 60 8% 18%;
+  --primary: 258 33% 78%; /* #B7A9E6 */
+  --primary-foreground: 60 17% 7%;
+  --ring: 258 33% 78%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .itinerary-comparison-page {
+    color-scheme: dark;
+    --background: 60 17% 7%; /* #14140F */
+    --foreground: 60 11% 91%; /* #EDECE4 */
+    --card: 60 10% 11%; /* #1D1D18 */
+    --card-foreground: 60 11% 91%;
+    --popover: 60 10% 11%;
+    --popover-foreground: 60 11% 91%;
+    --muted: 60 10% 14%; /* #24241E */
+    --muted-foreground: 60 5% 58%; /* #9A9A8F */
+    --border: 60 8% 18%; /* #2E2E27 */
+    --input: 60 8% 18%;
+    --primary: 258 33% 78%; /* #B7A9E6 */
+    --primary-foreground: 60 17% 7%;
+    --ring: 258 33% 78%;
+  }
+
+  body:has(.itinerary-comparison-page) {
+    background-color: #14140f;
+    color: #edece4;
+  }
+}
+
+/* Browser-preference mode has no Tailwind `dark:` class, so translate the
+   page's remaining literal light utility colors explicitly. These selectors
+   are scoped to this review page and do not alter other traveler surfaces. */
+@media (prefers-color-scheme: dark) {
+  .itinerary-comparison-page .bg-green-100,
+  .itinerary-comparison-page .bg-green-50 {
+    background-color: #16281f !important;
+  }
+  .itinerary-comparison-page .text-green-700,
+  .itinerary-comparison-page .text-green-800,
+  .itinerary-comparison-page .text-green-600 {
+    color: #6fd79e !important;
+  }
+  .itinerary-comparison-page .bg-blue-100 {
+    background-color: #1e2a38 !important;
+  }
+  .itinerary-comparison-page .text-blue-700,
+  .itinerary-comparison-page .text-blue-800,
+  .itinerary-comparison-page .text-blue-600 {
+    color: #86acd8 !important;
+  }
+  .itinerary-comparison-page .bg-amber-50,
+  .itinerary-comparison-page .bg-amber-100 {
+    background-color: #2a2314 !important;
+  }
+  .itinerary-comparison-page .text-amber-700,
+  .itinerary-comparison-page .text-amber-800,
+  .itinerary-comparison-page .text-amber-600 {
+    color: #e7b85e !important;
+  }
+  .itinerary-comparison-page .bg-purple-50 {
+    background-color: #221e33 !important;
+  }
+  .itinerary-comparison-page .text-purple-800,
+  .itinerary-comparison-page .text-purple-700,
+  .itinerary-comparison-page .text-purple-600 {
+    color: #b7a9e6 !important;
+  }
+  .itinerary-comparison-page .border-green-500\/50 {
+    border-color: #244a36 !important;
+  }
+  .itinerary-comparison-page .border-amber-200,
+  .itinerary-comparison-page .border-amber-100,
+  .itinerary-comparison-page .border-purple-200\/50,
+  .itinerary-comparison-page .border-blue-200\/50 {
+    border-color: #3a3a31 !important;
+  }
+  .itinerary-comparison-page .bg-white\/60 {
+    background-color: #24241e !important;
+  }
+}
+
 /* Scroll-triggered animations */
 @layer utilities {
   .animate-on-scroll {

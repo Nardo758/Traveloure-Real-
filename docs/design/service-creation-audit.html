@@ -1,0 +1,409 @@
+<title>Service Creation Audit</title>
+<style>
+  :root {
+    --ground: #FAFAF8;
+    --surface: #FFFFFF;
+    --surface-2: #F3F3EE;
+    --ink: #1A1A18;
+    --muted: #7A7A72;
+    --hairline: #E8E8E2;
+    --accent: #35605A;
+    --accent-soft: #E4EEEC;
+    --critical: #A83A31;
+    --critical-soft: #F6E7E5;
+    --warn: #8F6516;
+    --warn-soft: #F5EDDA;
+    --ok: #3E7345;
+    --ok-soft: #E6F0E7;
+    --code-bg: #F0F0EA;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #161614;
+      --surface: #1E1E1B;
+      --surface-2: #24241F;
+      --ink: #EDEDE8;
+      --muted: #98988E;
+      --hairline: #2E2E29;
+      --accent: #8CC0B7;
+      --accent-soft: #22332F;
+      --critical: #E08076;
+      --critical-soft: #3A2321;
+      --warn: #D9A84E;
+      --warn-soft: #352B18;
+      --ok: #8FBE95;
+      --ok-soft: #1F2E21;
+      --code-bg: #262621;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #161614;
+    --surface: #1E1E1B;
+    --surface-2: #24241F;
+    --ink: #EDEDE8;
+    --muted: #98988E;
+    --hairline: #2E2E29;
+    --accent: #8CC0B7;
+    --accent-soft: #22332F;
+    --critical: #E08076;
+    --critical-soft: #3A2321;
+    --warn: #D9A84E;
+    --warn-soft: #352B18;
+    --ok: #8FBE95;
+    --ok-soft: #1F2E21;
+    --code-bg: #262621;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+    font-size: 17px;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 48px 28px 96px; }
+  .prose { max-width: 70ch; }
+
+  h1, h2, h3, .label, .chip, nav, .stat-num, .pkg-head, th {
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 34px; line-height: 1.15; margin: 8px 0 10px; letter-spacing: -0.01em; text-wrap: balance; }
+  h2 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.005em; text-wrap: balance; }
+  h3 { font-size: 16.5px; margin: 0 0 4px; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+
+  .label {
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .kicker { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .meta { color: var(--muted); font-size: 14.5px; margin-bottom: 40px; }
+
+  section { margin-top: 56px; }
+  .sec-head {
+    display: flex; align-items: baseline; gap: 12px;
+    border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 22px;
+  }
+  .sec-num { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 14px; color: var(--muted); }
+
+  .statband {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px;
+    background: var(--hairline); border: 1px solid var(--hairline); margin: 26px 0 6px;
+  }
+  .stat { background: var(--surface); padding: 16px 18px; }
+  .stat-num { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat-desc { font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+
+  .chip {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 3px; vertical-align: 2px;
+  }
+  .chip.crit { background: var(--critical-soft); color: var(--critical); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.ok   { background: var(--ok-soft); color: var(--ok); }
+  .chip.info { background: var(--accent-soft); color: var(--accent); }
+
+  code, .cite {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.82em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+  }
+  .cite { color: var(--muted); }
+
+  .finding { border-left: 3px solid var(--hairline); padding: 2px 0 2px 18px; margin: 0 0 22px; }
+  .finding.crit { border-left-color: var(--critical); }
+  .finding.warn { border-left-color: var(--warn); }
+  .finding h3 { display: inline; margin-right: 8px; }
+  .finding p { margin-top: 8px; }
+  .finding .ev { font-size: 14.5px; color: var(--muted); }
+
+  .tablewrap { overflow-x: auto; margin: 18px 0 8px; border: 1px solid var(--hairline); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--surface); }
+  th {
+    text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--hairline); white-space: nowrap;
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  .cap { font-size: 13.5px; color: var(--muted); margin: 6px 2px 0; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 20px 0; }
+  .step { background: var(--surface); border: 1px solid var(--hairline); padding: 14px 16px; }
+  .step .n { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .step .count { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums;
+    font-family: system-ui, -apple-system, sans-serif; letter-spacing: -0.02em; }
+  .step .count.hot { color: var(--critical); }
+  .step ul { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--muted); }
+  .step li { margin-bottom: 2px; }
+
+  .pkg { background: var(--surface); border: 1px solid var(--hairline); margin-bottom: 20px; }
+  .pkg-head {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--hairline); background: var(--surface-2);
+  }
+  .pkg-head .pkg-letter {
+    font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 15px;
+    background: var(--ink); color: var(--ground); padding: 2px 9px; border-radius: 3px;
+  }
+  .pkg-head h3 { font-size: 17px; margin: 0; }
+  .pkg-body { padding: 16px 20px 8px; }
+  .pkg-body ul { margin: 0 0 12px; padding-left: 20px; }
+  .pkg-body li { margin-bottom: 7px; font-size: 15.5px; }
+  .pkg-body .why { font-size: 14px; color: var(--muted); }
+
+  .callout {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 14px 18px; margin: 20px 0; font-size: 15.5px;
+  }
+  .callout .label { color: var(--accent); }
+
+  hr { border: none; border-top: 1px solid var(--hairline); margin: 34px 0; }
+  .foot { color: var(--muted); font-size: 13.5px; margin-top: 56px; border-top: 1px solid var(--hairline); padding-top: 16px; }
+  strong { font-weight: 650; }
+</style>
+
+<div class="wrap">
+
+  <div class="kicker">
+    <span class="label">Traveloure · Provider Console</span>
+    <span class="label" style="color:var(--accent)">Audit — for decision</span>
+  </div>
+  <h1>Service Creation Audit</h1>
+  <p class="meta">ServiceForm · Catalog · Workstation, and the seams between them — audited Aug 12, 2026 against the code at current <code>main</code>. Every claim in the full findings carries a file:line citation; this report is the merged, ranked summary. Nothing here has been changed yet except one live defect (noted in §4).</p>
+
+  <div class="statband">
+    <div class="stat">
+      <div class="stat-num" style="color:var(--critical)">~78</div>
+      <div class="stat-desc">input controls on the longest creation path (~87 interactive elements with chrome)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" style="color:var(--critical)">44</div>
+      <div class="stat-desc">of those controls sit in Step 2 alone — a form wearing a wizard's clothes</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">7</div>
+      <div class="stat-desc">different surfaces can edit one listing, across 3 pages + the map</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">5</div>
+      <div class="stat-desc">creation entry points — the ratified "one door" was never built</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>The form as it is today</h2></div>
+    <div class="prose">
+      <p>One shared component serves both experts and providers: a 4-step wizard titled <em>What you offer → Details → Photos → Terms &amp; requirements</em>. Steps never validate — every asterisk is decorative until the final click — and <strong>Save Draft works from any step</strong>, which is genuinely good. Submitting, however, requires walking all four steps, because the submit button only exists on the last one.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="n">STEP 1</div>
+        <div class="count">8</div>
+        <div class="label">What you offer</div>
+        <ul>
+          <li>Offering picker (~114-row catalog)</li>
+          <li>Name, category, subcategory</li>
+          <li><strong>Price — asked first,</strong> before what/where/how</li>
+        </ul>
+      </div>
+      <div class="step">
+        <div class="n">STEP 2</div>
+        <div class="count hot">~44</div>
+        <div class="label">Details</div>
+        <ul>
+          <li>Description, duration, <strong>delivery method (too late — it gates 4 sections)</strong></li>
+          <li>9 language checkboxes, category fields, what's-included</li>
+          <li>Meeting location card (5 location fields + pin)</li>
+          <li>Logistics card: transport ×2, 3 radii, surcharge engine, timing, capacity, rules</li>
+        </ul>
+      </div>
+      <div class="step">
+        <div class="n">STEP 3</div>
+        <div class="count">3</div>
+        <div class="label">Photos</div>
+        <ul>
+          <li>Cover + gallery — pasted URLs only, no upload</li>
+        </ul>
+      </div>
+      <div class="step">
+        <div class="n">STEP 4</div>
+        <div class="count">23</div>
+        <div class="label">Terms &amp; requirements</div>
+        <ul>
+          <li>Lead time, cancellation, deposits</li>
+          <li>Requirements, attestations</li>
+          <li>Role-specific cards + a dead Published/Draft switch</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p class="cap">Not counted above (data-driven): the full offering list, the neighborhood checkbox tree — which renders <em>every city in the database</em>, so a Kyoto photographer scrolls past Paris — and N per-category dynamic fields.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>The surfaces around it</h2></div>
+    <div class="prose">
+      <p><strong>Catalog</strong> (1,520 lines) is no longer "what I sell" — it hosts the storefront manager, a share/caption kit, a per-listing share dialog, two view toggles, a 30-tile category launcher, the map-authoring surface, a health scorer, the availability editor, and a promotion feed. Three of those sections' own copy says they belong on Distribute. Meanwhile <strong>Distribute — a full four-channel page — has no sidebar entry at all</strong>; it is reachable only through two buttons on other pages.</p>
+      <p><strong>The provider Workstation</strong> is, in practice, a bundle-and-property manager with three link tiles on top. Its "Single service" rung doesn't host creation — it links away to the same ServiceForm as everything else. The ratified <em>one door</em> rule (ruling 74: "Add New Service → Workstation") appears in the ledger and the execution map, but <strong>no lane ever built it</strong>: five separate create links all bypass the Workstation and land directly on the form. And a first-time provider who did land on the Workstation would see two empty lists and a lock icon ("bundles unlock at 2 services").</p>
+      <p>Where a provider edits one existing listing:</p>
+    </div>
+
+    <div class="tablewrap"><table>
+      <thead><tr><th>Surface</th><th>What it edits</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ServiceForm</strong> (edit mode)</td><td>name, category, price, description, photos, meeting point, delivery method, logistics, surcharge, terms, attestations</td><td>the main editor</td></tr>
+        <tr><td>Catalog card — switch</td><td>active / paused</td><td>same gated PATCH as publish; a blocked flip shows a <strong>raw JSON error</strong></td></tr>
+        <tr><td>Catalog card — "Card shows"</td><td>show price, booking mode</td><td>price set in the form; whether it <em>shows</em> set here — two pages apart</td></tr>
+        <tr><td>Catalog map — pin</td><td>meeting pin</td><td>also editable in the form: two homes, one rail</td></tr>
+        <tr><td>Catalog map — route stops</td><td>route stops</td><td>the form <em>displays</em> stops but tells you to go edit them here</td></tr>
+        <tr><td>Catalog — availability</td><td>slots (one date at a time)</td><td>the Workstation adds <em>ranges</em> — but only for property rooms</td></tr>
+        <tr><td>Workstation dialogs</td><td>bundles, properties, rooms</td><td>bundle "Edit" links from Catalog arrive <strong>without the bundle id</strong> — find it again</td></tr>
+      </tbody>
+    </table></div>
+    <p class="cap">Plus a shipped translations API with zero UI — a rail nobody can reach. "Why isn't this bookable?" currently has answers on three different pages.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Findings, ranked</h2></div>
+
+    <div class="finding crit">
+      <span class="chip crit">Critical</span> <h3>The "Publish Service" button doesn't publish</h3>
+      <p>Every provider create is clamped server-side to <em>submitted for review</em> — correct policy, wrong button. Experts get a card explaining the 48-hour review up front; providers find out only on the success screen <em>after</em> clicking "Publish." One role is told the rules before acting, the other after. The single largest honesty gap in the flow.</p>
+    </div>
+
+    <div class="finding crit">
+      <span class="chip crit">Critical</span> <h3>Price is asked before the service is described; the biggest branching decision is buried</h3>
+      <p>Price sits in Step 1, before description, delivery method, or location. Delivery method — which gates the meeting-location card, the whole logistics card, the deliverable field, and the attestation set — is mid–Step 2, <em>after</em> pricing. The natural arc (what → where → when → price → publish) is scrambled.</p>
+    </div>
+
+    <div class="finding crit">
+      <span class="chip crit">Critical</span> <h3>Six answers to "where does this happen?", three different radius fields</h3>
+      <p>Meeting Point, map pin, Service Area, Pickup Location, Drop-off Point — plus route stops on <em>another page</em>. Three radii ("Service Radius", "Pickup radius", "Won't travel beyond") live in two cards behind two different toggles; the surcharge help text sends the provider back up to flip a <em>different</em> switch to make the surcharge work. Transport is asked <strong>twice in two vocabularies</strong> on the same screen; duration twice in two formats; capacity three times across three steps.</p>
+    </div>
+
+    <div class="finding crit">
+      <span class="chip crit">Critical</span> <h3>Dead and inert controls shipped to sellers</h3>
+      <p>A Published/Draft switch that is wired to nothing. Four logistics fields collected and read by no code — one of which nevertheless decides what UI the provider sees. Five "required" asterisks that never bind (price errors only surface after a server round-trip). The logistics card's own disclaimer ("these aren't shown to travelers yet") is wrong in both directions — several of its fields are live gates, four are inert.</p>
+    </div>
+
+    <div class="finding crit">
+      <span class="chip crit">Critical</span> <h3>Office-location pre-fill silently stamps non-place listings</h3>
+      <p>The ruling-85 pre-fill seeds the pin and marks it "touched" with no delivery-method condition — so creating a PDF listing writes the provider's office coordinates onto a listing that has no location, with no UI showing it. <span class="chip info">Fix already dispatched</span> — this one is a defect, not a design call, and is being corrected regardless.</p>
+    </div>
+
+    <div class="finding warn">
+      <span class="chip warn">High</span> <h3>The one-door rule was ratified but never built</h3>
+      <p>Ruling 74 says "Add New Service → Workstation." The code has five create doors, none through the Workstation — and the Workstation isn't yet a place a first-time provider should land (empty lists, a locked rung). The ledger and the code disagree; nothing records a reversal.</p>
+    </div>
+
+    <div class="finding warn">
+      <span class="chip warn">High</span> <h3>Catalog is doing three pages' jobs; Distribute is invisible</h3>
+      <p>The storefront header, the share-kit dialog, and the Promote block all have copy or duplicate mounts pointing at Distribute — which has no sidebar entry. The 30-tile category launcher (a creation surface) renders on Catalog's empty state. The map view now also hosts market-insights analytics.</p>
+    </div>
+
+    <div class="finding warn">
+      <span class="chip warn">High</span> <h3>Money configuration is scattered across three steps and mislabeled</h3>
+      <p>Base price in Step 1; the travel-surcharge engine nested three levels deep in Step 2 — inside a card whose header claims its contents are inert (surcharge is live and charging); deposits in Step 4. A seller cannot see their money story in one place.</p>
+    </div>
+
+    <div class="finding warn">
+      <span class="chip warn">High</span> <h3>Role mismatches in both directions</h3>
+      <p>Experts see vehicle-operator concepts (pickup, radius, surcharge, transport provision) whenever delivery method allows; providers see consultancy vocabulary ("Requirements from Client," "Revisions Included," "Includes Expert Notes"). Platform jargon leaks straight into labels: "Timezone (IANA)," "Content Affinity Tags," "Can this anchor a day?", and a literal URL path ("the /earn catalog") shown to sellers.</p>
+    </div>
+
+    <div class="finding warn">
+      <span class="chip warn">High</span> <h3>Seam hygiene: raw errors, unguarded delete, property rows leaking</h3>
+      <p>Four Catalog card actions render raw JSON error blobs when a server gate refuses. Catalog's Delete fires with no confirmation while the Workstation's identical delete has one. Property and room rows render as ordinary Catalog cards whose Edit opens the wrong editor. No autosave anywhere on a ~78-control form — a refresh loses everything.</p>
+    </div>
+
+    <div class="finding">
+      <span class="chip ok">Worth keeping</span> <h3>What already works</h3>
+      <p>Save Draft from any step (a PDF-guide draft is ~5 clicks — genuinely fast). Create and edit share one component. The never-clobber contract holds at the field level across all seven write surfaces. Conditional rendering already hides the logistics and location cards from non-place listings — the machinery for a branching form exists; it just runs from the wrong position.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>The decision</h2></div>
+    <div class="prose">
+      <p>Everything above sorts into three packages. They are independent — any subset can proceed — but this order is the recommended sequence: hygiene first, then the form, then the surfaces.</p>
+    </div>
+
+    <div class="pkg">
+      <div class="pkg-head">
+        <span class="pkg-letter">A</span>
+        <h3>Fix pack — honest &amp; cheap</h3>
+        <span class="chip ok">No ruling conflicts · can start immediately</span>
+      </div>
+      <div class="pkg-body">
+        <ul>
+          <li>Rename "Publish Service" → <strong>"Submit for review"</strong>, and tell providers about review <em>before</em> the click (the expert card already exists as the pattern).</li>
+          <li>Delete the dead Published/Draft switch; gate the four unread logistics fields behind an "Advanced" collapse or drop them until a consumer exists; fix the card's wrong disclaimer.</li>
+          <li>Make the asterisks bind — client-side enforcement for the five phantom-required fields.</li>
+          <li>Seam hygiene: friendly error messages on the four Catalog mutations, a delete confirmation, filter property/room rows out of the Catalog grid (or give them the right editor), bundle edit links that carry the bundle id.</li>
+          <li>Merge the duplicate questions: one transport question, one duration, one capacity story.</li>
+          <li><em>Office-pin silent write — already being fixed.</em></li>
+        </ul>
+        <p class="why">Every item is independently correct today; none changes the form's structure.</p>
+      </div>
+    </div>
+
+    <div class="pkg">
+      <div class="pkg-head">
+        <span class="pkg-letter">B</span>
+        <h3>Form restructure — the redesign</h3>
+        <span class="chip warn">Needs your ratification of the shape</span>
+      </div>
+      <div class="pkg-body">
+        <ul>
+          <li><strong>Delivery method first.</strong> Ask it in Step 1, position 2, and branch the entire form off it — a PDF seller then never sees transport, pickup, surcharge, or meeting-location UI at all.</li>
+          <li><strong>A basics fast path.</strong> Name, offering, delivery method, price, description → a saved, resumable draft in one screen (~90 seconds). Everything else becomes later steps or post-creation editing.</li>
+          <li><strong>One location component.</strong> Collapse the six location questions into one map-first "where does this happen &amp; how does the traveler get there," with one radius vocabulary.</li>
+          <li><strong>Move advanced money out of creation.</strong> Surcharge and deposits become post-creation listing settings (edited from Catalog), leaving one price field in the create flow.</li>
+          <li><strong>A publish checklist instead of a disabled button</strong> — "3 things left before review," each a deep link.</li>
+        </ul>
+        <p class="why">This is the Airbnb/Fiverr shape: short first pass → draft → enhance later. The conditional-rendering machinery already exists; this moves the branch point to the front.</p>
+      </div>
+    </div>
+
+    <div class="pkg">
+      <div class="pkg-head">
+        <span class="pkg-letter">C</span>
+        <h3>Surface restructure — Catalog / Workstation / Distribute</h3>
+        <span class="chip warn">Touches ratified rulings — needs explicit calls</span>
+      </div>
+      <div class="pkg-body">
+        <ul>
+          <li><strong>Build the real one-door launcher</strong> — give the Workstation's first rung actual content (the 30-tile launcher moves there from Catalog's empty state) and route all five create links through it. <em>This executes ruling 74 rather than conflicting with it.</em></li>
+          <li><strong>Slim Catalog to read/manage/triage</strong> — move the storefront header, share dialog, and Promote block fully to Distribute. <em>Clarifies ruling 74's "share tools stay on Catalog" — the duplicate mount already made it ambiguous.</em></li>
+          <li><strong>Put Distribute in the sidebar.</strong> A four-channel page shouldn't be reachable only via two buried buttons.</li>
+          <li><strong>Unify the two availability editors</strong> (Catalog gets ranged slots; one editor, both entry points). <em>Additive to the C9 precedent.</em></li>
+          <li>Decide whether map authoring stays on Catalog (ruling 22b) or moves into the one listing editor — the only item that would need a true re-ratification.</li>
+        </ul>
+        <p class="why">Ends the "where do I change X?" fragmentation: Catalog to see and manage, Workstation to build, Distribute to promote, one editor to edit.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="label">What I need from you</span><br>
+      <strong>Package A</strong> — a go/no-go (recommended: go).&ensp;
+      <strong>Package B</strong> — approve the five moves as the redesign direction; I'll mock the new flow before building, as we did for Catalog and Distribute.&ensp;
+      <strong>Package C</strong> — pick which of the five surface moves to take now; the one-door launcher and the Distribute sidebar entry are the two with the highest return.
+    </div>
+  </section>
+
+  <div class="foot">
+    Sources: two independent code audits (ServiceForm internals; Workspace/Catalog surfaces &amp; seams), Aug 12, 2026, against current <code>main</code> — full findings with file:line citations retained in the session record. Governance references: DECISIONS.md rulings 22b, 62, 74, 81–85; CLAUDE.md §13. The office-pin defect fix is in flight on <code>claude/sync-local-repo-2j7ghv</code>.
+  </div>
+
+</div>

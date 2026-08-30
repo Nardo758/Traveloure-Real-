@@ -668,11 +668,18 @@ export async function getTripLabel(tripId: string): Promise<string> {
 // ─── Expert Assigned Trips ────────────────────────────────────────────────────
 
 export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
+  // Concierge revision (ledger 2026-08-22-concierge-revision-p2): a ready-made revision request
+  // already lands here as an ordinary accepted advisor row (P1 writes it). We LEFT JOIN the
+  // purchase so the Inbox can flag it as a paid revision and show the buyer's note — the advisor
+  // row's own `message` (the note) rides along too. Ordinary (non-ready-made) assignments simply
+  // get NULL for these and render unchanged.
   const result = await db.execute(sql`
     SELECT
       t.id as trip_id, t.title as trip_title, t.destination,
       t.start_date, t.end_date,
       tea.id as assignment_id, tea.status, tea.assigned_at,
+      tea.message as assignment_message,
+      rmp.revision_status, rmp.revision_request_note,
       u.id as traveler_user_id,
       u.first_name as traveler_first_name,
       u.last_name as traveler_last_name,
@@ -683,6 +690,8 @@ export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
     FROM trip_expert_advisors tea
     JOIN trips t ON t.id = tea.trip_id
     JOIN users u ON u.id = t.user_id
+    LEFT JOIN ready_made_purchases rmp
+      ON rmp.clone_trip_id = t.id AND rmp.revision_status IS NOT NULL
     WHERE tea.local_expert_id = ${expertId} AND tea.status IN ('pending', 'accepted')
     ORDER BY tea.assigned_at DESC
   `);

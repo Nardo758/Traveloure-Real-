@@ -26,11 +26,38 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { and, eq, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../db";
-import { conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages, coordinationStates } from "@shared/schema";
+import { adminNotifications, conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages, coordinationStates } from "@shared/schema";
 import { routeConcierge } from "../services/concierge-router.service";
 import { storage } from "../storage";
+import { isAuthenticated } from "../replit_integrations/auth";
+import { chatStorage } from "../replit_integrations/chat/storage";
+import { createRateLimiter } from "../infrastructure/rate-limiter";
+import {
+  buildConciergeAdminNotification,
+  escalationRequestSchema,
+  type ConciergeNotifyEvent,
+  type ConciergeRequestLike,
+} from "../utils/concierge-admin-notification";
 
 const router = Router();
+
+// ─── Admin push signal (Lane C / C3) ────────────────────────────────────────
+// Every concierge request creation, tier selection and chat escalation lands an
+// admin_notifications row (ALL tiers — the Platform tier is a ruled hybrid, so
+// its requests are staff work too). Non-fatal, the donor posture
+// (service-requests.routes.ts): the traveler-facing operation is the important
+// part; the notification is a surfacing aid.
+async function notifyAdminsOfConciergeRequest(
+  row: ConciergeRequestLike,
+  event: ConciergeNotifyEvent,
+  extraMetadata: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await db.insert(adminNotifications).values(buildConciergeAdminNotification(row, event, extraMetadata));
+  } catch (notifErr: any) {
+    console.warn("[concierge] admin_notifications insert failed (non-fatal):", notifErr?.message);
+  }
+}
 
 function makeClaimToken(requestId: string): string {
   const secret = process.env.SESSION_SECRET || "dev-fallback-secret";
@@ -134,6 +161,9 @@ router.post("/api/concierge/requests", async (req, res) => {
     // (PATCH is possession-gated). Guests included — that is the point.
     rememberConciergeRequest(req, row.id);
 
+    // C3: push signal into the admin queue on creation, all tiers.
+    await notifyAdminsOfConciergeRequest(row, "created");
+
     // Guests additionally get the HMAC possession token (the /claim proof) so a
     // client that persists it can mutate/claim after a session loss. Owners don't
     // need it — they authorize by ownership.
@@ -190,6 +220,12 @@ router.post("/api/concierge/quote", async (req, res) => {
     // the live client actually uses before PATCHing a tier, so the guest funnel
     // depends on it.
     rememberConciergeRequest(req, row.id);
+
+    // C3: push signal on creation (this is the create path the live client uses).
+    await notifyAdminsOfConciergeRequest(
+      { id: row.id, intent: body.intent, eventType: body.eventType ?? null, userId, chosenTier: null },
+      "created",
+    );
 
     res.json({
       requestId: row.id,
@@ -313,6 +349,12 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
       });
     }
 
+    // C3: push signal on tier selection (the PATCH), all tiers — including the
+    // Platform tier, whose requests were previously invisible to staff.
+    if (body.chosenTier !== undefined) {
+      await notifyAdminsOfConciergeRequest(row, "tier_selected");
+    }
+
     // For guests (no coordinationId), return a signed claim token they can use after sign-in.
     const isGuest = !row.userId;
     const claimToken = isGuest ? makeClaimToken(row.id) : undefined;
@@ -400,6 +442,85 @@ router.post("/api/concierge/requests/:id/claim", async (req, res) => {
     res.json({ ...claimed, coordinationId });
   } catch (err: any) {
     console.error("[concierge/requests/:id/claim] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/concierge/escalations (Lane C / C4) ──────────────────────────
+// "Get help from our team" — the human handoff inside the AI chat. Platform
+// Concierge is a ruled HYBRID: the AI starts the conversation, a person steps
+// in for complicated tasks or whenever the user asks for one; this endpoint IS
+// that step-in. Creates a tier-'ai' concierge_requests row (visible on the C2
+// Platform tab) and fires the C3 admin notification.
+//
+//   • Auth required — conversations are per-user, and the escalation belongs
+//     to an account a human can follow up with.
+//   • userId comes from the SESSION (§14), never the body.
+//   • ALLOWLIST body (§19): escalationRequestSchema reads only
+//     conversationId + note; unknown fields are stripped, tier is pinned to
+//     'ai' and status to 'selected' server-side.
+//   • conversationId, when present, must belong to the caller
+//     (chatStorage.getConversation is ownership-scoped) — a planted foreign
+//     conversation id 404s instead of leaking context into the staff queue.
+//   • Rate-limited per user (donor posture: each POST also inserts an
+//     admin_notifications row, so cap how fast one account can enqueue).
+
+const escalationLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyGenerator: (req: any) => `concierge-escalation:${getUserId(req) ?? req.ip ?? "unknown"}`,
+});
+
+router.post("/api/concierge/escalations", isAuthenticated, escalationLimiter, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthenticated", message: "Sign in to contact our team." });
+    }
+
+    const body = escalationRequestSchema.parse(req.body);
+
+    // Ownership check on the conversation context (never trust a raw id).
+    let conversationId: number | undefined;
+    if (body.conversationId !== undefined) {
+      const conversation = await chatStorage.getConversation(body.conversationId, userId);
+      if (!conversation) {
+        return res.status(404).json({ error: "conversation_not_found" });
+      }
+      conversationId = conversation.id;
+    }
+
+    // The conversation reference lives in the request's notes field (intent) —
+    // concierge_requests has no metadata column and this lane adds no schema —
+    // and, structured, in the admin notification's metadata below.
+    const intent =
+      `[AI chat escalation${conversationId !== undefined ? ` — conversation #${conversationId}` : ""}] ` +
+      (body.note?.trim() || "Traveler asked for help from our team.");
+
+    const [row] = await db
+      .insert(conciergeRequests)
+      .values({
+        userId, // session-derived (§14)
+        intent,
+        chosenTier: "ai", // platform-side request — the hybrid's human end
+        status: "selected",
+      })
+      .returning();
+
+    rememberConciergeRequest(req, row.id);
+
+    await notifyAdminsOfConciergeRequest(
+      row,
+      "escalated",
+      conversationId !== undefined ? { conversationId } : {},
+    );
+
+    res.status(201).json({ id: row.id, status: row.status, chosenTier: row.chosenTier });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: "validation_failed", details: err.errors });
+    }
+    console.error("[concierge/escalations] error:", err);
     res.status(500).json({ error: err.message });
   }
 });

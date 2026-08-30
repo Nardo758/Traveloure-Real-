@@ -1,0 +1,43 @@
+-- Migration 213: S11 stay-booking provenance marker (Wave 3, final lane — DECISIONS.md ledger row
+-- 107, ratifying docs/briefs/S11_STAY_BOOKING_PROPOSAL.md in full).
+--
+-- HEADLINE FINDING (the ballot's own): the §15 claim/promote/void mechanics for a multi-night stay
+-- ALREADY EXIST and are live in POST /api/checkout (the ratified PROPERTY rung, predates S7 by two
+-- weeks) — a stay claims one vendor_availability_slots row PER NIGHT via the existing
+-- storage.bookSlot, all-or-nothing. S11 therefore EXTENDS that live mechanism (ballot candidate
+-- (a)) rather than building a second claim machine (candidates (b) range-counter and (c)
+-- stay_nights table were REJECTED — §18c "no second unaudited writer on inventory"). This
+-- migration is the ONE schema change that extension needs.
+--
+-- WHAT + WHY. `service_date_ranges` (migration 210, S7) is property/room date-range AUTHORING
+-- data — it sits in the DB, unread by anything that claims money. To make a range bookable, a
+-- materializer (server/services/availability-materializer.service.ts, code not schema — this
+-- migration adds no new materializer table) expands each finite range into one
+-- vendor_availability_slots row per night, `ON CONFLICT (service_id, date, start_time) DO NOTHING`
+-- against the EXISTING migration-210 unique index (unchanged by this migration). Before that
+-- expansion can be told apart from a manually-created slot or a pattern-materialized one (S7), the
+-- row needs to say who authored it — this is what makes a future range price-edit
+-- ("re-price only the nights the date-range materializer authored, never a manual row") and a
+-- future stale-slot cleanup pass (the ledger-103 FILED item, generalized here to cover date-ranges
+-- too) possible without guessing.
+--
+-- SHAPE. ONE additive nullable column: `materialized_from` varchar(20), app-enforced vocabulary
+-- ('pattern' | 'date_range' | NULL = manually created via POST/PATCH/DELETE
+-- /api/provider/availability) — the migration-181/195 posture, NO DB CHECK (a third provenance
+-- value is a forward-compatible addition, not a migration). Every pre-213 row (manual or S7
+-- pattern-materialized) reads back NULL — honest: the S7 materializer did not stamp this column
+-- either (it predates this migration; not touched here, no backfill — a backfill would be
+-- guessing which S7-materialized rows came from a pattern versus a hand-created slot at the same
+-- (service, date, start_time), and §13 forbids guessing over an honest NULL).
+--
+-- NO CHECK, no preflight script required (only CHECK/UNIQUE additions need one — CLAUDE.md
+-- "publish-time CHECK failure" trap). Declared in shared/schema.ts in this same commit
+-- (publish-trap rule: an object the code depends on, absent from schema.ts, is dropped by the
+-- Replit deploy-push on the next publish once this migration is already stamped).
+--
+-- NEGATIVE SPACE: no change to service_date_ranges (S7) — its shape (nightly_price nullable-
+-- inherits, capacity = units) is already correct for this use. No change to the migration-210
+-- unique index. No new table. No CHECK.
+
+ALTER TABLE vendor_availability_slots
+  ADD COLUMN IF NOT EXISTS materialized_from varchar(20);

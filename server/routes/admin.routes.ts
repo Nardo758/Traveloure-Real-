@@ -1,6 +1,10 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
+import { pgTextArray } from "../services/upsell-query.service";
+import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
+import { parsePagination } from '../utils/pagination';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -9,7 +13,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -46,8 +50,11 @@ import {
   localExpertForms, expertRequests,
   coordinationStates,
   readyMadeTrips,
+  readyMadePurchases,
+  refunds,
   expertTypeEnum,
   bundleComponents,
+  serviceCategories,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -76,6 +83,9 @@ import { classifyDmoShape } from "../services/dmo-place-extraction.service";
 import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dmo-extracted-places.service";
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
+import { messageReports, userBlocks } from "@shared/schema";
+import { emailOutbox } from "@shared/schema";
+import { drainOutbox } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -104,6 +114,7 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+import { travelpayoutsCache } from "@shared/schema";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -122,7 +133,7 @@ import {
   getAllExpertServiceOfferings, updateExpertServiceOfferingRoles,
   validateDefaultCommissionBandInheritance, validateCommissionBand,
   getPayoutRecipientId, getPayoutAmount, getAdminUsersPaginated, getAdminUsersPage,
-  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips,
+  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips, getAdminTripsPage,
   getAllServiceReviewsForAnalytics, getAllTripsForAnalytics, getAllTrips, getAllServiceReviews,
   getExpertsByCountryAnalytics, getProvidersByCountryAnalytics, getTripsByDestinationAnalytics,
   getExpertsByCountryDetailed, getExpertsByCity, getExpertStatusSummary, getExpertsByExperience,
@@ -136,7 +147,6 @@ import {
   adminGlobalSearch, getAdminSearchCounts,
   getServiceReviewsList, getAdminReviews, getReviewModerationLogs, getServiceReviewById, getReviewById,
   updateServiceReviewStatus, moderateReview, insertReviewModerationLog,
-  getServiceReviewsForServiceRating, updateProviderServiceRating, recalcServiceRating,
   getFeeBands, getFeeBand, updateFeeBand, checkActiveBand,
   getPlatformSettings, getPlatformSettingValue, upsertPlatformSetting,
   getServiceOfferingTypesList, getAllServiceOfferingTypes,
@@ -162,9 +172,24 @@ import {
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
   getUsersBasicByIds, getProviderServiceById, deleteProviderService,
+  getRoleChangeAuditLogs,
+  getAuditLogsForResource,
 } from "../services/admin-query.service";
 
 const router = Router();
+
+/**
+ * Test seam — populated only by unit tests to intercept the Resend call without
+ * hitting the real API. Empty object in production; no behaviour change when unset.
+ */
+export const _adminTestEmailHooks: {
+  resendSend?: (payload: Record<string, unknown>) => Promise<{
+    data: { id?: string } | null;
+    error: { message?: string } | null;
+  }>;
+  /** Override the Resend call timeout (ms). Defaults to 12 000 in production; set low in tests. */
+  resendTimeoutMs?: number;
+} = {};
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -229,8 +254,20 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-  const user = await getAdminRole(getUserId(req)!);
+  // Use getFullAdminUser (SELECT *) so we can also check isSuspended — getAdminRole
+  // only fetches { role } and would allow a suspended admin session through.
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  // Replicate the same suspension gate that isAuthenticated enforces.  Routes that
+  // skip isAuthenticated and use only requireAdminLocal would otherwise let a
+  // suspended admin's stale session reach handler logic.
+  if (user.isSuspended) {
+    req.logout(() => {});
+    return res.status(403).json({
+      message: "Your account has been suspended. Please contact support.",
+      reason: (user as any).suspensionReason ?? undefined,
+    });
+  }
   next();
 };
 
@@ -628,12 +665,15 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   }
 });
 
-// Concierge request queue — the follow-up surface for the concierge Full/Expert tiers.
+// Concierge request queue — the follow-up surface for the concierge tiers.
 // The concierge entry (client/src/pages/concierge) captures a durable concierge_requests
 // row when a traveler picks a tier; the Full ("done-for-you") tier tells the traveler
 // "we'll follow up with a personalized quote". This read-only queue is what makes that
-// promise real — an admin can see incoming human-fulfillment requests (chosen_tier in
-// expert/full) and act on them. Read-only over the existing table; no schema change.
+// promise real. Lane C / C2: the Platform tier ('ai') is a ruled HYBRID (AI starts,
+// a human steps in), so its requests are staff work too — `?tier=` selects the view
+// (human [default: expert+full, unchanged muscle-memory] | ai | expert | full | all)
+// via resolveConciergeTierView; ONE query, tier list as a parameter — never a forked
+// route. Read-only over the existing table; no schema change.
 // (Full white-glove fulfillment/messaging is filed as a separate build.)
 router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
@@ -641,6 +681,7 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+    const tierList = resolveConciergeTierView(req.query.tier);
     // Join the coordination engagement a Full-tier request spun up (Phase 1a wires it via
     // user_request->>'conciergeRequestId'), plus the currently-assigned coordinator, so the admin
     // queue can assign/see the coordinator + fee status inline (Phase 1c).
@@ -668,7 +709,7 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
       LEFT JOIN users u ON u.id = cr.user_id
       LEFT JOIN coordination_states cs ON cs.user_request->>'conciergeRequestId' = cr.id::text
       LEFT JOIN users ce ON ce.id = cs.assigned_expert_id
-      WHERE cr.chosen_tier IN ('expert', 'full')
+      WHERE cr.chosen_tier = ANY(${pgTextArray([...tierList])}::text[])
       ORDER BY cr.created_at DESC NULLS LAST
       LIMIT 200
     `);
@@ -1030,6 +1071,222 @@ router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res
   }
 });
 
+// ─── Concierge disputes (ledger 2026-08-22-concierge-p3) ────────────────────────────────────
+//
+// The ready-made recourse ladder's top rung: a buyer's concern (POST /api/ready-made/
+// purchases/:id/concern) lands here for an ADMIN decision — refund (the escape hatch) or
+// dismiss. Guarded with our OWN §15 atomic conditionals (the audit found the service-booking
+// dispute routes below check nothing — copying them would copy the hole): every resolution
+// claims `WHERE dispute_status='open'`, so refund-after-dismiss and dismiss-after-refund 409.
+// The queue shows FACTS, not a verdict (A5/§13): revision requested-at, the expert's workspace
+// status, the suggestion count, and the earning's recoverability — the admin judges.
+
+// GET the open concierge-dispute queue (newest concern first).
+router.get("/api/admin/ready-made/disputes", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        rmp.id, rmp.status AS purchase_status, rmp.dispute_status, rmp.dispute_reason,
+        rmp.disputed_at, rmp.price_paid_cents, rmp.currency, rmp.purchased_at,
+        rmp.revision_status, rmp.revision_requested_at, rmp.clone_trip_id,
+        rmt.id AS listing_id, rmt.title AS listing_title,
+        buyer.id AS buyer_id, buyer.first_name AS buyer_first_name, buyer.last_name AS buyer_last_name,
+        author.id AS author_id, author.first_name AS author_first_name, author.last_name AS author_last_name,
+        -- A5 facts (never a fabricated Yes/No): the selling expert's workspace status on the
+        -- buyer's clone + how many suggestions they actually made there.
+        tea.workspace_status AS advisor_workspace_status,
+        (SELECT COUNT(*) FROM trip_suggestions ts WHERE ts.trip_id = rmp.clone_trip_id)::int AS suggestion_count,
+        -- Recoverability: the author's earning state decides whether the refund path is even
+        -- open (Q1 "prevent" — a paid_out earning refuses the refund server-side).
+        ee.status AS earning_status, ee.dispute_state AS earning_dispute_state, ee.amount AS earning_amount
+      FROM ready_made_purchases rmp
+      JOIN ready_made_trips rmt ON rmt.id = rmp.ready_made_trip_id
+      JOIN users buyer ON buyer.id = rmp.buyer_id
+      JOIN users author ON author.id = rmt.author_id
+      LEFT JOIN trip_expert_advisors tea
+        ON tea.trip_id = rmp.clone_trip_id AND tea.local_expert_id = rmt.author_id
+      LEFT JOIN expert_earnings ee
+        ON ee.reference_id = rmp.id AND ee.type = 'ready_made_sale'
+      WHERE rmp.dispute_status = 'open'
+      ORDER BY rmp.disputed_at DESC NULLS LAST
+    `);
+    res.json({ disputes: result.rows ?? [] });
+  } catch (err: any) {
+    console.error("Admin concierge disputes list error:", err);
+    res.status(500).json({ message: "Failed to fetch concierge disputes" });
+  }
+});
+
+// POST refund — the admin escape hatch. Sequence (§15b posture — the money claim is the ledger
+// service's own atomic flip; no state we can't re-enter is written before the leg it depends on):
+// (1) pre-read for message quality; (2) refundReadyMadePurchaseLedger actor:'admin' — enforces
+// the ratified Q1 paid_out-refusal + Q3 90-day bound + Q2 always-soft-revoke and reverses the
+// earning/revenue atomically; (3) Stripe refund with the SAME deterministic key AND byte-identical
+// params as the retired buyer route (A4 — actor/reason live in the audit log, never on the Stripe
+// call, so a cross-actor retry can never idempotency-conflict); (4) refunds audit row (the sibling
+// rail writes one — now this rail does too); (5) dispute terminal flip WHERE 'open'; (6) buyer +
+// author notifications; (7) access-audit row. A Stripe failure leaves the dispute OPEN with the
+// ledger settled — the queue shows "reversal pending", and a retry re-runs only the Stripe leg.
+router.post("/api/admin/ready-made/disputes/:purchaseId/refund", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { purchaseId } = req.params;
+    const [pre] = await db.select().from(readyMadePurchases)
+      .where(eq(readyMadePurchases.id, purchaseId)).limit(1);
+    if (!pre) return res.status(404).json({ message: "Purchase not found" });
+    if (pre.disputeStatus !== "open") {
+      return res.status(409).json({ message: `No open dispute on this purchase (state: ${pre.disputeStatus ?? "none"})` });
+    }
+
+    const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
+    const ledger = await refundReadyMadePurchaseLedger(purchaseId, null, { actor: "admin" });
+    if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
+
+    const Stripe = (await import("stripe")).default;
+    const { getStripeSecretKey } = await import("../utils/stripe-key");
+    const stripeClient = new Stripe(getStripeSecretKey() || "", {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+    let refundId: string | null = null;
+    try {
+      const refund = await stripeClient.refunds.create(
+        { payment_intent: ledger.purchase.stripePaymentIntentId },
+        { idempotencyKey: `rm-refund-${ledger.purchase.id}` },
+      );
+      refundId = refund.id;
+    } catch (stripeErr: any) {
+      console.error("[admin/concierge-disputes] refund Stripe leg failed:", stripeErr?.message);
+      return res.status(502).json({
+        message: "Refund recorded on the ledger but the payment reversal failed — retry this action; only the payment leg re-runs",
+        purchase: ledger.purchase,
+      });
+    }
+
+    // Refunds audit row (A4) — bookingId NULL is the documented ready-made shape (the FK is to
+    // service_bookings; the PI + reason carry the linkage).
+    await db.insert(refunds).values({
+      bookingId: null,
+      stripeRefundId: refundId,
+      stripePaymentIntentId: ledger.purchase.stripePaymentIntentId,
+      amount: (Number(ledger.purchase.pricePaidCents ?? 0) / 100).toFixed(2),
+      currency: (ledger.purchase.currency ?? "usd").toLowerCase(),
+      status: "succeeded",
+      reason: `ready_made_dispute_refund: purchase ${purchaseId}`,
+    } as any).catch((err: any) =>
+      console.error("[admin/concierge-disputes] refunds row insert failed (non-fatal):", err?.message));
+
+    // Terminal flip — atomic, resolver identity KEPT (provenance posture).
+    const [resolved] = await db.update(readyMadePurchases)
+      .set({ disputeStatus: "resolved_refunded", disputeResolvedAt: new Date(), disputeResolvedBy: user.id } as any)
+      .where(and(eq(readyMadePurchases.id, purchaseId), eq(readyMadePurchases.disputeStatus, "open")))
+      .returning();
+    if (!resolved) {
+      console.error(`[admin/concierge-disputes] dispute flip lost a race on ${purchaseId} (refund already settled)`);
+    }
+
+    // A6: both humans hear about it — the buyer their outcome, the author their reversal.
+    await insertNotification({
+      userId: ledger.purchase.buyerId,
+      type: "concierge_dispute_resolved",
+      title: "Your concern was resolved — refund issued",
+      message: "We reviewed your concern and refunded this Ready-Made purchase. Your trip stays in your account.",
+      data: { purchaseId, outcome: "refunded" },
+    }).catch(() => {});
+    const [listingRow] = await db.select({ authorId: readyMadeTrips.authorId, title: readyMadeTrips.title })
+      .from(readyMadeTrips).where(eq(readyMadeTrips.id, ledger.purchase.readyMadeTripId)).limit(1);
+    if (listingRow?.authorId) {
+      await insertNotification({
+        userId: listingRow.authorId,
+        type: "ready_made_sale_reversed",
+        title: "A Ready-Made sale was refunded",
+        message: `An admin resolved a buyer concern on "${listingRow.title}" with a refund — the sale's earning was reversed.`,
+        data: { purchaseId, listingId: ledger.purchase.readyMadeTripId },
+      }).catch(() => {});
+    }
+
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "ready_made_dispute_refunded",
+      resourceType: "ready_made_dispute",
+      resourceId: purchaseId,
+      metadata: {
+        reason: String(pre.disputeReason ?? "").slice(0, 2000),
+        stripeRefundId: refundId,
+        amountCents: ledger.purchase.pricePaidCents,
+        alreadyRefunded: ledger.alreadyRefunded,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/concierge-disputes] audit log failed (non-fatal):", err));
+
+    res.json({ success: true, refundId, purchase: resolved ?? ledger.purchase });
+  } catch (err: any) {
+    console.error("Admin concierge dispute refund error:", err);
+    res.status(500).json({ message: `Failed to refund dispute: ${err.message}` });
+  }
+});
+
+// POST dismiss — the concern is not upheld. Atomic claim WHERE 'open', UN-freeze the author's
+// earning (release resumes on its own clock), tell the buyer, audit-log with identity kept.
+router.post("/api/admin/ready-made/disputes/:purchaseId/dismiss", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { purchaseId } = req.params;
+    const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
+    const [resolved] = await db.update(readyMadePurchases)
+      .set({ disputeStatus: "resolved_dismissed", disputeResolvedAt: new Date(), disputeResolvedBy: user.id } as any)
+      .where(and(eq(readyMadePurchases.id, purchaseId), eq(readyMadePurchases.disputeStatus, "open")))
+      .returning();
+    if (!resolved) {
+      const [current] = await db.select({ disputeStatus: readyMadePurchases.disputeStatus })
+        .from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseId)).limit(1);
+      if (!current) return res.status(404).json({ message: "Purchase not found" });
+      return res.status(409).json({ message: `No open dispute on this purchase (state: ${current.disputeStatus ?? "none"})` });
+    }
+
+    // Un-freeze (Q1 half 2): the dispute no longer blocks the author's release clock.
+    await storage.setBookingEarningsDispute(purchaseId, false).catch((err: any) =>
+      console.error("[admin/concierge-disputes] earnings un-freeze failed:", err?.message));
+
+    await insertNotification({
+      userId: resolved.buyerId,
+      type: "concierge_dispute_resolved",
+      title: "Your concern was reviewed",
+      message: note
+        ? `We reviewed your concern on this Ready-Made purchase: ${note}`
+        : "We reviewed your concern on this Ready-Made purchase and are keeping the purchase as-is. Your included revision remains available if you haven't used it.",
+      data: { purchaseId, outcome: "dismissed" },
+    }).catch(() => {});
+
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "ready_made_dispute_dismissed",
+      resourceType: "ready_made_dispute",
+      resourceId: purchaseId,
+      metadata: { note: note || null, reason: String(resolved.disputeReason ?? "").slice(0, 2000) },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/concierge-disputes] audit log failed (non-fatal):", err));
+
+    res.json({ success: true, purchase: resolved });
+  } catch (err: any) {
+    console.error("Admin concierge dispute dismiss error:", err);
+    res.status(500).json({ message: `Failed to dismiss dispute: ${err.message}` });
+  }
+});
+
 // Escrow Phase 3 (docs/design/escrow-spine.md): admin REJECTS a service-booking dispute (the
 // traveler's claim is not upheld) — clear the dispute flag so the earnings resume normal release,
 // and restore the booking to completed. Upholding a dispute (reversing the earning + refunding the
@@ -1045,10 +1302,25 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     const { bookingId } = req.params;
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     await storage.updateServiceBookingStatus(bookingId, "completed");
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_rejected",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_rejected on booking ${bookingId}: ${err?.message ?? "unknown error"}. Status change was applied but this action has no audit trail.`;
+    });
     res.json({
       success: true,
       cleared,
       note: "Dispute rejected; earnings resume release.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute reject error:", err);
@@ -1091,6 +1363,27 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_refunded",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: {
+        reason: String(reason ?? "").slice(0, 2000) || "dispute_upheld",
+        reversedEarnings: earnings.reversed,
+        skippedPaidOut: earnings.skippedPaidOut,
+        reversedRevenueRows: revenueRows,
+        revertedPlanItems: routingReversal.reverted,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. Ledger reversal and Stripe refund were applied but this action has no audit trail.`;
+    });
+
     res.json({
       success: true,
       revertedPlanItems: routingReversal.reverted,
@@ -1101,6 +1394,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       note: earnings.skippedPaidOut > 0
         ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
         : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute uphold error:", err);
@@ -1759,6 +2053,145 @@ router.post("/api/admin/dmo/intake/:id/reject", isAuthenticated, async (req, res
   }
 });
 
+// ── DMO discover PUBLISH gate (Operation Trailhead LANE T4.2, R-T1-e) ─────────
+// The second half of the intake ladder. Intake approve (above) flips
+// expert_workspace_visible so an expert can curate the stub. PUBLISH flips
+// discover_page_visible so the TRAVELER discover surfaces render it — the
+// born-hidden safety (default false) is what keeps scraped content invisible
+// until an admin deliberately publishes it here. Eligibility (a reviewed stub:
+// already expert-visible, not yet published, not rejected/quarantined) is the
+// SINGLE predicate canPublishToDiscover() in shared/discover-stub.ts, and the
+// state transition is itself the guard — an atomic conditional UPDATE whose WHERE
+// re-asserts every from-state (the §12/§18b posture), so a double-click or a race
+// flips exactly one row and the loser is a 409 no-op. Audit-logged.
+
+// Publish ONE reviewed stub to the traveler discover surfaces.
+router.post("/api/admin/dmo/publish/:id", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [updated] = await db
+      .update(dmoRawContent)
+      .set({ discoverPageVisible: true, publishedAt: new Date(), publishedBy: user.id, updatedAt: new Date() })
+      .where(
+        and(
+          eq(dmoRawContent.id, req.params.id),
+          // from-state allow-list == canPublishToDiscover(): reviewed, unpublished, not rejected.
+          eq(dmoRawContent.expertWorkspaceVisible, true),
+          eq(dmoRawContent.discoverPageVisible, false),
+          sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+        ),
+      )
+      .returning();
+    if (!updated) {
+      return res.status(409).json({
+        message: "Not eligible to publish (must be reviewed into the expert library, unpublished, and not rejected)",
+      });
+    }
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dmo_discover_publish",
+      resourceType: "dmo_raw_content",
+      resourceId: updated.id,
+      metadata: { city: updated.city, country: updated.country, contentType: updated.contentType, inventoryClass: updated.inventoryClass },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/dmo/publish] audit log failed (non-fatal):", err));
+    res.json({ message: "Published to Discover", item: updated });
+  } catch (err: any) {
+    console.error("DMO publish error:", err);
+    res.status(500).json({ message: "Publish failed", error: err.message });
+  }
+});
+
+// Bulk publish per reviewed batch (gated conceptually by Leon's T2.4 review; the admin surface is
+// the mechanism). Body: { ids: string[] }. Each id flips through the SAME atomic conditional, so
+// an already-published or rejected id is silently skipped, never force-flipped. One audit row per
+// id actually flipped.
+router.post("/api/admin/dmo/publish-batch", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x: any) => typeof x === "string") : [];
+  if (ids.length === 0) return res.status(400).json({ message: "ids (non-empty string array) is required" });
+  try {
+    const publishedIds: string[] = [];
+    const skippedIds: string[] = [];
+    for (const id of ids) {
+      const [updated] = await db
+        .update(dmoRawContent)
+        .set({ discoverPageVisible: true, publishedAt: new Date(), publishedBy: user.id, updatedAt: new Date() })
+        .where(
+          and(
+            eq(dmoRawContent.id, id),
+            eq(dmoRawContent.expertWorkspaceVisible, true),
+            eq(dmoRawContent.discoverPageVisible, false),
+            sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+          ),
+        )
+        .returning();
+      if (updated) {
+        publishedIds.push(updated.id);
+        await insertAccessAuditLog({
+          actorId: user.id,
+          actorRole: user.role,
+          action: "dmo_discover_publish",
+          resourceType: "dmo_raw_content",
+          resourceId: updated.id,
+          metadata: { city: updated.city, country: updated.country, contentType: updated.contentType, inventoryClass: updated.inventoryClass, batch: true },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch((err: any) => console.error("[admin/dmo/publish-batch] audit log failed (non-fatal):", err));
+      } else {
+        skippedIds.push(id);
+      }
+    }
+    res.json({ message: `Published ${publishedIds.length} of ${ids.length}`, publishedIds, skippedIds });
+  } catch (err: any) {
+    console.error("DMO publish-batch error:", err);
+    res.status(500).json({ message: "Batch publish failed", error: err.message });
+  }
+});
+
+// Operation Trailhead T3.5 — manually trigger a resolution PASS over published stubs. The waterfall
+// (R-T3-a provider → affiliate → external) is owned by stub-resolution.service.ts; this admin surface
+// is only the trigger. Guarded §2 (admin-only). Body: { mode: 'full'|'delta', city?: string }.
+//
+// ⚑ R-T3-e HARD STOP: the FIRST pass's matches go to Leon as an evidence table BEFORE render consumes
+// them (see docs/findings/trailhead-t3-first-pass-dispatch.md). This route is the mechanism; running
+// the first pass is gated on the T2.4 verdict + T0. With the shipped config every affiliate program is
+// disabled, so a first pass produces only provider matches + an honest external majority.
+router.post("/api/admin/dmo/resolve", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const mode = req.body?.mode === "delta" ? "delta" : "full";
+  const city = typeof req.body?.city === "string" && req.body.city.trim() ? req.body.city.trim() : undefined;
+  try {
+    const { runResolutionPass } = await import("../services/stub-resolution.service");
+    const result = await runResolutionPass({ mode, city });
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dmo_resolution_pass",
+      resourceType: "dmo_raw_content",
+      resourceId: result.passId,
+      metadata: { mode, city: city ?? null, scanned: result.scanned, changed: result.changed, upgrades: result.upgrades, downgrades: result.downgrades, byClass: result.byClass },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/dmo/resolve] audit log failed (non-fatal):", err));
+    res.json({ message: `Resolution pass complete (${mode})`, result });
+  } catch (err: any) {
+    console.error("DMO resolution pass error:", err);
+    res.status(500).json({ message: "Resolution pass failed", error: err.message });
+  }
+});
+
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
@@ -1919,7 +2352,21 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       const role = (expertTypeEnum as readonly string[]).includes(formExpertType)
         ? formExpertType
         : "expert";
-      await updateUserRole(updated.userId, role);
+      try {
+        await updateUserRole(updated.userId, role, {
+          actorId: user.id,
+          actorRole: user.role,
+          reason: "admin_expert_application_approved",
+        });
+      } catch (err) {
+        // Role+audit transaction rolled back — revert the form status too so an
+        // approved-but-unprivileged applicant is impossible, and fail loudly.
+        console.error("[admin] Expert approval role update failed; reverting form status:", err);
+        await storage.updateLocalExpertFormStatus(req.params.id, priorStatus ?? "pending", rejectionMessage).catch((revertErr) => {
+          console.error("[admin] CRITICAL: failed to revert form status after role-update failure:", revertErr);
+        });
+        return res.status(500).json({ message: "Role update failed; application status was reverted" });
+      }
 
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
@@ -2176,6 +2623,11 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
       return res.status(403).json({ message: "Admin access required" });
     }
     const { status, rejectionMessage } = req.body;
+    const [existingProviderForm] = await db
+      .select({ status: serviceProviderForms.status })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.id, req.params.id));
+    const priorProviderStatus = existingProviderForm?.status;
     const updated = await storage.updateServiceProviderFormStatus(req.params.id, status, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
@@ -2183,7 +2635,21 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     
     // If approved, update user role to service_provider
     if (status === "approved") {
-      await updateUserRole(updated.userId, "service_provider");
+      try {
+        await updateUserRole(updated.userId, "service_provider", {
+          actorId: user.id,
+          actorRole: user.role,
+          reason: "admin_provider_application_approved",
+        });
+      } catch (err) {
+        // Role+audit transaction rolled back — revert the form status too so an
+        // approved-but-unprivileged provider is impossible, and fail loudly.
+        console.error("[admin] Provider approval role update failed; reverting form status:", err);
+        await storage.updateServiceProviderFormStatus(req.params.id, priorProviderStatus ?? "pending", rejectionMessage).catch((revertErr) => {
+          console.error("[admin] CRITICAL: failed to revert provider form status after role-update failure:", revertErr);
+        });
+        return res.status(500).json({ message: "Role update failed; application status was reverted" });
+      }
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
         userId: updated.userId,
@@ -2281,8 +2747,8 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       const categoryRow = await resolveOrCreateItineraryPlanningCategory();
       const esoRow = await createExpertServiceOfferingRow({
         categoryId:  categoryRow.id,
-        name:        title,
-        description: description ?? null,
+        name:        sanitizeText(title) as string,
+        description: sanitizeText(description ?? null),
         price:       suggestedPrice ?? "0",
         isDefault:   true,
         sortOrder:   sortOrder ?? 0,
@@ -2319,7 +2785,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const input = insertServiceTemplateSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertServiceTemplateSchema.partial().parse(req.body));
       const updated = await storage.updateServiceTemplate(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Template not found" });
@@ -2716,7 +3182,11 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
       { name: "Technology & Connectivity", slug: "technology-connectivity", description: "Tech support, social media management, photography editing", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 50, max: 150 }, sortOrder: 12 , commissionBandKey: "commercial" },
       { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 , commissionBandKey: "commercial" },
       { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 , commissionBandKey: "moderate" },
-      { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
+      // FP-1 / A1: `categoryKey` mirrors server/seed-categories.ts — the provider offering picker's
+      // catch-all (service_offering_types.custom_other_offering) points at 'custom_other', and a row
+      // created without it leaves the wizard's derived-category lock unresolvable and Publish
+      // permanently disabled. Keep the two lists in step.
+      { name: "Custom / Other", slug: "custom-other", categoryKey: "custom_other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
       // New categories from comprehensive directory
       { name: "Lodging & Accommodation", slug: "lodging-accommodation", description: "Vacation rentals, B&Bs, homestays, glamping, houseboat rentals, room hosts", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["property_license", "insurance"], priceRange: { min: 50, max: 1000 }, sortOrder: 16 , commissionBandKey: "commercial" },
       { name: "Music & Performance", slug: "music-performance", description: "Live musicians, bands, DJs, string quartets, vocalists, ceremony musicians, music instructors", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 2000 }, sortOrder: 17 , commissionBandKey: "moderate" },
@@ -2753,13 +3223,49 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
 
   // Get all expert service categories with offerings (public)
 
+
+  // Ruling 112 / R3 (Run-2 finding): the review-decision NOTIFICATION promise, kept. The wizard
+  // says "you'll be notified when it's been looked at" — these writers make that true for every
+  // decision arm (born-approval, rejection, edit-review apply/discard). Durable at-most-once via
+  // dedupe_key (migration 209's partial UNIQUE); a 23505 means the notification already exists.
+  async function notifyListingDecision(opts: {
+    userId: string;
+    type: string;
+    title: string;
+    message: string;
+    serviceId: string;
+    dedupeKey: string;
+  }): Promise<void> {
+    try {
+      await storage.createNotification({
+        userId: opts.userId,
+        type: opts.type,
+        title: opts.title,
+        message: opts.message,
+        relatedId: opts.serviceId,
+        relatedType: "provider_service",
+        dedupeKey: opts.dedupeKey,
+      } as any);
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode !== "23505") {
+        console.error("[notifyListingDecision] failed (non-fatal):", err);
+      }
+    }
+  }
+
 router.get("/api/admin/provider-services/pending", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     const services = await storage.getProviderServiceListingsByStatus("submitted");
-    res.json(services);
+    // Ruling 112 Q8 (CLAUDE.md §23): EDIT REVIEWS share this queue — approved listings whose
+    // identity edit waits in pending_changes. The live listing is untouched while it waits;
+    // the card carries `editReview: true` + the staged patch so the admin sees exactly what
+    // would change.
+    const editReviews = await storage.getEditReviewServiceListings();
+    res.json([...editReviews, ...services]);
   });
 
   // Admin: Approve custom service
@@ -2776,6 +3282,34 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
+
+      // Ruling 112 Q8 (CLAUDE.md §23): approving an EDIT REVIEW applies the staged identity
+      // patch to the live row (atomic conditional on edit_review_status='pending' — a double
+      // click is one effect). The listing was approved all along; nothing was ever taken down.
+      const fullRow = await storage.getProviderServiceById(req.params.id);
+      if (fullRow && (fullRow as any).editReviewStatus === "pending") {
+        const applied = await storage.applyPendingChanges(req.params.id, adminId);
+        await insertAccessAuditLog({
+          actorId: adminId,
+          actorRole: user.role,
+          action: "provider_service_edit_review_approve",
+          resourceType: "provider_service",
+          resourceId: req.params.id,
+          metadata: { appliedKeys: Object.keys(((fullRow as any).pendingChanges ?? {}) as object) },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+        await notifyListingDecision({
+          userId: (fullRow as any).userId,
+          type: "listing_edit_approved",
+          title: "Your listing edit was approved",
+          message: `The changes you submitted for "${(fullRow as any).serviceName}" are now live.`,
+          serviceId: req.params.id,
+          dedupeKey: `service:${req.params.id}:edit-approved:${Date.now()}`,
+        });
+        return res.json(applied ?? fullRow);
+      }
+
       if (service.status !== "submitted") {
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
@@ -2789,6 +3323,18 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       // (activateVerificationHeldListings, wired at the verification write paths).
       const ownerVerification = await resolvePublishVerification(service.expertId);
       const approved = await storage.approveProviderServiceListing(req.params.id, adminId, ownerVerification.ok);
+
+      // Ruling 112 / R3: keep the wizard's promise — the owner hears about the decision.
+      await notifyListingDecision({
+        userId: service.expertId,
+        type: "listing_approved",
+        title: "Your listing was approved",
+        message: ownerVerification.ok
+          ? `"${service.title}" is approved and live — travelers can find and book it now.`
+          : `"${service.title}" is approved. It goes live automatically once your verification completes.`,
+        serviceId: req.params.id,
+        dedupeKey: `service:${req.params.id}:approved`,
+      });
 
       // ESO promotion was using expert_id / external_id columns dropped in migration 013.
       // Expert-owned services now live in provider_services; no ESO write needed here.
@@ -2830,11 +3376,48 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
+
+      // Ruling 112 Q8 (CLAUDE.md §23): rejecting an EDIT REVIEW discards the staged patch —
+      // the live listing stays approved exactly as it was. Never touches approval_status.
+      const fullRowReject = await storage.getProviderServiceById(req.params.id);
+      if (fullRowReject && (fullRowReject as any).editReviewStatus === "pending") {
+        const discarded = await storage.discardPendingChanges(req.params.id);
+        await insertAccessAuditLog({
+          actorId: adminId,
+          actorRole: user.role,
+          action: "provider_service_edit_review_reject",
+          resourceType: "provider_service",
+          resourceId: req.params.id,
+          metadata: { reason, discardedKeys: Object.keys(((fullRowReject as any).pendingChanges ?? {}) as object) },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+        await notifyListingDecision({
+          userId: (fullRowReject as any).userId,
+          type: "listing_edit_rejected",
+          title: "Your listing edit was not approved",
+          message: `The changes you submitted for "${(fullRowReject as any).serviceName}" were not approved: ${reason}. Your live listing is unchanged.`,
+          serviceId: req.params.id,
+          dedupeKey: `service:${req.params.id}:edit-rejected:${Date.now()}`,
+        });
+        return res.json(discarded ?? fullRowReject);
+      }
+
       if (service.status !== "submitted") {
         return res.status(400).json({ message: "Can only reject submitted services" });
       }
 
       const rejected = await storage.rejectProviderServiceListing(req.params.id, adminId, reason);
+
+      // Ruling 112 / R3: rejection is a decision too — say it, with the reason.
+      await notifyListingDecision({
+        userId: service.expertId,
+        type: "listing_rejected",
+        title: "Your listing was not approved",
+        message: `"${service.title}" was not approved: ${reason}. Edit it and resubmit when ready.`,
+        serviceId: req.params.id,
+        dedupeKey: `service:${req.params.id}:rejected`,
+      });
 
       await insertAccessAuditLog({
         actorId: adminId,
@@ -3298,12 +3881,37 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
         : [];
       const providerMap = Object.fromEntries(providerRows.map(p => [p.id, p]));
 
+      // ── FP-1 / B10 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────
+      // VISIBILITY ONLY — zero behavior change to any charge. A listing with no category (every
+      // property, room and bundle the Workstation builders create) resolves no
+      // service_categories.commission_band_key, so the resolver falls through to the configured
+      // platform default band. Nothing surfaced that anywhere; an admin reviewing a catalog could
+      // not see which listings were on a default band. This annotates the row with the BAND KEY
+      // and whether it resolved — never a rate, never a percentage, and it does not participate in
+      // resolution (§8/§18: the fee lanes own rates and amounts; this read touches neither).
+      const catBandRows = await db
+        .select({ id: serviceCategories.id, commissionBandKey: serviceCategories.commissionBandKey })
+        .from(serviceCategories);
+      const bandByCategoryId = new Map(catBandRows.map((c) => [c.id, c.commissionBandKey ?? null]));
+
       let services = all.map(s => ({
         ...s,
         providerName: providerMap[s.userId]
           ? `${providerMap[s.userId].firstName ?? ""} ${providerMap[s.userId].lastName ?? ""}`.trim() || providerMap[s.userId].email
           : "Unknown",
         providerEmail: providerMap[s.userId]?.email,
+        commissionBand: (() => {
+          const bandKey = s.categoryId ? (bandByCategoryId.get(s.categoryId) ?? null) : null;
+          return {
+            resolved: !!bandKey,
+            bandKey,
+            reason: bandKey
+              ? null
+              : s.categoryId
+                ? "category has no commission band — platform default applies"
+                : "no category — platform default commission band applies",
+          };
+        })(),
       }));
 
       if (status && status !== "all") services = services.filter(s => s.status === status);
@@ -4263,8 +4871,8 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
         storage.getAllProviderPayouts(status),
       ]);
       const allPayouts = [
-        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
-        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
+        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const, isStale: isPayoutStale(p) })),
+        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const, isStale: isPayoutStale(p) })),
       ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {
@@ -4731,26 +5339,27 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
       // §13: `status` filtering used to run `eq(trips.status, status)` against the dead field —
       // it never matched the client's "active"/"pending"/"completed" filter values (which aren't
       // trips.status vocabulary at all) and would have silently returned zero rows. Phase is now
-      // derived post-fetch (below) and the requested phase, if any, filters on that instead.
-      const phaseFilter = req.query.status as string | undefined;
+      // date-derived IN SQL (getAdminTripsPage) so filtering + paging happen before enrichment.
+      const rawPhase = req.query.status as string | undefined;
+      const phaseFilter = rawPhase === "upcoming" || rawPhase === "active" || rawPhase === "past" ? rawPhase : undefined;
+      const { limit, offset } = parsePagination(req.query);
 
-      const conditions: any[] = [];
-      if (search) {
-        conditions.push(
-          or(
-            like(trips.title, `%${search}%`),
-            like(trips.destination, `%${search}%`)
-          )
-        );
-      }
-
-      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-      const allTrips = await getAdminTrips(whereClause);
+      const { rows, stats, filteredTotal } = await getAdminTripsPage({
+        search: search || undefined,
+        phase: phaseFilter,
+        limit,
+        offset,
+      });
 
       const now = new Date();
 
-      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
-        const owner = await storage.getUser(t.userId || '');
+      // Batch owner lookup (one query per page, not one per trip).
+      const ownerIds = Array.from(new Set(rows.map((t) => t.userId).filter((id): id is string => !!id)));
+      const owners = await getUsersBasicByIds(ownerIds);
+      const ownerMap = new Map(owners.map((u) => [u.id, u]));
+
+      const enrichedTrips = rows.map((t) => {
+        const owner = t.userId ? ownerMap.get(t.userId) : undefined;
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -4765,22 +5374,24 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
-      }));
+      });
 
-      const phaseFiltered = phaseFilter
-        ? enrichedTrips.filter(t => t.status === phaseFilter)
-        : enrichedTrips;
-
-      // Honest labels (§13) — no fabricated "completed"/"pending" bucket derived from a field
-      // nothing writes; the three buckets below are exactly the three deriveTripPhase can return.
+      // Honest labels (§13) — the three buckets are exactly the three phases SQL can derive.
       const statusCounts = {
-        total: enrichedTrips.length,
-        upcoming: enrichedTrips.filter(t => t.status === "upcoming").length,
-        active: enrichedTrips.filter(t => t.status === "active").length,
-        past: enrichedTrips.filter(t => t.status === "past").length,
+        total: Number(stats.total ?? 0),
+        upcoming: Number(stats.upcoming ?? 0),
+        active: Number(stats.active ?? 0),
+        past: Number(stats.past ?? 0),
       };
 
-      res.json({ trips: phaseFiltered, stats: statusCounts });
+      res.json({
+        trips: enrichedTrips,
+        stats: statusCounts,
+        total: filteredTotal,
+        hasMore: offset + enrichedTrips.length < filteredTotal,
+        limit,
+        offset,
+      });
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });
@@ -4862,6 +5473,85 @@ router.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) =>
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
+
+// GET /api/admin/analytics/export?from=&to=&format=csv — CSV download of the same data the
+// analytics overview shows, optionally filtered to a created-at date range. Additive; the
+// overview endpoint is untouched.
+router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const fromParam = typeof req.query.from === "string" && req.query.from ? new Date(req.query.from) : null;
+    const toParam = typeof req.query.to === "string" && req.query.to ? new Date(req.query.to) : null;
+    const from = fromParam && !isNaN(fromParam.getTime()) ? fromParam : null;
+    const to = toParam && !isNaN(toParam.getTime()) ? toParam : null;
+    const inRange = (d: Date | string | null | undefined) => {
+      if (!from && !to) return true;
+      if (!d) return false;
+      const t = new Date(d).getTime();
+      if (from && t < from.getTime()) return false;
+      if (to && t > to.getTime()) return false;
+      return true;
+    };
+
+    const allUsers = (await getAllUsersBasic()).filter(u => inRange(u.createdAt as any));
+    const allBookings = (await storage.getServiceBookings({})).filter(b => inRange(b.createdAt as any));
+    const allTrips = (await getAllTrips()).filter((t: any) => inRange(t.createdAt));
+    const allReviews = (await getAllServiceReviews()).filter((r: any) => inRange(r.createdAt));
+
+    const completedBookings = allBookings.filter(b => b.status === "completed");
+    const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+    const avgRating = allReviews.length > 0
+      ? allReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / allReviews.length
+      : 0;
+
+    const destCounts: Record<string, { bookings: number; revenue: number }> = {};
+    allTrips.forEach((t: any) => {
+      const dest = t.destination || "Unknown";
+      if (!destCounts[dest]) destCounts[dest] = { bookings: 0, revenue: 0 };
+      destCounts[dest].bookings++;
+      destCounts[dest].revenue += Number(t.budget || 0);
+    });
+
+    const roleCounts: Record<string, number> = {};
+    allUsers.forEach(u => {
+      const role = u.role || "user";
+      roleCounts[role] = (roleCounts[role] || 0) + 1;
+    });
+
+    const esc = (v: unknown) => {
+      let s = String(v ?? "");
+      // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR would be
+      // evaluated by Excel/Sheets even inside a quoted cell. Prefix with an apostrophe.
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines: string[] = [];
+    lines.push("Section,Label,Value");
+    lines.push(`Range,From,${esc(from ? from.toISOString() : "all time")}`);
+    lines.push(`Range,To,${esc(to ? to.toISOString() : "now")}`);
+    lines.push(`Metrics,Total Users,${allUsers.length}`);
+    lines.push(`Metrics,Total Bookings,${allBookings.length}`);
+    lines.push(`Metrics,Completed Bookings,${completedBookings.length}`);
+    lines.push(`Metrics,Total Revenue,${totalRevenue.toFixed(2)}`);
+    lines.push(`Metrics,Avg Rating,${avgRating.toFixed(2)}`);
+    lines.push(`Metrics,Total Reviews,${allReviews.length}`);
+    Object.entries(destCounts)
+      .sort((a, b) => b[1].bookings - a[1].bookings)
+      .forEach(([name, d]) => lines.push(`Top Destinations,${esc(name)},${d.bookings} trips / $${d.revenue.toFixed(2)}`));
+    Object.entries(roleCounts).forEach(([role, count]) => lines.push(`User Roles,${esc(role)},${count}`));
+
+    const filename = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(lines.join("\n"));
+  } catch (err) {
+    console.error("Admin analytics export error:", err);
+    res.status(500).json({ message: "Failed to export analytics" });
+  }
+});
 
   // Country/Region Analytics
 
@@ -5106,6 +5796,52 @@ router.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => 
     }
   });
 
+  // === Audit Logs ===
+
+/**
+ * GET /api/admin/audit-logs/role-changes
+ * Returns paginated role-change events from access_audit_logs.
+ * Query params: limit, offset, targetUserId, dateFrom, dateTo
+ */
+router.get("/api/admin/audit-logs/role-changes", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const limit  = Math.min(parseInt(String(req.query.limit  ?? "25"), 10) || 25, 100);
+    const offset = parseInt(String(req.query.offset ?? "0"),  10) || 0;
+    const targetUserId = req.query.targetUserId ? String(req.query.targetUserId) : undefined;
+    const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : undefined;
+    const dateTo   = req.query.dateTo   ? new Date(String(req.query.dateTo) + "T23:59:59Z") : undefined;
+
+    const result = await getRoleChangeAuditLogs({ targetUserId, dateFrom, dateTo, limit, offset });
+    res.json({ ...result, limit, offset });
+  } catch (err) {
+    console.error("Audit-log role-changes error:", err);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
+
+/**
+ * GET /api/admin/audit-logs?resourceType=&resourceId=  (provenance spine move 5)
+ * The per-resource audit timeline: every logged action against ONE resource, newest first. Makes
+ * the "write-only in practice" audit log readable — the approve/reject/edit-review/refund/dispute
+ * rows the platform already writes become queryable by (resourceType, resourceId). Admin-gated.
+ */
+router.get("/api/admin/audit-logs", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const resourceType = req.query.resourceType ? String(req.query.resourceType) : "";
+    const resourceId = req.query.resourceId ? String(req.query.resourceId) : "";
+    if (!resourceType || !resourceId) {
+      return res.status(400).json({ message: "resourceType and resourceId are required" });
+    }
+    const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10) || 50, 100);
+    const offset = parseInt(String(req.query.offset ?? "0"), 10) || 0;
+    const result = await getAuditLogsForResource({ resourceType, resourceId, limit, offset });
+    res.json({ ...result, limit, offset });
+  } catch (err) {
+    console.error("Audit-log resource error:", err);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
+
   // === Admin System Health ===
 
 router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
@@ -5120,6 +5856,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       try {
         await pingDb();
       } catch {
+        // DB ping failure is represented as degraded status — never abort the health response.
         dbStatus = "degraded";
       }
       const dbLatency = Date.now() - dbStart;
@@ -5139,14 +5876,18 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         const { aiUsageService: aiSvc } = await import('../services/ai-usage.service');
         const summary = await aiSvc.getSummary();
         aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCostDollars || 0).toFixed(2)}` };
-      } catch {}
+      } catch (aiErr) {
+        console.warn("[admin/system-health] Could not load AI usage summary — returning defaults:", aiErr);
+      }
 
       try {
         const allBookings = await storage.getServiceBookings({});
         const completedBookings = allBookings.filter(b => b.status === "completed");
         const volume = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
         apiUsage = { transactions: allBookings.length, volume: `$${volume.toLocaleString()}` };
-      } catch {}
+      } catch (bookingErr) {
+        console.warn("[admin/system-health] Could not load booking usage stats — returning defaults:", bookingErr);
+      }
 
       res.json({
         services,
@@ -5159,6 +5900,138 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("System health error:", err);
       res.status(500).json({ message: "Failed to fetch system health" });
+    }
+  });
+
+  // === Admin Test Email ===
+
+  router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const adminUser = await getFullAdminUser(userId);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Optional custom recipient — falls back to admin's own address.
+      const rawTo = (req.body?.to as string | undefined)?.trim();
+      if (rawTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawTo)) {
+        return res.status(400).json({ ok: false, error: "Invalid email address in 'to' field" });
+      }
+      const toEmail = rawTo || adminUser.email;
+      if (!toEmail) {
+        return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
+      }
+
+      // Call Resend directly — same pattern as auth-critical emails — so the test
+      // works even when email_notifications_enabled is turned off in platform settings.
+      // This is intentional: admins must be able to verify delivery credentials
+      // regardless of the notification kill-switch state.
+      const { getAppBaseUrl } = await import("../services/email.service");
+      const { Resend } = await import("resend");
+      const appUrl = getAppBaseUrl();
+
+      const apiKey = process.env.RESEND_API_KEY;
+      const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
+      const replyTo = process.env.EMAIL_REPLY_TO ?? toEmail;
+      if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
+      if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
+
+      const resendClient = new Resend(apiKey);
+      const emailPayload: Record<string, unknown> = {
+        from,
+        to: toEmail,
+        replyTo,
+        subject: "[Traveloure] Test email — delivery verified",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+            <h2 style="color: #FF385C; margin-bottom: 8px;">Test Email</h2>
+            <p style="color: #374151;">Hi ${adminUser.firstName ?? adminUser.email},</p>
+            <p style="color: #374151;">
+              This is a test email sent from the Traveloure admin panel to confirm that email
+              delivery is working correctly.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+              <tr>
+                <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Sent to</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${toEmail}</td>
+              </tr>
+              <tr style="background: #F3F4F6;">
+                <td style="padding: 12px 16px; color: #6B7280;">Sent at</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${new Date().toISOString()}</td>
+              </tr>
+              <tr>
+                <td style="padding: 12px 16px; color: #6B7280;">Platform</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${appUrl}</td>
+              </tr>
+            </table>
+            <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+              This email was triggered manually from the admin system settings page.<br>
+              If you did not initiate this, another admin may have sent it.
+            </p>
+          </div>
+        `,
+        text: [
+          "Test Email",
+          "",
+          `Hi ${adminUser.firstName ?? adminUser.email},`,
+          "",
+          "This is a test email sent from the Traveloure admin panel to confirm that email delivery is working correctly.",
+          "",
+          `Sent to:  ${toEmail}`,
+          `Sent at:  ${new Date().toISOString()}`,
+          `Platform: ${appUrl}`,
+          "",
+          "This email was triggered manually from the admin system settings page.",
+        ].join("\n"),
+      };
+
+      // Use test hook when set (unit tests only); real Resend client in production.
+      const sender = _adminTestEmailHooks.resendSend
+        ? _adminTestEmailHooks.resendSend
+        : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
+
+      const timeoutMs = _adminTestEmailHooks.resendTimeoutMs ?? 12_000;
+
+      let sendResult: { data: { id?: string } | null; error: { message?: string } | null };
+      try {
+        sendResult = await Promise.race([
+          sender(emailPayload),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("__RESEND_TIMEOUT__")),
+              timeoutMs,
+            ),
+          ),
+        ]);
+      } catch (sendErr) {
+        const errMsg = (sendErr as Error)?.message ?? String(sendErr);
+        if (errMsg === "__RESEND_TIMEOUT__") {
+          console.error("[admin/test-email] Resend API timed out after", timeoutMs, "ms");
+          return res.status(504).json({
+            ok: false,
+            error: "Email service did not respond in time. Please try again.",
+          });
+        }
+        console.error("[admin/test-email] send error:", errMsg);
+        return res.status(502).json({ ok: false, error: errMsg });
+      }
+
+      const { data: emailData, error: emailError } = sendResult;
+
+      if (emailError) {
+        const msg = String((emailError as { message?: string }).message ?? emailError);
+        console.error("[admin/test-email] Resend error:", msg);
+        return res.status(502).json({ ok: false, error: msg });
+      }
+
+      const emailId = (emailData as { id?: string } | null)?.id;
+      return res.json({ ok: true, id: emailId, to: toEmail });
+    } catch (err) {
+      console.error("[admin/test-email] unexpected error:", err);
+      return res.status(500).json({ ok: false, error: "Internal server error" });
     }
   });
 
@@ -5657,6 +6530,91 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
 
   // === Review Moderation Routes (REV-MOD) ===
 
+// ─── Message-abuse moderation queue (migration 228) ──────────────────────────
+// GET  /api/admin/message-reports   — list reports filterable by status
+// PATCH /api/admin/message-reports/:id — update status + optional admin note
+
+router.get("/api/admin/message-reports", isAuthenticated, async (req, res) => {
+  try {
+    const actorId = getUserId(req)!;
+    const adminCheck = await getAdminRole(actorId);
+    if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+    const statusParam = (req.query.status as string) || "pending";
+    const rows = await db
+      .select({
+        id: messageReports.id,
+        reporterId: messageReports.reporterId,
+        reportedUserId: messageReports.reportedUserId,
+        messageId: messageReports.messageId,
+        reportType: messageReports.reportType,
+        reason: messageReports.reason,
+        details: messageReports.details,
+        status: messageReports.status,
+        adminNote: messageReports.adminNote,
+        createdAt: messageReports.createdAt,
+      })
+      .from(messageReports)
+      .where(eq(messageReports.status, statusParam))
+      .orderBy(desc(messageReports.createdAt))
+      .limit(100);
+
+    const enriched = await Promise.all(
+      rows.map(async (row) => {
+        const reporter = await storage.getUser(row.reporterId);
+        const reported = await storage.getUser(row.reportedUserId);
+        let messageText: string | null = null;
+        if (row.messageId) {
+          const [msg] = await db
+            .select({ message: userAndExpertChats.message })
+            .from(userAndExpertChats)
+            .where(eq(userAndExpertChats.id, row.messageId));
+          messageText = msg?.message ?? null;
+        }
+        return {
+          ...row,
+          reporterName: reporter
+            ? [reporter.firstName, reporter.lastName].filter(Boolean).join(" ") || reporter.email || "Unknown"
+            : "Unknown",
+          reportedUserName: reported
+            ? [reported.firstName, reported.lastName].filter(Boolean).join(" ") || reported.email || "Unknown"
+            : "Unknown",
+          messageText,
+        };
+      }),
+    );
+    res.json(enriched);
+  } catch (err) {
+    console.error("Admin message-reports list error:", err);
+    res.status(500).json({ message: "Failed to fetch reports" });
+  }
+});
+
+router.patch("/api/admin/message-reports/:id", isAuthenticated, async (req, res) => {
+  try {
+    const actorId = getUserId(req)!;
+    const adminCheck = await getAdminRole(actorId);
+    if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    const { status, adminNote } = req.body;
+    const VALID_STATUSES = ["reviewed", "actioned", "dismissed"];
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ message: `status must be one of: ${VALID_STATUSES.join(", ")}` });
+    }
+    const [updated] = await db
+      .update(messageReports)
+      .set({ status, adminNote: adminNote ?? null, reviewedBy: actorId, reviewedAt: new Date() })
+      .where(eq(messageReports.id, req.params.id))
+      .returning({ id: messageReports.id, status: messageReports.status });
+    if (!updated) return res.status(404).json({ message: "Report not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin message-report update error:", err);
+    res.status(500).json({ message: "Failed to update report" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
     try {
       const actorId0 = getUserId(req)!;
@@ -5706,15 +6664,8 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (!["approved", "flagged", "removed", "pending"].includes(status)) {
         return res.status(400).json({ message: "Invalid status. Must be approved, flagged, removed, or pending." });
       }
-      const review = await getReviewById(req.params.id);
-      if (!review) return res.status(404).json({ message: "Review not found" });
       const updated = await moderateReview(req.params.id, status, actorId, reason);
-      await insertReviewModerationLog({ reviewId: req.params.id, action: status, actorId, reason: reason ?? null });
-
-      // Recalculate service rating/count from approved reviews only
-      const serviceId = review.serviceId;
-      await recalcServiceRating(serviceId);
-
+      if (!updated) return res.status(404).json({ message: "Review not found" });
       res.json(updated);
     } catch (err) {
       console.error("Admin review status error:", err);
@@ -7204,6 +8155,18 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
     if (target.isDeleted) return res.status(400).json({ message: "Cannot suspend a deleted account" });
     if (target.role === "admin") return res.status(400).json({ message: "Cannot suspend another admin account" });
 
+    // Idempotent: re-suspending an already-suspended user must not overwrite the
+    // original suspendedAt/suspensionReason (enforcement evidence). This also makes
+    // moderation-queue retries safe when a prior suspend succeeded but the report
+    // status update failed, or when multiple reports target the same user.
+    if (target.isSuspended) {
+      return res.json({
+        message: "Account already suspended",
+        alreadySuspended: true,
+        user: { id: target.id, isSuspended: true, suspendedAt: target.suspendedAt, suspensionReason: target.suspensionReason },
+      });
+    }
+
     const [updated] = await db
       .update(users)
       .set({ isSuspended: true, suspendedAt: new Date(), suspensionReason: reason, updatedAt: new Date() })
@@ -7378,6 +8341,143 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
+  }
+});
+
+// ─── Email Outbox admin view ──────────────────────────────────────────────────
+// Surface failed/dead outbox rows so admins can identify confirmation emails
+// that were never delivered and manually trigger retries when necessary.
+// All routes are gated by isAuthenticated (role=admin blanket guard at mount).
+
+/**
+ * GET /api/admin/email-outbox
+ * List outbox rows ordered newest-first. Query params:
+ *   status  — filter by status (pending|failed|dead|sent); omit for all
+ *   limit   — max rows (default 50, max 200)
+ *   offset  — pagination offset (default 0)
+ */
+router.get("/api/admin/email-outbox", isAuthenticated, async (req, res) => {
+  try {
+    const status = typeof req.query.status === "string" ? req.query.status : null;
+    const limit  = Math.min(parseInt(String(req.query.limit  ?? "50"),  10) || 50,  200);
+    const offset = Math.max(parseInt(String(req.query.offset ?? "0"),   10) || 0,   0);
+
+    const rows = await db.execute(sql`
+      SELECT id, email_type, to_email, subject, status,
+             attempt_count, max_attempts, last_error, resend_id,
+             retry_after, sent_at,
+             metadata, created_at, updated_at
+      FROM   email_outbox
+      WHERE  (${status}::text IS NULL OR status = ${status}::text)
+      ORDER  BY created_at DESC
+      LIMIT  ${limit}
+      OFFSET ${offset}
+    `);
+
+    const total = await db.execute(sql`
+      SELECT COUNT(*)::int AS n
+      FROM   email_outbox
+      WHERE  (${status}::text IS NULL OR status = ${status}::text)
+    `);
+
+    res.json({
+      rows:   rows.rows,
+      total:  (total.rows[0] as any)?.n ?? 0,
+      limit,
+      offset,
+    });
+  } catch (err: any) {
+    console.error("[admin/email-outbox] list error:", err);
+    res.status(500).json({ message: "Failed to fetch email outbox", error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/email-outbox/:id/retry
+ * Reset a single outbox row back to pending=0 attempts so the next drain
+ * picks it up, then immediately triggers a drain pass.
+ */
+router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+    const updated = await db.execute(sql`
+      UPDATE email_outbox
+      SET    status        = 'pending',
+             attempt_count = 0,
+             last_error    = NULL,
+             retry_after   = NULL,
+             updated_at    = NOW()
+      WHERE  id            = ${id}
+        AND  status       IN ('failed', 'dead')
+      RETURNING id, status, to_email, subject
+    `);
+
+    if (!updated.rows.length) {
+      return res.status(404).json({ message: "Row not found or not in a retryable status" });
+    }
+
+    // Fire the drain in the background — don't wait for delivery.
+    drainOutbox().catch(err =>
+      console.error("[admin/email-outbox/retry] drainOutbox error:", err)
+    );
+
+    res.json({ ok: true, row: updated.rows[0] });
+  } catch (err: any) {
+    console.error("[admin/email-outbox/retry] error:", err);
+    res.status(500).json({ message: "Failed to retry outbox row", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/email-outbox/summary
+ * Counts per status — useful for a dashboard badge or health check.
+ */
+router.get("/api/admin/email-outbox/summary", isAuthenticated, async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT status, COUNT(*)::int AS n
+      FROM   email_outbox
+      GROUP  BY status
+    `);
+    const summary: Record<string, number> = {};
+    for (const row of rows.rows as Array<{ status: string; n: number }>) {
+      summary[row.status] = row.n;
+    }
+    res.json(summary);
+  } catch (err: any) {
+    console.error("[admin/email-outbox/summary] error:", err);
+    res.status(500).json({ message: "Failed to fetch email outbox summary", error: err.message });
+  }
+});
+
+// ─── Travelpayouts cache status ────────────────────────────────────────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Aggregates all cache rows by
+// brand so operators can see whether displayed eSIM, transport, and activity
+// cards are fresh or stale. refreshedAt (migration 221, stamped on every upsert
+// by shared-cache.service.ts) is the accurate last-refresh time — createdAt is
+// immutable after first insert and is not surfaced here. Pre-migration rows with
+// null refreshedAt are represented as lastRefreshedAt: null ("unknown").
+router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
+  try {
+    const now = new Date();
+    const rows = await db
+      .select({
+        brand: travelpayoutsCache.brand,
+        cacheKey: travelpayoutsCache.cacheKey,
+        expiresAt: travelpayoutsCache.expiresAt,
+        refreshedAt: travelpayoutsCache.refreshedAt,
+      })
+      .from(travelpayoutsCache)
+      .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
+
+    const { aggregateBrandStatus } = await import("../services/travelpayouts/travelpayouts-cache-status");
+    const brands = aggregateBrandStatus(rows, now);
+    res.json({ brands, retrievedAt: now });
+  } catch (error: any) {
+    console.error("[admin/travelpayouts-cache/status] error:", error);
+    res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
   }
 });
 

@@ -24,11 +24,16 @@ import Stripe from 'stripe';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
-import { sendBookingConfirmationEmail } from './email.service';
+import { enqueueBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
+// RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
+// slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
+// release can never drift from voidClaim's / updateServiceBookingStatus's.
+import { deriveClaimedSlotIds } from './checkout-claim.service';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
@@ -110,7 +115,7 @@ class StripePaymentService {
   // Replaces the fragile per-request customers.list({email}) lookup optimization.routes.ts had.
 
   isReady(): boolean {
-    return !!process.env.STRIPE_SECRET_KEY;
+    return !!getStripeSecretKey();
   }
 
   /**
@@ -758,16 +763,14 @@ class StripePaymentService {
 
       const row = bookingDetails?.rows?.[0] as any;
       if (row?.email) {
-        sendBookingConfirmationEmail({
+        enqueueBookingConfirmationEmail({
           toEmail: row.email,
           userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
           bookingId,
           bookingTitle: row.title || 'Your booking',
           bookingDate: row.booking_date ?? null,
           confirmationCode,
-        }).catch(err =>
-          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
-        );
+        });
       }
     }
   }
@@ -900,7 +903,7 @@ class StripePaymentService {
     },
   ) {
     const rows = await db.execute(sql`
-      SELECT id, total_amount, platform_fee, insurance_fee, stripe_payment_intent_id, status, slot_id
+      SELECT id, total_amount, platform_fee, insurance_fee, stripe_payment_intent_id, status, slot_id, booking_details
       FROM service_bookings WHERE id = ${bookingId} LIMIT 1
     `);
     const row = rows.rows?.[0] as any;
@@ -1009,12 +1012,27 @@ class StripePaymentService {
     // above matched exactly one caller — §15), so a repeat refund cannot double-release; the
     // release itself floors at 0 and never un-blocks a provider-blocked slot. Best-effort:
     // the refund already succeeded, a release failure must not undo it.
-    if (row.slot_id) {
-      try {
-        const { storage } = await import('../storage');
-        await storage.releaseSlot(String(row.slot_id));
-      } catch (releaseErr) {
-        console.error(`[refund] slot release failed for booking ${bookingId} (non-critical):`, releaseErr);
+    //
+    // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `row.slot_id` is only the FIRST night of a
+    // multi-night stay. `deriveClaimedSlotIds` returns the whole per-night list when the booking
+    // carries it (`booking_details.claimedSlotIds`) and falls back to the single `slot_id`
+    // otherwise — a pre-fix row releases exactly as it always did. `storage.releaseSlot` is called
+    // once PER slot, mirroring its existing floor-at-0 / re-open-if-under-capacity shape per slot
+    // (unchanged from before this fix for the single-slot case).
+    const slotIdsToRelease = deriveClaimedSlotIds(
+      (row.booking_details ?? null) as Record<string, unknown> | null,
+      row.slot_id ? String(row.slot_id) : null,
+    );
+    if (slotIdsToRelease.length > 0) {
+      const { storage } = await import('../storage');
+      // Each slot released independently — one slot's failure must not stop the others (a
+      // multi-night stay must not leak the remaining nights because night 1's release threw).
+      for (const slotId of slotIdsToRelease) {
+        try {
+          await storage.releaseSlot(slotId);
+        } catch (releaseErr) {
+          console.error(`[refund] slot release failed for booking ${bookingId}, slot ${slotId} (non-critical):`, releaseErr);
+        }
       }
     }
 
@@ -1195,6 +1213,7 @@ class StripePaymentService {
     try {
       return await stripe.paymentIntents.retrieve(paymentIntentId);
     } catch {
+      // Safe failure direction: callers treat null as unverified (see JSDoc above).
       return null;
     }
   }

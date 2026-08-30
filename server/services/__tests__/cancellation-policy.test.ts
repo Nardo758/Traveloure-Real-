@@ -19,6 +19,18 @@ test('flexible: full refund at ≥24h, none inside 24h', () => {
   assert.equal(q('flexible', '2026-08-10T10:00:00Z').refundPercent, 0);
 });
 
+test('legacy naive timestamps and date-only values use deterministic UTC boundaries', () => {
+  assert.equal(q('flexible', '2026-08-11T00:00:00').hoursUntilStart, 24);
+  assert.equal(q('flexible', '2026-08-11').hoursUntilStart, 24);
+  assert.equal(q('moderate', '2026-08-12T00:00:00').refundPercent, 50);
+  assert.equal(q('strict', '2026-08-17T00:00:00').refundPercent, 50);
+});
+
+test('explicit timezone offsets remain authoritative', () => {
+  assert.equal(q('flexible', '2026-08-11T05:30:00+05:30').hoursUntilStart, 24);
+  assert.equal(q('flexible', '2026-08-10T16:00:00-08:00').hoursUntilStart, 24);
+});
+
 test('moderate: 100% at ≥5d, 50% at ≥48h, 0% inside 48h', () => {
   assert.equal(q('moderate', '2026-08-15T00:00:00Z').refundPercent, 100);
   const half = q('moderate', '2026-08-13T00:00:00Z');

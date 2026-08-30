@@ -1,19 +1,31 @@
 import { travelPulseService } from "./travelpulse.service";
 import { serviceRecommendationEngine } from "./recommendation.service";
 import { refreshDestinationTrends } from "./destination-trends.service";
+import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
+import { trendEngineIngestionRunner } from "./trend-engine/ingestion-runner";
+import { trendScoreService } from "./trend-engine/trend-score.service";
+
+// Phase 2.3 — GROK SCORING REMOVED.
+// updateCityWithAI is no longer called from the daily scheduler.
+// crowdLevel and trend/pulse scores are static (option b) until the Phase 4 resolver takes over.
+// Reason: R2 (Grok not a scoring source), R7 (no AI-fabricated history), scope limited to 8 markets.
+// HUMAN READ REQUIRED before this file is merged to main.
 
 const DAILY_REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const INITIAL_DELAY = 5 * 60 * 1000; // 5 minutes after server start
-const PER_CITY_RATE_LIMIT_MS = 2000;
+const PER_CITY_RATE_LIMIT_MS = 1000; // reduced: no AI call per city, demand-only
 
 let schedulerTimer: NodeJS.Timeout | null = null;
 let isRunning = false;
 
 export interface DailyRefreshResult {
+  // Phase 2.3: refreshed/errors are always 0 — Grok scoring removed (R2/R7).
+  // Fields kept for interface backward-compatibility with callers.
   refreshed: number;
   errors: number;
   demandSignalsGenerated: number;
   demandSignalErrors: number;
+  marketCount: number; // Phase 2.3: always = OPERATING_MARKETS.length
 }
 
 export interface FeedbackLoopStats {
@@ -67,7 +79,7 @@ export class TravelPulseScheduler {
   async runDailyRefresh(): Promise<DailyRefreshResult> {
     if (isRunning) {
       console.log("[TravelPulse Scheduler] Refresh already in progress, skipping...");
-      return { refreshed: 0, errors: 0, demandSignalsGenerated: 0, demandSignalErrors: 0 };
+      return { refreshed: 0, errors: 0, demandSignalsGenerated: 0, demandSignalErrors: 0, marketCount: 0 };
     }
 
     isRunning = true;
@@ -77,79 +89,57 @@ export class TravelPulseScheduler {
     console.log(`[TravelPulse Scheduler] Starting daily refresh at ${this.lastRunAt.toISOString()}`);
     console.log(`[TravelPulse Scheduler] Next run scheduled at: ${this.nextRunAt.toISOString()}`);
 
-    let refreshed = 0;
-    let errors = 0;
+    // Phase 2.3: AI scoring removed; 0 placeholders kept for interface compat.
+    const refreshed = 0;
+    const errors = 0;
     let demandSignalsGenerated = 0;
     let demandSignalErrors = 0;
 
     try {
-      // Orchestrator: per-city AI refresh + demand-signal regeneration.
-      // Per-city try/catch so one failing city doesn't kill the whole cycle.
-      const staleCities = await travelPulseService.getCitiesNeedingRefresh();
-      const batch = staleCities.slice(0, 10); // cost-control cap, mirrors prior behaviour
+      // Phase 2.3 — iterate over the 8 configured operating markets only.
+      // Grok/LLM scoring is NOT called here (R2, R7). crowdLevel and pulse/trend scores
+      // remain static from last write until the Phase 4 resolver replaces them.
+      // Demand signals are refreshed each cycle; no AI dependency.
+      console.log(
+        `[TravelPulse Scheduler] Phase 2.3 demand-signal cycle: ${OPERATING_MARKETS.length} markets (Grok removed)`,
+      );
 
-      for (const city of batch) {
+      for (const market of OPERATING_MARKETS) {
         const cityStartedAt = Date.now();
-        let aiOk = false;
 
+        // Un-starve the demand-signal generator: prime the trending cache before
+        // calling refreshDemandSignalsForCity (same logic as before, AI-free).
         try {
-          const aiResult = await travelPulseService.updateCityWithAI(city.cityName, city.country);
-          if (aiResult.success) {
-            refreshed++;
-            aiOk = true;
-          } else {
-            errors++;
-            console.error(
-              `[TravelPulse Scheduler] AI refresh failed for ${city.cityName}: ${aiResult.error}`,
-            );
-          }
+          await travelPulseService.getTrendingDestinations(market.cityName, 20);
         } catch (err: any) {
-          errors++;
           console.error(
-            `[TravelPulse Scheduler] AI refresh threw for ${city.cityName}:`,
+            `[TravelPulse Scheduler] Trending prime failed for ${market.cityName} (continuing):`,
             err?.message ?? err,
           );
         }
 
-        // Demand signals are appended per the v2 spec — refresh per city even if AI failed,
-        // so the recommendation surface stays current independent of AI cadence.
-        //
-        // Un-starve the generator first: generateDemandSignals reads travel_pulse_trending,
-        // a 30-minute-TTL cache written only on user hits — at the daily tick it is
-        // near-always empty, so the generator produced 0 signals. Prime the cache via the
-        // same fetch-and-cache-on-miss path /api/travelpulse/trending/:city uses.
-        // Best-effort: a priming failure never blocks the signal refresh or the cycle.
-        try {
-          await travelPulseService.getTrendingDestinations(city.cityName, 20);
-        } catch (err: any) {
-          console.error(
-            `[TravelPulse Scheduler] Trending prime failed for ${city.cityName} (continuing):`,
-            err?.message ?? err,
-          );
-        }
         try {
           const generated = await serviceRecommendationEngine.refreshDemandSignalsForCity(
-            city.cityName,
+            market.cityName,
           );
           demandSignalsGenerated += generated;
         } catch (err: any) {
           demandSignalErrors++;
           console.error(
-            `[TravelPulse Scheduler] Demand-signal refresh failed for ${city.cityName}:`,
+            `[TravelPulse Scheduler] Demand-signal refresh failed for ${market.cityName}:`,
             err?.message ?? err,
           );
         }
 
         const elapsedMs = Date.now() - cityStartedAt;
         console.log(
-          `[TravelPulse Scheduler] ${city.cityName}: ai=${aiOk ? "ok" : "fail"} elapsed=${elapsedMs}ms`,
+          `[TravelPulse Scheduler] ${market.cityName}: demand elapsed=${elapsedMs}ms`,
         );
 
-        // Rate limit between cities (matches the prior 2s spacing).
         await new Promise((resolve) => setTimeout(resolve, PER_CITY_RATE_LIMIT_MS));
       }
 
-      // Compute destination trends from accumulated booking/search data (Phase 4)
+      // Compute destination trends from accumulated booking/search data.
       let trendsComputed = 0;
       try {
         const trendsResult = await refreshDestinationTrends();
@@ -159,68 +149,79 @@ export class TravelPulseScheduler {
         console.error("[TravelPulse Scheduler] Trend computation failed:", err?.message ?? err);
       }
 
-      // Update feedback loop observability stats
+      // Phase 2 — Trend Engine: daily signal ingestion then market scoring.
+      // Ingestion runs first; scoring reads whatever signals are in the DB (idempotent).
+      try {
+        const ingestionResult = await trendEngineIngestionRunner.runDaily();
+        console.log(
+          `[TravelPulse Scheduler] Trend-engine ingestion: inserted=${ingestionResult.totalInserted} skipped=${ingestionResult.totalSkipped} halted=${ingestionResult.haltedSources.length}`,
+        );
+      } catch (err: any) {
+        console.error("[TravelPulse Scheduler] Trend-engine ingestion error:", err?.message ?? err);
+      }
+
+      try {
+        const scoreResult = await trendScoreService.runMarkets();
+        console.log(
+          `[TravelPulse Scheduler] Trend-score resolver: scored=${scoreResult.scored} unranked=${scoreResult.unranked} errors=${scoreResult.errors.length} run=${scoreResult.scoringRunId}`,
+        );
+      } catch (err: any) {
+        console.error("[TravelPulse Scheduler] Trend-score resolver error:", err?.message ?? err);
+      }
+
+      // Feedback loop stats
       this.feedbackLoop.lastRunAt = new Date();
       this.feedbackLoop.totalSignalsProcessed += demandSignalsGenerated;
       this.feedbackLoop.totalRunCount += 1;
-      this.feedbackLoop.citiesProcessed += batch.length;
+      this.feedbackLoop.citiesProcessed += OPERATING_MARKETS.length;
 
       console.log(
-        `[TravelPulse Scheduler] Daily refresh complete: ${refreshed} AI updated, ${errors} AI errors, ${demandSignalsGenerated} demand signals generated, ${demandSignalErrors} demand-signal errors, ${trendsComputed} destination trends computed`,
+        `[TravelPulse Scheduler] Daily refresh complete (Phase 2.3): markets=${OPERATING_MARKETS.length} demand_signals=${demandSignalsGenerated} demand_errors=${demandSignalErrors} trends=${trendsComputed}`,
       );
-      console.log(
-        `[TravelPulse Scheduler] Feedback loop stats — last run: ${this.feedbackLoop.lastRunAt.toISOString()}, total signals processed: ${this.feedbackLoop.totalSignalsProcessed}, total cycles: ${this.feedbackLoop.totalRunCount}, cities processed (lifetime): ${this.feedbackLoop.citiesProcessed}`,
-      );
-      return { refreshed, errors, demandSignalsGenerated, demandSignalErrors };
+      return { refreshed, errors, demandSignalsGenerated, demandSignalErrors, marketCount: OPERATING_MARKETS.length };
     } catch (error: any) {
       console.error("[TravelPulse Scheduler] Error during daily refresh:", error.message);
-      return { refreshed, errors: errors + 1, demandSignalsGenerated, demandSignalErrors };
+      return { refreshed, errors: errors + 1, demandSignalsGenerated, demandSignalErrors, marketCount: OPERATING_MARKETS.length };
     } finally {
       isRunning = false;
     }
   }
 
-  // Manual trigger for testing or admin use
+  // Manual trigger for testing or admin use.
+  // Phase 2.3: Grok AI refresh removed — only demand signals are refreshed.
+  // Admin wanting to manually run Grok for a city should call
+  // travelPulseService.updateCityWithAI() directly from an admin endpoint.
   async triggerManualRefresh(
     cityName?: string,
-    country?: string,
+    _country?: string,
   ): Promise<{ success: boolean; message: string; data?: any }> {
-    if (cityName && country) {
-      // Refresh specific city
-      console.log(`[TravelPulse Scheduler] Manual refresh triggered for ${cityName}, ${country}`);
-      const result = await travelPulseService.updateCityWithAI(cityName, country);
+    if (cityName) {
+      // Demand-signal refresh for a specific city (Phase 2.3: no AI call)
+      console.log(`[TravelPulse Scheduler] Manual demand-signal refresh for ${cityName}`);
       let demandSignalsGenerated = 0;
-      // Prime travel_pulse_trending before generating (same un-starve as the daily loop).
       try {
         await travelPulseService.getTrendingDestinations(cityName, 20);
-      } catch (err: any) {
-        console.error(
-          `[TravelPulse Scheduler] Trending prime failed for ${cityName} (continuing):`,
-          err?.message ?? err,
-        );
-      }
+      } catch (_err) { /* best-effort trending prime */ }
       try {
         demandSignalsGenerated = await serviceRecommendationEngine.refreshDemandSignalsForCity(cityName);
       } catch (err: any) {
-        console.error(
-          `[TravelPulse Scheduler] Manual demand-signal refresh failed for ${cityName}:`,
-          err?.message ?? err,
-        );
+        return {
+          success: false,
+          message: `Demand-signal refresh failed for ${cityName}: ${err?.message}`,
+        };
       }
       return {
-        success: result.success,
-        message: result.success
-          ? `Successfully updated ${cityName} with AI intelligence (${demandSignalsGenerated} demand signals)`
-          : `Failed to update ${cityName}: ${result.error}`,
-        data: { city: result.city, demandSignalsGenerated },
+        success: true,
+        message: `Demand signals refreshed for ${cityName} (${demandSignalsGenerated} signals). AI scoring removed per Phase 2.3.`,
+        data: { demandSignalsGenerated },
       };
     } else {
-      // Refresh all stale cities
-      console.log("[TravelPulse Scheduler] Manual refresh triggered for all stale cities");
+      // Full cycle across all 8 operating markets
+      console.log("[TravelPulse Scheduler] Manual full-cycle refresh (8 markets, Phase 2.3)");
       const result = await this.runDailyRefresh();
       return {
-        success: result.errors === 0,
-        message: `Refreshed ${result.refreshed} cities (${result.errors} errors); generated ${result.demandSignalsGenerated} demand signals (${result.demandSignalErrors} errors)`,
+        success: result.demandSignalErrors === 0,
+        message: `Demand signals refreshed for ${result.marketCount} markets (${result.demandSignalErrors} errors); ${result.demandSignalsGenerated} signals generated`,
         data: result,
       };
     }

@@ -44,12 +44,25 @@ export interface CancellationRefundQuote {
 }
 
 const POLICY_TYPES: readonly CancellationPolicyType[] = ['flexible', 'moderate', 'strict', 'non_refundable'];
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const NAIVE_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/i;
 
 function normalizePolicy(raw: string | null | undefined): { type: CancellationPolicyType; defaulted: boolean } {
   if (raw && (POLICY_TYPES as readonly string[]).includes(raw)) {
     return { type: raw as CancellationPolicyType, defaulted: false };
   }
   return { type: 'flexible', defaulted: true };
+}
+
+function parseScheduledInstant(raw: string): Date | null {
+  const normalized = raw.trim();
+  const explicitInstant = DATE_ONLY_RE.test(normalized)
+    ? `${normalized}T00:00:00Z`
+    : NAIVE_DATE_TIME_RE.test(normalized)
+      ? `${normalized}Z`
+      : normalized;
+  const parsed = new Date(explicitInstant);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /** Percent refunded for a policy given hours-until-start (null = unknown → most generous tier). */
@@ -104,8 +117,8 @@ export function computeCancellationRefund(params: {
 
   let hoursUntilStart: number | null = null;
   if (params.scheduledDate) {
-    const start = new Date(params.scheduledDate);
-    if (!isNaN(start.getTime())) {
+    const start = parseScheduledInstant(params.scheduledDate);
+    if (start) {
       hoursUntilStart = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
     }
   }

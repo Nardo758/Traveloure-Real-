@@ -1,0 +1,25 @@
+RUNTIME LANDING DISPATCH — commit 6298346 (merged as PR #475; rulings 112–116 + toast polish)
+
+The workspace is already synced (HEAD = 6298346, identical to main). Your static assessment already passed every item after corrections — this pass is runtime only, in the running app, NOT plan mode. Do not re-do static code reading. Report PASS/FAIL per item with what you actually saw on screen; if something fails at runtime, describe it — do not patch around it.
+
+0. Boot:
+
+Restart the server. Boot logs must show 216_source_locale.sql applied (or already recorded) and 217/217 total in ledger. If the migration errors, STOP and report the exact log lines.
+Run npx tsc --noEmit 2>&1 | grep -c 'error TS' → must be ≤ 170 (this was the one gate plan mode blocked; CI already passed it on this exact commit, so a different number means your local state diverged — report, don't fix).
+1. The three items your static pass initially misread — prove them live:
+
+Q6: Open a property listing's editor on Workstation (not ServiceForm — property edits route there by design). Set min-stay (input-edit-property-min-stay) to 2, save, reopen → persists. Confirm the cancellation band select shows the enforced-window options (Flexible / Moderate / Strict / Non-refundable with the explicit refund windows).
+R3: As admin, approve or reject any submitted listing → the provider's Inbox → Notifications tab (tab-inbox-notifications) shows the decision notification. Decide the same listing again → no duplicate.
+Item 11: /provider/services/new → pick any normal offering → NO Category row renders, exactly one Change button (in the offering header). Then, if you can, pick an offering whose category can't resolve → the honest red banner appears WITH the category row — that's the deliberate exception, not a regression.
+2. Ruling 115 runtime spot-check:
+
+Any approved listing → Languages card → save a Japanese service name → chip flips to Live; GET /api/services/<id>/?locale=ja (or view the page with chrome set to 日本語) shows the translated name.
+"Draft with AI": report which honest state you got (labeled draft + Approve button if ANTHROPIC_API_KEY is set; inline "AI draft unavailable" banner if not).
+3. Ruling 116 runtime spot-check:
+
+/p/<handle> logged out → 🌐 menu present; switch to 日本語 → translated card names swap in, untranslated cards keep originals, the one-line note appears above the Services lane; switch back → note gone; reload → language choice persisted.
+/ready-made/<id> and any shared-trip link (/trips/shared/<token> or /itinerary-view/<token>) → 🌐 menu present and switches the UI.
+4. Toast polish (6298346):
+
+In a listing's weekly availability editor, add two identical day/time windows and save → the error toast shows the server's message about identical windows (not a generic "check the fields"). (The 409 other-tab wording is hard to reproduce manually — code-level confirmation is fine for that arm.)
+5. Deploy caution (before any Replit publish): migrations 214/215/216 are additive-nullable with NO CHECK constraints, so the known publish-time CHECK trap does not apply to them. No preflight remap needed. Standard rule still applies: never accept the "copy dev database over production" option.

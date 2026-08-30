@@ -1,207 +1,133 @@
 /**
- * text-sanitizer.ts — shared server-side sanitizer for user-authored free text.
+ * Text sanitizer for provider-authored free-text fields.
  *
- * Defense-in-depth (task: harden provider text fields against script injection):
- * React auto-escapes on render, but stored raw payloads (`<img src=x onerror=…>`)
- * are a latent stored-XSS risk for every NON-React consumer — transactional
- * emails, PDF generation, CSV/API exports, admin tools that render HTML.
- * So provider-entered free text is sanitized ON WRITE with the same pattern the
- * expert profile route already uses (strip tags, then entity-encode the
- * dangerous characters). Plain prose passes through unchanged apart from
- * `<>'"` encoding; there is no legitimate reason for HTML in these fields.
+ * Applied on WRITE by provider routes so that HTML/script payloads cannot reach
+ * emails, exports, or AI prompts. The same function is used by the backfill script
+ * (scripts/backfill-provider-text-sanitize.ts) to clean rows written before the
+ * write-path guard existed.
  *
- * This module is the ONE home for that logic — routes.ts's original local
- * `sanitizeInput`/`sanitizeObject` now delegate here so the pattern can't drift.
+ * ─── CANONICAL SANITIZATION POLICY ─────────────────────────────────────────────
+ *
+ * The codebase uses TWO sanitizers for user-authored text. Choose based on the
+ * rendering context of the field, not the role of the author:
+ *
+ * 1. `sanitizeText` / `sanitizeStringFields` / `sanitizeDeep`  (THIS FILE)
+ *    ▸ For: provider listing fields (serviceName, description, meetingPoint, etc.)
+ *           rendered exclusively through React's text-node path (never innerHTML).
+ *    ▸ What it does: strips real HTML/XML tags; leaves bare `<` and `>` in prose
+ *      ("price < $50") intact.
+ *    ▸ Why bare angle-brackets are NOT entity-encoded: React escapes at render time
+ *      via DOM text nodes. A value stored as `&lt;` would display as the literal six
+ *      characters `&lt;` on screen — a double-escaping artifact visible to the user.
+ *    ▸ Safe for: React UI, AI prompts, server-side string processing.
+ *    ▸ NOT sufficient for: non-React rendering paths that write raw HTML (email
+ *      templates, PDF generators, CSV/HTML exports). If a new non-React surface is
+ *      added that renders listing text as raw HTML, the rendering layer MUST apply
+ *      its own HTML-escaping (e.g. template engine auto-escape, entity encoding in
+ *      the email renderer) rather than relying solely on this write-path guard.
+ *
+ * 2. `sanitizeInput`  (server/utils/sanitize.ts)
+ *    ▸ For: expert profile fields, storefront bios, review replies, expert notes —
+ *           any field that may flow into a non-React surface NOW (e.g. provider-reply
+ *           stored and re-read in admin consoles, email footers, future PDF reports).
+ *    ▸ What it does: strips HTML tags AND entity-encodes remaining `< > ' "`.
+ *    ▸ Safe for: React UI AND raw-HTML rendering paths.
+ *    ▸ Trade-off: entity-encoded values display correctly in React only because JSX
+ *      renders text nodes (not innerHTML); the entity characters are stored in the DB
+ *      and are a valid persistent form.
+ *
+ * The divergence is INTENTIONAL. Provider listing text has a well-established React-
+ * only render path today. The `sanitizeText` approach avoids double-encoding artifacts
+ * (e.g. a café description stored as `caf&eacute;` displayed literally). If a future
+ * non-React export path is added, its rendering layer must own the HTML escaping step.
+ *
+ * ────────────────────────────────────────────────────────────────────────────────
+ *
+ * Strategy:
+ *   1. Strip ACTUAL HTML/XML tags — sequences that begin with `<`, start with a
+ *      letter, `/`, or `!` (marking a tag name, closing tag, comment, or DOCTYPE),
+ *      and end with `>`. Plain angle-brackets in prose ("price < $50", "3 < x < 10")
+ *      are NOT matched and are preserved as-is.
+ *   2. Trim surrounding whitespace.
+ *
+ * Null / undefined values are returned unchanged so callers don't need to guard
+ * nullable columns.
+ *
+ * What this is NOT:
+ *   - A general-purpose HTML parser. It neutralises the common stored-XSS patterns
+ *     (<script>, <img onerror=…>, <a href="javascript:…">, event-attribute injections)
+ *     without corrupting legitimate free text that happens to contain angle brackets.
+ *   - A reversible transformation. Do not apply it to content that must survive a
+ *     round-trip with real HTML preserved (use a dedicated HTML sanitizer library for
+ *     that use-case).
  */
 
-/** Strip HTML tags and entity-encode dangerous characters. Non-strings pass through. */
-export function sanitizeText<T>(input: T): T {
+/**
+ * Matches real HTML/XML tags:
+ *   <tagName …>          — opening / self-closing
+ *   </tagName …>         — closing
+ *   <!-- … -->           — HTML comment (non-greedy across newlines)
+ *   <!DOCTYPE …>         — DOCTYPE declaration
+ *   <?…?>                — XML processing instruction
+ *
+ * Does NOT match bare `<` followed by whitespace, digits, or punctuation,
+ * so text like "price < $50" or "option a < option b" is left intact.
+ */
+const TAG_RE =
+  /<(?:\/[A-Za-z][^>]*|[A-Za-z][^>]*|!--[\s\S]*?--|![A-Za-z][^>]*|\?[^>]*\?)>/g;
+/**
+ * Sanitize a single provider free-text value.
+ * Returns null / undefined unchanged.
+ */
+export function sanitizeText(input: string | null | undefined): typeof input {
+  if (input == null) return input;
   if (typeof input !== "string") return input;
-  return (input as string)
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "") // drop script/style INCLUDING their content
-    .replace(/<[^>]*>/g, "") // remove remaining HTML tags
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = {
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&#39;",
-        '"': "&quot;",
-      };
-      return entities[char] || char;
-    })
-    .trim() as unknown as T;
-}
 
-/** Sanitize every top-level string field of an object (shallow). */
-export function sanitizeObjectStrings<T extends Record<string, any>>(obj: T): T {
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    if (typeof result[key] === "string") {
-      (result as Record<string, any>)[key] = sanitizeText(result[key]);
-    }
-  }
-  return result;
+  return input
+    .replace(TAG_RE, "")  // step 1 — strip real HTML tags
+    .trim();               // step 2 — trim whitespace
 }
 
 /**
- * Sanitize ONLY the named free-text fields of an object, in place on a shallow
- * copy. Handles string values and arrays of strings; null/undefined and
- * non-string values are left untouched. Use this on allow-listed write payloads
- * where only specific fields are prose (ids/enums/urls must not be mangled).
+ * Return a shallow copy of `obj` with every string value passed through
+ * `sanitizeText`. Non-string values are left untouched.
  */
-/**
- * Recursively sanitize every string inside a value — handles plain strings,
- * arrays (e.g. whatIncluded/requirements string arrays), and objects
- * (e.g. faqs [{question, answer}], pricingTiers [{label, price, unit, description}]).
- * Non-string leaves (numbers, booleans, null) pass through untouched.
- */
-export function sanitizeDeep<T>(value: T): T {
-  if (typeof value === "string") return sanitizeText(value);
-  if (Array.isArray(value)) return value.map((v) => sanitizeDeep(v)) as unknown as T;
-  if (value && typeof value === "object") {
-    const out: Record<string, any> = {};
-    for (const [k, v] of Object.entries(value as Record<string, any>)) out[k] = sanitizeDeep(v);
-    return out as T;
-  }
-  return value;
-}
-
-/**
- * Every user-authored prose field accepted on provider_services writes — including the
- * structured JSON prose (whatIncluded/requirements string arrays, faqs question/answer
- * objects, pricingTiers label/unit/description). Deliberately EXCLUDES ids, enums, URLs,
- * times, and numeric/config fields, which must not be mangled.
- */
-export const PROVIDER_SERVICE_TEXT_FIELDS = [
-  "serviceName",
-  "shortDescription",
-  "description",
-  "priceBasedOn",
-  "deliveryTimeframe",
-  "location",
-  "meetingPoint",
-  "pickupAddress",
-  "dropOffPoint",
-  "cancellationPolicy",
-  "whatIncluded",
-  "requirements",
-  "faqs",
-  "pricingTiers",
-  "deliverables",
-  "experienceTypes",
-  "availability",
-  "categoryAttributes",
-  "rejectionReason",
-  "contentAffinityTags",
-  "leadTime",
-  "deliveryLanguages",
-  "city",
-  "neighborhood",
-  "cancellationPolicyType",
-  "earliestStartTime",
-  "latestStartTime",
-] as const;
-// Deliberately EXCLUDED (classification, not oversight): galleryImages/serviceImage/serviceFile
-// (URLs — entity-encoding quotes corrupts querystrings; validated as URLs elsewhere), enum-ish
-// status/mode/type fields constrained by zod enums, and FK/id columns.
-
-/**
- * Sanitize a raw provider-service write body BEFORE zod validation, so length/min
- * constraints are enforced against the value that is actually stored (entity encoding
- * can grow a string past a varchar limit; tag stripping can empty a required field).
- */
-export function sanitizeProviderServiceBody<T extends Record<string, any>>(body: T): T {
-  return sanitizeBodyFields(body, PROVIDER_SERVICE_TEXT_FIELDS);
-}
-
-/** Generic form of sanitizeProviderServiceBody: deep-sanitize the named fields of a raw body. */
-export function sanitizeBodyFields<T extends Record<string, any>>(
-  body: T,
-  fields: readonly string[],
-): T {
-  const result = { ...(body ?? {}) } as Record<string, any>;
-  for (const key of fields) {
-    if (key in result) result[key] = sanitizeDeep(result[key]);
-  }
-  return result as T;
-}
-
-/**
- * Expert custom-listing prose (provider_service_listings) — excludes imageUrl/galleryImages
- * (URLs), price (numeric string), and boolean/id fields.
- */
-export const EXPERT_LISTING_TEXT_FIELDS = [
-  "title",
-  "description",
-  "categoryName",
-  "duration",
-  "deliverables",
-  "cancellationPolicy",
-  "leadTime",
-  "experienceTypes",
-] as const;
-
-/**
- * Provider onboarding application prose (service_provider_forms) — excludes URLs
- * (website/bookingLink/file uploads), booleans, verification/status fields.
- */
-export const PROVIDER_APPLICATION_TEXT_FIELDS = [
-  "businessName",
-  "name",
-  "country",
-  "address",
-  "description",
-  "serviceOffers",
-  "businessCountry",
-  "businessRegistrationNumber",
-] as const;
-
-/**
- * Expert application prose (local_expert_forms) — excludes email/phone, social links
- * (URLs), govId/travelLicence (data URLs), and boolean/numeric fields.
- */
-export const EXPERT_APPLICATION_TEXT_FIELDS = [
-  "firstName",
-  "lastName",
-  "country",
-  "city",
-  "displayName",
-  "headline",
-  "destinations",
-  "specialties",
-  "languages",
-  "experienceTypes",
-  "specializations",
-  "selectedServices",
-  "neighborhoods",
-  "knowledgeProofAnswers",
-  "localSpecialties",
-  "yearsOfExperience",
-  "bio",
-  "portfolio",
-  "certifications",
-  "availability",
-  "responseTime",
-  "hourlyRate",
-  "services",
-  "shortBio",
-  "expertNotesStyle",
-] as const;
-
-export function sanitizeTextFields<T extends Record<string, any>>(
+export function sanitizeStringFields<T extends Record<string, unknown>>(
   obj: T,
-  fields: readonly (keyof T & string)[],
 ): T {
-  const result = { ...obj };
-  for (const key of fields) {
-    const v = result[key];
+  const out = { ...obj } as Record<string, unknown>;
+  for (const key of Object.keys(out)) {
+    const v = out[key];
     if (typeof v === "string") {
-      (result as Record<string, any>)[key] = sanitizeText(v);
-    } else if (Array.isArray(v)) {
-      (result as Record<string, any>)[key] = v.map((item: unknown) =>
-        typeof item === "string" ? sanitizeText(item) : item,
-      );
+      out[key] = sanitizeText(v);
     }
   }
-  return result;
+  return out as T;
+}
+
+/**
+ * Recursively sanitize any JSON-safe value before storage.
+ *
+ * - Strings are passed through `sanitizeText` (HTML tags stripped, stray angle
+ *   brackets entity-encoded).
+ * - Arrays are mapped element-by-element with the same recursion, so nested
+ *   arrays (e.g. [[tag]], arrays-of-objects) are fully covered.
+ * - Plain objects are copied with every value recursed.
+ * - All other values (numbers, booleans, null, undefined) are returned as-is.
+ *
+ * Use this on free-text form payloads (e.g. expert application bodies) before
+ * writing them to the database so that stored-XSS payloads cannot reach any
+ * surface that renders these fields as HTML.
+ */
+export function sanitizeDeep(val: unknown): unknown {
+  if (typeof val === "string") return sanitizeText(val);
+  if (Array.isArray(val)) return val.map(sanitizeDeep);
+  if (val !== null && typeof val === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(val as object)) {
+      out[key] = sanitizeDeep((val as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return val;
 }

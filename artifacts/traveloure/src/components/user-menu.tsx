@@ -1,0 +1,217 @@
+import { Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  ChevronDown,
+  UserCheck,
+  Building2,
+  LogOut,
+  LayoutDashboard,
+  User,
+  Shield,
+  Briefcase,
+  CalendarClock,
+} from "lucide-react";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+
+const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
+const PROVIDER_ROLES = ["service_provider"];
+
+function getRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    travel_expert: "Trip Planner",
+    local_expert: "Local Expert",
+    event_planner: "Event Planner",
+    service_provider: "Provider",
+    executive_assistant: "Exec. Assistant",
+    expert: "Expert",
+    admin: "Admin",
+    user: "",
+  };
+  return labels[role] ?? "";
+}
+
+function getDisplayName(user: { firstName?: string | null; email?: string | null }): string {
+  if (user.firstName?.trim()) return user.firstName.trim();
+  if (user.email) return user.email.split("@")[0];
+  return "User";
+}
+
+function getAvatarFallback(user: { firstName?: string | null; email?: string | null }): string {
+  if (user.firstName?.trim()) return user.firstName.trim()[0].toUpperCase();
+  if (user.email) return user.email[0].toUpperCase();
+  return "U";
+}
+
+export function UserMenu() {
+  const { user, logout } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const [location] = useLocation();
+
+  if (!user) {
+    return (
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          className="rounded-full px-4"
+          onClick={() => openSignInModal()}
+          data-testid="button-login"
+        >
+          Login
+        </Button>
+        <Button
+          className="bg-primary hover:bg-primary/90 text-white rounded-full px-4"
+          onClick={() => openSignInModal()}
+          data-testid="button-sign-up"
+        >
+          Sign Up
+        </Button>
+      </div>
+    );
+  }
+
+  const role = user.role ?? "user";
+  const isExpert = EXPERT_ROLES.includes(role);
+  const isProvider = PROVIDER_ROLES.includes(role);
+  const isEA = role === "executive_assistant";
+  const isAdmin = role === "admin";
+
+  const roleLabel = getRoleLabel(role);
+  const displayName = getDisplayName(user);
+  const avatarFallback = getAvatarFallback(user);
+
+  // Active-console tracking — which console path is the user currently in?
+  const inUserConsole = location.startsWith("/dashboard") || location.startsWith("/profile");
+  const inExpertConsole = location.startsWith("/expert");
+  const inProviderConsole = location.startsWith("/provider");
+  const inEAConsole = location.startsWith("/ea");
+  const inAdminConsole = location.startsWith("/admin");
+
+  function consoleItemClass(active: boolean) {
+    return active
+      ? "cursor-pointer bg-primary/10 text-primary font-semibold"
+      : "cursor-pointer";
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        {/* TEST 3 — avatar button: aria-label announces user identity to screen readers */}
+        <Button
+          variant="ghost"
+          className="flex items-center gap-2 px-2"
+          aria-label={`User menu for ${displayName}${roleLabel ? `, ${roleLabel}` : ""}`}
+          data-testid="button-user-menu"
+        >
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={user.profileImageUrl || undefined} alt="" aria-hidden="true" data-testid="user-avatar-image" />
+            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm" aria-hidden="true" data-testid="user-avatar-fallback">
+              {avatarFallback}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col items-start leading-none" aria-hidden="true">
+            <span className="text-sm font-medium text-muted-foreground dark:text-gray-300">
+              {displayName}
+            </span>
+            {roleLabel && (
+              <span className="text-[10px] font-semibold text-primary/80 leading-none mt-0.5">
+                {roleLabel}
+              </span>
+            )}
+          </div>
+          <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-56" data-testid="user-menu-content">
+        {/* Identity header */}
+        <DropdownMenuLabel className="font-normal pb-1">
+          <p className="text-sm font-semibold text-foreground truncate" data-testid="user-menu-display-name">{displayName}</p>
+          {user.email && (
+            <p className="text-xs text-muted-foreground truncate" data-testid="user-menu-email">{user.email}</p>
+          )}
+          {roleLabel && (
+            <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary" data-testid="user-menu-role-badge">
+              {roleLabel}
+            </span>
+          )}
+        </DropdownMenuLabel>
+
+        <DropdownMenuSeparator />
+
+        {/* ── My Dashboard — visible to every logged-in user ── */}
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard" className={consoleItemClass(inUserConsole)} data-testid="link-user-console">
+            <User className="w-4 h-4 mr-2" />
+            My Dashboard
+          </Link>
+        </DropdownMenuItem>
+
+        {/* ── Expert Console — only for expert roles ── */}
+        {isExpert && (
+          <DropdownMenuItem asChild>
+            <Link href="/expert/dashboard" className={consoleItemClass(inExpertConsole)} data-testid="link-expert-console">
+              <UserCheck className="w-4 h-4 mr-2" />
+              Expert Console
+            </Link>
+          </DropdownMenuItem>
+        )}
+
+        {/* ── Provider Console — only for service_provider role ── */}
+        {isProvider && (
+          <DropdownMenuItem asChild>
+            <Link href="/provider/dashboard" className={consoleItemClass(inProviderConsole)} data-testid="link-provider-console">
+              <Briefcase className="w-4 h-4 mr-2" />
+              Provider Console
+            </Link>
+          </DropdownMenuItem>
+        )}
+
+        {/* ── EA-specific ── */}
+        {isEA && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/ea/dashboard" className={consoleItemClass(inEAConsole)} data-testid="link-ea-console">
+                <CalendarClock className="w-4 h-4 mr-2" />
+                EA Console
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
+
+        {/* ── Admin-specific ── */}
+        {isAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/admin/dashboard" className={consoleItemClass(inAdminConsole)} data-testid="link-admin-console">
+                <Shield className="w-4 h-4 mr-2" />
+                Admin Panel
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => logout()}
+          className="text-destructive cursor-pointer"
+          data-testid="button-logout"
+        >
+          <LogOut className="w-4 h-4 mr-2" />
+          Logout
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

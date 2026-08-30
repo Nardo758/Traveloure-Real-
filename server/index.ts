@@ -32,11 +32,16 @@ import { adminDigestScheduler } from "./services/admin-digest-scheduler.service"
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
 import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
 import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
+import { fxRateRefreshScheduler } from "./services/fx-rate-refresh.service";
 import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
-import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
+import { emailOutboxScheduler } from "./services/email-outbox.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { getStripeSecretKey } from "./utils/stripe-key";
+import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
+import { runDemandRollup } from "./jobs/demandRollup";
+import { runOnepagerRevalidation } from "./jobs/onepagerRevalidation";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
@@ -187,12 +192,12 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
   };
 
-  const stripePresent = Boolean(process.env.STRIPE_SECRET_KEY);
+  const stripePresent = Boolean(getStripeSecretKey());
   checks.stripe = {
     status: stripePresent ? "ok" : "fail",
     message: stripePresent
-      ? "STRIPE_SECRET_KEY present"
-      : "STRIPE_SECRET_KEY missing — payments will fail",
+      ? "Stripe key present"
+      : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
   };
 
   const resendPresent = Boolean(process.env.RESEND_API_KEY);
@@ -347,10 +352,10 @@ async function runDatabaseSeeding() {
 
   try {
     const popularCitiesResult = await seedPopularCitiesContent();
-    if (popularCitiesResult.gems > 0 || popularCitiesResult.services > 0) {
+    if (popularCitiesResult.gems > 0) {
       logger.info(
-        { gems: popularCitiesResult.gems, services: popularCitiesResult.services },
-        "Seeded popular cities content (hidden gems + services)",
+        { gems: popularCitiesResult.gems },
+        "Seeded popular cities content (hidden gems)",
       );
     }
   } catch (err) {
@@ -503,6 +508,11 @@ if (process.env.NODE_ENV === "production") {
 
   await registerRoutes(httpServer, app);
 
+  // Unknown /api/* paths must return 404 JSON, not fall through to the SPA
+  // catch-all (which returned 200 text/html and masked missing routes).
+  // Mounted immediately after registerRoutes so every real API route wins first.
+  app.use("/api", notFoundHandler);
+
   // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
   // Must be registered after API routes but before Vite's catch-all
   app.use("/__mockup", (req: Request, res: Response) => {
@@ -584,6 +594,9 @@ if (process.env.NODE_ENV === "production") {
     stripeConnectReminderScheduler.start();
     logger.info("Stripe Connect reminder scheduler started");
 
+    fxRateRefreshScheduler.start();
+    logger.info("FX rate refresh scheduler started");
+
     // R-F: T-48h Trip Card auto-handover nudge (Console Realign, docs/briefs/CONSOLE_REALIGN_BRIEF.md).
     tripCardHandoverScheduler.start();
     logger.info("Trip Card handover scheduler started");
@@ -593,16 +606,64 @@ if (process.env.NODE_ENV === "production") {
     itineraryGenerationSweepScheduler.start();
     logger.info("Itinerary generation sweep scheduler started");
 
+    emailOutboxScheduler.start();
+    logger.info("Email outbox retry scheduler started");
+
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();
 
-    runDailyAdminDigest();
-    setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
+    // TravelPulse AI refresh scheduler — previously the ONLY refresh paths were the admin
+    // manual endpoints, so trending/city intelligence (and the happening-now surface derived
+    // from it) went permanently stale once seeded. Daily pass, first run delayed 2h to clear
+    // startup and stay behind the reconciliation job. refreshStaleAICities() only touches
+    // cities whose expiresAt has lapsed and increments ai_refresh_error_count on failure, so
+    // running it while the xAI account is out of credits is safe (errors are counted, not thrown).
+    setTimeout(() => {
+      void (async () => {
+        const { travelPulseService } = await import("./services/travelpulse.service");
+        const run = () =>
+          travelPulseService
+            .refreshStaleAICities()
+            .then((r) => logger.info(r, "[travelpulse] daily AI refresh pass"))
+            .catch((err) => logger.error({ err }, "[travelpulse] daily AI refresh failed"));
+        await run();
+        setInterval(run, 24 * 60 * 60 * 1000);
+      })();
+    }, 2 * 60 * 60 * 1000);
 
     setTimeout(() => {
       runStripeReconciliation();
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+
+    // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
+    // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
+    setTimeout(() => {
+      void runAvailabilityMaterializationSweep();
+      setInterval(() => {
+        void runAvailabilityMaterializationSweep();
+      }, 24 * 60 * 60 * 1000);
+    }, 90 * 60 * 1000);
+
+    // Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): nightly rollup recompute
+    // (unmet_demand_slip + slip_funnel), REPLACE-BY-DATE/idempotent. Same delayed-first-pass +
+    // 24h cadence; all math in the L6 demand-rollup.service.ts (R16 synthetic filter applied there).
+    setTimeout(() => {
+      void runDemandRollup();
+      setInterval(() => {
+        void runDemandRollup();
+      }, 24 * 60 * 60 * 1000);
+    }, 95 * 60 * 1000);
+
+    // Partner Demand Phase 4 (R32): one-pager approval re-validation — withdraw any approval whose
+    // market dropped below the public floor or whose template was bumped. Runs just AFTER the rollup
+    // recompute (105 min delayed first pass) so it evaluates fresh figures, then daily.
+    setTimeout(() => {
+      void runOnepagerRevalidation();
+      setInterval(() => {
+        void runOnepagerRevalidation();
+      }, 24 * 60 * 60 * 1000);
+    }, 105 * 60 * 1000);
 
     // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
     // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
@@ -649,11 +710,47 @@ if (process.env.NODE_ENV === "production") {
       }, msUntilFirst);
     })();
 
-    import("./db").then(({ pool }) => {
-      pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
-        .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
-        .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-    }).catch(() => {});
+    // Bootstrap an admin account from the ADMIN_EMAIL environment variable.
+    // This replaces the former hard-coded email promotion. Set ADMIN_EMAIL in
+    // the environment (it already exists as a secret) to designate an account
+    // as admin on first boot. The promotion is idempotent and only fires when
+    // the env var is present.
+    const bootstrapAdminEmail = process.env.ADMIN_EMAIL?.trim();
+    if (bootstrapAdminEmail) {
+      // Promotion + audit record are written in ONE transaction so bootstrap
+      // promotions appear in the role-change audit trail like every other
+      // role change (actor = the promoted account itself, reason marks it).
+      import("./db").then(async ({ pool }) => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const { rows } = await client.query(
+            "SELECT id, role FROM users WHERE email = $1 AND role != 'admin' FOR UPDATE",
+            [bootstrapAdminEmail],
+          );
+          if (rows.length > 0) {
+            const { id, role: oldRole } = rows[0];
+            await client.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
+            // id has no DB-side default (schema uses a client-side $defaultFn),
+            // so it must be supplied explicitly in raw SQL.
+            await client.query(
+              `INSERT INTO access_audit_logs (id, actor_id, actor_role, action, resource_type, resource_id, target_user_id, metadata)
+               VALUES ($1, $2, $3, 'role_change', 'user', $2, $2, $4)`,
+              [crypto.randomUUID(), id, "system", JSON.stringify({ oldRole, newRole: "admin", reason: "admin_email_bootstrap" })],
+            );
+            await client.query("COMMIT");
+            logger.info({ email: bootstrapAdminEmail, oldRole }, "Admin bootstrap promotion from ADMIN_EMAIL (audited)");
+          } else {
+            await client.query("ROLLBACK");
+          }
+        } catch (err) {
+          await client.query("ROLLBACK").catch(() => {});
+          logger.error({ err }, "Admin bootstrap failed (promotion rolled back)");
+        } finally {
+          client.release();
+        }
+      }).catch((err) => logger.error({ err }, "Admin bootstrap import failed"));
+    }
 
     runDatabaseSeeding()
       .then(() => {

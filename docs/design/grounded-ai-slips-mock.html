@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grounded AI Slips</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#FAFAF8; --surface:#FFFFFF; --surface-2:#F3F2EE; --border:#E5E3DD; --border-strong:#D6D3CA;
+    --ink:#1A1A18; --muted:#7A7A72; --faint:#A6A29A;
+    --catalog:#14716A; --catalog-soft:#E1EFED;      /* bookable platform service */
+    --place:#2857B8; --place-soft:#E4EAF7;           /* recognized DMO place (informational) */
+    --ai:#8A6D3B; --ai-soft:#F3ECDD;                 /* ungrounded AI suggestion */
+    --red:#B91C1C; --green:#15803D; --amber:#B45309;
+    --shadow:0 1px 2px rgba(26,26,24,.05),0 8px 24px rgba(26,26,24,.06);
+    --radius:12px;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+    --ground:#14140F; --surface:#1E1E1A; --surface-2:#26261F; --border:#34342C; --border-strong:#43433A;
+    --ink:#ECEAE3; --muted:#9C988E; --faint:#6E6A61;
+    --catalog:#5BB6AD; --catalog-soft:#10312E;
+    --place:#8AA6E6; --place-soft:#182545;
+    --ai:#CBA96A; --ai-soft:#2C2416;
+    --red:#E88178; --green:#6FC088; --amber:#E0A45C;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#14140F; --surface:#1E1E1A; --surface-2:#26261F; --border:#34342C; --border-strong:#43433A;
+    --ink:#ECEAE3; --muted:#9C988E; --faint:#6E6A61;
+    --catalog:#5BB6AD; --catalog-soft:#10312E;
+    --place:#8AA6E6; --place-soft:#182545;
+    --ai:#CBA96A; --ai-soft:#2C2416;
+    --red:#E88178; --green:#6FC088; --amber:#E0A45C;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;}
+  header.mast{padding:66px 0 38px;border-bottom:1px solid var(--border);}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--catalog);margin:0 0 16px;}
+  h1{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:clamp(32px,5vw,50px);line-height:1.05;letter-spacing:-.01em;margin:0 0 18px;text-wrap:balance;max-width:17ch;}
+  .lede{font-size:18px;color:var(--muted);max-width:64ch;margin:0;}
+  .lede strong{color:var(--ink);font-weight:600;}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px;}
+  .lg{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);background:var(--surface);}
+  .lg .sw{width:9px;height:9px;border-radius:2px;flex:none;}
+  section{padding:54px 0;border-bottom:1px solid var(--border);}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;}
+  .sec-num{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--faint);font-weight:500;flex:none;}
+  h2{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:26px;letter-spacing:-.01em;margin:0;text-wrap:balance;}
+  .sec-sub{color:var(--muted);font-size:15px;margin:8px 0 28px 34px;max-width:70ch;}
+  @media(max-width:640px){.sec-sub{margin-left:0;}}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+  @media(max-width:800px){.split{grid-template-columns:1fr;}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+  .pbar{display:flex;align-items:center;gap:7px;padding:9px 13px;background:var(--surface-2);border-bottom:1px solid var(--border);}
+  .pbar .dot{width:9px;height:9px;border-radius:50%;background:var(--border-strong);}
+  .pbar .loc{margin-left:8px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);}
+  .pbody{padding:16px;}
+  .state{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px;font-weight:500;}
+  .state.before{color:var(--faint);} .state.after{color:var(--green);}
+  .daylabel{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:2px 0 8px;}
+
+  /* itinerary item rows */
+  .item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--surface);}
+  .item .top{display:flex;align-items:flex-start;gap:9px;}
+  .item .time{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);flex:none;width:52px;padding-top:1px;}
+  .item .body{flex:1;min-width:0;}
+  .item .t{font-size:14px;font-weight:600;}
+  .item .d{font-size:12px;color:var(--muted);margin-top:1px;}
+  .tag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:500;padding:2px 7px;border-radius:999px;margin-top:7px;}
+  .tag.catalog{background:var(--catalog-soft);color:var(--catalog);}
+  .tag.place{background:var(--place-soft);color:var(--place);}
+  .tag.ai{background:var(--ai-soft);color:var(--ai);}
+  .item.lc{border-left:3px solid var(--catalog);}
+  .item.lp{border-left:3px solid var(--place);}
+  .item.la{border-left:3px solid var(--border-strong);border-style:dashed;}
+  .actions{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
+  .btn{font-size:11.5px;font-weight:500;border-radius:7px;padding:5px 10px;border:1px solid transparent;cursor:default;display:inline-flex;align-items:center;gap:5px;}
+  .btn.book{background:var(--catalog);color:#fff;}
+  :root[data-theme="dark"] .btn.book,:root:not([data-theme="light"]) .btn.book{color:#0c1c1a;}
+  @media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn.book{color:#0c1c1a;}}
+  .btn.ghost{background:transparent;border-color:var(--border-strong);color:var(--ink);}
+  .btn.link{background:transparent;color:var(--place);padding:5px 2px;}
+  .pinnote{font-size:11px;color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:5px;}
+
+  .notes{position:sticky;top:20px;}
+  .notes h3{font-size:12px;font-family:"IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--catalog);margin:0 0 12px;}
+  .note{display:flex;gap:10px;margin-bottom:14px;}
+  .note .n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--faint);flex:none;padding-top:1px;}
+  .note p{margin:0;font-size:13.5px;}
+  .note p span{color:var(--muted);}
+  code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;word-break:break-word;}
+
+  /* resolver flow */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  @media(max-width:820px){.flow{grid-template-columns:1fr 1fr;}}
+  @media(max-width:460px){.flow{grid-template-columns:1fr;}}
+  .step{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);position:relative;}
+  .step .k{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:9px;}
+  .step h4{margin:0 0 6px;font-size:14.5px;font-weight:600;}
+  .step p{margin:0;font-size:12.5px;color:var(--muted);}
+  .failclosed{margin-top:20px;padding:14px 16px;border-radius:var(--radius);background:var(--catalog-soft);border:1px solid color-mix(in srgb,var(--catalog) 22%,transparent);}
+  .failclosed p{margin:0;font-size:13.5px;} .failclosed b{font-weight:600;}
+
+  .gov{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+  @media(max-width:640px){.gov{grid-template-columns:1fr;}}
+  .gov>div{padding:18px 20px;}
+  .gov .have{background:var(--surface);} .gov .new{background:var(--surface-2);border-left:1px solid var(--border);}
+  @media(max-width:640px){.gov .new{border-left:none;border-top:1px solid var(--border);}}
+  .gov h4{margin:0 0 11px;font-size:12px;text-transform:uppercase;letter-spacing:.07em;}
+  .gov .have h4{color:var(--green);} .gov .new h4{color:var(--amber);}
+  .gov ul{margin:0;padding:0;list-style:none;}
+  .gov li{font-size:13px;padding:5px 0 5px 20px;position:relative;}
+  .gov li::before{position:absolute;left:0;top:4px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
+  .gov .have li::before{content:"\2713";color:var(--green);}
+  .gov .new li::before{content:"+";color:var(--amber);}
+  .gov li code{font-size:11px;}
+
+  .qgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.qgrid{grid-template-columns:1fr;}}
+  .qcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;}
+  .qcard .qn{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--catalog);font-weight:500;}
+  .qcard h4{margin:6px 0 6px;font-size:15px;font-weight:600;}
+  .qcard p{margin:0;font-size:13px;color:var(--muted);}
+  .qcard .rec{margin-top:9px;font-size:12.5px;color:var(--ink);} .qcard .rec b{color:var(--green);font-weight:600;}
+
+  .phase{display:flex;gap:14px;flex-wrap:wrap;}
+  .pcard{flex:1;min-width:240px;border-radius:var(--radius);padding:18px 20px;border:1px solid var(--border);background:var(--surface);}
+  .pcard.p2{background:var(--surface-2);}
+  .pcard .lab{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;}
+  .pcard.p1 .lab{color:var(--catalog);} .pcard.p2 .lab{color:var(--faint);}
+  .pcard h4{margin:0 0 6px;font-size:15px;font-weight:600;}
+  .pcard p{margin:0;font-size:13px;color:var(--muted);}
+  footer{padding:40px 0 66px;color:var(--faint);font-size:12.5px;}
+  .icn{width:16px;height:16px;} .icn-sm{width:13px;height:13px;}
+</style>
+
+<header class="mast">
+  <div class="wrap">
+    <p class="eyebrow">Item 2 · Phase 1 · Mock for sign-off</p>
+    <h1>AI slips that link to what a traveler can actually book.</h1>
+    <p class="lede">Today the AI build a traveler triggers to fill their slip returns <strong>100% free text</strong> — titles and descriptions, nothing bookable, nothing on the map. Phase 1 adds a <strong>fail-closed resolver</strong> that grounds each AI item against the real destination catalog and the DMO places we already hold — so a matched item becomes a bookable service or a recognized place with a pin, and an unmatched one stays an honest suggestion. Never a fake link (§13).</p>
+    <div class="legend">
+      <span class="lg"><span class="sw" style="background:var(--catalog)"></span> Catalog match — bookable</span>
+      <span class="lg"><span class="sw" style="background:var(--place)"></span> DMO place — recognized, on the map</span>
+      <span class="lg"><span class="sw" style="background:var(--border-strong)"></span> AI suggestion — unmatched, honest</span>
+    </div>
+  </div>
+</header>
+
+<!-- 1. BEFORE / AFTER SLIP -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>The same day, ungrounded vs grounded</h2></div>
+    <p class="sec-sub">Left: what the primary AI build writes today — every item free-text, none bookable, none pinnable. Right: the same items after the resolver runs. Two ground to the real catalog (bookable), one to a DMO place (map + official link, informational), one finds no honest match and stays a suggestion.</p>
+
+    <div class="split">
+      <div>
+        <p class="state before">Today — <code>generate-itinerary</code></p>
+        <div class="panel">
+          <div class="pbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">Trip Slip · Day 2, Kyoto</span></div>
+          <div class="pbody">
+            <div class="item la"><div class="top"><span class="time">09:00</span><div class="body"><div class="t">Morning temple visit</div><div class="d">Explore a famous Kyoto temple.</div><span class="tag ai">AI · free text</span></div></div></div>
+            <div class="item la"><div class="top"><span class="time">13:00</span><div class="body"><div class="t">Tea ceremony experience</div><div class="d">Try an authentic local tea ceremony.</div><span class="tag ai">AI · free text</span></div></div></div>
+            <div class="item la"><div class="top"><span class="time">18:00</span><div class="body"><div class="t">Dinner in Gion</div><div class="d">Enjoy dinner in the historic district.</div><span class="tag ai">AI · free text</span></div></div></div>
+            <p class="pinnote" style="margin-top:10px;">
+              <svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
+              Nothing bookable · nothing on the map · 0 links
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="state after">Phase 1 — after the resolver</p>
+        <div class="panel">
+          <div class="pbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">Trip Slip · Day 2, Kyoto</span></div>
+          <div class="pbody">
+            <div class="item lp"><div class="top"><span class="time">09:00</span><div class="body">
+              <div class="t">Kiyomizu-dera</div><div class="d">Morning temple visit · recognized place</div>
+              <span class="tag place"><svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> DMO place · 0.94 match</span>
+              <div class="actions"><span class="btn link">Official info &amp; tickets ↗</span></div>
+              <div class="pinnote"><svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Pinned on the map · © OpenStreetMap</div>
+            </div></div></div>
+            <div class="item lc"><div class="top"><span class="time">13:00</span><div class="body">
+              <div class="t">Tea Ceremony with Naoko</div><div class="d">Tea ceremony experience · built by @naoko-kyoto</div>
+              <span class="tag catalog"><svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Catalog · bookable · 0.91 match</span>
+              <div class="actions"><span class="btn book">Add to cart · $60</span><span class="btn ghost">View listing</span></div>
+              <div class="pinnote"><svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Real pin · ★ 4.8 (from the listing)</div>
+            </div></div></div>
+            <div class="item la"><div class="top"><span class="time">18:00</span><div class="body">
+              <div class="t">Dinner in Gion</div><div class="d">Enjoy dinner in the historic district.</div>
+              <span class="tag ai">AI suggestion · no confident match</span>
+              <div class="pinnote"><svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg> Kept as a suggestion — no fake link, no invented pin</div>
+            </div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. THE RESOLVER -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Where grounding happens — one fail-closed pass at build time</h2></div>
+    <p class="sec-sub">After Claude returns the free-text day plan (the existing <code>generate-itinerary</code> route), a resolver runs over each item before the rows are written. It's the net-new heart of Phase 1 — and it reuses the honest-match posture the optimizer already proved.</p>
+
+    <div class="flow">
+      <div class="step"><div class="k">Step 1 · load</div><h4>Destination catalog + DMO places</h4><p>The existing <code>loadOptimizerCatalog(destination)</code> (approved + active + destination-scoped) plus the market's DMO extracted places. Both already exist.</p></div>
+      <div class="step"><div class="k">Step 2 · match</div><h4>Normalized name + geo/category</h4><p>Each AI item's title/location is matched against those two sets — the same normalized-name + confidence composite the DMO resolution waterfall already uses.</p></div>
+      <div class="step"><div class="k">Step 3 · gate</div><h4>Confidence threshold, fail-closed</h4><p>Above threshold → link (catalog id or DMO place id + its coords). Below → no link. An invented or ambiguous match is <b style="color:var(--ink)">never</b> accepted.</p></div>
+      <div class="step"><div class="k">Step 4 · write</div><h4>Stamp the link on the item</h4><p>Catalog match → <code>providerServiceId</code> (already exists) + real coords. DMO match → <code>dmoExtractedPlaceId</code> (net-new column) + its coords. No match → item as-is, <code>origin='ai'</code>.</p></div>
+    </div>
+
+    <div class="failclosed">
+      <p><b>Fail-closed is the whole safety story (§13).</b> The optimizer already honors an AI-returned service id <em>only</em> when it matches a service actually put in front of the AI — "invented, empty, or self-created stays NULL." Phase 1 grounds by the same rule: a link is written only when a real row matches at confidence; otherwise the item stays an honest suggestion. The traveler never sees a booking button that goes nowhere or a pin the platform guessed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3. HAVE vs NEW -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Most of the machinery already exists</h2></div>
+    <p class="sec-sub">The behavioral fork (bookable vs display-only) is already keyed on <code>providerServiceId</code> in the cart projection; the catalog loader, the DMO places, and the honest-match posture are all built. Phase 1 is mostly a resolver + one column.</p>
+    <div class="gov">
+      <div class="have">
+        <h4>Already built — reuse</h4>
+        <ul>
+          <li><code>itinerary_items.providerServiceId</code> + lat/lng columns</li>
+          <li><code>loadOptimizerCatalog</code> — destination-scoped approved catalog (L6, one loader)</li>
+          <li><code>dmo_extracted_places</code> — coords, ticketing_url, normalized_name</li>
+          <li>Bookable-vs-external fork in the cart projection (keyed on <code>providerServiceId</code>)</li>
+          <li>Fail-closed match + confidence posture (optimizer offered-set; DMO waterfall)</li>
+          <li><code>origin='ai'</code> now stamped on the build (shipped in #546/#550)</li>
+        </ul>
+      </div>
+      <div class="new">
+        <h4>Net-new in Phase 1</h4>
+        <ul>
+          <li>The <b>resolver</b> that grounds the free-text build (today only the paid optimizer grounds, and only from services already in the trip)</li>
+          <li><code>itinerary_items.dmoExtractedPlaceId</code> — additive nullable, no CHECK, declared in schema (publish-trap rule)</li>
+          <li>A per-market DMO places loader (today keyed by guide id, not market)</li>
+          <li>Slip rendering of the DMO-place tag + official/ticketing link (catalog + AI treatments already render)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. DECISIONS -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Four calls for you</h2></div>
+    <p class="sec-sub">Each has a recommended default; none is obvious enough to decide silently.</p>
+    <div class="qgrid">
+      <div class="qcard"><span class="qn">Q1</span><h4>When does grounding run?</h4><p>Automatically as part of every AI generate, or a separate "ground this slip" button the traveler presses?</p><p class="rec"><b>Recommend:</b> automatic, in the same build pass — one step, no extra UI, and re-generate re-grounds.</p></div>
+      <div class="qcard"><span class="qn">Q2</span><h4>Does a catalog match auto-add to cart?</h4><p>A grounded bookable item could land in the cart, or just be <em>markable</em> bookable and left to the traveler.</p><p class="rec"><b>Recommend:</b> mark bookable, never auto-cart — the traveler chooses to add (consent; no surprise charges).</p></div>
+      <div class="qcard"><span class="qn">Q3</span><h4>Are DMO places bookable?</h4><p>DMO places aren't platform inventory. Link them as informational (map pin + official/ticketing link), not as a "book on Traveloure" CTA?</p><p class="rec"><b>Recommend:</b> informational only in Phase 1 — real pin + official link, never a platform booking button (that's a §16 affiliate question, Phase 2).</p></div>
+      <div class="qcard"><span class="qn">Q4</span><h4>How conservative is the match?</h4><p>A high threshold grounds fewer items but never wrongly; a low one grounds more but risks a bad link.</p><p class="rec"><b>Recommend:</b> conservative/high — fail-closed. An honest "suggestion" beats a wrong booking link every time (§13).</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. PHASE BOUNDARY -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>The Phase 1 / Phase 2 line</h2></div>
+    <p class="sec-sub">Phase 1 grounds only to things that are safe and in-house. Affiliate/partner inventory is deliberately out until Phase 2, where it rides the §16 booking-agent rail.</p>
+    <div class="phase">
+      <div class="pcard p1">
+        <div class="lab">Phase 1 — this mock</div>
+        <h4>Catalog + DMO</h4>
+        <p><b>Catalog</b> = in-platform bookable services (a real listing, a real charge, add-to-cart). <b>DMO</b> = recognized places we already extracted (map pin + official link, informational). Both are honest, in-house, and need no third-party booking path.</p>
+      </div>
+      <div class="pcard p2">
+        <div class="lab">Phase 2 — filed</div>
+        <h4>Affiliate + registry (§16-safe)</h4>
+        <p>Partner/affiliate inventory grounds through the <b>booking-agent rail</b> (<code>/api/affiliate-booking-requests</code>) — never a raw off-site link. Separate lane; needs the §16 rail wired into the AI build. Not built here.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Item 2 · Phase 1 — mock for decision-maker sign-off. Grounded in current code (generate-itinerary route, loadOptimizerCatalog, dmo_extracted_places, itinerary_items.providerServiceId, the optimizer's fail-closed match). Nothing built yet — awaiting Q1–Q4 answers before implementation.
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+Dispatch — verify Marketplace un-group + surface mastheads landed (PR #576, on main)
+
+1. Pull the merged code and restart:
+
+Then restart the app and hard-reload the browser (clear cache — this is a client/routing change).
+
+2. Confirm the four Marketplace surfaces — each is its OWN page, NO tab bar:
+
+Visit	Expect masthead (Fraunces serif, left-aligned)	Expect content
+/destinations	📍 Destinations + sub "Explore destinations & trending cities."	CityGrid / trending cities
+/ready-made	🏅 Ready-Made Trips + sub "Buy a complete trip…"	Ready-Made shelf
+/events	📅 Events + sub "Upcoming events & activities…"	GlobalCalendar
+/services	🛎️ Services + sub "Book tours, photography, transport…"	Filter bar + service cards
+For each, verify:
+
+The title renders in a serif (Fraunces) face with the emoji in front — not the old sans centered heading.
+There is NO tab bar (no "By Location / Ready-Made / By Date / Browse Services" row) — the grouped header is gone.
+Search bar appears ONLY on /services — absent on the other three.
+The instructional-ad banner ("Planning a wedding, proposal…") is gone from all four.
+3. Confirm nav is dropdown-only (no hub):
+
+The navbar Marketplace item is a dropdown; its four entries deep-link straight to /destinations, /ready-made, /events, /services. There is no intermediate "Marketplace hub" page and no extra click.
+4. Confirm /discover survives only as a redirect (deep links preserved):
+
+/discover?tab=services&q=tea → lands on /services?q=tea (param forwarded).
+/discover (no tab) → /destinations.
+Legacy: /service-providers → /services; /global-calendar → /events; /spontaneous → /destinations.
+5. Health check:
+
+No route renders the 404/NotFound page; no blank pages; browser console clean (no unhandled errors) on all four surfaces.
+Report back: screenshots of the four mastheads (showing the emoji + serif title, no tab bar), plus a one-line pass/fail on the redirect and nav-dropdown checks.
+
+(Note: the Service-Provider storefront redesign is still just a mock awaiting sign-off — not in this deploy, so don't look for visual changes on /p/:handle.)

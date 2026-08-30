@@ -53,7 +53,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { MIN_PAYOUT_CENTS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -140,6 +140,7 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
@@ -239,6 +240,14 @@ router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
 
 router.get("/api/revenue-splits", async (req, res) => {
     try {
+      // Task 1151 (workspace reconciliation): revenue splits expose commercially
+      // sensitive rate config (§18 posture) — admin-only.
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       const splits = await storage.getRevenueSplits();
       res.json(splits);
     } catch (err) {
@@ -281,15 +290,82 @@ export function getRoomNights(item: any): { checkIn: string; checkOut: string; n
   return { checkIn, checkOut, nights };
 }
 
+// ── S11 (DECISIONS.md ledger row 107, docs/briefs/S11_STAY_BOOKING_PROPOSAL.md): ONE
+// preload+resolve pass for a stay's PER-NIGHT rate, on the B1 travel-surcharge precedent
+// (resolveCartSurcharges above — "ONE pass … so the amount quoted and the amount charged can
+// never disagree"). Reads ONLY persisted `vendor_availability_slots.pricing` — never req.body
+// (§14). A night with no materialized row (a manually-created slot with no range/no snapshot, or
+// a property that never adopted service_date_ranges) falls back to `provider_services.price`,
+// byte-identical to the pre-S11 flat-rate behavior — no regression for existing listings.
+export interface StayNightlyRateResult {
+  perNight: number[];
+  total: number;
+}
+
+export async function resolveStayNightlyRates(cartData: any[]): Promise<Map<string, StayNightlyRateResult>> {
+  const out = new Map<string, StayNightlyRateResult>();
+  const stays = cartData
+    .map((item) => ({ item, stay: getRoomNights(item) }))
+    .filter((x): x is { item: any; stay: { checkIn: string; checkOut: string; nights: number } } => x.stay !== null);
+  if (stays.length === 0) return out;
+
+  const serviceIds = Array.from(new Set(stays.map((x) => x.item.serviceId as string).filter(Boolean)));
+  const allDates = Array.from(new Set(stays.flatMap((x) => nightDatesBetween(x.stay.checkIn, x.stay.checkOut))));
+
+  const rateByServiceDate = new Map<string, number>();
+  if (serviceIds.length > 0 && allDates.length > 0) {
+    const rows = await db
+      .select({
+        serviceId: vendorAvailabilitySlots.serviceId,
+        date: vendorAvailabilitySlots.date,
+        pricing: vendorAvailabilitySlots.pricing,
+      })
+      .from(vendorAvailabilitySlots)
+      .where(and(
+        inArray(vendorAvailabilitySlots.serviceId, serviceIds),
+        inArray(vendorAvailabilitySlots.date, allDates),
+      ));
+    for (const row of rows) {
+      const nightly = (row.pricing as any)?.nightlyRate;
+      const parsed = typeof nightly === "number" ? nightly : parseFloat(nightly);
+      if (Number.isFinite(parsed)) {
+        rateByServiceDate.set(`${row.serviceId}|${String(row.date)}`, parsed);
+      }
+    }
+  }
+
+  for (const { item, stay } of stays) {
+    const fallbackRate = parseFloat(item?.service?.price || "0");
+    const dates = nightDatesBetween(stay.checkIn, stay.checkOut);
+    const perNight = dates.map((d) => rateByServiceDate.get(`${item.serviceId}|${d}`) ?? fallbackRate);
+    const total = perNight.reduce((a, b) => a + b, 0);
+    out.set(item.id, { perNight, total });
+  }
+  return out;
+}
+
 // §14: a room's charge is ALWAYS nights × the stored nightly rate — never quantity × price (a
 // room's cart "quantity" is meaningless; the client pins it to 1). Every other item keeps the
 // existing price × quantity math untouched, so this can replace that line everywhere it
 // appears (checkout totals, checkout booking-creation, the cart fee-preview) with no behavior
 // change for the rest of the catalog.
-export function resolveItemBaseAmount(item: any): number {
+//
+// S11: when `stayRates` (resolveStayNightlyRates' output) is passed AND carries an entry for
+// this item, a stay's charge is the SUM OF EACH NIGHT'S OWN MATERIALIZED RATE — never a flat
+// `price × nights` once real per-night rates exist. Every caller (checkout's charge loop, the
+// rails/quote pre-passes, GET /api/cart, GET /api/cart/fee-preview) resolves the SAME map ONCE
+// and threads it through here, so a quote and a charge can never disagree (§14, the B1
+// discipline). Omitting `stayRates` (or a miss) falls back to the pre-S11 flat computation,
+// byte-identical to today — this keeps the signature backward-compatible for any caller that
+// hasn't been threaded yet.
+export function resolveItemBaseAmount(item: any, stayRates?: Map<string, StayNightlyRateResult>): number {
   const stay = getRoomNights(item);
   const rate = parseFloat(item?.service?.price || "0");
-  if (stay) return rate * stay.nights;
+  if (stay) {
+    const resolved = stayRates?.get(item.id);
+    if (resolved) return resolved.total;
+    return rate * stay.nights;
+  }
   return rate * (item?.quantity || 1);
 }
 
@@ -645,11 +721,14 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
         });
 
         const provider = await storage.getUser(String(raw.provider_id));
-        if (provider?.email) {
+        // Migration 225: skip alert email when provider has opted out (emailBookingAlerts
+        // defaults to true — existing providers are unaffected until they toggle it off).
+        if (provider?.email && provider.emailBookingAlerts !== false) {
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
           await sendBookingAlertEmail({
-            providerEmail: provider.email,
+            // Migration 224: route alerts to the dedicated notification email when set.
+            providerEmail: provider.notificationEmail || provider.email,
             providerName,
             bookingId,
             serviceName: raw.service_name ?? "a service",
@@ -798,6 +877,20 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Cart is empty" });
       }
 
+      // ── Gap #18 (Gate G5): an archived listing is unbookable — "nobody can book it again" ──
+      // Public surfaces already hide archived rows (they filter status='active'), but a line
+      // added to a cart BEFORE the archive would still reach here. Refuse it before any slot
+      // claim / booking row / Stripe call (the bundle/room re-verify posture below). Narrowly
+      // scoped to 'archived': paused/unapproved mid-cart behavior is unchanged by this lane.
+      for (const item of cartData) {
+        if (item.service?.status === "archived") {
+          return res.status(409).json({
+            message: "service_unavailable",
+            detail: `"${item.service.serviceName}" is no longer available — the provider has archived it.`,
+          });
+        }
+      }
+
       // ── §17 bundles (migration 151): re-verify + snapshot BEFORE any write ──────────
       // For each bundle in the cart, every component must STILL be approved+active
       // (F2: no unapproved service hides inside a sellable bundle) — 409 before any
@@ -835,7 +928,21 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // by every downstream loop below).
       const roomStays = new Map<
         string,
-        { checkIn: string; checkOut: string; nights: number; propertyId: string; propertyName: string; roomName: string; nightlyRate: number; firstNightSlotId?: string }
+        {
+          checkIn: string;
+          checkOut: string;
+          nights: number;
+          propertyId: string;
+          propertyName: string;
+          roomName: string;
+          nightlyRate: number;
+          firstNightSlotId?: string;
+          // RELEASE-ALL-NIGHTS hotfix (§18b-class): every night's claimed slot id, not just the
+          // first — persisted onto the booking below so every release path (voidClaim,
+          // refundServiceBooking, updateServiceBookingStatus) can give back the WHOLE stay, not
+          // only the one night `slotId` represents.
+          allNightSlotIds?: string[];
+        }
       >();
       for (const item of cartData) {
         if (item.service?.pricingUnit !== "per_night") continue;
@@ -926,9 +1033,22 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // guard). If ANY item's slot just filled, release the slots already claimed in this
       // request (compensation) and abort with 409 slot_unavailable — no bookings created,
       // nothing charged. Claims that succeed stay claimed while the booking completes; if
-      // payment later fails the booking sits payment_pending and the slot stays held — the
-      // release on abandoned/refunded bookings is a filed follow-up alongside the existing
-      // payment_pending recovery design (webhook completes; admin refund path can release).
+      // payment later fails the booking sits payment_pending and the slot stays held.
+      //
+      // STALE COMMENT CLOSED (QA-2 lane, ledger 96, Finding C — INVESTIGATED, not re-filed):
+      // this used to say "release on abandoned/refunded bookings is a filed follow-up". Both
+      // halves are landed and covered elsewhere, so nothing here needed building:
+      //   • ABANDONED (payment never authorized/paid) — the §15b TTL sweep's voidClaim
+      //     (checkout-claim.service.ts) already releases the slot atomically with the void.
+      //   • REFUNDED (a paid, slot-bound booking) — stripe-payment.service.ts's
+      //     refundServiceBooking already calls storage.releaseSlot after the refund succeeds.
+      // The GAP the audit actually found was a THIRD case neither of those covers: a paid,
+      // slot-bound booking cancelled with NO refund due (a non-refundable cancellation policy, or
+      // an owner decline whose Stripe lookup could not confirm payment) — that path calls
+      // storage.updateServiceBookingStatus directly and never touched the slot. FIXED there: the
+      // canonical writer now releases the slot atomically on the booking's FIRST transition into
+      // cancelled/refunded (see its docblock) — one fix, in the one writer, not a second reclaim
+      // rail beside this claim machine (§18c).
       //
       // §17 room stays claim MULTIPLE nights (one slot per date) instead of a single itemSlotId
       // — all-or-nothing for the stay itself, released into the SAME claimedSlotIds compensation
@@ -993,7 +1113,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             });
           }
           claimedSlotIds.push(...claimedThisStay);
-          roomStays.set(item.id, { ...stay, firstNightSlotId: claimedThisStay[0] });
+          // RELEASE-ALL-NIGHTS hotfix: keep BOTH the first-night representative id (unchanged,
+          // still what `slotId` gets stamped with below) AND the full per-night list, so the
+          // booking row can carry the complete claim (bookingDetails.claimedSlotIds below).
+          roomStays.set(item.id, { ...stay, firstNightSlotId: claimedThisStay[0], allNightSlotIds: claimedThisStay });
           continue;
         }
 
@@ -1012,6 +1135,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
         claimedSlotIds.push(itemSlotId);
       }
+
+      // S11 (§14, ledger row 107): ONE preload+resolve pass for every stay line's per-night rate,
+      // read AFTER the slot claim above so the queried rows are the exact nights just claimed.
+      // Every subsequent resolveItemBaseAmount call in this handler (the rails pre-pass, the
+      // quote loop, the charge loop) threads this SAME map — so the amount quoted and the amount
+      // charged, within this one request, can never disagree.
+      const stayRatesByItemId = await resolveStayNightlyRates(cartData);
 
       // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
       const safeParseRate = (value: any, fallback: number): number => {
@@ -1106,7 +1236,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             serviceOwnerUserId: ownerId,
             ownerRole: ownerRoleById.get(ownerId ?? "") ?? null,
             categoryId: item.service.categoryId ?? null,
-            itemSubtotal: resolveItemBaseAmount(item),
+            itemSubtotal: resolveItemBaseAmount(item, stayRatesByItemId),
             preValidated: railsValidation,
           });
           railsByItemId.set(item.id, railsResolution);
@@ -1163,8 +1293,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       let checkoutSurchargeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
-        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
-        const itemPrice = resolveItemBaseAmount(item);
+        // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
+        // existing price × quantity.
+        const itemPrice = resolveItemBaseAmount(item, stayRatesByItemId);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
@@ -1228,8 +1359,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       for (const item of cartData) {
         if (!item.service) continue;
 
-        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
-        const price = resolveItemBaseAmount(item);
+        // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
+        // existing price × quantity. SAME map the quote loop above just read — the charge cannot
+        // diverge from the quote within this one request.
+        const price = resolveItemBaseAmount(item, stayRatesByItemId);
         const stay = roomStays.get(item.id);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory2 = item.service.categoryId
@@ -1392,6 +1525,25 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
                     checkOut: stay.checkOut,
                     nights: stay.nights,
                     nightlyRate: stay.nightlyRate,
+                    // S11 (§14, ledger row 107): the ACTUAL per-night rates the charge was
+                    // computed from — resolveStayNightlyRates' own per-item map, snapshotted so a
+                    // mixed-rate stay (e.g. spanning two service_date_ranges with different
+                    // nightly_price) is auditable on the row itself, not just re-derivable. The
+                    // legacy `nightlyRate` field above is left unchanged (the room's flat list
+                    // price at add-to-cart time) for backward compatibility with any existing
+                    // reader; this is additive, present only when a stay actually resolved rates.
+                    ...(stayRatesByItemId.get(item.id)
+                      ? { perNightRates: stayRatesByItemId.get(item.id)!.perNight }
+                      : {}),
+                    // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `slotId` below stamps only the
+                    // FIRST night's slot (backward compatibility — every existing reader keyed on
+                    // `slotId` keeps working unchanged). The full per-night claim is persisted HERE
+                    // so voidClaim / refundServiceBooking / updateServiceBookingStatus can release
+                    // every night, not just the first. Present only when the stay actually claimed
+                    // slots (it always does when `stay` exists — defensive length check regardless).
+                    ...(stay.allNightSlotIds && stay.allNightSlotIds.length > 0
+                      ? { claimedSlotIds: stay.allNightSlotIds }
+                      : {}),
                   }
                 : {}),
               // B1 (ruling 81): SNAPSHOT the travel surcharge and the pickup that triggered it onto
@@ -1696,7 +1848,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
           return res.status(503).json({
             error: "concierge_fee_unconfigured",
             message:
-              "The Booking Concierge fee isn't configured right now, so we can't show an accurate total. " +
+              "The Destination Concierge booking fee isn't configured right now, so we can't show an accurate total. " +
               "Please try again shortly or contact support — checkout is paused for concierge items until this is fixed.",
             retryable: true,
           });
@@ -1713,11 +1865,15 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       // sees the travel line in the cart BEFORE Pay — the F1 disclosure posture. Pure preview: an
       // out-of-range pickup is NOT refused here (that is the checkout's 400), it simply shows 0.
       const previewSurcharges = await resolveCartSurcharges(cartData);
+      // S11 (§14, ledger row 107): the SAME resolver checkout's charge loop calls — a stay's
+      // preview cannot quote a number the checkout won't actually charge.
+      const previewStayRates = await resolveStayNightlyRates(cartData);
 
       for (const item of cartData) {
         if (!item.service) continue;
-        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
-        const itemPrice = resolveItemBaseAmount(item);
+        // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
+        // existing price × quantity.
+        const itemPrice = resolveItemBaseAmount(item, previewStayRates);
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
@@ -1806,7 +1962,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       // Honest degrade (§13): without a live Stripe key every call below throws a raw
       // Stripe SDK auth error, which the catch below would otherwise surface as a
       // generic 500. Never fake a connected/ready status — tell the earner plainly.
-      if (!process.env.STRIPE_SECRET_KEY) {
+      if (!getStripeSecretKey()) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
       const userId = getUserId(req)!;
@@ -1862,7 +2018,7 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
       // Honest degrade (§13): an account was previously connected but the key is now
       // absent (e.g. this environment) — report the last-known DB status rather than
       // calling Stripe and surfacing a raw SDK error, or worse, faking "active".
-      if (!process.env.STRIPE_SECRET_KEY) {
+      if (!getStripeSecretKey()) {
         return res.json({ connected: true, accountId: account.stripeAccountId, status: account.stripeAccountStatus ?? 'unknown', degraded: true });
       }
 
@@ -1888,7 +2044,7 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
 router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
     try {
       // Honest degrade (§13): same reasoning as onboard/status above.
-      if (!process.env.STRIPE_SECRET_KEY) {
+      if (!getStripeSecretKey()) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
       const userId = getUserId(req)!;
@@ -2010,18 +2166,59 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // §15: one open request at a time — a pending/processing payout blocks a duplicate.
+      // §15: one open request at a time. Three sub-cases:
+      //
+      // (A) FRESH pending/processing (age ≤ STALE_PAYOUT_PROCESSING_DAYS) → 409.
+      //
+      // (B) STALE processing (age > STALE_PAYOUT_PROCESSING_DAYS) → 409 with contactSupport.
+      //     A 'processing' row means the admin has the row in hand; a Stripe transfer could
+      //     have been issued out-of-band. Do NOT auto-cancel — the earner must contact support.
+      //     The Money page already shows a 7-day "Contact support" nudge for these rows.
+      //
+      // (C) STALE pending (age > STALE_PAYOUT_PROCESSING_DAYS) → atomic supersession.
+      //     'pending' rows have never been claimed for a Stripe transfer (the claim guard in
+      //     storage.ts only promotes pending→processing at the moment a completed attempt fires).
+      //     Safe to cancel. The cancellation and the new INSERT happen in ONE DB transaction
+      //     with a conditional UPDATE (WHERE status='pending') so a concurrent admin claim
+      //     between our read and the tx causes the UPDATE to return 0 rows, which rolls back
+      //     the entire tx and returns 409 to the earner to retry. The claimForProcessing guards
+      //     also exclude 'failed' (storage.ts task-1193 fix) so a superseded row can never
+      //     have Stripe money moved against it.
       const existing = isProvider
         ? await storage.getProviderPayouts(userId)
         : await storage.getExpertPayouts(userId);
-      const open = existing.find((p: any) => p.status === "pending" || p.status === "processing");
-      if (open) {
+
+      // (A) Fresh open payout — normal duplicate gate.
+      const freshOpen = existing.find(
+        (p: any) => (p.status === "pending" || p.status === "processing") && !isPayoutStale(p),
+      );
+      if (freshOpen) {
         return res.status(409).json({
           error: "payout_request_pending",
           message: "You already have a payout request awaiting review.",
-          payout: open,
+          payout: freshOpen,
         });
       }
+
+      // (B) Stale processing — cannot auto-cancel; Stripe transfer may have been issued.
+      const staleProcessing = existing.find(
+        (p: any) => p.status === "processing" && isPayoutStale(p),
+      );
+      if (staleProcessing) {
+        return res.status(409).json({
+          error: "payout_processing_stale",
+          message:
+            `Your payout has been in processing for over ${STALE_PAYOUT_PROCESSING_DAYS} days. ` +
+            `Please contact support to resolve it before a new request can be submitted.`,
+          payout: staleProcessing,
+          contactSupport: true,
+        });
+      }
+
+      // (C) Stale pending — safe to supersede atomically.
+      const stalePending = existing.filter(
+        (p: any) => p.status === "pending" && isPayoutStale(p),
+      );
 
       // §14: amount is SERVER-DERIVED from the earner's releasable balance, never from the
       // body (a self-service withdrawal of the user's OWN cleared balance — money-derive-ok).
@@ -2032,18 +2229,97 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       if (amountCents <= 0) {
         return res.status(400).json({ error: "no_balance", message: "You have no available balance to withdraw." });
       }
-      if (amountCents < MIN_PAYOUT_CENTS) {
+      // Ledger 90 (FP-5, S2): the threshold is max(platform floor, this earner's own configured
+      // minimum). The floor is never lowered; a stricter preference is respected. §14: the
+      // preference is READ SERVER-SIDE from the earner's own settings row — it is never taken from
+      // req.body, and it can only ever RAISE the bar on the caller's own withdrawal, never lower a
+      // floor or move an amount. Experts have no settings row today, so they get the bare floor.
+      const settingsRow = isProvider
+        ? await storage.getProviderSettings(userId) // money-derive-ok: own settings row, session-scoped
+        : null;
+      const minimumCents = effectivePayoutMinimumCents(settingsRow?.minimumPayoutAmount);
+      if (amountCents < minimumCents) {
+        const isOwnPreference = minimumCents > MIN_PAYOUT_CENTS;
         return res.status(400).json({
           error: "below_minimum",
-          message: `The minimum payout is $${(MIN_PAYOUT_CENTS / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
+          minimumCents,
+          platformFloorCents: MIN_PAYOUT_CENTS,
+          source: isOwnPreference ? "provider_setting" : "platform_floor",
+          message: isOwnPreference
+            ? `Your payout minimum is set to $${(minimumCents / 100).toFixed(2)} in Settings (the platform floor is $${MIN_PAYOUT_DOLLARS.toFixed(2)}). Your available balance is $${(amountCents / 100).toFixed(2)}.`
+            : `The minimum payout is $${(minimumCents / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
         });
       }
 
       const amount = (amountCents / 100).toFixed(2);
+
       // requestedAt is DB-defaulted (defaultNow) — not in the insert type, so it's omitted here.
-      const payout = isProvider
-        ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
-        : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+      let payout: any;
+      if (stalePending.length > 0) {
+        // (C) Atomic supersession: cancel stale pending row(s) and create replacement in ONE tx.
+        // The conditional UPDATE (WHERE status='pending') is the guard against a concurrent admin
+        // claim between our read above and this tx: if 0 rows are updated the tx rolls back and
+        // we return 409 so the earner can retry.
+        const supersessionNote =
+          `Automatically superseded after ${STALE_PAYOUT_PROCESSING_DAYS} days with no admin resolution. ` +
+          `A fresh payout request was submitted by the earner on ${new Date().toISOString()}. ` +
+          `No Stripe transfer was issued for this row.`;
+        try {
+          payout = await db.transaction(async (tx) => {
+            for (const stale of stalePending) {
+              const cancelled = isProvider
+                ? await tx
+                    .update(providerPayouts)
+                    .set({ status: "failed", notes: supersessionNote })
+                    .where(and(eq(providerPayouts.id, stale.id), eq(providerPayouts.status, "pending")))
+                    .returning()
+                : await tx
+                    .update(expertPayouts)
+                    .set({ status: "failed", failureReason: supersessionNote })
+                    .where(and(eq(expertPayouts.id, stale.id), eq(expertPayouts.status, "pending")))
+                    .returning();
+              if (cancelled.length === 0) {
+                // Admin claimed this payout concurrently — our window closed. Roll back.
+                throw Object.assign(
+                  new Error("Stale payout was claimed concurrently — please try again."),
+                  { code: "concurrent_claim" },
+                );
+              }
+              console.log(
+                `[payouts] superseded stale pending ${isProvider ? "provider" : "expert"} payout ` +
+                `${stale.id} for user ${userId} (age > ${STALE_PAYOUT_PROCESSING_DAYS}d)`,
+              );
+            }
+            // Create the replacement inside the same transaction.
+            if (isProvider) {
+              const [inserted] = await tx
+                .insert(providerPayouts)
+                .values({ providerId: userId, amount, status: "pending", notes: "Requested by provider (superseded stale)" })
+                .returning();
+              return inserted;
+            } else {
+              const [inserted] = await tx
+                .insert(expertPayouts)
+                .values({ expertId: userId, amount, status: "pending", metadata: { source: "self_request_superseded" } })
+                .returning();
+              return inserted;
+            }
+          });
+        } catch (txErr: any) {
+          if (txErr.code === "concurrent_claim") {
+            return res.status(409).json({
+              error: "payout_request_pending",
+              message: "Your payout was just picked up for processing. Please try again in a moment.",
+            });
+          }
+          throw txErr;
+        }
+      } else {
+        // No stale pending rows — normal creation path (unchanged).
+        payout = isProvider
+          ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
+          : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+      }
 
       res.status(201).json({ ...payout, requesterType: isProvider ? "provider" : "expert" });
     } catch (error: any) {

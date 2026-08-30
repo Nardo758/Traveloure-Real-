@@ -17,6 +17,7 @@ import { db } from "../db";
 import { adminNotifications, users, webhookEvents } from "@shared/schema";
 import { eq, and, sql, gte, inArray } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
@@ -25,6 +26,10 @@ class AdminDigestSchedulerService {
 
   start(): void {
     if (this.timer) return;
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[AdminDigest] Scheduler disabled outside production");
+      return;
+    }
 
     // First run 5 minutes after startup so the server is fully warmed up
     setTimeout(() => this.runDigest(), 5 * 60 * 1000);
@@ -73,9 +78,10 @@ class AdminDigestSchedulerService {
       // locally is a potential missed delivery that needs ops attention.
       const missedWebhooks: { stripeEventId: string; eventType: string; stripeCreatedAt: number }[] = [];
 
-      if (process.env.STRIPE_SECRET_KEY) {
+      const stripeKey = getStripeSecretKey();
+      if (stripeKey) {
         try {
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+          const stripe = new Stripe(stripeKey, {
             apiVersion: "2024-12-18.acacia" as any,
           });
 
@@ -138,7 +144,9 @@ class AdminDigestSchedulerService {
           try {
             const parsed = JSON.parse((notif as any).reason ?? "[]");
             if (Array.isArray(parsed)) reconciliationMismatches.push(...parsed);
-          } catch {}
+          } catch (parseErr) {
+            console.warn("[AdminDigest] Could not parse reconciliation notification reason — skipping entry:", parseErr);
+          }
         }
       } catch (err) {
         console.error("[AdminDigest] Failed to load reconciliation notifications:", err);

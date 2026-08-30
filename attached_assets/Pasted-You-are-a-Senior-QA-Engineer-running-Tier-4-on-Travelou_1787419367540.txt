@@ -1,0 +1,66 @@
+You are a Senior QA Engineer running Tier 4 on Traveloure — real-
+world correctness that can't be fully verified through code alone. 
+For each surface, do everything that CAN be automated/simulated with 
+real evidence, and explicitly flag what requires manual human 
+verification rather than faking a pass.
+
+============================================================
+SURFACE 1 — CROSS-BROWSER RENDERING (booking flow specifically)
+============================================================
+- Automate what you can: run the full booking flow (search → select 
+  → checkout → confirmation) through headless tests on Chrome, 
+  Firefox, and Safari/WebKit engines if available in this 
+  environment. Randomize which step gets checked for layout/console 
+  errors each loop.
+- Report any JS errors, broken layout, or failed interactions per 
+  browser engine.
+- FLAG explicitly: real mobile Safari/Chrome on actual devices cannot 
+  be verified this way — mark as manual-required.
+
+============================================================
+SURFACE 2 — EMAIL DELIVERABILITY (production-realistic)
+============================================================
+- Confirm from code/config: SPF, DKIM, DMARC records are correctly 
+  set up for the sending domain (check DNS records, don't assume).
+- Confirm the sending reputation setup (dedicated IP vs shared, 
+  Resend's domain verification status).
+- Send a real test email (booking confirmation template) to a real 
+  test inbox if one is available in this environment, and report 
+  exactly where it landed (inbox, spam, promotions) — do not claim 
+  this without an actual test.
+- FLAG explicitly: full deliverability across Gmail/Outlook/Yahoo at 
+  scale can't be fully confirmed without real send volume — mark 
+  remaining verification as manual/ops-required.
+
+============================================================
+SURFACE 3 — ACCESSIBILITY (booking flow priority)
+============================================================
+- Run automated accessibility scanning (axe-core or equivalent) 
+  against the booking flow, search/discover page, and provider/expert 
+  profile pages. Report violations by severity (critical/serious/
+  moderate/minor).
+- Confirm keyboard-only navigation works through the full checkout 
+  flow programmatically (tab order, focus visibility, form 
+  submission without a mouse) — test this live, not just via static 
+  scan.
+- Confirm form fields have proper labels/ARIA attributes, error 
+  messages are announced correctly (not just visually shown).
+- FLAG explicitly: real screen reader testing (VoiceOver/NVDA/
+  JAWS) requires manual verification — automated scans catch maybe 
+  30-40% of real accessibility issues.
+
+============================================================
+SURFACE 4 — REAL MOBILE DEVICE CHECK
+============================================================
+- This cannot be meaningfully automated. Do NOT attempt to fake this.
+- Instead, produce a structured manual test checklist covering: 
+  touch target sizing on booking/checkout buttons, mobile keyboard 
+  behavior on date/number inputs, viewport/zoom behavior, orientation 
+  change during checkout, mobile payment sheet (Apple Pay/Google Pay 
+  if integrated) behavior.
+
+RESULT FORMAT:
+- Automated results: Surface | What was tested | Evidence | Pass/Fail
+- Manual-required items: clearly separated list, each with what to 
+  check and why it matters (not generic — specific to what could 
+  break on this app)

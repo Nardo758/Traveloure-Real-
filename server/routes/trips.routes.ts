@@ -67,6 +67,10 @@ import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
 // §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
 import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
+// Phase 1c — "build around a location": rank anchor candidates for the Optimize popup (the read
+// rail). The pinned-anchor WRITE is resolved on the live POST /generate handler in server/routes.ts.
+import { loadRankedAnchors, type NamedStop } from "../services/anchor-candidates";
+import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
 import { viatorService } from "../services/viator.service";
@@ -511,6 +515,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             locationName: activity.locationName || destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
+            // §12 origin stamp (ledger 2026-08-22-provenance-defects): this rebuild is the AI
+            // generator's output — without the stamp a whole AI-built plan landed origin-NULL,
+            // which the schema defines as permanently ambiguous. Server-derived, never from a body.
+            origin: "ai",
           });
         }
       }
@@ -655,128 +663,54 @@ router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) =
   });
 
 
-router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
+// Phase 1c: the located stops an anchor is scored against. Prefer the trip-backed loader (real
+// item/catalog coordinates) when the comparison has a trip; otherwise there is no coordinate source
+// on this path and anchors are scored against nothing — honest, not fabricated (§13). Never throws.
+async function buildAnchorStops(
+  comparison: { tripId?: string | null },
+): Promise<NamedStop[]> {
+  if (!comparison.tripId) return [];
+  try {
+    const inputs = await loadTripOptimizerInputs(comparison.tripId);
+    return inputs.baselineItems.map((b: any) => ({
+      id: String(b.id),
+      name: b.name ?? "Stop",
+      lat: b.latitude != null ? b.latitude : null,
+      lng: b.longitude != null ? b.longitude : null,
+    }));
+  } catch (err) {
+    console.warn("[anchor-stops] trip load failed (non-critical):", (err as Error).message);
+    return [];
+  }
+}
+
+// Phase 1c: rank real anchor candidates (hotel / neighborhood / activity) for the Optimize popup.
+router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
-
-      // Sprint-1 dislike loop: whitelisted "what to fix" chips from a re-run.
-      // They flow into TripPreferences.feedback, where selectVariantStrategy
-      // gives them top priority over inferred preferences.
-      const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
-      const dislikeFeedback: string[] = Array.isArray(rawFeedback)
-        ? rawFeedback.filter((f: unknown): f is string => typeof f === "string" && FEEDBACK_CHIPS.has(f)).slice(0, 4)
-        : [];
-
-      const comparison = await storage.getItineraryComparison(comparisonId);
-
+      const comparison = await storage.getItineraryComparison(req.params.id);
       if (!comparison) {
         return res.status(404).json({ message: "Comparison not found" });
       }
-
       if (comparison.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: "external",
-          price: parseFloat(item.price || "0"),
-          // §13: no fabricated fallback rating — unknown stays unknown.
-          rating: typeof item.rating === "number" ? item.rating : undefined,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else if (comparison.userExperienceId) {
-        const items = await storage.getUserExperienceItems(comparison.userExperienceId);
-
-        baselineItems = items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          serviceType: item.providerServiceId ? "provider" : "external",
-          price: parseFloat(item.price || "0"),
-          // §13: user-experience items have no rating source — omit, don't invent.
-          location: item.location,
-          duration: 120,
-          dayNumber: 1,
-          timeSlot: item.scheduledTime || "morning",
-        }));
-      } else {
-        const cartItemsData = await storage.getCartItemsWithServices(userId);
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
-          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-        }));
-      }
-
-      if (baselineItems.length === 0) {
-        return res.status(400).json({ message: "No items to optimize. Add services to your cart or experience first." });
-      }
-
-      const availableServices = await storage.getActiveProviderServices(100);
-
-      res.json({ message: "Optimization started", status: "generating" });
-
-      // Build trip preferences for adaptive variant strategy. Dislike feedback
-      // applies even without a trip row (it's an explicit instruction, not an
-      // inferred preference).
-      let tripPreferencesForGen: TripPreferences | undefined =
-        dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : undefined;
+      // Defensive: only load trip inputs for a trip the same user owns (loadTripOptimizerInputs
+      // authorizes nothing itself).
       if (comparison.tripId) {
-        const tripRowForGen = await storage.getTrip(comparison.tripId);
-        if (tripRowForGen) {
-          const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
-          tripPreferencesForGen = {
-            eventType: tripRowForGen.eventType,
-            budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
-            travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
-            ...(dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : {}),
-          };
+        const trip = await storage.getTrip(comparison.tripId);
+        if (trip && trip.userId !== userId) {
+          return res.status(401).json({ message: "Unauthorized" });
         }
       }
-
-      generateOptimizedItineraries(
-        comparisonId,
-        userId,
-        baselineItems,
-        availableServices,
-        comparison.destination || "Unknown",
-        comparison.startDate || new Date().toISOString(),
-        comparison.endDate || new Date().toISOString(),
-        comparison.budget ? parseFloat(comparison.budget) : undefined,
-        comparison.travelers || 1,
-        comparison.tripId || undefined,
-        undefined,
-        tripPreferencesForGen
-      ).catch((err) => console.error("Background optimization error:", err));
-
+      const stops = await buildAnchorStops(comparison);
+      const ranked = await loadRankedAnchors(comparison.destination, stops, { limit: 8 });
+      res.json(ranked);
     } catch (error) {
-      console.error("Error starting optimization:", error);
-      res.status(500).json({ message: "Failed to start optimization" });
+      console.error("Error loading anchor candidates:", error);
+      res.status(500).json({ message: "Failed to load anchor candidates" });
     }
   });
-
 
 router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
     try {
@@ -1436,7 +1370,12 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
       }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const item = await storage.createItineraryItem(parsed.data as any);
+      // §12: itinerary_items.origin is stamped server-side from the ACTOR's role, never trusted
+      // from req.body (the insert schema omits it; the PATCH path already strips it). An owner's
+      // manual add is 'traveler'; an assigned advisor/expert's is 'expert'. This is the provenance
+      // a cloned ready-made trip's buyer-added items were previously missing (audit finding).
+      const origin = tripRole === "expert" ? "expert" : "traveler";
+      const item = await storage.createItineraryItem({ ...parsed.data, origin } as any);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
       res.status(201).json(item);
     } catch (error) {
@@ -2867,6 +2806,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
           base.setHours(h, m, 0, 0);
           return base.toISOString();
         } catch {
+          // Malformed date/time input — keep the original ISO string unchanged.
           return originalISO;
         }
       };
@@ -3222,7 +3162,14 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
-      await storage.deleteItineraryItem(itemId);
+      // R15 (ledger 2026-08-17-partner-demand-r15-transition-log): record WHO removed the item on
+      // the same-transaction `item_removed` diary row. The actor is derived from the trip
+      // authorization above (never req.body): an assigned expert acting on the plan ⇒ "expert",
+      // otherwise the owner/author ⇒ "traveler".
+      await storage.deleteItineraryItem(itemId, {
+        actorType: tripRole === "expert" ? "expert" : "traveler",
+        actorId: userId,
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("[ItineraryItems] DELETE error:", err);

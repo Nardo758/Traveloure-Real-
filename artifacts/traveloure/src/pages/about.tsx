@@ -1,0 +1,229 @@
+import { motion } from "framer-motion";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Target,
+  Heart,
+  Globe,
+  Users,
+  ArrowRight,
+  Sparkles,
+  Award
+} from "lucide-react";
+import { SEOHead } from "@/components/seo-head";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useQuery } from "@tanstack/react-query";
+
+function formatStat(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K+`;
+  return `${n}+`;
+}
+
+const values = [
+  {
+    icon: Heart,
+    title: "Passion for Travel",
+    description: "We believe travel transforms lives. Every feature we build is designed to make your travel dreams a reality."
+  },
+  {
+    icon: Users,
+    title: "Community First",
+    description: "Our network of local experts and travelers creates authentic connections and shared experiences."
+  },
+  {
+    icon: Sparkles,
+    title: "Innovation",
+    description: "We combine cutting-edge AI with human expertise to deliver the best of both worlds in travel planning."
+  },
+  {
+    icon: Globe,
+    title: "Global Impact",
+    description: "We support sustainable tourism and local communities, ensuring travel benefits everyone involved."
+  }
+];
+
+export default function AboutPage() {
+  const { openSignInModal } = useSignInModal();
+
+  const { data: platformStats } = useQuery<{
+    totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
+  }>({ queryKey: ["/api/platform/stats"] });
+
+  const stats = [
+    { value: platformStats ? formatStat(platformStats.totalTrips) : "0+", label: "Trips Planned" },
+    { value: platformStats ? formatStat(platformStats.totalExperts) : "0+", label: "Local Experts" },
+    { value: platformStats ? formatStat(platformStats.totalCountries) : "0+", label: "Countries" },
+    { value: platformStats?.avgRating ?? "0", label: "Average Rating" }
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <SEOHead
+        title="About Us"
+        description="Learn about Traveloure's mission to transform travel planning through AI and human expertise. Meet our team and discover our values."
+        keywords={["about traveloure", "travel platform", "AI travel", "company mission"]}
+        url="/about"
+      />
+      {/* Hero Section */}
+      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <h1 className="text-4xl md:text-5xl font-bold text-foreground dark:text-white mb-6">
+                Revolutionizing How the World Plans Travel
+              </h1>
+              <p className="text-lg text-muted-foreground mb-8">
+                We're on a mission to make personalized travel planning accessible to everyone,
+                combining the power of AI with the wisdom of local experts.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <Button size="lg" onClick={() => openSignInModal()} data-testid="button-join-us">
+                  Join Our Journey <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+                <Link href="/experts">
+                  <Button size="lg" variant="outline" data-testid="button-meet-experts">
+                    Meet Our Experts
+                  </Button>
+                </Link>
+              </div>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="relative"
+            >
+              <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                <Globe className="w-48 h-48 text-primary/30" />
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-12 bg-gray-900 text-white">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {stats.map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="text-center"
+                data-testid={`stat-${i}`}
+              >
+                <div className="text-4xl md:text-5xl font-bold text-primary mb-2" data-testid={`text-stat-value-${i}`}>{stat.value}</div>
+                <div className="text-gray-400" data-testid={`text-stat-label-${i}`}>{stat.label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Mission Section */}
+      <section className="py-16 md:py-24">
+        <div className="container mx-auto px-4">
+          <div className="max-w-3xl mx-auto text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <Target className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-6">
+                Our Mission
+              </h2>
+              <p className="text-lg text-muted-foreground leading-relaxed">
+                We believe everyone deserves incredible travel experiences, regardless of how much time
+                they have to plan. By combining AI planning tools with a reviewed network of local
+                experts, we want to make personalized, authentic travel planning something anyone can
+                reach — whatever their budget or timeline.
+              </p>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Values Section */}
+      <section className="py-16 md:py-24 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
+              Our Values
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              The principles that guide everything we do
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            {values.map((value, i) => (
+              <motion.div
+                key={value.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+              >
+                <Card className="h-full" data-testid={`card-value-${i}`}>
+                  <CardContent className="p-6 text-center">
+                    <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                      <value.icon className="w-7 h-7 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-foreground dark:text-white mb-2">
+                      {value.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {value.description}
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-16 md:py-24 bg-primary text-white">
+        <div className="container mx-auto px-4 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <Award className="w-16 h-16 mx-auto mb-6 opacity-80" />
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">
+              Join Our Growing Community
+            </h2>
+            <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
+              Whether you're a traveler seeking adventure or an expert wanting to share your knowledge,
+              there's a place for you at Traveloure.
+            </p>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-start-planning">
+                Start Planning <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+              <Link href="/partner-with-us">
+                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-become-expert-about">
+                  Become an Expert
+                </Button>
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+    </div>
+  );
+}

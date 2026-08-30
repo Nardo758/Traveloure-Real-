@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
 import { initialsFromUser } from "@/lib/initials";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +16,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Home,
   CalendarDays,
@@ -27,6 +29,9 @@ import {
   Users,
   Wrench,
   BookOpen,
+  Share2,
+  Compass,
+  Store,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
@@ -41,6 +46,10 @@ import {
 // live (born-submitted, unlocks at 2+ approved services — the §17 creation ladder); the
 // property rung (per-night pricing, room availability) is ALSO live — Workstation's Property
 // card opens the real create dialog (openPropertyCreate in workstation.tsx).
+//
+// S6 (ruling-74-disposition-6 clarification): Distribute joins Business, after Catalog — not
+// one of the ratified NINE (same precedent as Playbook in Account: a real console surface that
+// simply postdates the C9 count, not a re-opening of it).
 //
 // Ruling 60 Phase A (chrome i18n): each group/item keeps its ENGLISH `label`/`title` verbatim
 // and gains an `i18nKey`. The English string is NOT decoration — it is both the fallback
@@ -82,19 +91,34 @@ const menuGroups = [
     labelKey: "groups.business",
     items: [
       // C9: "My Offerings" relabeled "Catalog" (module 5, "what I sell") — route unchanged.
-      // The page absorbed the storefront header (/p/:handle management), availability slot
-      // editing (the ratified Catalog placement), and Share & Promote's creation half
-      // (per-service share kits + posting opportunities via the shared
-      // components/backoffice/share-tools.tsx — the same absorption expert C2 did).
+      // The page absorbed availability slot editing (the ratified Catalog placement).
+      // C9 originally also absorbed the storefront header + Share & Promote's creation half
+      // here — S6 (below) moved both to Distribute, so Catalog is read/manage/triage only.
       { title: "Catalog", i18nKey: "nav.catalog", href: "/provider/services", icon: LayoutGrid },
-      // C9: "Share & Promote" entry RETIRED — its unique functions live on Catalog (per-
-      // service share kit, posting opportunities, storefront share); the measurement half
+      // S6 (ruling-74-disposition-6 clarification): Distribute is a first-class sidebar entry,
+      // placed right after Catalog — the page has existed since D1 (ledger 76) but had no nav
+      // entry (reachable only via a Workstation header action or a Catalog on-ramp link). It is
+      // now the ONE home for every outward-facing distribution surface (storefront, share kit,
+      // promote nudges) — Catalog stays read/manage/triage and points here per listing.
+      { title: "Distribute", i18nKey: "nav.distribute", href: "/provider/distribute", icon: Share2 },
+      // Storefront reachability round 2 (Aug 22, 2026 — Leon: "we need a route to Service
+      // Providers Store front"): the public /p/:handle page was reachable only via the Catalog
+      // header's Preview button and Distribute's copy/share tools — no persistent nav route.
+      // This entry goes straight to the owner's live page when a handle exists; with NO handle
+      // it routes to Distribute (where the claim editor lives) — never a dead /s/ link
+      // (StorefrontLink rule 1). The href is resolved at render time below.
+      { title: "My Storefront", i18nKey: "nav.myStorefront", href: "/provider/distribute", icon: Store },
+      // C9: "Share & Promote" entry RETIRED — its unique functions now live on Distribute (S6:
+      // per-service share kit, storefront tools, posting opportunities); the measurement half
       // (LinkAnalyticsPanel) already renders on the Analytics tab under Performance.
       // /provider/share-promote redirects to /provider/services.
       // Customers — module 6: honest self-scoped aggregation over this provider's real
       // bookings (GET /api/me/customers); no invented CRM fields.
       { title: "Customers", i18nKey: "nav.customers", href: "/provider/customers", icon: Users },
       { title: "Performance", i18nKey: "nav.performance", href: "/provider/performance", icon: TrendingUp },
+      // Partner Demand Phase 3 (STEP 3.2): market-level demand — what travelers ask for vs. your
+      // coverage. Read-only study surface (stations act, this reviews).
+      { title: "Market Research", i18nKey: "nav.marketResearch", href: "/provider/market-research", icon: Compass },
       // C9: "Analytics" entry RETIRED — the page (intact) is hosted as Performance's
       // Analytics tab (the expert C6 fold); /provider/analytics redirects to
       // /provider/performance?tab=analytics.
@@ -129,31 +153,65 @@ export function ProviderSidebar() {
 
   const initials = initialsFromUser(user);
 
-  const displayName =
-    user?.businessName ||
-    `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
+  // Full name for the header identity card (firstName + lastName, §13: show what's real).
+  const fullName =
+    `${(user as any)?.firstName ?? ""} ${(user as any)?.lastName ?? ""}`.trim() ||
+    (user as any)?.businessName ||
     t("sidebar.defaultDisplayName");
+
+  // Secondary line: businessName · "Provider" role indicator.
+  const businessLine = (user as any)?.businessName
+    ? `${(user as any).businessName} · Provider`
+    : user?.email ?? "";
+
+  // Distribute badge: total listing count (same query the Catalog page already makes;
+  // React Query deduplicates the fetch — no extra network call).
+  const { data: servicesData } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/provider/services"],
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const distributeCount = servicesData?.length ?? 0;
+
+  // "My Storefront" resolves to the real public page only when a handle exists —
+  // otherwise it lands on Distribute, whose storefront card carries the claim editor.
+  const handle = (user as any)?.handle as string | null | undefined;
+  const storefrontHref = handle ? `/s/${handle}` : "/provider/distribute";
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
-      <SidebarHeader
-        className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3"
-        style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
-      >
-        <Link href="/" className="flex items-center gap-2.5" data-testid="link-provider-logo">
+      {/* Logo + user identity card — mock: identity lives at the TOP below the logo */}
+      <SidebarHeader className="p-0" style={{ borderBottom: "1px solid #E8E8E2" }}>
+        {/* Logo row */}
+        <div className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3" style={{ minHeight: 56 }}>
+          <Link href="/" className="flex items-center" data-testid="link-provider-logo">
+            <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
+          </Link>
+        </div>
+
+        {/* Identity card — hidden in icon-collapse mode */}
+        {user && (
           <div
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-            style={{ background: "#E85D55" }}
+            className="group-data-[collapsible=icon]:hidden px-4 py-3 flex items-center gap-3"
+            style={{ borderTop: "1px solid #E8E8E2", background: "#FAFAF8" }}
           >
-            <span className="text-white text-[16px] font-bold">T</span>
+            <div
+              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-semibold text-white flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #35605A, #1E3A5F)" }}
+              data-testid="avatar-provider-sidebar"
+            >
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold truncate leading-tight" style={{ color: "#1A1A18" }}>
+                {fullName}
+              </p>
+              <p className="text-[11px] truncate leading-snug mt-0.5" style={{ color: "#7A7A72" }}>
+                {businessLine}
+              </p>
+            </div>
           </div>
-          <span
-            className="text-[16px] font-semibold group-data-[collapsible=icon]:hidden"
-            style={{ color: "#1A1A18", letterSpacing: -0.3 }}
-          >
-            Traveloure
-          </span>
-        </Link>
+        )}
       </SidebarHeader>
 
       <SidebarContent className="px-2.5 py-3 group-data-[collapsible=icon]:px-1">
@@ -168,9 +226,17 @@ export function ProviderSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
+                  const isStorefront = item.title === "My Storefront";
+                  const href = isStorefront ? storefrontHref : item.href;
+                  // The storefront entry is an exit to the public page (or the claim home) —
+                  // it never renders as the active module, so Distribute keeps sole highlight
+                  // when the two share a target.
                   const isActive =
-                    location === item.href ||
-                    (item.href !== "/provider/dashboard" && location.startsWith(item.href));
+                    !isStorefront &&
+                    (location === item.href ||
+                      (item.href !== "/provider/dashboard" && location.startsWith(item.href)));
+
+                  const isDistribute = !isStorefront && item.href === "/provider/distribute";
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -180,16 +246,30 @@ export function ProviderSidebar() {
                         tooltip={t(item.i18nKey, item.title)}
                         className={
                           isActive
-                            ? "bg-[rgba(232,85,85,0.08)] text-[#E85D55] font-semibold"
+                            ? "bg-[rgba(53,96,90,0.08)] text-[#35605A] font-semibold"
                             : "text-[#7A7A72] hover:text-[#1A1A18] hover:bg-[#F3F3EE]"
                         }
                       >
                         <Link
-                          href={item.href}
+                          href={href}
                           data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                          className="flex items-center gap-2 w-full"
                         >
-                          <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
-                          <span className="text-[13px]">{t(item.i18nKey, item.title)}</span>
+                          <item.icon className="w-4 h-4 flex-shrink-0" style={{ opacity: isActive ? 1 : 0.7 }} />
+                          <span className="text-[13px] flex-1 truncate">{t(item.i18nKey, item.title)}</span>
+                          {/* Distribute listing count badge — matches mock's "8" indicator */}
+                          {isDistribute && distributeCount > 0 && (
+                            <span
+                              className="group-data-[collapsible=icon]:hidden ml-auto flex-shrink-0 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-semibold"
+                              style={{
+                                background: isActive ? "rgba(53,96,90,0.15)" : "#E8E8E2",
+                                color: isActive ? "#35605A" : "#7A7A72",
+                              }}
+                              data-testid="badge-distribute-count"
+                            >
+                              {distributeCount}
+                            </span>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -205,27 +285,9 @@ export function ProviderSidebar() {
         className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5"
         style={{ borderTop: "1px solid #E8E8E2" }}
       >
-        {user && (
-          <div className="flex items-center gap-2.5 mb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mb-0">
-            <div
-              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-semibold text-white flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #E85D55, #1E3A5F)" }}
-            >
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
-                {displayName}
-              </p>
-              <p className="text-[11px] truncate" style={{ color: "#7A7A72" }}>
-                {user.email}
-              </p>
-            </div>
-          </div>
-        )}
         <Button
           variant="ghost"
-          className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="w-full justify-start text-[#7A7A72] hover:text-[#35605A] hover:bg-[rgba(53,96,90,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           onClick={() => logout()}
           data-testid="button-provider-logout"
         >

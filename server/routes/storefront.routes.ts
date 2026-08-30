@@ -1,12 +1,13 @@
 /**
  * storefront.routes.ts — public earner storefront (backoffice Phase 1a/1b).
  *
- * The mockup's "/p/{handle}" identity layer (docs/backoffice/mockups/mockup-offering-page.html,
+ * The mockup's "/s/{handle}" identity layer (docs/backoffice/mockups/mockup-offering-page.html,
  * mockup-backoffice-dashboard.html). Three surfaces:
  *   PATCH /api/me/handle          — claim/change the caller's handle (§14: user from session only)
  *   GET   /api/storefront/:handle — public JSON: earner profile + APPROVED offerings across the
  *                                   three lanes (provider_services / expert_templates / ready_made_trips)
- *   GET   /p/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
+ *   GET   /s/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
+ *   GET   /p/:handle              — legacy alias redirecting to the role-specific canonical route
  *                                   /itinerary-view/:token route-interception pattern), then the SPA
  *                                   takes over client-side.
  *   GET   /services/:id           — same OG injection for the shareable offering page.
@@ -20,16 +21,18 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations } from "@shared/schema";
+import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
 // providerServices/expertTemplates/readyMadeTrips rows or their approval/status columns.
-import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
+import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isExpertRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { transformDevHtml } from "../vite-dev-html";
 
@@ -45,7 +48,7 @@ const isAuthenticated = (req: any, res: any, next: any) => {
 // no canonical write path produces it, but a grandfathered row shouldn't lose its handle).
 const EARNER_ROLES = new Set<string>([...CANONICAL_EARNER_ROLES, "provider"]);
 
-// Reserved first segments: platform vocabulary + abuse-prone names. A handle lives under /p/ so
+// Reserved first segments: platform vocabulary + abuse-prone names. A handle lives under /s/ so
 // route collisions are impossible; this list protects brand/impersonation surface.
 const RESERVED_HANDLES = new Set([
   "admin", "administrator", "api", "traveloure", "official", "support", "help",
@@ -125,6 +128,11 @@ async function isStorefrontVerificationRequired(): Promise<boolean> {
     const row = (result.rows as any[])?.[0];
     return row?.setting_value === "true";
   } catch {
+    // Deliberately fail OPEN (false = verification NOT required): this flag is an
+    // admin-switchable HARDENING gate that defaults off (V.1). A transient settings-read
+    // failure must not vanish every storefront on the platform; when the flag is ON and
+    // the read fails, the next successful read re-applies it. (Corrects the a250e6a6
+    // sweep's comment, which claimed "fail closed" above code that fails open.)
     return false;
   }
 }
@@ -214,6 +222,8 @@ const settingsPatchSchema = z.object({
   // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
   // now a real persisted preference (display opt-in only, no money/ranking semantics here).
   showOnLeaderboard: z.boolean().optional(),
+  // Migration 225: DB-backed column on users (not JSONB). Written to users.email_booking_alerts.
+  emailBookingAlerts: z.boolean().optional(),
 }).strict();
 
 router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
@@ -221,13 +231,18 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({ preferences: users.preferences, emailBookingAlerts: users.emailBookingAlerts })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
     if (!me) return res.status(401).json({ message: "Authentication required" });
     const prefs = (me.preferences as any) ?? {};
-    res.json(prefs.settings ?? {});
+    // Migration 225: merge the DB-backed emailBookingAlerts column into the settings
+    // payload so the client sees it alongside the JSONB preferences.
+    res.json({
+      ...(prefs.settings ?? {}),
+      emailBookingAlerts: me.emailBookingAlerts ?? true,
+    });
   } catch (err) {
     console.error("[me/preferences] read error:", err);
     res.status(500).json({ message: "Failed to load preferences" });
@@ -264,12 +279,15 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         : {}),
     };
 
-    await db
-      .update(users)
-      .set({ preferences: { ...current, settings: nextSettings } })
-      .where(eq(users.id, userId));
+    // Migration 225: emailBookingAlerts is a real column, not a JSONB key — split it out
+    // of the settings merge and write it alongside (checked at every booking-alert send site).
+    const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
+    if (parsed.data.emailBookingAlerts !== undefined) {
+      columnUpdate.emailBookingAlerts = parsed.data.emailBookingAlerts;
+    }
+    await db.update(users).set(columnUpdate as any).where(eq(users.id, userId));
 
-    res.json(nextSettings);
+    res.json({ ...nextSettings, ...(parsed.data.emailBookingAlerts !== undefined ? { emailBookingAlerts: parsed.data.emailBookingAlerts } : {}) });
   } catch (err) {
     console.error("[me/preferences] write error:", err);
     res.status(500).json({ message: "Failed to save preferences" });
@@ -298,6 +316,10 @@ const httpsUrlSchema = z
 const storefrontPrefsPatchSchema = z.object({
   // Present + string → set; present + null → clear; absent → leave untouched.
   coverImageUrl: httpsUrlSchema.nullable().optional(),
+  // Ruling 112 Q9: the Distribute storefront card edits handle & BIO together — bio is the
+  // storefront's own intro line (users.bio, the column the public storefront read already
+  // serves). Owner-authored profile prose; not an amount/identity/rate field.
+  bio: z.string().trim().max(2000).nullable().optional(),
 }).strict();
 
 router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
@@ -320,6 +342,9 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const current = (me.preferences as any) ?? {};
     const currentStorefront = current.storefront ?? {};
     const patch = parsed.data;
+    // Defense-in-depth (stored XSS): React auto-escapes on render, but future non-React
+    // rendering paths (emails, PDFs, exports) may not — sanitize before persisting.
+    if (typeof patch.bio === "string") patch.bio = sanitizeInput(patch.bio);
     const nextStorefront = {
       ...currentStorefront,
       ...(patch.coverImageUrl !== undefined ? { coverImageUrl: patch.coverImageUrl } : {}),
@@ -327,10 +352,15 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
 
     await db
       .update(users)
-      .set({ preferences: { ...current, storefront: nextStorefront } })
+      .set({
+        preferences: { ...current, storefront: nextStorefront },
+        // Ruling 112 Q9: bio rides the same patch — present+string sets, present+null clears,
+        // absent leaves untouched (the coverImageUrl contract, one column over).
+        ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
+      })
       .where(eq(users.id, userId));
 
-    res.json(nextStorefront);
+    res.json({ ...nextStorefront, ...(patch.bio !== undefined ? { bio: patch.bio } : {}) });
   } catch (err) {
     console.error("[me/storefront] write error:", err);
     res.status(500).json({ message: "Failed to save storefront settings" });
@@ -507,7 +537,7 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
         availability: { applicable: availabilityApplicable, done: availabilityCount > 0, count: availabilityCount },
         verification: { done: identityVerified, requiredForStorefront: verificationRequired },
       },
-      storefrontPath: me.handle ? `/p/${me.handle}` : null,
+      storefrontPath: me.handle ? `/s/${me.handle}` : null,
     });
   } catch (error: any) {
     console.error("[business-setup] aggregate failed:", error);
@@ -515,7 +545,13 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
   }
 });
 
-async function loadStorefront(handle: string) {
+// `activeLocale` (ruling 116 / P1 of the distribution-language audit): the viewer's resolved
+// chrome locale, passed by the SPA as ?locale=. Applies the SAME ruling-60/115 content overlay
+// GET /api/services/:id uses — an approved translation replaces the card's text when the viewer's
+// locale differs from the listing's own source_locale; otherwise the honest original renders,
+// flagged `shownInOriginal` so the client can label it (§13 — never silent, never machine-
+// translated). Omitted (the OG-injection caller, crawlers) ⇒ no overlay, canonical content.
+async function loadStorefront(handle: string, activeLocale?: string) {
   const normalized = handle.trim().toLowerCase();
   if (!HANDLE_RE.test(normalized)) return null;
 
@@ -537,6 +573,10 @@ async function loadStorefront(handle: string) {
     .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
     .limit(1);
   if (!owner) return null;
+  // Expert/local-expert is the only family served by the canonical /s storefront.
+  // Providers have their own /providers surface below; never let their handle expose
+  // a mixed-inventory expert storefront.
+  if (!isExpertRole(owner.role)) return null;
 
   // V.1 — enabled by admin flipping platform_settings.storefront_require_verified to "true" once
   // V.2/V.3 verification-flow sequencing lands; build-while-pending preserved (handle claim + the
@@ -569,6 +609,9 @@ async function loadStorefront(handle: string) {
       // below (the ONE derivation site), never returned null.
       showPrice: providerServices.showPrice,
       bookingMode: providerServices.bookingMode,
+      // Ruling 115: the listing's declared source language (NULL = en) — drives the per-card
+      // translation overlay below.
+      sourceLocale: providerServices.sourceLocale,
     })
     .from(providerServices)
     .where(
@@ -591,11 +634,47 @@ async function loadStorefront(handle: string) {
     .where(eq(serviceProviderForms.userId, owner.id))
     .limit(1);
   const ownerInstantBooking = ownerForm?.instantBooking ?? false;
-  const resolvedServices = services.map((s) => ({
+  let resolvedServices = services.map((s) => ({
     ...s,
     showPrice: s.showPrice ?? true,
     bookingMode: resolveBookingMode(s.bookingMode, ownerInstantBooking),
+    // Set true below only when the viewer's locale differs from the card's source and no
+    // approved translation exists — the client renders the honest one-line note (§13).
+    shownInOriginal: false,
   }));
+
+  // Ruling 115/116 content overlay — the storefront card follows the same rules as the detail
+  // page it links to: approved rows only (a draft/AI-draft is NEVER shown to a traveler), name
+  // overlaid where translated, honest original + flag where not. One batched query, not N.
+  if (isContentLocale(activeLocale)) {
+    const needing = resolvedServices.filter(
+      (s) => effectiveSourceLocale(s.sourceLocale) !== activeLocale,
+    );
+    if (needing.length > 0) {
+      const rows = await db
+        .select({
+          serviceId: serviceTranslations.serviceId,
+          serviceName: serviceTranslations.serviceName,
+        })
+        .from(serviceTranslations)
+        .where(
+          and(
+            inArray(serviceTranslations.serviceId, needing.map((s) => s.id)),
+            eq(serviceTranslations.locale, activeLocale),
+            eq(serviceTranslations.status, "approved"),
+          ),
+        );
+      const byId = new Map(rows.map((r) => [r.serviceId, r]));
+      resolvedServices = resolvedServices.map((s) => {
+        if (effectiveSourceLocale(s.sourceLocale) === activeLocale) return s;
+        const t = byId.get(s.id);
+        // An approved row with a translated name overlays; an untranslated FIELD falls back to
+        // the original (never blanked) — same field-level rule as the detail read.
+        if (t?.serviceName) return { ...s, serviceName: t.serviceName };
+        return { ...s, shownInOriginal: true };
+      });
+    }
+  }
 
   // Lane 2: itinerary templates — approved + expert-published (§10 read-gate). Teaser fields only
   // (the content-gate: no itineraryData here, ever).
@@ -708,9 +787,238 @@ async function loadStorefront(handle: string) {
   };
 }
 
+// Provider storefronts intentionally have a narrower inventory contract than expert storefronts:
+// only approved, active provider_services belong here. Templates and Ready Made trips must never
+// leak across the role-specific public surfaces.
+async function loadProviderStorefront(handle: string, activeLocale?: string) {
+  const normalized = handle.trim().toLowerCase();
+  if (!HANDLE_RE.test(normalized)) return null;
+
+  const [owner] = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      bio: users.bio,
+      profileImageUrl: users.profileImageUrl,
+      role: users.role,
+      handle: users.handle,
+      createdAt: users.createdAt,
+      preferences: users.preferences,
+      vacationUntil: users.vacationUntil,
+      vacationMessage: users.vacationMessage,
+    })
+    .from(users)
+    .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
+    .limit(1);
+  if (!owner || !isProviderRole(owner.role)) return null;
+
+  if (await isStorefrontVerificationRequired()) {
+    const verified = await isOwnerIdentityVerified(owner.id);
+    if (!verified) return null;
+  }
+
+  const services = await db
+    .select({
+      id: providerServices.id,
+      serviceName: providerServices.serviceName,
+      price: providerServices.price,
+      priceType: providerServices.priceType,
+      pricingUnit: providerServices.pricingUnit,
+      deliveryMethod: providerServices.deliveryMethod,
+      serviceImage: providerServices.serviceImage,
+      averageRating: providerServices.averageRating,
+      reviewCount: providerServices.reviewCount,
+      city: providerServices.city,
+      productShape: providerServices.productShape,
+      showPrice: providerServices.showPrice,
+      bookingMode: providerServices.bookingMode,
+      sourceLocale: providerServices.sourceLocale,
+    })
+    .from(providerServices)
+    .where(and(
+      eq(providerServices.userId, owner.id),
+      eq(providerServices.approvalStatus, "approved"),
+      eq(providerServices.status, "active"),
+    ));
+  if (services.length === 0) return null;
+
+  const [ownerForm] = await db
+    .select({ instantBooking: serviceProviderForms.instantBooking })
+    .from(serviceProviderForms)
+    .where(eq(serviceProviderForms.userId, owner.id))
+    .limit(1);
+  let resolvedServices = services.map((service) => ({
+    ...service,
+    showPrice: service.showPrice ?? true,
+    bookingMode: resolveBookingMode(service.bookingMode, ownerForm?.instantBooking ?? false),
+    shownInOriginal: false,
+  }));
+  // Keep provider service cards subject to the same approved-translation-only overlay as
+  // the established storefront API; this does not broaden the provider inventory contract.
+  if (isContentLocale(activeLocale)) {
+    const needing = resolvedServices.filter(
+      (service) => effectiveSourceLocale(service.sourceLocale) !== activeLocale,
+    );
+    if (needing.length > 0) {
+      const translations = await db
+        .select({
+          serviceId: serviceTranslations.serviceId,
+          serviceName: serviceTranslations.serviceName,
+        })
+        .from(serviceTranslations)
+        .where(and(
+          inArray(serviceTranslations.serviceId, needing.map((service) => service.id)),
+          eq(serviceTranslations.locale, activeLocale),
+          eq(serviceTranslations.status, "approved"),
+        ));
+      const byServiceId = new Map(translations.map((translation) => [translation.serviceId, translation]));
+      resolvedServices = resolvedServices.map((service) => {
+        if (effectiveSourceLocale(service.sourceLocale) === activeLocale) return service;
+        const translation = byServiceId.get(service.id);
+        return translation?.serviceName
+          ? { ...service, serviceName: translation.serviceName }
+          : { ...service, shownInOriginal: true };
+      });
+    }
+  }
+
+  let weightedSum = 0;
+  let totalReviews = 0;
+  for (const service of services) {
+    const reviews = Number(service.reviewCount ?? 0);
+    const rating = service.averageRating != null ? Number(service.averageRating) : null;
+    if (reviews > 0 && rating != null && !Number.isNaN(rating)) {
+      weightedSum += rating * reviews;
+      totalReviews += reviews;
+    }
+  }
+  const [verified, location] = await Promise.all([
+    isOwnerIdentityVerified(owner.id),
+    resolveEarnerLocation(owner.id),
+  ]);
+  const away =
+    owner.vacationUntil && owner.vacationUntil.getTime() > Date.now()
+      ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
+      : null;
+
+  return {
+    earner: {
+      id: owner.id,
+      name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure provider",
+      bio: owner.bio ?? null,
+      profileImageUrl: owner.profileImageUrl ?? null,
+      role: owner.role,
+      handle: owner.handle,
+      averageRating: totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null,
+      reviewCount: totalReviews,
+      verified,
+      location,
+      memberSince: owner.createdAt ? owner.createdAt.toISOString() : null,
+      coverImageUrl: ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null,
+      offeringsCount: services.length,
+    },
+    services: resolvedServices,
+    away,
+  };
+}
+
+// Public provider directory for the Experts-page storefront tab. This deliberately aggregates
+// only the live service gate and never selects a service row, so listing copy, prices, and
+// provider verification data cannot enter the directory payload.
+async function loadProviderStorefrontDirectory() {
+  const rows = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      handle: users.handle,
+      bio: users.bio,
+      profileImageUrl: users.profileImageUrl,
+      serviceCount: sql<number>`count(${providerServices.id})::int`,
+      // Match the storefront's review-weighted rating calculation. Services without a rating
+      // do not affect either aggregate, avoiding an invented average for unrated inventory.
+      averageRating: sql<number | null>`
+        case
+          when coalesce(sum(
+            case
+              when ${providerServices.averageRating} is not null
+              then coalesce(${providerServices.reviewCount}, 0)
+              else 0
+            end
+          ), 0) > 0
+          then round(
+            sum(
+              case
+                when ${providerServices.averageRating} is not null
+                then ${providerServices.averageRating} * coalesce(${providerServices.reviewCount}, 0)
+                else 0
+              end
+            ) / sum(
+              case
+                when ${providerServices.averageRating} is not null
+                then coalesce(${providerServices.reviewCount}, 0)
+                else 0
+              end
+            ),
+            2
+          )
+          else null
+        end
+      `,
+      reviewCount: sql<number>`
+        coalesce(sum(
+          case
+            when ${providerServices.averageRating} is not null
+            then coalesce(${providerServices.reviewCount}, 0)
+            else 0
+          end
+        ), 0)::int
+      `,
+    })
+    .from(users)
+    .innerJoin(
+      providerServices,
+      and(
+        eq(providerServices.userId, users.id),
+        eq(providerServices.approvalStatus, "approved"),
+        eq(providerServices.status, "active"),
+      ),
+    )
+    .where(
+      and(
+        eq(users.role, "service_provider"),
+        eq(users.isDeleted, false),
+        eq(users.isSuspended, false),
+        isNotNull(users.handle),
+      ),
+    )
+    .groupBy(
+      users.id,
+      users.firstName,
+      users.lastName,
+      users.handle,
+      users.bio,
+      users.profileImageUrl,
+    );
+
+  return Promise.all(rows.map(async (row) => ({
+    id: row.id,
+    name: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Traveloure provider",
+    handle: row.handle,
+    bio: row.bio ?? null,
+    profileImageUrl: row.profileImageUrl ?? null,
+    serviceCount: Number(row.serviceCount),
+    averageRating: row.averageRating == null ? null : Number(row.averageRating),
+    reviewCount: Number(row.reviewCount),
+    location: await resolveEarnerLocation(row.id),
+  })));
+}
+
 router.get("/api/storefront/:handle", async (req, res) => {
   try {
-    const data = await loadStorefront(req.params.handle);
+    const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
+    const data = await loadStorefront(req.params.handle, rawLocale);
     if (!data) return res.status(404).json({ message: "Storefront not found" });
     return res.json(data);
   } catch (error: any) {
@@ -719,9 +1027,32 @@ router.get("/api/storefront/:handle", async (req, res) => {
   }
 });
 
-// Server-side OG injection for /p/:handle — crawlers (WhatsApp/FB/X) never run the SPA's JS, so
-// the share preview must be in the initial HTML. Same handler shape as /itinerary-view/:token.
-router.get("/p/:handle", async (req, res, next) => {
+router.get("/api/provider-storefront/:handle", async (req, res) => {
+  try {
+    const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
+    const data = await loadProviderStorefront(req.params.handle, rawLocale);
+    if (!data) return res.status(404).json({ message: "Provider storefront not found" });
+    return res.json(data);
+  } catch (error: any) {
+    console.error("[provider-storefront] load failed:", error);
+    return res.status(500).json({ message: "Failed to load provider storefront" });
+  }
+});
+
+// Register the collection route separately from the singular `/:handle` route above: the
+// plural path keeps `/api/provider-storefront/:handle` unambiguous.
+router.get("/api/provider-storefronts", async (_req, res) => {
+  try {
+    return res.json(await loadProviderStorefrontDirectory());
+  } catch (error: any) {
+    console.error("[provider-storefronts] directory load failed:", error);
+    return res.status(500).json({ message: "Failed to load provider storefronts" });
+  }
+});
+
+// Server-side OG injection for canonical expert/local-expert /s/:handle. Crawlers (WhatsApp/FB/X)
+// never run the SPA's JS, so the share preview must be in the initial HTML.
+router.get("/s/:handle", async (req, res, next) => {
   try {
     const data = await loadStorefront(req.params.handle);
     if (!data) return next(); // SPA renders its own not-found
@@ -731,19 +1062,20 @@ router.get("/p/:handle", async (req, res, next) => {
     const description =
       data.earner.bio ??
       `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
+    const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
       data.readyMade[0]?.heroImageUrl ??
       data.templates[0]?.coverImage ??
       data.earner.profileImageUrl ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
       `<meta property="og:type" content="profile" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -769,7 +1101,11 @@ router.get("/p/:handle", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
@@ -782,7 +1118,79 @@ router.get("/p/:handle", async (req, res, next) => {
   }
 });
 
-// Server-side OG injection for /services/:id — same pattern as /p/:handle.
+// Canonical provider equivalent of the expert storefront OG shell above. This route reads the
+// provider-only loader, so an expert handle cannot receive provider metadata (or vice versa).
+router.get("/providers/:handle", async (req, res, next) => {
+  try {
+    const data = await loadProviderStorefront(req.params.handle);
+    if (!data) return next();
+
+    const count = data.services.length;
+    const title = `${data.earner.name} — Book local services | Traveloure`;
+    const description =
+      data.earner.bio ??
+      `${count} bookable service${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
+    const shareUrl = `https://traveloure.com/providers/${data.earner.handle}`;
+    const ogImage =
+      data.earner.coverImageUrl ??
+      data.services[0]?.serviceImage ??
+      data.earner.profileImageUrl ??
+      "https://traveloure.com/og-cover.png";
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const ogTags = [
+      `<title>${esc(title)}</title>`,
+      `<meta name="description" content="${esc(description)}" />`,
+      `<meta property="og:type" content="profile" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
+      `<meta property="og:url" content="${esc(shareUrl)}" />`,
+      `<meta property="og:title" content="${esc(title)}" />`,
+      `<meta property="og:description" content="${esc(description)}" />`,
+      `<meta property="og:image" content="${esc(ogImage)}" />`,
+      `<meta property="og:site_name" content="Traveloure" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:title" content="${esc(title)}" />`,
+      `<meta name="twitter:description" content="${esc(description)}" />`,
+    ].join("\n    ");
+    const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
+    const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+    const templatePath =
+      process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+        ? clientTemplateProd
+        : clientTemplateDev;
+    if (!fs.existsSync(templatePath)) return next();
+
+    let template = fs.readFileSync(templatePath, "utf-8");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
+    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = await transformDevHtml(req.originalUrl, template);
+    return res.status(200).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[provider-storefront] OG injection error:", err);
+    return next();
+  }
+});
+
+// /p/:handle is retained only as a role-aware legacy redirect. Resolve via the same public
+// loaders as the canonical routes, which prevents a missing, suspended, invalid, or unpublished
+// handle from being turned into a fabricated canonical URL.
+router.get("/p/:handle", async (req, res, next) => {
+  try {
+    const provider = await loadProviderStorefront(req.params.handle);
+    if (provider) return res.redirect(302, `/providers/${provider.earner.handle}`);
+    const expert = await loadStorefront(req.params.handle);
+    if (expert) return res.redirect(302, `/s/${expert.earner.handle}`);
+    return next();
+  } catch (err) {
+    console.error("[storefront] legacy alias resolution failed:", err);
+    return next();
+  }
+});
+
+// Server-side OG injection for /services/:id — same pattern as /s/:handle.
 router.get("/services/:id", async (req, res, next) => {
   try {
     const [service] = await db
@@ -809,16 +1217,21 @@ router.get("/services/:id", async (req, res, next) => {
     const description =
       service.description?.substring(0, 160) ??
       `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    const shareUrl = `https://traveloure.com/services/${service.id}`;
+    // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
+    const resolvedServiceImage = service.serviceImage?.startsWith("covers:")
+      ? `${req.protocol}://${req.get("host")}/api/services/${service.id}/cover-image`
+      : service.serviceImage;
     const ogImage =
-      service.serviceImage ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      resolvedServiceImage ??
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
       `<meta property="og:type" content="website" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -844,7 +1257,11 @@ router.get("/services/:id", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
@@ -896,16 +1313,17 @@ router.get("/ready-made/:id", async (req, res, next) => {
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const shareUrl = `https://traveloure.com/ready-made/${listing.id}`;
     const ogImage =
       listing.heroImageUrl ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
       `<meta property="og:type" content="website" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -931,7 +1349,11 @@ router.get("/ready-made/:id", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
@@ -941,6 +1363,61 @@ router.get("/ready-made/:id", async (req, res, next) => {
   } catch (err) {
     console.error("[storefront] OG injection error (ready-made):", err);
     return next(); // fall through to SPA on any error
+  }
+});
+
+// ── Notification email (migration 224) ─────────────────────────────────────
+// GET  /api/me/notification-email  — return current value (null if unset)
+// PATCH /api/me/notification-email — set or clear; earner-only, own record only
+
+const notificationEmailSchema = z.object({
+  notificationEmail: z
+    .string()
+    .email("Must be a valid email address")
+    .max(255)
+    .nullable()
+    .optional(),
+});
+
+router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
+  try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
+    const userId = getUserId(req)!;
+    const [row] = await db
+      .select({ notificationEmail: users.notificationEmail })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return res.json({ notificationEmail: row?.notificationEmail ?? null });
+  } catch (err) {
+    console.error("[notification-email] GET error:", err);
+    return res.status(500).json({ message: "Failed to fetch notification email" });
+  }
+});
+
+router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
+  try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
+    const userId = getUserId(req)!;
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const { notificationEmail } = parsed.data;
+    await db
+      .update(users)
+      .set({ notificationEmail: notificationEmail ?? null })
+      .where(eq(users.id, userId));
+    return res.json({ notificationEmail: notificationEmail ?? null });
+  } catch (err) {
+    console.error("[notification-email] PATCH error:", err);
+    return res.status(500).json({ message: "Failed to update notification email" });
   }
 });
 

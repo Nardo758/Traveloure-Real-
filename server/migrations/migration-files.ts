@@ -1,3 +1,4 @@
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1004,4 +1005,270 @@ export const MIGRATION_FILES = [
   // money/identity/rate field. Additive-nullable, NO DB CHECK; DECLARED in shared/schema.ts
   // (publish-trap rule). Idempotent.
   "207_provider_office_location.sql",
+  // 208: FP-1 provider-console defect fix pack — the DATA half (docs/testing/PROVIDER_BATCH_EXERCISE.md
+  // findings A1/B2/B4). DATA ONLY: no columns, no CHECK, no index, no table — nothing for the Replit
+  // deploy-push to drop or reject (publish-trap rule), and preflight-prod-constraints is N/A.
+  // (1) A1: the "Custom / Other" service_categories row carries category_key='custom_other' — on a
+  //     fresh DB migration 189's identical UPDATE ran BEFORE seedCategories() created the row, so the
+  //     custom-offering wizard lock rendered "—" and Publish could never enable. The durable fix is in
+  //     the seeder; this repairs databases already holding the NULL row (guarded so a UNIQUE
+  //     category_key collision can't fail the migration).
+  // (2) B2: property/property_room -> 'in_person', bundle -> derived from its components (uniform
+  //     method, else 'hybrid') for rows still holding the column DEFAULT 'pdf' — the Workstation
+  //     builders never set one, so travelers saw "PDF guide" on guest rooms. Canonical 7 only (§3).
+  // (3) B4: provider_services.city from city_neighborhoods, slug match ONLY and ONLY where the slug
+  //     resolves to exactly one city (slug is not globally unique — the uniqueness is (city, country,
+  //     slug)). No free-text parsing, no fuzzy match, NULL stays NULL (§13).
+  "208_fp1_console_defect_data_repairs.sql",
+  // 209: notifications.dedupe_key — QA-2's notification-durability fix (DECISIONS.md ledger 96).
+  // Nullable varchar + a PARTIAL UNIQUE index (WHERE dedupe_key IS NOT NULL, migration-155/203
+  // precedent), keyed `booking:<id>:<event>`. Lets the booking-status canonical writer
+  // (storage.updateServiceBookingStatus) insert its accept/cancel notification INSIDE the same
+  // transaction as the status flip with ON CONFLICT DO NOTHING — a crash-retry of the same
+  // transition inserts zero duplicate rows. Additive, NO CHECK; DECLARED in shared/schema.ts
+  // (publish-trap rule).
+  "209_notification_dedupe_key.sql",
+  // 210: S7 availability model (DECISIONS.md ledger row 102, Wave 3 schema ballot ratified as
+  // recommended). Three additive child tables — service_availability_patterns (weekly repeat
+  // rule, natural-key UNIQUE service_id+day_of_week+start_time+end_time), service_date_ranges
+  // (property/room date-range authoring with nightly_price — S11's future checkout input, never
+  // charged from directly), service_availability_blackouts (applies to either shape; S7-Q3: BLOCKS
+  // future materialization only, never cancels an existing slot/booking). PLUS the ratified
+  // idempotency UNIQUE index (service_id, date, start_time) on the EXISTING vendor_availability_slots
+  // table (S7-Q2) — the materializer's ON CONFLICT DO NOTHING upsert target. Defensively verifies
+  // no pre-existing duplicates before creating that index; FAILS LOUDLY (RAISE EXCEPTION) rather
+  // than silently skipping or dropping rows if any are found. All additive, NO DB CHECK; every new
+  // object (three tables + the index) DECLARED in shared/schema.ts in the same commit
+  // (publish-trap rule). Preflight: node scripts/preflight-prod-unique-indexes.cjs before publish
+  // (docs/RELEASE.md).
+  "210_service_availability_model.sql",
+  // 211: property builder fields (S8, Gate G2 — docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). Four additive-nullable columns on provider_services: check_in_time/check_out_time
+  // ("HH:MM", the earliest/latestStartTime shape), house_rules (text, property-level only —
+  // absolute pin-style inheritance, no per-room override), amenities (jsonb string array, the
+  // deliveryLanguages NULL-vs-[] precedent). No DB CHECK, no new table — the property↔room
+  // linkage (productShape/pricingUnit/parentServiceId) already shipped in migration 153. All
+  // four ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema — no
+  // new endpoint. Registered after 210 (S7) at integration; no dependency on 210's objects.
+  "211_property_builder_fields.sql",
+  // 212: S9 (Wave 3, Gate G3) session/async fields on provider_services — join_link,
+  // response_window_hours, scope_statement (DECISIONS.md ledger row 102, ratifying
+  // docs/briefs/WAVE3_SCHEMA_PROPOSALS.md's S9 section). Additive-nullable, NO DB CHECK.
+  // LANE-SEQUENCING NOTE: registered directly after 209 in this worktree because the
+  // sibling S7/S8 lanes (migrations 210/211) run in parallel worktrees and are not visible
+  // here — the integrator resolves final numeric/registry ordering across all three when
+  // merging. This migration's own DDL does not depend on 210/211 (a different table, a
+  // different ALTER) so registration order among the three is immaterial to correctness.
+  "212_session_async_service_fields.sql",
+  // 213: S11 stay-booking provenance marker (final Wave 3 lane — DECISIONS.md ledger row 107,
+  // ratifying docs/briefs/S11_STAY_BOOKING_PROPOSAL.md in full). ONE additive-nullable column,
+  // vendor_availability_slots.materialized_from ('pattern' | 'date_range' | NULL=manual), NO DB
+  // CHECK. Extends the ALREADY-LIVE §15 stay claim mechanism (candidate (a) — the ratified
+  // PROPERTY rung) with a date-range materializer; builds no second claim machine (§18c).
+  "213_stay_booking_provenance.sql",
+  // 214: property minimum stay (ruling 112 Q6 — the mock's field set adopted after the Run-2
+  // conformance pass graded its absence a P2 BUILD-GAP). ONE additive-nullable integer on
+  // provider_services (min_stay_nights), NO DB CHECK, declared in shared/schema.ts same commit.
+  "214_property_min_stay.sql",
+  // 215: edit-split pending-changes rail (ruling 112 Q8 / CLAUDE.md §23 — the mock's gap #17
+  // ratified: an approved listing is never taken down for an edit). TWO additive-nullable
+  // columns on provider_services (pending_changes jsonb, edit_review_status varchar), NO DB
+  // CHECK, both declared in shared/schema.ts and §19-stripped on every client rail.
+  "215_edit_split_pending_changes.sql",
+  // 216: listing source language (ruling 115 — a provider can author in their native language;
+  // travelers flip the toggle the other way). ONE additive-nullable varchar on provider_services
+  // (source_locale, 'en'|'ja' app-enforced, NO DB CHECK), declared in shared/schema.ts same
+  // commit. NULL = pre-216 row = English (ruling 60's baked-in assumption made explicit).
+  "216_source_locale.sql",
+  // 217: DB-backed fallbacks for FX rates + geocode city coordinates. Two new tables
+  // (fx_rates, geocode_fallbacks), both seeded with the values the code used to hardcode
+  // (/api/exchange-rates literal + the dead FALLBACK_COORDINATES map). Idempotent
+  // (IF NOT EXISTS + ON CONFLICT DO NOTHING); declared in shared/schema.ts same commit.
+  "217_fx_rates_geocode_fallbacks.sql",
+  // 218: missing B-tree indexes on hot query columns (service_bookings, itinerary_items,
+  // notifications, provider_services, service_reviews). Pure CREATE INDEX IF NOT EXISTS —
+  // no table/column changes. Every index is also declared in shared/schema.ts (deploy-push
+  // durability rule) so the publish-time drizzle push never drops them. (Renumbered from
+  // 217 during rebase: main already shipped 217_fx_rates_geocode_fallbacks.sql.)
+  "218_hot_query_column_indexes.sql",
+  // 219: search quality — pg_trgm extension + GIN indexes for the tsvector/trigram search in
+  // storage.unifiedSearch (typo tolerance, relevance ranking, "did you mean" suggestions).
+  // All idempotent (CREATE EXTENSION/INDEX IF NOT EXISTS), no table/column changes.
+  // (Renumbered from 217→218→219 at merge — main's 217 is fx_rates, 218 is hot-query indexes.)
+  "219_search_fts_trgm.sql",
+  // 220: seed the full currency set the budget converter supports (CAD, CHF, CNY, INR, MXN,
+  // BRL, THB). Migration 217 only seeded EUR/GBP/JPY/AUD/SGD; the daily FX refresh is also
+  // updated (same commit) to fetch all twelve currencies going forward.
+  "220_fx_rates_full_currency_set.sql",
+  // 221: unique index on fever_event_cache(event_id) so concurrent cache-miss fetches cannot
+  // insert duplicate rows for the same Fever event. Duplicate rows from the pre-index era
+  // are removed before the index is created (keep most-recently-updated copy per event_id).
+  // Pure DDL + DELETE — no column/table changes. Declared in shared/schema.ts same commit
+  // (deploy-push durability rule — drizzle push will not drop it).
+  "221_fever_event_cache_unique_event_id.sql",
+  // 222: add refreshed_at to travelpayouts_cache. created_at is immutable (set on first insert
+  // and not overwritten by onConflictDoUpdate), so it cannot serve as a last-refresh indicator.
+  // refreshed_at is stamped on every upsert by shared-cache.service.ts, giving operators an
+  // accurate freshness signal via GET /api/admin/travelpayouts-cache/status. No default so
+  // pre-migration rows carry NULL (surfaced as "unknown" by the status endpoint).
+  "222_travelpayouts_cache_refreshed_at.sql",
+  // 223: One-time backfill of bookings_count and total_revenue on provider_services from
+  // existing service_bookings rows. The live code keeps these counters in sync for new
+  // bookings; this recalculates both fields for any pre-existing bookings that were created
+  // before the sync logic was in place. Fully idempotent UPDATE (re-derives from source of
+  // truth; safe to re-run). Only updates services that have at least one booking row.
+  "223_backfill_service_booking_counters.sql",
+  // 224: add notification_email to users. Experts/providers can set a separate
+  // business email for booking alert emails; falls back to users.email when NULL.
+  // Never touches auth flows. Idempotent (ADD COLUMN IF NOT EXISTS).
+  "224_notification_email.sql",
+  // 225: add email_booking_alerts boolean (default true) to users. Experts can disable
+  // booking-alert emails from Settings → Notifications; the flag is checked at all
+  // sendBookingAlertEmail call sites before the email is dispatched.
+  "225_email_booking_alerts.sql",
+  // 226: retire the `_deprecated_expert_city_queues` table deliberately — following the
+  // guarded-drop pattern of migrations 158/167/168. The table was replaced by
+  // scoring-based lead routing (expert_requests) in 2026-06; it has zero code references
+  // and was absent from shared/schema.ts (making it a silent DROP candidate on every
+  // publish). All 10 rows were empty seed records (expert_ids=[], active_requests=0);
+  // archived to legacy_archives before dropping. Guard refuses if any live rows are found.
+  "226_retire_deprecated_expert_city_queues.sql",
+  // 227: D-14 (ledger row 119) — delete chōme (丁目) address-block rows that the admin
+  // "Add market" OSM extract dumped into city_neighborhoods (Japanese cities tag every
+  // numbered block as place=quarter/neighbourhood; live instance: Osaka's thousands of
+  // rows). The extractor now filters them at source (CHOME_BLOCK_PATTERN); this cleans
+  // up what's already on disk. Data-only, idempotent, no schema change — no publish trap.
+  "227_purge_chome_neighborhood_rows.sql",
+  // 228: message safety — user_blocks and message_reports tables. user_blocks fences
+  // blocked pairs from messaging each other (enforced on all write paths). message_reports
+  // is an append-only moderation queue for admins to action. All idempotent DDL; no
+  // column/enum changes; no publish-trap risk (plain varchar status/reason fields, not PG
+  // enums). Schema declared in shared/schema.ts same commit.
+  "229_message_blocks_reports.sql",
+  // Gap #13's last two unbacked rows: the ratified mock draws a "Bring" and an "Access" row and
+  // NEITHER had a column, so the flow never asked and nothing could render them (the inverse of
+  // row 101's collected-and-never-read class). Both additive-nullable, NO DB CHECK — the
+  // 181/195 posture, so no publish-time CHECK trap. Declared in shared/schema.ts.
+  "228_service_bring_access_notes.sql",
+  // 230: deduplicate travel_pulse_cities rows — two seed paths (seedTrendingCities +
+  // seedTravelPulseData) could both insert Tokyo/Japan and Sydney/Australia with different
+  // UUIDs. Keeps the best row per (lower(city_name), lower(country)) pair (highest
+  // pulse_score; tie-break newest created_at) then adds a unique index so the DB rejects
+  // any future duplicate insert.
+  "230_dedupe_travel_pulse_cities.sql",
+  // 232: Trend + Crowd Engine Phase 1 — schema + config tables (trend_entities,
+  // trend_source_configs, trend_signals, trend_scores, market_season_calendars,
+  // crowd_index_snapshots, crowd_band_configs). Append-only rule for trend_signals
+  // enforced by application convention. All IF NOT EXISTS DDL; no publish-trap risk.
+  "232_trend_engine_phase1.sql",
+  // 233: Trend Engine Phase 1 close-out — two Leon-approved season gap rows:
+  //   kyoto spring_shoulder (04-21 → 06-06, 1.10) covering Golden Week shoulder;
+  //   edinburgh autumn_shoulder (09-01 → 10-31, 0.90) post-Festival cooldown.
+  "233_trend_engine_phase1_season_gaps.sql",
+  // 234: Trend Engine Phase 1 — three residual season gap rows (Leon-approved):
+  //   bogota dry_primary end extended 02-28 → 02-29 (leap-year day, same 1.10);
+  //   kyoto autumn_shoulder (09-07 → 10-19, 0.90) pre-foliage shoulder;
+  //   porto autumn (10-01 → 10-31, 1.00) October fully unassigned.
+  // Closes the 366-day leap-year coverage scan to 0 gap_days for all 8 markets.
+  "234_trend_engine_phase1_season_gaps2.sql",
+  // 235: Trend Engine Phase 2 infrastructure —
+  //   (1) health_status / halted_at / halted_reason columns on trend_source_config (Phase 2.1)
+  //   (2) UNIQUE idempotency index on trend_signals (entity, source, metric, observed_at)
+  //   (3) pre_launch boolean column on trend_signals (R8 calibration exclusion)
+  //   (4) trend_entities seed rows for 8 operating markets (pre-confirmed Wikidata QIDs)
+  "235_trend_engine_phase2_infra.sql",
+  // 236: X API raw_ref null constraint + enable all 8 Phase 2 adapters
+  //   (1) DB CHECK constraint chk_x_api_raw_ref_null — second enforcement layer for R9;
+  //       rejects any INSERT/UPDATE setting raw_ref non-null on an x_api row
+  //   (2) UPDATE trend_source_config SET enabled = true for all 8 adapters
+  "236_x_api_raw_ref_constraint_and_enable_adapters.sql",
+  // 237: Trend Source Config — last-run health columns (Item C, corrective dispatch 2)
+  //   last_run_at, last_run_status, last_run_error, last_run_inserted_rows,
+  //   consecutive_failures — enable runner-driven degraded detection.
+  //   A source failing ≥2 consecutive runs → health_status = 'degraded'.
+  "237_trend_source_config_last_run_health.sql",
+  // 238: provider_services.collects_and_drops — pickup intent toggle from the Logistics
+  //   step of the service wizard. Boolean default false; additive-nullable posture.
+  "238_provider_services_collects_and_drops.sql",
+  // 239: provider_services.seating — Capacity-step "Seating" (private|shared), the mock's
+  //   second Capacity column. Additive-nullable VARCHAR(16), no DB CHECK (migration-181/195/228
+  //   posture); app-enforced shape; NULL = never answered, omitted on the traveler surface (§13).
+  "239_provider_services_seating.sql",
+  // 240: email_outbox — durable store for transactional emails. Failed rows are retried by the
+  //   email-outbox scheduler with exponential backoff (max 5 attempts). Dead rows surfaced on
+  //   the admin dashboard. status: pending|sent|failed|dead. See email-outbox.service.ts.
+  "240_email_outbox.sql",
+  // 241: trips demand capture (R8, lane 2A.3) — additive-nullable origin_market + market_slug,
+  //   party-size DE-MASKING (drop the 1/2/0 defaults so unspecified stays NULL), best-effort
+  //   market_slug backfill from destination, and idx_trips_market_slug. Additive-nullable + DROP
+  //   DEFAULT only, no CHECK (publish-safe). Both columns declared in shared/schema.ts.
+  "241_trips_demand_capture_r8.sql",
+  // 242: DROP provider_availability (Partner Demand 2C) — confirmed orphan (0 rows, no insert
+  //   path, no readers). Its one no-op UPDATE writer on the booking-confirm path was removed and
+  //   the schema.ts declaration deleted in the same change (publish-trap). IF EXISTS = push-safe.
+  "242_drop_provider_availability.sql",
+  // 243: partner_demand_rollup (Partner Demand 2B) — the L6 rollup table. Additive, no CHECK
+  //   (publish-safe); declared in shared/schema.ts (table + 2 indexes). Nightly replace-by-date job.
+  "243_partner_demand_rollup.sql",
+  // 244: platform_revenue_payment_intent_unique — partial unique expression index on
+  //   (metadata->>'paymentIntentId') WHERE not null/not empty. Dedupes concurrent Stripe
+  //   payment_intent.succeeded duplicates at the DB level. Includes a safe DELETE for any
+  //   pre-existing PI-keyed duplicates (keeps oldest row). Additive + IF NOT EXISTS = push-safe.
+  "244_platform_revenue_payment_intent_unique.sql",
+  // 245: demand_onepager_approvals (Partner Demand Phase 4 R32) — admin one-pager approval decisions.
+  //   Persists only the approval (PDF regenerated deterministically on demand, no blob). Additive, no
+  //   CHECK (publish-safe); declared in shared/schema.ts (table + UNIQUE market_slug).
+  "245_demand_onepager_approvals.sql",
+  // 246: dmo_raw_content.inventory_class (Operation Trailhead T4, R-T1-e) — inventory class on the
+  //   scraped-stub PARENT row. 'external' for all scraped content; enum admits 'provider'|'affiliate'
+  //   for a later resolution-waterfall re-class. Additive-nullable-with-default, no CHECK
+  //   (app-enforced via shared/discover-stub.ts, publish-safe); declared in shared/schema.ts.
+  //   Backfills existing rows to 'external'.
+  "246_dmo_raw_content_inventory_class.sql",
+  // 247: Operation Trailhead T3 (R-T3-a/-b/-c) resolution waterfall — adds resolution_class /
+  //   resolution_subclass / resolution_ref / match_confidence / resolved_at to dmo_raw_content (the
+  //   pass's stored state, distinct from T4's inventory_class) and the append-only resolution_events
+  //   audit log. Additive-nullable, no CHECK (app-enforced via shared/trailhead-resolution.ts,
+  //   publish-safe); all declared in shared/schema.ts. Born state external/NULL = behavior-neutral on
+  //   apply. Idempotent (IF NOT EXISTS throughout).
+  "247_trailhead_t3_resolution_waterfall.sql",
+  // 248: Publish compatibility for travel_pulse_cities. Production retains historical
+  // normalized city/country duplicates and Publish cannot apply migration 230's expression
+  // UNIQUE index without a production data mutation. Drop the dev-only conflicting index;
+  // normalized lookup writers remain the duplicate-prevention authority until production data
+  // is cleaned through an approved path. Idempotent (DROP INDEX IF EXISTS).
+  "248_drop_travel_pulse_cities_unique_index.sql",
+  // 249: Restores city/country uniqueness after the approved production
+  // reconciliation operation. Run that operation before publishing this migration.
+  "249_restore_travel_pulse_cities_unique_index.sql",
+  // 250: Defers migration 249's TravelPulse city/country UNIQUE index. Publish cannot
+  // reconcile retained production duplicates before applying schema DDL, so keep the
+  // development schema index-free until an approved production data operation is complete.
+  // Idempotent (DROP INDEX IF EXISTS).
+  "250_defer_travel_pulse_cities_unique_index.sql",
+  // 251: Pickup-route stops are separate from an experience's ordered itinerary stops so
+  // providers can describe collection points without relabeling places the service visits.
+  "251_service_pickup_route_points.sql",
+  // 252: Concierge revision entitlement on ready_made_purchases — every purchase includes one
+  // consultation + one revision from the selling expert. Additive-nullable (revision_status /
+  // revision_request_note / revision_requested_at), app-enforced vocabulary, no CHECK
+  // (publish-trap rule); all declared in shared/schema.ts. Behavior-neutral on apply.
+  "252_concierge_revision_entitlement.sql",
+  // 253: Concierge dispute columns on ready_made_purchases — buyer concern → admin review
+  // (refund = escape hatch). Additive-nullable (dispute_status / dispute_reason / disputed_at /
+  // dispute_resolved_at / dispute_resolved_by), app-enforced vocabulary, no CHECK (publish-trap
+  // rule); all declared in shared/schema.ts. Behavior-neutral on apply.
+  "253_concierge_dispute.sql",
+  // 254: Creation provenance on provider_services — created_via / source_ref (which rail created
+  // a listing). Additive-nullable, app-enforced vocabulary, no CHECK (publish-trap rule); declared
+  // in shared/schema.ts. No backfill — NULL = honest unknown. Behavior-neutral on apply.
+  "254_service_creation_provenance.sql",
+  // 255: DMO grounding link on itinerary_items — dmo_extracted_place_id (soft ref, additive-nullable,
+  // no CHECK). Set by the build-time slip-grounding resolver; declared in shared/schema.ts.
+  "255_itinerary_item_dmo_grounding.sql",
+  // 256: affiliate grounding link on itinerary_items — affiliate_product_id (real FK to
+  // affiliate_products, ON DELETE SET NULL; additive-nullable, no CHECK). Set by the build-time
+  // slip resolver (rung 02: catalog → affiliate → DMO); declared in shared/schema.ts.
+  "256_itinerary_item_affiliate_grounding.sql",
+  "257_itinerary_variant_anchor.sql",
 ] as const;

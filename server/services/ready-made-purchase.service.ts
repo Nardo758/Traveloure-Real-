@@ -13,7 +13,7 @@
 import { db } from "../db";
 import { storage } from "../storage";
 import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators } from "@shared/schema";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 
@@ -66,6 +66,16 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   const end = new Date(start.getTime() + Math.max(0, listing.durationDays - 1) * 24 * 60 * 60 * 1000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
+  // The trip-level "Note from your expert" (§21, expertTravelerNote) is part of what the buyer
+  // paid for — it renders atop the delivered plan. It lives on the SOURCE trip (not the listing
+  // row), so read it from there and carry it onto the clone. The PRIVATE build-notes field
+  // (trips.expertNotes, §21) is deliberately NOT read — it must never reach a traveler surface.
+  const [sourceTrip] = await db
+    .select({ expertTravelerNote: trips.expertTravelerNote })
+    .from(trips)
+    .where(eq(trips.id, listing.sourceTripId))
+    .limit(1);
+
   // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
   const trackingNumber = await storage.generateTrackingNumber("TRV");
   const [cloneTrip] = await db
@@ -76,6 +86,8 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       title: listing.title,
       destination: listing.market,
       trackingNumber,
+      // §21: the traveler-facing expert note travels with the plan (private expertNotes does not).
+      expertTravelerNote: sourceTrip?.expertTravelerNote ?? null,
       // Placeholder window sized to the plan; the buyer re-dates it in their own planner.
       startDate: fmt(start),
       endDate: fmt(end),
@@ -141,36 +153,44 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   } as any);
 
   // Record platform revenue for this sale — mirrors the booking_commission pattern
-  // (server/services/booking.service.ts:721-729). §15: guarded by hasPlatformRevenueForSource
-  // so a retry of this function never double-records; non-fatal so a bookkeeping failure never
-  // blocks the buyer's fulfilled clone.
+  // (server/services/booking.service.ts:721-729). §15: guarded by insertPlatformRevenueOnce
+  // with metadata.paymentIntentId so the migration-244 DB unique index (not just the
+  // advisory read-then-write check) blocks a double-write on any Stripe retry or
+  // concurrent duplicate submission. Non-fatal so a bookkeeping failure never blocks
+  // the buyer's fulfilled clone.
   try {
-    if (!(await storage.hasPlatformRevenueForSource(purchase.id))) {
-      const grossAmount = purchase.pricePaidCents / 100;
-      const platformFee = grossAmount - expertShare;
-      const processingFees = platformFee * PROCESSING_FEE_RATE;
-      const netAmount = platformFee - processingFees;
-      await storage.recordPlatformRevenue({
-        sourceType: "ready_made_commission",
-        sourceId: purchase.id,
-        grossAmount: String(grossAmount),
-        platformFee: String(platformFee),
-        netAmount: String(netAmount),
-        processingFees: String(processingFees),
-        currency: purchase.currency || "USD",
-        expertId: listing.authorId,
-        expertEarnings: String(expertShare),
-        description: `Ready-made trip sale commission: ${listing.title}`,
-        status: "recorded",
-        transactionDate: new Date(),
-      } as any);
-    }
+    const grossAmount = purchase.pricePaidCents / 100;
+    const platformFee = grossAmount - expertShare;
+    const processingFees = platformFee * PROCESSING_FEE_RATE;
+    const netAmount = platformFee - processingFees;
+    await storage.insertPlatformRevenueOnce({
+      sourceType: "ready_made_commission",
+      sourceId: purchase.id,
+      grossAmount: String(grossAmount),
+      platformFee: String(platformFee),
+      netAmount: String(netAmount),
+      processingFees: String(processingFees),
+      currency: purchase.currency || "USD",
+      expertId: listing.authorId,
+      expertEarnings: String(expertShare),
+      description: `Ready-made trip sale commission: ${listing.title}`,
+      metadata: { paymentIntentId: purchase.stripePaymentIntentId },
+      status: "recorded",
+      transactionDate: new Date(),
+    } as any);
   } catch (err) {
     console.error(`Failed to record platform revenue for ready-made purchase ${purchase.id}:`, err);
   }
 
   return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false };
 }
+
+/**
+ * Q3 (ledger 2026-08-22-concierge-p3): server-side outer bound on the ADMIN refund path — safely
+ * inside Stripe's ~120–180-day refund floor so the Stripe leg can never fail after the ledger
+ * flip. Not a fee/rate (§8-exempt): it is a recoverability window, like holdWindowDays.
+ */
+const ADMIN_REFUND_OUTER_BOUND_DAYS = 90;
 
 export type RefundLedgerResult =
   | { ok: true; purchase: typeof readyMadePurchases.$inferSelect; alreadyRefunded: boolean }
@@ -187,20 +207,33 @@ export type RefundLedgerResult =
  * Effects, §15-ordered: atomic cloned|paid → refunded claim (a duplicate refund matches 0 rows
  * and returns alreadyRefunded so the route can still retry the idempotent Stripe leg), reverse
  * the author's held/releasable earning (paid_out is never auto-clawed-back — unreachable inside
- * the window by construction), and REVOKE the product: the clone trip is deleted. A refunded
- * buyer does not keep the itinerary they were refunded for.
+ * the window by construction), and REVOKE the product: the clone trip is deleted — UNLESS the
+ * buyer has already booked/purchased on it, in which case the clone is preserved (soft-revoke)
+ * so the refund can never destroy the buyer's own work or orphan a live paid charge (see the
+ * guard at the delete site). A refunded buyer with no paid history does not keep the itinerary.
  */
 export async function refundReadyMadePurchaseLedger(
   purchaseId: string,
-  buyerId: string,
+  buyerId: string | null,
+  opts: { actor?: "buyer" | "admin" } = {},
 ): Promise<RefundLedgerResult> {
+  // Ledger 2026-08-22-concierge-p3: ONE refund implementation, TWO actors (L6 — the §15c
+  // "one promotion, two callers" shape applied to refunds). actor:'buyer' (the default; the
+  // 2-arg legacy form) keeps the original behavior verbatim. actor:'admin' is the dispute
+  // escape hatch: buyer-identity gate skipped (admin proven by session role at the route),
+  // the 7-day window replaced by a 90-day outer bound (ratified Q3 — safely inside Stripe's
+  // ~120-180-day refund floor so the Stripe leg can't fail AFTER the ledger flip), the clone
+  // ALWAYS soft-revoked (ratified Q2 — weeks later the buyer may have invested heavily), and
+  // a paid-out author earning REFUSES the refund (ratified Q1 "prevent that from happening":
+  // the escape hatch only works while the money is still recoverable — never pay both sides).
+  const actor = opts.actor ?? "buyer";
   const [purchase] = await db
     .select()
     .from(readyMadePurchases)
     .where(eq(readyMadePurchases.id, purchaseId))
     .limit(1);
   // 404 for not-yours too — don't leak other buyers' purchase ids.
-  if (!purchase || purchase.buyerId !== buyerId) {
+  if (!purchase || (actor === "buyer" && purchase.buyerId !== buyerId)) {
     return { ok: false, status: 404, message: "Purchase not found" };
   }
   if (purchase.status === "refunded") {
@@ -211,13 +244,44 @@ export async function refundReadyMadePurchaseLedger(
   }
 
   const purchasedAt = purchase.purchasedAt ? new Date(purchase.purchasedAt) : null;
-  const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
-  if (!purchasedAt || Date.now() > purchasedAt.getTime() + windowMs) {
-    return {
-      ok: false,
-      status: 409,
-      message: `refund_window_closed: refunds are available for ${holdWindowDays("ready_made_sale")} days after purchase`,
-    };
+  if (actor === "buyer") {
+    const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
+    if (!purchasedAt || Date.now() > purchasedAt.getTime() + windowMs) {
+      return {
+        ok: false,
+        status: 409,
+        message: `refund_window_closed: refunds are available for ${holdWindowDays("ready_made_sale")} days after purchase`,
+      };
+    }
+  } else {
+    // Q3: 90-day server-side outer bound on the admin path — older cases are manual ops by
+    // construction rather than a Stripe failure after the ledger already flipped.
+    const adminWindowMs = ADMIN_REFUND_OUTER_BOUND_DAYS * 24 * 60 * 60 * 1000;
+    if (!purchasedAt || Date.now() > purchasedAt.getTime() + adminWindowMs) {
+      return {
+        ok: false,
+        status: 409,
+        message: `admin_refund_window_closed: admin refunds are available for ${ADMIN_REFUND_OUTER_BOUND_DAYS} days after purchase`,
+      };
+    }
+    // Q1 "prevent": if the author's earning already left the platform, this refund would pay
+    // both sides — refuse instead of silently under-reversing (the skippedPaidOut lesson).
+    const [paidOut] = await db
+      .select({ id: expertEarnings.id })
+      .from(expertEarnings)
+      .where(and(
+        eq(expertEarnings.referenceId, purchaseId),
+        eq(expertEarnings.type, "ready_made_sale"),
+        eq(expertEarnings.status, "paid_out"),
+      ))
+      .limit(1);
+    if (paidOut) {
+      return {
+        ok: false,
+        status: 409,
+        message: "author_paid_out: the author's earning was already paid out — not refundable through this path; dismiss the dispute or handle manually",
+      };
+    }
   }
 
   const [claimed] = await db
@@ -277,9 +341,29 @@ export async function refundReadyMadePurchaseLedger(
     console.error(`Failed to reverse platform revenue for ready-made purchase ${purchaseId}:`, err);
   }
 
-  // Revoke the product: the clone (and its items, by cascade) goes with the refund.
-  if (claimed.cloneTripId) {
-    await db.delete(trips).where(eq(trips.id, claimed.cloneTripId));
+  // Revoke the product. On the ADMIN path the clone is ALWAYS preserved (ratified Q2,
+  // ledger 2026-08-22-concierge-p3 — "the buyer keeps the trip": weeks later they may have
+  // invested heavily in it, and every admin-refund surface promises "the buyer keeps their
+  // trip"). Only the legacy buyer path (the self-serve /refund route, RETIRED in P3) runs the
+  // conditional delete below — and even there it never deletes a clone carrying paid itinerary
+  // history, because an unconditional delete would (a) cascade-destroy the buyer's own
+  // itinerary_items (trip_id ON DELETE CASCADE) and (b) orphan a live, separately-paid
+  // service_booking (trip_id ON DELETE SET NULL) this refund never touches — a live un-refunded
+  // charge pointing at a deleted trip, and the bookings-have-purchased-items invariant broken.
+  // (The ratified "concierge revision instead of refund" model never destroys the clone at all,
+  // which is why the admin escape hatch preserves it unconditionally.)
+  if (actor === "buyer" && claimed.cloneTripId) {
+    const [paidItem] = await db
+      .select({ id: itineraryItems.id })
+      .from(itineraryItems)
+      .where(and(
+        eq(itineraryItems.tripId, claimed.cloneTripId),
+        sql`(${itineraryItems.routingStatus} = 'purchased' OR ${itineraryItems.bookingId} IS NOT NULL)`,
+      ))
+      .limit(1);
+    if (!paidItem) {
+      await db.delete(trips).where(eq(trips.id, claimed.cloneTripId));
+    }
   }
 
   return { ok: true, purchase: claimed, alreadyRefunded: false };

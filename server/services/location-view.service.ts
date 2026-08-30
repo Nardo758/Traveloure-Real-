@@ -18,12 +18,47 @@
  */
 
 import { db } from "../db";
-import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users } from "@shared/schema";
-import { eq, sql, and, ilike, inArray, asc } from "drizzle-orm";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
+import { eq, sql, and, or, isNull, ilike, inArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
+import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
+import {
+  DEFAULT_RESOLUTION_CLASS,
+  isValidResolutionSubclass,
+  RESOLUTION_CLASSES,
+  type ResolutionClass,
+  type ResolutionSubclass,
+} from "@shared/trailhead-resolution";
 import { sortByFeaturedAdjusted } from "./featured-sort";
+
+/**
+ * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
+ * CITY SCOPING — prefer the STRUCTURED column, keep the old behavior as the fallback.
+ *
+ * This read used to be a single `ilike(location, '%<city>%')` over a free-text field the console
+ * does not always collect. On one real Kyoto catalog that excluded 7 of 11 listings: two because
+ * the provider typed neighbourhoods ("Arashiyama, Sagano, Kinkaku-ji") instead of the city name,
+ * five because their `location` is the literal column default `'Unknown'`.
+ *
+ * The predicate now reads:
+ *   city = '<city>'                       — the structured, server-derived column (utils/service-city.ts)
+ *   OR (city IS NULL AND location ILIKE …) — grandfathering: rows predating the derivation
+ *
+ * Two properties this shape has and the old one did not:
+ *  - A row whose `city` says OSAKA can no longer be dragged onto the Kyoto page by the word
+ *    "Kyoto" appearing anywhere in its prose. Structured wins where it exists.
+ *  - A row with NO city and NO matching prose stays honestly ABSENT rather than being guessed
+ *    into some city (§13). It becomes visible by its owner naming a neighborhood, not by us
+ *    inferring one.
+ */
+function cityScopePredicate(cityName: string) {
+  return or(
+    eq(providerServices.city, cityName),
+    and(isNull(providerServices.city), ilike(providerServices.location, `%${cityName}%`)),
+  );
+}
 
 export interface SectionResult<T> {
   data: T | null;
@@ -72,6 +107,47 @@ export interface LocationViewPayload {
   gems: SectionResult<any[]>;
   /** Active provider services for the city from the DB. */
   services: SectionResult<any[]>;
+  /**
+   * Operation Trailhead T4.3 — PUBLISHED scraped/DMO stubs for this market.
+   * External inventory (facts-and-links, NEVER a bookable platform service): the client
+   * renders these with a DISTINCT card treatment so a traveler can never mistake one for a
+   * bookable listing. `trendContext` is the T4.4 render-time headline (never stored on a row).
+   */
+  externalStubs: SectionResult<ExternalStubsSection>;
+}
+
+/** One published external stub (a DMO guide) + its located child places. */
+export interface ExternalStub {
+  id: string;
+  inventoryClass: InventoryClass;   // 'external' — carried so the client card treatment is honest
+  // Trailhead T3 — the resolution PASS's stored class drives the CTA the card renders (T3.4). Until a
+  // pass runs, every stub is 'external' and the card behaves exactly as under T4 (inert mechanism).
+  //   provider  → internal listing CTA (NO outbound); resolutionRef = provider_services.id
+  //   affiliate → monetized partner CTA via the agent/short-link rail; resolutionRef = program+product ref
+  //   external  → source-link CTA (the T4.3 behavior)
+  resolutionClass: ResolutionClass;
+  resolutionSubclass: ResolutionSubclass | null;
+  resolutionRef: string | null;
+  name: string;
+  city: string;
+  country: string;
+  neighborhood: string | null;
+  contentType: string;              // the stub's category grain
+  shortDescription: string | null;  // facts only — never scraped prose as editorial voice
+  primaryImageUrl: string | null;
+  /** The source link the click-out CTA rides (tracked via the affiliate_clicks rail). */
+  sourceUrl: string;
+  sourcePageTitle: string | null;
+  license: string | null;           // ODbL/attribution obligation travels with the card
+  /** Located child places only (unlocated stay honestly off the map). */
+  places: Array<{ id: string; name: string; position: number; latitude: string | null; longitude: string | null }>;
+  placeCount: number;
+}
+
+export interface ExternalStubsSection {
+  /** Honest ceiling copy: "‹Market› is trending · ‹Event› approaching", or null. Render-time only. */
+  trendContext: string | null;
+  stubs: ExternalStub[];
 }
 
 export interface LocationViewOptions {
@@ -137,7 +213,8 @@ class LocationViewService {
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
     // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
-    const cacheKey = `v4|${cityName}:${country ?? ""}`;
+    // v5: payload shape change — adds externalStubs (Trailhead T4.3 published scraped stubs).
+    const cacheKey = `v5|${cityName}:${country ?? ""}`;
     const cached = locationViewCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
@@ -211,7 +288,8 @@ class LocationViewService {
           .where(
             and(
               eq(providerServices.status, "active"),
-              ilike(providerServices.location, `%${cityName}%`),
+              // FP-1 / B4: same structured-first scoping as the services query below.
+              cityScopePredicate(cityName),
             ),
           )
           .groupBy(providerServices.neighborhood),
@@ -336,6 +414,13 @@ class LocationViewService {
         price: providerServices.price,
         priceType: providerServices.priceType,
         deliveryMethod: providerServices.deliveryMethod,
+        // FP-1 / B4b: `productShape` is what lets the city feed route an accommodation listing
+        // into the STAY spine (a 2-room machiya with 60 published nights used to sit in this very
+        // payload while the Stay tab reported "No stay found in Kyoto"); `city` is the structured
+        // value the scoping above now prefers, exposed so a client can tell derived from
+        // grandfathered.
+        productShape: providerServices.productShape,
+        city: providerServices.city,
         neighborhood: providerServices.neighborhood,
         serviceImage: providerServices.serviceImage,
         location: providerServices.location,
@@ -367,7 +452,9 @@ class LocationViewService {
           // public city page. `status='active'` is the OWNER's on/off switch — it is NOT
           // an approval, and was never a substitute for one.
           eq(providerServices.approvalStatus, "approved"),
-          ilike(providerServices.location, `%${cityName}%`),
+          // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
+          // fallback for rows that predate the server-side derivation (see cityScopePredicate).
+          cityScopePredicate(cityName),
         ),
       )
       // CURATION ORDER. This replaced `.orderBy(providerServices.isFeatured)`, which was
@@ -398,13 +485,151 @@ class LocationViewService {
         ),
       );
 
-    const [hero, recommendations, events, neighborhoods, gems, services] = await Promise.all([
+    // ── Trailhead T4.3 — PUBLISHED external stubs for this market ──────────────────────────────
+    // The traveler storefront for scraped content. Reads dmo_raw_content gated on the SAME
+    // published + not-rejected predicate the admin flip writes (T4.2), scoped to the city, and
+    // joins its child dmo_extracted_places. The class ('external') travels with each stub so the
+    // client renders a DISTINCT, non-bookable card. T4.4 trend lens is joined at RENDER only
+    // (buildTrendContext) — no trend value is written to any content row.
+    const externalStubsPromise = (async (): Promise<ExternalStubsSection> => {
+      // Gate mirrors shared/discover-stub.ts passesDiscoverFilter: published + not rejected/quarantined.
+      const stubRows = await db
+        .select({
+          id: dmoRawContent.id,
+          inventoryClass: dmoRawContent.inventoryClass,
+          resolutionClass: dmoRawContent.resolutionClass,
+          resolutionSubclass: dmoRawContent.resolutionSubclass,
+          resolutionRef: dmoRawContent.resolutionRef,
+          name: dmoRawContent.name,
+          city: dmoRawContent.city,
+          country: dmoRawContent.country,
+          neighborhood: dmoRawContent.neighborhood,
+          contentType: dmoRawContent.contentType,
+          shortDescription: dmoRawContent.shortDescription,
+          primaryImageUrl: dmoRawContent.primaryImageUrl,
+          sourceUrl: dmoRawContent.sourceUrl,
+          sourcePageTitle: dmoRawContent.sourcePageTitle,
+          license: dmoRawContent.license,
+        })
+        .from(dmoRawContent)
+        .where(
+          and(
+            eq(dmoRawContent.discoverPageVisible, true),
+            ilike(dmoRawContent.city, cityName),
+            sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+          ),
+        )
+        .orderBy(dmoRawContent.contentType, dmoRawContent.name)
+        .limit(24);
+
+      // Child places for the fetched stubs — located ones only reach the map (§13: an unlocated
+      // place is never guessed onto coordinates). We keep all for the count, flag located client-side.
+      const placesByStub = new Map<string, ExternalStub["places"]>();
+      if (stubRows.length > 0) {
+        const placeRows = await db
+          .select({
+            id: dmoExtractedPlaces.id,
+            dmoContentId: dmoExtractedPlaces.dmoContentId,
+            name: dmoExtractedPlaces.name,
+            position: dmoExtractedPlaces.position,
+            latitude: dmoExtractedPlaces.latitude,
+            longitude: dmoExtractedPlaces.longitude,
+          })
+          .from(dmoExtractedPlaces)
+          .where(inArray(dmoExtractedPlaces.dmoContentId, stubRows.map((s) => s.id)))
+          .orderBy(dmoExtractedPlaces.position);
+        for (const p of placeRows) {
+          if (!placesByStub.has(p.dmoContentId)) placesByStub.set(p.dmoContentId, []);
+          placesByStub.get(p.dmoContentId)!.push({ id: p.id, name: p.name, position: p.position, latitude: p.latitude, longitude: p.longitude });
+        }
+      }
+
+      // T4.4 trend lens — computed at render, discarded after. marketTrending = the city cleared
+      // the market-grain resolver's confidence floor (present in getTrendingCities with a positive
+      // trendingScore); imminentEventName = nearest forward calendar event within the window.
+      let trendContext: string | null = null;
+      if (stubRows.length > 0) {
+        try {
+          const now = new Date();
+          const horizon = new Date(now);
+          horizon.setDate(horizon.getDate() + 45);
+          const todayIso = now.toISOString().split("T")[0];
+          const horizonIso = horizon.toISOString().split("T")[0];
+          const [trendingCities, calEvents] = await Promise.all([
+            travelPulseService.getTrendingCities(8).catch(() => []),
+            // Direct DB read (no live-API fallback on the cached render path) — nearest forward event.
+            db
+              .select({ eventName: travelPulseCalendarEvents.eventName, startDate: travelPulseCalendarEvents.startDate })
+              .from(travelPulseCalendarEvents)
+              .where(
+                and(
+                  eq(travelPulseCalendarEvents.city, cityName.toLowerCase()),
+                  gte(travelPulseCalendarEvents.startDate, todayIso),
+                  sql`${travelPulseCalendarEvents.startDate} <= ${horizonIso}`,
+                ),
+              )
+              .orderBy(asc(travelPulseCalendarEvents.startDate))
+              .limit(1)
+              .catch(() => [] as Array<{ eventName: string; startDate: string }>),
+          ]);
+          const marketTrending = (trendingCities ?? []).some(
+            (c: any) => typeof c?.cityName === "string" && c.cityName.toLowerCase() === cityName.toLowerCase() && Number(c?.trendingScore ?? 0) > 0,
+          );
+          const nearest = (calEvents ?? [])[0];
+          trendContext = buildTrendContext({
+            marketTrending,
+            marketName: cityName,
+            imminentEventName: nearest?.eventName ?? null,
+          });
+        } catch {
+          trendContext = null; // trend lens is best-effort; its absence never blanks the stubs
+        }
+      }
+
+      const stubs: ExternalStub[] = stubRows.map((s) => {
+        const places = placesByStub.get(s.id) ?? [];
+        // Normalize the stored resolution class to the closed vocabulary; an unknown value falls back
+        // to the external floor (§13 — never render a partner/internal CTA off an unrecognized class).
+        const resolutionClass: ResolutionClass = (RESOLUTION_CLASSES as readonly string[]).includes(s.resolutionClass)
+          ? (s.resolutionClass as ResolutionClass)
+          : DEFAULT_RESOLUTION_CLASS;
+        const resolutionSubclass: ResolutionSubclass | null = isValidResolutionSubclass(s.resolutionSubclass)
+          ? s.resolutionSubclass
+          : null;
+        return {
+          id: s.id,
+          inventoryClass: normalizeInventoryClass(s.inventoryClass),
+          resolutionClass,
+          resolutionSubclass,
+          // A ref only travels for a real resolution; the external floor keeps null (its source URL is
+          // sourceUrl below). A provider/affiliate ref reaching the client is a pointer, never a URL.
+          resolutionRef: resolutionClass === "external" ? null : s.resolutionRef ?? null,
+          name: s.name,
+          city: s.city,
+          country: s.country,
+          neighborhood: s.neighborhood,
+          contentType: s.contentType,
+          shortDescription: s.shortDescription,
+          primaryImageUrl: s.primaryImageUrl,
+          sourceUrl: s.sourceUrl,
+          sourcePageTitle: s.sourcePageTitle,
+          license: s.license,
+          places,
+          placeCount: places.length,
+        };
+      });
+
+      return { trendContext, stubs };
+    })();
+
+    const [hero, recommendations, events, neighborhoods, gems, services, externalStubs] = await Promise.all([
       settle("hero", heroPromise),
       settle("recommendations", recommendationsPromise),
       settle("events", eventsPromise),
       settle("neighborhoods", neighborhoodsPromise),
       settle("gems", gemsPromise),
       settle("services", servicesPromise),
+      settle("externalStubs", externalStubsPromise),
     ]);
 
     const payload: LocationViewPayload = {
@@ -417,6 +642,7 @@ class LocationViewService {
       neighborhoods,
       gems,
       services,
+      externalStubs,
     };
 
     locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });

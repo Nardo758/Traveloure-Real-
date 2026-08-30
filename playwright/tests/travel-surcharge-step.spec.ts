@@ -59,16 +59,20 @@ test.describe('ServiceForm — travel-surcharge section (lane B1)', () => {
     const serviceId = await createFixtureService(page.request);
 
     try {
-      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit`, {
+      // WAVE 2 / LANE S2: `/provider/services/:id/edit` with no `?step=` now lands on the
+      // listing home (hero + derived checklist) instead of the wizard — enter the flow the same
+      // way the checklist's own "Confirm where it happens" row would, via the A1 deep link.
+      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit?step=logistics`, {
         waitUntil: 'networkidle',
         timeout: 30_000,
       });
 
-      // Open the Transport & Logistics step.
-      const step2 = page.getByTestId('button-step-2');
-      await expect(step2).toBeVisible({ timeout: 15_000 });
-      await step2.click();
-      await expect(step2).toHaveAttribute('aria-current', 'step');
+      // A1: the surcharge moved with the rest of the spatial block onto step 4, "Logistics"
+      // (in-person is a 5-step flow: Basics · Scheduling · Capacity · Logistics · Review).
+      const step4 = page.getByTestId('button-step-4');
+      await expect(step4).toBeVisible({ timeout: 15_000 });
+      await expect(step4).toHaveAttribute('data-step-key', 'logistics');
+      await expect(step4).toHaveAttribute('aria-current', 'step');
 
       // The surcharge section renders (place-anchored + pickup provision), the mode is a SEGMENTED
       // control pre-selected to the saved 'flat', and the flat amount input carries the saved value.
@@ -86,7 +90,9 @@ test.describe('ServiceForm — travel-surcharge section (lane B1)', () => {
 
       // Save the draft.
       await page.getByTestId('button-save-draft').click();
-      // The mutation navigates back to the catalog on success.
+      // WAVE 2 / S2: an edit-mode save now lands on the listing home, same route — the URL
+      // already matches this pattern, so this is a soft wait for the save round-trip to settle
+      // before reading the row back over the API.
       await page.waitForURL(/\/provider\/services\b/, { timeout: 20_000 }).catch(() => {});
 
       // Verify via the owner API: per_km persisted, and the flat amount SURVIVED (never-clobber).

@@ -4,6 +4,8 @@ import type { RequestHandler } from "express";
 import { storage } from "./storage";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
+import { hasExistingConversation } from "./services/messages.service";
+import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 
 // `log` previously came from "./index" — the only file in server/ importing back into
 // the app entrypoint, which drags in and RUNS the entire bootstrap (migrations, DB
@@ -52,9 +54,24 @@ const clients = new Map<string, ConnectedClient>();
  * closed (1008 "policy violation") BEFORE ever being added to `clients`.
  */
 export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  // Do not let `ws` own every HTTP upgrade on the shared server. Its built-in
+  // `path` option rejects unmatched upgrades with 400, which prevents Vite's
+  // `/vite-hmr` listener from receiving its own upgrade in development.
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req, socket, head) => {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (pathname !== "/ws") return;
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  });
 
   wss.on("connection", (ws, req: IncomingMessage) => {
+    // Real socket peer address (not a spoofable header) — scopes the messaging
+    // rate-limiter's CI bypass to loopback only, matching the HTTP paths.
+    const peerIp = req.socket?.remoteAddress ?? null;
     // The session lookup below is async (a real DB round-trip via connect-pg-simple),
     // but the WebSocket handshake itself already completed by the time "connection"
     // fires — a legitimate client (see client/src/hooks/use-websocket.ts) sends its
@@ -95,7 +112,7 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
         return; // `pending` is discarded here, unread — never processed.
       }
 
-      handleAuthenticatedConnection(ws, userId);
+      handleAuthenticatedConnection(ws, userId, peerIp);
       for (const data of pending) {
         ws.emit("message", data);
       }
@@ -106,7 +123,7 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
   return wss;
 }
 
-function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
+function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: string | null) {
   clients.set(userId, {
     ws,
     userId,
@@ -139,6 +156,20 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
           }
 
           try {
+            // Messaging rate limit (same limits as the HTTP send paths). On breach we
+            // send an error frame instead of persisting, so socket sends can't bypass it.
+            const isNewConversation = !(await hasExistingConversation(userId, message.recipientId));
+            const rate = checkMessageRateLimit({ senderId: userId, recipientId: message.recipientId, isNewConversation, peerIp });
+            if (!rate.allowed) {
+              ws.send(JSON.stringify({
+                type: "error",
+                error: rate.message ?? "You're sending messages too quickly. Please slow down.",
+                scope: rate.scope,
+                retryAfter: rate.retryAfterSec,
+              }));
+              break;
+            }
+
             // senderId is the session-resolved userId — a forged message.senderId in the
             // payload is never read (MT-1). storage.createChat is the shared write path
             // with POST /api/chats and also fires the MT-2 recipient notification.
@@ -164,6 +195,17 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
               recipientClient.ws.send(JSON.stringify(response));
             }
           } catch (err) {
+            // Block enforcement: createChat throws a sentinel when a block row exists.
+            // Surface a specific error type so the client can distinguish a policy
+            // rejection from an infrastructure failure and show the right message.
+            if ((err as any)?.code === "BLOCKED_USER") {
+              ws.send(JSON.stringify({
+                type: "error",
+                errorCode: "BLOCKED_USER",
+                error: "You cannot send messages to this user.",
+              }));
+              break;
+            }
             console.error("Failed to save chat message:", err);
             ws.send(JSON.stringify({
               type: "error",

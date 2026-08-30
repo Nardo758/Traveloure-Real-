@@ -141,40 +141,13 @@ export function sanitizeUsersForRole<T extends Record<string, any>>(
 }
 
 /**
- * Allow-list of `service_bookings` fields an earner (expert/provider) surface may see.
- *
- * This deliberately replaces the old deny-list in `sanitizeBookingForExpert`, which
- * stripped field names that don't exist on the table (`paymentIntentId`,
- * `stripeSessionId`) while the real Stripe reference columns
- * (`stripePaymentIntentId`, `stripeDepositIntentId`, `stripeBalanceIntentId`)
- * leaked straight through to providers/experts. With an allow-list, any NEW
- * sensitive column added to `service_bookings` later fails closed instead of
- * leaking by default (same pick-over-omit posture as `pickPublicFields`).
- *
- * Excluded by construction: `stripePaymentIntentId`, `stripeDepositIntentId`,
- * `stripeBalanceIntentId` (traveler's internal Stripe payment references) and
- * `idempotencyKey` (internal write-dedup token — no earner surface reads it).
- */
-export const EARNER_BOOKING_FIELDS = [
-  'id', 'trackingNumber', 'serviceId', 'travelerId', 'providerId', 'contractId',
-  'bookingDetails', 'tripId', 'status',
-  'totalAmount', 'platformFee', 'insuranceFee', 'providerEarnings',
-  'depositAmount', 'depositPaid', 'balanceAmount', 'balancePaid', 'balanceDueAt',
-  'bookingMetadata', 'source', 'crossSellSourceContentId', 'acquisitionRef', 'slotId',
-  'confirmedAt', 'completedAt', 'cancelledAt', 'cancellationReason',
-  'createdAt', 'updatedAt',
-] as const;
-
-/**
- * Sanitize booking data for experts/providers - allow-list projection of the
- * operational fields those surfaces need. Admin/EA (canSeeFull) responses are
- * returned unchanged.
+ * Sanitize booking data for experts - they only need relevant trip info
  */
 export function sanitizeBookingForExpert<T extends Record<string, any>>(
   booking: T,
   requesterRole: string,
   requesterId?: string
-): Partial<T> {
+): T {
   const role = (requesterRole || 'user') as UserRole;
   const permissions = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.user;
 
@@ -183,25 +156,44 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
     return booking;
   }
 
-  // For experts/providers: allow-list projection — unknown/new fields fail closed
-  const sanitized: Record<string, any> = {};
-  for (const field of EARNER_BOOKING_FIELDS) {
-    if (field in booking) {
-      sanitized[field] = booking[field];
+  // For experts/providers: remove payment details but keep operational info
+  const sanitized = { ...booking };
+
+  // Remove sensitive payment/billing info.
+  // QA-1 fix: the real `service_bookings` payment-identity columns are camelCase
+  // `stripePaymentIntentId` / `stripeDepositIntentId` / `stripeBalanceIntentId` (shared/schema.ts —
+  // §19a: written ONLY by the shared promotion / balance-authorization paths, never client-settable,
+  // and per that same posture must never round-trip to a non-full-access role either). The original
+  // list here named `paymentIntentId` (no `service_bookings` column of that name — the closest match,
+  // `reconciliationExceptions.paymentIntentId`, belongs to an unrelated admin table this function
+  // never touches) and `stripeSessionId` (no such column anywhere in shared/schema.ts). Both were
+  // dead strips: no live leak today only because `envelopeFromProviderService`/enrichment nulls the
+  // real field first, per the lane brief — but the list itself was wrong. `paymentDetails` /
+  // `cardInfo` / `billingAddress` are likewise not real `service_bookings` columns (the schema sweep
+  // found `billingAddress` only on the unrelated `ea_client_relationships` table); kept here as
+  // harmless belt-and-braces in case a future caller's shape ever grows one of those names.
+  const sensitiveFields = [
+    'paymentDetails', 'cardInfo', 'billingAddress',       // legacy/speculative — no live column, kept harmless
+    'paymentIntentId', 'stripeSessionId',                 // wrong-cased/nonexistent — kept harmless
+    'stripePaymentIntentId', 'stripeDepositIntentId', 'stripeBalanceIntentId', // the REAL columns (§19a)
+  ];
+  for (const field of sensitiveFields) {
+    if (field in sanitized) {
+      delete (sanitized as any)[field];
     }
   }
 
   // Sanitize nested traveler info if present
-  if ('traveler' in booking && (booking as any).traveler) {
-    const travelerData = (booking as any).traveler;
-    sanitized.traveler = sanitizeUserForRole(
+  if ('traveler' in sanitized && (sanitized as any).traveler) {
+    const travelerData = (sanitized as any).traveler;
+    (sanitized as any).traveler = sanitizeUserForRole(
       travelerData as Record<string, any>,
       requesterRole,
       travelerData.id === requesterId
     );
   }
 
-  return sanitized as Partial<T>;
+  return sanitized;
 }
 
 /**

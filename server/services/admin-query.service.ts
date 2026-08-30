@@ -13,6 +13,10 @@ import {
 import {
   eq, and, or, like, sql, desc, count, inArray, isNotNull, asc,
 } from "drizzle-orm";
+import {
+  moderateReviewWithAggregate,
+  recalculateServiceRatingAtomic,
+} from "./review-mutation.service";
 
 // ─── Admin Auth Helpers ───────────────────────────────────────────────────────
 
@@ -25,6 +29,107 @@ export async function getFullAdminUser(userId: string) {
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
+
+export async function getRoleChangeAuditLogs(opts: {
+  targetUserId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  const { targetUserId, dateFrom, dateTo, limit = 50, offset = 0 } = opts;
+
+  // Fetch role-change events joined with actor and target user details.
+  const rows = await db.execute(sql`
+    SELECT
+      aal.id,
+      aal.created_at,
+      aal.actor_id,
+      aal.actor_role,
+      aal.target_user_id,
+      aal.metadata,
+      aal.ip_address,
+      actor.first_name  AS actor_first_name,
+      actor.last_name   AS actor_last_name,
+      actor.email       AS actor_email,
+      target.first_name AS target_first_name,
+      target.last_name  AS target_last_name,
+      target.email      AS target_email
+    FROM access_audit_logs aal
+    LEFT JOIN users actor  ON actor.id  = aal.actor_id
+    LEFT JOIN users target ON target.id = aal.target_user_id
+    WHERE aal.action = 'role_change'
+      ${targetUserId ? sql`AND aal.target_user_id = ${targetUserId}` : sql``}
+      ${dateFrom ? sql`AND aal.created_at >= ${dateFrom}` : sql``}
+      ${dateTo   ? sql`AND aal.created_at <= ${dateTo}`   : sql``}
+    ORDER BY aal.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const [countResult] = await db.execute(sql`
+    SELECT count(*)::int AS total
+    FROM access_audit_logs aal
+    WHERE aal.action = 'role_change'
+      ${targetUserId ? sql`AND aal.target_user_id = ${targetUserId}` : sql``}
+      ${dateFrom ? sql`AND aal.created_at >= ${dateFrom}` : sql``}
+      ${dateTo   ? sql`AND aal.created_at <= ${dateTo}`   : sql``}
+  `);
+
+  return {
+    logs: rows.rows as any[],
+    total: (countResult.rows[0] as any)?.total ?? 0,
+  };
+}
+
+/**
+ * Provenance spine move 5 (ledger 2026-08-23-provenance-audit-read): read the audit trail for ONE
+ * resource. The audit log was "write-only in practice" — every approve/reject/edit-review/refund/
+ * dispute row the platform writes (via insertAccessAuditLog) was reachable only by direct SQL; the
+ * sole read endpoint filtered to role-changes. This is the general per-resource timeline: "who did
+ * what to this service / this ready-made listing / this dispute, and when." Admin-gated at the route.
+ */
+export async function getAuditLogsForResource(opts: {
+  resourceType: string;
+  resourceId: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const { resourceType, resourceId, limit = 50, offset = 0 } = opts;
+
+  const rows = await db.execute(sql`
+    SELECT
+      aal.id,
+      aal.created_at,
+      aal.action,
+      aal.actor_id,
+      aal.actor_role,
+      aal.resource_type,
+      aal.resource_id,
+      aal.target_user_id,
+      aal.metadata,
+      actor.first_name AS actor_first_name,
+      actor.last_name  AS actor_last_name,
+      actor.email      AS actor_email
+    FROM access_audit_logs aal
+    LEFT JOIN users actor ON actor.id = aal.actor_id
+    WHERE aal.resource_type = ${resourceType}
+      AND aal.resource_id = ${resourceId}
+    ORDER BY aal.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const countResult = await db.execute(sql`
+    SELECT count(*)::int AS total
+    FROM access_audit_logs aal
+    WHERE aal.resource_type = ${resourceType}
+      AND aal.resource_id = ${resourceId}
+  `);
+
+  return {
+    logs: rows.rows as any[],
+    total: (countResult.rows[0] as any)?.total ?? 0,
+  };
+}
 
 export async function insertAccessAuditLog(values: {
   actorId: string;
@@ -65,8 +170,35 @@ export async function getUserCommissionOverrides(userIds: string[]) {
     .from(users).where(inArray(users.id, userIds));
 }
 
-export async function updateUserRole(userId: string, role: string) {
-  return db.update(users).set({ role }).where(eq(users.id, userId));
+export async function updateUserRole(
+  userId: string,
+  role: string,
+  actor: { actorId: string; actorRole: string; reason?: string },
+) {
+  // ATOMIC: role update and audit insert commit or roll back together.
+  // A role change without an audit record must never be possible — if the
+  // audit insert fails, the transaction aborts and the role stays unchanged.
+  await db.transaction(async (tx) => {
+    // Capture the old role before overwriting so the audit record is complete.
+    const [current] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    const oldRole = current?.role ?? null;
+
+    await tx.update(users).set({ role }).where(eq(users.id, userId));
+
+    await tx.insert(accessAuditLogs).values({
+      actorId: actor.actorId,
+      actorRole: actor.actorRole,
+      action: "role_change",
+      resourceType: "user",
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: {
+        oldRole,
+        newRole: role,
+        reason: actor.reason ?? null,
+      },
+    } as any);
+  });
 }
 
 export async function getUserVerificationStatus(userId: string) {
@@ -572,7 +704,9 @@ export async function getServiceReviewsList(status?: string) {
   if (status) {
     return db.select().from(serviceReviews).where(eq(serviceReviews.status, status)).orderBy(desc(serviceReviews.createdAt));
   }
-  return db.select().from(serviceReviews).where(sql`status IN ('pending', 'flagged')`).orderBy(desc(serviceReviews.createdAt));
+  return db.select().from(serviceReviews)
+    .where(sql`status IN ('pending', 'flagged') OR flag_reason IS NOT NULL`)
+    .orderBy(desc(serviceReviews.createdAt));
 }
 
 export async function getReviewModerationLogs(reviewId: string) {
@@ -1488,17 +1622,16 @@ export async function getLocationSummaryData() { return getLocationSummary(); }
 export async function getUserServiceBookings(userId: string) { return getUserBookingSpend(userId); }
 
 export async function moderateReview(reviewId: string, status: string, actorId: string, reason?: string | null) {
-  return updateServiceReviewStatus(reviewId, { status, moderatedBy: actorId, moderationReason: reason ?? null, moderatedAt: new Date() });
+  return moderateReviewWithAggregate({
+    reviewId,
+    status: status as "approved" | "flagged" | "removed" | "pending",
+    actorId,
+    reason,
+  });
 }
 
 export async function recalcServiceRating(serviceId: string) {
-  const reviews = await getServiceReviewsForServiceRating(serviceId);
-  const approved = reviews.filter(r => r.status === "approved");
-  const reviewCount = approved.length;
-  const avgRating = reviewCount > 0
-    ? (approved.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount).toFixed(1)
-    : "0";
-  await updateProviderServiceRating(serviceId, avgRating, reviewCount);
+  await recalculateServiceRatingAtomic(serviceId);
 }
 
 /**
@@ -1547,6 +1680,56 @@ export async function getAdminUsersPage(whereClause: any, limit: number, offset:
 
 export async function getAdminTrips(whereClause?: any) {
   return db.select().from(trips).where(whereClause).orderBy(desc(trips.createdAt)).limit(200);
+}
+
+/**
+ * Paged admin trips list. Search + date-derived phase (§13 — trips.status is dead) are pushed
+ * into SQL, phase counts come from one aggregate query, and only the requested page is returned,
+ * so the route enriches a bounded set of rows.
+ */
+export async function getAdminTripsPage(opts: {
+  search?: string;
+  phase?: "upcoming" | "active" | "past";
+  limit: number;
+  offset: number;
+}) {
+  const searchWhere = opts.search
+    ? or(like(trips.title, `%${opts.search}%`), like(trips.destination, `%${opts.search}%`))
+    : undefined;
+
+  const upcomingCond = sql`${trips.startDate}::timestamp > now()`;
+  const activeCond = sql`${trips.startDate}::timestamp <= now() and ${trips.endDate}::timestamp >= now()`;
+  const pastCond = sql`${trips.endDate}::timestamp < now()`;
+
+  const [stats] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      upcoming: sql<number>`count(*) filter (where ${upcomingCond})::int`,
+      active: sql<number>`count(*) filter (where ${activeCond})::int`,
+      past: sql<number>`count(*) filter (where ${pastCond})::int`,
+    })
+    .from(trips)
+    .where(searchWhere);
+
+  const phaseCond =
+    opts.phase === "upcoming" ? upcomingCond
+    : opts.phase === "active" ? activeCond
+    : opts.phase === "past" ? pastCond
+    : undefined;
+  const pageWhere = phaseCond ? (searchWhere ? and(searchWhere, phaseCond) : phaseCond) : searchWhere;
+
+  const rows = await db
+    .select()
+    .from(trips)
+    .where(pageWhere)
+    .orderBy(desc(trips.createdAt))
+    .limit(opts.limit)
+    .offset(opts.offset);
+
+  const statsRow = stats ?? { total: 0, upcoming: 0, active: 0, past: 0 };
+  const filteredTotal = opts.phase ? Number(statsRow[opts.phase] ?? 0) : Number(statsRow.total ?? 0);
+
+  return { rows, stats: statsRow, filteredTotal };
 }
 
 export async function getAnalyticsByCountry() {

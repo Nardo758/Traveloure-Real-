@@ -53,9 +53,15 @@ jobs:
       # the replit line into main net-removed 13 errors (their storage/routes/schema
       # edits replaced error-bearing code); the scheduler-unification / merge changes
       # introduced ZERO new type errors (none in any touched file). Locked in here.
+      # 164 measured 2026-08-17 on lane/partner-demand-data (2A.3 party-size de-masking):
+      # dropping the fabricated numberOfTravelers/adults defaults net-removed 4 errors
+      # (the default-related type narrowings on the trip-creation path); ZERO new type
+      # errors in any touched file. Ratchet fired as designed — locked in here, same PR.
+      # 157 measured 2026-08-21 after the Distribution parity pass; ZERO new type
+      # errors in the touched server/client paths. Locked in here, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '170'
+          TSC_BASELINE: '157'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -86,6 +92,23 @@ jobs:
         run: node scripts/check-money-endpoints.cjs --self-test
       - name: Client-trusted amount/identity/rate guard
         run: node scripts/check-money-endpoints.cjs
+
+  item-removed-logging-guard:
+    name: item-removed-logging-guard (R15 removal-signal coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if an itinerary_items hard-delete path lacks an item-removed:<kind> annotation, or a
+      # `logged` site has no same-transaction `item_removed` write. Node built-ins only — no npm ci
+      # needed. See ledger 2026-08-17-partner-demand-r15-transition-log. Predicate fixtures FIRST
+      # (§18d): a guard with a wrong predicate passes truthfully.
+      - name: Item-removed guard predicate self-test
+        run: node scripts/check-item-removed-logging.cjs --self-test
+      - name: Item-removed logging coverage guard
+        run: node scripts/check-item-removed-logging.cjs
 
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)
@@ -195,6 +218,25 @@ jobs:
       - name: Ledger lint
         run: node scripts/check-decision-guards.cjs
 
+  ledger-union-merge:
+    name: ledger-union-merge (.gitattributes union driver — Trailhead C1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # docs/DECISIONS.md must carry `merge=union` in .gitattributes so parallel
+      # ledger appends auto-union instead of conflicting; the dup-slug lint in
+      # decision-guards-lint (above) is the safety net for the one bad merge that
+      # can produce (a duplicate id). Node built-ins + git. Predicate fixtures
+      # FIRST (§18d): the self-test exercises a real git union merge and the
+      # dup-slug lint before the config assertion is trusted.
+      - name: Ledger union-merge self-test
+        run: node scripts/check-ledger-union-merge.cjs --self-test
+      - name: Ledger union-merge config guard
+        run: node scripts/check-ledger-union-merge.cjs
+
   matrix-lint:
     name: matrix-lint (coverage matrix — DECISIONS.md ruling 21/27)
     runs-on: ubuntu-latest
@@ -246,6 +288,29 @@ jobs:
         run: node scripts/check-omit-schema-ratchet.cjs --self-test
       - name: Omit-schema-ratchet guard
         run: node scripts/check-omit-schema-ratchet.cjs
+
+  demand-rollup-guard:
+    name: demand-rollup-guard (Partner Demand 2B / ledger 2026-08-18-partner-demand-2b)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Partner Demand 2B discipline gate over the demand-rollup MODULE (compute/service/job/config):
+      # no `providerServices.totalRevenue` read (Locked Decision 3), demand MATH confined to the L6
+      # compute home, and floor thresholds only in demand-floors.config.ts (never a bare literal).
+      # Node built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Demand-rollup gate predicate self-test
+        run: node scripts/check-demand-rollup.cjs --self-test
+      - name: Demand-rollup discipline gate
+        run: node scripts/check-demand-rollup.cjs
+      # R26 coords cheap-fix regression pin (ledger 2026-08-18-partner-demand-coords-fix): the three
+      # producer-side copy-fixes stay intact. Node built-ins only. Predicate fixtures FIRST (§18d).
+      - name: Coords-preservation predicate self-test
+        run: node scripts/check-coords-preservation.cjs --self-test
+      - name: Coords-preservation guard
+        run: node scripts/check-coords-preservation.cjs
 
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)

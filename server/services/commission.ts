@@ -149,7 +149,8 @@ export async function resolveServiceOwnerShareRate(opts: {
     );
     const n = rates.expertShareRate;
     return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load expert share rate — returning null:", err);
     return null;
   }
 }
@@ -346,7 +347,8 @@ export async function getBand(bandKey: string): Promise<{ rate: number; rateType
     const row = result.rows?.[0] as { rate: number | null; rate_type: string | null } | undefined;
     if (!row || row.rate === null) return null;
     return { rate: row.rate, rateType: row.rate_type ?? "percent" };
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load commission override — returning null:", err);
     return null;
   }
 }
@@ -372,7 +374,8 @@ export async function getConciergeBookingRate(): Promise<number> {
     `);
     const row = result.rows?.[0] as { rate: number | null } | undefined;
     return Number(row?.rate ?? 0);
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load concierge booking rate — returning 0:", err);
     return 0;
   }
 }
@@ -440,7 +443,8 @@ async function getSetting(key: string): Promise<string | null> {
     `);
     const row = result.rows?.[0] as { setting_value: string | null } | undefined;
     return row?.setting_value ?? null;
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load commission setting — returning null:", err);
     return null;
   }
 }
@@ -506,7 +510,8 @@ async function resolveInsuranceFromCategory(_category?: string | null) {
       insuranceRatePercent: isFinite(rate) ? rate : 0,
       insuranceAppliesTo: appliesTo,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load insurance configuration — returning no-insurance defaults:", err);
     return noInsurance;
   }
 }

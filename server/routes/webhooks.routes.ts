@@ -16,10 +16,11 @@ import { activateVerificationHeldListings } from "../services/publish-verificati
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(getStripeSecretKey()!, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
@@ -334,6 +335,11 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         const providerId = paymentIntent.metadata?.providerId;
 
         if (sourceId && sourceType) {
+          // Fast-path pre-check (advisory, not the authoritative dedup gate).
+          // The real guard is the DB unique index on metadata->>'paymentIntentId'
+          // (migration 244): recordRevenueEvent → insertPlatformRevenueOnce uses
+          // ON CONFLICT DO NOTHING and skips earnings mints when inserted===false,
+          // so a concurrent duplicate that slips past this read is handled safely.
           const alreadyRecorded = await storage.hasPaymentIntentRevenue(paymentIntent.id);
           if (alreadyRecorded) {
             console.info(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
@@ -362,7 +368,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
             });
             console.info(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId} paymentIntentId=${paymentIntent.id}`);
           } catch (err: any) {
-            console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
+            // Treat a unique-constraint violation (postgres 23505) as a successful dedup —
+            // this is the last-resort safety net if the ON CONFLICT DO NOTHING path in
+            // insertPlatformRevenueOnce ever doesn't fire (e.g. the index is missing).
+            const pgCode = (err as any)?.code ?? (err?.cause as any)?.code;
+            if (pgCode === "23505") {
+              console.info(`Stripe payment_intent.succeeded: duplicate revenue row blocked by DB constraint for paymentIntentId=${paymentIntent.id}`);
+            } else {
+              console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
+            }
           }
         }
         break;

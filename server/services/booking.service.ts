@@ -11,9 +11,11 @@ import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
-import { sendBookingConfirmationEmail, sendBookingAlertEmail } from './email.service';
+import { enqueueBookingConfirmationEmail } from './email-outbox.service';
+import { sendBookingAlertEmail } from './email.service';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
@@ -326,15 +328,51 @@ class BookingService {
             finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
             console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_items: ${finalPrice}`);
           } else {
-            // Fall back to itinerary variant items (optimizer output)
+            // Fall back to itinerary variant items (optimizer output).
+            // PROVENANCE RULE (ledger 2026-08-22-booking-price-provenance, decision-maker
+            // ratified): `itinerary_variant_items.price` is written VERBATIM from the LLM's
+            // JSON at variant insert — server-side storage, model provenance. It is never a
+            // §14 "server record" for a charge. So this branch re-derives the price from the
+            // variant item's LINKED CATALOG ROW (`provider_service_id` → `provider_services.price`,
+            // a link only ever set for services actually offered to the AI), and REFUSES an
+            // unlinked item outright — a pure AI invention has no priceable record, and
+            // apply-to-cart already skips such items, so nothing legitimate books through here.
             const variantRecord = await db.execute(sql`
-              SELECT price FROM itinerary_variant_items WHERE id = ${item.id} LIMIT 1
+              SELECT price, provider_service_id FROM itinerary_variant_items WHERE id = ${item.id} LIMIT 1
             `);
 
             if (variantRecord.rows && variantRecord.rows.length > 0) {
-              const serverPrice = variantRecord.rows[0].price;
-              finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
-              console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_variant_items: ${finalPrice}`);
+              const linkedServiceId = variantRecord.rows[0].provider_service_id as string | null;
+              const llmPrice = variantRecord.rows[0].price;
+              if (!linkedServiceId) {
+                console.error(
+                  `[BookingService] REFUSED: variant item "${item.title}" (id=${item.id}) has no ` +
+                  `catalog link — its stored price is LLM-authored and cannot back a charge.`
+                );
+                errors.push(`Cannot verify price for "${item.title}" — this AI-proposed item has no catalog listing.`);
+                continue;
+              }
+              const catalogRecord = await db.execute(sql`
+                SELECT price FROM provider_services WHERE id = ${linkedServiceId} LIMIT 1
+              `);
+              const catalogPrice = catalogRecord.rows?.[0]?.price;
+              if (catalogPrice === undefined || catalogPrice === null) {
+                console.error(
+                  `[BookingService] REFUSED: variant item "${item.title}" (id=${item.id}) links to ` +
+                  `catalog row ${linkedServiceId} but that row is missing or unpriced.`
+                );
+                errors.push(`Cannot verify price for "${item.title}" — its listing is no longer available.`);
+                continue;
+              }
+              finalPrice = Number(catalogPrice);
+              // Visibility: how often the stored LLM figure would have differed from the catalog.
+              if (llmPrice !== null && Number(llmPrice) !== finalPrice) {
+                console.warn(
+                  `[BookingService] Variant price provenance: "${item.title}" stored LLM price ` +
+                  `${Number(llmPrice)} != catalog price ${finalPrice} (service ${linkedServiceId}). Using catalog.`
+                );
+              }
+              console.log(`[BookingService] AI-item "${item.title}" price re-derived from catalog row ${linkedServiceId}: ${finalPrice}`);
             } else {
               console.error(
                 `[BookingService] No server price record found for AI item "${item.title}" (id=${item.id}). Rejecting.`
@@ -495,14 +533,19 @@ class BookingService {
               const peopleRow = await db.execute(sql`
                 SELECT
                   t.first_name AS t_first, t.last_name AS t_last,
-                  p.email AS p_email, p.first_name AS p_first, p.last_name AS p_last
+                  p.email AS p_email, p.notification_email AS p_notification_email,
+                  p.first_name AS p_first, p.last_name AS p_last,
+                  p.email_booking_alerts AS p_email_booking_alerts
                 FROM users t, users p
                 WHERE t.id = ${userId} AND p.id = ${providerId}
               `);
               const row = peopleRow.rows?.[0] as any;
               const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
-              const providerEmail = row?.p_email as string | null;
+              // Use notification_email (task #114) if set, else fall back to primary email
+              const providerEmail = (row?.p_notification_email || row?.p_email) as string | null;
               const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+              // Migration 225: skip alert email when provider has opted out (default true)
+              const providerEmailBookingAlerts = row?.p_email_booking_alerts !== false;
 
               await storage.createNotification({
                 userId: providerId,
@@ -514,7 +557,7 @@ class BookingService {
                 data: { bookingRequestId: reqId, serviceTitle: title, travelerName, requestedDate: date, requestedTime: time ?? null },
               });
 
-              if (providerEmail) {
+              if (providerEmail && providerEmailBookingAlerts) {
                 sendBookingAlertEmail({
                   providerEmail,
                   providerName,
@@ -677,7 +720,6 @@ class BookingService {
     const providerPayoutAmt = parseFloat(booking.provider_payout || '0');
     const platformFeeAmt = parseFloat(booking.platform_fee || '0');
     const totalAmt = parseFloat(booking.total_amount || '0');
-    const partySize = Math.max(1, booking.travelers || 1);
 
     const { availableAtFor } = await import('../config/earnings-hold.config');
     const { PROCESSING_FEE_RATE } = await import('./commission');
@@ -744,6 +786,12 @@ class BookingService {
           const revenueId = crypto.randomUUID();
           const netAmount = platformFeeAmt * (1 - PROCESSING_FEE_RATE);
           const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
+          // ON CONFLICT DO NOTHING targets the partial unique index
+          // platform_revenue_booking_mint_uniq (migration 203):
+          //   UNIQUE (source_id) WHERE source_type = 'booking_commission' AND gross_amount >= 0
+          // This makes the INSERT idempotent: if the transaction is retried (e.g., a Stripe
+          // webhook fires twice) the second attempt silently skips rather than inserting a
+          // duplicate revenue row.  MONEY_MAP F-4 comment above still applies.
           await tx.execute(sql`
             INSERT INTO platform_revenue (
               id, source_type, source_id, gross_amount, platform_fee,
@@ -757,20 +805,18 @@ class BookingService {
               ${`Booking commission from booking ${bookingId}`},
               'recorded', NOW(), NOW()
             )
+            ON CONFLICT (source_id) WHERE source_type = 'booking_commission' AND gross_amount >= 0
+            DO NOTHING
           `);
         }
 
-        // 4. Decrement provider general availability (service_id IS NULL rows only —
-        //    avoids over-counting service-specific capacity entries the booking
-        //    context cannot identify without a stored service_id on the booking).
-        await tx.execute(sql`
-          UPDATE provider_availability
-          SET current_bookings = COALESCE(current_bookings, 0) + ${partySize},
-              updated_at = NOW()
-          WHERE provider_id = ${providerId}
-            AND service_id IS NULL
-            AND is_available = true
-        `);
+        // 4. (REMOVED — Partner Demand 2C, ledger 2026-08-17-partner-demand-2c-sunset.) This
+        //    decremented `provider_availability`, a confirmed ORPHAN table: 0 rows, NO insert path
+        //    anywhere in the repo, and no readers (bookable truth is `vendor_availability_slots`;
+        //    declared availability is `provider_availability_schedule`). The UPDATE matched zero
+        //    rows on every booking confirmation — a proven no-op — so removing it changes no
+        //    behavior and unblocks the table DROP (migration 242). It was the ONLY live writer the
+        //    row-count-based R7 pass missed; verify-then-delete (R1) with the writer gone first.
       }
     });
 
@@ -782,14 +828,19 @@ class BookingService {
         const peopleRow = await db.execute(sql`
           SELECT
             t.first_name AS t_first, t.last_name AS t_last,
-            p.email AS p_email, p.first_name AS p_first, p.last_name AS p_last
+            p.email AS p_email, p.notification_email AS p_notification_email,
+            p.first_name AS p_first, p.last_name AS p_last,
+            p.email_booking_alerts AS p_email_booking_alerts
           FROM users t, users p
           WHERE t.id = ${userId} AND p.id = ${providerId}
         `);
         const row = peopleRow.rows?.[0] as any;
         const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
-        const providerEmail = row?.p_email as string | null;
+        // Use notification_email (task #114) if set, else fall back to primary email
+        const providerEmail = (row?.p_notification_email || row?.p_email) as string | null;
         const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+        // Migration 225: skip alert email when provider has opted out (default true)
+        const providerEmailBookingAlerts = row?.p_email_booking_alerts !== false;
 
         await storage.createNotification({
           userId: providerId,
@@ -808,7 +859,7 @@ class BookingService {
           },
         });
 
-        if (providerEmail) {
+        if (providerEmail && providerEmailBookingAlerts) {
           sendBookingAlertEmail({
             providerEmail,
             providerName,
@@ -835,16 +886,14 @@ class BookingService {
     `).then(result => {
       const row = result?.rows?.[0] as any;
       if (row?.email) {
-        sendBookingConfirmationEmail({
+        enqueueBookingConfirmationEmail({
           toEmail: row.email,
           userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
           bookingId,
           bookingTitle: row.title || 'Your booking',
           bookingDate: row.booking_date ?? null,
           confirmationCode,
-        }).catch(err =>
-          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
-        );
+        });
       }
     }).catch(err =>
       console.error(`[email] failed to fetch booking details for confirmation email (booking ${bookingId}):`, err)

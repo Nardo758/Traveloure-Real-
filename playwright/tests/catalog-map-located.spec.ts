@@ -1,26 +1,32 @@
 /**
  * catalog-map-located.spec.ts
  *
- * Catalog+Distribute ruling 74/78, lane C4 proof — the provider Catalog Map view surfaces an
- * HONEST provider-wide coverage summary ("X of Y services located") and an unpinned rail, and
- * an unlocated service stays OFF the map (§13). The map renderer + pin/route write paths already
- * existed pre-C4 (ServiceLocationMap / CatalogMapView, rulings 22/62); C4 adds only the coverage
- * summary + unpinned rail on top of that already-honest surface.
+ * Catalog → Map is a READ-ONLY traveler preview (ruling 22(c) as amended Aug 12, 2026). This spec
+ * proves the §13 honesty rules the surface exists to keep, and — since lane M2 (mock conformance
+ * round 2) — that the ratified mock's four blocks are actually on the page:
+ *   1. the amber read-only notice, carrying the "amends" sentence
+ *   2. ONE full-width canvas with the coverage caption UNDER it and "Not located" in the same card
+ *   3. "What the traveler sees" — the three rendering rules, drawn from the owner's own listing
+ *   4. the ⑫ market-insight placement note and the ⑬ "Render it, or stop collecting it" read-out
  *
- * THE SEED TRAP (verified this session): every seeded kyoto-interpreter service — including the
- * remote/async "Business Document Translation" — is born with a NEIGHBORHOOD-CENTROID pin
- * (kawaramachi-sanjo resolves), so all three are located out of the box and the natural state is
- * "3 of 3". To prove the §13 negative (an unlocated service in the rail, not on the map) this
- * spec temporarily removes ONE service's pin through the SAME owner rail the UI uses
- * (PATCH /api/provider/services/:id { locationPoint: null } — the confirm-gated Remove), which
- * reproduces the mock's "2 of 3 located" state, then RESTORES the pin in a finally block. A psql
- * step in the runner restores the original neighborhood_centroid precision after the suite, so the
- * shared dev DB is left byte-identical for the other catalog specs.
+ * WHAT THIS SPEC USED TO ASSERT (and why it changed). Lane C4's version expected "X of Y services
+ * located on the map" plus a `catalog-map-unpinned-rail` with a "+ Add a pin" button. Lane M
+ * replaced all three: the count is over PLACE-ANCHORED listings only (a remote listing happens
+ * nowhere — a real answer, not a missing pin), the rail became the mock's "Not located" list, and
+ * "+ Add a pin" — which only selected a row and wrote nothing — became a real link into the
+ * listing's own Logistics step. The spec was left behind by that lane and is corrected here.
+ *
+ * THE SEED TRAP (still true): every seeded kyoto-interpreter service — including the remote/async
+ * "Business Document Translation" — is born with a NEIGHBORHOOD-CENTROID pin, so all three are
+ * located out of the box. To exercise the unlocated path this spec removes ONE service's pin
+ * through the SAME owner rail the UI uses (PATCH /api/provider/services/:id { locationPoint: null }),
+ * then RESTORES it in a finally block so the shared dev DB is left as the other catalog specs
+ * expect it.
  *
  * Auth: seeded provider kyoto-interpreter@traveloure.test / TestPass123!.
  *
  * Relevant source:
- *   client/src/components/provider/catalog-map-view.tsx   (summary + unpinned rail, C4)
+ *   client/src/components/provider/catalog-map-view.tsx   (the whole preview surface)
  *   client/src/components/service-location-map.tsx          (located-only render, §13; ruling 22c)
  *   server/utils/service-location.ts                        (locationPoint:null clears the pin)
  */
@@ -31,6 +37,24 @@ const PROVIDER_EMAIL = 'kyoto-interpreter@traveloure.test';
 const PROVIDER_PASSWORD = 'TestPass123!';
 const REMOTE_SERVICE = 'Business Document Translation'; // async/remote — the one we unpin
 const LOCATED_SERVICE = 'Business Meeting Interpretation (Full Day)'; // stays pinned
+
+/**
+ * The map surfaces mount Leaflet, which fetches OSM tiles from an external host. Every assertion
+ * here is DOM — markers, counts, copy — so the tiles buy the test nothing and cost it a live
+ * third-party dependency that simply hangs on a sandboxed or offline runner. Aborted.
+ *
+ * PRECONDITION — now satisfied by the seeder, but worth knowing when this spec misbehaves. The
+ * provider needs a password AND both `users.terms_accepted_at` / `privacy_accepted_at`;
+ * `FIXTURE_LOGIN_BACKFILL` in `server/seeds/e2e-test-accounts.seed.ts` fills all three
+ * idempotently. Before that existed, a bench run without them bounced every authenticated console
+ * route to `/accept-terms`, so `button-view-map` never rendered and the auto-waiting click
+ * consumed the WHOLE test timeout — which Playwright then reported against the cleanup PATCH in
+ * the `finally`, the last place anyone would look. If this spec ever times out with no assertion
+ * error, check those three columns before suspecting the map.
+ */
+async function blockMapTiles(page: Page) {
+  await page.route(/tile\.openstreetmap\.org/, (route) => route.abort());
+}
 
 async function loginProvider(page: Page) {
   const resp = await page.request.post(`${BASE_URL}/api/auth/login`, {
@@ -52,8 +76,9 @@ function nameOf(s: Svc): string {
   return s.serviceName ?? s.name ?? '';
 }
 
-test.describe('/provider/services Map — honest located count + unpinned rail (lane C4)', () => {
-  test('unlocated service lands in the rail and OFF the map; located service renders its pin', async ({ page }) => {
+test.describe('/provider/services Map — read-only traveler preview (lanes C4 + M + M2)', () => {
+  test('unlocated listing is named off-canvas with its true reason; located listing draws its pin', async ({ page }) => {
+    await blockMapTiles(page);
     await loginProvider(page);
 
     const services = await loadServices(page);
@@ -64,7 +89,6 @@ test.describe('/provider/services Map — honest located count + unpinned rail (
     const remoteId = remote!.id;
     const locatedId = located!.id;
 
-    // Capture the remote service's real coordinates so the finally block restores them exactly.
     const origLat = remote!.latitude ?? null;
     const origLng = remote!.longitude ?? null;
     expect(origLat && origLng, 'remote service starts pinned (the seed trap)').toBeTruthy();
@@ -77,51 +101,70 @@ test.describe('/provider/services Map — honest located count + unpinned rail (
       });
       expect(clr.ok(), `unpin failed: ${clr.status()}`).toBeTruthy();
 
-      // Sanity: the API now reports the remote service as unlocated and the other as located.
       const after = await loadServices(page);
-      const remoteAfter = after.find((s) => s.id === remoteId)!;
-      const locatedAfter = after.find((s) => s.id === locatedId)!;
-      expect(remoteAfter.latitude ?? null, 'remote is now unlocated').toBeNull();
-      expect(locatedAfter.latitude ?? null, 'located service still pinned').not.toBeNull();
-      const totalMappable = after.filter((s) => (s as any).productShape !== 'bundle').length;
-      const locatedMappable = after.filter(
-        (s) => (s as any).productShape !== 'bundle' && (s.latitude ?? null) !== null,
-      ).length;
+      expect(after.find((s) => s.id === remoteId)!.latitude ?? null, 'remote is now unlocated').toBeNull();
+      expect(after.find((s) => s.id === locatedId)!.latitude ?? null, 'located service still pinned').not.toBeNull();
 
       // ── Open Catalog → Map ──────────────────────────────────────────────────────────────────
       await page.goto(`${BASE_URL}/provider/services`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
       await page.getByTestId('button-view-map').click();
+      await expect(page.getByTestId('catalog-map-preview')).toBeVisible({ timeout: 15_000 });
 
-      // (a) The coverage summary is REAL — it equals the API partition, not a guess.
-      const summary = page.getByTestId('catalog-map-located-summary');
-      await expect(summary).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId('text-located-count')).toHaveText(
-        `${locatedMappable} of ${totalMappable} services located on the map`,
-      );
+      // (a) M-10 — the mock's second crumb level.
+      await expect(page.getByTestId('text-map-crumbs')).toContainText('Map · Traveler preview');
 
-      // (b) The unpinned rail lists the genuinely-unlocated remote service with an add-a-pin affordance.
-      const rail = page.getByTestId('catalog-map-unpinned-rail');
-      await expect(rail).toBeVisible();
-      await expect(page.getByTestId(`unpinned-service-${remoteId}`)).toBeVisible();
-      const addPin = page.getByTestId(`button-add-pin-${remoteId}`);
-      await expect(addPin).toBeVisible();
-      await expect(addPin).toContainText(REMOTE_SERVICE);
-      await expect(addPin).toContainText('Add a pin');
-      // The still-located service must NOT be in the unpinned rail.
-      await expect(page.getByTestId(`unpinned-service-${locatedId}`)).toHaveCount(0);
+      // (b) M-2/M-3 — the read-only notice, with the sentence that records this as an AMENDMENT
+      //     of ruling 22(b) rather than a silent contradiction of it.
+      const notice = page.getByTestId('catalog-map-readonly-notice');
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText('Traveler preview — read-only.');
+      await expect(notice).toContainText('amends');
+      // The "open it →" door is a real link into a listing's own step 4 — never a bare console page.
+      await expect(page.getByTestId('link-open-logistics')).toHaveAttribute('href', /\/provider\/(services\/.+\/edit\?step=logistics|workstation\?property=)/);
 
-      // (c) §13 NEGATIVE — selecting the unlocated service shows the honest empty canvas, NO map
-      //     pin is drawn (never a city-centre fallback). Clicking "Add a pin" selects it.
-      await addPin.click();
-      await expect(page.getByTestId('catalog-map-empty')).toBeVisible();
-      await expect(page.locator('[data-testid="catalog-map-canvas-pin"]')).toHaveCount(0);
+      // (c) M-4 — the coverage caption counts PLACE-ANCHORED listings and sits under the canvas.
+      const count = page.getByTestId('text-located-count');
+      await expect(count).toBeVisible();
+      await expect(count).toHaveText(/^\d+ of \d+ place-anchored listings? located\.$/);
 
-      // (d) A located service renders its real pin on the canvas.
+      // (d) D-4/M-5 — the unpinned REMOTE listing is named with "it happens nowhere", NOT as a
+      //     missing pin, and carries no fix affordance (there is nothing to fix).
+      const remoteRow = page.getByTestId(`not-located-${remoteId}`);
+      await expect(remoteRow).toBeVisible();
+      await expect(remoteRow).toContainText('it happens nowhere');
+      await expect(page.getByTestId(`link-fix-step4-${remoteId}`)).toHaveCount(0);
+      // The still-located service is not in the off-canvas list at all.
+      await expect(page.getByTestId(`not-located-${locatedId}`)).toHaveCount(0);
+
+      // (e) §13 NEGATIVE — selecting the unlocated listing draws NO pin for it, and the
+      //     "no coordinates — no map" card states the rule rather than guessing a location.
+      await page.getByTestId(`map-view-select-${remoteId}`).click();
+      await expect(page.getByTestId('tcard-pin-empty')).toBeVisible();
+      await expect(page.getByTestId('tcard-nomap-panel')).toContainText('Location shared after booking');
+
+      // (f) A located listing renders its real pin on the one canvas.
       await page.getByTestId(`map-view-select-${locatedId}`).click();
-      await expect(page.getByTestId('catalog-map-empty')).toHaveCount(0);
-      await expect(page.locator('[data-testid="catalog-map-canvas-pin"]')).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('[data-testid="catalog-map-canvas-pin"]').first()).toBeVisible({ timeout: 10_000 });
+
+      // (g) M-8/M-9 — the two blocks the shipped surface was missing entirely.
+      await expect(page.getByTestId('map-insights-placement-note')).toContainText('analytics, not authoring');
+      const renderIt = page.getByTestId('render-it-section');
+      await expect(renderIt).toBeVisible();
+      await expect(renderIt).toContainText('Render it, or stop collecting it');
+      // Gap #13's read-out is §13-honest: an unanswered question is OMITTED AND COUNTED, never
+      // defaulted into a claim the host did not make.
+      //
+      // This assertion replaces one that asserted `traveler-facts-unbacked` ("Bring and Access
+      // have no field behind them yet"). That element was CORRECT until migration 228 gave both
+      // rows a column; the same commit deleted it and left this line behind — spec rot authored
+      // in the same session that audited spec rot. The replacement is stronger, not weaker: it
+      // proves the two formerly-unbacked rows are now REAL QUESTIONS in the read-out's set, which
+      // is only observable because the seeded listing leaves them unanswered.
+      const omitted = page.getByTestId('traveler-facts-omitted');
+      await expect(omitted).toContainText('unanswered');
+      await expect(omitted).toContainText('Bring');
+      await expect(omitted).toContainText('Access');
     } finally {
-      // ── RESTORE the remote service's pin so the shared DB matches the other specs' expectations.
       if (origLat && origLng) {
         await page.request.patch(`${BASE_URL}/api/provider/services/${remoteId}`, {
           headers: { 'Content-Type': 'application/json' },

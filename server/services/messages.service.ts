@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { userAndExpertChats, users, notifications } from "@shared/schema";
+import { userAndExpertChats, users, notifications, userBlocks, messageReports, adminNotifications } from "@shared/schema";
 import { eq, and, or, desc, sql, isNull, ilike } from "drizzle-orm";
 
 export function buildConversationId(userId1: string, userId2: string): string {
@@ -149,12 +149,22 @@ export async function getMessageById(id: string): Promise<typeof userAndExpertCh
   return msg ?? null;
 }
 
+export class BlockedUserError extends Error {
+  constructor() {
+    super("Cannot send message: a block exists between these users");
+    this.name = "BlockedUserError";
+  }
+}
 export async function sendMessage(
   senderId: string,
   recipientId: string,
   message: string,
   attachment?: string,
 ): Promise<MessageDetail> {
+  // Block enforcement: refuse delivery in either direction when a block row exists.
+  const blocked = await isBlockedBetween(senderId, recipientId);
+  if (blocked) throw new BlockedUserError();
+
   const trackingNumber = `MSG${Date.now().toString(36).toUpperCase()}${Math.random()
     .toString(36)
     .substring(2, 6)
@@ -261,6 +271,25 @@ export async function getUserRole(userId: string): Promise<string> {
   return user?.role ?? "traveler";
 }
 
+/**
+ * True when at least one message already exists between the pair (either direction).
+ * Used to classify a send as continuing an existing conversation vs. cold-contacting
+ * a new one, which the messaging rate limiter throttles differently.
+ */
+export async function hasExistingConversation(userA: string, userB: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userAndExpertChats.id })
+    .from(userAndExpertChats)
+    .where(
+      or(
+        and(eq(userAndExpertChats.senderId, userA), eq(userAndExpertChats.receiverId, userB)),
+        and(eq(userAndExpertChats.senderId, userB), eq(userAndExpertChats.receiverId, userA)),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
 export async function assertRecipientExists(recipientId: string): Promise<boolean> {
   const [r] = await db
     .select({ id: users.id })
@@ -268,3 +297,103 @@ export async function assertRecipientExists(recipientId: string): Promise<boolea
     .where(eq(users.id, recipientId));
   return !!r;
 }
+
+/** Returns true when either party has blocked the other. */
+export async function isBlockedBetween(userId1: string, userId2: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userBlocks.id })
+    .from(userBlocks)
+    .where(
+      or(
+        and(eq(userBlocks.blockerId, userId1), eq(userBlocks.blockedId, userId2)),
+        and(eq(userBlocks.blockerId, userId2), eq(userBlocks.blockedId, userId1)),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+export async function reportMessage(
+  reporterId: string,
+  reportedUserId: string,
+  messageId: string,
+  reason: string,
+  details?: string,
+): Promise<{ id: string }> {
+  const safeReason: ReportReason = VALID_REASONS.includes(reason as ReportReason)
+    ? (reason as ReportReason)
+    : "other";
+  const [row] = await db
+    .insert(messageReports)
+    .values({ reporterId, reportedUserId, messageId, reportType: "message", reason: safeReason, details: details ?? null })
+    .returning({ id: messageReports.id });
+  await notifyAdminsOfReport(row.id, "message", safeReason, reportedUserId);
+  return row;
+}
+
+/**
+ * Surface a new abuse report to admins via admin_notifications — the same
+ * channel the lead-routing alerts use, which both the admin notifications
+ * page and the daily digest (section A: unread rows) already read. Failure
+ * here must never fail the report itself.
+ */
+async function notifyAdminsOfReport(
+  reportId: string,
+  reportType: "message" | "user",
+  reason: string,
+  reportedUserId: string,
+): Promise<void> {
+  try {
+    await db.insert(adminNotifications).values({
+      type: "message_report",
+      message: `New ${reportType} abuse report (${reason}) — review it in Message Reports`,
+      reason,
+      metadata: { reportId, reportType, reportedUserId },
+    });
+  } catch (err: any) {
+    console.error("[messages] admin notification for report failed (non-fatal):", err?.message ?? err);
+  }
+}
+
+type ReportReason = (typeof VALID_REASONS)[number];
+
+export async function unblockUser(blockerId: string, blockedId: string): Promise<void> {
+  await db
+    .delete(userBlocks)
+    .where(and(eq(userBlocks.blockerId, blockerId), eq(userBlocks.blockedId, blockedId)));
+}
+
+export async function reportUser(
+  reporterId: string,
+  reportedUserId: string,
+  reason: string,
+  details?: string,
+): Promise<{ id: string }> {
+  const safeReason: ReportReason = VALID_REASONS.includes(reason as ReportReason)
+    ? (reason as ReportReason)
+    : "other";
+  const [row] = await db
+    .insert(messageReports)
+    .values({ reporterId, reportedUserId, messageId: null, reportType: "user", reason: safeReason, details: details ?? null })
+    .returning({ id: messageReports.id });
+  await notifyAdminsOfReport(row.id, "user", safeReason, reportedUserId);
+  return row;
+}
+
+export async function blockUser(blockerId: string, blockedId: string): Promise<void> {
+  await db
+    .insert(userBlocks)
+    .values({ blockerId, blockedId })
+    .onConflictDoNothing();
+}
+
+/** Returns the list of user IDs that `userId` has blocked. */
+export async function getBlockedByUser(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ blockedId: userBlocks.blockedId })
+    .from(userBlocks)
+    .where(eq(userBlocks.blockerId, userId));
+  return rows.map((r) => r.blockedId);
+}
+
+const VALID_REASONS = ["spam", "harassment", "inappropriate", "other"] as const;

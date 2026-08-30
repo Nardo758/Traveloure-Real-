@@ -15,11 +15,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
+import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-stub";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
@@ -51,6 +52,8 @@ interface LocationViewPayload {
   neighborhoods: SectionResult<any[]>;
   gems: SectionResult<any[]>;
   services?: SectionResult<any[]>;
+  // Trailhead T4.3: published scraped/DMO stubs for this market + render-time trend headline.
+  externalStubs?: SectionResult<{ trendContext: string | null; stubs: any[] }>;
 }
 
 interface CityMediaResponse {
@@ -184,10 +187,10 @@ function HeroSection({
               >
                 📅 {datePillLabel}
                 {/* D7 date-continuity: back to the By-Date calendar
-                    (/discover?tab=events) to pick a different date. Additive —
+                    (/events) to pick a different date. Additive —
                     the ✕ dismiss below is untouched. */}
                 <a
-                  href="/discover?tab=events"
+                  href="/events"
                   className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
                   data-testid="link-change-date"
                 >
@@ -241,10 +244,10 @@ function HeroSection({
             >
               📅 {datePillLabel}
               {/* D7 date-continuity: back to the By-Date calendar
-                  (/discover?tab=events) to pick a different date. Additive —
+                  (/events) to pick a different date. Additive —
                   the ✕ dismiss below is untouched. */}
               <a
-                href="/discover?tab=events"
+                href="/events"
                 className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
                 data-testid="link-change-date"
               >
@@ -382,15 +385,7 @@ function StatsRow({
 
   return (
     <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
-      {cityIntel.activeTravelers !== undefined && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
-          👥{" "}
-          <b className="text-foreground font-semibold">
-            {Number(cityIntel.activeTravelers).toLocaleString()}
-          </b>{" "}
-          travellers here now
-        </div>
-      )}
+      {/* activeTravelers absolute count suppressed per R3 — no absolute visitor count on traveler surfaces */}
       {cityIntel.crowdLevel && (
         <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
           {crowdEmoji(cityIntel.crowdLevel)}{" "}
@@ -1100,6 +1095,8 @@ function FillerCard({
       return <EarnCard city={city} />;
     case "package":
       return <PackageCard template={item.data} layout={isMarquee ? "row" : "column"} />;
+    case "external-stub":
+      return <CityFeedCardExternalStub stub={item.data} city={city} />;
     default:
       return null;
   }
@@ -1118,6 +1115,7 @@ const FILLER_KINDS = new Set<FeedItem["kind"]>([
   "lead-expert",
   "earn-card",
   "package",
+  "external-stub",
 ]);
 
 // ─── Bento feed renderer ──────────────────────────────────────────────────────
@@ -1333,19 +1331,19 @@ function DateHighlightStrip({
   // D2 honest links: the old `/experiences/photo` and `/experiences/gear` hrefs
   // resolved to the /experiences/:slug route but matched NO real experience
   // template — dead-ish destinations. The companion object carries no service
-  // id, so each "Book" now goes to `/discover?tab=services` — the live Browse
+  // id, so each "Book" now goes to `/services` — the live Browse
   // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
   // are actually searchable. `/local-experts` (festival guide) was already a
   // real routed page and stays.
   const companionService: ServiceAddon | null = (() => {
     if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
-      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/discover?tab=services" };
+      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/services" };
     if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
-      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/discover?tab=services" };
+      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/services" };
     if (highlight.includes("festival") || highlight.includes("matsuri"))
       return { icon: "🎋", label: "Festival guide", price: "from ¥8,000", href: "/local-experts" };
     if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
-      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/discover?tab=services" };
+      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/services" };
     return null;
   })();
 
@@ -1383,10 +1381,10 @@ function DateHighlightStrip({
               >
                 {/* D2 honest link: was /experiences/events — a slug that resolved to
                     the /experiences/:slug route but matched no real experience
-                    template. Now points at /discover?tab=events, the live By-Date
+                    template. Now points at /events, the live By-Date
                     calendar tab (in discover.tsx's VISIBLE_TABS), where dated
                     events are actually browsable. */}
-                <a href="/discover?tab=events">Tickets</a>
+                <a href="/events">Tickets</a>
               </Button>
               <Button
                 size="sm"
@@ -1795,6 +1793,9 @@ export default function DiscoverLocationPage() {
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
+  // Trailhead T4.3: published external stubs + the render-time trend headline.
+  const externalStubs = data?.externalStubs?.data?.stubs ?? [];
+  const externalTrendContext = data?.externalStubs?.data?.trendContext ?? null;
 
   // ── Engine recommendations (discover_location / discover_date surface) ──
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
@@ -1833,7 +1834,7 @@ export default function DiscoverLocationPage() {
 
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
-    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
+    navigate(`/services?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
   };
 
   // ── Injected-element payloads for the composition layer ────────────────
@@ -1864,8 +1865,16 @@ export default function DiscoverLocationPage() {
       })
     : experts;
 
+  // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): the mixed "all" feed keeps its
+  // 4-service balance cap; a spine chip is a deliberate search and must show EVERY matching
+  // approved listing, not a sample of four (that cap is why a whole approved Kyoto catalog was
+  // invisible on Kyoto's own page even once it reached the payload).
   const feedItems: FeedItem[] = data
-    ? buildFeedStream(neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices)
+    ? buildFeedStream(
+        neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices,
+        undefined,
+        activeFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
+      )
     : [];
 
   // Wanted/recruitment slots: one per neighborhood for offering types the
@@ -1962,11 +1971,24 @@ export default function DiscoverLocationPage() {
       return it as FeedItem;
     })
     .filter(Boolean) as FeedItem[];
+  // Trailhead T4.3: published external stubs as distinct, non-bookable feed items.
+  const externalStubItems: FeedItem[] = (externalStubs as any[]).map((s) => ({
+    kind: "external-stub" as FeedItem["kind"],
+    id: `external-stub-${s.id}`,
+    data: s,
+  }));
+
   // Exactly ONE earn-card near position 9 (F7/F9), only on the unfiltered "all" view.
   const filteredItems: FeedItem[] = (() => {
     if (activeFilter !== "all") return retagged;
     const out = [...retagged];
     out.splice(Math.min(9, out.length), 0, { kind: "earn-card", id: "earn-card", data: { city } });
+    // External stubs are woven in after the earn-card region (append — they never displace a
+    // native card or the rec cadence). Distinct card treatment (CityFeedCardExternalStub) keeps
+    // them visibly separate from bookable listings.
+    if (externalStubItems.length > 0) {
+      out.splice(Math.min(12, out.length), 0, ...externalStubItems);
+    }
     return out;
   })();
 
@@ -2034,7 +2056,7 @@ export default function DiscoverLocationPage() {
             if (window.history.length > 1) {
               window.history.back();
             } else {
-              navigate("/discover?tab=events");
+              navigate("/events");
             }
           }}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
@@ -2124,6 +2146,19 @@ export default function DiscoverLocationPage() {
                 >
                   Start earning in {toTitleCase(city)} <ChevronRight className="w-3.5 h-3.5" />
                 </a>
+              </div>
+            )}
+
+            {/* Trailhead T4.4: render-time trend headline for external content — honest ceiling
+                ("‹Market› is trending · ‹Event› approaching"), server-computed, never stored, only
+                shown when published external stubs exist for this market. */}
+            {externalTrendContext && externalStubs.length > 0 && (
+              <div
+                data-testid="external-trend-context"
+                className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>{externalTrendContext}</span>
               </div>
             )}
 

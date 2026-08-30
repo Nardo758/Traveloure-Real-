@@ -1,5 +1,6 @@
-- [Booking sanitizer Stripe leak](booking-sanitizer-stripe-leak.md) — sanitizeBookingForExpert strips wrong field names; stripePaymentIntentId leaks to providers/experts (use allow-list projection).
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 - [Migration chain root cause](migration-chain-root-cause.md) — null-id + missing-column bugs in 033/034/042 blocked all migrations 034-050; fixed with ALTER TABLE SET DEFAULT + VALUES column fixes
+- [Partial migration retries](partial-migration-retries.md) — multi-statement migrations can leave DDL applied without a ledger row; guard non-idempotent constraints and repair data before retrying
 - [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link
 - [Phase 1b neighborhood system](phase-1b-neighborhoods.md) — cityNeighborhoods table + neighborhood columns on gems/services; backfill is Haversine proximity; verify check [B] is a false-negative on empty dev DB.
 - [Optimization fee gate](optimization-fee-gate.md) — G3+G4: preview endpoint + Stripe payment gate before full LLM optimizer; complexity tier drives fee; 24h free-rerun via optimized_at on itinerary_comparisons.
@@ -28,6 +29,23 @@
 - [Cancellation refund policy](cancellation-refund-policy.md) — refund before terminal status; amount-scoped Stripe idempotency keys; partial refunds reverse ledger proportionally.
 - [Earnings mint path](earnings-mint-path.md) — earnings mint on booking → completed; production paths are traveler confirm-completion + PI-gated auto-complete scheduler; full fixture recipe inside.
 - [Payout-parity discriminators](payout-parity-discriminators.md) — all live bands are 0.25 so amount-based branch tests are vacuous; use the EXP-OVR override asymmetry to distinguish provider vs expert resolution.
-- [Write-time text sanitization](write-time-text-sanitization.md) — sanitize before zod min/max; cover JSONB prose deeply; drop script content, not just tags.
-- [ServiceForm a11y validation](service-form-a11y-validation.md) — final Submit/Publish stay clickable; missing-field checks live in handleFinalSubmit + inline role=alert, never in disabled props.
+- [Provider console verification quirks](provider-console-verification.md) — zone fee popups are click-only; catalog pill reads status not approval_status; edit-split injection guard confirmed.
+- [Message write-path convergence](message-write-paths.md) — user↔user messages have 3 write paths (POST /api/messages, POST /api/chats, /ws chat); guards must go in shared code (storage.createChat / insertUserAndExpertChatSchema) or paths diverge silently.
+- [Realtime message delivery](realtime-message-delivery.md) — only ws-path sends live-push to open recipients; HTTP sends are invisible until reload; thread renders from refetched chats, not realtimeMessages.
+- [Role-change audit atomicity](role-change-audit-atomicity.md) — role flips + audit insert share one transaction and throw on failure; audit table id has no DB default; actor_id FK is the rollback-test vector.
+- [Availability authoring write path](availability-authoring-write-path.md) — month grid reads materialized vendor_availability_slots; seed patterns via the PUT endpoint, never direct DB inserts.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
+- [Trend Engine Phase 0 decisions](trend-engine-phase0.md) — R4 hotfix shipped; 8 operating markets; activeTravelers blocks republish at 4 surfaces; SerpAPI dropped per R5; DECISIONS.md is the ruling ledger.
+- [Trend Engine Phase 2 dispatch](trend-engine-phase2.md) — cost enforcement + 5 open-license adapters built; 3 licensed stubs disabled (credential issues); Grok removed from scheduler (Phase 2.3, HUMAN READ required); tsc baseline 171.
+- [Load-testing baseline](load-testing-baseline.md) — live Stripe key: never load-drive /api/checkout; test the idempotency unique-index guard at DB layer; loopback skips the rate limiter; baseline numbers inside.
+- [Partner Demand lane](partner-demand-lane.md) — 2B rollup live (migration 243, nightly job +95min); Kyoto cells hand-verified; @journey-w1.test rows pass R16 as written (flagged, ruling pending); lane work only on explicit dispatch.
+- [Partner Demand R38 provenance](partner-demand-r38-provenance.md) — unowned, same-day destination/date cohorts at n≥10 are excluded from all demand grains; materialized rollups must drop invalidated cells.
+- [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.
+- [Calendar-date boundaries](calendar-date-boundaries.md) — date-only trip values and exported wall-clock events must never pass through viewer/server timezone conversion.
+- [TravelPulse city index publish compatibility](travelpulse-city-index-publish.md) — production duplicate city pairs block the normalized unique index; keep enforcement in lookup paths until approved cleanup.
+- [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
+- [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
+- [Vite development logger resilience](vite-dev-logger-resilience.md) — Vite/client diagnostics must log without terminating the dev server and dropping the preview.
+- [Playwright WebKit on Nix](webkit-playwright-nix-runtime.md) — bundled WPE can launch yet hang on EGL; use GTK under Xvfb and preserve the external library path.
+- [Provider storefront URL contract](provider-storefront-url-contract.md) — Public storefronts use `/s/:handle`; retain `/p/:handle` for legacy shared links.
+- [Field Guide recovery](field-guide-recovery.md) — a workspace reset can drop the multi-artifact preview while its complete source remains recoverable in Git history.

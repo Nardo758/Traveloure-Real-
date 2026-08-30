@@ -133,6 +133,16 @@ function servicePayload(overrides: Record<string, unknown> = {}) {
     serviceName: `F2 Gate service ${RUN}-${crypto.randomUUID().slice(0, 6)}`,
     description: "fixture f2 verification gate service",
     price: "50.00",
+    // FP-1 / B7: STATE the delivery method. This fixture used to omit it, so every listing it
+    // created took the `provider_services.delivery_method` DB DEFAULT of 'pdf' — which every
+    // consumer of that column already treats as a real pdf listing (the storefront chip renders
+    // "PDF guide", the D8 completion rule routes it to artifact_timer, and the health rail scores
+    // it on `delivery_asset`), and which the new deliverable publish gate therefore also refuses to
+    // publish with no file. `async_messaging` is the neutral choice here: no meeting point, no
+    // calendar, no deliverable. This does not weaken the F2 proof by one inch — the suite is about
+    // identity/business VERIFICATION gating, and the delivery method was never part of what it
+    // asserts; it simply stops the fixture from silently claiming to be a downloadable product.
+    deliveryMethod: "async_messaging",
     status: "active",
     ...overrides,
   };

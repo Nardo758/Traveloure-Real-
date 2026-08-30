@@ -13,14 +13,13 @@
  * back through /r/:code or /p/:handle — never an off-site booking CTA.
  */
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Download, MessageCircle, Share2, Sparkles, Instagram, ArrowRight } from "lucide-react";
+import { Copy, Download, MessageCircle, Share2, Sparkles, Instagram } from "lucide-react";
 import type { ShareFrame } from "@shared/share-frames";
 import { SHARE_FRAME_LABEL } from "@shared/share-frames";
 import { connectInstagram } from "@/lib/instagram-connect";
@@ -361,7 +360,9 @@ export function OfferingShareDetail({
       {showImages ? (
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Feed (1080×1350)</p>
+            {/* D-7 (mock conformance, Aug 15): lead with what the frame is FOR; the pixel size
+                is the trailing detail, not the name. */}
+            <p className="text-xs font-medium text-muted-foreground">Feed post · portrait card · 1080×1350</p>
             <img
               src={`/api/share-image/service/${offering.id}.png?format=feed`}
               alt={`${offering.name} — feed share card`}
@@ -386,7 +387,7 @@ export function OfferingShareDetail({
             />
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Story (1080×1920)</p>
+            <p className="text-xs font-medium text-muted-foreground">Story · full-screen · 1080×1920</p>
             <img
               src={`/api/share-image/service/${offering.id}.png?format=story`}
               alt={`${offering.name} — story share card`}
@@ -412,7 +413,17 @@ export function OfferingShareDetail({
           </div>
           {offering.lane === "service" && (
             <div className="space-y-2">
-              {routeAvailable && <p className="text-xs font-medium text-muted-foreground">Route (1080×1350)</p>}
+              {routeAvailable && (
+                <>
+                  <p className="text-xs font-medium text-muted-foreground">Route map · portrait card · 1080×1350</p>
+                  {/* D-8 (mock conformance, Aug 15): ruling 22(c) honesty stated ON the surface —
+                      the frame draws the stop SEQUENCE, never travel routing or invented
+                      distances/durations. */}
+                  <p className="text-[11px] text-muted-foreground" data-testid={`text-route-guardrail-${offering.id}`}>
+                    Shows your stops in order — not a travel route, and no distances or times.
+                  </p>
+                </>
+              )}
               {routeAvailable && (
                 <>
                   <img
@@ -475,39 +486,14 @@ export function OfferingShareDetail({
   );
 }
 
-/** C6 (ruling 74) — a per-opportunity "Promote in Distribute →" deep-link. When a caller passes
- *  `promoteHref` (the provider Catalog does, pointing at the Distribute hub), the opportunity card
- *  keeps the timely NUDGE (image + text + suggested frame) but its share ACTIONS route INTO the
- *  hub rather than opening a second full share surface on Catalog (ruling 74: "no second share
- *  surface"). Callers that omit it (expert Catalog, legacy share-promote) keep the inline actions
- *  byte-unchanged. */
-function PromoteInDistributeLink({ href, idPrefix }: { href: string; idPrefix: string }) {
-  return (
-    <Link href={href}>
-      <Button
-        size="sm"
-        variant="outline"
-        className="w-full justify-center"
-        data-testid={`button-${idPrefix}-promote-distribute`}
-      >
-        <Share2 className="w-3.5 h-3.5 mr-1.5" />
-        Promote in Distribute
-        <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-      </Button>
-    </Link>
-  );
-}
-
 /** D4 — a review opportunity always suggests the dedicated review frame (its own share-image
  *  endpoint, no format param). Own state so an image-load failure (e.g. the review or its
  *  service loses approval between the list read and render) only disables THIS card's publish
  *  button, never the whole list. */
 function ReviewOpportunityCard({
   o,
-  promoteHref,
 }: {
   o: Extract<PostingOpportunity, { kind: "new_review" }>;
-  promoteHref?: string;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const imageUrl = `/api/share-image/review/${o.reviewId}.png`;
@@ -533,29 +519,23 @@ function ReviewOpportunityCard({
           {SHARE_FRAME_LABEL[o.suggestedFrame]}
         </Badge>
       </div>
-      {promoteHref ? (
-        <PromoteInDistributeLink href={promoteHref} idPrefix={`opportunity-review-${o.reviewId}`} />
-      ) : (
-        <>
-          <ShareActions
-            caption={buildReviewCaption(o)}
-            idPrefix={`opportunity-review-${o.reviewId}`}
-            onGetLink={() =>
-              ensureShortLink(
-                { targetType: "service", targetId: o.serviceId, frame: o.suggestedFrame },
-                `/services/${o.serviceId}`,
-              )
-            }
-          />
-          <InstagramPublishButton
-            imageUrl={imageUrl}
-            caption={buildReviewCaption(o)}
-            available={!imageFailed}
-            unavailableReason={imageFailed ? "Share image unavailable right now" : undefined}
-            idPrefix={`opportunity-review-${o.reviewId}`}
-          />
-        </>
-      )}
+      <ShareActions
+        caption={buildReviewCaption(o)}
+        idPrefix={`opportunity-review-${o.reviewId}`}
+        onGetLink={() =>
+          ensureShortLink(
+            { targetType: "service", targetId: o.serviceId, frame: o.suggestedFrame },
+            `/services/${o.serviceId}`,
+          )
+        }
+      />
+      <InstagramPublishButton
+        imageUrl={imageUrl}
+        caption={buildReviewCaption(o)}
+        available={!imageFailed}
+        unavailableReason={imageFailed ? "Share image unavailable right now" : undefined}
+        idPrefix={`opportunity-review-${o.reviewId}`}
+      />
     </div>
   );
 }
@@ -567,11 +547,9 @@ function ReviewOpportunityCard({
 function SlotOpportunityCard({
   o,
   onSelectService,
-  promoteHref,
 }: {
   o: Extract<PostingOpportunity, { kind: "open_slots" }>;
   onSelectService?: (serviceId: string) => void;
-  promoteHref?: string;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const imageUrl = `/api/share-image/service/${o.serviceId}.png?format=${o.suggestedFrame}`;
@@ -600,7 +578,7 @@ function SlotOpportunityCard({
           {SHARE_FRAME_LABEL[o.suggestedFrame]}
         </Badge>
       </div>
-      {onSelectService && !promoteHref && (
+      {onSelectService && (
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -613,47 +591,40 @@ function SlotOpportunityCard({
           </Button>
         </div>
       )}
-      {promoteHref ? (
-        <PromoteInDistributeLink href={promoteHref} idPrefix={`opportunity-slots-${o.serviceId}`} />
-      ) : (
-        <>
-          <ShareActions
-            caption={buildSlotCaption(o)}
-            idPrefix={`opportunity-slots-${o.serviceId}`}
-            onGetLink={() =>
-              ensureShortLink(
-                { targetType: "service", targetId: o.serviceId, frame: o.suggestedFrame },
-                `/services/${o.serviceId}`,
-              )
-            }
-          />
-          <InstagramPublishButton
-            imageUrl={imageUrl}
-            caption={buildSlotCaption(o)}
-            available={!imageFailed}
-            unavailableReason={imageFailed ? "Share image unavailable right now" : undefined}
-            idPrefix={`opportunity-slots-${o.serviceId}`}
-          />
-        </>
-      )}
+      <ShareActions
+        caption={buildSlotCaption(o)}
+        idPrefix={`opportunity-slots-${o.serviceId}`}
+        onGetLink={() =>
+          ensureShortLink(
+            { targetType: "service", targetId: o.serviceId, frame: o.suggestedFrame },
+            `/services/${o.serviceId}`,
+          )
+        }
+      />
+      <InstagramPublishButton
+        imageUrl={imageUrl}
+        caption={buildSlotCaption(o)}
+        available={!imageFailed}
+        unavailableReason={imageFailed ? "Share image unavailable right now" : undefined}
+        idPrefix={`opportunity-slots-${o.serviceId}`}
+      />
     </div>
   );
 }
 
 /**
  * PostingOpportunitiesCard — SH3's review share cards + open-slot promos, moved verbatim.
- * onSelectService is optional: share-promote passes its picker setter; Catalog omits it
- * (the per-opportunity ShareActions carry the full share flow either way).
+ * onSelectService is optional: share-promote passes its picker setter; the provider Distribute
+ * page passes its listing-selector setter (S6); Catalog no longer mounts this component at all
+ * (S6 moved the whole Promote surface to Distribute — ruling-74-disposition-6 clarification,
+ * "Distribute is the ONE home for outward-facing distribution surfaces"). The `promoteHref`
+ * on-ramp mode C6 added here (ledger 77) is retired with it — there is no longer a second
+ * caller for it to route FROM.
  */
 export function PostingOpportunitiesCard({
   onSelectService,
-  promoteHref,
 }: {
   onSelectService?: (serviceId: string) => void;
-  /** C6 (ruling 74): when set, each opportunity's actions become a deep-link into the Distribute
-   *  hub instead of an inline share surface — the Catalog Promote block becomes an on-ramp, not a
-   *  second share surface. Omit for the legacy inline behavior (expert Catalog). */
-  promoteHref?: string;
 }) {
   const opportunitiesQuery = useQuery<{ opportunities: PostingOpportunity[] }>({
     queryKey: ["/api/me/posting-opportunities"],
@@ -679,13 +650,12 @@ export function PostingOpportunitiesCard({
           <div className="grid sm:grid-cols-2 gap-4">
             {opportunities.map((o) =>
               o.kind === "new_review" ? (
-                <ReviewOpportunityCard key={`review-${o.reviewId}`} o={o} promoteHref={promoteHref} />
+                <ReviewOpportunityCard key={`review-${o.reviewId}`} o={o} />
               ) : (
                 <SlotOpportunityCard
                   key={`slots-${o.serviceId}`}
                   o={o}
                   onSelectService={onSelectService}
-                  promoteHref={promoteHref}
                 />
               ),
             )}
@@ -737,7 +707,7 @@ export function StorefrontShareTools({ handle }: { handle: string }) {
       <ShareActions
         caption={storefrontCaption}
         idPrefix="storefront"
-        onGetLink={() => ensureShortLink({ targetType: "storefront" }, `/p/${handle}`)}
+        onGetLink={() => ensureShortLink({ targetType: "storefront" }, `/s/${handle}`)}
       />
     </div>
   );

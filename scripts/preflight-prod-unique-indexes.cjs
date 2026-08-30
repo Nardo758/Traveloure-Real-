@@ -31,6 +31,7 @@
  *   • Does NOT check whether the index currently EXISTS on prod — absence is the expected
  *     state (that is the bug being fixed). It checks only that creating it would succeed.
  *   • A table missing from prod entirely is reported as SKIP, not as a pass.
+ *
  */
 
 const { Client } = require("pg");
@@ -63,6 +64,11 @@ const INDEX_MANIFEST = [
     cols: ["source_trip_id"], where: null, migration: "133" },
   { name: "idx_rmp_buyer_trip_active", table: "ready_made_purchases",
     cols: ["buyer_id", "ready_made_trip_id"], where: "status IN ('paid','cloned')", migration: "133" },
+
+  // ── Fever event cache — concurrent cache-miss inserts can create duplicates
+  //    before this index lands (exactly what blocked the Aug-2026 prod deploy).
+  { name: "idx_fever_event_cache_event_id", table: "fever_event_cache",
+    cols: ["event_id"], where: null, migration: "221" },
 ];
 
 /**
@@ -78,11 +84,16 @@ const INDEX_MANIFEST = [
  *    unconditionally. content_impressions is analytics-only (no money semantics), so the
  *    dedup index is an optimization, not an invariant. Leave both undeclared.
  *
+ *  • travel_pulse_cities_city_country_unique (travel_pulse_cities) — deferred by
+ *    migration 250. Production retains historical normalized city/country duplicates;
+ *    do not declare or restore this index until those rows are reconciled through an
+ *    approved production-data operation.
+ *
  *  • service_demand_requests_user_uniq — table RETIRED by migration 158.
  */
 
 function buildQuery(idx) {
-  const cols = idx.cols.map((c) => `"${c}"`).join(", ");
+  const cols = idx.cols.map((c) => c.startsWith("lower(") ? c : `"${c}"`).join(", ");
   const whereClause = idx.where ? `WHERE ${idx.where}` : "";
   return `
     SELECT ${cols}, count(*) AS n
@@ -166,10 +177,10 @@ async function main() {
  */
 function selfTest() {
   const cases = [
-    { idx: INDEX_MANIFEST[0],
+    { idx: INDEX_MANIFEST.find((i) => i.name === "bookings_idempotency_key_idx"),
       must: ['FROM "bookings"', 'WHERE idempotency_key IS NOT NULL', 'GROUP BY "idempotency_key"', "count(*) > 1"],
       mustNot: [] },
-    { idx: INDEX_MANIFEST[2],
+    { idx: INDEX_MANIFEST.find((i) => i.name === "bookings_expert_slot_unique_idx"),
       must: ['"expert_id", "booking_date", "booking_time"', "booking_time IS NOT NULL"],
       mustNot: [] },
     // A manifest entry with where:null must emit NO WHERE clause — otherwise it would

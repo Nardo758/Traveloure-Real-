@@ -17,7 +17,16 @@ const coreCategories = [
   { name: "Technology & Connectivity", slug: "technology-connectivity", description: "Tech support, social media management, photography editing", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 50, max: 150 }, sortOrder: 12 , commissionBandKey: "commercial" },
   { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 , commissionBandKey: "commercial" },
   { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 , commissionBandKey: "moderate" },
-  { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
+  // FP-1 / A1 (docs/testing/PROVIDER_BATCH_EXERCISE.md): `categoryKey` is DELIBERATE and
+  // load-bearing here. This is the ONE core category migration 034's taxonomy UPSERT does not
+  // create ("outside brief taxonomy"), so on a fresh database this seeder is what brings the row
+  // into existence — and it runs AFTER runMigrations(), which is why migration 189's identical
+  // backfill matched nothing and the row was born with category_key = NULL. That NULL is what made
+  // the provider wizard's "Something else / not listed" offering render Category "—" and leave
+  // Publish permanently disabled: service_offering_types.custom_other_offering points at
+  // category_key='custom_other' and nothing carried it. Every other row here gets its key from
+  // migration 034 before this seeder ever sees it. Do not drop this field.
+  { name: "Custom / Other", slug: "custom-other", categoryKey: "custom_other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
   { name: "Visa Assistance", slug: "visa-assistance", description: "Expert visa guidance, document preparation, application support, and embassy appointment scheduling", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "license", "references"], priceRange: { min: 75, max: 800 }, sortOrder: 16 , commissionBandKey: "moderate" },
   
   // Experience-specific service bundles
@@ -57,6 +66,11 @@ export async function seedCategories(): Promise<{ created: number; existing: num
         // not-null violation (seen live in the journey-suite PG logs at 7240a33a, "TaskRabbit
         // Services"). Every new column added to coreCategories must also be named here.
         commissionBandKey: cat.commissionBandKey,
+        // FP-1 / A1: optional per-row taxonomy key. Only "Custom / Other" carries one here (every
+        // other core row is created with its key by migration 034's UPSERT, which runs first);
+        // omitting it left the offering picker's catch-all pointing at a key no category held.
+        // `undefined` leaves the column at its NULL default for the rows that have none.
+        categoryKey: (cat as { categoryKey?: string }).categoryKey,
       });
       created++;
       console.log(`Created category: ${cat.name}`);

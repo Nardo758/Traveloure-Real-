@@ -1,18 +1,41 @@
-import type { Express, RequestHandler, ErrorRequestHandler, Request, Response, NextFunction } from "express";
+import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
+import {
+  normalizeGeneratedActivityDurationMinutes,
+  normalizeGeneratedDayNumber,
+  normalizeGeneratedEstimatedCost,
+  validateGeneratedItineraryDateRange,
+} from "./utils/generated-itinerary";
+import * as messagingService from "./services/messages.service";
+import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
+import { broadcastToUser } from "./websocket";
 import { validateImageDataUrl } from "./utils/imageValidation";
+import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { redactTemplateContent } from "./utils/template-content-gate";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
+import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage } from "./storage";
+import { storage, type BookingStatusNotification } from "./storage";
+import { assessServiceDeletion } from "./services/service-delete-guard.service";
+import {
+  materializeServiceAvailability,
+  materializeDateRangeAvailability,
+  repriceDateRangeAvailability,
+  DATE_RANGE_MAX_NIGHTS,
+  nightDatesInclusive,
+} from "./services/availability-materializer.service";
 import { api } from "@shared/routes";
+// Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
+// see shared/booking-visibility.ts for why three tabs disagreed about one row.
+import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
+import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
@@ -21,7 +44,7 @@ import {
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
-  insertProviderServiceSchema, insertProviderServiceListingSchema, insertServiceCategorySchema,
+  insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
   insertServiceTemplateSchema, insertServiceBookingSchema, createBookingRequestSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
@@ -60,8 +83,10 @@ import {
 } from "@shared/content-surface-map";
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
+import { applyPropertyLocationPrivacy } from "./services/property-location-privacy.service";
 import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
+import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
@@ -73,12 +98,15 @@ import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnsw
 import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
-import { loadTripOptimizerInputs } from "./services/optimizer-baseline.service";
+import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
+// Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
+import { resolvePinnedAnchor, parsePinnedAnchorInput } from "./services/anchor-candidates";
+import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
-import { draftServiceTranslation, isContentLocale } from "./services/service-translation.service";
+import { draftServiceTranslation, isContentLocale, effectiveSourceLocale, CONTENT_LOCALES } from "./services/service-translation.service";
 import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
@@ -95,12 +123,15 @@ import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
-import { isArtifactDelivery } from "@shared/service-fundamentals";
+import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
 import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
+import { getStripeSecretKey } from "./utils/stripe-key";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EARNER_BOOKING_FIELDS, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeDeep } from "./utils/text-sanitizer";
+import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -133,6 +164,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
+import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
 import vacationRoutes from "./routes/vacation.routes";
 import offeringRequestRoutes from "./routes/offering-requests.routes";
@@ -146,7 +178,7 @@ import expertConsoleRoutes from "./routes/expert-console.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
-import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges } from "./routes/payments.routes";
+import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -172,6 +204,8 @@ import {
   tripExpertAdvisors,
   templatePurchases,
 } from "@shared/schema";
+import { sanitizeText } from "./utils/text-sanitizer";
+import { sanitizeStringFields } from "./utils/text-sanitizer";
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
@@ -216,7 +250,6 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody, sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS, EXPERT_LISTING_TEXT_FIELDS } from "./utils/text-sanitizer";
 function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
   if (!slug) return "default";
   if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
@@ -384,8 +417,34 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const sanitizeInput = sanitizeText as (input: string) => string;
-const sanitizeObject = sanitizeObjectStrings;
+// Simple XSS sanitization - strips HTML tags and dangerous characters
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
+
+// Sanitize all string fields in a plain object, including every nested array and object.
+// Delegates to the exported, tested sanitizeDeep (server/utils/text-sanitizer.ts) so that
+// the recursion is exercised by unit tests independently of this route module.
+function sanitizeObject<T extends Record<string, any>>(obj: T): T {
+  return sanitizeDeep(obj) as T;
+}
+
+// Note: knowledgeProofAnswers[].answer is sanitized by sanitizeObject (via sanitizeDeep),
+// which recurses into JSONB arrays and objects and applies sanitizeText to every nested string.
+// The unit tests in server/utils/__tests__/text-sanitizer.test.ts verify this path explicitly.
+
+// Migration 151 (§17 Product Builder): bundle_components.component_service_id is
+// ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
+// removed from the bundle. Postgres surfaces that as FK violation 23503; translate it into
+// an honest 409 naming the containing bundle(s) instead of an opaque 500. Returns true
+// when the response was sent (the error was this case), false to fall through.
 async function respondIfServiceInBundle(err: any, serviceId: string, res: any): Promise<boolean> {
   const code = err?.code ?? err?.cause?.code;
   if (code !== "23503") return false;
@@ -438,7 +497,7 @@ async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<
 // §14: every input to the decision is server-derived — the event type comes from the trip/experience
 // row, the required amount from `getFee` (config), and the acting user from the session. The client
 // supplies only the PaymentIntent id, which is then verified against Stripe.
-const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripeForOptimization = new Stripe(getStripeSecretKey() || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
@@ -516,7 +575,7 @@ async function verifyOptimizationPayment(params: {
       return {
         ok: false,
         status: 402,
-        body: { error: "ai_concierge_disabled", message: "AI Concierge is currently disabled for this experience type." },
+        body: { error: "ai_concierge_disabled", message: "Platform Concierge is currently disabled for this experience type." },
       };
     }
     if (pi.amount !== requiredCents) {
@@ -970,9 +1029,14 @@ export async function registerRoutes(
   // (shared/service-attestations.ts); the body is a §19 allowlist of one field.
   app.use(serviceAttestationsRoutes);
 
-  // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
-  // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
+  // Public earner storefront (backoffice Phase 1a/1b) — /s/:handle OG shell + /api/storefront/:handle
+  // + PATCH /api/me/handle. Mounted per §9; /s/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
+
+  // Crawler surfaces (2026-08-17 SEO audit): /sitemap.xml + per-route canonical/title
+  // injection for the public marketing routes. Must register before the Vite catch-all
+  // for the same reason as storefrontRoutes above.
+  app.use(seoRoutes);
 
   // Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) — GET/PATCH
   // /api/me/traveler-profile, the `travelerProfile` namespace on the same users.preferences
@@ -1105,18 +1169,18 @@ export async function registerRoutes(
   // Guests receive a shareToken to access the trip until sign-up.
   app.post(api.trips.create.path, async (req, res) => {
     try {
-      // Trip-defaults consistency fix: insertTripSchema defaults numberOfTravelers to 1 and
-      // adults to 2 independently, so an omitted numberOfTravelers produced an incoherent
-      // freshly-created trip (1 traveler, 2 adults). When the caller didn't explicitly send
-      // numberOfTravelers, derive it from adults+kids instead of taking the schema's static
-      // default, mirroring the numberOfTravelers===adults convention already used at the other
-      // trip-creation call sites (cart-to-itinerary conversion, quick-start itinerary).
+      // 2A.3 / R8 party-size DE-MASKING: the schema no longer fabricates a default 1/2/0, so an
+      // omitted party size stays undefined ⇒ NULL (an honest "not captured", §13). We still derive
+      // a coherent numberOfTravelers when the caller gave REAL component data (adults present) —
+      // that is a computed real value, not a fabricated default — but when NOTHING was provided we
+      // leave it NULL rather than inventing "2 adults". Booking/pricing consumers already guard
+      // (`?? 1` / `|| 1`); the demand rollup reads NULL as unknown, never as a count.
       const numberOfTravelersProvided =
         req.body?.numberOfTravelers !== undefined && req.body?.numberOfTravelers !== null && req.body?.numberOfTravelers !== "";
       const input = api.trips.create.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
-      if (!numberOfTravelersProvided) {
+      if (!numberOfTravelersProvided && sanitizedInput.adults != null) {
         sanitizedInput.numberOfTravelers = sanitizedInput.adults + (sanitizedInput.kids ?? 0);
       }
 
@@ -1139,7 +1203,7 @@ export async function registerRoutes(
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks trip creation
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1404,7 +1468,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks itinerary response
 
       // Rebuild itinerary_items — delete old, insert new.
       // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
@@ -1421,6 +1485,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // existed) and keep the pre-existing replaced behavior — the same
       // `suggestedBy <> 'expert'` fallback as before, now reached only when `origin` itself
       // gives no answer.
+      // item-removed:replace — AI itinerary regeneration (delete the prior AI/traveler set,
+      // insert the freshly-generated one below). A plan rebuild, not a removal: no `item_removed`
+      // signal (§13, R15) — the traveler removed nothing, the generator replaced the set.
       await db.delete(itineraryItems).where(
         and(
           eq(itineraryItems.tripId, trip.id),
@@ -1434,23 +1501,37 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ),
       );
 
-      for (const day of itineraryData.days || []) {
-        for (const activity of day.activities || []) {
-          await db.insert(itineraryItems).values({
-            tripId: trip.id,
-            title: activity.title || "Activity",
-            description: activity.description || "",
-            itemType: activity.type || "activity",
-            status: "planned",
-            dayNumber: day.day,
-            startTime: activity.time || "",
-            durationMinutes: activity.durationMinutes || 60,
-            locationName: activity.locationName || destination,
-            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
-            currency: "USD",
-            origin: "ai",
-          });
-        }
+      // Item 2 Phase 1 (ledger 2026-08-23-item2-grounding): build the item set, then run ONE
+      // fail-closed grounding pass before writing — a confident match links the item to a bookable
+      // catalog service (providerServiceId, which the cart projection already turns into an
+      // add-to-cart affordance — Q2 mark-bookable-never-auto-cart) or a recognized DMO place
+      // (dmoExtractedPlaceId, informational — Q3), copying the matched entity's REAL coords so the
+      // item pins with no client change. No confident match ⇒ the item stays an honest AI suggestion
+      // (Q4 fail-closed, §13). Grounding never blocks the build — a failure degrades to ungrounded.
+      const builtItems = (itineraryData.days || []).flatMap((day: any) =>
+        (day.activities || []).map((activity: any) => ({
+          tripId: trip.id,
+          title: activity.title || "Activity",
+          description: activity.description || "",
+          itemType: activity.type || "activity",
+          status: "planned" as const,
+          dayNumber: day.day,
+          startTime: activity.time || "",
+          durationMinutes: activity.durationMinutes || 60,
+          locationName: activity.locationName || destination,
+          estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+          currency: "USD",
+          origin: "ai" as const,
+          providerServiceId: null as string | null,
+          affiliateProductId: null as string | null,
+          dmoExtractedPlaceId: null as string | null,
+          latitude: null as string | null,
+          longitude: null as string | null,
+        })),
+      );
+      const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
+      for (const item of groundedItems) {
+        await db.insert(itineraryItems).values(item as any);
       }
 
       res.status(201).json(itinerary);
@@ -1604,7 +1685,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           eventType: "revenue",
           funnelStage: "T6",
           eventData: { amount: totalAmount },
-        }).catch(() => {});
+        }).catch(() => {}); // fire-and-forget funnel event — never blocks booking confirmation
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -1627,13 +1708,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             },
           });
 
-          // Send email alert to the provider
+          // Send email alert to the provider (skipped when they have opted out)
           const provider = await storage.getUser(providerId);
-          if (provider?.email) {
+          if (provider?.email && provider.emailBookingAlerts !== false) {
             const { sendBookingAlertEmail } = await import("./services/email.service");
             const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
             await sendBookingAlertEmail({
-              providerEmail: provider.email,
+              providerEmail: provider.notificationEmail || provider.email,
               providerName,
               bookingId: booking.id,
               serviceName: service.serviceName,
@@ -1787,11 +1868,37 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // authenticated user write messages as someone else (§14's identity rule,
       // applied to chat integrity).
       const sessionUserId = getUserId(req)!;
+      const recipientId = (input as any).receiverId as string | undefined;
+      if (recipientId) {
+        const isNewConversation = !(await messagingService.hasExistingConversation(sessionUserId, recipientId));
+        const rate = checkMessageRateLimit({ senderId: sessionUserId, recipientId, isNewConversation, peerIp: req.ip });
+        if (!rate.allowed) {
+          res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
+          return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
+        }
+      }
       const chat = await storage.createChat({ ...input, senderId: sessionUserId });
+
+      // Live-push to the recipient's open chat client (same frame shape as the /ws relay).
+      broadcastToUser(String(chat.receiverId), {
+        type: "chat",
+        id: chat.id,
+        senderId: sessionUserId,
+        recipientId: chat.receiverId,
+        content: chat.message,
+        timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
+      });
+
       res.status(201).json(chat);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      // Block enforcement: storage.createChat throws a sentinel when a block exists in
+      // either direction. Return a deterministic 403 so the client can surface a clear
+      // message rather than leaving the request hanging or treating it as a server error.
+      if ((err as any)?.code === "BLOCKED_USER") {
+        return res.status(403).json({ message: "You cannot send messages to this user." });
       }
       throw err;
     }
@@ -1846,7 +1953,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Submit expert application
-  app.post("/api/expert-application", isAuthenticated, async (req, res) => {
+  app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       
@@ -1854,7 +1961,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+          const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1876,7 +1984,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+      const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -1902,14 +2011,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Alias: /api/expert-forms -> /api/expert-application (for API compatibility)
-  app.post("/api/expert-forms", isAuthenticated, async (req, res) => {
+  app.post("/api/expert-forms", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+          const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1930,7 +2040,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+      const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2010,7 +2121,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
+      const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2053,7 +2164,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           return res.status(400).json({ message: "officeLocation must carry numeric lat/lng within range, or be null to clear" });
         }
-        const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
+        const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
         officeLocation = { address, lat, lng };
       } else {
         return res.status(400).json({ message: "officeLocation must be an object with lat/lng, or null" });
@@ -2074,7 +2185,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
+      const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2240,7 +2351,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
     // getAllProviderServices() is shared with admin (which legitimately needs the full row),
     // so the strip happens here at the public call site, not in the storage function.
-    res.json(live.map((s) => omitFields(s, ["serviceFile"] as const)));
+    // S9 (ledger row 102): joinLink joins the strip for the same reason — no confirmed booking
+    // exists on this pre-purchase browse.
+    res.json(live.map((s) => omitFields(s, ["serviceFile", "joinLink"] as const)));
   });
   
   // Get provider's services
@@ -2296,9 +2409,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         hasSignal: false,
       };
 
-      const cities = await storage.getProviderMarketCities(userId);
+      // STEP 3.7 Part B (B1, R13): this is a PARTNER-facing surface, so scope to the 8 OPERATING
+      // markets — a provider's raw provider_services.city strings are unvalidated, so a non-operating
+      // market they declared (e.g. "Bali") would otherwise leak here. Keep only cities that resolve to
+      // an operating-market slug (the allow-list, never a literal list); admin surfaces keep the full
+      // feed. Absent-from-the-8 ⇒ dropped, never rendered to the partner.
+      const declaredCities = await storage.getProviderMarketCities(userId);
+      const cities = declaredCities.filter((c) => resolveMarketSlug(c) != null);
       if (cities.length === 0) {
-        // No market footprint yet — honest empty surface, nothing invented (§13).
+        // No operating-market footprint yet — honest empty surface, nothing invented (§13).
         return res.json({
           asOf: new Date().toISOString(),
           cities,
@@ -2354,8 +2473,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       // Ruling 22: route stops ride the same owner read the edit surfaces already use
-      const routePoints = await storage.getServiceRoutePoints(service.id);
-      res.json({ ...service, neighborhoods, routePoints });
+      const [routePoints, pickupRoutePoints] = await Promise.all([
+        storage.getServiceRoutePoints(service.id),
+        storage.getServicePickupRoutePoints(service.id),
+      ]);
+      res.json({ ...service, neighborhoods, routePoints, pickupRoutePoints });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
     }
@@ -2401,6 +2523,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const isApproved = approvalStatus === "approved";
       const isActive = status === "active";
+      // Share-image availability must have one server author. These facts mirror the
+      // share-image route's F2 gate and ruling 22(d) Route-stop gate; the client must
+      // render them rather than probing the rate-limited PNG endpoints.
+      const routePoints = await storage.getServiceRoutePoints(service.id);
+      const hasRouteStops = routePoints.length > 0;
       // "Live" = the SAME predicate the public storefront read (loadStorefront) actually serves:
       // approved AND active. The verification/attestation gates are PUBLISH gates — they block a
       // TRANSITION to active, not continuous serving — so a grandfathered approved+active listing
@@ -2457,6 +2584,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         approvalStatus,
         status,
         isLive,
+        shareFrames: {
+          story: isLive,
+          feed: isLive,
+          route: isLive && hasRouteStops,
+        },
+        hasRouteStops,
         publicHref: `/services/${service.id}`,
         verification: {
           ok: verification.ok,
@@ -2506,6 +2639,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         stops.push({ name: s.name, latitude: hasLat ? s.latitude! : null, longitude: hasLng ? s.longitude! : null });
       }
+      // Ruling 112 Q8 (CLAUDE.md §23): ADDING A ROUTE WHERE THERE WAS NONE is an identity edit —
+      // it changes what the approved listing IS (a point service became a route). The staged
+      // stops wait in pending_changes under the reserved __routePoints key; editing an EXISTING
+      // route (reorder, rename, locate, remove) stays a safe edit and applies immediately.
+      if (service.approvalStatus === "approved" && stops.length > 0) {
+        const existingStops = await storage.getServiceRoutePoints(service.id);
+        if (existingStops.length === 0) {
+          const staged = await storage.stagePendingChanges(service.id, { __routePoints: stops });
+          return res.json({
+            routePoints: [],
+            editReview: { status: "pending", stagedKeys: ["routePoints"] },
+            message: "Adding a route to an approved listing goes through review — your live listing is unchanged meanwhile.",
+            editReviewStatus: (staged as any)?.editReviewStatus ?? "pending",
+          });
+        }
+      }
       const routePoints = await storage.replaceServiceRoutePoints(service.id, stops);
       res.json({ routePoints });
     } catch (err: any) {
@@ -2518,6 +2667,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
+    }
+  });
+
+  // Pickup collection points are deliberately separate from service itinerary stops. Both share
+  // the same validation and owner-only replace-list posture, but never the same table or endpoint.
+  app.put("/api/provider/services/:id/pickup-route-points", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = routeStopsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid pickup stops", errors: parsed.error.flatten() });
+      }
+      const stops: Array<{ name: string; latitude: number | null; longitude: number | null }> = [];
+      for (const stop of parsed.data.stops) {
+        const hasLat = typeof stop.latitude === "number";
+        const hasLng = typeof stop.longitude === "number";
+        if (hasLat !== hasLng) {
+          return res.status(400).json({ message: "A pickup stop must carry both latitude and longitude, or neither" });
+        }
+        stops.push({ name: stop.name, latitude: hasLat ? stop.latitude! : null, longitude: hasLng ? stop.longitude! : null });
+      }
+      const pickupRoutePoints = await storage.replaceServicePickupRoutePoints(service.id, stops);
+      res.json({ pickupRoutePoints });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Pickup route changed elsewhere — reload and try again" });
+      }
+      console.error("[pickup-route-points] save failed:", err);
+      res.status(500).json({ message: "Failed to save pickup stops" });
     }
   });
 
@@ -2571,6 +2754,230 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // ══ S7 availability model (DECISIONS.md ledger 102) — three owner-gated replace-list rails ═══
+  // Modeled byte-for-byte on the route-points/surcharge-tiers PUTs above: ALLOWLIST body (§19 — no
+  // createInsertSchema), owner resolved by id + session userId (404, never 403, so a non-owner
+  // can't distinguish "not yours" from "doesn't exist"), ids/timestamps server-derived.
+
+  const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  // ── availability-patterns (weekly repeat rule) ─────────────────────────────────────────────
+  const availabilityPatternsBodySchema = z.object({
+    patterns: z.array(z.object({
+      dayOfWeek: z.number().int().min(0).max(6), // 0=Sun..6=Sat, app-enforced (no DB CHECK)
+      startTime: z.string().regex(HHMM_RE, "startTime must be HH:MM"),
+      endTime: z.string().regex(HHMM_RE, "endTime must be HH:MM"),
+      capacity: z.coerce.number().int().min(1).max(1000).optional(),
+    })).max(200), // 7 days × generous slots/day headroom
+  });
+  app.put("/api/provider/services/:id/availability-patterns", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = availabilityPatternsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid availability patterns", errors: parsed.error.flatten() });
+      }
+      for (const p of parsed.data.patterns) {
+        if (p.endTime <= p.startTime) {
+          return res.status(400).json({ message: "Each pattern's endTime must be after its startTime" });
+        }
+      }
+      // Ruling 112 Q5 (R4b): a payload carrying two identical windows used to trip the UNIQUE
+      // constraint and get misreported as a concurrency 409 ("changed elsewhere") on a first-ever
+      // save. Duplicates inside ONE payload are a validation error, not a race — say so.
+      const windowKeys = new Set<string>();
+      for (const p of parsed.data.patterns) {
+        const key = `${p.dayOfWeek}|${p.startTime}|${p.endTime}`;
+        if (windowKeys.has(key)) {
+          return res.status(400).json({
+            message: "Two repeating windows are identical (same day, start and end) — merge them or change one.",
+          });
+        }
+        windowKeys.add(key);
+      }
+      const patterns = parsed.data.patterns.map((p) => ({
+        dayOfWeek: p.dayOfWeek,
+        startTime: p.startTime,
+        endTime: p.endTime,
+        capacity: p.capacity ?? 1,
+      }));
+      const saved = await storage.replaceServiceAvailabilityPatterns(service.id, patterns);
+      // Trigger 1/2 (materializer service header): expand the rolling window immediately so a
+      // saved pattern is bookable without waiting for the daily horizon-extension sweep.
+      const materialized = await materializeServiceAvailability(service.id);
+      res.json({ patterns: saved, materialized });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Patterns changed elsewhere — reload and try again" });
+      }
+      console.error("[availability-patterns] save failed:", err);
+      res.status(500).json({ message: "Failed to save availability patterns" });
+    }
+  });
+
+  app.get("/api/provider/services/:id/availability-patterns", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const patterns = await storage.getServiceAvailabilityPatterns(service.id);
+      res.json({ patterns });
+    } catch (err) {
+      console.error("[availability-patterns] read failed:", err);
+      res.status(500).json({ message: "Failed to read availability patterns" });
+    }
+  });
+
+  // ── date-ranges (property/property_room date-range authoring; S11 owns the range-claim
+  //    machinery — this wave is authoring only) ──────────────────────────────────────────────
+  const dateRangesBodySchema = z.object({
+    ranges: z.array(z.object({
+      startDate: z.string().regex(DATE_RE, "startDate must be YYYY-MM-DD"),
+      endDate: z.string().regex(DATE_RE, "endDate must be YYYY-MM-DD"),
+      nightlyPrice: z.coerce.number().min(0).max(1000000).nullable().optional(), // S7-Q4: provider-authored config like `price`; §14 — S11 must derive the charge server-side from THIS row, never req.body
+      capacity: z.coerce.number().int().min(1).max(1000).optional(),
+    })).max(200),
+  });
+  app.put("/api/provider/services/:id/date-ranges", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      // Ballot requirement: date-ranges are property/room-shaped authoring only.
+      if (service.productShape !== "property" && service.productShape !== "property_room") {
+        return res.status(400).json({ message: "Date-range availability applies only to property or property_room listings" });
+      }
+      const parsed = dateRangesBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid date ranges", errors: parsed.error.flatten() });
+      }
+      for (const r of parsed.data.ranges) {
+        if (r.endDate < r.startDate) {
+          return res.status(400).json({ message: "Each range's endDate must be on or after its startDate" });
+        }
+        // S11-Q1 (DECISIONS.md ledger row 107): a range is bounded by its own dates — no rolling
+        // window — but a mistaken/malicious multi-decade range is REJECTED here (400), never
+        // silently truncated (§13). Inclusive both ends, matching nightDatesInclusive below.
+        if (nightDatesInclusive(r.startDate, r.endDate).length > DATE_RANGE_MAX_NIGHTS) {
+          return res.status(400).json({
+            message: `Each date range may span at most ${DATE_RANGE_MAX_NIGHTS} nights`,
+          });
+        }
+      }
+      const ranges = parsed.data.ranges.map((r) => ({
+        startDate: r.startDate,
+        endDate: r.endDate,
+        nightlyPrice: r.nightlyPrice ?? null,
+        capacity: r.capacity ?? 1,
+      }));
+      const saved = await storage.replaceServiceDateRanges(service.id, ranges);
+      // S11 (ledger row 107): materialize each range's nights into claimable
+      // vendor_availability_slots rows (mirrors the pattern/blackout triggers above), then
+      // re-price any already-materialized, STILL-UNBOOKED night in the (possibly edited) range —
+      // a booked/claimed night is never touched (§18b posture).
+      const materialized = await materializeDateRangeAvailability(service.id);
+      const repriced = await repriceDateRangeAvailability(service.id);
+      res.json({ dateRanges: saved, materialized, repriced });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Date ranges changed elsewhere — reload and try again" });
+      }
+      console.error("[date-ranges] save failed:", err);
+      res.status(500).json({ message: "Failed to save date ranges" });
+    }
+  });
+
+  app.get("/api/provider/services/:id/date-ranges", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const dateRanges = await storage.getServiceDateRanges(service.id);
+      res.json({ dateRanges });
+    } catch (err) {
+      console.error("[date-ranges] read failed:", err);
+      res.status(500).json({ message: "Failed to read date ranges" });
+    }
+  });
+
+  // ── blackouts (applies to either shape — scheduled-slot services or property date-ranges) ───
+  const blackoutsBodySchema = z.object({
+    blackouts: z.array(z.object({
+      startDate: z.string().regex(DATE_RE, "startDate must be YYYY-MM-DD"),
+      endDate: z.string().regex(DATE_RE, "endDate must be YYYY-MM-DD"),
+      reason: z.string().trim().max(255).nullable().optional(),
+    })).max(200),
+  });
+  app.put("/api/provider/services/:id/blackouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = blackoutsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid blackouts", errors: parsed.error.flatten() });
+      }
+      for (const b of parsed.data.blackouts) {
+        if (b.endDate < b.startDate) {
+          return res.status(400).json({ message: "Each blackout's endDate must be on or after its startDate" });
+        }
+      }
+      const blackouts = parsed.data.blackouts.map((b) => ({
+        startDate: b.startDate,
+        endDate: b.endDate,
+        reason: b.reason ?? null,
+      }));
+      const saved = await storage.replaceServiceAvailabilityBlackouts(service.id, blackouts);
+      // Trigger 2/2 (materializer service header): S7-Q3 — a blackout blocks FUTURE
+      // materialization only. This re-run never touches an already-materialized slot (ADD-ONLY,
+      // ON CONFLICT DO NOTHING) — it only prevents newly-blacked-out dates from being generated
+      // going forward, while any date that already has a row (booked or not) survives untouched.
+      // Blackouts apply to EITHER shape (scheduled-slot services or property date-ranges), so
+      // both materializers run — each is a no-op for a service with nothing of that shape to
+      // expand (a scheduled service has no date-ranges; a property has no weekly patterns).
+      const materialized = await materializeServiceAvailability(service.id);
+      const materializedDateRanges = await materializeDateRangeAvailability(service.id);
+      res.json({ blackouts: saved, materialized, materializedDateRanges });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Blackouts changed elsewhere — reload and try again" });
+      }
+      console.error("[blackouts] save failed:", err);
+      res.status(500).json({ message: "Failed to save blackouts" });
+    }
+  });
+
+  app.get("/api/provider/services/:id/blackouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const blackouts = await storage.getServiceAvailabilityBlackouts(service.id);
+      res.json({ blackouts });
+    } catch (err) {
+      console.error("[blackouts] read failed:", err);
+      res.status(500).json({ message: "Failed to read blackouts" });
+    }
+  });
+
   // ══ Ruling 60 Phase B — provider CONTENT translation (service_translations) ══════════════════
   // System B (the provider's OWN traveler-facing content), NOT system A (chrome). §13's honesty
   // rule binds here: a draft is never shown to a traveler, an AI draft is labeled by construction,
@@ -2581,18 +2988,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // is a hand-written zod ALLOWLIST of exactly the four translatable content fields (§19 — no
   // client-settable status/source/updatedBy/timestamp; status/source are set server-side by the
   // path, updatedBy from the session per §14). A PUT is replace-for-that-locale.
-  // Task 1135: translation content is provider prose — sanitized BEFORE the max checks
-  // (z.preprocess) so entity encoding can't push an accepted value past the length limit.
-  const sanitizedTranslationField = (max: number) =>
-    z.preprocess(
-      (v) => (typeof v === "string" ? sanitizeText(v) : v),
-      z.string().trim().max(max).nullish(),
-    );
   const translationContentBodySchema = z.object({
-    serviceName: sanitizedTranslationField(255),
-    shortDescription: sanitizedTranslationField(150),
-    description: sanitizedTranslationField(20000),
-    meetingPoint: sanitizedTranslationField(20000),
+    serviceName: z.string().trim().max(255).nullish(),
+    shortDescription: z.string().trim().max(150).nullish(),
+    description: z.string().trim().max(20000).nullish(),
+    meetingPoint: z.string().trim().max(20000).nullish(),
   });
   const normalizeContent = (b: z.infer<typeof translationContentBodySchema>) => ({
     serviceName: b.serviceName ?? null,
@@ -2609,10 +3009,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
     return { userId, service };
   }
-  function parseTargetLocale(raw: string, res: any): string | null {
-    // A translation TARGET must be a shipped content locale other than the source language (en).
-    if (!isContentLocale(raw) || raw === "en") {
-      res.status(400).json({ message: `Unsupported translation locale '${raw}' (shipped: ja)` });
+  function parseTargetLocale(raw: string, res: any, service: any): string | null {
+    // Ruling 115: a translation TARGET must be a shipped content locale other than the LISTING'S
+    // OWN source language (source_locale, NULL = en — ruling 60's assumption made explicit).
+    const src = effectiveSourceLocale(service?.sourceLocale);
+    if (!isContentLocale(raw) || raw === src) {
+      res.status(400).json({
+        message: `Unsupported translation locale '${raw}' (source is '${src}'; targets: ${CONTENT_LOCALES.filter((l) => l !== src).join(", ")})`,
+      });
       return null;
     }
     return raw;
@@ -2624,7 +3028,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const translation = await storage.getServiceTranslation(owned.service.id, locale);
       res.json({ locale, translation: translation ?? null });
@@ -2641,7 +3045,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const parsed = translationContentBodySchema.safeParse(req.body ?? {});
       if (!parsed.success) {
@@ -2650,7 +3054,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const translation = await storage.upsertServiceTranslation({
         serviceId: owned.service.id,
         locale,
-        content: normalizeContent(parsed.data),
+        // Sanitize translated free-text before storing (task 1135 / task 1138).
+        content: sanitizeStringFields(normalizeContent(parsed.data)) as ReturnType<typeof normalizeContent>,
         status: "approved",
         source: "human",
         updatedBy: owned.userId,
@@ -2668,7 +3073,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const translation = await storage.approveServiceTranslation(owned.service.id, locale, owned.userId);
       if (!translation) return res.status(404).json({ message: "No translation to approve for this locale" });
@@ -2687,7 +3092,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const s = owned.service as any;
       const outcome = await draftServiceTranslation(
@@ -2699,6 +3104,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         },
         locale,
         owned.userId,
+        // Ruling 115: translate FROM the listing's own source language, not an assumed English.
+        effectiveSourceLocale(s.sourceLocale),
       );
       if (outcome.status === "no_api_key") {
         return res.status(503).json({
@@ -2738,9 +3145,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      // Task 1135: sanitize provider prose (incl. JSON prose — faqs/whatIncluded/requirements/
-      // pricingTiers) BEFORE schema parse, so length/min constraints validate the stored value.
-      const input = insertProviderServiceSchema.parse(sanitizeProviderServiceBody(bodyWithoutLocation));
+      // Sanitize provider-authored free-text fields to strip HTML injection vectors before
+      // they reach the database, emails, or AI prompts (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -2803,6 +3210,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // FP-1 / B7 DELIVERABLE PUBLISH GATE (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) —
+      // placed beside the price gate, on the same draft-exempt rule (ruling 56's placement
+      // discipline). The wizard labels the field "Deliverable File URL *" and warns in amber, but
+      // nothing enforced it: an $18 pdf guide published, went live and was sellable with the
+      // column empty, so a buyer could pay and receive nothing. Artifact-delivery only, via the
+      // SHARED predicate (isArtifactDelivery — pdf; shared/service-fundamentals.ts), so no other
+      // shape is newly blocked. Drafts still save incomplete.
+      if (input.status === "active" &&
+          isArtifactDelivery({
+            deliveryMethod: (input as any).deliveryMethod ?? null,
+            productShape: (input as any).productShape ?? null,
+          }) &&
+          !((input as any).serviceFile ?? "").toString().trim()) {
+        return res.status(400).json({
+          message: "A downloadable listing needs its deliverable file before publishing — upload the PDF or paste a link. Save as draft to finish later.",
+          code: "DELIVERABLE_FILE_REQUIRED",
+        });
+      }
+
       // F2 identity (+ business, provider-only) verification publish gate (Phase 0.5 —
       // docs/backoffice/EARN_PIPELINE_EVAL.md). Role-aware — see checkPublishVerificationGate
       // for the full rule (providers: service_provider_forms, both statuses; experts:
@@ -2848,7 +3274,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
       // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
       // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
-      const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
+      // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): `city` is SERVER-DERIVED from the
+      // neighborhood slug this write stores — the one structured location signal a listing carries
+      // — and only when that slug resolves to exactly one city. Never read from the body, never
+      // parsed out of the free-text `location`, NULL when unresolvable (§13; see
+      // utils/service-city.ts for the full rule set). Any client-sent `city` is dropped here.
+      const { city: _clientCity, ...inputWithoutCity } = input as any;
+      const cityPatch = await deriveCityPatch((input as any).neighborhood, {
+        neighborhoodPresent: (input as any).neighborhood !== undefined,
+      });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -2965,15 +3400,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!ownedService) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
-      // Extract neighborhoods before schema parse (not a DB column)
+      // ── Gap #18 (Gate G5): 'archived' is terminal and has ONE write path ─────────────────────
+      // POST /api/provider/services/:id/archive is the only writer of status='archived' (so the
+      // refusal dialog's semantics can't be bypassed by a raw PATCH), and an archived listing is
+      // never edited back to life — "nobody can book it again" is a promise, not a pause. Delete
+      // (behind its own booking guard) is the only exit.
+      if (req.body?.status === "archived") {
+        return res.status(400).json({
+          message: "Archiving has its own action — use the Archive option on the listing.",
+          code: "ARCHIVE_VIA_ENDPOINT",
+        });
+      }
+      if (ownedService.status === "archived") {
+        return res.status(409).json({
+          message: "This listing is archived. Archived listings can't be edited or reactivated — they exist so past bookings keep a listing to point at.",
+          code: "LISTING_ARCHIVED",
+        });
+      }
+      // Extract neighborhoods before schema parse (not a DB column).
+      // Also capture approvalStatus before schema parse — the generic updater strips it
+      // for security (prevents self-approval), but "submitted" is a legitimate provider
+      // action handled via the dedicated submitProviderServiceListing path below.
+      const requestedApprovalStatus: string | undefined = req.body.approvalStatus;
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       // L27-P3: same server-derived location handling as create. A PATCH that carries
       // no `locationPoint` leaves latitude/longitude/location_precision untouched — so a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      // Task 1135: sanitize provider prose (incl. JSON prose) BEFORE schema parse — see create.
-      const input = insertProviderServiceSchema.partial().parse(sanitizeProviderServiceBody(bodyWithoutLocation));
+      // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -2998,6 +3454,30 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({
             message: "Set a price greater than zero before publishing. Save as draft to finish later.",
             code: "PRICE_REQUIRED",
+          });
+        }
+      }
+
+      // FP-1 / B7 DELIVERABLE PUBLISH GATE — same rule as CREATE above, resolved from the patch or
+      // the existing row (the meeting-point/price gate shape). This is the arm that also catches a
+      // stored draft with an empty deliverable being flipped straight to active, and — because the
+      // effective value falls back to the stored one — a row whose file arrived through the
+      // owner-gated upload rail (POST .../deliverable-file writes serviceFile directly) publishes
+      // with no field in the body at all.
+      if (input.status === "active") {
+        const effMethodFile = (input as any).deliveryMethod ?? ownedService.deliveryMethod;
+        const effProductShape = (input as any).productShape ?? (ownedService as any).productShape ?? null;
+        // KEY-PRESENCE, not `??`: an explicit `serviceFile: null` in the body is a CLEAR, and the
+        // write below performs it — falling back to the stored value there would pass the gate on
+        // a file this very request is about to delete.
+        const fileFromBody = Object.prototype.hasOwnProperty.call(input, "serviceFile");
+        const effFile = ((fileFromBody ? (input as any).serviceFile : ownedService.serviceFile) ?? "")
+          .toString()
+          .trim();
+        if (isArtifactDelivery({ deliveryMethod: effMethodFile, productShape: effProductShape }) && !effFile) {
+          return res.status(400).json({
+            message: "A downloadable listing needs its deliverable file before publishing — upload the PDF or paste a link. Save as draft to finish later.",
+            code: "DELIVERABLE_FILE_REQUIRED",
           });
         }
       }
@@ -3091,8 +3571,43 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // discarding work. Do not "tidy up" by clearing the unused side here.
       //
       // Remove userId from input to prevent ownership transfer
-      const { userId: _, ...safeInputWithoutLocation } = input as any;
-      const safeInput = { ...safeInputWithoutLocation, ...locationPatch };
+      // FP-1 / B4: `city` is server-derived (utils/service-city.ts), never client-settable — the
+      // body's value is dropped and the column is re-derived ONLY when this PATCH carries a
+      // neighborhood. A patch that does not mention the neighborhood leaves the stored city
+      // exactly as it is (the extractServiceLocation rule-3 never-clobber posture); one that
+      // clears it clears the city with it, rather than keeping a city derived from a claim the
+      // listing no longer makes.
+      const { userId: _, city: _clientCityUpd, ...safeInputWithoutLocation } = input as any;
+      const cityPatchUpd = await deriveCityPatch((input as any).neighborhood, {
+        neighborhoodPresent: Object.prototype.hasOwnProperty.call(input, "neighborhood"),
+      });
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd };
+
+      // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
+      // An APPROVED listing is never taken down for an edit. Identity-changing fields are
+      // diverted into pending_changes (the approved version stays live and bookable, the admin
+      // queue applies them); everything else applies immediately. The split compares against
+      // the STORED row — the wizard PATCHes full payloads, so an unchanged serviceName must
+      // pass through as a no-op, not trigger a review.
+      // S-1 (ledger 2026-08-16-console-sweep): the field list lives in @shared/edit-split so
+      // the listing home's "Editing a live listing" panel reads THIS handler's own predicate
+      // rather than restating it (§18 rule 1). The split is still decided only here.
+      let stagedEditKeys: string[] = [];
+      if (ownedService.approvalStatus === "approved") {
+        const identityPatch: Record<string, unknown> = {};
+        for (const key of IDENTITY_EDIT_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(safeInput, key)) continue;
+          const next = (safeInput as any)[key];
+          const stored = (ownedService as any)[key];
+          const norm = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+          if (norm(next) !== norm(stored)) identityPatch[key] = next;
+          delete (safeInput as any)[key]; // unchanged identity keys are no-ops, changed ones are staged — neither touches the live row
+        }
+        if (Object.keys(identityPatch).length > 0) {
+          await storage.stagePendingChanges(req.params.id, identityPatch);
+          stagedEditKeys = Object.keys(identityPatch);
+        }
+      }
       // A neighborhoods-only PATCH leaves no listing columns to update —
       // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
       // save before the coverage writer below could run. Skip the row update
@@ -3129,22 +3644,48 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // ── Submit-for-review transition ────────────────────────────────────────────────────────
+      // The client sends { approvalStatus: "submitted" } from the listing-home "Submit for
+      // review" button. The generic updateProviderService call above strips this field (D1a
+      // security barrier prevents self-approval). Handle it here via the dedicated storage
+      // method, which is the same writer the admin queue uses on the submit side.
+      // Only allow the transition from draft/rejected → submitted; ignore it for listings that
+      // are already submitted, in_review, or approved (idempotency / no regression).
+      // Re-fetch via getProviderServiceById so the response is the raw ProviderService shape
+      // the client's ServiceDetail interface expects (serviceName, approvalStatus, etc.), not
+      // the mapped ProviderServiceListing shape (title, status/isActive) submitProviderServiceListing returns.
+      let finalRow: typeof updated = updated;
+      if (
+        requestedApprovalStatus === "submitted" &&
+        ownedService.approvalStatus !== "submitted" &&
+        ownedService.approvalStatus !== "in_review" &&
+        ownedService.approvalStatus !== "approved"
+      ) {
+        await storage.submitProviderServiceListing(req.params.id);
+        finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
+      }
+
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
       // commission split (§18) and must never round-trip to the client, on create OR update.
       // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
       // the text this write actually produces: the field from the body when it was edited, else
       // the stored value, so an untouched offending description keeps warning on every save.
       const titleWarningUpd = detectProtectedTitleClaims({
-        serviceName: (input as any).serviceName ?? updated?.serviceName ?? ownedService.serviceName,
-        description: (input as any).description ?? updated?.description ?? ownedService.description,
+        serviceName: (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName,
+        description: (input as any).description ?? finalRow?.description ?? ownedService.description,
       });
       res.json(
-        updated
+        finalRow
           ? {
-              ...omitFields(updated, ["revenueShareRate"] as const),
+              ...omitFields(finalRow, ["revenueShareRate"] as const),
               ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
+              // Ruling 112 Q8: tell the owner which fields went to re-review — the live listing
+              // is unchanged for those, and nothing was taken down.
+              ...(stagedEditKeys.length > 0
+                ? { editReview: { status: "pending", stagedKeys: stagedEditKeys } }
+                : {}),
             }
-          : updated,
+          : finalRow,
       );
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -3157,6 +3698,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Submit a draft service for review (provider-owned path)
+  app.post("/api/provider/services/:id/submit", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      // Eligibility is based on the review lifecycle (approvalStatus), not the
+      // availability toggle (status). A provider may submit from approvalStatus
+      // "draft" (never submitted) or "rejected" (resubmitting after admin rejection).
+      const currentApproval = service.approvalStatus ?? "draft";
+      if (currentApproval !== "draft" && currentApproval !== "rejected") {
+        return res.status(400).json({ message: "Only draft or rejected services can be submitted for review" });
+      }
+      const submitted = await storage.submitProviderServiceListing(req.params.id);
+      res.json(submitted ? omitFields(submitted as any, ["revenueShareRate"] as const) : submitted);
+    } catch (err) {
+      console.error("Error submitting provider service:", err);
+      res.status(500).json({ message: "Failed to submit service for review" });
+    }
+  });
+
   // Delete a service
   app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
@@ -3165,35 +3729,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!ownedService) {
       return res.status(404).json({ message: "Service not found or not owned by you" });
     }
+    // Gap #18 (Gate G5): a listing with open bookings or transacted history is never deleted —
+    // service_bookings.service_id is ON DELETE CASCADE, so the delete would take the booking
+    // rows (receipts, reviews, payout records) with it. 409 + the archive offer instead.
+    const refusal = await assessServiceDeletion([req.params.id], ownedService.serviceName);
+    if (refusal) return res.status(409).json(refusal);
     try {
-      // Financial-history guard (mirrors DELETE /api/admin/services/:id): service_bookings.service_id
-      // is ON DELETE CASCADE, so a hard delete would silently destroy historical bookings and the
-      // platform_fee revenue snapshots. If any bookings reference this service, soft-delete instead —
-      // suspend it so it drops off public surfaces while every historical record keeps its reference.
-      // Single transaction with the row locked FOR UPDATE: a concurrent checkout's FK KEY SHARE lock
-      // conflicts with FOR UPDATE, so it can't slip a booking in between the count and the delete.
-      const outcome = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${req.params.id} FOR UPDATE`);
-        const [{ bookingCount }] = await tx
-          .select({ bookingCount: sql<number>`count(*)::int` })
-          .from(serviceBookings)
-          .where(eq(serviceBookings.serviceId, req.params.id));
-        if (bookingCount > 0) {
-          await tx
-            .update(providerServices)
-            .set({ status: "suspended", updatedAt: new Date() })
-            .where(eq(providerServices.id, req.params.id));
-          return { softDeleted: true as const, bookingCount };
-        }
-        await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
-        return { softDeleted: false as const, bookingCount: 0 };
-      });
-      if (outcome.softDeleted) {
-        return res.status(200).json({
-          softDeleted: true,
-          message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
-        });
-      }
+      await storage.deleteProviderService(req.params.id);
     } catch (err: any) {
       // Migration 151 RESTRICT: honest 409 when the service sits inside a bundle.
       if (await respondIfServiceInBundle(err, req.params.id, res)) return;
@@ -3201,6 +3743,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return res.status(500).json({ message: "Failed to delete service" });
     }
     res.status(204).send();
+  });
+
+  // ── Gap #18 (Gate G5, ratified Aug 13 2026): ARCHIVE — the honest alternative to delete ──────
+  // The ONE write path into status='archived' (the meeting-pin one-write-path posture; the PATCH
+  // rail refuses the value). Archiving is always allowed — it claims nothing about bookings and
+  // breaks nothing they point at: every public read filters status='active', so the listing
+  // leaves search/storefront/marketplace immediately, existing bookings stand, and history keeps
+  // a listing to point at. Archived is terminal except deletion (which stays behind the booking
+  // guard above): "nobody can book it again" is a promise, not a pause.
+  app.post("/api/provider/services/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const services = await storage.getProviderServices(userId);
+      const ownedService = services.find(s => s.id === req.params.id);
+      if (!ownedService) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      if (ownedService.status === "archived") {
+        return res.json({ success: true, alreadyArchived: true });
+      }
+      // A property's rooms are separate bookable rows that inherit the property — archiving the
+      // parent archives them with it, so no room stays bookable under an archived property.
+      await db
+        .update(providerServices)
+        .set({ status: "archived", updatedAt: new Date() })
+        .where(
+          or(
+            eq(providerServices.id, req.params.id),
+            eq(providerServices.parentServiceId, req.params.id),
+          ),
+        );
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Error archiving provider service:", err);
+      res.status(500).json({ message: "Failed to archive service" });
+    }
   });
 
   // City lookup endpoint for planning modals
@@ -3306,6 +3884,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const photoUrl = pexelsPhotos[0]?.url ?? null;
           return res.json({ photoUrl });
         } catch {
+          // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
         }
       }
@@ -3599,7 +4178,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const counts: Record<string, number> = { local_expert: 0, travel_expert: 0, event_planner: 0 };
     for (const expert of filtered) {
       const r = expert.role as string;
-      if (r in counts) counts[r]++;
+      // The stored `expert` role is a valid expert-family role but has no
+      // standalone browse tab. Surface it alongside trip planners so claimed
+      // expert storefronts do not become discoverable only by a copied URL.
+      if (r === "expert") {
+        counts.travel_expert++;
+      } else if (r in counts) {
+        counts[r]++;
+      }
     }
     res.json(counts);
   });
@@ -3615,9 +4201,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
     let filtered = experts;
 
-    // Filter by role (travel_expert, local_expert, event_planner)
+    // Filter by role. The legacy generic `expert` stored role belongs in the
+    // Trip Planners browse lane; the UI has no separate generic-expert tab.
     if (role) {
-      filtered = filtered.filter((expert: any) => expert.role === role);
+      filtered = filtered.filter((expert: any) =>
+        role === "travel_expert"
+          ? expert.role === "travel_expert" || expert.role === "expert"
+          : expert.role === role,
+      );
     }
 
     // Filter by location (match against expert form destinations, city, or country)
@@ -4017,23 +4608,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // PATCH /api/expert/photo — Save the expert's profile photo.
   // Accepts a base64 data URL; server-side validation of type + decoded size.
-  app.patch("/api/expert/photo", isAuthenticated, async (req, res) => {
+  app.patch("/api/expert/photo", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { imageData } = req.body ?? {};
       if (typeof imageData !== "string") {
         return res.status(400).json({ message: "imageData must be a base64 data URL string" });
       }
-      const match = imageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
-      if (!match) {
-        return res.status(400).json({ message: "Photo must be a PNG, JPEG, or WebP image" });
-      }
       const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB decoded
-      // base64 → bytes: 4 chars encode 3 bytes.
-      const approxBytes = Math.floor((match[2].length * 3) / 4);
-      if (approxBytes > MAX_PHOTO_BYTES) {
-        return res.status(400).json({ message: "Photo must be smaller than 2 MB" });
-      }
+      const imageError = validateImageDataUrl(imageData, "Photo", {
+        maxBytes: MAX_PHOTO_BYTES,
+        allowedMimeTypes: ["image/jpeg", "image/png"],
+      });
+      if (imageError) return res.status(400).json({ message: imageError });
       await db.update(users).set({ profileImageUrl: imageData }).where(eq(users.id, userId));
       res.json({ success: true });
     } catch (err) {
@@ -4136,39 +4723,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Expert access required" });
       }
 
-      const raw = req.body ?? {};
-      if (!raw.title || !raw.price) {
+      const { title, description, categoryName, existingCategoryId, price, duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes, isActive } = req.body;
+      
+      if (!title || !price) {
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      // Task 1135: sanitize expert prose FIRST, then parse the allow-listed schema — so a
-      // tag-only title ("<b></b>") sanitizes to "" and fails the schema's min(1) with a 400,
-      // and no unlisted field ever reaches the storage layer.
-      const body = insertProviderServiceListingSchema.parse(sanitizeTextFields(
-        {
-          title: raw.title,
-          description: raw.description,
-          categoryName: raw.categoryName,
-          existingCategoryId: raw.existingCategoryId,
-          price: String(raw.price),
-          duration: raw.duration,
-          deliverables: raw.deliverables,
-          cancellationPolicy: raw.cancellationPolicy,
-          leadTime: raw.leadTime,
-          imageUrl: raw.imageUrl,
-          galleryImages: raw.galleryImages,
-          experienceTypes: raw.experienceTypes,
-          isActive: raw.isActive !== false,
-        },
-        EXPERT_LISTING_TEXT_FIELDS,
-      ));
-
-      const service = await storage.createProviderServiceListing(userId, body);
+      const service = await storage.createProviderServiceListing(userId, {
+        title,
+        description,
+        categoryName,
+        existingCategoryId,
+        price: price.toString(),
+        duration,
+        deliverables,
+        cancellationPolicy,
+        leadTime,
+        imageUrl,
+        galleryImages,
+        experienceTypes,
+        isActive: isActive !== false,
+      });
       res.status(201).json(service);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service" });
-      }
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
     }
@@ -4190,18 +4767,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      // Task 1135: allow-list via the insert schema (partial) + sanitize expert prose BEFORE
-      // parse — never pass raw req.body through to the storage layer.
-      const patchInput = insertProviderServiceListingSchema.partial().parse(sanitizeTextFields(
-        { ...(req.body ?? {}) } as Record<string, any>,
-        EXPERT_LISTING_TEXT_FIELDS,
-      ));
-      const updated = await storage.updateProviderServiceListing(req.params.id, patchInput);
+      const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service update" });
-      }
       console.error("Error updating custom service:", err);
       res.status(500).json({ message: "Failed to update custom service" });
     }
@@ -4246,6 +4814,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (service.status === "approved") {
         return res.status(400).json({ message: "Cannot delete approved services. Deactivate instead." });
       }
+      // Gap #18 (Gate G5): same booking guard as the provider delete rail — one assessment,
+      // both rails. A non-approved listing can still carry booking rows (e.g. approved once,
+      // then edited back into review), and the CASCADE would take them with it.
+      const refusal = await assessServiceDeletion([req.params.id], (service as any).serviceName ?? (service as any).name);
+      if (refusal) return res.status(409).json(refusal);
 
       await storage.deleteProviderServiceListing(req.params.id);
       res.json({ success: true });
@@ -4581,7 +5154,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Create Stripe PaymentIntent; embed purchaseId in metadata so /confirm
       // can verify it without an extra DB column.
-      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      const stripeClient = new Stripe(getStripeSecretKey() || '', {
         apiVersion: '2024-12-18.acacia' as any,
       });
       const currency = (template.currency || 'USD').toLowerCase();
@@ -4639,7 +5212,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       // Retrieve intent from Stripe — never trust client-reported status
-      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      const stripeClient = new Stripe(getStripeSecretKey() || '', {
         apiVersion: '2024-12-18.acacia' as any,
       });
       const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
@@ -4797,7 +5370,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         purchaseId: purchase.id,
         reviewerId: userId,
         rating: req.body.rating,
-        review: req.body.review,
+        review: sanitizeText(req.body.review),
       });
 
       res.json(review);
@@ -5103,8 +5676,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Destination Calendar (Public travel guide) ===
   
   // Public provider verification status (for service detail page badge)
-  // A6: also surfaces the owner's storefront handle (migration 136, users.handle) so the
-  // service-detail page can breadcrumb into /p/:handle — additive select, null when unclaimed.
+  // A6: also surfaces the owner's storefront handle and role so the service-detail page can
+  // choose the role-specific canonical storefront path — additive, null when the user is absent.
   app.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
       const [form] = await db.select({
@@ -5113,19 +5686,38 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).from(serviceProviderForms)
         .where(eq(serviceProviderForms.userId, req.params.userId))
         .limit(1);
-      const [userRow] = await db.select({ handle: users.handle })
+      // Ledger 90 (FP-5, I3): `displayName` is additive here. The service-detail page's
+      // "Contact Provider" CTA needs the owner's display name to open a working chat thread —
+      // `/api/experts/:id` resolves EXPERT-FAMILY roles only, so a `service_provider` owner 404s
+      // there and chat.tsx's documented `?name=` fallback is the only way through (the same shape
+      // the storefront's Message CTA already uses). Derived exactly as storefront.routes.ts
+      // derives `earner.name`, so the two surfaces name the same person the same way. Nothing
+      // private is added: this name is already public on the storefront and every listing card.
+      const [userRow] = await db.select({
+        handle: users.handle,
+        role: users.role,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
         .from(users)
         .where(eq(users.id, req.params.userId))
         .limit(1);
       const handle = userRow?.handle ?? null;
-      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle });
+      const role = userRow?.role ?? null;
+      const displayName = userRow
+        ? ([userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || null)
+        : null;
+      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle, role, displayName });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
         businessVerified: form.businessVerificationStatus === "verified",
         handle,
+        role,
+        displayName,
       });
     } catch {
-      res.json({ identityVerified: false, businessVerified: false, handle: null });
+      // Fail closed: if the verification profile cannot be read, report as unverified.
+      res.json({ identityVerified: false, businessVerified: false, handle: null, role: null, displayName: null });
     }
   });
 
@@ -5319,6 +5911,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         requirements,
         whatIncluded,
         status: "draft",
+        // Creation provenance (2026-08-23): a template-seeded listing is now distinguishable, and
+        // the template id it came from is retained (the audit's "create-from-template drops the link").
+        createdVia: "template",
+        sourceRef: templateId,
       };
 
       const service = await storage.createProviderService(serviceData as any);
@@ -5402,15 +5998,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-        const service = await storage.getProviderServiceById(booking.serviceId);
+        const rawService = await storage.getProviderServiceById(booking.serviceId);
         const provider = await storage.getUser(booking.providerId);
+        // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
+        // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
+        // the product itself and must never ride a general read. The one sanctioned reveal
+        // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
+        //
+        // S9 (ledger row 102): joinLink is the same shape of sensitive field, but handled here
+        // as a CONDITIONAL INCLUDE rather than a blanket strip — this IS the traveler's own
+        // confirmed-booking read (riding an existing read, per the ballot's REC, rather than a
+        // new endpoint), so each row carries its own reveal decision. The gate mirrors
+        // GET /api/service-bookings/:id/deliverable EXACTLY: booking.travelerId === session
+        // user (this whole list is already scoped to travelerId=userId above), booking.status
+        // === 'confirmed' (never 'payment_pending', §15b), and the service's deliveryMethod is
+        // a scheduled remote session (SESSION_END_METHODS — call/video). A PENDING advisor has
+        // no read path onto this endpoint at all (it is travelerId-scoped, not advisor-scoped),
+        // so no separate advisor exclusion is needed here.
+        const revealJoinLink =
+          !!rawService &&
+          booking.status === "confirmed" &&
+          SESSION_END_METHODS.has(rawService.deliveryMethod ?? "");
+        let service = rawService ? omitFields(rawService, ["serviceFile", "joinLink"] as const) : rawService;
+        // S8/G2 (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the property/room exact
+        // pin is a §15b-gated reveal too — a payment_pending (or any non-confirmed) claim on a
+        // property must NOT expose the exact coordinates just because it's the traveler's own
+        // booking. Mirrors the /deliverable gate's status check. Once confirmed, the row is left
+        // exactly as-is (the exact pin, honestly).
+        if (service && booking.status !== "confirmed") {
+          service = applyPropertyLocationPrivacy(service as any) as typeof service;
+        }
         return {
           ...booking,
-          // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
-          // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
-          // the product itself and must never ride a general read. The one sanctioned reveal
-          // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
-          service: service ? omitFields(service, ["serviceFile"] as const) : service,
+          service: service && revealJoinLink ? { ...service, joinLink: rawService!.joinLink ?? null } : service,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
         };
       }));
@@ -5439,20 +6059,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     "/api/provider/services/:id/deliverable-file",
     isAuthenticated,
     express.raw({ type: ["application/pdf", "application/octet-stream"], limit: "20mb" }) as RequestHandler,
-    // Route-scoped error mapper: express.raw rejects an over-limit body with a 413
-    // `entity.too.large` error that would otherwise fall through to the global handler as an
-    // opaque 500. Map it to the documented clean 400/DELIVERABLE_TOO_LARGE for THIS endpoint,
-    // for any oversized upload regardless of how far over the cap it is. Non-size errors pass through.
-    ((err: any, _req: Request, res: Response, next: NextFunction) => {
-      if (err && (err.type === "entity.too.large" || err.status === 413 || err.statusCode === 413)) {
-        return res.status(400).json({
-          message: "File exceeds the 20MB deliverable size limit",
-          code: "DELIVERABLE_TOO_LARGE",
-        });
-      }
-      return next(err);
-    }) as ErrorRequestHandler,
-    async (req: Request, res: Response) => {
+    async (req, res) => {
       try {
         const userId = getUserId(req)!;
         const service = await storage.getProviderServiceById(req.params.id);
@@ -5514,6 +6121,146 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
     },
   );
+
+  // ── Gap #16 reconciliation (Aug 17): TWO parallel builds of this rail existed — this
+  // session's platform-URL variant and the workspace's covers:-discriminator variant. The
+  // WORKSPACE rail below is canonical (decision-maker: Replit is the continuation base; it
+  // also empirically verified the bucket is private, which the proxy design depends on).
+  // The listing home's Photos & media drawer posts to THIS endpoint.
+  // Cover photo upload for provider services.
+  //
+  // PRIVACY POSTURE (mirrors deliverable rail, D3): the object-storage bucket is private
+  // (empirically verified Aug 2026 — unauthenticated GCS GETs return 403). Cover photos are
+  // public marketing images, but they are served through a server-side proxy endpoint (below)
+  // rather than by exposing the GCS URL. We persist a `covers:${key}` opaque reference to
+  // `serviceImage`, and the GET /api/services/:id/cover-image endpoint streams the bytes.
+  // This is the same `prefix:key` pattern the deliverable rail uses for `objstore:${key}`.
+  //
+  // Owner-gated write. Accepts JPEG/PNG only, validated by magic bytes. No multipart —
+  // `express.raw()` scoped to this route only (same as deliverable-file above).
+  const COVER_OBJSTORE_PREFIX = "covers:";
+  const COVER_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+  const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+  const PNG_MAGIC  = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // \x89PNG
+
+  app.post(
+    "/api/provider/services/:id/cover-photo",
+    isAuthenticated,
+    express.raw({ type: ["image/jpeg", "image/png", "application/octet-stream"], limit: "5mb" }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        // Raw read — we need the opaque `covers:${key}` reference for old-file cleanup;
+        // the normalized read returns the proxy URL which cannot be parsed back to a key.
+        const service = await storage.getProviderServiceByIdRaw(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({
+            message: "Send the image as a raw request body with Content-Type: image/jpeg or image/png",
+            code: "COVER_PHOTO_REQUIRED",
+          });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > COVER_MAX_BYTES) {
+          return res.status(400).json({
+            message: "Image exceeds the 5 MB size limit",
+            code: "COVER_PHOTO_TOO_LARGE",
+          });
+        }
+        // Detect format from magic bytes — never trust client Content-Type alone.
+        let ext: string;
+        let contentType: string;
+        if (buffer.subarray(0, 3).equals(JPEG_MAGIC)) {
+          ext = "jpg"; contentType = "image/jpeg";
+        } else if (buffer.subarray(0, 4).equals(PNG_MAGIC)) {
+          ext = "png"; contentType = "image/png";
+        } else {
+          return res.status(400).json({
+            message: "Only JPEG and PNG images are accepted",
+            code: "COVER_PHOTO_INVALID_FORMAT",
+          });
+        }
+
+        const key = `covers/${service.id}/${randomBytes(16).toString("hex")}.${ext}`;
+        const { uploadBuffer, deleteObject } = await import("./infrastructure/object-storage");
+        try {
+          await uploadBuffer(key, buffer);
+        } catch (storageErr) {
+          console.error("Cover photo upload failed:", storageErr);
+          return res.status(503).json({
+            message: "Object storage is not available right now. Try again shortly.",
+            code: "OBJECT_STORAGE_UNAVAILABLE",
+          });
+        }
+
+        // Persist the opaque `covers:${key}` reference first. On persistence failure, delete the
+        // newly uploaded object best-effort so it does not orphan in storage.
+        const storedValue = `${COVER_OBJSTORE_PREFIX}${key}`;
+        try {
+          await storage.updateProviderService(service.id, { serviceImage: storedValue });
+        } catch (dbErr) {
+          console.error("Cover photo DB persist failed:", dbErr);
+          deleteObject(key).catch(() => {});
+          return res.status(500).json({ message: "Failed to save cover photo" });
+        }
+
+        // Best-effort cleanup of the previous managed cover object (now that the DB is updated).
+        const prevStored = (service.serviceImage ?? "").trim();
+        if (prevStored.startsWith(COVER_OBJSTORE_PREFIX)) {
+          deleteObject(prevStored.slice(COVER_OBJSTORE_PREFIX.length)).catch(() => {});
+        }
+
+        // Return the proxy URL — the GCS URL is never disclosed (bucket is private).
+        res.json({
+          message: "Cover photo uploaded",
+          imageUrl: `/api/services/${service.id}/cover-image`,
+          contentType,
+        });
+      } catch (err) {
+        console.error("Cover photo upload error:", err);
+        res.status(500).json({ message: "Failed to upload cover photo" });
+      }
+    },
+  );
+
+  // Public cover-image proxy: streams a managed cover photo stored as `covers:${key}`.
+  // No auth required — cover photos are public marketing images. Falls back to a redirect
+  // for legacy external `serviceImage` URLs (Unsplash etc.) that predate the managed rail.
+  // Raw read — the normalized value is the proxy URL itself, which breaks the key extraction.
+  app.get("/api/services/:id/cover-image", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceByIdRaw(req.params.id);
+      if (!service) return res.status(404).json({ message: "Service not found" });
+
+      const stored = (service.serviceImage ?? "").trim();
+      if (stored.startsWith(COVER_OBJSTORE_PREFIX)) {
+        const key = stored.slice(COVER_OBJSTORE_PREFIX.length);
+        const { downloadBytes } = await import("./infrastructure/object-storage");
+        let bytes: Buffer;
+        try {
+          bytes = await downloadBytes(key);
+        } catch {
+          return res.status(404).json({ message: "Cover image not found" });
+        }
+        const ct = key.endsWith(".png") ? "image/png" : "image/jpeg";
+        res.setHeader("Content-Type", ct);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        return res.send(bytes);
+      }
+
+      // Legacy external URL — redirect so existing images keep working.
+      if (stored.startsWith("http")) {
+        return res.redirect(302, stored);
+      }
+
+      return res.status(404).json({ message: "No cover image on file" });
+    } catch (err) {
+      console.error("Cover image serve error:", err);
+      res.status(500).json({ message: "Failed to serve cover image" });
+    }
+  });
 
   // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
   // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
@@ -5593,6 +6340,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Deliverables-surfacing lane (ledger 2026-08-23-deliverables-surfacing): the METADATA probe.
+  // The GET above STREAMS the PDF (objstore) — so the client could not use it to decide whether to
+  // render a download button without (a) parsing bytes as JSON (it did — `.json()` threw, the catch
+  // hid the deliverable, and the button NEVER rendered for the protected path) and (b) logging a
+  // `deliverable_downloads` row on every page view, arming the artifact_timer completion clock on a
+  // mere render, not a real download. This probe answers "is there a deliverable, and what kind"
+  // with NO byte download and NO download-log write; the actual download stays the GET above, now
+  // hit only on the user's click — so the log becomes a real download record. Same four gates.
+  app.get("/api/service-bookings/:id/deliverable/meta", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId || booking.status !== "confirmed" || !booking.serviceId) {
+        return res.json({ available: false });
+      }
+      const service = await storage.getProviderServiceById(booking.serviceId);
+      if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
+        return res.json({ available: false });
+      }
+      const fileValue = (service.serviceFile ?? "").trim();
+      if (!fileValue) {
+        // §13 honest absence: qualifies, but nothing uploaded yet — distinguishable from "not a
+        // deliverable booking" so the client can say "your expert hasn't uploaded it yet".
+        return res.json({ available: false, code: "NO_DELIVERABLE_UPLOADED", deliveryMethod: service.deliveryMethod });
+      }
+      const isProtected = fileValue.startsWith(DELIVERABLE_OBJSTORE_PREFIX);
+      // A protected file is fetched by-id on click (never expose the objstore key); a legacy
+      // pasted URL is the provider's own external link and is safe to hand the client directly.
+      return res.json({
+        available: true,
+        protected: isProtected,
+        deliveryMethod: service.deliveryMethod,
+        ...(isProtected ? {} : { fileUrl: fileValue }),
+      });
+    } catch (err) {
+      console.error("Deliverable meta error:", err);
+      res.status(500).json({ message: "Failed to check deliverable" });
+    }
+  });
+
   app.get("/api/bookings/user", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -5645,38 +6432,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (error: any) {
       console.error("Failed to add to cart:", error);
       res.status(500).json({ message: "Failed to add to cart" });
-    }
-  });
-
-  // Get single booking
-  // NOTE: If requester is provider, traveler info is sanitized
-  app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
-    const booking = await storage.getServiceBooking(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-    // Check if user is traveler or provider
-    if (booking.travelerId !== userId && booking.providerId !== userId) {
-      return res.status(403).json({ message: "Not authorized to view this booking" });
-    }
-    
-    // If the user is the traveler, they see full booking
-    // If the user is the provider, sanitize the traveler info
-    if (booking.travelerId === userId) {
-      res.json(booking);
-    } else {
-      // Provider viewing - sanitize traveler info
-      const traveler = await storage.getUser(booking.travelerId);
-      const sanitizedBooking = sanitizeBookingForExpert(booking, userRole, userId);
-      res.json({
-        ...sanitizedBooking,
-        traveler: traveler ? {
-          ...sanitizeUserForRole(traveler, userRole, false),
-          displayName: getDisplayName(traveler.firstName, traveler.lastName)
-        } : null
-      });
     }
   });
 
@@ -5764,7 +6519,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           : null,
       });
 
-      const booking = await storage.createServiceBooking({
+      // createServiceBookingAtomic wraps the insert + bookings_count increment in a single
+      // DB transaction: either both commit (→ 201) or both roll back (→ 500, no phantom row).
+      // Previously the two operations were separate: if the counter update failed after the
+      // booking row was committed the handler returned 500, causing the user to retry and
+      // create a duplicate "phantom" booking.
+      const booking = await storage.createServiceBookingAtomic({
         ...input,
         travelerId: userId,
         providerId: service.userId,
@@ -5776,9 +6536,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             }
           : {}),
       });
-
-      // Increment service bookings count
-      await storage.incrementServiceBookings(service.id, totalAmount);
 
       res.status(201).json(booking);
     } catch (err) {
@@ -5828,7 +6585,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const { status, reason } = req.body;
+      const { status } = req.body;
+      // Normalize and validate the optional decline reason via the shared utility so the
+      // server-side check and the unit-tested production code are the same code path.
+      const reasonResult = normalizeDeclineReason(req.body.reason);
+      if (!reasonResult.ok) {
+        return res.status(reasonResult.status).json({ message: reasonResult.message });
+      }
+      const reason = reasonResult.reason;
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
@@ -5879,10 +6643,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              // Task-1137 leak audit: the requester here is the booking OWNER (provider/expert) —
-              // never the traveler — so the row must go through the earner allow-list, or the
-              // traveler's Stripe references (stripe*IntentId) and idempotencyKey leak.
-              return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: false, alreadyRefunded: true } });
+              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -5902,18 +6663,37 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                   userId: booking.travelerId,
                   type: "booking_cancelled",
                   title: "Booking cancelled by provider — full refund issued",
-                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  message: reason
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
               }
+              // Send a cancellation + refund email so the traveler sees both the reason and
+              // confirmation that their money is being returned.
+              try {
+                const traveler = await storage.getUser(booking.travelerId);
+                if (traveler?.email) {
+                  const { sendBookingCancellationWithRefundEmail } = await import("./services/email.service");
+                  await sendBookingCancellationWithRefundEmail({
+                    toEmail: traveler.email,
+                    travelerName: traveler.firstName ?? null,
+                    bookingTrackingNumber: booking.trackingNumber ?? null,
+                    serviceName: (booking as any).serviceName ?? null,
+                    refundAmount: amountPaid,
+                    cancellationReason: reason ?? null,
+                  });
+                }
+              } catch (emailErr) {
+                console.error("Failed to send cancellation+refund email to traveler:", emailErr);
+              }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
-            // Task-1137 leak audit: earner allow-list projection (see note above).
-            return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
           } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
             return res.status(502).json({
@@ -5924,45 +6704,64 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
+      // QA-2 (ledger 96, Finding A/B): the traveler notification for BOTH the accept and the
+      // unpaid-decline branches now travels IN the same transaction as the status flip (see
+      // storage.updateServiceBookingStatus) instead of a separate best-effort call after commit —
+      // a crash between the flip and the old separate write left a status change with no
+      // notification, and the atomic-conditional guard turned a client retry into a 409 that could
+      // never repair it. dedupeKey = `booking:<id>:<event>` makes a concurrent duplicate/retry of
+      // this SAME transition a no-op (ON CONFLICT DO NOTHING on notifications.dedupe_key).
+      const notify: BookingStatusNotification | undefined = booking.travelerId
+        ? status === "confirmed"
+          ? {
+              userId: booking.travelerId,
+              type: "booking_confirmed",
+              title: "Booking accepted",
+              message: `Your booking ${booking.trackingNumber ?? ""} was accepted by the provider.`,
+              data: { bookingId: req.params.id, acceptedBy: "provider" },
+              dedupeKey: `booking:${req.params.id}:accepted`,
+            }
+          : {
+              // Reached only for an UNPAID cancellation (a stamped-but-not-succeeded PI falls
+              // through to this same branch — see the piSucceeded check above) — the paid-refund
+              // branch above returns earlier with its own notification.
+              userId: booking.travelerId,
+              type: "booking_cancelled",
+              title: "Booking declined by provider",
+              message: reason
+                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
+                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
+              dedupeKey: `booking:${req.params.id}:cancelled`,
+            }
+        : undefined;
+
+      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom, notify);
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
-        // caller wins; the loser changes nothing and fires no side-effects.
+        // caller wins; the loser changes nothing and fires no side-effects — including no
+        // notification (the notify insert lives inside the same transaction the lost race rolled
+        // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
       }
 
-      // Acceptance tells the traveler too — symmetric with the cancellation notices below;
-      // no silent state changes in either direction.
-      if (status === "confirmed" && updated.travelerId) {
+      // Send a decline email so the traveler sees the reason even if they don't check the app.
+      // Non-fatal: a delivery failure must never roll back the already-committed status flip.
+      if (status === "cancelled" && booking.travelerId) {
         try {
-          await storage.createNotification({
-            userId: updated.travelerId,
-            type: "booking_confirmed",
-            title: "Booking confirmed",
-            message: `Your booking ${updated.trackingNumber ?? ""} was accepted by the provider.`,
-            relatedId: req.params.id,
-            relatedType: "booking",
-            data: { bookingId: req.params.id },
-          });
-        } catch (notifyErr) {
-          console.error("Failed to notify traveler of booking acceptance:", notifyErr);
-        }
-      }
-
-      // Unpaid cancellation still tells the traveler — no silent state changes.
-      if (status === "cancelled" && updated.travelerId) {
-        try {
-          await storage.createNotification({
-            userId: updated.travelerId,
-            type: "booking_cancelled",
-            title: "Booking cancelled by provider",
-            message: `Your booking ${updated.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-            relatedId: req.params.id,
-            relatedType: "booking",
-            data: { bookingId: req.params.id, cancelledBy: "provider" },
-          });
-        } catch (notifyErr) {
-          console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+          const traveler = await storage.getUser(booking.travelerId);
+          if (traveler?.email) {
+            const { sendBookingDeclineEmail } = await import("./services/email.service");
+            await sendBookingDeclineEmail({
+              toEmail: traveler.email,
+              travelerName: traveler.firstName ?? null,
+              bookingTrackingNumber: booking.trackingNumber ?? null,
+              serviceName: (booking as any).serviceName ?? null,
+              declineReason: reason ?? null,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send decline email to traveler:", emailErr);
         }
       }
 
@@ -6001,8 +6800,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // Task-1137 leak audit: earner allow-list projection (see note above).
-      res.json(pickPublicFields(updated, EARNER_BOOKING_FIELDS));
+      res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -6172,10 +6970,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }));
       }
       metadata.visaStatusUpdatedAt = new Date().toISOString();
-      const updatedRaw = await storage.updateServiceBookingMetadata(req.params.id, metadata);
-      // Task-1137 leak audit: this route is gated to the booking's PROVIDER, so the returned
-      // row must go through the earner allow-list (strips stripe*IntentId + idempotencyKey).
-      const updated = updatedRaw ? pickPublicFields(updatedRaw, EARNER_BOOKING_FIELDS) : updatedRaw;
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
 
       // Send notification to the traveler about the visa status change
       try {
@@ -6502,50 +7297,49 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return acc;
       }, []).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
       
-      // Conversion funnel
-      const profileViews = Math.floor(totalBookings * 3.5); // Estimated
+      // Conversion funnel — only stages backed by a REAL count. Phase 1 (lane
+      // partner-demand-data) removed the two fabricated top-of-funnel stages that multiplied
+      // the booking count by invented ratios: no impressions or quotes are captured yet, so
+      // inventing them is dishonest (§13). The honest funnel is inquiries → booked → completed.
       const inquiriesStarted = totalBookings;
-      const quoteSent = Math.floor(totalBookings * 0.85);
       const bookingsMade = completedBookings.length + confirmedBookings.length;
-      
+
       const conversionFunnel = [
-        { stage: "Profile Views", count: profileViews, percent: 100 },
-        { stage: "Inquiries Started", count: inquiriesStarted, percent: profileViews > 0 ? (inquiriesStarted / profileViews) * 100 : 0 },
-        { stage: "Quote Sent", count: quoteSent, percent: inquiriesStarted > 0 ? (quoteSent / inquiriesStarted) * 100 : 0 },
-        { stage: "Booking Made", count: bookingsMade, percent: quoteSent > 0 ? (bookingsMade / quoteSent) * 100 : 0 },
+        { stage: "Inquiries", count: inquiriesStarted, percent: 100 },
+        { stage: "Booked", count: bookingsMade, percent: inquiriesStarted > 0 ? (bookingsMade / inquiriesStarted) * 100 : 0 },
         { stage: "Completed", count: completedBookings.length, percent: bookingsMade > 0 ? (completedBookings.length / bookingsMade) * 100 : 0 },
       ];
       
-      // Calculate benchmarks. D5 (UX audit Jul 29): a zero-data account (no bookings, no
-      // ratings) was falling through to "needs_improvement" / "good" — a judgment against
-      // an empty account, not a real comparison. "no_data" is a distinct, honest status
-      // the client renders as "No data yet" (§13 pattern — never a fabricated verdict).
+      // Benchmarks — Phase 1 / R4 (lane partner-demand-data). The fabricated comparison
+      // TARGETS (the hardcoded response-time, conversion-rate, rating and booking-value goals)
+      // and the verdicts they drove (excellent/good/needs_improvement) are removed: each was
+      // an invented constant, not a real pooled comparison. Real targets return ONLY via the
+      // §10 pooled category-aggregate
+      // with the 5-floor (FOLLOWUPS, not this lane). Each metric now shows its REAL value with
+      // no invented verdict; status is "no_data" only when there is genuinely no data — the
+      // client renders that as "No data yet" (D5/§13 pattern) and shows no badge otherwise.
+      // The hardcoded `responseTime` metric is deleted outright — nothing measures it yet.
       const benchmarks = {
-        responseTime: { value: "2 hrs", benchmark: "1 hr", status: "good" },
         conversionRate: {
           value: `${conversionRate.toFixed(0)}%`,
-          benchmark: "55%",
-          status: inquiryCount === 0 ? "no_data" : conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
+          status: inquiryCount === 0 ? "no_data" : "no_benchmark",
         },
         avgRating: {
           value: avgRating.toFixed(1),
-          benchmark: "4.5",
-          status: avgRating === 0 ? "no_data" : avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
+          status: avgRating === 0 ? "no_data" : "no_benchmark",
         },
         avgBookingValue: {
           value: `$${totalBookings > 0 ? (totalRevenue / totalBookings).toFixed(0) : 0}`,
-          benchmark: "$350",
-          status: totalBookings === 0 ? "no_data" : totalRevenue / totalBookings >= 350 ? "excellent" : "good"
-        }
+          status: totalBookings === 0 ? "no_data" : "no_benchmark",
+        },
       };
-      
-      // Client lifetime value
-      const clientLifetimeValue = {
-        average: totalBookings > 0 ? Math.round(totalRevenue / totalBookings * 1.8) : 0,
-        repeatRate: 35, // Estimated
-        avgBookingsPerClient: 1.8
-      };
-      
+
+      // Client lifetime value — DELETED (Phase 1). Every figure was fabricated: the ×1.8
+      // multiplier on average revenue, a hardcoded repeatRate of 35, and avgBookingsPerClient
+      // of 1.8. Nothing computes lifetime value yet, so the block returns no_data and its
+      // client card renders "No data yet" rather than an invented dollar figure (§13).
+      const clientLifetimeValue = { status: "no_data" as const };
+
       // Track which selected services have been created vs pending
       const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase());
       const serviceAlignment = selectedServicesAtSignup.map(serviceName => ({
@@ -6614,10 +7408,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             destLower.includes(keyword!) || cityLower.includes(keyword!) || countryLower.includes(keyword!)
           );
         });
-        // If no matches, show global trending as fallback
-        if (filteredTrending.length === 0) {
-          filteredTrending = allTrending.slice(0, 10);
-        }
+        // Phase 1: no global "show anything" fallback. An expert with no market match sees
+        // an honestly empty list, never another market's trending (§13).
       }
       
       // Filter cities to match expert's markets
@@ -6631,9 +7423,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             cityLower.includes(keyword!) || countryLower.includes(keyword!)
           );
         });
-        if (filteredCities.length === 0) {
-          filteredCities = allCities.slice(0, 5);
-        }
+        // Phase 1: no global-fallback (§13).
       }
       
       // Filter happening now to match expert's markets
@@ -6644,37 +7434,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const cityLower = (h.city || "").toLowerCase();
           return marketKeywords.some(keyword => cityLower.includes(keyword!));
         });
-        if (filteredHappeningNow.length === 0) {
-          filteredHappeningNow = allHappeningNow.slice(0, 5);
-        }
+        // Phase 1: no global-fallback (§13).
       }
       
-      // Generate seasonal demand based on expert's markets
-      const seasonalDemandByMarket: Record<string, any[]> = {
-        "japan": [{ season: "Cherry Blossom Season", location: "Japan", timing: "Mar-Apr", demandIncrease: 85, suggestedRateIncrease: 25, status: "upcoming", daysAway: 45 }],
-        "europe": [{ season: "Summer Peak", location: "Europe", timing: "Jun-Aug", demandIncrease: 120, suggestedRateIncrease: 35, status: "upcoming", daysAway: 120 }],
-        "usa": [{ season: "Fall Foliage", location: "New England", timing: "Sep-Oct", demandIncrease: 65, suggestedRateIncrease: 20, status: "future", daysAway: 200 }],
-        "caribbean": [{ season: "Winter Holidays", location: "Caribbean", timing: "Dec-Jan", demandIncrease: 95, suggestedRateIncrease: 30, status: "future", daysAway: 280 }],
-        "asia": [{ season: "Lunar New Year", location: "Asia", timing: "Jan-Feb", demandIncrease: 90, suggestedRateIncrease: 30, status: "upcoming", daysAway: 30 }],
-        "australia": [{ season: "Summer Season", location: "Australia", timing: "Dec-Feb", demandIncrease: 80, suggestedRateIncrease: 25, status: "upcoming", daysAway: 60 }],
-      };
-      
-      // Match seasonal demand to expert's markets
-      let seasonalDemand: any[] = [];
-      const allMarkets = [...expertDestinations, expertCity, expertCountry].filter(Boolean).map(s => s?.toLowerCase());
-      for (const market of allMarkets) {
-        for (const [key, demand] of Object.entries(seasonalDemandByMarket)) {
-          if (market?.includes(key) || key.includes(market || "")) {
-            seasonalDemand.push(...demand);
-          }
-        }
-      }
-      // Remove duplicates and provide fallback
-      seasonalDemand = Array.from(new Map(seasonalDemand.map(d => [d.season, d])).values());
-      if (seasonalDemand.length === 0) {
-        seasonalDemand = Object.values(seasonalDemandByMarket).flat().slice(0, 4);
-      }
-      
+      // Seasonal demand — DELETED (Phase 1 / lane partner-demand-data). The entire hardcoded
+      // per-region demand table (fixed demandIncrease / suggestedRateIncrease constants), its
+      // keyword-match loop, and its "show the first 4 regardless of market" fallback were
+      // fabricated: no seasonal demand is computed
+      // anywhere. Returned empty so the client renders an honest empty state (§13). Real
+      // seasonal signal, if built, comes from the demand rollup (Phase 3.6 / trend lane),
+      // never a literal table here.
+      const seasonalDemand: any[] = [];
+
       res.json({
         expertMarkets: {
           destinations: expertDestinations,
@@ -6909,8 +7680,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ) || 0;
       
       const completedBookings = bookings.filter(b => b.status === "completed");
-      const pendingBookings = bookings.filter(b => b.status === "pending");
-      
+      // Ledger 90 (FP-5, X1): the ONE shared predicate (shared/booking-visibility.ts), so this
+      // tile, Today's Action Items and the Inbox queue count the same rows. `payment_pending` is
+      // excluded BY RULE — an unauthorized §15b claim is not provider-actionable (§18b) — and is
+      // reported separately, additively, so the surface can disclose it without banking it.
+      const pendingBookings = bookings.filter(b => isActionableBooking(b.status));
+      const awaitingPaymentBookings = bookings.filter(b => isProvisionalBooking(b.status));
+
       // Monthly breakdown from real booking data
       const now = new Date();
       const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
@@ -7006,6 +7782,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           avgRating,
           activeServices: services.filter(s => s.status === "active").length,
           pendingBookings: pendingBookings.length,
+          // Ledger 90 (FP-5, X1): additive — provisional §15b claims, counted separately so the
+          // console can DISCLOSE them without any surface treating them as actionable or as money.
+          awaitingPaymentBookings: awaitingPaymentBookings.length,
           completedBookings: completedBookings.length,
         },
         monthlyRevenue,
@@ -7080,12 +7859,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // cart total already includes it and the traveler is never surprised at Pay (§13/§14, F1
     // disclosure). Out-of-range pickups show 0 here; the hard refusal is the checkout's 400.
     const cartSurcharges = await resolveCartSurcharges(items);
+    // S11 (§14, ledger row 107): the SAME per-night rate resolver /api/checkout and
+    // /api/cart/fee-preview call — a room's live cart total cannot diverge from the charge.
+    const cartStayRates = await resolveStayNightlyRates(items);
     for (const item of items) {
-      // §17 property rooms: nights × nightly rate, never quantity × price (a room's cart
-      // "quantity" is meaningless — the client pins it to 1). Reuses the exact same helper
-      // /api/checkout and /api/cart/fee-preview already use (payments.routes.ts) so this
-      // quote can never silently diverge from the charged total again.
-      const price = resolveItemBaseAmount(item);
+      // §17/§S11 property rooms: nights × each night's own materialized rate (never quantity ×
+      // price — a room's cart "quantity" is meaningless, the client pins it to 1). Reuses the
+      // exact same helper /api/checkout and /api/cart/fee-preview already use (payments.routes.ts)
+      // so this quote can never silently diverge from the charged total again.
+      const price = resolveItemBaseAmount(item, cartStayRates);
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
@@ -7475,7 +8257,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
             return res.status(400).json({ message: "pickupLocation must carry numeric lat/lng within range, or be null to clear" });
           }
-          const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
+          const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
           pickupLocationUpdate = { pickupLocation: { address, lat, lng } };
         } else {
           return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });
@@ -7638,6 +8420,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
           dayNumber: 1,
           locationName: meta.city || meta.location || serviceLocation,
+          // R26 coords cheap-fix: the fetched service row carries its pin; copy it (NULL stays
+          // NULL — no invention, §13) so the item has real coordinates for neighborhood history.
+          latitude: service?.latitude ?? null,
+          longitude: service?.longitude ?? null,
           notes: cartItem.notes || null,
           suggestedBy: "user",
           origin: "traveler",
@@ -7828,11 +8614,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Trigger AI optimization in background only when authorized (payment verified or free re-run)
       if (canRunOptimizer && baselineItems.length > 0) {
-        const availableServices = await db
-          .select()
-          .from(providerServices)
-          .where(eq(providerServices.status, "active"))
-          .limit(100);
+        // ONE shared catalog query (L6, ledger 2026-08-22-optimizer-catalog-honesty):
+        // active + APPROVED + destination-scoped. The previous inline pull filtered
+        // status only — no approval gate, no market scoping.
+        const availableServices = await loadOptimizerCatalog(destination);
 
         // Ensure dates are in YYYY-MM-DD format
         const formatDate = (d: string | undefined | null) => {
@@ -7840,6 +8625,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (d.includes('T')) return d.split('T')[0];
           return d;
         };
+
+        // First-run personalization (ledger 2026-08-22-first-run-prefs, decision-maker
+        // ratified): a trip-backed FIRST run now reads the trip's own eventType / budget /
+        // travelStyles into TripPreferences — the same block the regenerate path has always
+        // built — so the variant-strategy matrix applies from the first paid optimization
+        // instead of every first run collapsing to the default pair. Server-derived from the
+        // authorized trip row only (§14 posture); guest/inline runs stay undefined.
+        let tripPreferencesForCreate: TripPreferences | undefined;
+        if (tripId) {
+          const tripRowForCreate = await storage.getTrip(tripId);
+          if (tripRowForCreate) {
+            const prefsForCreate = (tripRowForCreate.preferences as Record<string, any>) || {};
+            tripPreferencesForCreate = {
+              eventType: tripRowForCreate.eventType,
+              budget: tripRowForCreate.budget ? parseFloat(tripRowForCreate.budget) : null,
+              travelStyles: Array.isArray(prefsForCreate.travelStyles) ? prefsForCreate.travelStyles : [],
+            };
+          }
+        }
 
         generateOptimizedItineraries(
           comparison.id,
@@ -7851,14 +8655,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           formatDate(endDate),
           budget ? parseFloat(budget) : undefined,
           travelers || 1,
-          // tripId / userTransportPrefs / tripPreferences stay UNPASSED here, exactly as before
-          // Lane 5b. Passing `tripId` would newly activate this handler's temporal-anchor and
-          // day-boundary reads — a real behaviour change that belongs to whoever owns that gap,
-          // not to the re-point. `fixedCommitments` is passed directly so the purchased-item
-          // constraint works on both entry points without touching the anchor plumbing.
+          // tripId / userTransportPrefs stay UNPASSED here, exactly as before Lane 5b.
+          // Passing `tripId` would newly activate this handler's temporal-anchor and
+          // day-boundary reads — a real behaviour change that belongs to whoever owns that
+          // gap, not to this lane (the ledger row flags it as still open).
+          // `tripPreferences` IS now passed (first-run personalization, above);
+          // `fixedCommitments` is passed directly so the purchased-item constraint works on
+          // both entry points without touching the anchor plumbing.
           undefined,
           undefined,
-          undefined,
+          tripPreferencesForCreate,
           fixedCommitments
         ).catch((err) => console.error("Background optimization error:", err));
       }
@@ -7968,11 +8774,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, optimizationPaymentId } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, optimizationPaymentId, pinnedAnchor: rawPinnedAnchor } = req.body;
 
-      // Sprint-1 dislike loop (harvested from the UNMOUNTED trips.routes.ts copy —
-      // the router is imported but never app.use()d, so this inline registration
-      // is the live one; §9 route-shadow class): whitelisted "what to fix" chips
+      // Sprint-1 dislike loop (this inline registration is the LIVE POST /generate — it is
+      // registered before the trips.routes.ts router is app.use()d, so it shadows the router's
+      // copy; §9 route-shadow class). NOTE: the GET .../anchor-candidates read rail lives only on
+      // the router, so it is reachable; but the pinned-anchor WRITE must land HERE to take effect.
+      // whitelisted "what to fix" chips
       // from a re-run flow into TripPreferences.feedback, where
       // selectVariantStrategy gives them top priority over inferred preferences.
       const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
@@ -8150,11 +8958,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const availableServices = await db
-        .select()
-        .from(providerServices)
-        .where(eq(providerServices.status, "active"))
-        .limit(100);
+      // Same shared catalog query as the create path (L6, ledger
+      // 2026-08-22-optimizer-catalog-honesty): active + APPROVED + destination-scoped.
+      const availableServices = await loadOptimizerCatalog(comparison.destination);
 
       res.json({ message: "Optimization started", status: "generating" });
 
@@ -8176,6 +8982,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // 1c: resolve the traveler's "build around THIS" pin (if any) against the SAME baseline the
+      // optimizer will use — `baselineItems` already carries real coordinates on the trip path
+      // (loadTripOptimizerInputs). Unresolvable ⇒ undefined ⇒ the optimizer auto-picks anchors (§13,
+      // never fabricated). Runs after the pay gate; the response was already sent.
+      const pinnedAnchorInput = parsePinnedAnchorInput(rawPinnedAnchor);
+      let resolvedPinnedAnchor:
+        | NonNullable<Awaited<ReturnType<typeof resolvePinnedAnchor>>>
+        | undefined;
+      if (pinnedAnchorInput) {
+        const anchorStops = baselineItems.map((b: any) => {
+          const lat = b.latitude != null ? parseFloat(String(b.latitude)) : NaN;
+          const lng = b.longitude != null ? parseFloat(String(b.longitude)) : NaN;
+          return {
+            id: String(b.id),
+            name: b.name ?? b.title ?? "Stop",
+            lat: Number.isFinite(lat) ? lat : null,
+            lng: Number.isFinite(lng) ? lng : null,
+          };
+        });
+        resolvedPinnedAnchor = (await resolvePinnedAnchor(pinnedAnchorInput, anchorStops)) ?? undefined;
+      }
+
       generateOptimizedItineraries(
         comparisonId,
         userId,
@@ -8189,7 +9017,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         comparison.tripId || undefined,
         undefined,
         tripPreferencesForGen,
-        fixedCommitments
+        fixedCommitments,
+        resolvedPinnedAnchor
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
@@ -8268,7 +9097,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
         eventType: "cart_populated",
         funnelStage: "T4",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks cart response
 
       res.json({
         message:
@@ -8739,7 +9568,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (fresh?.feePaymentStatus === "paid") return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
         if (fresh?.feePaymentStatus === "refunded") return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
         if (fresh?.feePaymentIntentId) {
-          const stripeR = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+          const stripeR = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
           const existingPi = await stripeR.paymentIntents.retrieve(fresh.feePaymentIntentId);
           return res.json({
             clientSecret: existingPi.client_secret,
@@ -8838,7 +9667,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           }
         }
 
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+        const stripe = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
         // FP-1/FP-2 parity: attach the durable customer so this sheet ALSO offers saved cards
         // and can vault a new one (the optimize + cart sheets already do) — the asymmetry FP-2's
         // ground-truth flagged.
@@ -8891,12 +9720,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       } catch (inner) {
         // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
-        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch(() => {});
+        // Best-effort rollback — if either step fails, log but still re-throw the original error
+        // so the outer handler can surface it; a partial rollback is better than a silent hang.
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) => {
+          console.warn("[coordination/payment] Could not release claimed credit during rollback:", rollbackErr);
+        });
         await db
           .update(coordinationStates)
           .set({ feePaymentStatus: "unpaid" })
           .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
-          .catch(() => {});
+          .catch((rollbackErr) => {
+            console.warn("[coordination/payment] Could not reset feePaymentStatus to 'unpaid' during rollback:", rollbackErr);
+          });
         throw inner;
       }
     } catch (error: any) {
@@ -8927,7 +9762,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const paymentIntentId = state.feePaymentIntentId;
       if (!paymentIntentId) return res.status(400).json({ error: "no_payment", message: "No coordination payment has been started." });
 
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+      const stripe = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
       const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
       if (pi.status !== "succeeded") return res.status(400).json({ error: "payment_not_confirmed", message: "Payment not yet confirmed." });
       if (pi.metadata?.type !== "coordination_fee") return res.status(400).json({ error: "invalid_payment_type" });
@@ -9016,7 +9851,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Step 1 — Stripe refund. Idempotency-keyed so retries are safe.
       // A Stripe failure leaves the DB untouched (satisfies the atomicity contract).
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+      const stripe = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
       let stripeRefundId: string | null = null;
       if (feeCents > 0) {
         const stripeRefund = await stripe.refunds.create(
@@ -9361,33 +10196,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     })),
   });
 
-  // Google Maps Geocoding API - Convert place name to coordinates
-  const geocodeSchema = z.object({
-    address: z.string().min(1),
-  });
-
-  const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number; formattedAddress: string }> = {
-    "rome": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
-    "paris": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
-    "london": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
-    "tokyo": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
-    "new york": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
-    "barcelona": { lat: 41.3874, lng: 2.1686, formattedAddress: "Barcelona, Spain" },
-    "bangkok": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
-    "sydney": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
-    "dubai": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
-    "marrakech": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
-    "bali": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
-    "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
-    "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
-    "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
-    "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
-    "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
-    "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
-    "berlin": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
-    "hong kong": { lat: 22.3193, lng: 114.1694, formattedAddress: "Hong Kong" },
-    "goa": { lat: 15.2993, lng: 74.1240, formattedAddress: "Goa, India" },
-  };
+  // NOTE: the hardcoded FALLBACK_COORDINATES map that used to live here (and its unused
+  // geocodeSchema twin) is gone — city-coordinate fallbacks are now admin-curated rows in
+  // the geocode_fallbacks table (migration 217), consulted by POST /api/geocode in
+  // server/routes/content.routes.ts via storage.getGeocodeFallback().
 
   // === GROK AI INTEGRATION ROUTES ===
 
@@ -9501,6 +10313,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Generate default dates if not provided (3-day trip starting tomorrow)
       const startDate = dates?.start || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const endDate = dates?.end || new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const dateRangeError = validateGeneratedItineraryDateRange(startDate, endDate);
+      if (dateRangeError) {
+        return res.status(400).json({ message: dateRangeError });
+      }
 
       // Generate itinerary with city intelligence context
       const itineraryRequest = {
@@ -9516,23 +10332,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
       });
 
-      // Store generated itinerary
-      const [saved] = await db.insert(aiGeneratedItineraries).values({
-        userId,
-        destination: itineraryRequest.destination,
-        startDate: itineraryRequest.dates.start,
-        endDate: itineraryRequest.dates.end,
-        title: result.title,
-        summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost?.toString(),
-        itineraryData: result.dailyItinerary,
-        accommodationSuggestions: result.accommodationSuggestions || [],
-        packingList: result.packingList || [],
-        travelTips: result.travelTips || [],
-        provider: "grok",
-        status: "generated",
-      }).returning();
-
       // Create a backing trip so itinerary_items can FK-reference it.
       const quickTrip = await storage.createTrip({
         userId,
@@ -9545,28 +10344,49 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         eventType: "vacation",
       });
 
+      // Store the generated plan only after the backing trip exists so the
+      // read model and its itinerary_items share one canonical trip linkage.
+      const [saved] = await db.insert(aiGeneratedItineraries).values({
+        userId,
+        tripId: quickTrip.id,
+        destination: itineraryRequest.destination,
+        startDate: itineraryRequest.dates.start,
+        endDate: itineraryRequest.dates.end,
+        title: result.title,
+        summary: result.summary,
+        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
+        itineraryData: result.dailyItinerary,
+        accommodationSuggestions: result.accommodationSuggestions || [],
+        packingList: result.packingList || [],
+        travelTips: result.travelTips || [],
+        provider: "grok",
+        status: "generated",
+      }).returning();
+
       // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
       const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const qsInsertedItems: any[] = [];
       for (const day of qsDailyItinerary) {
         const activities = Array.isArray(day?.activities) ? day.activities : [];
+        const dayNumber = normalizeGeneratedDayNumber(day?.day);
         for (const activity of activities) {
+          const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
           const [inserted] = await db.insert(itineraryItems).values({
             tripId: quickTrip.id,
             title: activity.name || activity.title || "Activity",
             description: activity.description || "",
             itemType: activity.type || "activity",
             status: "planned",
-            dayNumber: day.day || 1,
+            dayNumber,
             startTime: activity.time || "",
-            durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+            durationMinutes,
             locationName: activity.location || itineraryRequest.destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
             suggestedBy: "ai",
             origin: "ai",
           }).returning();
-          qsInsertedItems.push({ ...activity, id: inserted.id });
+          qsInsertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
         }
       }
 

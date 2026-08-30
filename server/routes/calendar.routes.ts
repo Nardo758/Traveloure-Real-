@@ -45,6 +45,7 @@ import {
   vendorAvailabilitySlots,
   providerServices,
   serviceBookings,
+  serviceAvailabilityBlackouts,
   affiliateBookingRequests,
   readyMadePurchases,
   readyMadeTrips,
@@ -52,6 +53,8 @@ import {
   trips,
 } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
+import { readPartnerDemandRollup } from "../services/demand-rollup.service";
+import { getMarketByKey } from "../services/trend-engine/operating-markets";
 
 const router = Router();
 
@@ -113,11 +116,12 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
 
     const events: CalendarEvent[] = [];
 
-    // ── availability: my open slots in-window ────────────────────────────────────────────
+    // ── availability: all slots (open and full) in-window ───────────────────────────────
     const slotRows = await db
       .select({
         id: vendorAvailabilitySlots.id,
         date: vendorAvailabilitySlots.date,
+        startTime: vendorAvailabilitySlots.startTime,
         capacity: vendorAvailabilitySlots.capacity,
         bookedCount: vendorAvailabilitySlots.bookedCount,
         serviceName: providerServices.serviceName,
@@ -129,20 +133,66 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
           eq(vendorAvailabilitySlots.providerId, userId),
           gte(vendorAvailabilitySlots.date, from),
           lte(vendorAvailabilitySlots.date, to),
-          sql`(${vendorAvailabilitySlots.capacity} IS NULL OR ${vendorAvailabilitySlots.bookedCount} IS NULL OR ${vendorAvailabilitySlots.bookedCount} < ${vendorAvailabilitySlots.capacity})`,
         ),
       );
     for (const s of slotRows) {
-      const open =
-        s.capacity == null ? null : Math.max(s.capacity - (s.bookedCount ?? 0), 0);
+      const booked = s.bookedCount ?? 0;
+      const cap = s.capacity;
+      const isFull = cap != null && booked >= cap;
+      const timePfx = s.startTime ? `${s.startTime} · ` : "";
+      const name = s.serviceName ?? "Service";
+      let title: string;
+      if (isFull) {
+        title = `${timePfx}${name} · ${cap} of ${cap} — full`;
+      } else if (cap != null) {
+        title = `${timePfx}${name} · ${booked} of ${cap} seats booked`;
+      } else {
+        title = `${timePfx}${name}`;
+      }
       events.push({
         id: `slot-${s.id}`,
         lane: "availability",
-        kind: "open_slot",
+        kind: isFull ? "full_slot" : "open_slot",
         date: s.date,
-        title: `${s.serviceName} · ${open == null ? "open" : `${open} open`}`,
+        title,
         href: hrefs.slots,
       });
+    }
+
+    // ── availability: blackout ranges ────────────────────────────────────────────────────
+    const blackoutRows = await db
+      .select({
+        id: serviceAvailabilityBlackouts.id,
+        startDate: serviceAvailabilityBlackouts.startDate,
+        endDate: serviceAvailabilityBlackouts.endDate,
+        reason: serviceAvailabilityBlackouts.reason,
+        serviceName: providerServices.serviceName,
+      })
+      .from(serviceAvailabilityBlackouts)
+      .innerJoin(providerServices, eq(serviceAvailabilityBlackouts.serviceId, providerServices.id))
+      .where(
+        and(
+          eq(providerServices.userId, userId),
+          lte(serviceAvailabilityBlackouts.startDate, to),
+          gte(serviceAvailabilityBlackouts.endDate, from),
+        ),
+      );
+    for (const b of blackoutRows) {
+      const winStart = new Date(Math.max(Date.parse(`${b.startDate}T00:00:00Z`), Date.parse(`${from}T00:00:00Z`)));
+      const winEnd   = new Date(Math.min(Date.parse(`${b.endDate}T00:00:00Z`),   Date.parse(`${to}T00:00:00Z`)));
+      const reason = b.reason ? b.reason.charAt(0).toUpperCase() + b.reason.slice(1) : "Closed";
+      const name = b.serviceName ?? "Service";
+      for (let d = new Date(winStart); d <= winEnd; d = new Date(d.getTime() + DAY_MS)) {
+        const dateStr = d.toISOString().slice(0, 10);
+        events.push({
+          id: `blackout-${b.id}-${dateStr}`,
+          lane: "availability",
+          kind: "blackout",
+          date: dateStr,
+          title: `${name} · ${reason}`,
+          href: hrefs.slots,
+        });
+      }
     }
 
     // ── inbound: bookings on my services, dated by their REAL schedule ───────────────────
@@ -321,8 +371,62 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
       });
     }
 
+    // ── ghost slots (3.3 Item 1.2): requested-but-uncovered windows ──────────────────────
+    // A "ghost" is a day the L6 rollup shows OPEN traveler demand in one of the caller's markets
+    // with NO bookable inventory — a slot they could open. It is NOT a booking and NOT their own
+    // listing's demand: it is MARKET-LEVEL and the copy says so ("N requested in Kyoto"), never
+    // "requested from you" (that would over-claim). Source is the SAME L6 read the Market Research
+    // page uses — extend, never a parallel demand path — floor-enforced (own_book) and R16-filtered
+    // there, so a below-floor day contributes no ghost (§13). No client math: the month-header
+    // aggregate is computed HERE and returned in `demand`.
+    let ghostRequested = 0;
+    const ghostDates = new Set<string>();
+    try {
+      const rollup = await readPartnerDemandRollup(userId, { from, to });
+      for (const r of rollup.rows) {
+        // MARKET-LEVEL requested slip cells only: a forward window (kind "requested"), floor-cleared
+        // (status "ok"), not a per-service/partner child (hero-not-sum), inside the calendar window.
+        if (
+          r.metric !== "unmet_demand_slip" ||
+          r.kind !== "requested" ||
+          r.status !== "ok" ||
+          r.serviceId != null ||
+          r.partnerId != null ||
+          r.date < from ||
+          r.date > to
+        ) {
+          continue;
+        }
+        const v = r.value as { count?: number } | null;
+        const count = v?.count ?? 0;
+        if (count <= 0) continue;
+        const marketName = getMarketByKey(r.marketSlug)?.cityName ?? r.marketSlug;
+        // R29: a thin (low-n) requested cell now clears the lowered enumerable floor — it still shows
+        // as a ghost, but the copy states the thinness ("early signal"), never as a full sample (§13).
+        const earlyTag = r.lowN ? " · early signal" : "";
+        events.push({
+          id: `ghost-${r.marketSlug}-${r.date}`,
+          lane: "availability",
+          kind: "ghost",
+          date: r.date,
+          // Honest market-level copy — "in <Market>", never "from you".
+          title: `${count} requested in ${marketName} · no open slot${earlyTag}`,
+          // Tap → the availability editor with this day as the window preselected.
+          href: `/provider/availability?date=${r.date}`,
+        });
+        ghostRequested += count;
+        ghostDates.add(r.date);
+      }
+    } catch (ghostErr) {
+      // Demand is ADDITIVE furniture — never let it fail the whole calendar (the base lanes above
+      // are the contract). Log and return the calendar without ghosts (§13 honest absence).
+      console.error("[Channel Calendar] ghost-slot demand read failed (non-fatal):", ghostErr);
+    }
+
     events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id.localeCompare(b.id)));
-    res.json({ events, from, to });
+    // `demand`: the month-header aggregate, computed server-side (no client math). uncoveredDays =
+    // distinct days carrying a ghost; requested = Σ requested count across them (both server-derived).
+    res.json({ events, from, to, demand: { requested: ghostRequested, uncoveredDays: ghostDates.size } });
   } catch (err) {
     console.error("[Channel Calendar] aggregate error:", err);
     res.status(500).json({ message: "Failed to load calendar" });
