@@ -507,14 +507,16 @@ async function main(): Promise<void> {
       const persona = PERSONAS.find((p) => p.key === form.personaKey);
       if (!userId || !persona) throw new Error(`Unable to resolve ${form.personaKey} after account upsert.`);
 
-      // There is no unique constraint on service_provider_forms.user_id. Resolve the
-      // same canonical row used by provider reads before inserting the fixed seed row,
-      // so a pre-existing application cannot be shadowed by a second row.
+       // Resolve the same current-over-history canonical row used by provider reads before
+       // inserting the fixed seed row, so retained rejected history cannot shadow a resubmission.
       const existing = await tx.execute(sql`
         SELECT id
         FROM service_provider_forms
         WHERE user_id = ${userId}
-        ORDER BY created_at ASC NULLS FIRST, id ASC
+         ORDER BY
+           CASE WHEN status IS NULL OR status NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END,
+           created_at ASC NULLS FIRST,
+           id ASC
         LIMIT 1
       `);
       const existingId = existing.rows[0]?.id;
@@ -664,7 +666,10 @@ async function main(): Promise<void> {
       SELECT *
       FROM service_provider_forms
       WHERE service_provider_forms.user_id = u.id
-      ORDER BY created_at ASC NULLS FIRST, id ASC
+       ORDER BY
+         CASE WHEN status IS NULL OR status NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END,
+         created_at ASC NULLS FIRST,
+         id ASC
       LIMIT 1
     ) spf ON true
     WHERE u.email IN (${sql.join(PROVIDER_FORMS.map((form) => {

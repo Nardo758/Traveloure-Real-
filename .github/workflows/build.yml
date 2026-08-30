@@ -63,7 +63,7 @@ jobs:
       # The ratchet detected the reduction and requires it to be locked in.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '155'
+          TSC_BASELINE: '143'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
