@@ -431,18 +431,18 @@ test('[Seam 2] Experience build: traveler item → expert workspace delivered �
 // Check A: GET /api/admin/revenue totalBookings strictly > baseline (seam source).
 // Check B: GET /api/admin/bookings includes completedBookingId with status="completed"
 //          (attribution link: admin console).
-// Check C: GET /api/expert/earnings earnings[] has entry with referenceId===bookingId
+// Check C: GET /api/expert/earnings/details earnings[] has entry with referenceId===bookingId
 //          (attribution link: expert/provider earings record).
 // Check D: GET /api/provider/earnings includes entry with sourceId===bookingId
 //          (attribution link: provider earnings record).
-// Check E: Parity: admin.totalGross >= expert summary.grossBookingTotal.
+// Check E: Parity: admin.totalGross >= expert summary.totalEarnings (expert share ≤ gross).
 // ══════════════════════════════════════════════════════════════════════════════
 test('[Seam 3] Money: booking created + completed → attribution in admin/expert/provider', async ({
   page,
 }) => {
   type AdminRevenue = { totalRevenue: number; totalGross: number; totalBookings: number; completedBookings: number };
   type ExpertEarnings = {
-    summary: { totalEarnings: number; grossBookingTotal: number; revenueShareRate: number };
+    summary: { totalEarnings: number; pendingEarnings: number; availableEarnings: number };
     earnings: Array<{ id: string | number; referenceId?: string | number; referenceType?: string; description?: string }>;
   };
 
@@ -576,7 +576,7 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
   });
 
   // ── Step 8: Expert earnings attribution — referenceId matches bookingId ───
-  await test.step('Provider-as-expert: GET /api/expert/earnings earnings[] must include entry with referenceId===bookingId', async () => {
+  await test.step('Provider-as-expert: GET /api/expert/earnings/details earnings[] must include entry with referenceId===bookingId', async () => {
     // PROVIDER-AS-EXPERT CONTRACT: When a service booking is completed, storage.updateServiceBookingStatus
     // creates an expert_earnings row with expertId=providerId (the provider's user_id).
     // Providers on this platform share the expert earnings ledger by design.
@@ -586,19 +586,15 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
     await loginAs(page, kyotoProvider.email, kyotoProvider.password);
 
     const bookingId = (page as any).__s3BookingId as string;
-    expertEarnings = await apiGet<ExpertEarnings>(page, '/api/expert/earnings');
+    expertEarnings = await apiGet<ExpertEarnings>(page, '/api/expert/earnings/details');
 
     expect(
       expertEarnings.summary,
-      '[Seam 3 BROKEN] GET /api/expert/earnings returned no summary object.'
+      '[Seam 3 BROKEN] GET /api/expert/earnings/details returned no summary object.'
     ).toBeDefined();
     expect(
-      typeof expertEarnings.summary.grossBookingTotal,
-      '[Seam 3 BROKEN] expert/earnings summary.grossBookingTotal is not a number.'
-    ).toBe('number');
-    expect(
-      typeof expertEarnings.summary.revenueShareRate,
-      '[Seam 3 BROKEN] expert/earnings summary.revenueShareRate is not a number.'
+      typeof expertEarnings.summary.totalEarnings,
+      '[Seam 3 BROKEN] expert/earnings/details summary.totalEarnings is not a number.'
     ).toBe('number');
 
     // Attribution check: the specific booking must appear in the earnings transaction list.
@@ -611,7 +607,7 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
 
     expect(
       earningForBooking,
-      `[Seam 3 BROKEN] GET /api/expert/earnings earnings[] has no entry with referenceId="${bookingId}". ` +
+      `[Seam 3 BROKEN] GET /api/expert/earnings/details earnings[] has no entry with referenceId="${bookingId}". ` +
         'The booking earnings attribution is missing from the expert/provider ledger — money seam is broken.'
     ).toBeDefined();
   });
@@ -650,13 +646,13 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
   // ledger endpoint — separate from the provider-as-expert contract in step 8.
   // kyotoExpert won't have an entry for this specific booking (the booking was for
   // kyotoProvider's service), but the endpoint must return a valid response for them.
-  await test.step('Expert (Aiko Yamamoto / kyoto-food): GET /api/expert/earnings returns a valid response', async () => {
+  await test.step('Expert (Aiko Yamamoto / kyoto-food): GET /api/expert/earnings/details returns a valid response', async () => {
     await logout(page).catch(() => null);
     await loginAs(page, kyotoExpert.email, kyotoExpert.password);
 
     type ExpertEarningRow = { id?: string | number; referenceId?: string | number; amount?: number };
     const expertLedger = await apiGet<ExpertEarningRow[] | { earnings?: ExpertEarningRow[] }>(
-      page, '/api/expert/earnings'
+      page, '/api/expert/earnings/details'
     );
 
     // The endpoint must return an array or an object with earnings field — not an error.
@@ -666,7 +662,7 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
 
     expect(
       expertEarningRows,
-      '[Seam 3 BROKEN] GET /api/expert/earnings returned non-array for kyotoExpert (Aiko Yamamoto). ' +
+      '[Seam 3 BROKEN] GET /api/expert/earnings/details returned non-array for kyotoExpert (Aiko Yamamoto). ' +
         'The expert earnings ledger endpoint is broken for the expert role.'
     ).toBeDefined();
 
@@ -713,12 +709,12 @@ test('[Seam 3] Money: booking created + completed → attribution in admin/exper
   });
 
   // ── Step 12: Parity check ─────────────────────────────────────────────────
-  await test.step('Parity: admin.totalGross must be >= expert summary.grossBookingTotal', async () => {
+  await test.step('Parity: admin.totalGross must be >= expert summary.totalEarnings', async () => {
     expect(
       adminRevenueAfter.totalGross,
-      `[Seam 3 BROKEN] admin totalGross (${adminRevenueAfter.totalGross}) < expert grossBookingTotal ` +
-        `(${expertEarnings.summary.grossBookingTotal}). Revenue attribution is inconsistent.`
-    ).toBeGreaterThanOrEqual(expertEarnings.summary.grossBookingTotal);
+      `[Seam 3 BROKEN] admin totalGross (${adminRevenueAfter.totalGross}) < expert totalEarnings ` +
+        `(${expertEarnings.summary.totalEarnings}). Revenue attribution is inconsistent.`
+    ).toBeGreaterThanOrEqual(expertEarnings.summary.totalEarnings);
   });
 });
 

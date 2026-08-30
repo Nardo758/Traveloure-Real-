@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics — Yuki's Offerings</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafaf8; color: #2d2d2d; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .header { margin-bottom: 2rem; }
+        .header h1 { font-size: 28px; margin-bottom: 1rem; }
+        .time-filter { display: flex; gap: 0.5rem; margin-bottom: 2rem; }
+        .filter-btn { padding: 0.5rem 1rem; border: 1px solid #e8e8e2; background: #fff; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .filter-btn.active { background: #c9a0a0; color: #fff; border-color: #c9a0a0; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .stat-card { background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; padding: 1.5rem; }
+        .stat-label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: #7a7a72; margin-bottom: 0.5rem; }
+        .stat-value { font-size: 36px; font-weight: 700; margin-bottom: 0.5rem; }
+        .stat-change { font-size: 13px; font-weight: 600; }
+        .stat-change.positive { color: #16a34a; }
+        .stat-change.negative { color: #dc2626; }
+        .section { margin-bottom: 2rem; }
+        .section-title { font-size: 18px; font-weight: 700; margin-bottom: 1rem; }
+        .chart-container { background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; position: relative; height: 350px; }
+        .table { width: 100%; background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; overflow: hidden; margin-bottom: 2rem; }
+        .table th { background: #fafaf8; padding: 1rem; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #7a7a72; border-bottom: 1px solid #e8e8e2; }
+        .table td { padding: 1rem; border-bottom: 1px solid #e8e8e2; font-size: 14px; }
+        .table tr:hover { background: #fafaf8; }
+        .table tr:last-child td { border-bottom: none; }
+        .badge { display: inline-block; padding: 0.35rem 0.75rem; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-yours { background: #dcfce7; color: #166534; }
+        .badge-platform { background: #dbeafe; color: #0c4a6e; }
+        .badge-repeat { background: #fca5a5; color: #7f1d1d; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
+        .insight-card { background: #fffaed; border-left: 4px solid #ffa500; border-radius: 4px; padding: 1.5rem; }
+        .insight-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 0.5rem; color: #663d00; }
+        .insight-card p { font-size: 13px; line-height: 1.6; color: #663d00; }
+        .trend-row { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid #e8e8e2; }
+        .trend-row:last-child { border-bottom: none; }
+        .trend-label { }
+        .trend-bar { flex: 1; margin: 0 1rem; height: 8px; background: #e8e8e2; border-radius: 4px; overflow: hidden; }
+        .trend-fill { height: 100%; background: #c9a0a0; }
+        .trend-value { font-weight: 600; text-align: right; min-width: 60px; }
+        .export-btn { padding: 0.75rem 1.5rem; background: #c9a0a0; color: #fff; border: none; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .export-btn:hover { background: #b8888e; }
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .time-filter { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Analytics</h1>
+            <p style="color: #7a7a72; font-size: 14px;">Track your link performance, bookings, and earnings</p>
+        </div>
+
+        <!-- Time Filter -->
+        <div class="time-filter">
+            <button class="filter-btn">Last 7 days</button>
+            <button class="filter-btn active">Last 30 days</button>
+            <button class="filter-btn">Last 90 days</button>
+            <button class="filter-btn">All time</button>
+            <div style="flex: 1;"></div>
+            <button class="export-btn">📥 Export Report</button>
+        </div>
+
+        <!-- Key Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Link Views</div>
+                <div class="stat-value">612</div>
+                <div class="stat-change positive">↑ 34% from last month</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Link Clicks</div>
+                <div class="stat-value">142</div>
+                <div class="stat-change positive">↑ 28% from last month</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Bookings (Your Link)</div>
+                <div class="stat-value">6</div>
+                <div class="stat-change negative">↓ 2 vs. last month</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Earnings</div>
+                <div class="stat-value">$312</div>
+                <div class="stat-change positive">↑ $85 new bookings</div>
+            </div>
+        </div>
+
+        <!-- Link Performance Chart -->
+        <div class="section">
+            <div class="section-title">Link Performance (Daily)</div>
+            <div class="chart-container">
+                <canvas id="linkChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Earnings Breakdown -->
+        <div class="grid-2">
+            <div class="section">
+                <div class="section-title">Earnings by Source</div>
+                <div class="chart-container">
+                    <canvas id="earningsChart"></canvas>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Earnings Breakdown (Last 30d)</div>
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td><strong>Via your link</strong></td>
+                            <td><span class="badge badge-yours">Your Booking</span></td>
+                            <td style="text-align: right; font-weight: 600;">$180</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Via Discover</strong></td>
+                            <td><span class="badge badge-platform">Platform</span></td>
+                            <td style="text-align: right; font-weight: 600;">$132</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Repeat bookings</strong></td>
+                            <td><span class="badge badge-repeat">2nd+ booking</span></td>
+                            <td style="text-align: right; font-weight: 600;">$0</td>
+                        </tr>
+                        <tr style="border-top: 2px solid #e8e8e2;">
+                            <td><strong>Total (Held)</strong></td>
+                            <td></td>
+                            <td style="text-align: right; font-weight: 700;">$312</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Insights -->
+        <div class="grid-2">
+            <div class="insight-card">
+                <h3>💡 Your Link is Working</h3>
+                <p>6 bookings came directly from your link this month. You're earning 8% commission vs. 25% through Discover—but you own the customer relationship. Keep sharing!</p>
+            </div>
+            <div class="insight-card">
+                <h3>⭐ Reviews Drive Shares</h3>
+                <p>Your 5★ reviews got 240 views this month. When you share a review card, your sharing link gets 3x more clicks. Share reviews 2x per week for best results.</p>
+            </div>
+        </div>
+
+        <!-- Top Offerings -->
+        <div class="section">
+            <div class="section-title">Performance by Offering</div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Link Clicks</th>
+                        <th>Bookings (Your Link)</th>
+                        <th>Bookings (Discover)</th>
+                        <th>Earnings</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Kyoto Flower Arrangement</strong></td>
+                        <td>89</td>
+                        <td>4</td>
+                        <td>6</td>
+                        <td>$312</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tea Ceremony Introduction</strong></td>
+                        <td>42</td>
+                        <td>2</td>
+                        <td>3</td>
+                        <td>$175</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Walking Tour (Draft)</strong></td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>$0</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Conversion Funnel -->
+        <div class="section">
+            <div class="section-title">Conversion Funnel (Your Link)</div>
+            <div style="background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; padding: 2rem;">
+                <div class="trend-row">
+                    <div class="trend-label"><strong>People saw your link</strong></div>
+                    <div class="trend-bar"><div class="trend-fill" style="width: 100%;"></div></div>
+                    <div class="trend-value">612</div>
+                </div>
+                <div class="trend-row">
+                    <div class="trend-label"><strong>People clicked to view</strong></div>
+                    <div class="trend-bar"><div class="trend-fill" style="width: 23%;"></div></div>
+                    <div class="trend-value">142 (23%)</div>
+                </div>
+                <div class="trend-row">
+                    <div class="trend-label"><strong>Completed booking</strong></div>
+                    <div class="trend-bar"><div class="trend-fill" style="width: 4%;"></div></div>
+                    <div class="trend-value">6 (4.2%)</div>
+                </div>
+                <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #e8e8e2; font-size: 13px; color: #7a7a72;">
+                    <strong>Conversion rate:</strong> 4.2% (industry average: 2–3%). Your link is performing above average! 🎉
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div style="margin-top: 2rem; background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; padding: 2rem;">
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 1rem;">📈 Next Steps to Grow</h3>
+            <ol style="margin-left: 1.5rem; line-height: 1.8; color: #4a4a4a; font-size: 14px;">
+                <li><strong>Increase link exposure.</strong> You got 612 views this month. Post 3–4x per week to reach 1,500+ views next month.</li>
+                <li><strong>Share your top review.</strong> Your 5★ reviews generate 3x more clicks. Create review-share cards and post them Tue/Thu/Sat.</li>
+                <li><strong>Target peak booking days.</strong> Most clicks happened Wed–Fri. Schedule posts for Tue evenings (Thu–Sat availability).</li>
+                <li><strong>Experiment with hashtags.</strong> Try location hashtags (#kyotoacommendations, #kyotothingstodo) to reach new audiences.</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // Link Performance Chart (views vs clicks over time)
+        const linkCtx = document.getElementById('linkChart').getContext('2d');
+        new Chart(linkCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jun 1', 'Jun 5', 'Jun 10', 'Jun 15', 'Jun 20', 'Jun 25', 'Jun 30'],
+                datasets: [
+                    {
+                        label: 'Link Views',
+                        data: [45, 52, 38, 71, 58, 80, 92],
+                        borderColor: '#c9a0a0',
+                        backgroundColor: 'rgba(201, 160, 160, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#c9a0a0',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5
+                    },
+                    {
+                        label: 'Link Clicks',
+                        data: [12, 18, 10, 24, 15, 28, 35],
+                        borderColor: '#2d7dd4',
+                        backgroundColor: 'rgba(45, 125, 212, 0.05)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#2d7dd4',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 5
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { font: { size: 13 }, usePointStyle: true }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#e8e8e2' }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+
+        // Earnings Chart (pie: your link vs platform)
+        const earningsCtx = document.getElementById('earningsChart').getContext('2d');
+        new Chart(earningsCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Your Link\n(8% commission)', 'Discover\n(25% commission)'],
+                datasets: [{
+                    data: [180, 132],
+                    backgroundColor: ['#c9a0a0', '#dbeafe'],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { font: { size: 12 }, usePointStyle: true, padding: 15 }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

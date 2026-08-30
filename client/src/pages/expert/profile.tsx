@@ -29,7 +29,6 @@ import {
   AlertCircle,
   Info,
   Briefcase,
-  ChevronRight,
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -37,9 +36,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+import { getRoleHomePath } from "@/lib/role-utils";
 
 const EXPERT_ROLE_LABELS: Record<string, string> = {
-  travel_expert: "Travel Advisor",
+  travel_expert: "Trip Planner",
+  // Intake-fixes C5 (latent-bug ruling): `trip_planner` is not a stored role — the trip
+  // planner IS `travel_expert` — but a literal that slips through (copy, imports, older
+  // rows) must render "Trip Planner", never fall to the generic "Expert".
+  trip_planner: "Trip Planner",
   local_expert: "Local Expert",
   event_planner: "Event Planner",
   executive_assistant: "Executive Assistant",
@@ -109,7 +113,9 @@ function ExpertOfferingTypesCard() {
             const price = formatCents(offering.base_price_cents);
             return (
               <div
-                key={offering.id}
+                // key on offering_type_key, not id — the list endpoint's rows don't carry
+                // an id field, so keying on it raised React's missing-key warning (P2-3).
+                key={offering.offering_type_key}
                 className="flex items-center justify-between gap-3 rounded-lg border p-3 bg-background"
                 data-testid={`row-offering-type-${offering.offering_type_key}`}
               >
@@ -133,13 +139,6 @@ function ExpertOfferingTypesCard() {
                     </p>
                   )}
                 </div>
-                <a
-                  href={`/expert/services?offeringTypeKey=${encodeURIComponent(offering.offering_type_key)}`}
-                  className="flex items-center gap-0.5 text-[11px] text-primary font-semibold whitespace-nowrap"
-                  data-testid={`link-manage-offering-${offering.offering_type_key}`}
-                >
-                  Manage <ChevronRight className="w-3 h-3" />
-                </a>
               </div>
             );
           })
@@ -149,13 +148,27 @@ function ExpertOfferingTypesCard() {
   );
 }
 
-export default function ExpertProfile() {
+// Console IA C8 (§17 17→9 collapse): this page is hosted as Settings' FIRST tab
+// (settings.tsx lazy-mounts it with embedded — the C6 analytics-in-performance pattern).
+// It has no internal ?tab= reading, so no param seam is needed; embedded only skips the
+// ExpertLayout wrap. /expert/profile redirects to /expert/settings?tab=profile.
+export default function ExpertProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [newSpecialty, setNewSpecialty] = useState("");
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>([]);
+  const [newLanguage, setNewLanguage] = useState("");
+  const [showLanguageInput, setShowLanguageInput] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [bio, setBio] = useState("");
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
   const [expertNotesStyle, setExpertNotesStyle] = useState("");
   const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
   const [newNeighborhood, setNewNeighborhood] = useState("");
@@ -175,10 +188,15 @@ export default function ExpertProfile() {
     queryKey: ["/api/expert/specializations"],
   });
 
-  // Update specialties when data loads
+  // Update specialties when data loads. GET /api/expert/specializations returns an
+  // array of {id, expertId, specialization} rows — map them to plain strings.
   React.useEffect(() => {
-    if (specializationData?.specializations) {
-      setSpecialties(specializationData.specializations);
+    if (Array.isArray(specializationData)) {
+      setSpecialties(
+        specializationData
+          .map((row: any) => (typeof row === "string" ? row : row?.specialization))
+          .filter(Boolean),
+      );
     } else {
       setSpecialties([]);
     }
@@ -186,12 +204,25 @@ export default function ExpertProfile() {
 
   // Update languages when data loads
   React.useEffect(() => {
-    if (expertProfile?.languages) {
-      setLanguages(expertProfile.languages);
+    const langs = (expertProfile as any)?.languages;
+    if (Array.isArray(langs)) {
+      setLanguages(langs);
     } else {
       setLanguages([]);
     }
   }, [expertProfile]);
+
+  // Sync editable profile fields from loaded profile/user
+  React.useEffect(() => {
+    const p = expertProfile as any;
+    setFirstName(p?.firstName ?? user?.firstName ?? "");
+    setLastName(p?.lastName ?? user?.lastName ?? "");
+    setDisplayName(p?.displayName || `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim());
+    setHeadline(p?.headline ?? "");
+    setBio(p?.bio ?? "");
+    setCity(p?.city ?? "");
+    setCountry(p?.country ?? "");
+  }, [expertProfile, user]);
 
   // Sync expertNotesStyle from loaded profile
   React.useEffect(() => {
@@ -218,10 +249,18 @@ export default function ExpertProfile() {
   const saveRoleMutation = useMutation({
     mutationFn: (expertType: string) =>
       apiRequest("PATCH", "/api/expert/role", { expertType }),
-    onSuccess: () => {
+    onSuccess: (_data, expertType) => {
       queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Role updated successfully" });
+      // Console-family change (e.g. → Executive Assistant): this page sits behind
+      // ProtectedRoute requiredRole="expert", which re-evaluates against the refetched
+      // role and would dead-end on "Access Denied". Navigate to the new role's console
+      // home instead of stranding the user (the reported role-switch console bug).
+      const newHome = getRoleHomePath(expertType);
+      if (newHome !== getRoleHomePath(user?.role ?? "user")) {
+        window.location.href = newHome;
+      }
     },
     onError: (error: any) => {
       let message = "Failed to update role";
@@ -272,29 +311,135 @@ export default function ExpertProfile() {
     setNeighborhoods(neighborhoods.filter((n) => n !== name));
   };
 
+  const saveProfileMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", "/api/expert/profile", {
+        firstName,
+        lastName,
+        displayName,
+        headline,
+        bio,
+        city,
+        country,
+        languages,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Profile saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save profile", variant: "destructive" });
+    },
+  });
+
+  const addSpecialtyMutation = useMutation({
+    mutationFn: (specialization: string) =>
+      apiRequest("POST", "/api/expert/specializations", { specialization }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to add specialty", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+    },
+  });
+
+  const removeSpecialtyMutation = useMutation({
+    mutationFn: (specialization: string) =>
+      apiRequest("DELETE", `/api/expert/specializations/${encodeURIComponent(specialization)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove specialty", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+    },
+  });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (imageData: string) =>
+      apiRequest("PATCH", "/api/expert/photo", { imageData }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+      toast({ title: "Profile photo updated" });
+    },
+    onError: (error: any) => {
+      let message = "Failed to upload photo";
+      try {
+        const raw: string = error?.message ?? "";
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart !== -1) {
+          const body = JSON.parse(raw.slice(jsonStart));
+          if (body?.message) message = body.message;
+        }
+      } catch {}
+      toast({ title: message, variant: "destructive" });
+    },
+  });
+
+  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const allowed = ["image/png", "image/jpeg"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Photo must be a PNG or JPEG image", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Photo must be smaller than 2 MB", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        uploadPhotoMutation.mutate(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddSpecialty = () => {
-    if (newSpecialty.trim() && !specialties.includes(newSpecialty.trim())) {
-      setSpecialties([...specialties, newSpecialty.trim()]);
+    const trimmed = newSpecialty.trim();
+    if (trimmed && !specialties.includes(trimmed)) {
+      setSpecialties([...specialties, trimmed]);
       setNewSpecialty("");
+      addSpecialtyMutation.mutate(trimmed);
     }
   };
 
   const handleRemoveSpecialty = (specialty: string) => {
     setSpecialties(specialties.filter((s) => s !== specialty));
+    removeSpecialtyMutation.mutate(specialty);
   };
 
-  return (
-    <ExpertLayout title="Profile">
-      <div className="p-6 space-y-6 max-w-4xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
-            <p className="text-console-mid">Manage your public profile and preferences</p>
-          </div>
-          <Button className="bg-[#FF385C] " data-testid="button-save-profile">
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
-          </Button>
+  const handleAddLanguage = () => {
+    const trimmed = newLanguage.trim();
+    if (trimmed && !languages.some((l) => l.toLowerCase() === trimmed.toLowerCase())) {
+      setLanguages([...languages, trimmed]);
+    }
+    setNewLanguage("");
+  };
+
+  const handleRemoveLanguage = (language: string) => {
+    setLanguages(languages.filter((l) => l !== language));
+  };
+
+  // C8: embedded, the host Settings page already provides the ExpertLayout shell —
+  // wrapping again would nest two BackofficeShells/sidebars (the C6 analytics seam).
+  // Embedded also drops this page's own p-6/max-w-4xl: Settings' tab container already
+  // carries both, and doubling them would over-inset the content.
+  const content = (
+      <div className={embedded ? "space-y-6" : "p-6 space-y-6 max-w-4xl"}>
+        <div>
+          <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
+          <p className="text-console-mid">Manage your public profile and preferences</p>
         </div>
 
         {/* Profile Photo */}
@@ -303,17 +448,27 @@ export default function ExpertProfile() {
             <CardTitle className="text-lg">Profile Photo</CardTitle>
           </CardHeader>
           <CardContent>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={handlePhotoSelected}
+              data-testid="input-photo-file"
+            />
             <div className="flex items-center gap-6">
               <div className="relative">
-                <Avatar className="w-24 h-24 border-4 border-[#FF385C]/20">
+                <Avatar className="w-24 h-24 border-4 border-primary/20">
                   <AvatarImage src={user?.profileImageUrl || undefined} />
-                  <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C] text-2xl font-medium">
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-medium">
                     {user?.firstName?.[0] || "E"}{user?.lastName?.[0] || "X"}
                   </AvatarFallback>
                 </Avatar>
                 <Button
                   size="icon"
-                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-[#FF385C] "
+                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-primary "
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
                   data-testid="button-change-photo"
                 >
                   <Camera className="w-4 h-4" />
@@ -321,10 +476,16 @@ export default function ExpertProfile() {
               </div>
               <div>
                 <p className="text-sm text-console-mid mb-2">
-                  Upload a professional photo that shows your face clearly
+                  Upload a professional photo that shows your face clearly (PNG or JPEG, max 2 MB)
                 </p>
-                <Button variant="outline" size="sm" data-testid="button-upload-photo">
-                  Upload New Photo
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
+                  data-testid="button-upload-photo"
+                >
+                  {uploadPhotoMutation.isPending ? "Uploading…" : "Upload New Photo"}
                 </Button>
               </div>
             </div>
@@ -342,7 +503,8 @@ export default function ExpertProfile() {
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
                   id="firstName"
-                  defaultValue={user?.firstName || ""}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                   data-testid="input-first-name"
                 />
               </div>
@@ -350,7 +512,8 @@ export default function ExpertProfile() {
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
                   id="lastName"
-                  defaultValue={user?.lastName || ""}
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                   data-testid="input-last-name"
                 />
               </div>
@@ -358,7 +521,7 @@ export default function ExpertProfile() {
 
             <div className="space-y-2 md:col-span-2">
               <Label className="flex items-center gap-1.5">
-                <BadgeCheck className="w-4 h-4 text-[#FF385C]" />
+                <BadgeCheck className="w-4 h-4 text-primary" />
                 Expert Role
               </Label>
               {profileLoading ? (
@@ -379,7 +542,7 @@ export default function ExpertProfile() {
                           <SelectValue placeholder="Select your role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="travel_expert">Travel Advisor</SelectItem>
+                          <SelectItem value="travel_expert">Trip Planner</SelectItem>
                           <SelectItem value="local_expert">
                             Local Expert{currentExpertType !== "local_expert" ? " (requires review)" : ""}
                           </SelectItem>
@@ -389,7 +552,7 @@ export default function ExpertProfile() {
                       </Select>
                       <Button
                         size="sm"
-                        className="bg-[#FF385C] shrink-0"
+                        className="bg-primary shrink-0"
                         onClick={() => saveRoleMutation.mutate(selectedRole)}
                         disabled={
                           saveRoleMutation.isPending ||
@@ -424,7 +587,8 @@ export default function ExpertProfile() {
               ) : (
                 <Input
                   id="displayName"
-                  defaultValue={expertProfile?.displayName || `${user?.firstName} ${user?.lastName}`.trim()}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="How clients will see your name"
                   data-testid="input-display-name"
                 />
@@ -438,7 +602,8 @@ export default function ExpertProfile() {
               ) : (
                 <Input
                   id="headline"
-                  defaultValue={expertProfile?.headline || ""}
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
                   placeholder="A short tagline about your expertise"
                   data-testid="input-headline"
                 />
@@ -453,11 +618,26 @@ export default function ExpertProfile() {
                 <Textarea
                   id="bio"
                   rows={4}
-                  defaultValue={expertProfile?.bio || ""}
+                  value={bio}
+                  maxLength={500}
+                  onChange={(e) => setBio(e.target.value)}
                   placeholder="Tell clients about yourself and your expertise"
                   data-testid="input-bio"
                 />
               )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={saveProfileMutation.isPending || profileLoading}
+                onClick={() => saveProfileMutation.mutate()}
+                data-testid="button-save-profile"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveProfileMutation.isPending ? "Saving…" : "Save Profile"}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -479,7 +659,8 @@ export default function ExpertProfile() {
                 ) : (
                   <Input
                     id="city"
-                    defaultValue={expertProfile?.city || ""}
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
                     data-testid="input-city"
                   />
                 )}
@@ -489,20 +670,28 @@ export default function ExpertProfile() {
                 {profileLoading ? (
                   <Skeleton className="h-10 rounded" />
                 ) : (
-                  <Select defaultValue={expertProfile?.country || ""}>
-                    <SelectTrigger data-testid="select-country">
-                      <SelectValue placeholder="Select country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="japan">Japan</SelectItem>
-                      <SelectItem value="usa">United States</SelectItem>
-                      <SelectItem value="uk">United Kingdom</SelectItem>
-                      <SelectItem value="france">France</SelectItem>
-                      <SelectItem value="italy">Italy</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    id="country"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    placeholder="e.g. Japan"
+                    data-testid="input-country"
+                  />
                 )}
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={saveProfileMutation.isPending || profileLoading}
+                onClick={() => saveProfileMutation.mutate()}
+                data-testid="button-save-location"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveProfileMutation.isPending ? "Saving…" : "Save Location"}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -600,7 +789,7 @@ export default function ExpertProfile() {
             <div className="flex justify-end">
               <Button
                 size="sm"
-                className="bg-[#FF385C] hover:bg-[#e0324f] text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 disabled={saveNeighborhoodsMutation.isPending || neighborhoodsLoading}
                 onClick={() => saveNeighborhoodsMutation.mutate()}
                 data-testid="button-save-neighbourhoods"
@@ -687,8 +876,21 @@ export default function ExpertProfile() {
               <div className="flex flex-wrap gap-2 mb-4">
                 {languages.length > 0 ? (
                   languages.map((language) => (
-                    <Badge key={language} variant="outline" className="py-1.5">
+                    <Badge
+                      key={language}
+                      variant="outline"
+                      className="py-1.5 pl-3 pr-1 flex items-center gap-1"
+                    >
                       {language}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => handleRemoveLanguage(language)}
+                        data-testid={`button-remove-language-${language}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
                     </Badge>
                   ))
                 ) : (
@@ -696,9 +898,42 @@ export default function ExpertProfile() {
                 )}
               </div>
             )}
-            <Button variant="outline" size="sm" data-testid="button-add-language">
-              <Plus className="w-4 h-4 mr-1" /> Add Language
-            </Button>
+            {showLanguageInput ? (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. English, Japanese…"
+                  value={newLanguage}
+                  onChange={(e) => setNewLanguage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddLanguage()}
+                  autoFocus
+                  data-testid="input-new-language"
+                />
+                <Button variant="outline" onClick={handleAddLanguage} data-testid="button-confirm-add-language">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLanguageInput(true)}
+                data-testid="button-add-language"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Add Language
+              </Button>
+            )}
+            <div className="flex justify-end mt-4">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={saveProfileMutation.isPending || profileLoading}
+                onClick={() => saveProfileMutation.mutate()}
+                data-testid="button-save-languages"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveProfileMutation.isPending ? "Saving…" : "Save Languages"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -775,6 +1010,8 @@ export default function ExpertProfile() {
           </CardContent>
         </Card>
       </div>
-    </ExpertLayout>
   );
+
+  if (embedded) return content;
+  return <ExpertLayout title="Profile">{content}</ExpertLayout>;
 }

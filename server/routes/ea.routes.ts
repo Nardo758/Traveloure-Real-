@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
+import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
@@ -35,9 +37,15 @@ const router = Router();
 // ── EA RBAC: every /api/ea/* route requires executive_assistant or admin role ──
 router.use("/api/ea", isEA);
 
+// Email/password sessions only carry `claims.sub` (no top-level `.id`) — every
+// handler in this file must resolve the acting EA user the same way.
+function getEaUserId(req: any): string {
+  return getUserId(req)!;
+}
+
 router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const rows = await db
         .select({
           id: eaClientRelationships.id,
@@ -71,7 +79,7 @@ router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { email, displayName, notes } = z.object({
         email: z.string().email(),
         displayName: z.string().optional(),
@@ -91,8 +99,8 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
         eaUserId,
         clientUserId: foundUser?.id ?? null,
         clientEmail: email,
-        displayName: displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email),
-        notes: notes ?? null,
+        displayName: sanitizeText(displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email)) as string,
+        notes: sanitizeText(notes ?? null),
       });
 
       res.status(201).json(created);
@@ -106,7 +114,7 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { id } = req.params;
       const updates = z.object({
         displayName: z.string().optional(),
@@ -121,7 +129,7 @@ router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
 
-      const updated = await updateEaClientRelationship(id, updates);
+      const updated = await updateEaClientRelationship(id, sanitizeStringFields(updates));
       res.json(updated);
     } catch (err) {
       console.error("[EA] updateClient error:", err);
@@ -133,7 +141,7 @@ router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { id } = req.params;
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
@@ -149,12 +157,14 @@ router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { id } = req.params;
-      const { title, message } = z.object({
+      const raw = z.object({
         title: z.string().min(1).max(255),
         message: z.string().min(1),
       }).parse(req.body);
+      const title = sanitizeText(raw.title) as string;
+      const message = sanitizeText(raw.message) as string;
 
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
@@ -184,7 +194,7 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaExecutives(eaUserId));
     } catch (err) {
       console.error("[EA] getExecutives error:", err);
@@ -195,8 +205,8 @@ router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaExecutiveSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      const body = sanitizeStringFields(insertEaExecutiveSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaExecutive(body));
     } catch (err) {
       console.error("[EA] createExecutive error:", err);
@@ -207,10 +217,10 @@ router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
-      res.json(await updateEaExecutive(req.params.id, req.body));
+      res.json(await updateEaExecutive(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateExecutive error:", err);
       res.status(500).json({ message: "Failed to update executive" });
@@ -220,7 +230,7 @@ router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
       await deleteEaExecutive(req.params.id);
@@ -238,7 +248,7 @@ router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaEvents(eaUserId));
     } catch (err) {
       console.error("[EA] getEvents error:", err);
@@ -249,8 +259,17 @@ router.get("/api/ea/events", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaEventSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      // `date` is a real `timestamp` column (dataType "date"): drizzle-zod's
+      // generated schema requires an actual Date instance, but JSON transport
+      // only ever carries a string — coerce here rather than relaxing the
+      // schema, so an invalid date is still rejected by z.date()'s NaN check.
+      const rawDate = req.body?.date;
+      const body = sanitizeStringFields(insertEaEventSchema.parse({
+        ...req.body,
+        eaUserId,
+        date: rawDate ? new Date(rawDate) : undefined,
+      }));
       res.status(201).json(await createEaEvent(body));
     } catch (err) {
       console.error("[EA] createEvent error:", err);
@@ -261,10 +280,10 @@ router.post("/api/ea/events", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaEventById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Event not found" });
-      res.json(await updateEaEvent(req.params.id, req.body));
+      res.json(await updateEaEvent(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateEvent error:", err);
       res.status(500).json({ message: "Failed to update event" });
@@ -274,7 +293,7 @@ router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaEvent(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -290,7 +309,7 @@ router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaTravelArrangements(eaUserId));
     } catch (err) {
       console.error("[EA] getTravel error:", err);
@@ -301,8 +320,8 @@ router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      const body = sanitizeStringFields(insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaTravelArrangement(body));
     } catch (err) {
       console.error("[EA] createTravel error:", err);
@@ -313,10 +332,10 @@ router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaTravelArrangementById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Travel arrangement not found" });
-      res.json(await updateEaTravelArrangement(req.params.id, req.body));
+      res.json(await updateEaTravelArrangement(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateTravel error:", err);
       res.status(500).json({ message: "Failed to update travel arrangement" });
@@ -326,7 +345,7 @@ router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaTravelArrangement(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -342,7 +361,7 @@ router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaGifts(eaUserId));
     } catch (err) {
       console.error("[EA] getGifts error:", err);
@@ -353,8 +372,8 @@ router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaGiftSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      const body = sanitizeStringFields(insertEaGiftSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaGift(body));
     } catch (err) {
       console.error("[EA] createGift error:", err);
@@ -365,10 +384,10 @@ router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaGiftById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Gift not found" });
-      res.json(await updateEaGift(req.params.id, req.body));
+      res.json(await updateEaGift(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateGift error:", err);
       res.status(500).json({ message: "Failed to update gift" });
@@ -378,7 +397,7 @@ router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaGift(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -394,7 +413,7 @@ router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaSavedVenues(eaUserId));
     } catch (err) {
       console.error("[EA] getVenues error:", err);
@@ -405,8 +424,8 @@ router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaSavedVenueSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      const body = sanitizeStringFields(insertEaSavedVenueSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaSavedVenue(body));
     } catch (err) {
       console.error("[EA] createVenue error:", err);
@@ -417,10 +436,10 @@ router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaSavedVenueById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Venue not found" });
-      res.json(await updateEaSavedVenue(req.params.id, req.body));
+      res.json(await updateEaSavedVenue(req.params.id, sanitizeStringFields(req.body)));
     } catch (err) {
       console.error("[EA] updateVenue error:", err);
       res.status(500).json({ message: "Failed to update venue" });
@@ -430,7 +449,7 @@ router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaSavedVenue(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -446,7 +465,7 @@ router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaCommunications(eaUserId));
     } catch (err) {
       console.error("[EA] getCommunications error:", err);
@@ -457,8 +476,8 @@ router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaCommunicationSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      const body = sanitizeStringFields(insertEaCommunicationSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaCommunication(body));
     } catch (err) {
       console.error("[EA] createCommunication error:", err);
@@ -469,7 +488,7 @@ router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaCommunication(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -485,7 +504,7 @@ router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) =>
 
 router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const { status } = req.query;
       res.json(await getEaAiTasks(eaUserId, status as string | undefined));
     } catch (err) {
@@ -497,8 +516,8 @@ router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
-      const body = insertEaAiTaskSchema.parse({ ...req.body, eaUserId });
+      const eaUserId = getEaUserId(req);
+      const body = sanitizeStringFields(insertEaAiTaskSchema.parse({ ...req.body, eaUserId }));
       res.status(201).json(await createEaAiTask(body));
     } catch (err) {
       console.error("[EA] createAiTask error:", err);
@@ -509,10 +528,10 @@ router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaAiTaskById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "AI task not found" });
-      const updates: Record<string, any> = { ...req.body };
+      const updates: Record<string, any> = sanitizeStringFields({ ...req.body });
       if (req.body.status === "approved") updates.approvedAt = new Date();
       if (req.body.status === "rejected") updates.rejectedAt = new Date();
       res.json(await updateEaAiTask(req.params.id, updates));
@@ -525,12 +544,112 @@ router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaAiTask(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
       console.error("[EA] deleteAiTask error:", err);
       res.status(500).json({ message: "Failed to delete AI task" });
+    }
+  });
+
+  // ============================================================
+  // EA PREFERENCES (Profile + Settings pages)
+  // ============================================================
+  // No schema change: `users.preferences` is an existing generic jsonb column
+  // (migration 150). Stored under a dedicated `ea` sub-key so this never collides
+  // with the unrelated `.settings` namespace the generic /api/me/preferences
+  // endpoint (storefront.routes.ts) reads/writes for traveler-facing Settings.
+  // §14: acting user from session only. PATCH is a strict zod allow-list of
+  // exactly the fields the Profile/Settings pages render — never raw req.body —
+  // and shallow-merges into `preferences.ea` so unrelated jsonb keys survive.
+
+const eaPreferencesPatchSchema = z.object({
+  contact: z.object({
+    phone: z.string().max(50).optional(),
+    jobTitle: z.string().max(150).optional(),
+    timezone: z.string().max(100).optional(),
+  }).strict().optional(),
+  notifications: z.object({
+    urgentEventAlerts: z.boolean().optional(),
+    aiTaskCompletions: z.boolean().optional(),
+    calendarReminders: z.boolean().optional(),
+    executiveUpdates: z.boolean().optional(),
+    weeklySummaryEmails: z.boolean().optional(),
+  }).strict().optional(),
+  ai: z.object({
+    autoDelegateRoutineTasks: z.boolean().optional(),
+    aiDraftCommunications: z.boolean().optional(),
+    smartCalendarSuggestions: z.boolean().optional(),
+    proactiveTravelRecommendations: z.boolean().optional(),
+    giftReminders: z.boolean().optional(),
+  }).strict().optional(),
+  display: z.object({
+    showExecutivePhotos: z.boolean().optional(),
+    compactViewMode: z.boolean().optional(),
+    showCalendarWeekNumbers: z.boolean().optional(),
+    twentyFourHourTime: z.boolean().optional(),
+  }).strict().optional(),
+  calendar: z.object({
+    weekStartsOn: z.enum(["sunday", "monday"]).optional(),
+    workingHoursStart: z.number().int().min(0).max(23).optional(),
+    workingHoursEnd: z.number().int().min(1).max(24).optional(),
+  }).strict().optional(),
+}).strict();
+
+router.get("/api/ea/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = getEaUserId(req);
+      const [row] = await db
+        .select({ preferences: users.preferences })
+        .from(users)
+        .where(eq(users.id, eaUserId))
+        .limit(1);
+      const ea = ((row?.preferences as any) ?? {}).ea ?? {};
+      res.json(ea);
+    } catch (err) {
+      console.error("[EA] getPreferences error:", err);
+      res.status(500).json({ message: "Failed to fetch preferences" });
+    }
+  });
+
+
+router.patch("/api/ea/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = getEaUserId(req);
+      const parsed = eaPreferencesPatchSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+      }
+
+      const [row] = await db
+        .select({ preferences: users.preferences })
+        .from(users)
+        .where(eq(users.id, eaUserId))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "User not found" });
+
+      const current = (row.preferences as any) ?? {};
+      const currentEa = current.ea ?? {};
+      const patch = parsed.data;
+      const nextEa = {
+        ...currentEa,
+        ...(patch.contact ? { contact: { ...currentEa.contact, ...patch.contact } } : {}),
+        ...(patch.notifications ? { notifications: { ...currentEa.notifications, ...patch.notifications } } : {}),
+        ...(patch.ai ? { ai: { ...currentEa.ai, ...patch.ai } } : {}),
+        ...(patch.display ? { display: { ...currentEa.display, ...patch.display } } : {}),
+        ...(patch.calendar ? { calendar: { ...currentEa.calendar, ...patch.calendar } } : {}),
+      };
+
+      await db
+        .update(users)
+        .set({ preferences: { ...current, ea: nextEa } })
+        .where(eq(users.id, eaUserId));
+
+      res.json(nextEa);
+    } catch (err) {
+      console.error("[EA] updatePreferences error:", err);
+      res.status(500).json({ message: "Failed to update preferences" });
     }
   });
 

@@ -36,11 +36,17 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
+  adminRoutesConfig,
+  eaRoutesConfig,
+  expertRoutesConfig,
   getExpertRouteHrefs,
   getProviderRouteHrefs,
   getAdminRouteHrefs,
   getEARouteHrefs,
+  providerRoutesConfig,
 } from '../../client/src/lib/role-routes-config';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
@@ -53,6 +59,55 @@ const EXPERT_ROLES = ['expert', 'local_expert', 'travel_expert', 'event_planner'
 const PROVIDER_ROLES = ['service_provider'];
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
+
+type RegistryRole = 'expert' | 'provider' | 'executive_assistant' | 'admin';
+
+const ROUTE_CONFIG_BY_ROLE: Record<RegistryRole, { href: string }[]> = {
+  expert: expertRoutesConfig,
+  provider: providerRoutesConfig,
+  executive_assistant: eaRoutesConfig,
+  admin: adminRoutesConfig,
+};
+
+function getStaticGuardedRoutesFromApp(): Map<RegistryRole, string[]> {
+  const appPath = fileURLToPath(new URL('../../client/src/App.tsx', import.meta.url));
+  const appSource = readFileSync(appPath, 'utf8');
+  const routes = new Map<RegistryRole, string[]>();
+  const routeBlockPattern = /<Route\s+path="([^"]+)"[^>]*>([\s\S]*?)<\/Route>/g;
+
+  for (const match of appSource.matchAll(routeBlockPattern)) {
+    const [, href, routeBody] = match;
+    if (href.includes(':')) continue;
+
+    const roleMatch = routeBody.match(
+      /<ProtectedRoute\b[^>]*\brequiredRole="(expert|provider|executive_assistant|admin)"/,
+    );
+    if (!roleMatch) continue;
+
+    const role = roleMatch[1] as RegistryRole;
+    routes.set(role, [...(routes.get(role) ?? []), href]);
+  }
+
+  return routes;
+}
+
+test('every static guarded App route is registered for authenticated smoke coverage', () => {
+  const guardedRoutes = getStaticGuardedRoutesFromApp();
+  const missingByRole: string[] = [];
+
+  for (const [role, hrefs] of guardedRoutes) {
+    const registered = new Set(ROUTE_CONFIG_BY_ROLE[role].map(({ href }) => href));
+    const missing = hrefs.filter((href) => !registered.has(href));
+    if (missing.length > 0) {
+      missingByRole.push(`${role}: ${missing.join(', ')}`);
+    }
+  }
+
+  expect(
+    missingByRole,
+    'Static role-gated routes in App.tsx must be listed in role-routes-config.ts',
+  ).toEqual([]);
+});
 
 async function assertMeaningfulContent(
   page: import('@playwright/test').Page,
@@ -366,5 +421,32 @@ test.describe('Auth smoke — admin routes (admin role)', () => {
       await smokeRoute(page, href);
     });
   }
+
+  // ── Regression guard: deprecated /admin/fee-config must redirect ──────────
+  // The old fee-config page was removed and replaced with a <Redirect> in
+  // App.tsx. This assertion ensures a future route refactor or accidental
+  // re-import cannot silently restore the broken form.
+  test('/admin/fee-config redirects to /admin/fee-bands', async ({ page }) => {
+    test.skip(
+      !adminSessionOk,
+      'Admin session not authenticated — skipped in local dev (throws in CI)',
+    );
+
+    await page.goto(`${BASE_URL}/admin/fee-config`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30_000,
+    });
+
+    await expect(page, 'Expected /admin/fee-config to redirect to /admin/fee-bands').toHaveURL(
+      /\/admin\/fee-bands$/,
+      { timeout: 10_000 },
+    );
+
+    // Also confirm the fee-bands page surface actually loaded — not just a URL match.
+    await expect(
+      page.locator('[data-testid="heading-fee-bands"]'),
+      'Expected the fee-bands heading to be visible after redirect',
+    ).toBeVisible({ timeout: 10_000 });
+  });
 });
 

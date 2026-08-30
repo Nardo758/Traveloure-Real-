@@ -1,5 +1,6 @@
-import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, Plane, MessageCircle, Info, Calendar } from "lucide-react";
+import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
 import { Link } from "wouter";
+import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 
 /**
  * Shared city card — one component behind every "city" surface (Discover trending
@@ -22,6 +23,13 @@ export interface CityCardExperience {
 
 export interface CityCardProps {
   variant: "pulse" | "season";
+  /**
+   * Landing-build lane (Lane-3's filed gap, ruled to land here): "compact" renders the
+   * mock's small momentum tile — swatch/photo + trend pill + name + one meta line —
+   * instead of the full card. ADDITIVE: omitted/"full" preserves every existing caller
+   * byte-for-byte.
+   */
+  density?: "full" | "compact";
   cityName: string;
   country: string;
   imageUrl?: string | null;
@@ -63,6 +71,7 @@ export interface CityCardProps {
   onAsk?: () => void;
   experiences?: CityCardExperience[];
   onCardClick?: () => void;
+  primaryTestId?: string;
   testId?: string;
 }
 
@@ -79,8 +88,56 @@ export function CityCard(props: CityCardProps) {
     alertCount, inTrip, highlight, bestTime, temp, vibeTags = [], avgPrice, priceChangePct,
     crowdLevel, dealAlert, trendingSpots, hiddenGems, eventsCount = 0, packagesCount = 0,
     expertsCount = 0, primaryLabel, onPrimary, secondaryLabel, onSecondary, onAsk,
-    experiences = [], onCardClick, testId,
+    experiences = [], onCardClick, primaryTestId, testId,
   } = props;
+
+  // Compact momentum tile (density="compact") — the mock's `.ct`: swatch/photo with a
+  // trend pill, city name, one honest meta line. Score/crowd/experts render only when
+  // present (§13); everything else of the full card is deliberately absent.
+  if (props.density === "compact") {
+    const compactMeta = [
+      crowdLevel ? `${crowdLevel} crowd` : null,
+      expertsCount > 0 ? `${expertsCount} ${expertsCount === 1 ? "expert" : "experts"}` : null,
+    ].filter(Boolean);
+    return (
+      <div
+        onClick={onCardClick}
+        role={onCardClick ? "button" : undefined}
+        tabIndex={onCardClick ? 0 : undefined}
+        onKeyDown={onCardClick ? (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCardClick(); }
+        } : undefined}
+        aria-label={onCardClick ? `View ${cityName}` : undefined}
+        className={`group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-[12px] ${onCardClick ? "cursor-pointer" : ""}`}
+        data-testid={testId}
+      >
+        <div
+          className="relative h-24 overflow-hidden rounded-[12px]"
+          style={imageUrl ? undefined : { background: "linear-gradient(135deg,#B9C8D8,#7C97B4)" }}
+        >
+          {imageUrl && (
+            <img
+              src={optimizeUnsplashUrl(imageUrl, { w: 480 })}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          )}
+          {typeof score === "number" && score > 0 && (
+            <span className="absolute left-2 top-2 rounded-[6px] bg-white px-[7px] py-[3px] font-mono text-[10px] font-semibold text-[var(--earn-ink)]">
+              Trend {score}
+            </span>
+          )}
+        </div>
+        <h4 className="mt-2 text-[14px] font-semibold text-[var(--earn-ink)]">{cityName}</h4>
+        {compactMeta.length > 0 && (
+          <div className="font-mono text-[10.5px] text-[var(--earn-muted)]">
+            {compactMeta.join(" · ")}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const priceDown = typeof priceChangePct === "number" && priceChangePct < 0;
   const countSegments = [
@@ -88,6 +145,9 @@ export function CityCard(props: CityCardProps) {
     packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "trip" : "trips"}` : null,
     expertsCount > 0 ? `🧭 ${expertsCount} ${expertsCount === 1 ? "expert" : "experts"}` : null,
   ].filter(Boolean) as string[];
+  const expertHref = expertsCount > 0
+    ? `/experts?role=local_expert&destination=${encodeURIComponent(cityName)}`
+    : "/experts?role=travel_expert";
 
   return (
     <div
@@ -105,7 +165,9 @@ export function CityCard(props: CityCardProps) {
       <div className="relative h-40 w-full overflow-hidden group">
         {imageUrl ? (
           <img
-            src={imageUrl}
+            src={optimizeUnsplashUrl(imageUrl, { q: 60 })}
+            {...unsplashResponsiveProps(imageUrl, { q: 60 })}
+            loading="lazy"
             alt={cityName}
             className="w-full h-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-105"
           />
@@ -135,9 +197,7 @@ export function CityCard(props: CityCardProps) {
           ) : (
             trendLabel && <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold">☀️ {trendLabel}</span>
           )}
-          {typeof activeTravelers === "number" && activeTravelers > 0 && (
-            <span className="px-2 py-0.5 rounded-md bg-white/90 text-gray-700 text-[11px] font-medium flex items-center gap-1 tabular-nums"><Users className="w-3 h-3" />{activeTravelers.toLocaleString()}</span>
-          )}
+          {/* activeTravelers count suppressed per R3 — no absolute visitor count on traveler surfaces */}
           {typeof alertCount === "number" && alertCount > 0 && (
             <span className="px-2 py-0.5 rounded-md bg-[var(--earn-coral-ink)] text-white text-[11px] font-medium flex items-center gap-1 tabular-nums"><Bell className="w-3 h-3" />{alertCount}</span>
           )}
@@ -210,12 +270,24 @@ export function CityCard(props: CityCardProps) {
         )}
 
         {/* experience quick-links (§12 revenue entry) */}
+        <div className="mt-2.5 border-t border-[color:var(--earn-border)] pt-2.5">
+          <Link
+            href={expertHref}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] font-semibold text-[var(--earn-teal-ink)] hover:underline"
+            data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
+          >
+            {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+            {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
+          </Link>
+        </div>
+
         {experiences.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
             {experiences.slice(0, 3).map((ex) => (
               <Link key={ex.href} href={ex.href} onClick={(e) => e.stopPropagation()}>
                 <span className="text-[11px] font-semibold text-[var(--earn-teal-ink)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 rounded-full inline-flex items-center gap-1 cursor-pointer hover:brightness-95">
-                  <Plane className="w-3 h-3" />{ex.label}
+                  <Sparkles className="w-3 h-3" />{ex.label}
                 </span>
               </Link>
             ))}
@@ -229,9 +301,9 @@ export function CityCard(props: CityCardProps) {
             type="button"
             onClick={(e) => { e.stopPropagation(); onPrimary?.(); }}
             className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-primary bg-primary/15 hover:bg-primary/25 rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
-            data-testid={testId ? `${testId}-primary` : undefined}
+            data-testid={primaryTestId || (testId ? `${testId}-primary` : undefined)}
           >
-            {variant === "pulse" ? <Plane className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+            <MapPin className="w-4 h-4" />
             {primaryLabel}
           </button>
           {secondaryLabel && onSecondary && (

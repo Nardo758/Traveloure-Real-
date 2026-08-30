@@ -1,0 +1,145 @@
+name: Fidelity Pixel Gate
+
+# Partner Demand · STEP 3.7 Part B — VISUAL regression guard for the provider
+# Market Research surface (A4 deltas: Fraunces headline, hero gold-wash band,
+# ±90-day scrubber, early-signal tag, window row links).
+#
+# ┌─ Frozen on Leon's fidelity sign-off (B4 step 4) ───────────────────────────┐
+# │ The spec renders HERMETICALLY — a frozen clock + the mocked $240/n=3 R29    │
+# │ payload — so the baseline is deterministic and never drifts with the        │
+# │ calendar (these surfaces render live dates). It compares regions with       │
+# │ toHaveScreenshot() against the *-linux baselines committed under            │
+# │ playwright/tests/market-research-fidelity.spec.ts-snapshots/.               │
+# │                                                                            │
+# │ Playwright baselines are platform-specific, so they are generated ON THIS   │
+# │ ubuntu-latest runner and committed from here — run the workflow via         │
+# │ `workflow_dispatch` with `update_baselines: true` to (re)freeze them.       │
+# │ Normal push/PR runs are the guard: they compare and fail on drift.          │
+# └────────────────────────────────────────────────────────────────────────────┘
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [lane/partner-demand-fidelity]
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: 'Regenerate and commit the baseline screenshots (freeze/refreeze)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: fidelity-pixel-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # to push regenerated baselines on the update_baselines dispatch
+
+jobs:
+  fidelity:
+    name: fidelity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert spec file exists (market-research-fidelity)
+        # Guard: if the spec is renamed or deleted, Playwright silently reports
+        # "0 passed" and exits 0 — letting the gate go green with no comparison.
+        run: |
+          if [ ! -f "playwright/tests/market-research-fidelity.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/market-research-fidelity.spec.ts"
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Start Vite dev server
+        # Hermetic render: the spec mocks every /api/** call, so no backend or
+        # database is needed — only the SPA served by Vite.
+        run: npx vite --port 5173 --host 127.0.0.1 &
+
+      - name: Wait for Vite
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5173/ >/dev/null; then
+              echo "Vite ready ✅"; exit 0
+            fi
+            echo "attempt $i/30: waiting for Vite..."; sleep 2
+          done
+          echo "::error::Vite did not become ready"; exit 1
+
+      # ── Freeze / refreeze path (manual dispatch only) ─────────────────────
+      - name: Regenerate baselines
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baselines }}
+        run: npx playwright test market-research-fidelity --project=chromium --update-snapshots
+        env:
+          BASE_URL: http://127.0.0.1:5173
+          CI: 'true'
+
+      - name: Commit baselines
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baselines }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add playwright/tests/market-research-fidelity.spec.ts-snapshots
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+          else
+            git commit -m "Partner Demand 3.7: freeze fidelity pixel baselines (CI-generated)" \
+                       -m "Generated on ubuntu-latest via the update_baselines dispatch. [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+            echo "Baselines committed and pushed ✅"
+          fi
+
+      # ── Guard path (push / PR — compare against committed baselines) ──────
+      - name: Check baselines are frozen
+        id: baselines
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_baselines) }}
+        run: |
+          if ls playwright/tests/market-research-fidelity.spec.ts-snapshots/*.png >/dev/null 2>&1; then
+            echo "frozen=true" >> "$GITHUB_OUTPUT"
+            echo "Baselines present — guard active."
+          else
+            echo "frozen=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Baselines not yet frozen. Run this workflow via workflow_dispatch with update_baselines=true to freeze them. Skipping compare (informational pass)."
+          fi
+
+      - name: Compare against baselines
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_baselines) && steps.baselines.outputs.frozen == 'true' }}
+        run: npx playwright test market-research-fidelity --project=chromium
+        env:
+          BASE_URL: http://127.0.0.1:5173
+          CI: 'true'
+
+      - name: Upload Playwright report + diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fidelity-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

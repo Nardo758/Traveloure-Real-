@@ -40,6 +40,7 @@ interface UnsplashSearchResponse {
 export interface UnsplashMediaResult {
   source: 'unsplash';
   mediaType: 'photo';
+  photoId: string; // Unsplash's own photo id — the stable attribution key
   url: string;
   thumbnailUrl: string;
   width: number;
@@ -65,6 +66,16 @@ class UnsplashService {
       }
     }
     return this.accessKey;
+  }
+
+  /**
+   * True only when UNSPLASH_ACCESS_KEY is configured. Callers MUST use this to tell
+   * "not configured" apart from "no photos matched" — `searchPhotos` swallows both into
+   * an empty array, and rendering an empty picker as "no results" would misreport an
+   * unconfigured integration as a real answer (§13: never present absence as data).
+   */
+  isReady(): boolean {
+    return !!(this.accessKey || process.env.UNSPLASH_ACCESS_KEY);
   }
 
   private async request<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
@@ -160,6 +171,7 @@ class UnsplashService {
     return {
       source: 'unsplash',
       mediaType: 'photo',
+      photoId: photo.id,
       url: photo.urls.regular, // 1080px width, good balance of quality/size
       thumbnailUrl: photo.urls.small, // 400px width
       width: photo.width,

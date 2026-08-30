@@ -30,6 +30,14 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
+### Preview and deployment source of truth
+
+- **Never touch `artifacts/` for the production application.** The production client is `client/src`; both the preview and deployment must serve `client/src`.
+- The root Vite configuration builds `client/` into `dist/public`, and the Replit deployment target runs the root `npm run build` followed by `npm start`.
+- **HARD STOP means no Git commit.** Keep edits in the working tree until Leon explicitly says “commit.”
+- Replit auto-commit is disabled; if a commit appears that no one authorized, stop and report.
+- All pushes happen from Claude Code after review, and `origin/main` is the only truth.
+
 ### UI/UX Decisions
 The application uses a modern, responsive design built with React, Tailwind CSS, shadcn/ui for consistent components, and Framer Motion for smooth transitions. The primary color scheme is `#FF385C` with a gray-900 palette for admin interfaces and amber accents. Dashboards are role-specific (Provider, Admin, Executive Assistant) with distinct layouts and collapsible sidebars.
 
@@ -37,6 +45,7 @@ The application uses a modern, responsive design built with React, Tailwind CSS,
 - **Frontend**: React 18, TypeScript, Wouter for routing, TanStack Query for server state management, and Vite.
 - **Backend**: Node.js and Express with TypeScript, implementing RESTful APIs with Zod for validation and type safety.
 - **Authentication**: Three methods — Email/password (scrypt hashing in `emailAuth.ts`), Replit Auth with OIDC (`replitAuth.ts`), and Facebook/Instagram OAuth (`facebookAuth.ts`). All use Passport.js with PostgreSQL session store. DB columns: `password` (varchar 255), `auth_provider` (varchar 20, default 'email'), `email_verified` (timestamp).
+- **DECISION (Aug 2026) — Clerk migration abandoned; Passport is the permanent auth system.** A Clerk migration was started (a Replit-managed Clerk tenant was provisioned, which is why `CLERK_SECRET_KEY` / `CLERK_PUBLISHABLE_KEY` / `VITE_CLERK_PUBLISHABLE_KEY` exist in secrets) but **no Clerk code was ever written and none should be assumed to exist**. The CLERK_* secrets are inert and managed by the Replit Auth pane — they cannot be deleted programmatically and re-sync from the managed tenant; they must be ignored. Do NOT remove Passport, `passport-facebook`, or any of the three auth flows on the premise that Clerk is (or should be) live. Any future Clerk migration requires an explicit new decision plus migration of all three flows.
 - **Data Storage**: PostgreSQL with Drizzle ORM for schema management.
 - **API Structure**: Declarative API definitions using HTTP methods, paths, and Zod schemas.
 - **Storage Abstraction**: A server-side abstraction layer provides flexible database operations.

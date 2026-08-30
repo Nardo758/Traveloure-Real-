@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, time, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -9,6 +9,13 @@ export * from "./models/auth";
 export * from "./models/chat";
 
 // === Enums ===
+// §13 (CLAUDE.md): DEAD FIELD — trips.status (below) is write-once at creation (born draft/
+// planning depending on the create path) and no code path ever advances it to confirmed/
+// completed/cancelled. DO NOT READ this column for trip phase/lifecycle — every renderer derives
+// phase from startDate/endDate vs now instead (see client/src/pages/my-trips.tsx). DO NOT WRITE
+// new transitions into it either — see docs/briefs/L3-trips-status-brief.md (Option B, ratified
+// Jul 31, 2026) for the full record and the named future owner (the Phase 4 convert-to-ready-made
+// brief) if a real trip lifecycle is ever needed.
 export const tripStatusEnum = ["draft", "planning", "confirmed", "completed", "cancelled"] as const;
 export const expertAdvisorStatusEnum = ["pending", "accepted", "rejected"] as const;
 export const itineraryStatusEnum = ["pending", "generated", "failed"] as const;
@@ -30,6 +37,20 @@ export const temporalAnchorTypeEnum = [
 export const energyTypeEnum = ["physical", "mental", "social", "mixed"] as const;
 export const peakTimingEnum = ["morning", "afternoon", "evening", "night", "flexible"] as const;
 export const attendanceRequirementEnum = ["all", "subset", "optional"] as const;
+
+// Per-item routing state (migration 159; Trip-Canon Lane 1 W1, docs/briefs/ROUTING_STATE_CONTRACT.md).
+// Exclusive per item, mixed per trip. The canonical value set lives HERE, not in a DB CHECK — the
+// column is a plain varchar (the pre-109 delivery-method posture) so the publish-time drizzle push
+// has no CHECK to enforce against un-remapped rows. Transitions are contract-gated in code.
+export const ROUTING_STATUSES = ["in_planning", "with_expert", "ready_for_checkout", "purchased"] as const;
+export type RoutingStatus = (typeof ROUTING_STATUSES)[number];
+
+// Plan-approval handshake on trip_expert_advisors (migration 164; QA_PUNCH_LIST W2-A, item 13
+// ratified Aug 1 2026). NULL = no decision yet (the honest pre-feature/pre-delivery state). Same
+// pre-109 posture as ROUTING_STATUSES above: plain varchar, canonical set lives HERE not in a DB
+// CHECK, so the publish-time drizzle push has no CHECK to enforce against un-remapped rows.
+export const PLAN_APPROVAL_STATUSES = ["approved", "changes_requested"] as const;
+export type PlanApprovalStatus = (typeof PLAN_APPROVAL_STATUSES)[number];
 
 // === Tables ===
 
@@ -70,10 +91,21 @@ export const trips = pgTable("trips", {
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   destination: varchar("destination", { length: 255 }).notNull(),
+  // §13: DEAD FIELD — write-once at creation, nothing ever advances it past its born draft/
+  // planning value. DO NOT READ for trip phase (derive from startDate/endDate vs now instead —
+  // see client/src/pages/my-trips.tsx); DO NOT add new writers. See tripStatusEnum above and
+  // docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
-  numberOfTravelers: integer("number_of_travelers").default(1),
-  adults: integer("adults").default(2),
-  kids: integer("kids").default(0),
+  // Partner Demand Data lane 2A.3 / R8 (ledger 2026-08-17-partner-demand-phase0-rulings R8):
+  // party-size DE-MASKING. These previously defaulted 1/2/0 at THREE layers (DB, ORM here, and
+  // insertTripSchema's zod default), so a trip created without party-size info was indistinguishable
+  // from a real party of 2 — the rollup could never tell "unknown" from "two adults" (§13). The
+  // ORM defaults are dropped here, the DB defaults by migration 241, and the zod defaults become
+  // `.optional()`; an unspecified party size is now honestly NULL. Existing readers already guard
+  // (`?? 1` / `|| 1`); the demand rollup treats NULL as "not captured", never as a count.
+  numberOfTravelers: integer("number_of_travelers"),
+  adults: integer("adults"),
+  kids: integer("kids"),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   preferences: jsonb("preferences").default({}),
   eventDetails: jsonb("event_details").default({}),
@@ -81,7 +113,12 @@ export const trips = pgTable("trips", {
   travelers: integer("travelers"),
   specialRequests: text("special_requests"),
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  // PRIVATE Workstation build notes (PATCH /api/trips/:id/expert-notes) — never delivered to the
+  // traveler. The traveler-facing trip-level note is expertTravelerNote below (§21) — never merge.
   expertNotes: text("expert_notes"),
+  // Traveler-facing trip-level "Expert Notes" (§21, migration 187) — one delivery note shown at
+  // the top of the delivered plan ("from your expert").
+  expertTravelerNote: text("expert_traveler_note"),
   expertModifiedAt: timestamp("expert_modified_at"),
   // Master Integration Brief — Phase 3.
   // primaryExpertId: neighborhood-lead expert assigned to this trip. Distinct
@@ -98,9 +135,39 @@ export const trips = pgTable("trips", {
   // userId remains the traveler; managedByEaId is the EA running the show.
   managedByEaId: varchar("managed_by_ea_id").references(() => users.id, { onDelete: "set null" }),
   eaClientRelationshipId: varchar("ea_client_relationship_id"),
+  // Ready-made authoring mode (migration 133): the expert who AUTHORS this trip as a speculative
+  // ready-made listing. Authoring trips have userId = NULL (traveler-surface exclusion by
+  // construction) + authorId = the expert. NULL for every normal traveler trip. Auth path:
+  // assignment OR (authorId IS NOT NULL AND authorId === caller) — never via getTripRole.
+  authorId: varchar("author_id").references(() => users.id, { onDelete: "set null" }),
+  // Console Realign R-F (migration 173): NULL = never finalized (born state, no backfill). Set by
+  // POST /api/trips/:tripId/finalize, cleared by POST /api/trips/:tripId/reopen. NOT a revival of
+  // the dead `status` field above — a narrow rendering-handover signal consumed only by
+  // shared/trip-primary-surface.ts's `tripCardIsPrimary` OR-branch, never a lifecycle/status value.
+  finalizedAt: timestamp("finalized_at"),
+  // Partner Demand Data lane 2A.3 / R8 (migration 241, additive-nullable, declared here per the
+  // publish-trap rule; no DB CHECK — house posture). CAPTURE-FORWARD (R11): both are written at
+  // trip creation going forward and NEVER backfilled from a guess.
+  //   originMarket — the traveler's stated origin (free text as captured; normalization is a later
+  //     concern). NULL = the flow did not ask / the traveler did not answer (§13), never a default.
+  //   marketSlug — the DESTINATION resolved to one of the 8 operating-market slugs
+  //     (server/services/trend-engine/operating-markets.ts marketKey) at write time, or NULL when
+  //     the free-text destination resolves to none of them (R13's unmapped_destination bucket — an
+  //     honest "outside the 8", never forced onto a market). The demand rollup derives market from
+  //     THIS column, and item_transition_log rows derive theirs via trip_id → this column (R15/L6).
+  originMarket: varchar("origin_market", { length: 100 }),
+  marketSlug: varchar("market_slug", { length: 40 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Migration 133: partial index used by ready-made trip authoring queries (author_id IS NOT NULL).
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_trips_author_id").on(table.authorId).where(sql`author_id IS NOT NULL`),
+  // 2A.3 (migration 241): the demand rollup groups trips by market_slug. Declared here so the
+  // deploy push keeps it (publish-trap rule). Partial — NULL rows (R13 unmapped bucket) are
+  // counted separately and don't need the index.
+  index("idx_trips_market_slug").on(table.marketSlug).where(sql`market_slug IS NOT NULL`),
+]);
 
 export const generatedItineraries = pgTable("generated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -122,6 +189,12 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
+  // Plan-approval handshake (migration 164). NULL = no customer decision yet. Set only once the
+  // advisor row is `delivered` (server-enforced at the decision endpoint, not here). See
+  // PLAN_APPROVAL_STATUSES above for the canonical value set.
+  planApprovalStatus: varchar("plan_approval_status", { length: 20 }),
+  planApprovedAt: timestamp("plan_approved_at"),
+  planReviewNote: text("plan_review_note"),
 }, (table) => ({
   uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
 }));
@@ -143,6 +216,23 @@ export const tripSuggestions = pgTable("trip_suggestions", {
 
 export type TripSuggestion = typeof tripSuggestions.$inferSelect;
 export type InsertTripSuggestion = typeof tripSuggestions.$inferInsert;
+
+// === Per-item plan comments (migration 165, QA_PUNCH_LIST W3-C item 12) ===
+// The communication half of the delivery loop: "can we do this earlier?" lives on the item,
+// not in detached chat. Declared here (deploy-push durability rule) even though the FK targets
+// (trips/itineraryItems/users) are declared elsewhere in this file — the `() => x.id` callback
+// form Drizzle uses for references is resolved lazily, so declaration order doesn't matter.
+export const tripItemComments = pgTable("trip_item_comments", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  itemId: varchar("item_id").notNull().references(() => itineraryItems.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type TripItemComment = typeof tripItemComments.$inferSelect;
+export type InsertTripItemComment = typeof tripItemComments.$inferInsert;
 
 export const reviewRatings = pgTable("review_ratings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -332,6 +422,9 @@ export const localExpertForms = pgTable("local_expert_forms", {
   phone: varchar("phone", { length: 50 }),
   country: varchar("country", { length: 100 }),
   city: varchar("city", { length: 100 }),
+  // Public-facing display fields (migration 204) — edited from the expert profile editor.
+  displayName: varchar("display_name", { length: 100 }),
+  headline: varchar("headline", { length: 150 }),
   // Expertise
   destinations: jsonb("destinations").default([]),
   specialties: jsonb("specialties").default([]),
@@ -357,7 +450,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
   // Availability
   availability: varchar("availability", { length: 50 }),
   responseTime: varchar("response_time", { length: 50 }),
-  hourlyRate: varchar("hourly_rate", { length: 50 }),
+  hourlyRate: varchar("hourly_rate", { length: 50 }), // money-derive-ok: a free-text DISPLAY string the applicant writes about themselves (seeded values look like "$80-150/hour"), not a fraction and not a platform take. No server code reads it into any fee, amount or payout decision — verified repo-wide (ruling 42 class sweep). Name-matched by the rate-bearing guard; adjudicated not-a-rate.
   // Legacy fields (keeping for compatibility)
   yearsInCity: integer("years_in_city").default(0),
   offerService: boolean("offer_service").default(false),
@@ -429,6 +522,11 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   mobile: varchar("mobile", { length: 50 }).notNull(),
   whatsapp: varchar("whatsapp", { length: 50 }),
   country: varchar("country", { length: 100 }).notNull(),
+  // Intake-fixes C4 (migration 261, ratified Aug 27 2026): the discrete city the provider
+  // intake already collects (previously concatenated into `address` and lost). Nullable —
+  // NULL renders as no location line on the storefront (§13), never a guessed city. Read by
+  // resolveEarnerLocation's provider fallback (storefront.routes.ts).
+  city: varchar("city", { length: 100 }),
   address: text("address").notNull(),
   bookingLink: text("booking_link"),
   gst: varchar("gst", { length: 100 }),
@@ -467,8 +565,27 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   // never asked (pre-108 rows), distinct from an explicit false. The FEE-2
   // brief's admin-validated insurance_tier evidence columns will sit beside it.
   hasInsurance: boolean("has_insurance"),
+  // Account-level office / place-of-business location (DECISIONS.md ruling 85, migration 207).
+  // { address, lat, lng } — the provider's confirmed business location, captured via the SAME
+  // confirm-gated LocationPointPicker the per-listing meeting pin uses (address typed OR pin
+  // dropped; geocoded through the ONE server path POST /api/geocode; persisted ONLY on explicit
+  // Confirm). PURPOSE: pre-fill a NEW listing's meeting pin so the provider does not re-place it
+  // every time (still overridable/removable per listing). NULL = "office location not set" — the
+  // honest §13 default; NEVER backfilled with a guessed/city-centre coordinate. This is provider-
+  // owned CONFIG, not a money/identity/rate field (§14/§18/§19 do not apply — nothing derives a
+  // charge from it); written owner-gated via PATCH /api/provider-application through a hand-written
+  // zod ALLOWLIST (no new .omit() schema — #PS18 ratchet untouched). Additive-nullable jsonb,
+  // declared here per the publish-trap rule (deploy-push would drop an undeclared column).
+  officeLocation: jsonb("office_location"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Rejected/deleted/deactivated rows are retained as review/account history. The current
+  // application is the only row that must be unique per provider; the migration creates the
+  // same partial index after deterministically removing only duplicate current rows.
+  uniqueIndex("service_provider_forms_one_current_per_user_uniq")
+    .on(table.userId)
+    .where(sql`${table.status} IS NULL OR ${table.status} NOT IN ('rejected', 'deleted', 'deactivated')`),
+]);
 
 // === Service Categories ===
 
@@ -497,14 +614,31 @@ export const serviceCategories = pgTable("service_categories", {
   categoryKey: varchar("category_key", { length: 100 }),                    // brief's join key; unique when non-null
   sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
   launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
-  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
+  // money-derive-ok: this SELECTS a fee_bands row rather than carrying a rate, and its setter is
+  // ADMIN by design — that is the fee-band admin surface, not a client path. All three parse sites
+  // of insertServiceCategorySchema are admin-gated (admin.routes.ts under the blanket requireAdmin;
+  // content.routes.ts:807 behind an explicit DB role check). Ruling 42's rule is that a rate-bearing
+  // field is never CLIENT-settable; an authenticated admin editing bands is the intended path.
+  // FILED (ruling-42 class sweep, #PS14 — NOT fixed here, it is fee taxonomy and owes a doc-first
+  // decision per Coordination Prevention): the two admin setters DIVERGE. admin.routes.ts:2218-2245
+  // rejects a commissionBandKey that matches no fee_bands row and refuses to clear it unless
+  // platform_settings.default_commission_band_key is set and active; content.routes.ts:807 parses
+  // the same schema on CREATE with no band validation at all, so a category can be born pointing at
+  // a band that does not exist.
+  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only) — money-derive-ok: see the note above (admin-by-design setter)
   insuranceBand: integer("insurance_band"),                                 // 1 | 2 | 3 (platform_provider only)
   riskProfile: varchar("risk_profile", { length: 20 }),                     // 'low' | 'moderate' | 'high'
   requiresBackgroundCheck: boolean("requires_background_check").default(false),
   affiliatePartnerKey: varchar("affiliate_partner_key", { length: 50 }),    // populated only when sourceType='affiliate'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 032. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim —
+  // category_key is nullable for categories that predate the Phase-1 key column.
+  categoryKeyIdx: uniqueIndex("idx_service_categories_category_key")
+    .on(table.categoryKey)
+    .where(sql`category_key IS NOT NULL`),
+}));
 
 export const serviceSubcategories = pgTable("service_subcategories", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -527,6 +661,92 @@ export const serviceTypeEnum = ["consultation", "planning", "action", "concierge
 // (video-call, document, in-person) until the Phase-1d approved remap runs.
 export const deliveryMethodEnum = ["pdf", "video", "call", "in_person", "voice_notes", "async_messaging", "hybrid"] as const;
 export const serviceStatusEnum = ["active", "paused", "draft"] as const;
+// X1 (§13 hardcoded-copy arm) — structured cancellation-policy TYPE vocabulary. Column is varchar
+// with no DB CHECK (migration 144: app-enforced, like deliveryMethodEnum pre-109); NULL = the owner
+// hasn't declared a policy type (the honest state — never a fabricated blanket claim).
+export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
+// Deposit CONFIG vocabulary (Lane 7, ruling 72). App-enforced (no DB CHECK): 'percentage' collects
+// depositPercentage% of the line total now; 'flat' collects depositFlatAmount dollars now.
+export const depositTypeEnum = ["percentage", "flat"] as const;
+export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
+  // Concrete windows mirror the server enforcement schedule in
+  // server/services/cancellation-policy.service.ts (refundPercentFor).
+  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
+  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
+  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
+  non_refundable: "Non-refundable — no refund once booked",
+};
+
+// ── D7 service-logistics vocabularies (docs/DECISIONS.md ruling 62, migration 195) ───────────
+// Both columns are varchar with NO DB CHECK — the migration-144 posture (app-enforced
+// vocabulary, publish-trap avoidance). NULL is the honest "never captured" state on every
+// pre-195 row; it is NEVER read as "not applicable".
+//
+// `transportProvision` is FINER-GRAINED than the pre-existing `transportProvided`
+// (yes|no|not_applicable, migration 119, which DOES carry a DB CHECK). The two are deliberately
+// NOT merged: widening 119's CHECK to a 4-value set is exactly the publish-time CHECK failure
+// CLAUDE.md warns about, and the old column's answer ("do you drive them once you've met?") is a
+// different question from this one ("how does the traveler get to the start?").
+export const transportProvisionEnum = [
+  "pickup_included",   // the price includes collecting the traveler
+  "pickup_available",  // pickup can be arranged (possibly for extra), but is not the default
+  "meet_at_point",     // the traveler makes their own way to the meeting pin
+  "not_applicable",    // remote/artifact delivery — no physical arrival at all
+] as const;
+
+// The ruling-62 AMENDMENT (decision-maker, verbatim intent: "ensure the service provider can set
+// EITHER a pickup RADIUS or a pickup ROUTE"). This column records WHICH of two ALREADY-SHIPPED
+// stores the provider means their pickup coverage to be read from:
+//   radius → `provider_services.service_radius` (the display-only ring around the confirmed pin)
+//   route  → `service_route_points` (ruling 22, migration 192 — ordered stops)
+// NEVER-CLOBBER RULE (§13): declaring one mode does not delete, null, or overwrite the other
+// mode's data. Both stores keep whatever they hold; only the RENDERING is switched, and the
+// authoring UI states out loud that the other mode's saved data is still there.
+export const pickupCoverageModeEnum = ["radius", "route"] as const;
+
+// Per-listing booking affordance (Catalog+Distribute ruling 74/75, lane C3). The provider's own
+// display choice for the traveler card's CTA — NOT a money/identity/rate field (§14/§18/§19 do not
+// apply: nothing here multiplies a charge, selects a fee band, or identifies an actor), so it is an
+// ordinary owner-authored listing pref that is legitimately client-settable, like `price`/
+// `serviceRadius`. App-enforced vocabulary in insertProviderServiceSchema, NO DB CHECK (migration
+// 144/195/202 publish-trap posture). NULL on the column = "unset" → the read-time default is DERIVED
+// from the account's existing `service_provider_forms.instantBooking` (never duplicated here) via
+// `resolveBookingMode` below.
+export const bookingModeEnum = ["instant", "request", "hidden"] as const;
+export type BookingMode = (typeof bookingModeEnum)[number];
+
+// ── Travel surcharge — PROVIDER-CHOSEN MODE per listing (DECISIONS.md ruling 81, lane B1,
+//    migration 205). A §14 MONEY lane: the mode + config are ordinary owner-authored LISTING config
+//    (like `serviceRadius`/deposit config — client-settable, no fee_bands involvement, §8), but the
+//    resulting CHARGE is SERVER-DERIVED at checkout from the mode + config + the traveler's CONFIRMED
+//    pickup location, NEVER off req.body. NO DB CHECK on the mode column (the migration-144/195/202
+//    publish-trap posture — the vocabulary is enforced by insertProviderServiceSchema's field-level
+//    extend so it survives `.partial()`). The FOUR modes:
+//   none    — DEFAULT (every pre-205 row; column DEFAULTs 'none'). No surcharge, ever. §13.
+//   flat    — one flat fee when the pickup is OUTSIDE the coverage radius (binary in/out — honest
+//             containment, NO computed distance shown). Config: `surchargeFlatAmount`.
+//   zones   — provider-drawn base area + N ordered tiers (each a distance ring + a fee, child rows in
+//             `service_surcharge_tiers`); the pickup maps to the SMALLEST ring that CONTAINS it (0 if
+//             inside the base). Honest containment — no computed distance shown.
+//   per_km  — provider rate × the STRAIGHT-LINE ("as-the-crow-flies, not driving") km from the pin.
+//             Config: `surchargePerKm`. §13 — labeled straight-line, never a driving time/distance.
+// NEVER-CLOBBER (ruling 62 posture): switching the mode changes only what applies/renders; the other
+// modes' config (flat amount, per-km rate, tiers) is preserved, never nulled.
+export const surchargeModeEnum = ["none", "flat", "zones", "per_km"] as const;
+export type SurchargeMode = (typeof surchargeModeEnum)[number];
+
+// The ONE place the null-default is resolved (ruling 75). Called SERVER-SIDE on every card read
+// (the public storefront read and the owner Catalog read) so the traveler card always receives a
+// CONCRETE booking mode: an explicit per-listing value wins; an unset (null) listing inherits the
+// account flag — instant if the provider offers instant booking, request otherwise. `hidden` is only
+// ever an explicit per-listing choice, never a derived default.
+export function resolveBookingMode(
+  stored: string | null | undefined,
+  accountInstantBooking: boolean | null | undefined,
+): BookingMode {
+  if (stored === "instant" || stored === "request" || stored === "hidden") return stored;
+  return accountInstantBooking ? "instant" : "request";
+}
 
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -549,6 +769,13 @@ export const providerServices = pgTable("provider_services", {
   // Delivery
   deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // canonical: deliveryMethodEnum — DB CHECK enforced since migration 109
   deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
+  // SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): the language(s) the service is
+  // DELIVERED in — a purchasable attribute in the launch market, and a thing providers previously
+  // could not state at all. Typed to match `local_expert_forms.languages` (jsonb string array)
+  // rather than inventing a shape. DELIBERATELY no default: NULL = never captured (render NOTHING,
+  // never a presumed "English" — §13), `[]` = deliberately cleared. This is NOT ruling 60's chrome
+  // (A) or content (B) translation; it is the third question those two do not ask.
+  deliveryLanguages: jsonb("delivery_languages").$type<string[]>(),
   revisionsIncluded: integer("revisions_included").default(0),
   includesExpertNotes: boolean("includes_expert_notes").default(false),
   
@@ -563,9 +790,209 @@ export const providerServices = pgTable("provider_services", {
   pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
   pickupAddress: text("pickup_address"), // Starting pickup location
   serviceRadius: integer("service_radius"), // km radius provider covers
+  // SS-4 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): how far the provider travels
+  // TO COLLECT a traveler — a genuinely different number from `serviceRadius` above ("how far I
+  // travel to work"). Until this column existed, the wizard rendered BOTH labels and wrote BOTH
+  // into `service_radius`, so typing one changed the other. NEVER-CLOBBER: `serviceRadius` keeps
+  // its stored value with no backfill, and NULL here means "not set" — never 0, never a copy (§13).
+  pickupRadiusKm: integer("pickup_radius_km"),
+  // Does the provider transport the traveler during/from the meeting point?
+  // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
+  // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
+  transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
+  // ══ Gap #13's last two rows (ledger 2026-08-16-bring-access, migration 228) ═══════════════════
+  // The ratified mock's traveler read-out draws nine rows; seven had columns and render (lane M3).
+  // These two did not exist anywhere, so the flow never asked and nothing could render them — the
+  // INVERSE of the class T-REP audited (collected-and-never-read became drawn-and-never-collected).
+  // Free text in the HOST'S OWN WORDS. `accessNotes` is deliberately NOT a checklist of certified
+  // attributes and NOT the traveler-side `trip_participants.accessibility_needs`/`mobility_level`
+  // (a different person's answer): no accessibility STANDARD is claimed on the host's behalf, which
+  // the traveler surface states out loud. Additive-nullable, NO DB CHECK (migration-181/195
+  // posture — publish-trap avoidance). NULL = never answered ⇒ the row is OMITTED everywhere (§13),
+  // never rendered as "nothing to bring" or "no access notes", which are claims only a host can make.
+  whatToBring: text("what_to_bring"),
+  accessNotes: text("access_notes"),
+
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
+  // with no prior home: meetingPoint/pickupAddress cover arrival, nothing structurally captured
+  // departure. Additive nullable, no DB CHECK. NULL = never captured (§13, not "no drop-off").
+  dropOffPoint: text("drop_off_point"),
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
-  
+
+  // ══ D7 service_logistics capture (docs/DECISIONS.md ruling 62, migration 195) ═══════════════
+  // CAPTURE-ONLY by ruling: nothing here has a consumer yet (no transport resolver, no
+  // fundamentals check, no pricing/matching read). Every column is additive-nullable with NO DB
+  // CHECK — NULL means "the provider never told us", never a fabricated default (§13).
+  //
+  // AUDIT — what this block deliberately REUSES instead of duplicating (ruling 62 asked for a
+  // field set; these members of it already exist on this table and are NOT re-added):
+  //   lead-time hours          → `leadTimeHours` above (integer, default 24)
+  //   pickup radius            → `serviceRadius` above (integer km; the amendment's radius arm)
+  //   pickup route             → `service_route_points` (ruling 22, migration 192)
+  //   meeting point / pickup / drop-off → `meetingPoint`, `pickupAvailable`, `pickupAddress`,
+  //                              `dropOffPoint`
+  //   concurrency cap          → `maxConcurrentBookings` above
+  //   turnaround copy          → `deliveryTimeframe` above (free text; NOT a duration — see below)
+  //   confirmed pin            → `latitude`/`longitude`/`locationPrecision` above
+  //   per-group vs per-person  → `priceType` above already carries `per_person` alongside
+  //                              `fixed`/`per_event` (per-group), so the group-handling flag
+  //                              ruling 62 listed IS already expressible — no new column.
+  //   cancellation refund tiers → `cancellationPolicyType` (a REFUND policy; distinct from the
+  //                              reschedule window captured by `changeCutoffHours` below)
+  transportProvision: varchar("transport_provision", { length: 30 }), // transportProvisionEnum
+  pickupCoverageMode: varchar("pickup_coverage_mode", { length: 20 }), // pickupCoverageModeEnum
+  // Temporal shape. `deliveryTimeframe` is free-text turnaround copy ("24-48 hours") and can't be
+  // arithmetic'd, so a structured duration genuinely had no home on this table (the
+  // `duration_minutes` that exists elsewhere is on `itinerary_items`, a different row entirely).
+  durationMinutes: integer("duration_minutes"),
+  bufferMinutes: integer("buffer_minutes"), // setup//teardown minutes to keep free around a booking
+  earliestStartTime: varchar("earliest_start_time", { length: 5 }), // "HH:MM", local wall clock
+  latestStartTime: varchar("latest_start_time", { length: 5 }),     // "HH:MM", local wall clock
+  serviceTimezone: varchar("service_timezone", { length: 64 }),     // IANA id, e.g. "Asia/Tokyo"
+  // Booking constraints.
+  partySizeMin: integer("party_size_min"),
+  partySizeMax: integer("party_size_max"),
+  // Capacity-step "Seating" (migration 239). App-enforced 'private'|'shared' (no DB CHECK —
+  // migration-181/195/228 posture, avoids the publish-time CHECK trap); NULL = never answered ⇒
+  // OMITTED on the traveler surface (§13), never rendered as a guessed default. Owner-authored
+  // descriptive content (no amount/identity/rate/grant), so §19's strip does not apply.
+  seating: varchar("seating", { length: 16 }),
+  changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
+
+  // ══ S9 session/async fields (docs/DECISIONS.md ledger row 102, migration 212) ════════════════
+  // Ratifies docs/briefs/WAVE3_SCHEMA_PROPOSALS.md's S9 section (execution-map Wave 3, Gate G3).
+  // Additive nullable, no DB CHECK (app-enforced shape floors in insertProviderServiceSchema,
+  // the migration-195/181 posture). NULL = never captured (§13), never a default claim.
+  //
+  // `joinLink` is a SENSITIVE field — unlike the free-text logistics fields around it, it is NOT
+  // safe to read on any public/pre-booking surface. It is the provider's OWN meeting link for a
+  // scheduled remote session (call/video — shared/service-fundamentals.ts SESSION_END_METHODS)
+  // and is stripped everywhere `serviceFile` (the D3 pdf-deliverable precedent) is stripped, then
+  // revealed ONLY to the CONFIRMED traveler + the owning provider — mirroring the
+  // `GET /api/service-bookings/:id/deliverable` gate (booking.travelerId === session user AND
+  // booking.status === 'confirmed', never 'payment_pending', §15b). A PENDING advisor's read
+  // grant (§12) does NOT extend to this field (ballot ruling, ledger row 102 S9).
+  joinLink: text("join_link"),
+  // `responseWindowHours`/`scopeStatement` are async (async_messaging/voice_notes) fields: the
+  // promised response time and an SLA/promise statement distinct from `whatIncluded` (marketing
+  // copy). Both are ordinary public pre-purchase info (like earliestStartTime/serviceTimezone
+  // above) — DESCRIPTIVE ONLY. Neither feeds shared/service-fundamentals.ts's completionRuleFor
+  // (unchanged — async_messaging/voice_notes already route to 'provider_declared') or
+  // server/services/booking-completion.service.ts, which this lane does not touch.
+  responseWindowHours: integer("response_window_hours"),
+  scopeStatement: text("scope_statement"),
+
+  // ══ Deposits / partial payments — CONFIG (Lane 7, docs/DECISIONS.md ruling 72, migration 200) ══
+  // PROVIDER OPT-IN PER LISTING: no listing takes a deposit unless `depositEnabled` is on and a
+  // percentage OR a flat amount is set. These are ordinary owner-authored LISTING facts, like
+  // `price`/`serviceRadius` beside them — the provider's OWN business config on their OWN listing,
+  // read server-side at checkout to derive the amount-due-now (§14). They are NOT a platform
+  // fee/commission rate (§8/§18 do not apply: nothing here multiplies a platform take or selects a
+  // fee band), and are named so the fee gate cannot misread them. All additive-nullable, app-layer
+  // vocabulary in insertProviderServiceSchema, no DB CHECK (publish-trap posture).
+  depositEnabled: boolean("deposit_enabled").default(false),
+  depositType: varchar("deposit_type", { length: 20 }),          // depositTypeEnum: 'percentage' | 'flat'
+  depositPercentage: integer("deposit_percentage"),               // e.g. 30 = collect 30% of the line total now
+  depositFlatAmount: decimal("deposit_flat_amount", { precision: 10, scale: 2 }), // flat dollars collected now
+
+  // ══ Per-listing card display options (Catalog+Distribute ruling 74/75, lane C3, migration 202) ══
+  // The provider's own "Card shows" choices, rendered on the shared traveler OfferingCard in Catalog
+  // Preview AND on the public storefront. DISPLAY PREFS, not §14/§18/§19 fields — no amount, identity
+  // or rate — so they are legitimately client-settable (owner-gated on POST/PATCH like `price`) and
+  // are NOT stripped. `showPrice` DEFAULTs true so every row is concrete without a backfill: false ⇒
+  // the card hides the price and shows an honest "Enquire for pricing" affordance (allowed for ALL
+  // services, ruling 74 res. A — never a blank or a fake "$0", §13). `bookingMode` is nullable (app-
+  // enforced bookingModeEnum, NO DB CHECK — publish-trap posture): NULL = unset ⇒ resolved at read
+  // time from the account `service_provider_forms.instantBooking` by `resolveBookingMode`.
+  showPrice: boolean("show_price").default(true),
+  bookingMode: varchar("booking_mode", { length: 20 }), // bookingModeEnum: 'instant' | 'request' | 'hidden'
+
+  // Can this service serve as a day's fixed point? Mirrors the `itinerary_items`/`temporal_anchors`
+  // anchor vocabulary. CAPTURE ONLY — no scheduler reads it yet.
+  canAnchor: boolean("can_anchor"),
+
+  // ══ Travel surcharge — CONFIG (ruling 81, lane B1, migration 205) — §14 money lane ══════════════
+  // Provider-chosen `surchargeMode` (surchargeModeEnum none|flat|zones|per_km, app-enforced in
+  // insertProviderServiceSchema, NO DB CHECK — publish-trap posture) + the config the chosen mode
+  // needs. These are owner-authored LISTING config (no fee_bands, §8), NOT §18 rates: nothing here
+  // multiplies a platform take or selects a fee band, so they are legitimately client-settable (like
+  // `serviceRadius`/deposit config) and NOT stripped. But the resulting CHARGE is derived SERVER-SIDE
+  // at checkout from these + the traveler's confirmed pickup (server/services/travel-surcharge.service.ts),
+  // never from req.body (§14). NEVER-CLOBBER (ruling 62): switching the mode preserves the other
+  // modes' config. All additive-nullable, no DB CHECK. Column named `surcharge_flat_amount`/
+  // `surcharge_per_km` (not a bare `amount`/`rate`) so the fee gate cannot misread them — the same
+  // naming care the deposit config uses. `surchargeMaxKm` doubles as BOOKING ELIGIBILITY: a confirmed
+  // pickup beyond it cannot book (refused BEFORE any charge). Declared here per the publish-trap rule.
+  surchargeMode: varchar("surcharge_mode", { length: 20 }).default("none"), // surchargeModeEnum
+  surchargeFlatAmount: decimal("surcharge_flat_amount", { precision: 10, scale: 2 }), // flat mode: dollars added when pickup is outside the radius
+  surchargePerKm: decimal("surcharge_per_km", { precision: 10, scale: 2 }),           // per_km mode: dollars per straight-line km from the pin
+  surchargeMaxKm: integer("surcharge_max_km"),                                        // outer bound / booking-eligibility ceiling ("won't travel beyond X km")
+
+  // Product Builder shape (§17, migrations 151+153) — NULL = single service (every pre-151
+  // row), 'bundle' = a bundle row whose components live in bundle_components, 'property' = an
+  // accommodation listing, 'property_room' = a bookable room-type child of a property.
+  // Additive nullable, app-layer values, no DB CHECK (the migration-129 posture).
+  productShape: varchar("product_shape", { length: 20 }),
+
+  // Property rung (§17, migration 153). pricingUnit: NULL = flat price (every existing row),
+  // 'per_night' = price is a nightly rate — charge = nights × rate, server-derived (§14).
+  // parentServiceId: room-child → parent property self-FK, ON DELETE RESTRICT (a property
+  // can't be deleted while rooms exist — the bundle-components posture). Both additive
+  // nullable, no DB CHECK.
+  pricingUnit: varchar("pricing_unit", { length: 20 }),
+  parentServiceId: varchar("parent_service_id").references((): AnyPgColumn => providerServices.id, { onDelete: "restrict" }),
+
+  // S8 property builder (Gate G2, migration 211, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). check_in_time/check_out_time: "HH:MM" wall clock, same shape as
+  // earliestStartTime/latestStartTime above. house_rules: property-level ONLY — a room never
+  // carries its own (absolute inheritance, the same posture as the pin below: no per-room
+  // override). amenities: string array, the deliveryLanguages precedent (§13) — NULL = never
+  // captured (every pre-211 row), [] = deliberately cleared; the two states must not collapse.
+  // All three ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema
+  // (not money/identity/rate fields, §14/§18/§19 do not apply) — no new endpoint. Additive
+  // nullable, no DB CHECK (app-enforced HH:MM regex + amenities shape live on the zod schema
+  // below, the migration-195/199 posture).
+  checkInTime: varchar("check_in_time", { length: 5 }),
+  checkOutTime: varchar("check_out_time", { length: 5 }),
+  houseRules: text("house_rules"),
+  amenities: jsonb("amenities").$type<string[]>(),
+  // Ruling 112 Q6 (migration 214): minimum stay in nights, property/property_room by convention
+  // (editor renders it only for property shapes; app-enforced ≥1, no DB CHECK). NULL = never
+  // captured — never a guessed 1-night default (§13).
+  minStayNights: integer("min_stay_nights"),
+
+  // Ruling 115 (migration 216): the language the listing's ORIGINAL content is written in
+  // ('en' | 'ja' — the shipped content locales, app-enforced, no DB CHECK). NULL = pre-216 row =
+  // English (ruling 60's original assumption, so NULL→en is a fact, not a guess). Owner-declared
+  // on the wizard ("I'm writing this in") — content metadata, not a §14/§18/§19 field. Drives
+  // which locales are translation TARGETS and the truthful "shown in <language>" fallback label.
+  sourceLocale: varchar("source_locale"),
+
+  // Ruling 112 Q8 (migration 215, CLAUDE.md §23): the edit-split pending-changes rail. NEVER
+  // client-settable (§19): .omit()'d from insertProviderServiceSchema below AND stripped in
+  // storage.create/updateProviderService; written only by the PATCH handler's server-side field
+  // split and the admin apply/discard writers. pending_changes holds the identity-field patch
+  // awaiting review; edit_review_status is NULL | 'pending' (app-enforced, no CHECK).
+  pendingChanges: jsonb("pending_changes").$type<Record<string, unknown>>(),
+  editReviewStatus: varchar("edit_review_status"),
+
+  // Logistics — pickup intent (migration 238). Provider's declared intent to collect travelers
+  // and return them at the end. Additive boolean, default false. NULL-safe: false = not offered,
+  // true = offered. No DB CHECK — additive-nullable posture (migration-195 convention).
+  // Captured only; no transport resolver reads it yet.
+  collectsAndDrops: boolean("collects_and_drops").default(false),
+
+  // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
+  // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
+  // NULL when unresolvable (NULL is the honest state — no city-center fallback). NOT read by the
+  // coverage/upsell engine for pricing/matching. No DB CHECK (additive-nullable only).
+  // location_precision intended values: 'neighborhood_centroid' | 'exact'.
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  city: varchar("city"),
+  locationPrecision: varchar("location_precision"),
+
   // What's Included & Requirements
   whatIncluded: jsonb("what_included").default([]), // Array of strings: ["3 hours shooting", "50+ edited photos"]
   requirements: jsonb("requirements").default([]), // What provider needs from traveler
@@ -573,7 +1000,22 @@ export const providerServices = pgTable("provider_services", {
   
   // Media
   serviceImage: text("service_image"), // Cover image URL
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the artifact-delivery deliverable
+  // (pdf listings only — shared/service-fundamentals.ts isArtifactDelivery). Owner-gated
+  // write (same session/ownership check as serviceImage on POST/PATCH /api/provider/services
+  // — not a privileged §14/§18/§19 field, so no allowlist/omit needed there). NEVER select
+  // this column into a public/non-owner read — see the D3 leak-prevention audit; the one
+  // sanctioned reveal is GET /api/service-bookings/:id/deliverable (server/routes.ts), gated
+  // on a confirmed booking belonging to the session user.
   serviceFile: text("service_file"), // File URL
+  // D8 artifact-timer delivery clock (ruling 63, executed by ruling 66; migration 196). Stamped
+  // by the deliverable UPLOAD path only. `deliveredAt` for a pdf booking is
+  // max(booking.confirmedAt, this) — the moment the entitlement first became satisfiable. NULL =
+  // never recorded (every pre-196 row, and every legacy pasted-URL deliverable) ⇒ the
+  // UNDOWNLOADED auto-complete arm is skipped with a stated reason, never guessed (§13). The
+  // downloaded arm rides deliverable_downloads and is unaffected. Declared here per the
+  // publish-trap rule — a column only in migration SQL is dropped by the deploy push.
+  deliverableUploadedAt: timestamp("deliverable_uploaded_at"),
   
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
@@ -581,7 +1023,10 @@ export const providerServices = pgTable("provider_services", {
 
   // Approval workflow (consolidated from expert_custom_services in 0007)
   approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"), // draft, submitted, approved, rejected — F2: born submitted, never born-approved (migration 111)
-  cancellationPolicy: text("cancellation_policy"),
+  cancellationPolicy: text("cancellation_policy"), // free-text detail, e.g. "Full refund if cancelled 48h before"
+  // X1 (migration 144): structured policy TYPE — cancellationPolicyTypeEnum. Additive nullable,
+  // no DB CHECK (app-enforced vocabulary). NULL = not yet declared by the owner (honest default).
+  cancellationPolicyType: varchar("cancellation_policy_type", { length: 30 }),
   leadTime: varchar("lead_time", { length: 50 }),
   deliverables: jsonb("deliverables").default([]),
   experienceTypes: jsonb("experience_types").default([]),
@@ -596,9 +1041,19 @@ export const providerServices = pgTable("provider_services", {
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
   reviewCount: integer("review_count").default(0),
-  // Expert-favorable split: floor 0.75, ceiling 0.85. Stored as decimal string in DB.
-  // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
-  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
+  // D0 (fee-ledger lane, ruled 2026-08-06 — migration 178): `fee_bands` is authoritative, reached
+  // through ONE resolver. This column stops being "the final override" it was at
+  // payments.routes.ts:826/877/1090 — the mechanism behind audit C2/Q9, where a stale per-service
+  // snapshot outranked band resolution so an admin band edit could not change what a service
+  // charged (ruling 32's defeated proof).
+  //
+  // The hardcoded "0.75" DEFAULT is DELETED: it was a fee literal (ruling 32) that silently became
+  // the charged rate whenever derivation was unavailable. NULL now means "no override — ask the
+  // resolver", and migration 178 backfills every pre-existing row to NULL rather than freezing a
+  // computed rate into it (a fresh snapshot would go stale on the next band edit, re-creating the
+  // defect). Whether the column is retired outright or kept as a derived cache is Phase 1A's
+  // remaining call; either way it is never the first operand again.
+  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }),
 
   // Content-affinity tags — canonical slugs indicating which traveller contexts
   // surface this service. e.g. ['hotel_arrival','photo_shoot'].
@@ -610,9 +1065,52 @@ export const providerServices = pgTable("provider_services", {
 
   // Expert 5-tier connection (FK managed at DB level by migration 057)
   expertOfferingTypeId: uuid("expert_offering_type_id"),
+  // Migration 148 (§17): the provider-side offering linkage — which /earn service_offering_types
+  // row this listing IS. Nullable; NULL = created before the offering-first form (identity never
+  // captured) — never fabricate a backfill.
+  serviceOfferingTypeId: uuid("service_offering_type_id"),
+
+  // Creation provenance (ledger 2026-08-23-provenance-creation, migration 254). WHICH rail
+  // created this row — the #1 gap the provenance audit named: a wizard-authored, template-seeded,
+  // catalog-cloned, bundle/property/room, and legacy-consolidation row were byte-identical.
+  // App-enforced vocabulary, NO DB CHECK (publish-trap rule; additive-nullable):
+  //   'wizard' | 'catalog' | 'template' | 'bundle' | 'property' | 'property_room' | 'listing'
+  //   | 'admin' | 'seed' | 'migration'. NULL = created before this column (never fabricate a
+  // backfill — an honest unknown, §13). `source_ref` is the free-text origin id when one exists
+  // (the offering/template id a clone came from, the seed name, the migration file).
+  createdVia: varchar("created_via", { length: 24 }),
+  sourceRef: varchar("source_ref", { length: 128 }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Migration 218 — provider-owned service lookups / browse predicate. Declared here per the
+  // deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
+  psUserIdStatusIdx: index("idx_provider_services_user_id_status").on(table.userId, table.status),
+  // Migration 219 — full-text search (weighted tsvector) + trigram similarity for search quality.
+  // GIN indexes declared here so publish-time drizzle push does not plan a DROP.
+  psFtsIdx: index("idx_provider_services_fts").using(
+    "gin",
+    sql`(setweight(to_tsvector('english', coalesce(service_name, '')), 'A') || setweight(to_tsvector('english', coalesce(description, '')), 'B'))`,
+  ),
+  psNameTrgmIdx: index("idx_provider_services_name_trgm").using(
+    "gin",
+    sql`service_name gin_trgm_ops`,
+  ),
+}));
+
+// === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
+// A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,
+// storefront read-gates, and checkout rails work unchanged; this table links it to its
+// component services. component FK is ON DELETE RESTRICT — a service inside a bundle cannot
+// be deleted until removed from the bundle (silently vanishing components would change a
+// sellable bundle's contents underneath the buyer).
+export const bundleComponents = pgTable("bundle_components", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bundleServiceId: varchar("bundle_service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  componentServiceId: varchar("component_service_id").notNull().references(() => providerServices.id, { onDelete: "restrict" }),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // === Category Field Schema (admin-configurable per-category dynamic fields) ===
@@ -679,29 +1177,25 @@ export const customVenues = pgTable("custom_venues", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Activity Bookings (Viator/external provider bookings) ===
-// NOTE: This table exists in production with real user booking data (including live
-// Stripe PaymentIntents). Kept in schema so Drizzle does not propose DROP TABLE.
-// The one real prod booking (Segway Paris, user 79cdafd1) must not be lost.
-// Future work: migrate real rows to service_bookings and remove this table.
-
-export const activityBookings = pgTable("activity_bookings", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull(),
-  provider: varchar("provider", { length: 50 }).notNull(),
-  productCode: varchar("product_code", { length: 255 }),
-  productTitle: text("product_title").notNull(),
-  imageUrl: text("image_url"),
-  priceAmount: decimal("price_amount").notNull(),
-  priceCurrency: varchar("price_currency", { length: 10 }).default("USD").notNull(),
-  bookingUrl: text("booking_url"),
-  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  status: varchar("status", { length: 20 }).default("pending").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  productOptionCode: varchar("product_option_code", { length: 100 }),
-  providerBookingRef: varchar("provider_booking_ref", { length: 100 }),
-  travelDate: varchar("travel_date", { length: 20 }),
-  travelerCount: integer("traveler_count").default(1),
+// === Legacy Archives (generic durable archive for retired tables with real rows) ===
+// Migration 168 (CLAUDE.md Coordination Prevention record): a generic archive for the class of
+// problem "a table has zero code consumers but holds real user data, so it can't simply be
+// dropped." Declared here per the deploy-push-durability rule -- an UNDECLARED archive table is
+// itself the next drop target on a Replit publish, which would defeat the entire point of
+// archiving into it. First tenant: `activity_bookings` (dropped by migration 168; its
+// `activityBookings` declaration is now removed — step 2 of the two-deploy retirement).
+// INCIDENT (Aug 1, 2026, recorded + CLOSED in CLAUDE.md): the archive ran against an
+// already-empty table — a drizzle push executed while the declaration-removal (#386) was
+// merged un-gated dropped the table before migration 168 could archive it. A live-Stripe
+// check later showed the lost row was an UNPAID booking (no captured funds — the account's
+// live history holds no such charge), so nothing of financial substance was lost. See the
+// CLAUDE.md migration-168 entry for the sequencing lessons.
+export const legacyArchives = pgTable("legacy_archives", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceTable: varchar("source_table").notNull(),
+  archivedAt: timestamp("archived_at").defaultNow(),
+  reason: text("reason"),
+  rowData: jsonb("row_data").notNull(),
 });
 
 // === Service Bookings ===
@@ -727,16 +1221,44 @@ export const serviceBookings = pgTable("service_bookings", {
   insuranceFee: decimal("insurance_fee", { precision: 10, scale: 2 }).default("0.00"),
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  
+
+  // ══ Deposits / partial payments — BOOKING STATE (Lane 7, ruling 72, migration 200) ═══════════
+  // Mirrors the legacy `bookings` deposit/balance shape additively on THIS (cart-rail) table. A
+  // deposit-partial booking lands in status='deposit_paid' (a plain varchar value, no CHECK) —
+  // distinguishable BY CONSTRUCTION from a full-paid `confirmed` (deposit_paid has an outstanding
+  // balance) and from an unauthorized `payment_pending` claim (deposit_paid carries a stamped PI +
+  // deposit_paid=true). `total_amount`/`platformFee`/`providerEarnings` stay the FULL values — the
+  // deposit/balance split is the PAYMENT SCHEDULE, not a re-split of the charge, so completion (D8)
+  // and earnings math read the full amounts unchanged.
+  depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),   // charged NOW at deposit checkout (§14 server-derived)
+  depositPaid: boolean("deposit_paid").default(false),
+  balanceAmount: decimal("balance_amount", { precision: 10, scale: 2 }),   // = (total_amount + platform_fee) − deposit; collected at the SECOND checkout
+  balancePaid: boolean("balance_paid").default(false),
+  balanceDueAt: timestamp("balance_due_at"),                                // cutoff, derived at checkout from the listing's service date / change window
+  // §19a: PI linkage — written ONLY by the shared promotion / balance-authorization paths, never
+  // born on the row. Stripped in insertServiceBookingSchema (.omit) and in createServiceBooking.
+  stripeDepositIntentId: varchar("stripe_deposit_intent_id", { length: 255 }),
+  stripeBalanceIntentId: varchar("stripe_balance_intent_id", { length: 255 }),
+
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
-  // Attribution
-  source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
+  // Attribution (S4): source vocabulary is direct | link | cross_sell, DERIVED SERVER-SIDE at
+  // checkout (payments.routes.ts) — 'link' only when acquisitionRef resolves to a real
+  // short_links.code (migration 139). App-enforced, no DB CHECK. acquisitionRef is a soft
+  // reference (no FK) so deleting a link never breaks historical attribution.
+  source: varchar("source", { length: 30 }).default("direct"),
   crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
+  acquisitionRef: varchar("acquisition_ref", { length: 12 }),
+  // C3 (migration 145): the availability slot this booking claimed capacity on — stamped only
+  // AFTER the atomic bookSlot claim succeeded at checkout. SET NULL on slot deletion; the
+  // bookingDetails snapshot keeps the human-readable schedule regardless.
+  slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
 
   // Idempotency: set by the client on checkout; checked server-side before insert.
   // Unique partial index (WHERE NOT NULL) prevents duplicate bookings on retries.
+  // The index is DECLARED below — see the note on `sbIdempotencyKeyIdx`; leaving it in
+  // migration SQL only is what made it non-durable across publishes.
   idempotencyKey: text("idempotency_key"),
 
   // Timestamps
@@ -746,7 +1268,39 @@ export const serviceBookings = pgTable("service_bookings", {
   cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // §15 CHECKOUT IDEMPOTENCY — the DB half of the guard, and the reason this declaration
+  // exists at all.
+  //
+  // This index was created by migration 096 and re-asserted by 155, but declared ONLY in
+  // migration SQL. Per the CLAUDE.md deploy-push note, publish runs an automatic drizzle-kit
+  // push from THIS FILE and is authoritative over objects it does not find declared here —
+  // proven by isolating a bare `DROP INDEX "sb_idempotency_key_idx"` in a push plan. That made
+  // the index NON-DURABLE in the worst possible way: publish 1 drops it and the (first-time)
+  // migration recreates it, but publish 2+ drops it while both migrations are already stamped,
+  // so it is never recreated and is silently, permanently gone.
+  //
+  // It is load-bearing, not belt-and-braces. `/api/checkout` has a SELECT fast-path that two
+  // concurrent same-key requests BOTH pass; this unique index is the only thing that makes the
+  // loser's insert raise 23505 before any Stripe call. Measured: without it, 3 concurrent
+  // same-key checkouts produced 3 REAL STRIPE CHARGES; with it, 1.
+  //
+  // Safe to declare (verified in BOTH environments before adding, because a UNIQUE the push
+  // cannot satisfy fails the deploy and offers the destructive "copy dev over production"
+  // option): zero duplicate non-NULL keys in prod or dev, and the live `indexdef` in both is
+  // byte-identical to what this emits — same name, same UNIQUE, same partial predicate. Any
+  // divergence in name or predicate would make the push DROP and CREATE it on every publish.
+  sbIdempotencyKeyIdx: uniqueIndex("service_bookings_idempotency_key_idx")
+    .on(table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`),
+  // Migration 217 — hot-query FK indexes. Declared here (deploy-push durability rule): the
+  // publish-time drizzle push drops indexes that exist only in migration SQL. Composites lead
+  // with the FK so they also serve bare traveler_id/provider_id lookups (leftmost prefix).
+  sbServiceIdIdx: index("idx_service_bookings_service_id").on(table.serviceId),
+  sbTravelerIdStatusIdx: index("idx_service_bookings_traveler_id_status").on(table.travelerId, table.status),
+  sbProviderIdStatusIdx: index("idx_service_bookings_provider_id_status").on(table.providerId, table.status),
+  sbTripIdIdx: index("idx_service_bookings_trip_id").on(table.tripId),
+}));
 
 // === Service Reviews ===
 
@@ -761,6 +1315,11 @@ export const serviceReviews = pgTable("service_reviews", {
   reviewText: text("review_text"),
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
+  // §06d (ratified Aug 9 2026): ONE public reply by the service owner; write-gated to the
+  // listing's owner; rendered traveler-side beside the review; visible to admin
+  // review-moderation.
+  providerReply: text("provider_reply"),
+  providerRepliedAt: timestamp("provider_replied_at"),
   isVerified: boolean("is_verified").default(false),
   // Moderation (REV-MOD)
   status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | approved | flagged | removed
@@ -768,7 +1327,11 @@ export const serviceReviews = pgTable("service_reviews", {
   moderatedBy: varchar("moderated_by", { length: 255 }),
   moderatedAt: timestamp("moderated_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 217 — declared here per the deploy-push durability rule (see service_bookings note).
+  srServiceIdStatusIdx: index("idx_service_reviews_service_id_status").on(table.serviceId, table.status),
+  srProviderIdIdx: index("idx_service_reviews_provider_id").on(table.providerId),
+}));
 
 // === Review Moderation Logs ===
 export const reviewModerationLogs = pgTable("review_moderation_logs", {
@@ -830,6 +1393,9 @@ export const vendors = pgTable("vendors", {
   imageUrl: varchar("image_url", { length: 1000 }),
   status: varchar("status", { length: 30 }).default("active"),
   metadata: jsonb("metadata").default({}),
+  // Immutable server-authored creator provenance. Nullable because rows created before this
+  // column was introduced have an honestly unknown origin; do not fabricate a backfill.
+  createdById: varchar("created_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -859,7 +1425,23 @@ export const notifications = pgTable("notifications", {
   data: jsonb("data"), // Arbitrary payload e.g. { bookingId, serviceName, travelerName, amount }
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+  // QA-2 (migration 209): nullable idempotency key for a notification event, shaped
+  // `booking:<id>:<event>` (e.g. `booking:abc123:accepted`). NULL for every pre-209 row and every
+  // caller that has not opted in (message/review/etc. notifications keep firing exactly as before).
+  // A caller writing a durable, at-most-once notification (the booking-status canonical writer)
+  // supplies this and relies on the partial UNIQUE index below + ON CONFLICT DO NOTHING so a
+  // crash-retry of the SAME transition inserts zero duplicate rows. Declared here AND in migration
+  // SQL (publish-trap rule — the migration-155/203 precedent).
+  dedupeKey: varchar("dedupe_key", { length: 255 }),
+}, (table) => ({
+  // Migration 209 (QA-2): partial so legacy NULL rows (and any caller that never opts in) never
+  // collide with each other — only two ACTUAL dedupe keys colliding is a conflict.
+  dedupeKeyUniq: uniqueIndex("notifications_dedupe_key_uniq")
+    .on(table.dedupeKey)
+    .where(sql`${table.dedupeKey} IS NOT NULL`),
+  // Migration 217 — user-scoped unread reads ordered by recency (deploy-push durability rule).
+  notificationsUserReadCreatedIdx: index("idx_notifications_user_id_is_read_created_at").on(table.userId, table.isRead, table.createdAt),
+}));
 
 // === Contact Submissions (landing page / contact page) ===
 
@@ -908,9 +1490,45 @@ export const cartItems = pgTable("cart_items", {
   quantity: integer("quantity").default(1),
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   scheduledDate: timestamp("scheduled_date"),
+  // C3 (migration 145): the traveler's picked availability slot. Nullable — non-dated services
+  // and content items carry no slot. The capacity CLAIM happens at checkout (atomic bookSlot),
+  // never at add-to-cart, so an abandoned cart can't hold a slot hostage.
+  slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
+  // The PROJECTION SOURCE KEY (migration 160, Trip-Canon Lane 1 W2). NULL = this cart row is NOT
+  // a projection — a legacy row, a guest add, or a direct add-to-cart. NON-NULL = this row is the
+  // materialized projection of one `itinerary_items` row currently in `ready_for_checkout`, owned
+  // exclusively by server/services/cart-projection.service.ts (the single writer). The sync module
+  // never reads, writes, or deletes a NULL-keyed row, which is what keeps every pre-existing cart
+  // consumer byte-identical. ON DELETE CASCADE (not SET NULL — contrast itinerary_items.booking_id):
+  // the projection has no independent existence, and an orphan would be uncleanable yet chargeable.
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "cascade" }),
   notes: text("notes"),
+  // Travel-surcharge TRIGGER (ruling 81, lane B1, migration 205). The traveler's CONFIRMED pickup
+  // location for this cart line — { address, lat, lng } — captured/confirmed at booking (geocoded
+  // client-side via POST /api/geocode, same confirm posture as the meeting pin). NULL = no pickup
+  // given ⇒ NO surcharge (§13 — a surcharge is NEVER triggered by an invented/defaulted location).
+  // Written owner-gated via PATCH /api/cart/:id; read SERVER-SIDE at checkout/preview to derive the
+  // surcharge (§14 — the coords are the traveler's own booking input, like scheduledDate/notes; the
+  // AMOUNT is derived server-side from them + the listing config, never off req.body). Additive-
+  // nullable jsonb, declared here per the publish-trap rule.
+  pickupLocation: jsonb("pickup_location"),
+  // Booking-eligibility TRIGGER-INPUT (ruling 83, lane T2, migration 206). The traveler's CONFIRMED
+  // party count for this cart line — the input the D7 party-size gate (party_size_min/max on
+  // provider_services, migration 195) validates against BEFORE any slot claim or charge. NULL = no
+  // party count given ⇒ NO party-size gate (§13 — never gate on a fabricated count; cart_items.quantity
+  // is the price-multiplier "number of the service", NOT a party count, so it is deliberately not
+  // reused here). Written owner-gated via PATCH /api/cart/:id, read SERVER-SIDE at checkout — a booking
+  // input like scheduledDate, never a money field (no amount/rate is derived from it). Additive-nullable
+  // integer, declared here per the publish-trap rule.
+  partySize: integer("party_size"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Declared here, not only in migration 160: per the CLAUDE.md deploy-push rule the publish-time
+  // drizzle push is authoritative over objects absent from THIS file and will DROP an index that
+  // exists only in migration SQL — after which the stamped migration never recreates it. This is
+  // the sync module's ONLY lookup key ("find the projection row for this item").
+  cartItemsItineraryItemIdIdx: index("idx_cart_items_itinerary_item_id").on(table.itineraryItemId),
+}));
 
 // === AI Blueprints ===
 
@@ -927,6 +1545,15 @@ export const aiBlueprints = pgTable("ai_blueprints", {
 
 export const userAndExpertContracts = pgTable("user_and_expert_contracts", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // Ownership (migration 157). Until this landed the table had NO principal at all, which is
+  // why its two live readers could not be gated — there was nothing to filter on.
+  // `earner_id`, not `expert_id`: the counterparty is the owner of the booked service, who may
+  // be an `expert` OR a `service_provider`, so the table-name-matching `expert_id` would be
+  // false for every provider-owned booking (the role-vocabulary-audit class of error).
+  // Nullable by design — a row we cannot attribute stays NULL, and the read gate treats NULL
+  // as admin-only rather than showing an unattributable financial artifact to a guessing caller.
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "set null" }),
+  earnerId: varchar("earner_id").references(() => users.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }).notNull(),
   tripTo: varchar("trip_to", { length: 255 }).notNull(),
   description: text("description").notNull(),
@@ -985,6 +1612,14 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   selectedVariantId: varchar("selected_variant_id"),
   optimizedAt: timestamp("optimized_at"),
   optimizationPaymentId: varchar("optimization_payment_id", { length: 255 }),
+  // WP-C follow-up (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1, migration 183):
+  // recommendation-only output of `proposeSegmentation` (server/services/trip-segmentation.service.ts)
+  // for this optimize run — strategy/rationale/segments/unplaced, shown to the traveler. NULL = no
+  // recommendation computed (predates the engine's wiring, or the computation failed and was
+  // logged-and-omitted per §15b — a segmentation failure must never fail the paid optimize). Never
+  // read for a money/ownership decision; no materialization in this wave (no trip_segments, no
+  // apply action). Sole writer: server/itinerary-optimizer.ts's generateOptimizedItineraries.
+  segmentationProposal: jsonb("segmentation_proposal"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1024,6 +1659,16 @@ export const itineraryVariants = pgTable("itinerary_variants", {
   optimizationScore: integer("optimization_score"),
   aiReasoning: text("ai_reasoning"),
   sortOrder: integer("sort_order").default(0),
+  // Anchor this variant was built around ("build around a location", ledger
+  // 2026-08-23-optimizer-anchors; migration 257). Additive-nullable, no CHECK (publish-trap rule):
+  // NULL on legacy/Auto-unlabelled variants. anchorType ∈ {hotel,neighborhood,activity} app-enforced.
+  // anchorMedianMeters is the phase-0 fit score (median metres to the trip's located stops) — a
+  // real figure or NULL, never a fabricated 0 (§13).
+  anchorType: varchar("anchor_type", { length: 20 }),
+  anchorName: varchar("anchor_name", { length: 200 }),
+  anchorLat: decimal("anchor_lat", { precision: 10, scale: 7 }),
+  anchorLng: decimal("anchor_lng", { precision: 10, scale: 7 }),
+  anchorMedianMeters: integer("anchor_median_meters"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1217,6 +1862,41 @@ export const influencerCuratedContent = pgTable("influencer_curated_content", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// TripContext server persistence (migration 130, Trip-Strip P2/E2; re-keyed by migration
+// 161, Trip-Canon Lane 6): mirrors the client sessionStorage trip context for signed-in
+// users. A `user_id`-only PK could hold only one row per user, so it could never let
+// context follow a SPECIFIC trip once the Trip became the canonical planning container
+// (Lane 1) — a user planning two trips at once had their context smeared across both.
+// Re-keyed onto a surrogate `id` PK; `tripId` NULL = the legacy "no active trip" row
+// (migration 130's original one-row-per-user meaning, preserved verbatim for every
+// pre-migration row), non-NULL = a context scoped to that specific trip. The "one row per
+// scope" invariant now lives in the two partial unique indexes below rather than the PK,
+// because Postgres treats NULL as distinct in a unique index — a bare
+// UNIQUE(userId, tripId) would let a user accumulate unlimited legacy rows.
+export const tripContexts = pgTable("trip_contexts", {
+  // DB-side default is LOAD-BEARING (the shortLinks / ai_cost_tracking posture, NOT the house
+  // $defaultFn pattern): this table is written via raw db.execute(sql`…`) which never supplies
+  // `id`, so the default must exist in the database itself — and it must be DECLARED here or the
+  // deploy push treats it as drift and drops it (the sb_idempotency_key_idx lesson), after which
+  // every trip-context PUT would violate NOT NULL.
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  context: jsonb("context").notNull().default({}),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // At most one legacy (tripId IS NULL) row per user — migration 130's original invariant.
+  userLegacyUidx: uniqueIndex("trip_contexts_user_legacy_uidx")
+    .on(table.userId)
+    .where(sql`${table.tripId} IS NULL`),
+  // At most one row per (userId, tripId) once trip-scoped.
+  userTripUidx: uniqueIndex("trip_contexts_user_trip_uidx")
+    .on(table.userId, table.tripId)
+    .where(sql`${table.tripId} IS NOT NULL`),
+  // Ownership checks / trip-scoped lookups filter by tripId alone.
+  tripIdIdx: index("idx_trip_contexts_trip_id").on(table.tripId),
+}));
+
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
@@ -1279,61 +1959,396 @@ export const generatedItinerariesRelations = relations(generatedItineraries, ({ 
 // === Schemas ===
 
 // Enhanced trip schema with better validations (simpler version for compatibility)
-export const insertTripSchema = createInsertSchema(trips).omit({ 
-  id: true, 
-  userId: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertTripSchema = createInsertSchema(trips).omit({
+  id: true,
+  userId: true,
+  createdAt: true,
+  updatedAt: true,
+  // 2A.3 / R8: market_slug is SERVER-DERIVED from destination in storage.createTrip (never
+  // client-settable — a false market_slug would misroute demand). originMarket is NOT omitted:
+  // it is ordinary owner-authored capture data (no privilege), accepted from the body.
+  marketSlug: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
-  numberOfTravelers: z.coerce.number().int().min(1).default(1),
-  adults: z.coerce.number().int().min(1).default(2),
-  kids: z.coerce.number().int().min(0).default(0),
+  // 2A.3 / R8 de-masking: party size is OPTIONAL, no fabricated default. A value, when present,
+  // still validates (min bounds); when absent it stays undefined ⇒ NULL, an honest "not captured"
+  // the demand rollup can distinguish from a real count (§13). The route no longer synthesizes
+  // numberOfTravelers from adults+kids when nothing was provided.
+  numberOfTravelers: z.coerce.number().int().min(1).optional(),
+  adults: z.coerce.number().int().min(1).optional(),
+  kids: z.coerce.number().int().min(0).optional(),
 });
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats).omit({ id: true, createdAt: true });
+export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    // Defensive invariant shared by every public chat write (/api/chats, /api/messages):
+    // attachment URLs must be https — rejects javascript:, data:, file:, http: etc. Nothing
+    // renders this field today, but stored URLs flow back out of the API.
+    attachment: z
+      .string()
+      .url()
+      .refine((value) => {
+        try {
+          return new URL(value).protocol === "https:";
+        } catch {
+          return false;
+        }
+      }, "Attachment must be an https:// URL")
+      .nullish(),
+  });
 export const insertTouristPlaceResultSchema = createInsertSchema(touristPlaceResults).omit({ id: true });
 export const insertHelpGuideTripSchema = createInsertSchema(helpGuideTrips).omit({ id: true, userId: true, createdAt: true });
-export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
+// Creator provenance is derived from the authenticated session by POST /api/vendors and is
+// deliberately absent from this request schema so a client cannot submit or override it.
+export const insertVendorSchema = createInsertSchema(vendors).omit({
+  id: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
 // New schemas for Expert/Provider applications
-export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({ 
-  id: true, 
-  userId: true, 
-  status: true, 
-  rejectionMessage: true, 
+export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({
+  id: true,
+  userId: true,
+  status: true,
+  rejectionMessage: true,
   createdAt: true,
   // Admin-managed influencer fields (set by backend after verification)
   verifiedInfluencer: true,
   influencerTier: true,
   referralCode: true,
+  // MI-1 class sweep (provider money-hardening lane, ruling 42): the rate/fee-bearing and
+  // payment-identity families on this table were mass-assignable — `insertLocalExpertFormSchema
+  // .parse(req.body)` is spread verbatim into create/update at POST /api/expert-application and
+  // POST /api/expert-forms (server/routes.ts), so any authenticated applicant could set their own
+  // booking-fee rate, their Stripe Connect linkage, and their earnings/payout balances. No client
+  // sends any of them and no server code reads them today (dormant), which is exactly why it had
+  // not surfaced — the ruling is that a rate-bearing field is never client-settable on ANY schema,
+  // consumer or not. These are server/admin-managed, same posture as the influencer block above.
+  bookingFeeType: true,
+  bookingFeePercentage: true,
+  bookingFeeFixed: true,
+  bookingFeeHourly: true,
+  minBookingFee: true,
+  feeSettings: true,
+  stripeAccountId: true,
+  stripeAccountStatus: true,
+  stripeConnectStatus: true,
+  canReceivePayments: true,
+  totalEarnings: true,
+  pendingPayout: true,
+  payoutSchedule: true,
+  // §19 class (ruling 46, same MI-1 sibling sweep as the block above): the identity-verification
+  // family was likewise mass-assignable — `insertLocalExpertFormSchema.parse(req.body)` is spread
+  // verbatim into create/update at POST /api/expert-application and POST /api/expert-forms, and
+  // `resolvePublishVerification` treats `identityVerificationStatus === "verified"` as (half of) the
+  // publish gate — so a crafted `{ identityVerificationStatus: "verified" }` body could self-verify
+  // and bypass the wall. The two SANCTIONED writers are `storage.updateFormIdentityVerification`
+  // (the dedicated setter) and the Stripe/Persona webhook (server/routes/webhooks.routes.ts) —
+  // never this generic create/update path. Layer 2 (storage strip) covers `as any` callers a
+  // type-level omit cannot reach.
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
+}).extend({
+  // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
+  // The admin approval path copies expertType into users.role verbatim, so an unvalidated
+  // free string here was a privilege-escalation vector (submit expertType "admin", get
+  // approved as an expert, become an admin) and how stray "service_provider" values
+  // polluted local_expert_forms. The varchar column has no DB CHECK — this is the gate.
+  expertType: z.enum(expertTypeEnum).optional(),
+}).superRefine((data, ctx) => {
+  // CC-5 (minimum-content gate): every field on this schema is independently optional, so an
+  // empty `{}` body previously parsed clean and created a fully-valid PENDING application —
+  // flooding the admin review queue with contentless rows. This closes that without rejecting
+  // any real submission:
+  //   - expertType is always required. The client (client/src/pages/travel-experts.tsx)
+  //     always sends it — it defaults from the URL `type` param, itself defaulted to
+  //     "travel_expert" — so no legitimate submission omits it.
+  //   - Beyond that, SOME identifying content is required: either an expertise signal
+  //     (destinations/specialties/experienceTypes, guaranteed non-empty by the default
+  //     (travel_expert/event_planner/executive_assistant) flow's canProceed() step-2 gate;
+  //     or localSpecialties, guaranteed non-empty by the local_expert flow's step-4 gate —
+  //     the local_expert flow NEVER populates destinations/specialties/experienceTypes, so
+  //     those three alone would wrongly reject every real local_expert submission) OR a
+  //     filled-in city+country pair. city/country are intentionally NOT hard-required on
+  //     their own: travel-experts.tsx's canProceed() never gates on either field for the
+  //     default flow, and only gates on city (never country) for the local_expert flow, so
+  //     requiring them unconditionally would reject real in-flight submissions. Existing
+  //     regression fixtures (N11 in journey-suite-negatives.http.test.ts; K1 in
+  //     console-sigma-kyoto-bench.http.test.ts) submit city+country with no expertise arrays
+  //     and expect success — city+country-together is treated as an alternative satisfying
+  //     condition, not an extra unconditional requirement.
+  const isNonEmptyArr = (v: unknown) => Array.isArray(v) && v.length > 0;
+  const isNonEmptyStr = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+
+  if (!isNonEmptyStr(data.expertType)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["expertType"],
+      message: "expertType is required",
+    });
+  }
+
+  const hasExpertiseContent =
+    isNonEmptyArr(data.destinations) ||
+    isNonEmptyArr(data.specialties) ||
+    isNonEmptyArr(data.experienceTypes) ||
+    isNonEmptyArr(data.localSpecialties);
+  const hasLocation = isNonEmptyStr(data.city) && isNonEmptyStr(data.country);
+
+  if (!hasExpertiseContent && !hasLocation) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["destinations"],
+      message:
+        "Application must include at least one destination, specialty, experience type, or local specialty, or both a city and country",
+    });
+  }
 });
-export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+// §19 class (ruling 46, MI-1 sibling sweep — same shape as insertLocalExpertFormSchema above):
+// the identity- and business-verification family was mass-assignable on the create path (there is
+// no general updateServiceProviderForm — provider updates use targeted setters, so the create
+// route at POST /api/provider-application is the one reachable body-parse site).
+// `resolvePublishVerification` treats these as (half of) the publish gate, so a crafted body could
+// self-verify. Sole sanctioned writers: `storage.updateFormIdentityVerification` /
+// `storage.updateProviderBusinessVerificationByInquiry`, and the Stripe/Persona webhook.
+export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({
+  id: true,
+  userId: true,
+  status: true,
+  rejectionMessage: true,
+  createdAt: true,
+  identityVerificationSessionId: true,
+  identityVerificationStatus: true,
+  identityVerifiedAt: true,
+  businessVerificationStatus: true,
+});
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true });
+// MI-1 (provider money-hardening lane, ruling 42): `revenueShareRate` is a COMMISSION SPLIT and is
+// therefore NOT client-settable — this is layer 1 of the strip-and-clamp. It was previously exposed
+// here, parsed straight off `req.body` by POST/PATCH /api/provider/services, spread into the row, and
+// read at `payments.routes.ts` as "the final override (takes priority over config)" over the
+// fee_bands-resolved split at the real Stripe charge — a client-supplied rate reaching a payment
+// decision (§14 in substance, §8 in spirit). No UI ever sent it. Layer 2 is the storage-level
+// derivation in `createProviderService`/`updateProviderService`, so every caller is covered.
+// D8/ruling 66: `deliverableUploadedAt` joins the omit list (§18 layer 1). It is the clock the
+// pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
+// completion event, and mint a held earning, on a booking whose deliverable never existed. The
+// storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
+// §PS18-completeness-guard layer 1 (2026-08-29-privileged-field-completeness): `approvalStatus`,
+// `submittedAt`, `reviewedAt`, `reviewedBy`, `rejectionReason` are the F2/D1a approval-lifecycle
+// family — the same class as `revenueShareRate`/`deliverableUploadedAt` above. `approvalStatus`
+// already had a full layer-2 strip on BOTH create (`createProviderService`'s born-state clamp,
+// case C16b's sibling) and update (`updateProviderService`'s `{approvalStatus: _as, ...}`
+// destructure, C16b itself) — this closes the missing layer-1 half so every caller is covered,
+// not just the two that currently exist. `submittedAt`/`reviewedAt`/`reviewedBy`/`rejectionReason`
+// had NO strip on the CREATE path at all (`createProviderService` spread them through unstripped
+// via `...serviceWithoutRate`) — a client POST could self-attribute a fabricated
+// review/rejection on their own brand-new `submitted` listing (approvalStatus itself stays safely
+// clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
+// approve/reject writers below unconditionally overwrite all four the moment a real review
+// happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true }).extend({
+  // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
+  cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
+  // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
+  // valid on any path — POST and PATCH /api/provider/services both parse this schema, and both
+  // persisted price=-50 straight to a row (even at status=active/approval_status=submitted).
+  // Field-level so it survives `.partial()` on the PATCH path. ZERO is deliberately allowed here:
+  // a fresh ServiceForm draft legitimately sends "0" (price not set yet) — the "no zero-price
+  // listing goes LIVE" half is the publish gate in the route handlers, beside the meeting-point
+  // gate, where draft saves are exempt by the same rule.
+  price: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Price must be a non-negative number" },
+  ),
+  // ── D7 (ruling 62, migration 195): app-enforced vocabularies + shape floors ─────────────────
+  // No DB CHECK exists for any of these (publish-trap posture), so THIS is the enforcement.
+  // Field-level so every refinement survives `.partial()` on the PATCH path — the update path is
+  // checked as hard as the insert (§18 rule 2, applied by analogy to a non-privileged field).
+  transportProvision: z.enum(transportProvisionEnum).nullable().optional(),
+  pickupCoverageMode: z.enum(pickupCoverageModeEnum).nullable().optional(),
+  durationMinutes: z.coerce.number().int().min(0).max(10080).nullable().optional(),
+  bufferMinutes: z.coerce.number().int().min(0).max(1440).nullable().optional(),
+  earliestStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  latestStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  serviceTimezone: z.string().trim().min(1).max(64).nullable().optional(),
+  partySizeMin: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  partySizeMax: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  changeCutoffHours: z.coerce.number().int().min(0).max(8760).nullable().optional(),
+  canAnchor: z.boolean().nullable().optional(),
+  // ── S9 session/async fields (ledger row 102, migration 212) ────────────────────────────────
+  // No DB CHECK exists for either (publish-trap posture), so THIS is the enforcement, and
+  // field-level so both survive `.partial()` on the PATCH path (the update path is checked as
+  // hard as the insert). Neither is a §14/§18/§19-privileged field — ordinary owner-authored
+  // listing config, like the D7 block above — so they are NOT omitted.
+  //
+  // `joinLink` gets a BASIC URL-shape check only (https?://…), the same free-text-with-a-floor
+  // posture as meetingPoint/pickupAddress elsewhere on this table — reject garbage, don't
+  // over-constrain. The SENSITIVE half of this field (never reaching a public read; revealed only
+  // to the confirmed traveler + owning provider) is enforced on the READ side (server/routes.ts,
+  // server/routes/content.routes.ts, server/storage.ts), not here — this schema only governs the
+  // WRITE shape.
+  joinLink: z.string().trim().max(2048).nullable().optional().refine(
+    (v) => v == null || v === "" || /^https?:\/\/.+/i.test(v),
+    { message: "Join link must be a URL starting with http:// or https://" },
+  ),
+  responseWindowHours: z.coerce.number().int().min(1).max(8760).nullable().optional(),
+  // Same free-text-with-a-floor posture as houseRules (S8, beside it on this table): an SLA/promise
+  // statement is prose, not unbounded storage. Added at Wave-3 integration (the lane shipped the
+  // column without a length ceiling).
+  scopeStatement: z.string().max(10000).nullable().optional(),
+  // ── SS-4 + SS-6 (ruling 69 disposition 9, migration 199) ────────────────────────────────────
+  // Same treatment as the D7 block above and for the same reason: no DB CHECK exists (publish-trap
+  // posture), so THIS is the enforcement, and field-level so it survives `.partial()` on PATCH.
+  // Neither is privileged (§18 rule 3 does not apply — no amount, no identity, no rate), so they
+  // are ordinary wizard fields, NOT omitted.
+  pickupRadiusKm: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  // Array of language NAMES, matching `local_expert_forms.languages`. `null` is preserved as
+  // "never captured" and `[]` as "deliberately cleared" — the two must not collapse (§13).
+  deliveryLanguages: z.array(z.string().trim().min(1).max(60)).max(20).nullable().optional(),
+  // ── Deposits CONFIG (Lane 7, ruling 72) — owner listing config, NOT a §18 rate ──────────────
+  // App-enforced vocabulary + shape floors (no DB CHECK, migration-200 posture); field-level so
+  // each refinement survives `.partial()` on the PATCH path (the update path is checked as hard as
+  // the insert). These are ordinary wizard fields (no amount/identity/rate reaching a MONEY
+  // DECISION on the config write — the deposit is derived server-side at checkout from the
+  // persisted row), so they are NOT omitted.
+  depositEnabled: z.boolean().nullable().optional(),
+  depositType: z.enum(depositTypeEnum).nullable().optional(),
+  depositPercentage: z.coerce.number().int().min(1).max(100).nullable().optional(),
+  depositFlatAmount: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Deposit amount must be a non-negative number" },
+  ),
+  // ── Card display options (ruling 74/75, migration 202) — app-enforced vocabulary, no DB CHECK ──
+  // Field-level so the bookingMode enum survives `.partial()` on the PATCH path (the update path is
+  // checked as hard as the insert). These are ordinary owner display prefs (no amount/identity/rate),
+  // so — like the deposit CONFIG above — they are NOT omitted; the money guard's rate/identity
+  // predicates do not match `showPrice`/`bookingMode`.
+  showPrice: z.boolean().nullable().optional(),
+  bookingMode: z.enum(bookingModeEnum).nullable().optional(),
+  // ── Travel surcharge CONFIG (ruling 81, lane B1, migration 205) — owner listing config, NOT a §18 rate ──
+  // App-enforced vocabulary + non-negative shape floors (no DB CHECK, migration-205 publish-trap
+  // posture); field-level so each refinement survives `.partial()` on the PATCH path (the update path
+  // is checked as hard as the insert). These set the LISTING config only — no amount/identity/rate
+  // reaches a MONEY DECISION on this write (the surcharge is derived server-side at checkout from the
+  // persisted row + the traveler's pickup) — so they are ordinary wizard fields, NOT omitted, exactly
+  // like the deposit CONFIG above. The `surchargeFlatAmount`/`surchargePerKm` names are deliberately
+  // not a bare `amount`/`rate` so the money gate does not misread them.
+  surchargeMode: z.enum(surchargeModeEnum).nullable().optional(),
+  surchargeFlatAmount: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Travel surcharge amount must be a non-negative number" },
+  ),
+  surchargePerKm: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Per-km surcharge rate must be a non-negative number" },
+  ),
+  surchargeMaxKm: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  // ── S8 property builder (Gate G2, migration 211) ────────────────────────────────────────────
+  // App-enforced vocabulary + shape floors (no DB CHECK, migration-211 publish-trap posture);
+  // field-level so each refinement survives `.partial()` on the PATCH path (update checked as
+  // hard as insert). Ordinary owner-authored listing facts — no amount/identity/rate reaches a
+  // money decision — so NOT omitted, exactly like deliveryLanguages/cancellationPolicy beside them.
+  checkInTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  checkOutTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  houseRules: z.string().max(10000).nullable().optional(),
+  // `null` is preserved as "never captured" and `[]` as "deliberately cleared" — the two must
+  // not collapse (§13), the same rule deliveryLanguages already states above.
+  amenities: z.array(z.string().trim().min(1).max(60)).max(50).nullable().optional(),
+  // Ruling 112 Q6 (migration 214): a declared minimum stay is at least one night; NULL stays
+  // "never captured" (no guessed default, §13).
+  minStayNights: z.coerce.number().int().min(1).max(365).nullable().optional(),
+  // Ruling 115 (migration 216): app-enforced vocabulary — the shipped content locales only.
+  // NULL stays "never declared" (= English, the pre-216 assumption).
+  sourceLocale: z.enum(["en", "ja"]).nullable().optional(),
+});
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ id: true, createdAt: true });
 
 // Service Templates, Bookings, Reviews schemas
 export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
-// travelerId and providerId are set server-side from auth context and service lookup
-export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ 
-  id: true, 
+// travelerId and providerId are set server-side from auth context and service lookup.
+//
+// ── PS15 (ruling 46) — `stripePaymentIntentId` is a SERVER_VERIFIED_ACTORS-only field ─────────
+// Ruling 41 states the invariant as PROVENANCE, not transport: a PaymentIntent id may resolve or
+// stamp a booking only when the platform itself obtained it from Stripe as a verified actor, and
+// "a CLIENT-supplied PaymentIntent id may never resolve or stamp anything." This schema was
+// `.parse`d straight off `req.body` at POST /api/bookings and the result SPREAD into
+// `createServiceBooking`, so a crafted request could BIRTH a booking already carrying its own PI —
+// which ruling 41's clause forbids on the promotion side but had no counterpart on the birth side.
+// A born-stamped row is not a promotion, so it never trips N17c; it is simply a row that looks
+// authorized to every consumer that keys on this column (the sweep skips it, `promotePaidCheckout`
+// matches it, the drift job trusts it as linkage).
+//
+// This is layer 1 of the strip. Safe to omit outright — verified at 281d355c that NO caller of
+// `createServiceBooking` passes it: `payments.routes.ts:926` (checkout) and `routes.ts:1430` both
+// omit it, and the column's SOLE production writer is `stampAuthorization`
+// (`checkout-claim.service.ts:177`), an atomic conditional UPDATE that runs after the Stripe call.
+// (The audit's PS15 note cautioned that this omit list is load-bearing for the `InsertServiceBooking`
+// TYPE that checkout writes — true of `platformFee`/`insuranceFee`/`providerEarnings`/`status`,
+// which checkout DOES pass, and NOT true of this field. Those are handled by the route-level
+// allowlist at POST /api/bookings instead.) Layer 2 is the storage-level strip in
+// `createServiceBooking`, so every caller is covered.
+export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({
+  id: true,
   travelerId: true,  // Set server-side from authenticated user
   providerId: true,  // Set server-side from service lookup
-  confirmedAt: true, 
-  completedAt: true, 
-  cancelledAt: true, 
-  createdAt: true, 
-  updatedAt: true 
+  stripePaymentIntentId: true,  // PS15/ruling 46 — server-verified actors only, via stampAuthorization
+  // Lane 7 (ruling 72): the deposit/balance PI linkage columns are the same class as
+  // stripePaymentIntentId — written ONLY by the shared promotion / balance-authorization paths
+  // (§19a), never born on the row. Stripped here (layer 1) and in createServiceBooking (layer 2).
+  stripeDepositIntentId: true,
+  stripeBalanceIntentId: true,
+  confirmedAt: true,
+  completedAt: true,
+  cancelledAt: true,
+  createdAt: true,
+  updatedAt: true
 });
-export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
+// ── PS15 (ruling 46): POST /api/bookings admits an ALLOWLIST, not a denylist ────────────────────
+// `POST /api/bookings` (server/routes.ts) used to `insertServiceBookingSchema.parse(req.body)` and
+// SPREAD the result into `createServiceBooking`. That schema is `.omit()`-based — a DENYLIST — so
+// every column its omit list did not happen to name was client-settable BY CONSTRUCTION:
+// `stripePaymentIntentId` (ruling 41's immovable clause; now also stripped above and in storage),
+// `platformFee`, `insuranceFee`, `providerEarnings`, `totalAmount`, `status`, `idempotencyKey`,
+// `slotId`, `source`, `acquisitionRef`, `trackingNumber`, `crossSellSourceContentId`.
+//
+// A denylist schema fails OPEN: the day a privileged column is added to `service_bookings`, it is
+// reachable from that body until someone remembers to omit it — and nobody edits an omit list for a
+// column that did not exist when it was written. That is the standing class ruling 46 records, third
+// instance (`revenueShareRate`, the MI-1 sweep's dormant fee/payout family, this). A pick-based
+// schema fails CLOSED: a new column is unreachable until it is deliberately named here.
+//
+// NOT admitted, and why each one: `status` (this rail creates a booking REQUEST, born `pending` from
+// the column default — it must never birth a `payment_pending` claim, §15b, a state that belongs to
+// `checkout-claim.service.ts`); `idempotencyKey`/`slotId` (the checkout spine's own claim machinery,
+// §15/§18c); the amount family and `stripePaymentIntentId` (§14 and rulings 41+46 — server-derived
+// or server-written, never proposed by a caller).
+//
+// EXTEND DELIBERATELY. `booking-birth-provenance.db.test.ts` B6 asserts this exact key set, so
+// widening it is a decision someone makes on purpose rather than a column that leaks in from
+// elsewhere. (Note for the guard's negative space: `scripts/check-money-endpoints.cjs` detects
+// body-parsed schemas by the `insert*Schema` NAME, so a derived schema like this one is outside its
+// parse pass — B6 is what covers it.)
+export const createBookingRequestSchema = insertServiceBookingSchema.pick({
+  serviceId: true,
+  tripId: true,
+  contractId: true,
+  bookingDetails: true,
+  bookingMetadata: true,
+});
+
+export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, providerReply: true, providerRepliedAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
@@ -1350,6 +2365,15 @@ export type UserAndExpertChat = typeof userAndExpertChats.$inferSelect;
 export type TouristPlaceResult = typeof touristPlaceResults.$inferSelect;
 export type HelpGuideTrip = typeof helpGuideTrips.$inferSelect;
 export type Vendor = typeof vendors.$inferSelect;
+export type VendorCreator = {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+};
+export type VendorWithCreator = Vendor & {
+  createdBy: VendorCreator | null;
+};
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;
@@ -1367,6 +2391,7 @@ export type ServiceSubcategory = typeof serviceSubcategories.$inferSelect;
 export type InsertServiceSubcategory = z.infer<typeof insertServiceSubcategorySchema>;
 export type ProviderService = typeof providerServices.$inferSelect;
 export type InsertProviderService = z.infer<typeof insertProviderServiceSchema>;
+export type BundleComponent = typeof bundleComponents.$inferSelect;
 export type FAQ = typeof faqs.$inferSelect;
 export type InsertFAQ = z.infer<typeof insertFaqSchema>;
 export type Wallet = typeof wallets.$inferSelect;
@@ -1585,27 +2610,55 @@ export const vendorAvailabilitySlots = pgTable("vendor_availability_slots", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
   providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  
+
   date: date("date").notNull(),
   startTime: varchar("start_time", { length: 10 }), // "09:00", "14:00"
   endTime: varchar("end_time", { length: 10 }),
-  
+
   capacity: integer("capacity").default(1),
   bookedCount: integer("booked_count").default(0),
   status: varchar("status", { length: 20 }).default("available"),
-  
+
   pricing: jsonb("pricing").default({}),
   discounts: jsonb("discounts").default([]),
-  
+
   minimumNotice: varchar("minimum_notice", { length: 50 }).default("24 hours"),
   cancellationPolicy: varchar("cancellation_policy", { length: 100 }),
   specialRequirements: jsonb("special_requirements").default([]),
-  
+
   confirmationMethod: varchar("confirmation_method", { length: 20 }).default("instant"),
-  
+
+  // S11 (migration 213, DECISIONS.md ledger row 107): app-enforced provenance vocabulary
+  // ('pattern' | 'date_range' | NULL = manually created) — NO DB CHECK (migration-181/195
+  // posture). Lets a materializer-authored row be told apart from a manually-created one before
+  // a price-edit re-price or a future stale-slot cleanup pass ever touches it. Every pre-213 row
+  // (including every pre-213 S7 pattern-materialized row — not backfilled, §13: an honest NULL
+  // beats a guess) reads back NULL.
+  materializedFrom: varchar("materialized_from", { length: 20 }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // S7 (DECISIONS.md ledger 102, migration 210, S7-Q2): the availability materializer's
+  // idempotency target — `db.insert(vendorAvailabilitySlots).values(rows).onConflictDoNothing({
+  // target: [...] })` against this index is what lets re-materializing a pattern/blackout change
+  // never duplicate a slot and never touch an existing row's capacity/booked_count/status (manual
+  // edits and live bookings survive untouched). DELIBERATELY NOT PARTIAL (no WHERE clause), even
+  // though start_time is nullable: a plain composite unique index already tolerates multiple NULL
+  // start_times per (service_id, date) under standard SQL NULL semantics (NULL is never considered
+  // equal to NULL), so no WHERE predicate is needed for correctness — and Drizzle's
+  // `onConflictDoNothing({ target: [...] })` emits `ON CONFLICT (cols) DO NOTHING` with no WHERE,
+  // which Postgres can only use to infer a MATCHING arbiter index; pointing it at a partial index
+  // (tried during development) fails with "there is no unique or exclusion constraint matching the
+  // ON CONFLICT specification" because the inference clause's predicate must match the index's
+  // predicate verbatim. Declared here per the publish-trap rule (migration-155/sb_idempotency_key_idx
+  // lesson: an index the code depends on, absent from schema.ts, is dropped by the Replit
+  // deploy-push on the next publish once the migration is already stamped). Migration 210
+  // defensively verifies no pre-existing duplicates and FAILS LOUDLY if any are found — see its
+  // header and scripts/preflight-prod-unique-indexes.cjs for the required pre-publish check.
+  uniqueIndex("vendor_availability_slots_service_date_start_unique")
+    .on(table.serviceId, table.date, table.startTime),
+]);
 
 // === COORDINATION HUB: Itinerary Coordination State ===
 
@@ -1656,11 +2709,53 @@ export const coordinationStates = pgTable("coordination_states", {
   
   totalEstimatedCost: decimal("total_estimated_cost", { precision: 10, scale: 2 }),
   totalConfirmedCost: decimal("total_confirmed_cost", { precision: 10, scale: 2 }),
-  
+
+  // Coordination FEE capture (CLAUDE.md §7 "Quote-only → CAPTURED", migration 125). 1:1 per
+  // engagement. fee_amount_cents is the NET charged (after the paid-optimize credit); fee_credit_cents
+  // is the applied credit. State machine has a DB CHECK (unpaid|pending|paid).
+  feePaymentStatus: varchar("fee_payment_status", { length: 20 }).notNull().default("unpaid"),
+  feePaymentIntentId: varchar("fee_payment_intent_id"),
+  feeAmountCents: integer("fee_amount_cents"),
+  feeCreditCents: integer("fee_credit_cents").notNull().default(0),
+  feePaidAt: timestamp("fee_paid_at"),
+
+  // Set to true when a refund is processed but no platform_revenue rows are found to reverse.
+  // This is an admin-visible flag indicating a ledger inconsistency that needs manual review.
+  revenueReversalMissing: boolean("revenue_reversal_missing").notNull().default(false),
+  // #877 (migration 169): lets an admin mark the above ledger-gap warning reviewed instead of
+  // it warning forever in the admin concierge panel. NULL = not yet reviewed (open warning).
+  revenueReversalReviewedAt: timestamp("revenue_reversal_reviewed_at"),
+  revenueReversalReviewedBy: varchar("revenue_reversal_reviewed_by").references(() => users.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
+
+// Paid-signal ledger (CLAUDE.md §7 "Paid-signal ledger", migration 125). One row per PAID
+// Event-branch optimize fee, recorded by optimization-payments/confirm. Applied ONCE against a
+// coordination fee: consumed_by_coordination_id (+ the atomic claim in the pay route) is what
+// prevents double-credit. source_payment_intent_id is UNIQUE so the insert is idempotent.
+export const coordinationFeeCredits = pgTable("coordination_fee_credits", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sourcePaymentIntentId: varchar("source_payment_intent_id").notNull().unique(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
+  eventType: varchar("event_type", { length: 50 }),
+  consumedByCoordinationId: varchar("consumed_by_coordination_id").references(() => coordinationStates.id, { onDelete: "set null" }),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  // Migrations 125 + 126: partial indexes for credit availability and event-scoped lookups.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_coord_fee_credits_available")
+    .on(table.userId, table.createdAt.desc())
+    .where(sql`consumed_by_coordination_id IS NULL`),
+  index("idx_coord_fee_credits_event_scoped")
+    .on(table.userId, table.eventType, table.createdAt)
+    .where(sql`consumed_by_coordination_id IS NULL`),
+]);
 
 export const coordinationBookings = pgTable("coordination_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1786,44 +2881,8 @@ export const activityCache = pgTable("activity_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
-export const flightCache = pgTable("flight_cache", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  originCode: varchar("origin_code", { length: 10 }).notNull(),
-  destinationCode: varchar("destination_code", { length: 10 }).notNull(),
-  departureDate: date("departure_date").notNull(),
-  returnDate: date("return_date"),
-  adults: integer("adults").notNull(),
-  offerId: varchar("offer_id", { length: 100 }).notNull(),
-  carrierCode: varchar("carrier_code", { length: 10 }),
-  carrierName: varchar("carrier_name", { length: 100 }),
-  flightNumber: varchar("flight_number", { length: 20 }),
-  departureTime: varchar("departure_time", { length: 30 }),
-  arrivalTime: varchar("arrival_time", { length: 30 }),
-  duration: varchar("duration", { length: 30 }),
-  stops: integer("stops").default(0),
-  // Origin location details
-  originLatitude: decimal("origin_latitude", { precision: 10, scale: 7 }),
-  originLongitude: decimal("origin_longitude", { precision: 10, scale: 7 }),
-  originCity: varchar("origin_city", { length: 255 }),
-  originCountryCode: varchar("origin_country_code", { length: 10 }),
-  originAirportName: varchar("origin_airport_name", { length: 255 }),
-  // Destination location details
-  destinationLatitude: decimal("destination_latitude", { precision: 10, scale: 7 }),
-  destinationLongitude: decimal("destination_longitude", { precision: 10, scale: 7 }),
-  destinationCity: varchar("destination_city", { length: 255 }),
-  destinationCountryCode: varchar("destination_country_code", { length: 10 }),
-  destinationAirportName: varchar("destination_airport_name", { length: 255 }),
-  // Provider and pricing
-  provider: varchar("provider", { length: 100 }).default("amadeus"),
-  price: decimal("price", { precision: 10, scale: 2 }),
-  currency: varchar("currency", { length: 10 }).default("USD"),
-  cabin: varchar("cabin", { length: 50 }),
-  // For sorting
-  popularityScore: integer("popularity_score").default(0),
-  rawData: jsonb("raw_data").default({}),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
+// flight_cache RETIRED by migration 176 (writerless since the Amadeus drop, ruling 34;
+// last route reader deleted in PR #425). Do not re-declare without a new ruling.
 
 export const locationCache = pgTable("location_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1846,11 +2905,36 @@ export const locationCache = pgTable("location_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+// Optimizer activity geocoding cache (migration 267). Additive and declared here with the
+// migration's exact unique-index name per the publish-trap rule. `status` is app-enforced
+// (`success` | `miss`) with deliberately no DB CHECK.
+export const optimizerGeocodeCache = pgTable("optimizer_geocode_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: varchar("provider", { length: 32 }).notNull().default("google"),
+  queryHash: varchar("query_hash", { length: 64 }).notNull(),
+  normalizedQuery: text("normalized_query").notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  formattedAddress: text("formatted_address"),
+  locationType: varchar("location_type", { length: 40 }),
+  resultTypes: jsonb("result_types").notNull().default([]),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("optimizer_geocode_cache_provider_query_hash_uniq")
+    .on(table.provider, table.queryHash),
+]);
+
 // ============ FEVER EVENT CACHE TABLE ============
 // Caches Fever events from Impact.com to reduce API calls and improve performance
 
 export const feverEventCache = pgTable("fever_event_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // unique() removed from column — the migration-created index idx_fever_event_cache_event_id
+  // is declared in the extras block below with its exact name; keeping column .unique() would
+  // cause drizzle push to also create a second fever_event_cache_event_id_unique constraint.
   eventId: varchar("event_id", { length: 100 }).notNull(),
   title: varchar("title", { length: 500 }).notNull(),
   slug: varchar("slug", { length: 500 }),
@@ -1887,7 +2971,12 @@ export const feverEventCache = pgTable("fever_event_cache", {
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
-});
+}, (table) => [
+  // Migration 221: unique index on event_id for cache-hit lookups.
+  // The column.unique() was removed above — declaring here with the migration's exact index
+  // name prevents drizzle push from dropping the live index and creating a differently-named one.
+  uniqueIndex("idx_fever_event_cache_event_id").on(table.eventId),
+]);
 
 // ============ USER FILTER PREFERENCES TABLE ============
 // Stores user's persistent filter and sorting preferences per item type
@@ -1937,50 +3026,8 @@ export const poiCache = pgTable("poi_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
-// ============ AMADEUS TRANSFER CACHE TABLE ============
-export const transferCache = pgTable("transfer_cache", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  offerId: varchar("offer_id", { length: 100 }).notNull(),
-  transferType: varchar("transfer_type", { length: 50 }).notNull(),
-  startLocationCode: varchar("start_location_code", { length: 10 }).notNull(),
-  endAddress: text("end_address"),
-  endCityName: varchar("end_city_name", { length: 255 }),
-  endLatitude: decimal("end_latitude", { precision: 10, scale: 7 }),
-  endLongitude: decimal("end_longitude", { precision: 10, scale: 7 }),
-  vehicleCode: varchar("vehicle_code", { length: 50 }),
-  vehicleCategory: varchar("vehicle_category", { length: 100 }),
-  vehicleDescription: text("vehicle_description"),
-  maxSeats: integer("max_seats"),
-  price: decimal("price", { precision: 10, scale: 2 }),
-  currency: varchar("currency", { length: 10 }).default("USD"),
-  provider: varchar("provider", { length: 100 }).default("amadeus"),
-  rawData: jsonb("raw_data").default({}),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
-
-// ============ AMADEUS SAFETY RATING CACHE TABLE ============
-export const safetyCache = pgTable("safety_cache", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  amadeusId: varchar("amadeus_id", { length: 100 }).notNull().unique(),
-  name: varchar("name", { length: 500 }).notNull(),
-  subType: varchar("sub_type", { length: 50 }),
-  latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
-  longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
-  city: varchar("city", { length: 255 }),
-  country: varchar("country", { length: 100 }),
-  countryCode: varchar("country_code", { length: 10 }),
-  overallScore: integer("overall_score"),
-  lgbtqScore: integer("lgbtq_score"),
-  medicalScore: integer("medical_score"),
-  physicalHarmScore: integer("physical_harm_score"),
-  politicalFreedomScore: integer("political_freedom_score"),
-  theftScore: integer("theft_score"),
-  womenSafetyScore: integer("women_safety_score"),
-  rawData: jsonb("raw_data").default({}),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
+// transfer_cache and safety_cache RETIRED by migration 176 (Amadeus-era, writerless,
+// no live reader — ruling 34). Do not re-declare without a new ruling.
 
 export const restaurantCache = pgTable("restaurant_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -2004,12 +3051,9 @@ export const restaurantCache = pgTable("restaurant_cache", {
 export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
 export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
 export const insertActivityCacheSchema = createInsertSchema(activityCache).omit({ id: true, lastUpdated: true });
-export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
 export const insertLocationCacheSchema = createInsertSchema(locationCache).omit({ id: true, lastUpdated: true });
 export const insertFeverEventCacheSchema = createInsertSchema(feverEventCache).omit({ id: true, lastUpdated: true });
 export const insertPoiCacheSchema = createInsertSchema(poiCache).omit({ id: true, lastUpdated: true });
-export const insertTransferCacheSchema = createInsertSchema(transferCache).omit({ id: true, lastUpdated: true });
-export const insertSafetyCacheSchema = createInsertSchema(safetyCache).omit({ id: true, lastUpdated: true });
 export const insertUserFilterPreferencesSchema = createInsertSchema(userFilterPreferences).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HotelCache = typeof hotelCache.$inferSelect;
@@ -2018,14 +3062,8 @@ export type HotelOfferCache = typeof hotelOfferCache.$inferSelect;
 export type InsertHotelOfferCache = z.infer<typeof insertHotelOfferCacheSchema>;
 export type ActivityCache = typeof activityCache.$inferSelect;
 export type InsertActivityCache = z.infer<typeof insertActivityCacheSchema>;
-export type FlightCache = typeof flightCache.$inferSelect;
-export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
 export type PoiCache = typeof poiCache.$inferSelect;
 export type InsertPoiCache = z.infer<typeof insertPoiCacheSchema>;
-export type TransferCache = typeof transferCache.$inferSelect;
-export type InsertTransferCache = z.infer<typeof insertTransferCacheSchema>;
-export type SafetyCache = typeof safetyCache.$inferSelect;
-export type InsertSafetyCache = z.infer<typeof insertSafetyCacheSchema>;
 export type LocationCache = typeof locationCache.$inferSelect;
 export type InsertLocationCache = z.infer<typeof insertLocationCacheSchema>;
 export type FeverEventCache = typeof feverEventCache.$inferSelect;
@@ -2041,6 +3079,7 @@ export type InsertRestaurantCache = z.infer<typeof insertRestaurantCacheSchema>;
 export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCoordinationStateSchema = createInsertSchema(coordinationStates).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
 export const insertCoordinationBookingSchema = createInsertSchema(coordinationBookings).omit({ id: true, createdAt: true, updatedAt: true, confirmedAt: true });
+export const insertCoordinationFeeCreditSchema = createInsertSchema(coordinationFeeCredits).omit({ id: true, createdAt: true, consumedAt: true, consumedByCoordinationId: true });
 
 export type VendorAvailabilitySlot = typeof vendorAvailabilitySlots.$inferSelect;
 export type InsertVendorAvailabilitySlot = z.infer<typeof insertVendorAvailabilitySlotSchema>;
@@ -2048,6 +3087,8 @@ export type CoordinationState = typeof coordinationStates.$inferSelect;
 export type InsertCoordinationState = z.infer<typeof insertCoordinationStateSchema>;
 export type CoordinationBooking = typeof coordinationBookings.$inferSelect;
 export type InsertCoordinationBooking = z.infer<typeof insertCoordinationBookingSchema>;
+export type CoordinationFeeCredit = typeof coordinationFeeCredits.$inferSelect;
+export type InsertCoordinationFeeCredit = z.infer<typeof insertCoordinationFeeCreditSchema>;
 
 // === AI Integration Tables ===
 
@@ -2564,6 +3605,32 @@ export const cityNeighborhoods = pgTable("city_neighborhoods", {
   uniqCitySlug: unique("city_neighborhoods_city_country_slug_uniq").on(table.city, table.country, table.slug),
 }));
 
+// A market's self-rendered geography layer (water/parks/roads polylines in lon/lat), DB-backed
+// so the admin "Add market" flow is one action with no code commit per market (CLAUDE.md §20b,
+// migration 186; decision-maker ratified Aug 9 2026). Written by the server-side Overpass
+// extract (same length-ranked caps as scripts/generate-market-geography.ts); read DB-first with
+// the committed KYOTO_GEOGRAPHY literal as server-side fallback. Absent row = the market
+// honestly renders without a geography layer (§13 — never another city's shapes). ODbL: every
+// render of this data carries "© OpenStreetMap contributors". Declared here per the
+// publish-trap rule — an undeclared table would be dropped by the deploy push.
+export const marketGeography = pgTable("market_geography", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  market: varchar("market", { length: 100 }).notNull().unique(), // slug, matches getMarketGeography contains-lookup
+  displayName: varchar("display_name", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  bbox: jsonb("bbox").notNull(), // [west, south, east, north] lon/lat
+  water: jsonb("water").notNull().default([]), // [[lon,lat],...][] polylines
+  parks: jsonb("parks").notNull().default([]),
+  roads: jsonb("roads").notNull().default([]),
+  // Honesty metadata: {water:{kept,total},parks:{...},roads:{...}} — a capped extract must
+  // never read as full OSM coverage (§13).
+  wayCounts: jsonb("way_counts"),
+  source: varchar("source", { length: 30 }).notNull().default("overpass"),
+  extractedAt: timestamp("extracted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ─── Phase 3 join + target tables ───────────────────────────────────────────
 // expertNeighborhoods: expert ↔ neighborhood. Soft-exclusive "lead" enforced
 // at DB level by a partial unique index (one is_lead=true per neighborhood).
@@ -2577,6 +3644,13 @@ export const expertNeighborhoods = pgTable("expert_neighborhoods", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   uniqExpertNeighborhood: unique("expert_neighborhoods_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+  // Migration 041. Deploy-push rule (full rationale in the `bookings` block) — created only in
+  // migration SQL, so every publish dropped it. The partial WHERE is what makes this express
+  // "at most ONE lead expert per neighborhood" rather than "one row per neighborhood": without
+  // it the index would forbid a second non-lead expert, which is the opposite of the intent.
+  oneLeadPerNeighborhood: uniqueIndex("idx_expert_neighborhoods_one_lead_per")
+    .on(table.neighborhoodId)
+    .where(sql`is_lead = true`),
 }));
 export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
 export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
@@ -3069,8 +4143,33 @@ export const itineraryItems = pgTable("itinerary_items", {
   
   // Booking info
   vendorContractId: varchar("vendor_contract_id").references(() => vendorContracts.id, { onDelete: "set null" }),
+  // Link to a bookable platform service (provider_services) when an expert drops one onto the
+  // itinerary from the Workstation service catalog. Nullable — free-text/place items have none.
+  // ON DELETE SET NULL so removing the underlying service doesn't cascade-delete the plan item.
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  // Item 2 Phase 1 (ledger 2026-08-23-item2-grounding, migration 255): the DMO grounding link — set
+  // when the build-time resolver matches a free-text AI item to a recognized DMO extracted place
+  // (informational: a real pin + official/ticketing link, NOT platform-bookable — that stays
+  // providerServiceId's job). Soft ref (no FK — dmo_extracted_places are replace-by-position child
+  // rows that a re-extract can renumber; a hard FK would cascade-null on every refresh). Nullable;
+  // NULL = not grounded to a DMO place. The matched place's real coords are copied onto this item's
+  // latitude/longitude so it pins with no client change — never a guessed/city-center pin (§13/§22).
+  dmoExtractedPlaceId: varchar("dmo_extracted_place_id"),
+  // Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate, migration 256): the affiliate grounding link
+  // — set when the build-time resolver matches a free-text AI item to a bookable affiliate product
+  // (rung 02: catalog → affiliate → DMO). A real FK (affiliate_products.id is a stable persisted
+  // row, unlike the replace-by-position DMO rows) with ON DELETE SET NULL so retiring a product
+  // doesn't cascade-delete the plan item. Nullable; NULL = not grounded to an affiliate product.
+  // The item's booking CTA is server-derived from this at plancard-assembly time (§16 vault token),
+  // never client-settable (§19 — omitted from the insert schema).
+  affiliateProductId: varchar("affiliate_product_id").references(() => affiliateProducts.id, { onDelete: "set null" }),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
+  // The item↔booking key (migration 159; master brief §5 item 2). Stamped by the checkout confirm
+  // path atomically with `routingStatus → 'purchased'`, and the key the refund/cancel reversal
+  // edge (`purchased → in_planning`) resolves through. Nullable — an item has no booking until
+  // bought. ON DELETE SET NULL so removing a booking never cascade-deletes the plan item.
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
   confirmationNumber: varchar("confirmation_number", { length: 255 }),
   
   // Cost
@@ -3107,17 +4206,62 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
+  // Durable per-item expert note (migration 152, Workstation audit C-1) — the traveler-facing
+  // tip PlanCard renders per activity. Distinct from notes (traveler's own) and privateNotes
+  // (organizer-only): this is the EXPERT's voice on the item. Nullable; NULL = no note.
+  expertNote: text("expert_note"),
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — what the ADDING SOURCE
+  // knew about transport at add-time, carried onto the plan item so it survives independent of
+  // the source row (a partner-feed or DMO item has nothing else to carry it in). transportProvided
+  // mirrors provider_services.transportProvided's app-layer vocabulary (yes|no|not_applicable,
+  // no DB CHECK here — see migration 166 header). durationMinutes above already served the
+  // "duration" leg of the envelope pre-166. Nullable; NULL = the source never captured that fact
+  // (§13 — never fabricated, never defaulted to "not provided" at the DATA layer; the transport-gap
+  // checker (21) is the layer that treats unknown as "not provided" for FLAGGING purposes only).
+  transportProvided: varchar("transport_provided", { length: 20 }),
+  pickupPoint: text("pickup_point"),
+  dropOffPoint: text("drop_off_point"),
   attachments: jsonb("attachments").default([]), // [{name, url, type}]
   
   // Suggestion tracking
   suggestedBy: varchar("suggested_by", { length: 20 }), // 'ai', 'expert', 'user'
 
+  // Provenance (migration 181, D2 ratified Aug 7 2026). App-enforced value set = 'ai' | 'traveler'
+  // | 'expert' — deliberately NO DB CHECK (publish-time push trap, same posture as
+  // `routingStatus`/`transportProvided` above). Nullable: NULL means either (a) a legacy row
+  // born before this column existed, or (b) a truly-internal/dead write path this lane
+  // deliberately left unstamped — both are ambiguous by construction and are treated as such
+  // (see the regenerate-delete predicate below, which only trusts a NON-NULL origin). Server-
+  // derived only (§14 posture) — every user-facing create route strips a client-supplied value
+  // and re-stamps it from session/assignment state, never from `req.body`.
+  origin: varchar("origin", { length: 20 }),
+
+  // Gem link (migration 133, authoring brief §3a — design room only). Soft reference (no FK: two gem
+  // tables exist — ai_discovered_gems + travel_pulse_hidden_gems; source disambiguation is future work).
+  gemId: varchar("gem_id"),
+
   // Ordering
   sortOrder: integer("sort_order").default(0),
-  
+
+  // Per-item routing state (migration 159, Trip-Canon Lane 1 W1). Canonical value set =
+  // ROUTING_STATUSES above; deliberately NO DB CHECK (see the migration header). The DEFAULT here
+  // must stay byte-identical to the migration's explicit ALTER default — the Phase 1a gate proves
+  // ORM default == DB default via information_schema, and a divergence would make the publish push
+  // rewrite the column default on every deploy.
+  routingStatus: varchar("routing_status", { length: 20 }).notNull().default("in_planning"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Declared here, not only in migration 159: per the CLAUDE.md deploy-push rule the publish-time
+  // drizzle push is authoritative over objects it does not find in THIS file and will DROP an
+  // index that exists only in migration SQL — after which the stamped migration never recreates
+  // it. This index serves the refund/cancel reversal lookup (find the item for a booking).
+  itineraryItemsBookingIdIdx: index("idx_itinerary_items_booking_id").on(table.bookingId),
+  // Migration 217 — per-trip loads/deletes + routing predicates. Leading trip_id also serves
+  // bare trip_id lookups (leftmost prefix), so no separate single-column index is needed.
+  itineraryItemsTripRoutingIdx: index("idx_itinerary_items_trip_id_routing_status").on(table.tripId, table.routingStatus),
+}));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
 export const temporalAnchors = pgTable("temporal_anchors", {
@@ -3399,7 +4543,34 @@ export const userSpontaneityPreferences = pgTable("user_spontaneity_preferences"
 export const insertTripParticipantSchema = createInsertSchema(tripParticipants).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorContractSchema = createInsertSchema(vendorContracts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripTransactionSchema = createInsertSchema(tripTransactions).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true });
+// `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
+// never client-settable via this schema. Every create route strips whatever the client sent and
+// re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
+// §PS18-completeness-guard (2026-08-29-privileged-field-completeness): `routingStatus` /
+// `bookingId` are the checkout-claim machine's OWN state — the same shape as
+// `service_bookings.stripePaymentIntentId` (§19a). `routingStatus` is atomically flipped to
+// 'purchased' (with `bookingId` stamped alongside) ONLY by the checkout-confirm path
+// (`server/services/item-routing.service.ts`, `server/routes/routing.routes.ts`'s validated
+// transition endpoint), via raw `db.update(itineraryItems)` calls that never go through
+// `storage.createItineraryItem`/`updateItineraryItem` at all — so omitting them here costs those
+// legitimate writers nothing, and NEITHER has any legitimate direct caller among
+// createItineraryItem's six call sites (verified by inspection). Found unstripped on BOTH create
+// call sites (`insertItineraryItemSchema.safeParse({...req.body, tripId})` in trips.routes.ts and
+// routes.ts) and — more importantly — on the canonical PATCH route
+// (`PATCH /api/trips/:tripId/itinerary-items/:itemId`), which bypasses this schema entirely via a
+// raw `req.body` destructure that stripped only id/tripId/createdAt/updatedAt/suggestedBy/origin.
+// A traveler/expert with ordinary write access to their OWN trip could POST or PATCH an item with
+// `routingStatus: "purchased"` and an ARBITRARY `bookingId` (no ownership check) — a fabricated
+// "this was purchased" state with zero payment, and a booking-id link to a row they may not own.
+// Layer 2 (storage.createItineraryItem / updateItineraryItem strip) is what actually closes the
+// PATCH route, since it bypasses this schema — same "layer 2 covers the caller layer 1 can't
+// reach" shape as `stripFormVerificationFields` (§19). `bookingStatus` (a looser, purely
+// descriptive sibling column with a confirmed legitimate direct caller —
+// `content.routes.ts`'s affiliate-booking-confirm flow sets it at create time — and no proven
+// money-decision read) is DELIBERATELY left alone here; it is grandfathered in the completeness
+// guard pending a separate, narrower investigation. Found by
+// `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -3703,11 +4874,28 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   lastScrapedAt: timestamp("last_scraped_at"),
   // Source tracking: "manual" (admin-created / scraper) or "partnerize" (synced from Partnerize network).
   source: varchar("source", { length: 30 }).default("manual"),
-  externalCampaignId: varchar("external_campaign_id", { length: 100 }),
+  externalCampaignId: varchar("external_campaign_id", { length: 100 }), // uniquely indexed below
   lastSyncedAt: timestamp("last_synced_at"),
+  // Partner-level admin approval (D1a): affiliate content is admin-gated ONCE at the partner level —
+  // every product inherits its partner's approval. Born 'submitted' (never self-approved); an admin
+  // approves/rejects via /api/admin/affiliate/partners/:id/approve|reject. Public reads gate on
+  // 'approved' (migration 121); admin reads are ungated. Existing active partners grandfathered
+  // 'approved' (no outage). draft/submitted/approved/rejected — DB CHECK in migration 121.
+  approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 103. Declared per the deploy-push rule (full rationale in the `bookings` block):
+  // created only in migration SQL, so every publish dropped it and the stamped migration never
+  // recreated it. Partial WHERE mirrored verbatim — nullable for manually-added partners.
+  externalCampaignIdIdx: uniqueIndex("affiliate_partners_external_campaign_id_idx")
+    .on(table.externalCampaignId)
+    .where(sql`external_campaign_id IS NOT NULL`),
+}));
 
 // Affiliate products table - stores scraped product data
 export const affiliateProducts = pgTable("affiliate_products", {
@@ -3738,7 +4926,15 @@ export const affiliateProducts = pgTable("affiliate_products", {
   highlights: jsonb("highlights").$type<string[]>().default([]),
   includes: jsonb("includes").$type<string[]>().default([]),
   tags: jsonb("tags").$type<string[]>().default([]),
-  availability: varchar("availability", { length: 200 }),
+  availability: varchar("availability", { length: 200 }), // legacy free-text
+  // Remediation P1 (migration 131) — normalized availability + CTA booking classifier.
+  // All NULLABLE, no DB CHECK (values validated at zod/ORM layer → no publish-time drizzle-push trap).
+  availabilityStatus: varchar("availability_status", { length: 20 }), // available|seasonal|limited|sold_out; null=unknown (§13)
+  availableFrom: date("available_from"),
+  availableTo: date("available_to"),
+  // CTA classifier (P4): in_platform_bookable → add-to-cart · affiliate_bookable → agent rail ·
+  // informational → tracked "View". NULL → resolver treats affiliate content as affiliate_bookable.
+  bookingType: varchar("booking_type", { length: 24 }),
   bookingInfo: text("booking_info"),
   metadata: jsonb("metadata"),
   isActive: boolean("is_active").default(true),
@@ -3778,7 +4974,23 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   agentType: varchar("agent_type", { length: 20 }), // grok | claude | system | null
   sessionId: varchar("session_id", { length: 255 }), // AI planning session trace ID
   clickedAt: timestamp("clicked_at").defaultNow(),
-});
+  // Migration 085: content attribution fields — which item surface the click originated from.
+  sourceImpressionId: varchar("source_impression_id"), // FK to content_impressions.id (not enforced — opportunistic)
+  clickContentType: text("click_content_type"),   // gem | expert | provider_service | ...
+  clickContentId: text("click_content_id"),
+}, (table) => [
+  // Migration 085: partial indexes for affiliate attribution queries.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_affiliate_clicks_content")
+    .on(table.clickContentType, table.clickContentId)
+    .where(sql`click_content_type IS NOT NULL`),
+  index("idx_affiliate_clicks_product")
+    .on(table.productId)
+    .where(sql`product_id IS NOT NULL`),
+  index("idx_affiliate_clicks_user")
+    .on(table.userId)
+    .where(sql`user_id IS NOT NULL`),
+]);
 
 // Insert schemas for affiliate tables
 export const insertAffiliatePartnerSchema = createInsertSchema(affiliatePartners).omit({
@@ -3880,7 +5092,14 @@ export const expertTemplates = pgTable("expert_templates", {
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, () => ({
+  // Migration 219 — full-text search on title+destination+description. GIN index declared here
+  // per the deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
+  etFtsIdx: index("idx_expert_templates_fts").using(
+    "gin",
+    sql`(setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('english', coalesce(destination, '')), 'A') || setweight(to_tsvector('english', coalesce(description, '')), 'B'))`,
+  ),
+}));
 
 // Template purchases - tracks when users buy templates
 export const templatePurchases = pgTable("template_purchases", {
@@ -3926,7 +5145,12 @@ export const expertEarnings = pgTable("expert_earnings", {
   paidOutAt: timestamp("paid_out_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): completion-mint race guard — see provider_earnings twin.
+  bookingMintUniq: uniqueIndex("expert_earnings_booking_mint_uniq")
+    .on(table.referenceId)
+    .where(sql`reference_type = 'service_booking' AND amount >= 0`),
+}));
 
 // Expert payouts - tracks payout requests
 export const expertPayouts = pgTable("expert_payouts", {
@@ -4128,7 +5352,16 @@ export const providerEarnings = pgTable("provider_earnings", {
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): the completion mint's race guard — one booking-mint row per
+  // booking; the mint INSERTs with ON CONFLICT DO NOTHING against this index. Declared here
+  // AND in migration SQL (publish-trap rule).
+  // amount >= 0: only the one original positive completion-mint row is unique; negative
+  // compensation/clawback rows sharing the same source identity stay insertable.
+  bookingMintUniq: uniqueIndex("provider_earnings_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking' AND amount >= 0`),
+}));
 
 // Provider payouts - tracks payout requests
 export const providerPayouts = pgTable("provider_payouts", {
@@ -4203,7 +5436,22 @@ export const platformRevenue = pgTable("platform_revenue", {
   transactionDate: timestamp("transaction_date").defaultNow(),
   reconciliationDate: timestamp("reconciliation_date"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): completion-mint race guard — see provider_earnings twin.
+  // gross_amount >= 0: only the original completion-mint row is unique; negative reversal
+  // compensation rows (reversePlatformRevenueForBooking) share the same identity and stay free.
+  bookingMintUniq: uniqueIndex("platform_revenue_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking_commission' AND gross_amount >= 0`),
+  // Migration 244 (task 1573): webhook concurrency guard — prevents two copies of the same
+  // Stripe payment_intent.succeeded event from writing duplicate revenue rows when they arrive
+  // ~150 ms apart (both pass the read-then-write hasPaymentIntentRevenue check before either
+  // commits). The expression index on the JSONB field is partial so only PI-keyed rows are
+  // constrained; affiliate, manual-credit, and reversal rows are unaffected.
+  paymentIntentUniq: uniqueIndex("platform_revenue_payment_intent_uniq")
+    .on(sql`(metadata->>'paymentIntentId')`)
+    .where(sql`metadata->>'paymentIntentId' IS NOT NULL AND metadata->>'paymentIntentId' <> ''`),
+}));
 
 // Daily revenue summary for dashboard analytics
 export const dailyRevenueSummary = pgTable("daily_revenue_summary", {
@@ -4296,6 +5544,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "media",
   "tip",
   "affiliate_product",
+  "dmo_content",
   "other"
 ]);
 
@@ -4418,7 +5667,23 @@ export const contentImpressions = pgTable("content_impressions", {
   sessionId: varchar("session_id", { length: 255 }).notNull(),
   userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }), // opportunistic — feed is public
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  // Partial indexes for feed analytics queries (user and city breakdowns).
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  //
+  // NOTE: uq_ci_session_content and content_impressions_session_dedup (both UNIQUE on
+  // (session_id, content_type, content_id)) are intentionally NOT declared here.
+  // Migration 116 creates uq_ci_session_content inside a guard that degrades to a plain
+  // (non-unique) index when duplicate rows already exist, so on such a database the live
+  // index is not unique and declaring it UNIQUE would make drizzle push fail. Both
+  // content_impressions unique indexes are analytics-only (no money semantics) and are
+  // documented as intentionally unmanaged in scripts/preflight-prod-unique-indexes.cjs.
+  index("idx_ci_city").on(table.city, table.createdAt.desc()).where(sql`city IS NOT NULL`),
+  index("idx_ci_user").on(table.userId, table.createdAt.desc()).where(sql`user_id IS NOT NULL`),
+  index("idx_ci_dedup_user_session")
+    .on(table.contentType, table.contentId, table.userId, table.sessionId)
+    .where(sql`user_id IS NOT NULL AND session_id IS NOT NULL`),
+]);
 
 // AI Usage Logs - Track API calls and costs for all AI providers
 export const aiUsageLogs = pgTable("ai_usage_logs", {
@@ -4868,7 +6133,13 @@ export type InsertDestinationMetricsHistory = z.infer<typeof insertDestinationMe
 
 export const transportLegs = pgTable("transport_legs", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  // SCOPE (migration 154, §18 L4): a leg is EITHER variant-scoped (the legacy AI-optimizer home)
+  // OR trip-scoped (expert-built Workstation trips). Both columns are nullable and the
+  // exactly-one-of rule is enforced in the app layer (server/services/trip-transport-legs.service.ts)
+  // — deliberately NOT a cross-column DB CHECK, which is the shape that fails Replit's
+  // publish-time drizzle-push.
+  variantId: varchar("variant_id").references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   dayNumber: integer("day_number").notNull(),
   legOrder: integer("leg_order").notNull(),
   fromActivityId: varchar("from_activity_id"),
@@ -4897,6 +6168,16 @@ export const transportLegs = pgTable("transport_legs", {
   linkedProductUrl: text("linked_product_url"),
   calculatedAt: timestamp("calculated_at").defaultNow(),
   destinationProfile: text("destination_profile"),
+  // Expert-stated arrangement facts for a chauffeured leg (migration 154). Only ever what the
+  // expert actually wrote (§13); pickupTime is a DISPLAY STRING in v1 — no tz math, never derived
+  // from an activity start time. NOT a booking record: booked-ride state still derives from
+  // transport_booking_options.
+  pickupPoint: text("pickup_point"),
+  pickupTime: text("pickup_time"),
+  // Proposal lifecycle for trip-scoped legs: 'proposed' (engine-computed, expert-only) →
+  // 'confirmed' (expert-confirmed; the ONLY state traveler surfaces render). NULL = legacy
+  // variant leg, grandfathered. DB CHECK (migration 154) allows NULL.
+  proposalStatus: varchar("proposal_status", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -5046,25 +6327,48 @@ export const itineraryChanges = pgTable("itinerary_changes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const activityComments = pgTable("activity_comments", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  activityId: varchar("activity_id").notNull(),
-  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
-  authorId: varchar("author_id").notNull(),
-  authorName: varchar("author_name", { length: 255 }).notNull(),
-  text: text("text").notNull(),
-  role: varchar("role", { length: 20 }).notNull(),
-  parentId: varchar("parent_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// ── Item transition log — the slip's diary (Lane S, migration 171) ─────────────────────────────
+// APPEND-ONLY: no app code may UPDATE or DELETE rows here (unlike `itinerary_changes`, which is a
+// traveler display feed with a DELETE endpoint — ruling 11 keeps the two separate: one truth per
+// event type). Every `itinerary_items.routing_status` transition writes a row in the SAME
+// transaction as the flip (ruling 18); trip-scoped events (`variant_applied`) carry itemId NULL
+// (ruling 16). `item_id` deliberately has NO FK — a deleted item's history must survive it (the
+// same posture as itinerary_changes.activityId). Version = count of rows per trip, display-only —
+// never a stored column. NO DB CHECK on the vocab columns (the migration-159 posture): canonical
+// sets live here in code. This insert path is the future subscription hook for the expert
+// PULL→PUSH notification lane — do not build notifications on it yet.
+export const itemTransitionLog = pgTable(
+  "item_transition_log",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    itemId: varchar("item_id"), // NULL = trip-scoped event (ruling 16); no FK — history outlives the item
+    eventType: varchar("event_type", { length: 30 }).notNull().default("status_transition"), // status_transition | variant_applied | plan_finalized | plan_reopened (R-F) | workspace_status_transition (task 1028)
+    fromStatus: varchar("from_status", { length: 20 }), // NULL for non-status events
+    toStatus: varchar("to_status", { length: 20 }),
+    actorType: varchar("actor_type", { length: 20 }).notNull(), // traveler | expert | checkout | refund | optimizer | system
+    actorId: varchar("actor_id"), // session user when there is one; NULL for system/checkout/refund actors
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // The diary read (newest-first per trip) + the version count both ride this index.
+    // Declared here, not only in migration 171 — the deploy push drops undeclared indexes.
+    index("itl_trip_created_idx").on(table.tripId, table.createdAt),
+  ],
+);
+
+export type ItemTransitionLogEntry = typeof itemTransitionLog.$inferSelect;
+export type InsertItemTransitionLogEntry = typeof itemTransitionLog.$inferInsert;
+
+// NOTE (W5-D cleanup, Aug 1, 2026): the `activity_comments` table + its schema were retired here —
+// zero client callers of GET/POST /api/activities/:activityId/comments or DELETE /api/comments/:id
+// ever existed. Per-item comments now live on `trip_item_comments` (migration 165). See migration
+// 167_drop_activity_comments.sql for the DROP TABLE rationale.
 
 export const insertItineraryChangeSchema = createInsertSchema(itineraryChanges).omit({ id: true, createdAt: true });
-export const insertActivityCommentSchema = createInsertSchema(activityComments).omit({ id: true, createdAt: true });
 
 export type ItineraryChange = typeof itineraryChanges.$inferSelect;
 export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
-export type ActivityComment = typeof activityComments.$inferSelect;
-export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
 
 // ============================================
 // DATA MONETIZATION & ANALYTICS INFRASTRUCTURE
@@ -5145,6 +6449,37 @@ export const demandSignals = pgTable("demand_signals", {
   lastUpdated: timestamp("last_updated").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Traveler-submitted service requests — an explicit "I want a service that doesn't
+// exist yet" capture (distinct from the machine-generated serviceDemandSignals /
+// aggregate demandSignals). A traveler describes what they're looking for; admins
+// triage the queue; the request carries a status so it can be marked fulfilled.
+// travelerId is set server-side from the session (§14). Migration 123.
+export const serviceRequests = pgTable("service_requests", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "set null" }),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  serviceType: varchar("service_type", { length: 100 }), // free-text category hint (optional)
+  description: text("description").notNull(),
+  budget: decimal("budget", { precision: 10, scale: 2 }), // optional traveler budget, dollars
+  // open → the request is live in the admin queue; fulfilled → a matching service now exists;
+  // closed → dismissed/won't-build. DB CHECK enforces this set (new table, no legacy rows).
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
+  id: true, travelerId: true, status: true, adminNotes: true, createdAt: true, updatedAt: true,
+}).extend({
+  // `description` is a TEXT column, so drizzle-zod imposes no length cap by default —
+  // bound it so an authenticated user can't POST a multi-MB body into the admin queue.
+  description: z.string().min(5).max(5000),
+});
+export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
+export type ServiceRequest = typeof serviceRequests.$inferSelect;
 
 // Provider Performance Metrics - For selling insights to providers
 export const providerPerformanceMetrics = pgTable("provider_performance_metrics", {
@@ -5416,6 +6751,44 @@ export const bookings = pgTable("bookings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   createdAtIdx: index("bookings_created_at_idx").on(table.createdAt),
+
+  // ── Declared here per the CLAUDE.md deploy-push rule ──────────────────────────────────
+  // The publish-time drizzle push is AUTHORITATIVE over objects absent from this file and
+  // will DROP an index that exists only in migration SQL — after which the stamped migration
+  // never recreates it. All three below were created by registered migrations and declared
+  // nowhere, so each publish silently removed them.
+  //
+  // This rail is NOT dead: §15c records the legacy `bookings` table as still live behind
+  // /booking-demo and POST /api/bookings/process-cart.
+  //
+  // Partial WHERE clauses are mirrored from the migrations verbatim. They are load-bearing:
+  // every one of these columns is nullable on legacy rows, and a FULL unique index would
+  // collapse all those NULLs into a single conflicting value set and fail the publish.
+
+  // Migration 096. The SAME guard it creates on `service_bookings` (declared at
+  // sb_idempotency_key_idx above) — only that half was ever declared, so the cart rail kept
+  // its protection across publishes and this rail lost it. Absence of this index was measured
+  // to turn 3 concurrent same-key checkouts into 3 REAL Stripe charges.
+  idempotencyKeyIdx: uniqueIndex("bookings_idempotency_key_idx")
+    .on(table.idempotencyKey)
+    .where(sql`idempotency_key IS NOT NULL`),
+
+  // Migration 053. One booking per PaymentIntent — the DB-level backstop behind §15's
+  // promotion conditionals.
+  stripePaymentIntentIdUnique: uniqueIndex("bookings_stripe_payment_intent_id_unique")
+    .on(table.stripePaymentIntentId)
+    .where(sql`stripe_payment_intent_id IS NOT NULL`),
+
+  // Migration 099. One expert cannot be double-booked into the same date+time slot.
+  expertSlotUnique: uniqueIndex("bookings_expert_slot_unique_idx")
+    .on(table.expertId, table.bookingDate, table.bookingTime)
+    .where(sql`expert_id IS NOT NULL AND booking_date IS NOT NULL AND booking_time IS NOT NULL`),
+
+  // Migration 098: partial index for dispute lookups (only rows with an active dispute).
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  disputeIdIdx: index("bookings_dispute_id_idx")
+    .on(table.disputeId)
+    .where(sql`dispute_id IS NOT NULL`),
 }));
 
 export const platformFees = pgTable("platform_fees", {
@@ -5446,6 +6819,278 @@ export const paymentIntents = pgTable("payment_intents", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Refund audit log (migration 156). MUST stay byte-for-byte equivalent to
+// server/migrations/156_refunds_audit_table.sql — the deploy runs an automatic drizzle-kit
+// push from this file, so any disagreement makes the push ALTER the table under a live
+// money path. Written by exactly two sites in server/services/stripe-payment.service.ts:
+//   handleRefund()          — the `charge.refunded` webhook: charge id + PI + amount +
+//                             currency + status ('completed'); no booking_id / refund id / reason.
+//   refundServiceBooking()  — the escrow refund terminal (§14 server-derived amount, §15 atomic
+//                             status claim + deterministic Stripe idempotencyKey): booking_id +
+//                             refund id + PI + amount + currency + Stripe status + reason.
+// Nothing reads this table yet (the admin "Refunds" tab reads reversed platform_revenue rows) —
+// it is an append-only audit log, so every column a writer omits is nullable.
+// `status` is deliberately NULLABLE with NO CHECK: refundServiceBooking stores Stripe's
+// refund.status, an external value typed `string | null` — a CHECK/NOT NULL here would
+// reproduce the exact bug 156 fixes (money refunded in Stripe, audit insert throws).
+export const refunds = pgTable("refunds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // ON DELETE SET NULL, never CASCADE: a financial audit row must outlive its booking.
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+  stripeChargeId: varchar("stripe_charge_id", { length: 255 }),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  // DOLLARS — same precision/scale as service_bookings.total_amount, the value it reverses.
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  status: varchar("status", { length: 50 }),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  bookingIdx: index("idx_refunds_booking_id").on(table.bookingId),
+  paymentIntentIdx: index("idx_refunds_payment_intent").on(table.stripePaymentIntentId),
+}));
+
+// ══ RECONCILIATION DETECTION (migration 177, reconciliation-detection lane) ═════════════════
+//
+// The daily Stripe-vs-DB drift job's ops-visible output. Recovery on the money path is
+// three-layered (ruling 38's TTL sweep, ruling 39's webhook + client-confirm promotion) but
+// DETECTION used to be one-eyed — `server/jobs/stripeReconciliation.ts` scanned only the legacy
+// `bookings` table, so cart checkout (the primary checkout) never appeared in a drift report.
+//
+// Declared HERE, not only in migration 177: the deploy push is authoritative over tables AND
+// indexes it does not find in this file and will drop them, after which the stamped migration
+// never recreates them (CLAUDE.md deploy-push rule, both variants).
+
+/** One row per reconciliation pass — written for EVERY pass, including a clean one. A zero-
+ *  exception run and a job that never ran must not look the same from the admin surface. */
+export const reconciliationRuns = pgTable(
+  "reconciliation_runs",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    finishedAt: timestamp("finished_at"),
+    /** scheduled | manual | test — `trigger` is a reserved word, hence the column name. */
+    triggeredBy: varchar("triggered_by", { length: 20 }).notNull().default("scheduled"),
+    /** running | completed | skipped | failed */
+    status: varchar("status", { length: 20 }).notNull().default("running"),
+    windowStart: timestamp("window_start"),
+    scannedPaymentIntents: integer("scanned_payment_intents").notNull().default(0),
+    scannedCharges: integer("scanned_charges").notNull().default(0),
+    scannedRefunds: integer("scanned_refunds").notNull().default(0),
+    scannedCartBookings: integer("scanned_cart_bookings").notNull().default(0),
+    scannedLegacyBookings: integer("scanned_legacy_bookings").notNull().default(0),
+    /** Every drift found this pass, including ones already on record from an earlier pass. */
+    exceptionsDetected: integer("exceptions_detected").notNull().default(0),
+    /** Rows this pass actually inserted (detected minus already-recorded). */
+    exceptionsNew: integer("exceptions_new").notNull().default(0),
+    /** The ONE narrow repair this job may perform — PI-succeeded / row-still-provisional handed
+     *  to the EXISTING shared promotion (`promotePaidCheckout`, actor `reconciliation`). */
+    promoted: integer("promoted").notNull().default(0),
+    note: text("note"),
+  },
+  (table) => ({
+    startedIdx: index("recon_runs_started_idx").on(table.startedAt),
+  }),
+);
+
+/** The canonical drift vocabulary. No DB CHECK (migration-159/171 posture) — this is the source
+ *  of truth, and the admin surface renders from it. */
+export const RECONCILIATION_EXCEPTION_KINDS = [
+  // ── CART rail (service_bookings) ──────────────────────────────────────────────────────────
+  /** A PaymentIntent succeeded and NO service_bookings row can be resolved from it (neither by
+   *  stamped PI id nor by its own `bookingIds` metadata). Customer billed, no record. */
+  "pi_succeeded_no_booking",
+  /** A PaymentIntent succeeded but its booking is still an unpromoted claim. The ONE case the
+   *  job may hand to the shared promotion; recorded as an exception when that fails. */
+  "pi_succeeded_claim_provisional",
+  /** A PaymentIntent succeeded and its booking is VOIDED/terminal (ruling 39's late-signal
+   *  reconciliation-exception state). Never resurrected — a human decides refund vs. re-book. */
+  "pi_succeeded_booking_voided",
+  /** A booking is `confirmed` (or otherwise paid-equivalent) with NO PaymentIntent stamped. */
+  "booking_confirmed_no_pi",
+  /** A booking is `confirmed` but its PaymentIntent is not in a succeeded state at Stripe. */
+  "booking_confirmed_pi_not_succeeded",
+  /** Stripe's captured amount and the server-derived total of the PI's booking rows disagree. */
+  "amount_mismatch",
+  /** Stripe holds a refund whose reversal never landed in the DB (`refunds` row / status). */
+  "refund_not_reversed",
+  /** PS15 / ruling 46 — UNVERIFIABLE PAYMENT PROVENANCE. A booking carries a
+   *  `stripe_payment_intent_id` with NO `bookingDetails.stripeAttemptAt` marker behind it.
+   *
+   *  Every PI the checkout spine writes is preceded by that §15b pre-flight marker
+   *  (`markStripeAttempt` runs immediately before `paymentIntents.create`; `stampAuthorization`
+   *  and the ordering-1 `resolveAndStamp` only ever act on rows that already carry it). A stamped
+   *  row WITHOUT it was written by something that is not the spine — the PS15 mass-assignment on
+   *  `POST /api/bookings` (closed by ruling 46), a seed (`beta-reviews-bookings.ts` mints synthetic
+   *  `pi_…` values), or a row predating ruling 38.
+   *
+   *  Those are INDISTINGUISHABLE after the fact, and that is the whole point of the classification:
+   *  the platform cannot prove the id came from Stripe, so it neither trusts it nor repairs it
+   *  (§17 DETECT, DON'T REPAIR). It is a `warning`, not `critical` — the row may be perfectly fine;
+   *  what is not fine is that nothing can tell. */
+  "payment_provenance_unverified",
+  // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
+  "stripe_charge_no_booking",
+  "booking_no_stripe_charge",
+] as const;
+export type ReconciliationExceptionKind = (typeof RECONCILIATION_EXCEPTION_KINDS)[number];
+
+/** One row per DISTINCT drift fact. APPEND-ONLY: no app code carries an UPDATE or DELETE path
+ *  (item_transition_log / ruling 11 posture). Re-detection on a later pass is absorbed by the
+ *  UNIQUE `dedupeKey` (`ON CONFLICT DO NOTHING`), so a month-long drift is ONE row, while the
+ *  run rows keep recording that it is still being seen. */
+export const reconciliationExceptions = pgTable(
+  "reconciliation_exceptions",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    runId: varchar("run_id").notNull().references(() => reconciliationRuns.id, { onDelete: "cascade" }),
+    detectedAt: timestamp("detected_at").defaultNow().notNull(),
+    /** cart (service_bookings) | legacy (bookings) */
+    rail: varchar("rail", { length: 20 }).notNull(),
+    kind: varchar("kind", { length: 60 }).notNull(),
+    /** critical | warning */
+    severity: varchar("severity", { length: 20 }).notNull().default("critical"),
+    dedupeKey: text("dedupe_key").notNull(),
+    /** Soft reference, NO FK — the job must be able to name a booking id that does not exist
+     *  (that is one of the drift cases), and an audit row outlives the row it indicts. */
+    bookingId: varchar("booking_id"),
+    paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+    chargeId: varchar("charge_id", { length: 255 }),
+    /** DOLLARS — same precision/scale as service_bookings.total_amount. */
+    expectedAmount: decimal("expected_amount", { precision: 10, scale: 2 }),
+    actualAmount: decimal("actual_amount", { precision: 10, scale: 2 }),
+    currency: varchar("currency", { length: 10 }),
+    details: jsonb("details").notNull().default({}),
+  },
+  (table) => ({
+    dedupeIdx: uniqueIndex("recon_exc_dedupe_idx").on(table.dedupeKey),
+    detectedIdx: index("recon_exc_detected_idx").on(table.detectedAt),
+    runIdx: index("recon_exc_run_idx").on(table.runId),
+  }),
+);
+
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
+export type ReconciliationException = typeof reconciliationExceptions.$inferSelect;
+
+/**
+ * FEE LEDGER (migration 179, fee-ledger lane) — the append-only fee EVENT log.
+ *
+ * Audit C1: fee capture was a scalar column in a two-sided fee model. `payments.routes.ts:307` adds
+ * a computed fee to the traveler total and `:878-879` deducts the same rate from the provider base,
+ * while `:961-964` records ONE side in `service_bookings.platform_fee` — so on an $80 booking the
+ * platform retained $40 and recorded $20, and ~15 independent aggregations all under-reported by
+ * half. This table records each side as its own event.
+ *
+ * A fee EVENT log, NOT a general ledger — no double-entry, no chart of accounts. The per-booking
+ * invariant (`traveler_paid - provider_credited = SUM(amount)`) supplies the integrity.
+ *
+ * APPEND-ONLY: application code carries no UPDATE and no DELETE against this table, including to
+ * correct a bad row — a correction is a `reversal` row linked by `reversesLedgerId` plus a new row.
+ *
+ * MUST stay equivalent to server/migrations/179_fee_ledger.sql: the deploy runs an automatic
+ * drizzle-kit push from this file and is authoritative over tables AND indexes it does not find
+ * declared here; 179 is stamped after its first run, so a dropped object would never be recreated.
+ */
+export const FEE_LEDGER_TYPES = [
+  "traveler_service_fee",
+  "provider_commission_full",
+  "provider_commission_rails",
+  "expert_commission",
+  "ai_concierge_fee",
+  "affiliate_margin",
+  "credit_applied",
+  "reversal",
+] as const;
+export type FeeLedgerType = (typeof FEE_LEDGER_TYPES)[number];
+
+/** Which layer decided the rate. `band_id` is null for every value except "band" (Phase 0 §1a). */
+export const FEE_RATE_SOURCES = ["band", "entity_override", "rails", "code_fallback", "flat"] as const;
+export type FeeRateSource = (typeof FEE_RATE_SOURCES)[number];
+
+export const feeLedger = pgTable(
+  "fee_ledger",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    /** service_booking | booking (legacy rail) | ready_made_purchase | template_purchase | coordination | tip | affiliate */
+    sourceType: varchar("source_type", { length: 40 }).notNull(),
+    sourceId: varchar("source_id").notNull(),
+    /** Denormalized for the per-booking invariant; NULL for non-booking events. */
+    bookingId: varchar("booking_id"),
+    feeType: varchar("fee_type", { length: 40 }).notNull().$type<FeeLedgerType>(),
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("usd"),
+    borneBy: varchar("borne_by", { length: 12 }).notNull(),
+    /** NULLABLE BY DESIGN — an entity-override or fallback rate has no band that explains it. */
+    bandId: uuid("band_id").references(() => feeBands.id),
+    rateAsResolved: decimal("rate_as_resolved", { precision: 10, scale: 4 }),
+    rateSource: varchar("rate_source", { length: 20 }).notNull().$type<FeeRateSource>(),
+    /** True when fee_bands.max_amount clamped the amount (D1's $25 traveler-fee cap). */
+    capApplied: boolean("cap_applied").notNull().default(false),
+    /** platform | rails — on this table attribution is a FEE INPUT, not an analytics dimension. */
+    sourceAttribution: varchar("source_attribution", { length: 12 }).notNull().default("platform"),
+    acquisitionRef: varchar("acquisition_ref", { length: 32 }),
+    stripePaymentRef: varchar("stripe_payment_ref", { length: 255 }),
+    stripeTransferRef: varchar("stripe_transfer_ref", { length: 255 }),
+    stripeRefundRef: varchar("stripe_refund_ref", { length: 255 }),
+    reversesLedgerId: varchar("reverses_ledger_id"),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+    description: text("description"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  },
+  (table) => ({
+    idempotencyKeyIdx: uniqueIndex("fee_ledger_idempotency_key_idx").on(table.idempotencyKey),
+    // Migration 179: partial indexes — WHERE predicates mirror the migration verbatim.
+    // Declared here — drizzle push drops indexes absent from this file on publish.
+    bookingIdx: index("fee_ledger_booking_idx").on(table.bookingId).where(sql`booking_id IS NOT NULL`),
+    sourceIdx: index("fee_ledger_source_idx").on(table.sourceType, table.sourceId),
+    paymentRefIdx: index("fee_ledger_payment_ref_idx").on(table.stripePaymentRef).where(sql`stripe_payment_ref IS NOT NULL`),
+    reversesIdx: index("fee_ledger_reverses_idx").on(table.reversesLedgerId).where(sql`reverses_ledger_id IS NOT NULL`),
+  }),
+);
+export type FeeLedgerRow = typeof feeLedger.$inferSelect;
+export type InsertFeeLedgerRow = typeof feeLedger.$inferInsert;
+
+// AI cost tracking (migration 025b). MUST stay byte-for-byte equivalent to
+// server/migrations/025b_ai_cost_tracking.sql — the deploy runs an automatic drizzle-kit push
+// from this file, and the push is authoritative over BOTH tables and indexes it does not find
+// declared here (proven Jul 30, 2026: the push emitted a bare `DROP INDEX` for the undeclared
+// sb_idempotency_key_idx). 025b is already stamped, so a publish that drops this table would
+// mean runMigrations() NEVER recreates it → permanent silent loss of AI-cost observability.
+// Written (raw SQL) by server/services/ai-cost-tracker.ts, called from claude.service.ts,
+// itinerary-optimizer.ts, the chat routes and the content/experts/trips routers; read by
+// lead-routing.service.ts for the admin dead-end-lead cost breakdown.
+// Exact-match notes — these are the DDL, not preferences:
+//   • id: DB-side DEFAULT gen_random_uuid() is REQUIRED (the writer never supplies id), hence
+//     uuid().primaryKey().defaultRandom() — NOT the house varchar().$defaultFn(crypto.randomUUID)
+//     pattern, which is client-side and emits no DB default.
+//   • userId is uuid with NO foreign key, matching the DDL. users.id is varchar in this codebase,
+//     so a .references() here would make the push try to create a constraint that cannot exist.
+//   • cost is NUMERIC(10, 6) — six decimal places (per-request AI cost in USD), not the usual (10, 2).
+//   • both indexes carry their exact existing names and DESC direction on created_at.
+//     `.nullsFirst()` is LOAD-BEARING, do not "simplify" it away: Postgres defaults DESC to
+//     NULLS FIRST, but drizzle's bare `.desc()` emits `DESC NULLS LAST` — proven to make the
+//     push plan `DROP INDEX` + `CREATE INDEX` for BOTH indexes on every single publish.
+//     With `.desc().nullsFirst()` the push plan contains zero ai_cost_tracking statements.
+export const aiCostTracking = pgTable("ai_cost_tracking", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceType: varchar("source_type", { length: 50 }).notNull(),
+  modelUsed: varchar("model_used", { length: 100 }),
+  requestId: varchar("request_id", { length: 255 }),
+  userId: uuid("user_id"),
+  cost: decimal("cost", { precision: 10, scale: 6 }).notNull(),
+  tokensIn: integer("tokens_in"),
+  tokensOut: integer("tokens_out"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sourceTypeCreatedIdx: index("idx_ai_cost_tracking_source_type_created")
+    .on(table.sourceType, table.createdAt.desc().nullsFirst()),
+  userIdCreatedIdx: index("idx_ai_cost_tracking_user_id_created")
+    .on(table.userId, table.createdAt.desc().nullsFirst()),
+}));
 
 // DEPRECATED: 2026-06-27
 // Renamed to _deprecated_expert_city_queues
@@ -5529,7 +7174,12 @@ export const eventPackages = pgTable("event_packages", {
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Migration 019 / baseline: partial indexes for active-package queries.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("event_packages_event_type_idx").on(table.eventType).where(sql`status = 'active'`),
+  index("event_packages_market_idx").on(table.market).where(sql`status = 'active'`),
+]);
 
 export const insertEventPackageSchema = createInsertSchema(eventPackages).omit({ id: true, createdAt: true, updatedAt: true });
 export type EventPackage = typeof eventPackages.$inferSelect;
@@ -5635,20 +7285,14 @@ export const bookingRequests = pgTable("booking_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const providerAvailability = pgTable("provider_availability", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  providerId: varchar("provider_id", { length: 255 }).notNull(),
-  serviceId: uuid("service_id"),
-  availabilityType: varchar("availability_type", { length: 20 }).notNull(),
-  blockedDates: jsonb("blocked_dates").default([]),
-  availableDates: jsonb("available_dates").default([]),
-  isAvailable: boolean("is_available").default(true),
-  dailyCapacity: integer("daily_capacity"),
-  currentBookings: integer("current_bookings").default(0),
-  timeSlots: jsonb("time_slots"),
-  recurringUnavailable: jsonb("recurring_unavailable"),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// DROPPED — Partner Demand 2C (ledger 2026-08-17-partner-demand-2c-sunset, migration 242). The
+// `provider_availability` table was a confirmed ORPHAN: 0 rows in prod (R7 Q4), NO insert path
+// anywhere in the repo, and no readers — declared availability lives in
+// `provider_availability_schedule` + `provider_blackout_dates`, bookable truth in
+// `vendor_availability_slots`. Its one live writer (a no-op UPDATE on the booking-confirm path)
+// was removed first. The declaration is deleted here so the deploy push does not recreate the
+// table after migration 242 drops it (publish-trap rule). Do NOT confuse with the LIVE
+// `providerAvailabilitySchedule` (a different table) or the React `ProviderAvailability` page.
 
 export const expertHandoffs = pgTable("expert_handoffs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -5710,6 +7354,10 @@ export const travelpayoutsCache = pgTable("travelpayouts_cache", {
   cacheKey: varchar("cache_key", { length: 500 }).notNull().unique(),
   data: jsonb("data").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+  // refreshedAt is stamped on every upsert (onConflictDoUpdate) by shared-cache.service.ts.
+  // It reflects the true last-refresh time, unlike createdAt which is immutable after first insert.
+  // No default: pre-migration rows carry NULL, surfaced as "unknown" by the status endpoint.
+  refreshedAt: timestamp("refreshed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -5777,20 +7425,198 @@ export type InsertBookingFeeConfig = z.infer<typeof insertBookingFeeConfigSchema
 export const feeBands = pgTable("fee_bands", {
   id: uuid("id").primaryKey().defaultRandom(),
   bandKey: varchar("band_key", { length: 100 }).notNull().unique(),
-  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat'
+  rateType: varchar("rate_type", { length: 10 }).notNull(), // 'percent' | 'flat' | 'flat_cents' | 'count' | 'rule'
   defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
   minRate: decimal("min_rate", { precision: 10, scale: 4 }),
   maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
+  // Per-booking DOLLAR ceiling on the resolved amount (NULL = uncapped). Distinct from maxRate,
+  // which bounds the RATE. D1 (fee-ledger lane, migration 178): the traveler service fee is
+  // "0.07, capped at $25.00 per booking (cap enforced at resolution ... not in code)", so the cap
+  // is band data, not a constant. Declared here because migration 178 creates it and the resolver
+  // depends on it — an undeclared column is dropped by the Autoscale deploy-push (CLAUDE.md).
+  maxAmount: decimal("max_amount", { precision: 10, scale: 2 }),
   displayName: text("display_name"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   updatedBy: varchar("updated_by", { length: 255 }),
+  asOfDate: date("as_of_date"),
+  reviewDate: date("review_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Migration 031: partial index for active-band lookups.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_fee_bands_active").on(table.isActive).where(sql`is_active = true`),
+]);
 export type FeeBand = typeof feeBands.$inferSelect;
 export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
+
+// ─── Plan pricing ledger ─────────────────────────────────────────────────────
+// Every purchasable plan is a row. `priceCents` is authoritative for plan
+// pricing; interval='trip' denotes a per-trip entitlement rather than a
+// recurring subscription.
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  name: text("name").notNull(),
+  priceCents: integer("price_cents").notNull(),
+  interval: varchar("interval", { length: 20 }).notNull(),
+  allowances: jsonb("allowances").notNull().default({}),
+  active: boolean("active").notNull().default(true),
+  effectiveFrom: date("effective_from").notNull(),
+  betaFreeUntil: date("beta_free_until"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type Plan = typeof plans.$inferSelect;
+// #PS18 (ruling 46, §19): new insert schemas must be .pick()-based allowlists,
+// never .omit()-based denylists — the omit-schema-ratchet guard fails any net-new
+// denylist call site. This lists every client-writable column explicitly.
+export const insertPlanSchema = createInsertSchema(plans).pick({
+  key: true,
+  name: true,
+  priceCents: true,
+  interval: true,
+  allowances: true,
+  active: true,
+  effectiveFrom: true,
+  betaFreeUntil: true,
+});
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
+
+// ─── Plan memberships (the one user-level entitlement record) ────────────────
+// Introduced by the Plus-occasions lane (ledger 2026-08-27-plus-is-delivery, migration 260)
+// as the minimal contract the delivery gate needs. It is the SINGLE entitlement table for the
+// recurring/annual plans — plan_key 'plus_annual' | 'pro_monthly' (the same row serves Pro's
+// beta-free grant via source='beta'). Trip Pass stays PER-TRIP and is deliberately NOT here.
+//   · THIS lane READS it: isActivePlus(userId) = a row with status='active' AND
+//     current_period_end > now() (see server/services/plan-membership.service.ts).
+//   · The separate Plus-checkout lane later WRITES source='stripe' rows from the Stripe
+//     subscription webhook — it POPULATES this table, it does not redefine it.
+//   · Proof / manual grants are source='manual'; Pro beta grants source='beta'.
+// No UNIQUE(user, plan): a user accrues history (lapsed → re-subscribed) as separate rows, and
+// isActivePlus matches ANY live row. No DB CHECK on status/plan_key/source — validated app-side
+// (migration-181/195 publish-trap posture). Declared here per the publish-trap rule.
+export const planMemberships = pgTable("plan_memberships", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'plus_annual' | 'pro_monthly'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'lapsed' | 'cancelled'
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  source: varchar("source", { length: 20 }).notNull().default("manual"), // 'stripe' | 'manual' | 'beta'
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("plan_memberships_user_idx").on(table.userId),
+  index("plan_memberships_user_plan_idx").on(table.userId, table.planKey),
+]);
+export type PlanMembership = typeof planMemberships.$inferSelect;
+
+// ─── Trip entitlements (the one PER-TRIP entitlement record) ─────────────────
+// Ruling 2026-08-29-trip-pass, migration 262. Trip Pass is per-trip: for its ONE trip it
+// grants unlimited optimizer runs + AI Concierge tasks (charge suppression), one expert
+// revision (snapshot-recorded, unenforced until the expert-flow lane), and the traveler
+// service-fee waiver (the rails-waiver mechanism, basis 'trip_pass'). It NEVER discounts
+// commissions and it is deliberately NOT plan_memberships (user-level, Plus/Pro).
+//   · allowances_snapshot is FROZEN at purchase from the plans row — later price/allowance
+//     changes never alter a sold pass.
+//   · ONE active pass per trip (partial unique index below); a second purchase is rejected
+//     BEFORE any PaymentIntent.
+//   · source_payment_id is PAYMENT IDENTITY (§19a): written ONLY by the server-side grant
+//     path from a Stripe-verified PaymentIntent. There is deliberately NO createInsertSchema
+//     for this table — nothing here is ever parsed off a request body (#PS18 posture).
+//   · source (ledger 2026-08-29-trip-pass-provenance, migration 264) records PROVENANCE —
+//     'stripe' | 'manual' | 'beta', mirroring plan_memberships.source. No DB CHECK
+//     (publish-trap rule); the vocabulary is enforced by grantTripPass, service-layer.
+//     The manual/beta path is now a first-class §19a-sanctioned writer: grantTripPass
+//     requires a real source_payment_id for 'stripe' and requires source_payment_id be
+//     NULL for 'manual'/'beta' — a manual grant never carries a fabricated payment id.
+// Both partial unique indexes are DECLARED here (deploy-push durability rule) and must stay
+// byte-identical to migration 262's CREATE INDEX statements.
+export const tripEntitlements = pgTable("trip_entitlements", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  planKey: varchar("plan_key", { length: 64 }).notNull(), // 'trip_pass'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'revoked'
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  sourcePaymentId: varchar("source_payment_id", { length: 255 }),
+  source: varchar("source", { length: 20 }).notNull().default("stripe"), // 'stripe' | 'manual' | 'beta'
+  allowancesSnapshot: jsonb("allowances_snapshot").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("trip_entitlements_active_trip_uniq")
+    .on(table.tripId)
+    .where(sql`${table.status} = 'active'`),
+  uniqueIndex("trip_entitlements_source_payment_uniq")
+    .on(table.sourcePaymentId)
+    .where(sql`${table.sourcePaymentId} IS NOT NULL`),
+]);
+export type TripEntitlement = typeof tripEntitlements.$inferSelect;
+
+// ─── Plus occasions (the member's recurring/one-off personal dates) ──────────
+// Ledger 2026-08-27-plus-is-delivery, migration 260. For each ACTIVE occasion whose date is
+// within the 14-day lead window, the occasion-drafts scheduler builds ONE AI-Concierge draft
+// slip from the member's home city and notifies them. template_key selects the occasion
+// template (date_night | birthday | proposal | celebration | …); recurrence drives the next
+// cycle. No DB CHECK on template_key/recurrence — validated app-side (publish-trap posture).
+export const occasions = pgTable("occasions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  templateKey: varchar("template_key", { length: 64 }).notNull(),
+  occasionDate: date("occasion_date").notNull(),
+  recurrence: varchar("recurrence", { length: 20 }).notNull().default("none"), // 'none'|'annual'|'biweekly'
+  label: varchar("label", { length: 200 }),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("occasions_user_idx").on(table.userId),
+  index("occasions_active_date_idx").on(table.active, table.occasionDate),
+]);
+export type Occasion = typeof occasions.$inferSelect;
+// #PS18 (§19): new insert schemas are .pick()-based allowlists. user_id is NOT picked — it is
+// stamped server-side from the session (§14 identity), never trusted from the body.
+export const insertOccasionSchema = createInsertSchema(occasions).pick({
+  templateKey: true,
+  occasionDate: true,
+  recurrence: true,
+  label: true,
+  active: true,
+});
+export type InsertOccasion = z.infer<typeof insertOccasionSchema>;
+
+// ─── Occasion drafts (the idempotency ledger) ────────────────────────────────
+// One row per occasion per generated cycle — the ledger that makes the scheduler idempotent so
+// a re-run, an hourly pass, or a double-fire (external endpoint + in-process timer) produces
+// exactly ONE draft. It follows the §15 CLAIM → generate → PROMOTE spine:
+//   · claim: INSERT ... ON CONFLICT (occasion_id, cycle_key) DO NOTHING RETURNING — only the
+//     winner generates; a loser skips. claimed_at is the lease stamp.
+//   · promote: generated_at + trip_id are stamped ONLY after the trip is written, via an atomic
+//     conditional (WHERE generated_at IS NULL). A stale claim (crashed before generating) is
+//     reclaimed after a TTL, never rolled back (§15b).
+// The dedupe key is (occasion_id, cycle_key). cycle_key is the concrete target occurrence date
+// (YYYY-MM-DD), so it is unique per cycle for ANY recurrence (annual/biweekly/none) — a bare
+// year cannot express a biweekly cycle. occasion_year is retained as a report/convenience field.
+// Never client-reachable (server-only inserts) → no createInsertSchema here.
+export const occasionDrafts = pgTable("occasion_drafts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  occasionId: varchar("occasion_id").notNull().references(() => occasions.id, { onDelete: "cascade" }),
+  cycleKey: varchar("cycle_key", { length: 32 }).notNull(),
+  occasionYear: integer("occasion_year").notNull(),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  claimedAt: timestamp("claimed_at").defaultNow(), // §15 claim/lease time
+  generatedAt: timestamp("generated_at"), // set only after the trip is written (promotion)
+  notifiedAt: timestamp("notified_at"), // set only after the reminder email is enqueued
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("occasion_drafts_occasion_cycle_unique").on(table.occasionId, table.cycleKey),
+  index("occasion_drafts_occasion_idx").on(table.occasionId),
+]);
+export type OccasionDraft = typeof occasionDrafts.$inferSelect;
 
 // platform_settings: key/value rows for cross-cutting flags.
 // First user: active_provider_commission_policy = 'beta_flat' | 'tiered'.
@@ -6155,11 +7981,40 @@ export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
   targetAudience: text("target_audience"),
   notFor: text("not_for"),
   seasonality: jsonb("seasonality").default([]), // array of knowledgeSeasonEnum
+
+  // ── Gem-promotion candidate path (2026-08-29-replit-gem-audit ruling 4; migration 262) ──
+  // A nugget PROPOSED as a hidden gem enters the admin review + scoring queue.
+  // Vocabulary is the §10 shared-queue set, app-enforced (NULL = never proposed;
+  // 'submitted' | 'approved' | 'rejected') — no DB CHECK (migration-181 publish-trap
+  // posture). PRIVILEGED FIELDS (§19): none of these are client-settable — they are
+  // omitted from insertLocalKnowledgeNuggetSchema, stripped in createLocalKnowledgeNugget,
+  // absent from the PATCH allowlist, and written ONLY by the propose/approve/reject
+  // handlers' atomic conditional updates. Provenance: on approval the born gem's
+  // curated_by_expert_id = this row's expert_user_id — carried through the rail,
+  // never typed in (ruling 1: no fabricated attribution).
+  promotionStatus: varchar("promotion_status", { length: 20 }),
+  promotionSubmittedAt: timestamp("promotion_submitted_at"),
+  promotionReviewedBy: varchar("promotion_reviewed_by", { length: 255 }),
+  promotionReviewedAt: timestamp("promotion_reviewed_at"),
+  promotionReviewNote: text("promotion_review_note"),
+  promotedGemId: varchar("promoted_gem_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  // §19: the promotion cluster is server-authored only — never client-settable.
+  promotionStatus: true,
+  promotionSubmittedAt: true,
+  promotionReviewedBy: true,
+  promotionReviewedAt: true,
+  promotionReviewNote: true,
+  promotedGemId: true,
+});
 export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
 export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;
 
@@ -6239,9 +8094,17 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   confirmationRef: varchar("confirmation_ref", { length: 255 }),
   price: decimal("price", { precision: 10, scale: 2 }),
   status: varchar("status", { length: 30 }).default("pending"),
+  // Migration 170 — AI booking copilot verification leg. Additive nullable jsonb snapshot written
+  // by server/services/booking-verification.service.ts (Tavily-extract + LLM-extract, key-gated,
+  // §13 never-fabricates). NEVER holds the affiliateUrl (§16 — enforced in the service layer).
+  verification: jsonb("verification"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Baseline migration: partial index for expert-scoped affiliate booking lookups.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_abr_expert_id").on(table.expertId).where(sql`expert_id IS NOT NULL`),
+]);
 
 export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAffiliateBookingRequest = z.infer<typeof insertAffiliateBookingRequestSchema>;
@@ -6374,8 +8237,44 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   expertModifiedData: jsonb("expert_modified_data").default({}), // Expert overrides
   
   // Visibility Flags (CRITICAL: Expert Workspace gate)
-  expertWorkspaceVisible: boolean("expert_workspace_visible").default(true).notNull(),
+  // Born FALSE — scraped/DMO content is admin-intake-gated: an admin must approve raw content into the
+  // expert library before an expert can see it (ratified "B"). Admin approve flips this true; existing
+  // pre-gate rows are grandfathered true (no backfill), the F2 pattern.
+  expertWorkspaceVisible: boolean("expert_workspace_visible").default(false).notNull(),
   discoverPageVisible: boolean("discover_page_visible").default(false).notNull(),
+  // Operation Trailhead LANE T4 (R-T1-e): inventory class of the stub the traveler read-path renders.
+  // Scraped/DMO content is 'external' — a facts-and-links stub, NEVER a bookable platform service.
+  // The enum admits 'provider'|'affiliate' so a later resolution-waterfall (T3) can re-class a stub
+  // in place without a schema change. App-enforced (shared/discover-stub.ts INVENTORY_CLASSES), NO DB
+  // CHECK — the migration-181/195/228 posture, chosen to avoid the Replit publish-time CHECK trap.
+  // Lives on the PARENT (not dmo_extracted_places): the discover filter already gates on
+  // discover_page_visible / status / country / city here, so the class reads off the same row with no
+  // extra join, and one value governs the whole guide stub and all its child places (a place can never
+  // carry a different inventory class than the guide it was extracted from). Mirrors
+  // provider_services.sourceType living on the sellable row, not a child. Declared here per the
+  // publish-trap rule. Migration 246 backfills every existing row to 'external'.
+  inventoryClass: varchar("inventory_class", { length: 20 }).default("external").notNull(),
+  // Operation Trailhead LANE T3 (R-T3-a/-b/-c) — the RESOLUTION WATERFALL's stored state on the stub.
+  // Distinct from inventory_class: inventory_class is the T4 born-class of the read-path stub (always
+  // 'external' for scraped content); these four are written by the T3 resolution PASS when it finds a
+  // confident booking-path match. A pass may UPGRADE the rung (external → affiliate → provider) but
+  // never downgrade without an append-only resolution_events audit row (R-T3-c). All app-enforced, NO
+  // DB CHECK (migration-181/195/228 posture), declared here per the publish-trap rule. Migration 247
+  // adds them; the born state is external/NULL (defaultResolutionState()).
+  //   • resolution_class    — top-level class, reuses shared/discover-stub INVENTORY_CLASSES verbatim
+  //                           (external|provider|affiliate). Default 'external' = unresolved floor.
+  //   • resolution_subclass — affiliate_direct|affiliate_ota (the R-T3-a direct-vs-OTA split); NULL for
+  //                           provider/external. A SEPARATE field, never encoded into the ref pointer.
+  //   • resolution_ref      — the POINTER the resolved rung dereferences: provider_services.id for a
+  //                           provider match, a program+product ref for an affiliate match, or the
+  //                           source URL for an external reference. NULL until resolved.
+  //   • match_confidence    — 0.00–1.00 name/geo/category composite (R-T3-b); NULL for the floor.
+  //   • resolved_at         — when the current class was stamped; NULL until the first pass touches it.
+  resolutionClass: varchar("resolution_class", { length: 20 }).default("external").notNull(),
+  resolutionSubclass: varchar("resolution_subclass", { length: 20 }),
+  resolutionRef: text("resolution_ref"),
+  matchConfidence: decimal("match_confidence", { precision: 3, scale: 2 }),
+  resolvedAt: timestamp("resolved_at"),
   publishedAt: timestamp("published_at"),
   publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),
   
@@ -6394,6 +8293,88 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   marketIdx: uniqueIndex("dmo_raw_content_market_idx").on(table.country, table.city, table.contentType),
   statusIdx: uniqueIndex("dmo_raw_content_status_idx").on(table.status, table.expertWorkspaceVisible),
 }));
+
+// Places extracted from a DMO guide, promoted from the extracted_data.places JSON blob to
+// first-class child rows (CLAUDE.md §20a, migration 185; decision-maker ratified Aug 9 2026).
+// Source of truth for the Research Reader's harvest panel: re-extract replaces by position but
+// preserves expert-added ticketing_url by normalized_name match. The parent's extracted_data
+// blob is backfilled-from and thereafter historical (never read). Declared here per the
+// publish-trap rule — an undeclared table would be dropped by the deploy push.
+export const dmoExtractedPlaces = pgTable("dmo_extracted_places", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dmoContentId: varchar("dmo_content_id").notNull().references(() => dmoRawContent.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based article order (the reader's numbered dots)
+  name: varchar("name", { length: 255 }).notNull(),
+  normalizedName: varchar("normalized_name", { length: 255 }).notNull(), // lower(trim(name)) — merge/dedupe key
+  // Best-effort geocode at extraction time; NULL = honestly coordinate-less (§13 — no city-center fallback).
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  inLibraryId: varchar("in_library_id"), // soft ref → dmo_raw_content.id (same-city library match; no FK — advisory only)
+  ticketingUrl: text("ticketing_url"), // expert-added https:// reference link — survives re-extract
+  // Open-data enrichment envelope (migration 188): {officialUrl, openingHours, heritage,
+  // wikidataId, osmId, source, fetchedAt} from explicitly-licensed sources (Wikidata CC0,
+  // OSM ODbL). Facts only, never prose (§13); NULL = not enriched. Never overwrites the
+  // expert-curated ticketingUrl above.
+  enrichment: jsonb("enrichment"),
+  source: varchar("source", { length: 30 }).notNull().default("stored_text"), // 'stored_text' | 'live_fetch' (app-enforced, no CHECK)
+  extractedAt: timestamp("extracted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  contentPositionUnique: unique("dmo_extracted_places_content_position_unique").on(table.dmoContentId, table.position),
+  contentIdx: index("dmo_extracted_places_content_idx").on(table.dmoContentId),
+  normalizedNameIdx: index("dmo_extracted_places_normalized_name_idx").on(table.normalizedName),
+}));
+
+// Sweep/ingest run ledger — the admin "Content Ops" page (CLAUDE.md §17 lesson applied by
+// analogy, decision-maker ratified Aug 10 2026; migration 191). Every YouTube ingestion call
+// (server/services/youtube-ingestion.service.ts) and every warmup-sweep boot pass
+// (server/jobs/dmoExtractionWarmup.ts) writes ONE append-only row here, success or not — silence
+// must be distinguishable from "never ran" (§17 rule 2, by analogy). `counts` carries the full
+// stats object each caller already produces verbatim rather than forcing a shared column set
+// neither caller naturally has (youtube_ingest: scanned/upserted/skippedShape/skippedShort/
+// skippedDuplicate/error; warmup_sweep: scanned/extracted/emptied/failed/skippedCap/
+// stoppedNoApiKey/durationMs). No UPDATE/DELETE path. Additive, idempotent, no CHECK. Declared
+// here per the publish-trap rule.
+export const dmoExtractionRuns = pgTable("dmo_extraction_runs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  kind: varchar("kind", { length: 40 }).notNull(), // 'youtube_ingest' | 'warmup_sweep' (app-enforced, no CHECK — §13 growth room)
+  counts: jsonb("counts").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  kindCreatedIdx: index("dmo_extraction_runs_kind_created_idx").on(table.kind, table.createdAt),
+}));
+
+// Operation Trailhead LANE T3 (R-T3-c) — APPEND-ONLY resolution audit log ("why does this stub link
+// where it links"). The diary pattern's 3rd use (after item_transition_log and reconciliation_events):
+// no app code may UPDATE or DELETE a row here. Every class change the resolution PASS applies to a
+// stub writes ONE row in the same operation as the flip. An UPGRADE (external → affiliate → provider)
+// is the expected event; a DOWNGRADE is written too (event_type='downgrade') so a rung that regressed
+// is never silent — R-T3-c forbids a silent downgrade, not a logged one. `stub_id` deliberately has
+// NO FK — a stub's resolution history must survive the stub (the item_transition_log posture). Classes
+// are stored as the FULLY-QUALIFIED rung (external|affiliate_ota|affiliate_direct|provider) so a
+// within-affiliate move (ota → direct) is exact in the log, which the top-level class alone would
+// hide. `pass_id` groups every row a single pass wrote (a run identifier). NO DB CHECK on the vocab
+// columns (migration-181/195/228 posture). Declared here per the publish-trap rule.
+export const resolutionEvents = pgTable("resolution_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  stubId: varchar("stub_id").notNull(), // dmo_raw_content.id — NO FK (history outlives the stub)
+  eventType: varchar("event_type", { length: 20 }).notNull().default("upgrade"), // upgrade | downgrade | initial (app-enforced)
+  fromClass: varchar("from_class", { length: 20 }), // qualified rung before; NULL for the first (initial) resolution
+  toClass: varchar("to_class", { length: 20 }).notNull(), // qualified rung after
+  ref: text("ref"), // the resolution_ref stamped (provider service id | program+product ref | source URL)
+  confidence: decimal("confidence", { precision: 3, scale: 2 }), // match_confidence at the time; NULL for external floor
+  passId: varchar("pass_id", { length: 64 }).notNull(), // groups all rows one pass wrote
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // The per-stub history read (newest-first) and the per-pass audit read both ride these.
+  // Declared here, not only in migration 247 — the deploy push drops undeclared indexes.
+  stubCreatedIdx: index("resolution_events_stub_created_idx").on(table.stubId, table.createdAt),
+  passIdx: index("resolution_events_pass_idx").on(table.passId),
+}));
+
+export type ResolutionEvent = typeof resolutionEvents.$inferSelect;
+export type InsertResolutionEvent = typeof resolutionEvents.$inferInsert;
 
 export const expertDmoCollections = pgTable("expert_dmo_collections", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -6528,6 +8509,66 @@ export const dmoScrapeJobs = pgTable("dmo_scrape_jobs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+/**
+ * Optimizer gap-fill ledger (migration 182, OPTIMIZER_SOURCING_BUILD_SPEC WP-B).
+ *
+ * `content_gap_alerts` above answers "how much DMO content do we hold per editorial type vs. a
+ * target" (an UPDATE-in-place gauge, Kyoto-only, reconciled by `analyzeKyotoContentGaps`). This
+ * table answers a different, narrower question the sourcing rule needs: "every time the OPTIMIZER
+ * could not place a platform (`provider_services`) match and fell back to external content, what
+ * city/category/kind did it need, and what filled it (or didn't)?" — real-time optimizer demand,
+ * not a periodic editorial sweep, and not scoped to one market. The existing shape cannot carry
+ * this: no tripId, no itemKind (service|transport|content), no source discriminator matching
+ * tavily/google/grok/unfilled, and its per-(market,city,contentType) row is reconciled/UPDATEd in
+ * place rather than appended.
+ *
+ * APPEND-ONLY (§17 posture): one row per external-fill event, no UPDATE/DELETE path in app code.
+ * "Dedupe by counts, not UPDATE-in-place of facts" is implemented at READ time — the admin summary
+ * GROUPs BY (city, category) and COUNTs rows in a window — rather than by mutating a bucket row, so
+ * a persistent gap reads as rising demand volume without any fact ever being rewritten.
+ *
+ * NO DB CHECK on item_kind/source (migration-159/171/177 posture): canonical vocabulary lives in
+ * TS (`OPTIMIZER_GAP_ITEM_KINDS` / `OPTIMIZER_GAP_SOURCES` below) — a brand-new all-default-free
+ * table has no legacy rows, so a CHECK here would buy nothing and only add a publish-push remap
+ * trap risk if the vocabulary ever grows. `tripId` is a SOFT reference, deliberately no FK: a
+ * demand-ledger row is a fact about what the optimizer needed, and must outlive the trip it was
+ * observed on (the `reconciliationExceptions.bookingId` precedent, one section up). Table + both
+ * indexes are declared here in shared/schema.ts in the same commit as the migration (CLAUDE.md
+ * deploy-push durability rule) and its insert schema is `.pick()`-based (§19) so a future column
+ * added to this table is unreachable from a client body until deliberately named.
+ */
+export const optimizerGapFills = pgTable(
+  "optimizer_gap_fills",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    city: varchar("city", { length: 100 }).notNull(),
+    /** dataType/category — e.g. "activity", "dining", "lodging", "transport", "photography". */
+    category: varchar("category", { length: 100 }).notNull(),
+    /** service | transport | content — app-enforced, see OPTIMIZER_GAP_ITEM_KINDS. */
+    itemKind: varchar("item_kind", { length: 20 }).notNull(),
+    /** tavily | google | grok | unfilled — app-enforced, see OPTIMIZER_GAP_SOURCES. */
+    source: varchar("source", { length: 20 }).notNull(),
+    /** Soft reference, NO FK (see rationale above). */
+    tripId: varchar("trip_id"),
+    details: jsonb("details").notNull().default({}),
+  },
+  (table) => ({
+    cityCategoryIdx: index("optimizer_gap_fills_city_category_idx").on(table.city, table.category),
+    occurredAtIdx: index("optimizer_gap_fills_occurred_at_idx").on(table.occurredAt),
+  }),
+);
+
+/** Canonical item-kind vocabulary — app-enforced, no DB CHECK (see table comment). */
+export const OPTIMIZER_GAP_ITEM_KINDS = ["service", "transport", "content"] as const;
+export type OptimizerGapItemKind = (typeof OPTIMIZER_GAP_ITEM_KINDS)[number];
+
+/** Canonical fill-source vocabulary — app-enforced, no DB CHECK (see table comment). 'unfilled'
+ *  is the honest default when no tracked pipeline (Tavily/Google/Grok) actually produced the item
+ *  — e.g. the optimizer's own LLM knowledge filled it, or nothing did. */
+export const OPTIMIZER_GAP_SOURCES = ["tavily", "google", "grok", "unfilled"] as const;
+export type OptimizerGapSource = (typeof OPTIMIZER_GAP_SOURCES)[number];
+
 // === Zod Schemas & Types for DMO Tables ===
 
 export const insertDmoSourceSchema = createInsertSchema(dmoSources).omit({ id: true, createdAt: true, updatedAt: true, lastIngestedAt: true, totalRecords: true });
@@ -6557,6 +8598,20 @@ export type InsertContentGapAlert = z.infer<typeof insertContentGapAlertSchema>;
 export const insertDmoScrapeJobSchema = createInsertSchema(dmoScrapeJobs).omit({ id: true, createdAt: true, updatedAt: true, startedAt: true, completedAt: true, scheduledAt: true });
 export type DmoScrapeJob = typeof dmoScrapeJobs.$inferSelect;
 export type InsertDmoScrapeJob = z.infer<typeof insertDmoScrapeJobSchema>;
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt): the ledger writer only ever needs these six
+// fields — id/occurredAt are server-derived — so a future column added to optimizer_gap_fills is
+// unreachable until deliberately picked here.
+export const insertOptimizerGapFillSchema = createInsertSchema(optimizerGapFills).pick({
+  city: true,
+  category: true,
+  itemKind: true,
+  source: true,
+  tripId: true,
+  details: true,
+});
+export type OptimizerGapFill = typeof optimizerGapFills.$inferSelect;
+export type InsertOptimizerGapFill = z.infer<typeof insertOptimizerGapFillSchema>;
 
 // === DMO Relations ===
 
@@ -6670,3 +8725,790 @@ export const qaRunSnapshots = pgTable("qa_run_snapshots", {
 export const insertQaRunSnapshotSchema = createInsertSchema(qaRunSnapshots).omit({ id: true });
 export type InsertQaRunSnapshot = z.infer<typeof insertQaRunSnapshotSchema>;
 export type QaRunSnapshot = typeof qaRunSnapshots.$inferSelect;
+
+// === Ready-Made Trips (Trips by Locals) — migration 133, spec v3 ===
+// The cloneable-trip product: a listing pointing at a REAL author-owned trip (trips.authorId set,
+// trips.userId NULL) that clones into the buyer's editable PlanCard on purchase. Distinct from
+// expert_templates (the view-only "Guides" lane). Born 'draft'; admin approval only (D1a).
+
+export const readyMadeTrips = pgTable("ready_made_trips", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  authorId: varchar("author_id").notNull().references(() => users.id),
+  sourceTripId: varchar("source_trip_id").notNull().references(() => trips.id),
+  market: varchar("market", { length: 100 }).notNull(), // launch: Kyoto only (§12)
+  title: varchar("title", { length: 200 }).notNull(),
+  // Nullable by design: born-draft before any hero exists. Submit/approve enforce non-null
+  // (Unsplash picker per D2 — photoUrl + attribution stored in heroImageMeta).
+  heroImageUrl: text("hero_image_url"),
+  heroImageMeta: jsonb("hero_image_meta"), // { unsplashId, photographer, profileUrl, downloadLocation }
+  durationDays: integer("duration_days").notNull(),
+  // "Type of Plan" — the headline of the store's quality structure (migration 134). NULL only in
+  // draft; the submit gate requires it. Vocabulary: shared/ready-made-plan-types.ts (code-validated,
+  // no DB CHECK, so the editorial list can grow without a schema migration).
+  planType: varchar("plan_type", { length: 60 }),
+  // Free-text theme label for planType='custom' only (migration 184, decision-maker approved Aug 9
+  // 2026 — shared/ready-made-plan-types.ts's "custom" vocabulary entry). NULL for every non-custom
+  // key; server validation (server/routes/ready-made.routes.ts) requires 3..80 trimmed chars
+  // whenever planType==='custom' and clears/nulls this column on any save that picks a non-custom
+  // key, so free text never leaks into the validated planType column and the closed taxonomy can't
+  // sprawl (see the module header on shared/ready-made-plan-types.ts).
+  planTypeCustom: varchar("plan_type_custom", { length: 80 }),
+  bestSeason: varchar("best_season", { length: 60 }),
+  pricingMode: varchar("pricing_mode", { length: 20 }).notNull().default("fixed"), // CHECK fixed|per_traveler
+  priceCents: integer("price_cents"), // display/charge base; USD-only v1; resolved with fee band
+  feeBandKey: varchar("fee_band_key", { length: 100 }).notNull().default("ready_made_trip"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // CHECK draft|submitted|approved|rejected|withdrawn (migration 163)
+  badge: varchar("badge", { length: 30 }),
+  insideCounts: jsonb("inside_counts"), // snapshot derived ONLY at the approved transition
+  buildReview: jsonb("build_review"),   // Phase 2.5 advisory verdict (score + findings), admin-queue visible
+  rejectionReason: text("rejection_reason"),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Migration 133. Deploy-push rule (see `bookings`). No WHERE in the migration — one
+  // ready-made listing per source trip, unconditionally.
+  sourceTripIdx: uniqueIndex("idx_rmt_source_trip").on(table.sourceTripId),
+}));
+
+export const readyMadePurchases = pgTable("ready_made_purchases", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  buyerId: varchar("buyer_id").notNull().references(() => users.id),
+  readyMadeTripId: varchar("ready_made_trip_id").notNull().references(() => readyMadeTrips.id),
+  pricePaidCents: integer("price_paid_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
+  // Idempotency anchor (§15): unique — a webhook/confirm retry can never double-clone.
+  stripePaymentIntentId: varchar("stripe_payment_intent_id").notNull().unique(),
+  attributionRef: varchar("attribution_ref", { length: 64 }), // share-link first-touch (map §4)
+  cloneTripId: varchar("clone_trip_id").references(() => trips.id, { onDelete: "set null" }), // migration 135
+  // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
+  status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
+  purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
+  // Concierge revision entitlement (ledger 2026-08-22-concierge-revision, migration 252).
+  // Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+  // App-enforced vocabulary, NO DB CHECK (publish-trap rule; same posture as `status` above):
+  // NULL = available (never requested), 'requested' = buyer asked, 'in_progress' = expert working,
+  // 'delivered' = revision approved. Additive-nullable → behavior-neutral on apply.
+  revisionStatus: varchar("revision_status", { length: 20 }),
+  revisionRequestNote: text("revision_request_note"),
+  revisionRequestedAt: timestamp("revision_requested_at"),
+  // Concierge dispute (ledger 2026-08-22-concierge-p3, migration 253). The buyer's "something
+  // wrong" recourse after self-serve refund removal — a concern reviewed by an admin, never an
+  // automatic refund. App-enforced vocabulary, NO DB CHECK (publish-trap rule): NULL = none,
+  // 'open' = awaiting admin, 'resolved_refunded' | 'resolved_dismissed' = terminal. Transitions
+  // are server-owned atomic conditionals (§15 shape); resolver identity is KEPT (provenance
+  // audit: review identity must be superseded, never erased). Additive-nullable.
+  disputeStatus: varchar("dispute_status", { length: 24 }),
+  disputeReason: text("dispute_reason"),
+  disputedAt: timestamp("disputed_at"),
+  disputeResolvedAt: timestamp("dispute_resolved_at"),
+  disputeResolvedBy: varchar("dispute_resolved_by").references(() => users.id, { onDelete: "set null" }),
+}, (table) => ({
+  // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
+  // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
+  // accumulate — a full unique index would block re-purchase after a refund.
+  buyerTripActiveIdx: uniqueIndex("idx_rmp_buyer_trip_active")
+    .on(table.buyerId, table.readyMadeTripId)
+    .where(sql`status IN ('paid','cloned')`),
+}));
+
+export const boards = pgTable("boards", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerId: varchar("owner_id").references(() => users.id, { onDelete: "cascade" }), // null = editorial (platform)
+  boardType: varchar("board_type", { length: 20 }).notNull(), // CHECK wishlist|storefront|editorial (v1 writes storefront|editorial only; ♡ uses saved_items)
+  title: varchar("title", { length: 200 }).notNull(),
+  slug: varchar("slug", { length: 200 }).unique(), // editorial boards route /collections/:slug
+  market: varchar("market", { length: 100 }),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const boardItems = pgTable("board_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
+  readyMadeTripId: varchar("ready_made_trip_id").notNull().references(() => readyMadeTrips.id, { onDelete: "cascade" }),
+  position: integer("position"),
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+}, (table) => ({
+  boardTripUnique: unique("board_items_board_trip_unique").on(table.boardId, table.readyMadeTripId),
+}));
+
+export const insertReadyMadeTripSchema = createInsertSchema(readyMadeTrips).omit({ id: true, createdAt: true, updatedAt: true });
+export type ReadyMadeTrip = typeof readyMadeTrips.$inferSelect;
+export type InsertReadyMadeTrip = z.infer<typeof insertReadyMadeTripSchema>;
+export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({
+  id: true,
+  purchasedAt: true,
+  // Revision entitlement is never set at purchase creation — it is driven only by the
+  // request-revision / deliver endpoints (targeted UPDATEs), never mass-assigned (§19 posture).
+  revisionStatus: true,
+  revisionRequestNote: true,
+  revisionRequestedAt: true,
+  // Dispute state is server-owned (concern endpoint + admin resolve only) — same §19 posture.
+  disputeStatus: true,
+  disputeReason: true,
+  disputedAt: true,
+  disputeResolvedAt: true,
+  disputeResolvedBy: true,
+});
+export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
+export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;
+export type Board = typeof boards.$inferSelect;
+export type BoardItem = typeof boardItems.$inferSelect;
+
+// short_links — backoffice S3 short-link + click store (migration 139). NO CHECK on target_type —
+// vocabulary ('storefront'|'service'|'template'|'ready_made') is app-enforced (short-links.routes.ts),
+// same posture as users.handle (migration 136): a CHECK over an app-layer vocabulary is the
+// publish-time push trap. target_id is nullable (storefront links carry no target_id — the owner's
+// handle is resolved at redirect time, never baked into the row).
+// `frame` (migration 193, D4 — docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md, decision-maker
+// ratified Aug 10 2026): additive nullable varchar, same NO-CHECK posture as target_type — the
+// closed allowlist (`shared/share-frames.ts` SHARE_FRAMES) is app-enforced at the create route.
+// NULL = an untagged/generic link, the historical shape; every pre-193 row and every caller that
+// omits frame keeps working exactly as before. Frame participates in the create-path dedupe
+// identity (owner + targetType + targetId + frame) so each frame mints its OWN code.
+export const shortLinks = pgTable("short_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 12 }).notNull().unique(),
+  ownerUserId: varchar("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetType: varchar("target_type", { length: 30 }).notNull(),
+  targetId: varchar("target_id"),
+  frame: varchar("frame", { length: 20 }),
+  clicks: integer("clicks").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  // D6 rails attribution (migration 198, ruling 61). NULL = never expires — every link shared
+  // before this column existed behaves identically. Read by the rails MONEY decision only
+  // (rails-attribution.service.ts): past-dated ⇒ the ref no longer selects the rails band lane.
+  // The /r/:code redirect and the S4 analytics attribution deliberately ignore it — a click that
+  // really happened stays a true analytics fact whatever the fee lane says (§13).
+  expiresAt: timestamp("expires_at"),
+}, (table) => [
+  index("idx_short_links_owner_user_id").on(table.ownerUserId),
+]);
+
+// §18 rule 3 ("a field with no consumer is still stripped") + ruling 66's money-timer precedent:
+// `expiresAt` GATES a fee lane (an unexpired link selects the rails band, an expired one does not),
+// so it is omitted here as well as being absent from the route's hand-written body schema. This
+// schema is parsed off no request body today; that is exactly why it must not become the way in.
+export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true, expiresAt: true });
+export type ShortLink = typeof shortLinks.$inferSelect;
+export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;
+
+// === Provider Back-Office Wave — migration 189 (decision-maker approved Aug 9 2026) ===
+// Two new tables, neither wired to enforcement yet — the feature builds that read/write these
+// beyond the create path land separately. Vacation mode itself lives on `users`
+// (shared/models/auth.ts: vacationUntil/vacationMessage), not here.
+
+// offering_type_requests — provider "I don't see my offering" requests. status is app-enforced
+// (pending|approved|rejected), no DB CHECK (house posture). Consumed by the admin categories page.
+export const offeringTypeRequests = pgTable("offering_type_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  requestedName: varchar("requested_name", { length: 120 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("offering_type_requests_status_idx").on(table.status),
+]);
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt — new schemas must be .pick()-based per
+// scripts/check-omit-schema-ratchet.cjs): a request only ever needs to carry the requester's own
+// text; id/userId/status/timestamps are all server-derived (userId from the session, status
+// defaults 'pending', the rest by the DB).
+export const insertOfferingTypeRequestSchema = createInsertSchema(offeringTypeRequests).pick({
+  requestedName: true,
+  description: true,
+});
+export type OfferingTypeRequest = typeof offeringTypeRequests.$inferSelect;
+export type InsertOfferingTypeRequest = z.infer<typeof insertOfferingTypeRequestSchema>;
+
+/** App-enforced offering_type_requests.status vocabulary — no DB CHECK (house posture). */
+export const OFFERING_TYPE_REQUEST_STATUSES = ["pending", "approved", "rejected"] as const;
+export type OfferingTypeRequestStatus = (typeof OFFERING_TYPE_REQUEST_STATUSES)[number];
+
+// demand_signal_events — append-only §13 event log. Every trending/demand surface must read
+// ONLY these logged events; writers land in the feature builds that produce each signal kind,
+// not here. kind is app-enforced (stay_anchor_miss|places_fallthrough|no_stay_flag|
+// search_unfilled), no DB CHECK — same posture as optimizer_gap_fills (migration 182).
+export const demandSignalEvents = pgTable("demand_signal_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  market: varchar("market", { length: 100 }),
+  category: varchar("category", { length: 60 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  context: jsonb("context"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("demand_signal_events_kind_created_idx").on(table.kind, table.createdAt),
+  index("demand_signal_events_market_idx").on(table.market),
+]);
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt — see optimizer_gap_fills precedent): id/
+// createdAt are server-derived; every other column is writer-supplied signal data.
+export const insertDemandSignalEventSchema = createInsertSchema(demandSignalEvents).pick({
+  kind: true,
+  market: true,
+  category: true,
+  latitude: true,
+  longitude: true,
+  context: true,
+});
+export type DemandSignalEvent = typeof demandSignalEvents.$inferSelect;
+export type InsertDemandSignalEvent = z.infer<typeof insertDemandSignalEventSchema>;
+
+/** App-enforced demand_signal_events.kind vocabulary — no DB CHECK (house posture). */
+export const DEMAND_SIGNAL_EVENT_KINDS = [
+  "stay_anchor_miss",
+  "places_fallthrough",
+  "no_stay_flag",
+  "search_unfilled",
+  // Partner Demand Data lane 2A.5 (ledger 2026-08-17-partner-demand-phase2-rulings, Market
+  // Research spec of record): the two Market Research interaction signals — a map layer toggled
+  // on/off (`layer_toggled`) and a research "where does demand want to go" circle tapped
+  // (`research_circle_tapped`). REGISTERED ONLY — no UI writes them yet (the Market Research page
+  // is Phase 3 ground-truth, not built in Phase 2). Reserving the vocabulary now keeps the write
+  // sites, when they land, from inventing an unregistered kind. Both remain advisory
+  // fire-and-forget (`logDemandSignal`), never same-transaction — that guarantee is
+  // item_transition_log's (R10/R15), never blended here.
+  "layer_toggled",
+  "research_circle_tapped",
+] as const;
+export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];
+
+// Partner Demand 2B skeleton rollup (ledger 2026-08-18-partner-demand-2b, migration 243). The L6
+// single-computation home for every demand figure: one row per (market_slug, date, metric,
+// partner_id?, service_id?). `value` is jsonb so a scalar (unmet_demand_slip) and a structured
+// funnel (slip_funnel) share one shape; `source_row_count` is the N behind the figure (feeds the
+// read-path floor gate AND the show-the-N honesty furniture). Declared here per the publish-trap
+// rule. Admin/internal only — never partner-facing except through the floor-enforced read endpoint.
+// The nightly job is REPLACE-BY-DATE (delete a market-local date's rows, insert fresh) so recompute
+// is idempotent without depending on NULL-in-unique semantics.
+export const UNMAPPED_MARKET_SLUG = "__unmapped__" as const; // the R13 bucket's reserved slug value
+// unmet_demand_stay (R19, ledger 2026-08-18-partner-demand-phase3) — property-shaped demand, kept
+// strictly separate from the service-shaped slip; app-enforced (metric column has NO DB CHECK).
+export const DEMAND_ROLLUP_METRICS = ["unmet_demand_slip", "slip_funnel", "unmet_demand_stay"] as const;
+export type DemandRollupMetric = (typeof DEMAND_ROLLUP_METRICS)[number];
+
+export const partnerDemandRollup = pgTable("partner_demand_rollup", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  marketSlug: varchar("market_slug", { length: 40 }).notNull(), // real slug or UNMAPPED_MARKET_SLUG
+  date: date("date").notNull(),                                 // MARKET-LOCAL date (not UTC)
+  metric: varchar("metric", { length: 40 }).notNull(),          // DEMAND_ROLLUP_METRICS
+  partnerId: varchar("partner_id"),                             // nullable — market-level rows: NULL
+  serviceId: varchar("service_id"),                             // nullable — per-service rows only
+  value: jsonb("value").notNull(),                              // metric payload (scalar or funnel)
+  sourceRowCount: integer("source_row_count").notNull(),        // the N (floor gate + show-the-N)
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+}, (t) => [
+  // Hygiene unique on the full scope key. NULL partner/service are distinct in a plain unique, but
+  // the replace-by-date job deletes a date's rows before inserting, so market-level dupes never form.
+  uniqueIndex("pdr_scope_unique").on(t.marketSlug, t.date, t.metric, t.partnerId, t.serviceId),
+  index("pdr_market_date_idx").on(t.marketSlug, t.date),
+]);
+export const insertPartnerDemandRollupSchema = createInsertSchema(partnerDemandRollup).pick({
+  marketSlug: true,
+  date: true,
+  metric: true,
+  partnerId: true,
+  serviceId: true,
+  value: true,
+  sourceRowCount: true,
+});
+export type PartnerDemandRollup = typeof partnerDemandRollup.$inferSelect;
+export type InsertPartnerDemandRollup = z.infer<typeof insertPartnerDemandRollupSchema>;
+
+// demand_onepager_approvals — R32 (ledger 2026-08-20-partner-demand-onepager-lifecycle; migration 245).
+// The Phase 4 admin control persists ONLY the approval DECISION — the draft/approved PDF is regenerated
+// deterministically on demand (generateOnepagerDraft), so no PDF blob is stored. A row EXISTS iff the
+// market's one-pager is APPROVED. Approval is KEPT only while (a) `templateVersion` matches the current
+// ONEPAGER_TEMPLATE_VERSION and (b) the market still clears the public floor for the approved variant;
+// the re-validation job WITHDRAWS (deletes) a row that fails either, honestly ending the artifact. §19
+// posture: no createInsertSchema (writes are a hand-written allowlist in the service). Declared here per
+// the publish-trap rule (additive, no DB CHECK — variant app-enforced, migration-181/195 posture).
+export const demandOnepagerApprovals = pgTable("demand_onepager_approvals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  marketSlug: varchar("market_slug", { length: 40 }).notNull().unique(),
+  variant: varchar("variant", { length: 20 }).notNull(), // approved variant: property-led | service-led
+  approvedBy: varchar("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at").notNull().defaultNow(),
+  templateVersion: integer("template_version").notNull(), // ONEPAGER_TEMPLATE_VERSION at approval time
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type DemandOnepagerApproval = typeof demandOnepagerApprovals.$inferSelect;
+
+// Ordered route stops for a provider service — CLAUDE.md ruling 22 (decision-maker ratified
+// Aug 10, 2026; migration 192). dmo_extracted_places pattern: child rows, CASCADE, composite
+// UNIQUE on (service_id, position). lat/lng nullable — an unlocated stop stays visibly flagged
+// in lists and is NEVER guessed onto the map (§13; no city-center fallback). Positions are
+// server-derived from array order on the replace-list write (PUT
+// /api/provider/services/:id/route-points) — never client-numbered. Declared here per the
+// publish-trap rule (table + UNIQUE + index must survive the deploy push).
+export const serviceRoutePoints = pgTable("service_route_points", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based stop order (the numbered pins)
+  name: varchar("name", { length: 255 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_route_points_service_position_unique").on(table.serviceId, table.position),
+  index("service_route_points_service_idx").on(table.serviceId),
+]);
+export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+// Ordered collection points for a provider service. These are NOT the places the experience
+// visits (serviceRoutePoints); they describe a provider's pickup route only.
+export const servicePickupRoutePoints = pgTable("service_pickup_route_points", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_pickup_route_points_service_position_unique").on(table.serviceId, table.position),
+  index("service_pickup_route_points_service_idx").on(table.serviceId),
+]);
+export type ServicePickupRoutePoint = typeof servicePickupRoutePoints.$inferSelect;
+
+// Travel-surcharge ZONE tiers for a provider service — DECISIONS.md ruling 81 (lane B1, migration
+// 205). The `zones` mode's ordered surcharge rings, on the service_route_points/service_attestations
+// child-row pattern: ON DELETE CASCADE, composite UNIQUE (service_id, position). Positions are
+// server-derived from array order on the owner-gated replace-list write (PUT
+// /api/provider/services/:id/surcharge-tiers) — never client-numbered. Each row is a ring: any
+// pickup within `radiusKm` of the confirmed pin (and outside every smaller ring) incurs `fee`. The
+// resolver picks the SMALLEST containing ring (§13 honest containment — no computed distance shown).
+// `radiusKm`/`fee` are owner LISTING config (not §18 rates), but the CHARGE is derived server-side at
+// checkout. Declared here per the publish-trap rule (table + UNIQUE + index must survive the deploy
+// push). NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in the route (§19).
+export const serviceSurchargeTiers = pgTable("service_surcharge_tiers", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based ring order (smallest ⇒ largest radius)
+  radiusKm: decimal("radius_km", { precision: 10, scale: 3 }).notNull(), // outer radius of this ring, km from the pin
+  fee: decimal("fee", { precision: 10, scale: 2 }).notNull(),            // surcharge dollars for a pickup landing in this ring
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_surcharge_tiers_service_position_unique").on(table.serviceId, table.position),
+  index("service_surcharge_tiers_service_idx").on(table.serviceId),
+]);
+export type ServiceSurchargeTier = typeof serviceSurchargeTiers.$inferSelect;
+
+// S7 availability model — DECISIONS.md ledger row 102 (Wave 3 schema ballot, ratified as
+// recommended, decision-maker Aug 13, 2026; docs/briefs/WAVE3_SCHEMA_PROPOSALS.md; migration 210).
+// Three additive child tables. Patterns/blackouts are AUTHORING data, not the §15 claim surface —
+// server/services/availability-materializer.service.ts expands a pattern minus blackouts into
+// ordinary vendorAvailabilitySlots rows for a rolling window, so storage.bookSlot/releaseSlot/the
+// sweep need ZERO changes. service_date_ranges is property/room authoring only this wave; S11 owns
+// the range-claim machinery (checkout, §15 claim/promote/void).
+//
+// Weekly repeat rule ("every Tuesday 09:00-11:00, capacity 4"). Natural-key UNIQUE (service_id,
+// day_of_week, start_time, end_time) — a weekly grid has no sequence, only distinct slots, so this
+// deliberately does NOT follow the position-ordered service_route_points/service_surcharge_tiers
+// shape (the ballot's own note). day_of_week 0=Sun..6=Sat, app-enforced range, NO DB CHECK (the
+// migration-181/195 posture). Owner-gated replace-list write: PUT
+// /api/provider/services/:id/availability-patterns, hand-written ALLOWLIST body (§19 — no
+// createInsertSchema).
+export const serviceAvailabilityPatterns = pgTable("service_availability_patterns", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week").notNull(), // 0=Sun..6=Sat, app-enforced, NO DB CHECK
+  startTime: varchar("start_time", { length: 5 }).notNull(), // "HH:MM", matches earliestStartTime's shape
+  endTime: varchar("end_time", { length: 5 }).notNull(),
+  capacity: integer("capacity").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_availability_patterns_unique").on(table.serviceId, table.dayOfWeek, table.startTime, table.endTime),
+  index("service_availability_patterns_service_idx").on(table.serviceId),
+]);
+export type ServiceAvailabilityPattern = typeof serviceAvailabilityPatterns.$inferSelect;
+
+// Property/room date-range availability, per-night price (S11's future checkout input). S7-Q4
+// (ratified): nightlyPrice is provider-authored config like `price` — NULL = inherit
+// provider_services.price — but §14 stays in force: S11 must server-derive the stay charge from
+// THIS row, never req.body. capacity = units (rooms) available across the range. Owner-gated
+// replace-list write: PUT /api/provider/services/:id/date-ranges — the route validates
+// productShape is 'property'/'property_room' server-side before accepting a write. Natural-key
+// UNIQUE (service_id, start_date, end_date), NO DB CHECK.
+export const serviceDateRanges = pgTable("service_date_ranges", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  nightlyPrice: decimal("nightly_price", { precision: 10, scale: 2 }), // NULL = inherit provider_services.price
+  capacity: integer("capacity").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_date_ranges_unique").on(table.serviceId, table.startDate, table.endDate),
+  index("service_date_ranges_service_idx").on(table.serviceId),
+]);
+export type ServiceDateRange = typeof serviceDateRanges.$inferSelect;
+
+// Blackouts apply to EITHER shape (scheduled-slot services or property date-ranges). S7-Q3
+// (ratified): a blackout blocks FUTURE materialization/manual creation only — it NEVER cancels an
+// existing slot or booking (auto-cancelling a paid booking is a §15 violation waiting to happen).
+// Owner-gated replace-list write: PUT /api/provider/services/:id/blackouts. Natural-key UNIQUE
+// (service_id, start_date, end_date), NO DB CHECK.
+export const serviceAvailabilityBlackouts = pgTable("service_availability_blackouts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  reason: varchar("reason", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_availability_blackouts_unique").on(table.serviceId, table.startDate, table.endDate),
+  index("service_availability_blackouts_service_idx").on(table.serviceId),
+]);
+export type ServiceAvailabilityBlackout = typeof serviceAvailabilityBlackouts.$inferSelect;
+
+// D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
+// (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE
+// CASCADE, composite UNIQUE (service_id, attestation_key). That UNIQUE is the idempotency
+// mechanism, not a nicety — the write path is INSERT … ON CONFLICT DO NOTHING, so re-affirming
+// keeps the FIRST affirmation's timestamp and never mints a second row.
+//
+// `attestationKey` carries NO DB CHECK: the vocabulary lives in shared/service-attestations.ts and
+// is app-enforced (the migration-144/195 posture — a CHECK over an app vocabulary is the
+// publish-time deploy-push failure CLAUDE.md warns about). `affirmedBy` is the SESSION user,
+// stamped server-side (§14 — never from req.body), ON DELETE SET NULL because deleting an account
+// must not erase the historical fact that the attestation was made.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes/service-attestations.routes.ts (§19/#PS18 — a denylist schema over a table whose
+// every non-key column is server-stamped would be exactly the mass-assignment shape ruling 46
+// named). Declared here per the publish-trap rule.
+export const serviceAttestations = pgTable("service_attestations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  attestationKey: varchar("attestation_key", { length: 64 }).notNull(),
+  affirmedAt: timestamp("affirmed_at").notNull().defaultNow(),
+  affirmedBy: varchar("affirmed_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_attestations_service_key_unique").on(table.serviceId, table.attestationKey),
+  index("service_attestations_service_idx").on(table.serviceId),
+]);
+export type ServiceAttestation = typeof serviceAttestations.$inferSelect;
+
+// Ruling 60 Phase B — provider CONTENT translation (docs/DECISIONS.md ruling 60 / ruling 73;
+// QA_PUNCH_LIST I18N-4; migration 201). Child rows of provider_services on the
+// service_route_points / service_attestations pattern: ON DELETE CASCADE, composite UNIQUE
+// (service_id, locale). ONE row per (service, locale) — the write path is a replace-for-locale
+// upsert (INSERT … ON CONFLICT (service_id, locale) DO UPDATE), the dmo_extracted_places /
+// route-points replace-list precedent applied per-locale.
+//
+// Only genuine free-text CONTENT columns are translatable — the exact set ruling 60 names
+// ("listing names/descriptions/meeting-point text"): serviceName, shortDescription, description,
+// meetingPoint. NO enums/prices/IDs live here (§14 — identity/amount/rate never travel through a
+// translation row). Each is nullable so a provider may translate a subset; the traveler read
+// falls each untranslated field back to the original.
+//
+// `status` ('draft' | 'approved') and `source` ('human' | 'ai_draft') carry NO DB CHECK — the
+// vocabulary is app-enforced (the migration-144/195 posture; a CHECK over an app vocabulary is
+// the publish-time deploy-push failure CLAUDE.md warns about). `source='ai_draft'` labels a
+// machine draft BY CONSTRUCTION — §13's honesty rule for CONTENT: a draft is NEVER shown to a
+// traveler, and an AI draft is ALWAYS labeled as machine-generated for the reviewing provider.
+// `updatedBy` is the SESSION user, stamped server-side (§14 — never from req.body), ON DELETE
+// SET NULL so deleting an account keeps the historical row.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes.ts (§19/#PS18 — a denylist schema over a table whose status/source/updatedBy are
+// all server-stamped would be exactly the mass-assignment shape ruling 46 named, and would grow
+// the omit-ratchet baseline for nothing). Declared here per the publish-trap rule.
+export const serviceTranslations = pgTable("service_translations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  locale: varchar("locale", { length: 8 }).notNull(),
+  serviceName: varchar("service_name", { length: 255 }),
+  shortDescription: varchar("short_description", { length: 150 }),
+  description: text("description"),
+  meetingPoint: text("meeting_point"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),   // 'draft' | 'approved'
+  source: varchar("source", { length: 20 }).notNull().default("human"),   // 'human' | 'ai_draft'
+  updatedBy: varchar("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_translations_service_locale_unique").on(table.serviceId, table.locale),
+  index("service_translations_service_idx").on(table.serviceId),
+]);
+export type ServiceTranslation = typeof serviceTranslations.$inferSelect;
+
+// R4/R5 (docs/DECISIONS.md ruling 58; migration 194): append-only download log for the D3
+// deliverable rail. One row per SUCCESSFUL fetch of GET /api/service-bookings/:id/deliverable —
+// the download signal D8's proposed "auto-complete after N days undownloaded" needs and does not
+// yet have (P2, QA_PUNCH_LIST.md); this table only LOGS, it implements no completion/auto-complete
+// behavior (D8 is unruled). `protected` distinguishes a proxied `objstore:` stream (true) from a
+// legacy pasted-URL reveal (false) — the same discriminator the endpoint response carries.
+// Additive, no CHECK (publish-trap avoidance). Declared here per the publish-trap rule (table +
+// index must survive the deploy push).
+export const deliverableDownloads = pgTable("deliverable_downloads", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  protected: boolean("protected").notNull().default(false),
+  downloadedAt: timestamp("downloaded_at").defaultNow().notNull(),
+}, (table) => [
+  index("deliverable_downloads_booking_idx").on(table.bookingId),
+  index("deliverable_downloads_service_idx").on(table.serviceId),
+]);
+export type DeliverableDownload = typeof deliverableDownloads.$inferSelect;
+
+// Task: DB-backed fallbacks for FX rates and geocode coordinates (migration 217).
+// fx_rates: one row per currency, rate expressed as units-per-USD. Refreshed daily by
+// server/services/fx-rate-refresh.service.ts (Frankfurter API); seeded by migration 217 so a
+// fresh deploy is never rate-less. The /api/exchange-rates fallback path reads these rows —
+// the old hardcoded literal is gone; if this table is empty AND the live fetch failed, the
+// endpoint returns an honest 503, never silently-stale baked-in numbers.
+export const fxRates = pgTable("fx_rates", {
+  currencyCode: varchar("currency_code", { length: 8 }).primaryKey(),
+  rateToUsd: doublePrecision("rate_to_usd").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FxRate = typeof fxRates.$inferSelect;
+
+// geocode_fallbacks: admin-curated city-centre coordinates used ONLY when the live Google
+// geocode misses. Seeded by migration 217 with the former hardcoded FALLBACK_COORDINATES set;
+// admins add/update rows via SQL (no deploy needed). A miss here too returns an honest
+// null/404 — never a guessed coordinate (§13 posture: curated data is not fabrication).
+export const geocodeFallbacks = pgTable("geocode_fallbacks", {
+  slug: varchar("slug", { length: 120 }).primaryKey(), // normalized lowercase city key
+  cityName: varchar("city_name", { length: 120 }).notNull(),
+  lat: doublePrecision("lat").notNull(),
+  lng: doublePrecision("lng").notNull(),
+  formattedAddress: varchar("formatted_address", { length: 255 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type GeocodeFallback = typeof geocodeFallbacks.$inferSelect;
+
+// ─── Message safety: blocking and abuse reporting (migration 228) ─────────────
+//
+// userBlocks: bidirectional block. When a block row exists for (blockerId, blockedId),
+// the message write paths (messages.service.ts sendMessage + storage.ts createChat)
+// refuse to deliver in either direction — both parties are fenced from messaging each
+// other. Unique index on (blocker_id, blocked_id) prevents duplicate rows. ON DELETE
+// CASCADE so account deletion removes orphan rows.
+//
+// messageReports: append-only abuse-report log. One reporter can file more than one
+// report on the same target over time (no unique constraint), but the UI only sends one
+// at a time. `reportType` is either "message" (a specific userAndExpertChats row, with
+// `messageId` populated) or "user" (the sender/profile, messageId null). `reason` is
+// admin-facing category (spam, harassment, inappropriate, other); `details` is optional
+// freetext. `status` starts pending and is set to reviewed/actioned/dismissed by an
+// admin. No DB CHECK on status/reason/reportType — app-enforced vocabulary, same
+// migration-144/195 posture. ON DELETE SET NULL on messageId so a deleted message
+// doesn't cascade-delete its report record from the moderation queue.
+export const userBlocks = pgTable("user_blocks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  blockerId: varchar("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedId: varchar("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("user_blocks_pair_unique").on(table.blockerId, table.blockedId),
+  index("user_blocks_blocker_idx").on(table.blockerId),
+  index("user_blocks_blocked_idx").on(table.blockedId),
+]);
+export type UserBlock = typeof userBlocks.$inferSelect;
+export type InsertUserBlock = typeof userBlocks.$inferInsert;
+
+export const messageReports = pgTable("message_reports", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  reporterId: varchar("reporter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reportedUserId: varchar("reported_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // nullable: a user-level report has no specific message
+  messageId: varchar("message_id").references(() => userAndExpertChats.id, { onDelete: "set null" }),
+  reportType: varchar("report_type", { length: 20 }).notNull().default("message"), // "message" | "user"
+  reason: varchar("reason", { length: 50 }).notNull(), // "spam" | "harassment" | "inappropriate" | "other"
+  details: text("details"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // "pending" | "reviewed" | "actioned" | "dismissed"
+  adminNote: text("admin_note"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("message_reports_reporter_idx").on(table.reporterId),
+  index("message_reports_reported_idx").on(table.reportedUserId),
+  index("message_reports_status_idx").on(table.status),
+]);
+export type MessageReport = typeof messageReports.$inferSelect;
+export type InsertMessageReport = typeof messageReports.$inferInsert;
+
+// =============================================================================
+// TREND + CROWD ENGINE — Phase 1 (schema + config, no ingestion yet)
+// =============================================================================
+
+// trend_entities — resolution layer mapping internal PKs to external source IDs.
+// internal_id is a polymorphic reference to the PK of the entity's own table
+// (city_neighborhoods.id for entity_type='neighborhood', etc.); no DB FK by design.
+// UNIQUE(entity_type, internal_id) is the dedup guard.
+export const trendEntities = pgTable("trend_entities", {
+  id:               varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  entityType:       varchar("entity_type", { length: 30 }).notNull(), // market|neighborhood|gem|place_type|offering_type
+  internalId:       text("internal_id").notNull(),
+  wikidataQid:      text("wikidata_qid"),
+  googlePlaceId:    text("google_place_id"),
+  wikipediaTitle:   text("wikipedia_title"),
+  besttimeVenueId:  text("besttime_venue_id"),       // v1.1: crowd anchor mapping per L12
+  xHandleOrQuery:   text("x_handle_or_query"),       // X/Twitter resolution key (Phase 2 adapter)
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  unique("trend_entities_type_internal_unique").on(table.entityType, table.internalId),
+  index("trend_entities_entity_type_idx").on(table.entityType),
+  index("trend_entities_internal_id_idx").on(table.internalId),
+]);
+export type TrendEntity = typeof trendEntities.$inferSelect;
+export type InsertTrendEntity = typeof trendEntities.$inferInsert;
+
+// trend_signals — append-only event log.
+// NEVER UPDATE. NEVER DELETE. Adapters insert; resolver reads.
+// resale_class: first_party | licensed_no_resale | open_license — NOT NULL, NO DEFAULT.
+// Each adapter must declare its class explicitly from trend_source_config.
+// surface_origin: set when signal originates from a trend/crowd surface (excluded from scoring per L8).
+export const trendSignals = pgTable("trend_signals", {
+  id:             varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trendEntityId:  text("trend_entity_id").notNull().references(() => trendEntities.id, { onDelete: "cascade" }),
+  source:         text("source").notNull(),           // references trend_source_config.source
+  metric:         varchar("metric", { length: 60 }).notNull(),
+  value:          decimal("value").notNull(),
+  observedAt:     timestamp("observed_at").notNull(),
+  ingestedAt:     timestamp("ingested_at").defaultNow().notNull(),
+  resaleClass:    varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — adapter declares explicitly
+  surfaceOrigin:  text("surface_origin"),             // non-null → excluded from scoring (L8)
+  preLaunch:      boolean("pre_launch").notNull().default(false), // R8: true = before public launch, excluded from calibration fits
+  rawRef:         jsonb("raw_ref"),
+}, (table) => [
+  index("trend_signals_entity_idx").on(table.trendEntityId),
+  index("trend_signals_source_idx").on(table.source),
+  index("trend_signals_observed_at_idx").on(table.observedAt),
+  index("trend_signals_entity_metric_idx").on(table.trendEntityId, table.metric, table.observedAt),
+]);
+export type TrendSignal = typeof trendSignals.$inferSelect;
+export type InsertTrendSignal = typeof trendSignals.$inferInsert;
+
+// trend_source_config — admin-editable, one row per source, no deploy needed.
+// monthly_cost_ceiling: ingestion halts and alerts when cumulative cost hits ceiling (L5).
+// resale_class NOT NULL, NO DEFAULT — each source row must declare explicitly.
+export const trendSourceConfig = pgTable("trend_source_config", {
+  source:               text("source").primaryKey(),
+  enabled:              boolean("enabled").notNull().default(false),
+  decayHalfLifeDays:    decimal("decay_half_life_days", { precision: 6, scale: 2 }),
+  weight:               decimal("weight", { precision: 6, scale: 4 }),
+  monthlyCostCeiling:   decimal("monthly_cost_ceiling", { precision: 10, scale: 2 }),
+  resaleClass:          varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — each row explicit
+  notes:                text("notes"),
+  // Phase 2.1 — health status written by cost-enforcement.ts (ceiling halt)
+  // Phase 2 corrective 2 — last-run tracking written by ingestion-runner.ts
+  healthStatus:           varchar("health_status", { length: 30 }).notNull().default("healthy"),
+  haltedAt:               timestamp("halted_at"),
+  haltedReason:           text("halted_reason"),
+  // Last-run tracking (Item C, corrective dispatch 2)
+  lastRunAt:              timestamp("last_run_at"),
+  lastRunStatus:          varchar("last_run_status", { length: 20 }),   // 'success' | 'failure'
+  lastRunError:           text("last_run_error"),
+  lastRunInsertedRows:    integer("last_run_inserted_rows"),
+  consecutiveFailures:    integer("consecutive_failures").notNull().default(0),
+  createdAt:              timestamp("created_at").defaultNow().notNull(),
+  updatedAt:              timestamp("updated_at").defaultNow().notNull(),
+});
+export type TrendSourceConfig = typeof trendSourceConfig.$inferSelect;
+export type InsertTrendSourceConfig = typeof trendSourceConfig.$inferInsert;
+
+// market_season_calendars — static seed per L3.
+// start_month_day / end_month_day = 'MM-DD'; wraps year-end when end < start.
+// weather_anomaly_adjust: STUB column — no logic reads it in v1 (L3 deferred).
+export const marketSeasonCalendars = pgTable("market_season_calendars", {
+  id:                       varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  marketKey:                varchar("market_key", { length: 40 }).notNull(),
+  seasonKey:                varchar("season_key", { length: 40 }).notNull(),
+  displayName:              varchar("display_name", { length: 100 }).notNull(),
+  startMonthDay:            varchar("start_month_day", { length: 5 }).notNull(),  // 'MM-DD'
+  endMonthDay:              varchar("end_month_day", { length: 5 }).notNull(),    // 'MM-DD'
+  expectedDemandMultiplier: decimal("expected_demand_multiplier", { precision: 5, scale: 3 }).notNull(),
+  weatherAnomalyAdjust:     decimal("weather_anomaly_adjust", { precision: 5, scale: 3 }), // STUB — v1 scorer never reads this
+}, (table) => [
+  unique("market_season_calendars_market_season_unique").on(table.marketKey, table.seasonKey),
+  index("market_season_calendars_market_idx").on(table.marketKey),
+]);
+export type MarketSeasonCalendar = typeof marketSeasonCalendars.$inferSelect;
+export type InsertMarketSeasonCalendar = typeof marketSeasonCalendars.$inferInsert;
+
+// crowd_band_config — per-entity-type band cutoffs, admin-editable (v1.1).
+// lower_bound_vs_baseline: entity's own-baseline multiple at which this band begins.
+// Four bands: low | moderate | high | peak.
+// Cutoffs are relative to each entity's own 90-day trailing baseline (L2/L9).
+export const crowdBandConfig = pgTable("crowd_band_config", {
+  entityType:             varchar("entity_type", { length: 30 }).notNull(),
+  band:                   varchar("band", { length: 10 }).notNull(), // low|moderate|high|peak
+  lowerBoundVsBaseline:   decimal("lower_bound_vs_baseline", { precision: 6, scale: 3 }).notNull(),
+}, (table) => [
+  unique("crowd_band_config_type_band_unique").on(table.entityType, table.band),
+]);
+export type CrowdBandConfig = typeof crowdBandConfig.$inferSelect;
+export type InsertCrowdBandConfig = typeof crowdBandConfig.$inferInsert;
+
+// ─── Email Outbox ─────────────────────────────────────────────────────────────
+// Durable store for transactional emails. Failed rows are retried by the
+// email-outbox scheduler with exponential backoff (max 5 attempts). Dead rows
+// are surfaced on the admin dashboard. See migration 240_email_outbox.sql.
+export const emailOutbox = pgTable("email_outbox", {
+  id:           bigserial("id", { mode: "number" }).primaryKey(),
+  emailType:    varchar("email_type", { length: 64 }).notNull().default("generic"),
+  toEmail:      text("to_email").notNull(),
+  subject:      text("subject").notNull(),
+  html:         text("html").notNull(),
+  textBody:     text("text_body"),
+  fromAddress:  text("from_address"),
+  replyTo:      text("reply_to"),
+  // pending | sent | failed | dead
+  status:       varchar("status", { length: 16 }).notNull().default("pending"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  maxAttempts:  integer("max_attempts").notNull().default(5),
+  lastError:    text("last_error"),
+  resendId:     text("resend_id"),
+  retryAfter:   timestamp("retry_after", { withTimezone: true }),
+  sentAt:       timestamp("sent_at", { withTimezone: true }),
+  metadata:     jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  createdAt:    timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type EmailOutbox = typeof emailOutbox.$inferSelect;
+export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
+
+// trend_scores — materialized resolver output. One row per entity. Rewritten each scoring run.
+// crowd_band null = entity is below confidence floor (L9) — must not appear on any surface.
+// contributing_sources: jsonb array of source keys that fed this score.
+// scoring_run_id: for reproducibility; identical inputs must reproduce identical outputs (Phase 4 gate).
+export const trendScores = pgTable("trend_scores", {
+  trendEntityId:        text("trend_entity_id").primaryKey().references(() => trendEntities.id, { onDelete: "cascade" }),
+  trendScore:           decimal("trend_score", { precision: 6, scale: 3 }),
+  trendConfidence:      decimal("trend_confidence", { precision: 5, scale: 4 }),
+  crowdBand:            text("crowd_band"),           // low|moderate|high|peak — null = below floor
+  crowdConfidence:      decimal("crowd_confidence", { precision: 5, scale: 4 }),
+  contributingSources:  jsonb("contributing_sources").notNull().default(sql`'[]'::jsonb`),
+  whyText:              text("why_text"),
+  crowdWhy:             text("crowd_why"),
+  seasonalExpected:     decimal("seasonal_expected", { precision: 6, scale: 3 }),
+  computedAt:           timestamp("computed_at").defaultNow().notNull(),
+  scoringRunId:         text("scoring_run_id").notNull(),
+}, (table) => [
+  index("trend_scores_computed_at_idx").on(table.computedAt),
+  index("trend_scores_run_idx").on(table.scoringRunId),
+]);

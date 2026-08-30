@@ -7,7 +7,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 
 interface FilterOption {
@@ -172,7 +172,7 @@ async function seedUniversalFilters(experienceTypeId: string, filters: Universal
   }
 }
 
-// ============ BACHELOR/BACHELORETTE PARTY TEMPLATE ============
+// ------------ BACHELOR/BACHELORETTE PARTY TEMPLATE ------------
 const bachelorTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -944,7 +944,7 @@ const bachelorUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ ANNIVERSARY TRIP TEMPLATE ============
+// ------------ ANNIVERSARY TRIP TEMPLATE ------------
 const anniversaryTabs: TabDef[] = [
   {
     name: "Destinations",
@@ -1595,7 +1595,7 @@ const anniversaryUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ TRAVEL TEMPLATE ============
+// ------------ TRAVEL TEMPLATE ------------
 const travelTabs: TabDef[] = [
   {
     name: "Activities",
@@ -2129,7 +2129,7 @@ const travelUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ WEDDING TEMPLATE ============
+// ------------ WEDDING TEMPLATE ------------
 const weddingTabs: TabDef[] = [
   {
     name: "Ceremony",
@@ -2446,7 +2446,7 @@ const weddingTabs: TabDef[] = [
   },
 ];
 
-// ============ DATE NIGHT TEMPLATE ============
+// ------------ DATE NIGHT TEMPLATE ------------
 const dateNightTabs: TabDef[] = [
   {
     name: "Dining",
@@ -2583,7 +2583,7 @@ const dateNightTabs: TabDef[] = [
   },
 ];
 
-// ============ BIRTHDAY TEMPLATE ============
+// ------------ BIRTHDAY TEMPLATE ------------
 const birthdayTabs: TabDef[] = [
   {
     name: "Birthday Person",
@@ -2782,7 +2782,7 @@ const birthdayTabs: TabDef[] = [
   },
 ];
 
-// ============ CORPORATE EVENTS TEMPLATE ============
+// ------------ CORPORATE EVENTS TEMPLATE ------------
 const corporateTabs: TabDef[] = [
   {
     name: "Approval & Budget",
@@ -3116,7 +3116,7 @@ const corporateTabs: TabDef[] = [
   },
 ];
 
-// ============ RETREATS TEMPLATE ============
+// ------------ RETREATS TEMPLATE ------------
 const retreatsTabs: TabDef[] = [
   {
     name: "Venues",
@@ -3321,7 +3321,7 @@ const standardUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ============
+// ------------ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ------------
 const weddingAnniversariesTabs: TabDef[] = [
   {
     name: "Anniversary Date",
@@ -3448,7 +3448,7 @@ const weddingAnniversariesTabs: TabDef[] = [
   }
 ];
 
-// ============ PROPOSAL TEMPLATE ============
+// ------------ PROPOSAL TEMPLATE ------------
 const proposalTabs: TabDef[] = [
   {
     name: "Plan Secrecy",
@@ -3558,7 +3558,7 @@ const proposalTabs: TabDef[] = [
   }
 ];
 
-// ============ BOYS TRIP TEMPLATE ============
+// ------------ BOYS TRIP TEMPLATE ------------
 const boysTripTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -3667,7 +3667,7 @@ const boysTripTabs: TabDef[] = [
   }
 ];
 
-// ============ GIRLS TRIP TEMPLATE ============
+// ------------ GIRLS TRIP TEMPLATE ------------
 const girlsTripTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -3773,7 +3773,7 @@ const girlsTripTabs: TabDef[] = [
   }
 ];
 
-// ============ REUNIONS TEMPLATE ============
+// ------------ REUNIONS TEMPLATE ------------
 const reunionsTabs: TabDef[] = [
   {
     name: "Attendee Coordination",
@@ -3896,7 +3896,7 @@ const reunionsTabs: TabDef[] = [
   }
 ];
 
-// ============ BABY SHOWER TEMPLATE ============
+// ------------ BABY SHOWER TEMPLATE ------------
 const babyShowerTabs: TabDef[] = [
   {
     name: "Expectant Mom",
@@ -4003,7 +4003,7 @@ const babyShowerTabs: TabDef[] = [
   }
 ];
 
-// ============ GRADUATION PARTY TEMPLATE ============
+// ------------ GRADUATION PARTY TEMPLATE ------------
 const graduationTabs: TabDef[] = [
   {
     name: "Graduate",
@@ -4098,7 +4098,7 @@ const graduationTabs: TabDef[] = [
   }
 ];
 
-// ============ ENGAGEMENT PARTY TEMPLATE ============
+// ------------ ENGAGEMENT PARTY TEMPLATE ------------
 const engagementTabs: TabDef[] = [
   {
     name: "Couple",
@@ -4182,7 +4182,7 @@ const engagementTabs: TabDef[] = [
   }
 ];
 
-// ============ HOUSEWARMING PARTY TEMPLATE ============
+// ------------ HOUSEWARMING PARTY TEMPLATE ------------
 const housewarmingTabs: TabDef[] = [
   {
     name: "Homeowners",
@@ -4276,7 +4276,7 @@ const housewarmingTabs: TabDef[] = [
   }
 ];
 
-// ============ RETIREMENT PARTY TEMPLATE ============
+// ------------ RETIREMENT PARTY TEMPLATE ------------
 const retirementTabs: TabDef[] = [
   {
     name: "Retiree",
@@ -4370,7 +4370,7 @@ const retirementTabs: TabDef[] = [
   }
 ];
 
-// ============ CAREER ACHIEVEMENT PARTY TEMPLATE ============
+// ------------ CAREER ACHIEVEMENT PARTY TEMPLATE ------------
 const careerAchievementTabs: TabDef[] = [
   {
     name: "Achiever",
@@ -4440,7 +4440,7 @@ const careerAchievementTabs: TabDef[] = [
   }
 ];
 
-// ============ FAREWELL PARTY TEMPLATE ============
+// ------------ FAREWELL PARTY TEMPLATE ------------
 const farewellTabs: TabDef[] = [
   {
     name: "Person Leaving",
@@ -4534,7 +4534,7 @@ const farewellTabs: TabDef[] = [
   }
 ];
 
-// ============ HOLIDAY PARTY TEMPLATE ============
+// ------------ HOLIDAY PARTY TEMPLATE ------------
 const holidayPartyTabs: TabDef[] = [
   {
     name: "Host Preferences",
@@ -4646,7 +4646,7 @@ const holidayPartyTabs: TabDef[] = [
   }
 ];
 
-// ============ SPORTS EVENT TEMPLATE ============
+// ------------ SPORTS EVENT TEMPLATE ------------
 const sportsEventTabs: TabDef[] = [
   {
     name: "Tickets",
@@ -4731,215 +4731,116 @@ const sportsEventTabs: TabDef[] = [
 export async function seedExperienceTemplateTabs() {
   console.log("Seeding experience template tabs and filters...");
 
-  // Seed Bachelor/Bachelorette Party template
-  const bachelorId = await getOrCreateExperienceType("bachelor-bachelorette", "Bachelor/Bachelorette Party");
-  console.log(`Bachelor/Bachelorette Party experience type ID: ${bachelorId}`);
-  
-  for (let i = 0; i < bachelorTabs.length; i++) {
-    await seedTabWithFilters(bachelorId, bachelorTabs[i], i);
-  }
-  await seedUniversalFilters(bachelorId, bachelorUniversalFilters);
-  console.log("Bachelor/Bachelorette Party template seeded.");
+  const templates: Array<{
+    slug: string;
+    name: string;
+    tabs: TabDef[];
+    universalFilters: UniversalFilterDef[];
+    backfillControls?: boolean;
+  }> = [
+    { slug: "bachelor-bachelorette", name: "Bachelor/Bachelorette Party", tabs: bachelorTabs, universalFilters: bachelorUniversalFilters },
+    { slug: "anniversary-trip", name: "Anniversary Trip", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters },
+    { slug: "travel", name: "Travel", tabs: travelTabs, universalFilters: travelUniversalFilters, backfillControls: true },
+    { slug: "wedding", name: "Wedding", tabs: weddingTabs, universalFilters: standardUniversalFilters, backfillControls: true },
+    { slug: "date-night", name: "Date Night", tabs: dateNightTabs, universalFilters: standardUniversalFilters },
+    { slug: "birthday", name: "Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters },
+    { slug: "corporate-events", name: "Corporate Events", tabs: corporateTabs, universalFilters: standardUniversalFilters, backfillControls: true },
+    { slug: "retreats", name: "Retreats", tabs: retreatsTabs, universalFilters: standardUniversalFilters },
+    { slug: "wedding-anniversaries", name: "Wedding Anniversaries", tabs: weddingAnniversariesTabs, universalFilters: standardUniversalFilters },
+    { slug: "proposal", name: "Proposal", tabs: proposalTabs, universalFilters: standardUniversalFilters },
+    { slug: "boys-trip", name: "Boys Trip", tabs: boysTripTabs, universalFilters: standardUniversalFilters },
+    { slug: "girls-trip", name: "Girls Trip", tabs: girlsTripTabs, universalFilters: standardUniversalFilters },
+    { slug: "reunions", name: "Reunions", tabs: reunionsTabs, universalFilters: standardUniversalFilters },
+    { slug: "baby-shower", name: "Baby Shower", tabs: babyShowerTabs, universalFilters: standardUniversalFilters },
+    { slug: "graduation-party", name: "Graduation Party", tabs: graduationTabs, universalFilters: standardUniversalFilters },
+    { slug: "engagement-party", name: "Engagement Party", tabs: engagementTabs, universalFilters: standardUniversalFilters },
+    { slug: "housewarming-party", name: "Housewarming Party", tabs: housewarmingTabs, universalFilters: standardUniversalFilters },
+    { slug: "retirement-party", name: "Retirement Party", tabs: retirementTabs, universalFilters: standardUniversalFilters },
+    { slug: "career-achievement-party", name: "Career Achievement Party", tabs: careerAchievementTabs, universalFilters: standardUniversalFilters },
+    { slug: "farewell-party", name: "Farewell Party", tabs: farewellTabs, universalFilters: standardUniversalFilters },
+    { slug: "holiday-party", name: "Holiday Party", tabs: holidayPartyTabs, universalFilters: standardUniversalFilters },
+    { slug: "sports-event", name: "Sports Event", tabs: sportsEventTabs, universalFilters: standardUniversalFilters },
+  ];
 
-  // Seed Anniversary Trip template
-  const anniversaryId = await getOrCreateExperienceType("anniversary-trip", "Anniversary Trip");
-  console.log(`Anniversary Trip experience type ID: ${anniversaryId}`);
-  
-  for (let i = 0; i < anniversaryTabs.length; i++) {
-    await seedTabWithFilters(anniversaryId, anniversaryTabs[i], i);
-  }
-  await seedUniversalFilters(anniversaryId, anniversaryUniversalFilters);
-  console.log("Anniversary Trip template seeded.");
+  // ── Deploy-speed fast path ─────────────────────────────────────────────────
+  // Three cheap aggregate queries decide, per template, whether the seed loops
+  // can be skipped entirely. Previously every boot ran hundreds of sequential
+  // per-tab / per-filter existence checks even when every row already existed
+  // (all logs read "Tab exists"), stretching production deploys by ~2 minutes.
+  const existingTypes = await db
+    .select({ id: experienceTypes.id, slug: experienceTypes.slug })
+    .from(experienceTypes)
+    .where(inArray(experienceTypes.slug, templates.map((t) => t.slug)));
+  const typeIdBySlug = new Map(existingTypes.map((t) => [t.slug, t.id]));
 
-  // Seed Travel template
-  const travelId = await getOrCreateExperienceType("travel", "Travel");
-  console.log(`Travel experience type ID: ${travelId}`);
-  
-  for (let i = 0; i < travelTabs.length; i++) {
-    await seedTabWithFilters(travelId, travelTabs[i], i);
-  }
-  await seedUniversalFilters(travelId, travelUniversalFilters);
-  await backfillSelectionControls(travelId, "travel");
-  console.log("Travel template seeded.");
+  const typeIds = existingTypes.map((t) => t.id);
+  const tabSlugsByTypeId = new Map<string, Set<string>>();
+  const universalSlugsByTypeId = new Map<string, Set<string>>();
+  if (typeIds.length > 0) {
+    const tabRows = await db
+      .select({
+        experienceTypeId: experienceTemplateTabs.experienceTypeId,
+        slug: experienceTemplateTabs.slug,
+      })
+      .from(experienceTemplateTabs)
+      .where(inArray(experienceTemplateTabs.experienceTypeId, typeIds));
+    for (const row of tabRows) {
+      if (!tabSlugsByTypeId.has(row.experienceTypeId)) tabSlugsByTypeId.set(row.experienceTypeId, new Set());
+      tabSlugsByTypeId.get(row.experienceTypeId)!.add(row.slug);
+    }
 
-  // Seed Wedding template
-  const weddingId = await getOrCreateExperienceType("wedding", "Wedding");
-  console.log(`Wedding experience type ID: ${weddingId}`);
-  
-  for (let i = 0; i < weddingTabs.length; i++) {
-    await seedTabWithFilters(weddingId, weddingTabs[i], i);
+    const universalRows = await db
+      .select({
+        experienceTypeId: experienceUniversalFilters.experienceTypeId,
+        slug: experienceUniversalFilters.slug,
+      })
+      .from(experienceUniversalFilters)
+      .where(inArray(experienceUniversalFilters.experienceTypeId, typeIds));
+    for (const row of universalRows) {
+      if (!universalSlugsByTypeId.has(row.experienceTypeId)) universalSlugsByTypeId.set(row.experienceTypeId, new Set());
+      universalSlugsByTypeId.get(row.experienceTypeId)!.add(row.slug);
+    }
   }
-  await seedUniversalFilters(weddingId, standardUniversalFilters);
-  await backfillSelectionControls(weddingId, "wedding");
-  console.log("Wedding template seeded.");
 
-  // Seed Date Night template
-  const dateNightId = await getOrCreateExperienceType("date-night", "Date Night");
-  console.log(`Date Night experience type ID: ${dateNightId}`);
-  
-  for (let i = 0; i < dateNightTabs.length; i++) {
-    await seedTabWithFilters(dateNightId, dateNightTabs[i], i);
+  let skipped = 0;
+  for (const template of templates) {
+    const existingId = typeIdBySlug.get(template.slug);
+    // Skip only when EVERY expected tab and universal-filter slug is already
+    // present for this type — set membership, not row counts, so a template
+    // gaining a new tab/filter in code still falls through to the seed path.
+    const existingTabSlugs = existingId !== undefined ? tabSlugsByTypeId.get(existingId) : undefined;
+    const existingUniversalSlugs = existingId !== undefined ? universalSlugsByTypeId.get(existingId) : undefined;
+    const alreadySeeded =
+      existingId !== undefined &&
+      template.tabs.every((t) => existingTabSlugs?.has(t.slug)) &&
+      template.universalFilters.every((f) => existingUniversalSlugs?.has(f.slug));
+
+    if (alreadySeeded) {
+      skipped++;
+      // Selection-control backfill is a small idempotent merge into
+      // control_config — keep it running so code-side control changes still
+      // propagate to already-seeded templates.
+      if (template.backfillControls) {
+        await backfillSelectionControls(existingId!, template.slug);
+      }
+      continue;
+    }
+
+    const typeId = existingId ?? (await getOrCreateExperienceType(template.slug, template.name));
+    console.log(`${template.name} experience type ID: ${typeId}`);
+    for (let i = 0; i < template.tabs.length; i++) {
+      await seedTabWithFilters(typeId, template.tabs[i], i);
+    }
+    await seedUniversalFilters(typeId, template.universalFilters);
+    if (template.backfillControls) {
+      await backfillSelectionControls(typeId, template.slug);
+    }
+    console.log(`${template.name} template seeded.`);
   }
-  await seedUniversalFilters(dateNightId, standardUniversalFilters);
-  console.log("Date Night template seeded.");
 
-  // Seed Birthday template
-  const birthdayId = await getOrCreateExperienceType("birthday", "Birthday");
-  console.log(`Birthday experience type ID: ${birthdayId}`);
-  
-  for (let i = 0; i < birthdayTabs.length; i++) {
-    await seedTabWithFilters(birthdayId, birthdayTabs[i], i);
+  if (skipped > 0) {
+    console.log(`Skipped ${skipped}/${templates.length} experience templates (already seeded).`);
   }
-  await seedUniversalFilters(birthdayId, standardUniversalFilters);
-  console.log("Birthday template seeded.");
-
-  // Seed Corporate Events template
-  const corporateId = await getOrCreateExperienceType("corporate-events", "Corporate Events");
-  console.log(`Corporate Events experience type ID: ${corporateId}`);
-  
-  for (let i = 0; i < corporateTabs.length; i++) {
-    await seedTabWithFilters(corporateId, corporateTabs[i], i);
-  }
-  await seedUniversalFilters(corporateId, standardUniversalFilters);
-  await backfillSelectionControls(corporateId, "corporate-events");
-  console.log("Corporate Events template seeded.");
-
-  // Seed Retreats template
-  const retreatsId = await getOrCreateExperienceType("retreats", "Retreats");
-  console.log(`Retreats experience type ID: ${retreatsId}`);
-  
-  for (let i = 0; i < retreatsTabs.length; i++) {
-    await seedTabWithFilters(retreatsId, retreatsTabs[i], i);
-  }
-  await seedUniversalFilters(retreatsId, standardUniversalFilters);
-  console.log("Retreats template seeded.");
-
-  // Seed Wedding Anniversaries template (party-focused)
-  const weddingAnniversariesId = await getOrCreateExperienceType("wedding-anniversaries", "Wedding Anniversaries");
-  console.log(`Wedding Anniversaries experience type ID: ${weddingAnniversariesId}`);
-  for (let i = 0; i < weddingAnniversariesTabs.length; i++) {
-    await seedTabWithFilters(weddingAnniversariesId, weddingAnniversariesTabs[i], i);
-  }
-  await seedUniversalFilters(weddingAnniversariesId, standardUniversalFilters);
-  console.log("Wedding Anniversaries template seeded.");
-
-  // Seed Proposal template
-  const proposalId = await getOrCreateExperienceType("proposal", "Proposal");
-  console.log(`Proposal experience type ID: ${proposalId}`);
-  for (let i = 0; i < proposalTabs.length; i++) {
-    await seedTabWithFilters(proposalId, proposalTabs[i], i);
-  }
-  await seedUniversalFilters(proposalId, standardUniversalFilters);
-  console.log("Proposal template seeded.");
-
-  // Seed Boys Trip template
-  const boysTripId = await getOrCreateExperienceType("boys-trip", "Boys Trip");
-  console.log(`Boys Trip experience type ID: ${boysTripId}`);
-  for (let i = 0; i < boysTripTabs.length; i++) {
-    await seedTabWithFilters(boysTripId, boysTripTabs[i], i);
-  }
-  await seedUniversalFilters(boysTripId, standardUniversalFilters);
-  console.log("Boys Trip template seeded.");
-
-  // Seed Girls Trip template
-  const girlsTripId = await getOrCreateExperienceType("girls-trip", "Girls Trip");
-  console.log(`Girls Trip experience type ID: ${girlsTripId}`);
-  for (let i = 0; i < girlsTripTabs.length; i++) {
-    await seedTabWithFilters(girlsTripId, girlsTripTabs[i], i);
-  }
-  await seedUniversalFilters(girlsTripId, standardUniversalFilters);
-  console.log("Girls Trip template seeded.");
-
-  // Seed Reunions template
-  const reunionsId = await getOrCreateExperienceType("reunions", "Reunions");
-  console.log(`Reunions experience type ID: ${reunionsId}`);
-  for (let i = 0; i < reunionsTabs.length; i++) {
-    await seedTabWithFilters(reunionsId, reunionsTabs[i], i);
-  }
-  await seedUniversalFilters(reunionsId, standardUniversalFilters);
-  console.log("Reunions template seeded.");
-
-  // Seed Baby Shower template
-  const babyShowerId = await getOrCreateExperienceType("baby-shower", "Baby Shower");
-  console.log(`Baby Shower experience type ID: ${babyShowerId}`);
-  for (let i = 0; i < babyShowerTabs.length; i++) {
-    await seedTabWithFilters(babyShowerId, babyShowerTabs[i], i);
-  }
-  await seedUniversalFilters(babyShowerId, standardUniversalFilters);
-  console.log("Baby Shower template seeded.");
-
-  // Seed Graduation Party template
-  const graduationId = await getOrCreateExperienceType("graduation-party", "Graduation Party");
-  console.log(`Graduation Party experience type ID: ${graduationId}`);
-  for (let i = 0; i < graduationTabs.length; i++) {
-    await seedTabWithFilters(graduationId, graduationTabs[i], i);
-  }
-  await seedUniversalFilters(graduationId, standardUniversalFilters);
-  console.log("Graduation Party template seeded.");
-
-  // Seed Engagement Party template
-  const engagementId = await getOrCreateExperienceType("engagement-party", "Engagement Party");
-  console.log(`Engagement Party experience type ID: ${engagementId}`);
-  for (let i = 0; i < engagementTabs.length; i++) {
-    await seedTabWithFilters(engagementId, engagementTabs[i], i);
-  }
-  await seedUniversalFilters(engagementId, standardUniversalFilters);
-  console.log("Engagement Party template seeded.");
-
-  // Seed Housewarming Party template
-  const housewarmingId = await getOrCreateExperienceType("housewarming-party", "Housewarming Party");
-  console.log(`Housewarming Party experience type ID: ${housewarmingId}`);
-  for (let i = 0; i < housewarmingTabs.length; i++) {
-    await seedTabWithFilters(housewarmingId, housewarmingTabs[i], i);
-  }
-  await seedUniversalFilters(housewarmingId, standardUniversalFilters);
-  console.log("Housewarming Party template seeded.");
-
-  // Seed Retirement Party template
-  const retirementId = await getOrCreateExperienceType("retirement-party", "Retirement Party");
-  console.log(`Retirement Party experience type ID: ${retirementId}`);
-  for (let i = 0; i < retirementTabs.length; i++) {
-    await seedTabWithFilters(retirementId, retirementTabs[i], i);
-  }
-  await seedUniversalFilters(retirementId, standardUniversalFilters);
-  console.log("Retirement Party template seeded.");
-
-  // Seed Career Achievement Party template
-  const careerAchievementId = await getOrCreateExperienceType("career-achievement-party", "Career Achievement Party");
-  console.log(`Career Achievement Party experience type ID: ${careerAchievementId}`);
-  for (let i = 0; i < careerAchievementTabs.length; i++) {
-    await seedTabWithFilters(careerAchievementId, careerAchievementTabs[i], i);
-  }
-  await seedUniversalFilters(careerAchievementId, standardUniversalFilters);
-  console.log("Career Achievement Party template seeded.");
-
-  // Seed Farewell Party template
-  const farewellId = await getOrCreateExperienceType("farewell-party", "Farewell Party");
-  console.log(`Farewell Party experience type ID: ${farewellId}`);
-  for (let i = 0; i < farewellTabs.length; i++) {
-    await seedTabWithFilters(farewellId, farewellTabs[i], i);
-  }
-  await seedUniversalFilters(farewellId, standardUniversalFilters);
-  console.log("Farewell Party template seeded.");
-
-  // Seed Holiday Party template
-  const holidayPartyId = await getOrCreateExperienceType("holiday-party", "Holiday Party");
-  console.log(`Holiday Party experience type ID: ${holidayPartyId}`);
-  for (let i = 0; i < holidayPartyTabs.length; i++) {
-    await seedTabWithFilters(holidayPartyId, holidayPartyTabs[i], i);
-  }
-  await seedUniversalFilters(holidayPartyId, standardUniversalFilters);
-  console.log("Holiday Party template seeded.");
-
-  // Seed Sports Event template
-  const sportsEventId = await getOrCreateExperienceType("sports-event", "Sports Event");
-  console.log(`Sports Event experience type ID: ${sportsEventId}`);
-  for (let i = 0; i < sportsEventTabs.length; i++) {
-    await seedTabWithFilters(sportsEventId, sportsEventTabs[i], i);
-  }
-  await seedUniversalFilters(sportsEventId, standardUniversalFilters);
-  console.log("Sports Event template seeded.");
-
   console.log("Experience template tabs and filters seeding complete.");
 
   // P4: Seed hero-card config fields (headcountLabel, showKids, showOriginCity, locationLabel)
@@ -5139,20 +5040,60 @@ async function updateExperienceTypeHeroConfigs() {
     },
   };
 
-  for (const [slug, cfg] of Object.entries(configs)) {
-    try {
-      await db
-        .update(experienceTypes)
-        .set({
-          headcountLabel: cfg.headcountLabel,
-          showKids: cfg.showKids,
-          showOriginCity: cfg.showOriginCity,
-          locationLabel: cfg.locationLabel,
-          ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
-        })
-        .where(eq(experienceTypes.slug, slug));
-    } catch {
-      // Row may not exist yet in this environment; skip silently
+  // Deploy-speed fast path (hero configs): one query comparing sentinel
+  // columns; run the per-slug UPDATE loop only when some row is out of date.
+  let heroConfigsUpToDate = false;
+  try {
+    const heroRows = await db
+      .select({
+        slug: experienceTypes.slug,
+        headcountLabel: experienceTypes.headcountLabel,
+        showKids: experienceTypes.showKids,
+        showOriginCity: experienceTypes.showOriginCity,
+        locationLabel: experienceTypes.locationLabel,
+        contextFields: experienceTypes.contextFields,
+      })
+      .from(experienceTypes)
+      .where(inArray(experienceTypes.slug, Object.keys(configs)));
+    const heroBySlug = new Map(heroRows.map((r) => [r.slug, r]));
+    heroConfigsUpToDate =
+      heroRows.length > 0 &&
+      Object.entries(configs).every(([slug, cfg]) => {
+        const row = heroBySlug.get(slug);
+        if (!row) return true; // slug absent in this environment — nothing to update
+        return (
+          row.headcountLabel === (cfg.headcountLabel ?? null) &&
+          row.showKids === (cfg.showKids ?? null) &&
+          row.showOriginCity === (cfg.showOriginCity ?? null) &&
+          row.locationLabel === (cfg.locationLabel ?? null) &&
+          // contextFields is only backfilled when the config defines it, so
+          // only compare in that case (deep-compare via JSON stringify).
+          (cfg.contextFields === undefined ||
+            JSON.stringify(row.contextFields ?? null) === JSON.stringify(cfg.contextFields))
+        );
+      });
+  } catch {
+    // Columns may not exist yet — fall through to the per-row update path
+  }
+
+  if (heroConfigsUpToDate) {
+    console.log("Experience type hero configs already seeded — skipping.");
+  } else {
+    for (const [slug, cfg] of Object.entries(configs)) {
+      try {
+        await db
+          .update(experienceTypes)
+          .set({
+            headcountLabel: cfg.headcountLabel,
+            showKids: cfg.showKids,
+            showOriginCity: cfg.showOriginCity,
+            locationLabel: cfg.locationLabel,
+            ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
+          })
+          .where(eq(experienceTypes.slug, slug));
+      } catch {
+        // Row may not exist yet in this environment; skip silently
+      }
     }
   }
 
@@ -5203,23 +5144,49 @@ async function updateExperienceTypeHeroConfigs() {
     "budget-planning": "planning-tools",
   };
 
-  // Explicitly deactivate templates that are not yet ready for public access
+  // Explicitly deactivate templates that are not yet ready for public access.
+  // Cheap guard: only issue UPDATEs for slugs that are still active.
   const INACTIVE_SLUGS = ["sports-event"];
-  for (const slug of INACTIVE_SLUGS) {
-    try {
-      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, slug));
-    } catch {
-      // Skip silently if table/column not present
+  try {
+    const stillActive = await db
+      .select({ slug: experienceTypes.slug })
+      .from(experienceTypes)
+      .where(and(inArray(experienceTypes.slug, INACTIVE_SLUGS), eq(experienceTypes.isActive, true)));
+    for (const row of stillActive) {
+      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, row.slug));
     }
+  } catch {
+    // Skip silently if table/column not present
   }
-  for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
-    try {
-      await db
-        .update(experienceTemplateTabs)
-        .set({ tabType })
-        .where(eq(experienceTemplateTabs.slug, tabSlug));
-    } catch {
-      // Column may not exist in older environments; skip silently
+
+  // Deploy-speed fast path (tabType backfill): one DISTINCT query finds the
+  // tab slugs whose tabType is out of date; only those get an UPDATE.
+  let tabTypePending: Set<string> | null = null;
+  try {
+    const tabTypeRows = await db
+      .selectDistinct({ slug: experienceTemplateTabs.slug, tabType: experienceTemplateTabs.tabType })
+      .from(experienceTemplateTabs)
+      .where(inArray(experienceTemplateTabs.slug, Object.keys(TAB_SLUG_TO_TYPE)));
+    tabTypePending = new Set(
+      tabTypeRows.filter((r) => r.tabType !== TAB_SLUG_TO_TYPE[r.slug]).map((r) => r.slug),
+    );
+  } catch {
+    // Column may not exist in older environments — fall back to full loop
+  }
+
+  if (tabTypePending !== null && tabTypePending.size === 0) {
+    console.log("Tab tabType backfill already seeded — skipping.");
+  } else {
+    for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
+      if (tabTypePending !== null && !tabTypePending.has(tabSlug)) continue;
+      try {
+        await db
+          .update(experienceTemplateTabs)
+          .set({ tabType })
+          .where(eq(experienceTemplateTabs.slug, tabSlug));
+      } catch {
+        // Column may not exist in older environments; skip silently
+      }
     }
   }
 
@@ -5249,17 +5216,47 @@ async function updateExperienceTypeHeroConfigs() {
   };
 
   try {
-    await db
-      .update(experienceTemplateTabs)
-      .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
-      .where(inArray(experienceTemplateTabs.slug, ["flights"]));
+    // Deploy-speed fast path: sentinel check — only rewrite controlConfig when
+    // some flight/hotel tab is missing the 'priceRange' descriptor entirely.
+    const needsControlConfig = await db
+      .select({ id: experienceTemplateTabs.id })
+      .from(experienceTemplateTabs)
+      .where(and(
+        inArray(experienceTemplateTabs.slug, [
+          "flights", "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
+        ]),
+        sql`(${experienceTemplateTabs.controlConfig} IS NULL OR NOT jsonb_exists(${experienceTemplateTabs.controlConfig}, 'priceRange'))`,
+      ))
+      .limit(1);
 
-    await db
-      .update(experienceTemplateTabs)
-      .set({ controlConfig: HOTEL_CONTROL_CONFIG })
-      .where(inArray(experienceTemplateTabs.slug, [
-        "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
-      ]));
+    // Merge (never replace) into existing controlConfig so keys written by other
+    // seed steps — e.g. selectionControls from backfillSelectionControls — survive.
+    const mergeControlConfig = async (
+      slugs: string[],
+      config: Record<string, unknown>,
+    ) => {
+      const tabs = await db
+        .select()
+        .from(experienceTemplateTabs)
+        .where(inArray(experienceTemplateTabs.slug, slugs));
+      for (const tab of tabs) {
+        const existing = (tab.controlConfig as Record<string, unknown> | null) ?? {};
+        await db
+          .update(experienceTemplateTabs)
+          .set({ controlConfig: { ...existing, ...config } })
+          .where(eq(experienceTemplateTabs.id, tab.id));
+      }
+    };
+
+    if (needsControlConfig.length === 0) {
+      console.log("Flight/hotel tab control configs already seeded — skipping.");
+    } else {
+      await mergeControlConfig(["flights"], FLIGHT_CONTROL_CONFIG);
+      await mergeControlConfig(
+        ["hotels", "accommodations", "guest-accommodations", "romantic-accommodations"],
+        HOTEL_CONTROL_CONFIG,
+      );
+    }
   } catch {
     // Column may not exist in older environments; skip silently
   }

@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Replit provides a Nix-linked Chromium binary whose native dependencies match
+// the workspace. Prefer it when available; local and CI runners continue to use
+// Playwright's bundled browser unchanged.
+const replitChromiumExecutable = process.env.REPLIT_PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -11,6 +16,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './playwright/tests',
+  /* Fail loudly when zero tests match the requested suite/filter.
+   * Without this, a renamed spec file causes Playwright to report
+   * "0 passed" and exit 0 — silently green-lighting a broken gate. */
+  passWithNoTests: false,
   // Auth-state setup (logs in the seeded ci-* users) is only needed by the
   // auth-dependent suites (app-routes, auth-routes), whose workflows seed those
   // users and set PW_AUTH_SETUP=1. The non-auth suites (navbar/footer/hardcoded/
@@ -44,7 +53,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(replitChromiumExecutable
+          ? { launchOptions: { executablePath: replitChromiumExecutable } }
+          : {}),
+      },
     },
 
     // Firefox and webkit disabled due to network restrictions in test environment

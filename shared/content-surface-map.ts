@@ -70,12 +70,9 @@ export const PLATFORM_SURFACES = {
     description: "Main discover page — trending cities and curated city content",
     icon: "TrendingUp",
   },
-  "experience-discovery": {
-    label: "Experience Discovery",
-    path: "/discover-experiences",
-    description: "Browse and search experiences by category across all cities",
-    icon: "Compass",
-  },
+  // Remediation P3: 'experience-discovery' RETIRED (its page was orphaned, /discover-experiences
+  // redirects to /discover which already covers it; unique catalog browse lives in
+  // TravelpayoutsSection/fever-events-section). The redirect stays for bookmark continuity.
   "spontaneous": {
     label: "Spontaneous Discovery",
     path: "/spontaneous",
@@ -88,12 +85,9 @@ export const PLATFORM_SURFACES = {
     description: "Experience planning pages (wedding, travel, corporate, etc.)",
     icon: "LayoutTemplate",
   },
-  "itinerary": {
-    label: "Itinerary Detail",
-    path: "/itinerary/:id",
-    description: "Individual trip itinerary pages",
-    icon: "Map",
-  },
+  // Remediation P3: 'itinerary' content-surface RETIRED (no consumer ever sent surface=itinerary and
+  // TripDetails renders no curated section). The /itinerary/:id → /trip route redirect is KEPT
+  // (load-bearing for many live PlanCard/HeroSection links) — only the content-surface entry is gone.
 } as const;
 
 export type SurfaceSlug = keyof typeof PLATFORM_SURFACES;
@@ -104,20 +98,16 @@ export const SURFACE_SLUGS = Object.keys(PLATFORM_SURFACES) as SurfaceSlug[];
 
 export const SURFACE_DEFAULT_CONTENT_TYPES: Record<SurfaceSlug, ContentTypeKey[]> = {
   "travelpulse-discover": ["experience", "template", "service", "media"],
-  "experience-discovery": ["experience", "template", "service"],
   "spontaneous": ["experience", "template"],
   "experience-template": ["experience", "template", "service", "media"],
-  "itinerary": ["experience", "service"],
 };
 
 // ─── Surface → Default Affiliate Product Categories ───────────────────────────
 
 export const SURFACE_DEFAULT_AFFILIATE_CATEGORIES: Record<SurfaceSlug, string[]> = {
   "travelpulse-discover": ["activity", "tour", "experience", "attraction"],
-  "experience-discovery": ["activity", "tour", "experience", "attraction", "entertainment"],
   "spontaneous": ["activity", "tour", "experience"],
   "experience-template": ["activity", "tour", "accommodation", "transport", "experience"],
-  "itinerary": ["activity", "tour", "restaurant", "transport"],
 };
 
 // ─── Tab → Content Type Map ───────────────────────────────────────────────────

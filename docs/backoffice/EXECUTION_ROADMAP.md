@@ -1,0 +1,333 @@
+# Backoffice Execution Roadmap — token-optimized, post-P1a-1c
+
+**audited@de3c984b** (2026-07-26; last touched 7b54ab3b 2026-07-28) — sizing/state claims as-of those SHAs; re-verify at Phase 0. Ledger: `docs/DECISIONS.md`.
+**Date:** Jul 26, 2026 · **Baseline:** branch `claude/sync-local-repo-2j7ghv` @ `d8c02aed`
+**Design source:** `docs/backoffice/mockups/` · gap state: `MOCKUP_CODE_AUDIT.md` (supersedes the gap atlas)
+**Token model:** Fable plans/briefs + money/schema diffs; Sonnet executes fenced endpoint/UI work behind the
+four standard gates (tsc-delta-0, build, money guard, unmounted-router guard) + a per-brief behavioral gate;
+Haiku does enumerated mechanical work. Fable never executes what a fenced Sonnet can (IMPLEMENTATION_MAP tier
+philosophy). Estimates are output-token budgets per session, ±40%.
+
+## ⚠️ Surface registry — the storefront has ONE canonical page (anti-duplication rule)
+
+Public earner surfaces that exist after P1b:
+
+| URL | Component | Role |
+|---|---|---|
+| `/p/:handle` | `client/src/pages/storefront.tsx` | **CANONICAL public storefront** — the shareable identity URL (mockups 1/3/4 all point here) |
+| `/experts/:id` + alias `/local-experts/:id` | `client/src/pages/expert-detail.tsx` | Browse-context detail (AI-match, request-expert, cart handoff) — linked from expert-card.tsx:326, city-feed-card-expert.tsx:116, TopExpertsPanel.tsx:44, expert-match-card.tsx:358 |
+| `/services/:id`, `/expert-templates/:id`, `/ready-made/:id` | lane detail pages | Per-offering booking pages — both surfaces above LINK here; never duplicated |
+
+**Rule: do not create another earner-profile page.** S2 below reconciles the two that exist. Until S2
+lands, any new feature that needs "the earner's public page" targets `/p/:handle` if it's about sharing/
+identity, `/experts/:id` if it's about in-platform browse — and nothing new gets built on either without
+checking this table.
+
+## Status key
+✅ done · ⛔ decision-maker required before build · 🔴 money-path (HUMAN READ of diff after gates)
+
+---
+
+## Wave S — Storefront identity & distribution (the mockups' core gap)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| S1 ✅ | handle + `/p/:handle` + OG + My Offerings table + claim card | — | done | — | `d8c02aed` |
+| S2 ✅ `7fd17178` | **Reconcile `/p/:handle` ⇄ `/experts/:id`** (the anti-duplication item): expert-detail header gains the earner's `/p/` link when claimed; decide-and-wire the long-term shape — recommended: `/experts/:id` 302s to `/p/:handle` once claimed, `/p/` absorbs the browse extras (match-context, request-expert) later | ⛔ then Sonnet | ~40k | S1 | Decision is one question: redirect-when-claimed (recommended) vs keep-two-pages |
+| S3 ✅ `29899773` | Short-link + click store: one table (`short_links`: code, targetType/id, ownerId, views, clicks, createdAt), `GET /r/:code` 302 + counter, Share buttons emit short links | Fable brief ~15k → Sonnet ~70k | ~85k | S1 | Modeled on `sharedTrips` counters; feeds mockups 1, 2, 4 at once. No money path |
+| S4 ✅ `b6346ff8` 🔴 | Acquisition attribution: `?ref=` capture → `service_bookings` write at checkout (vocabulary: `direct \| link \| cross_sell`) + ref→booking join | ⛔ vocab sign-off, then Fable 🔴 | ~60k | S3 | Touches checkout insert (payments.routes.ts) → money-adjacent, HUMAN READ |
+| S5 ✅ `fb953bf7` | Analytics v1: per-offering link views/clicks + conversion funnel + range picker (mockup 2), real data only | Sonnet | ~55k | S3, S4 | §13: empty states until data exists; no fabricated benchmarks |
+| S5b ✅ `97179bf4` | CSV export of analytics | Haiku | ~15k | S5 | Mechanical |
+| S6 ✅ `a2128872` | Dashboard "earnings by source" split (your link vs Discover) | Sonnet | ~35k | S4 | Landed with the §13 pre-attribution caveat (pre-S4 bookings read the column-default direct) |
+| S7 ✅ `55920401` (delta-only — browse/detail aggregate already existed via #202/#239) | Earner-level rating aggregate (closes §13 filed gap; unblocks mockup 1's rating card) | Sonnet | ~40k | — | Real aggregate or "New" — never a number without reviews |
+
+## Wave N — Unified backoffice nav (mockup 6)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| N1 ✅ `feafc515` | Converge entries: both sidebars adopt the mockup's 9-entry vocabulary (Dashboard / My Offerings / Calendar / Earnings / Share & Promote / Analytics / Reviews / Messages / Settings), role-computed visibility f(user.role) | Haiku (enumerated file list) | ~30k | — | No layout unification yet — labels/links only |
+| N2 ✅ | Unify the two console shells into one backoffice layout | Sonnet | ~60k | N1 | Landed as shared BackofficeShell + thin role adapters (24 consumer pages untouched, testids preserved; role status badges stay divergent by design). Follow-on filed: merge the two sidebars into one role-parameterized nav config |
+
+## Wave V — Verification gating (Phase 0.5; REQUIRED before marketing pushes of /p/ links)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| V.1 ✅ `29899773` (default OFF — flip platform_settings.storefront_require_verified to "true" after V.2/V.3) | Gate /p/ visibility + publish on `identityVerificationStatus='verified'` (F2-style read-gate; build-while-pending preserved) | Sonnet | ~55k | S1 | Interim gate today = zero-approved-items 404 |
+| V.2 ✅ (already existed — ground-truthed Jul 26) | Sequence Identity/KYB into application flow | Sonnet | ~50k | — | The full path predates this task (commit `5fbe0552`): pre-approval verify flows on expert/provider-status pages + Verification cards in both Settings consoles, wired to the live `/api/identity/*` + webhook status writers; honest degrade when Persona keys absent. V.1 flip now waits only on V.3 |
+| V.3 ✅ `39f53d99` | Connect onboarding sequenced into go-live | Sonnet | ~45k | — | Stack already existed; delta = Connect-readiness gate on POST /api/payouts/request + honest no-key degrades |
+| V.4 | `provider` vs `service_provider` vocab normalization | Haiku | ~25k | — | Grep-enumerated |
+| V.5 ✅ `ee069bfe` | Env-keys launch checklist + readiness log line | Haiku | ~10k | — | — |
+
+## Wave C — Availability & calendar (mockup 3's biggest commerce delta)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| C0 | ⛔ **Consolidation decision:** 3 availability tables (`provider_availability`, `provider_availability_schedule`, `vendor_availability_slots`) → 1 canonical | Fable analysis ~30k → decision | ~30k | — | §4-class decision; blocks all of Wave C |
+| C1 ✅ `e0323cbb` (found the availability-manager writer dead — filed for C2) | Next-availability compute + My Offerings "Next Availability" column | Sonnet | ~45k | C0 | — |
+| C2 ✅ | Public availability calendar on offering page (booked/available days) | Sonnet | ~60k | C1 | Landed: repaired the dead slot writer (client sent a weekly shape the server never accepted — every save 400d) + ADDED the missing §14 ownership check on POST /api/provider/availability (any provider could create slots on another's service); public month read is F2-gated (approved-only, proven both directions). Filed: blackout-dates GET wiring; recurring-pattern generator (schedule layer) |
+| C3 ✅ 🔴 | Slot-aware checkout + conflict detection ("this slot just booked") | Fable | ~100k | C2 | Landed (migration 145): slot pick rides add-to-cart (soft-validated, server-derived date), checkout claims capacity via the rewritten ATOMIC bookSlot (§15 — the old check-then-update TOCTOU had zero callers) BEFORE any booking/Stripe call, with compensation release + 409 slot_unavailable on a lost race; slot_id stamped on the booking. Filed: release the slot on refund/abandoned payment_pending (rides the existing recovery design) |
+
+## Wave SH — Share & social engine (mockup 4)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| SH0 | ⛔ Share-asset persistence decision (render-on-demand vs stored) | decision | — | — | Blocks SH1; flagged in IMPLEMENTATION_MAP before any IG activation |
+| SH1 ✅ `49090eb0`+`285102d5` | Image render pipeline (IG feed 1080×1350 / story 1080×1920 / review card) | Fable design ~40k → Sonnet ~60k | ~100k | SH0, S3 | Landed: satori + @resvg/resvg-js (deliberate add, lockfile clean) + bundled Inter woff (OFL); F2/REV-MOD-gated endpoints, §13-honest cards, cacheable + rate-limited |
+| SH2 ✅ | Share surface page: cards + captions + wa.me/X/copy (informational outbound OK per §16; links route back to /p/) | Haiku | ~30k | SH1 | Landed: shared /expert|provider/share-promote page (offering picker, live SH1 previews, editable real-data captions, short-link-first actions). Ground-truth catch: N1 never actually added the Share & Promote nav entry — added to both sidebars here |
+| SH3 ✅ `2eaf10a9` | Posting Opportunities feed (new 5★ review / open slots / seasonal) | Sonnet | ~50k | SH1, C1 | Landed (reviews + open slots). Seasonal source honestly SKIPPED — seasonal_opportunities has readers but zero writers and 0 rows (§13); add only with a real write path |
+| SH4 ✅ (Tier-2 ACTIVATE ratified) | W0.6 Instagram publish fix (filed defect) | Sonnet | ~40k | — | Ground-truthed Jul 26: defect confirmed real (content-studio.tsx:310 apiRequest arg-order bug — the publish call never reaches the server; :849 dropdown decorative) BUT the W0.6 brief is VOID unless the Instagram Tier-2 activate/dormant PRODUCT decision is ratified "activate" — it is not among the five ratified decisions. Fix is pre-scoped in the brief (2 client lines; server already complete + honestly key-gated); executes on ratification |
+
+## Wave M — Money-model decision
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| M0 | ~~Channel pricing~~ **SCRATCHED (Jul 26 ruling): link-channel pricing = identical to platform pricing.** No build. S4 stays analytics-only. See REVENUE_MODEL.md rulings | — | 0 | — | Revenue-review fixes F2/F3 landed instead |
+
+## Wave R — Revenue-model fixes (from REVENUE_MODEL.md; F2/F3 landed `9ae879d7`)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| R1 ✅ `0505e13a` | F5: seed the 4 missing category fee bands (`transportation`/`flights`/`car_rental`/`insurance`) — today those slugs 500 checkout | Haiku | ~10k | — | Or remap slugs; seed at 0.25 like siblings |
+| R2 ✅ `3fa5b6cb` 🔴 | F4: platform_revenue writes for Ready-Made + template sales (brief 03) | Sonnet | ~35k | — | Idempotent on purchase id; `recordRevenueEventOnce` now exists |
+| R3 ✅ `0505e13a` | F6 + F1 disclosure: /pricing + checkout disclose the service fee (F1 ratified model); gate/label Power Pass card; kill the 0.30 display literal | Haiku | ~25k | — | Honesty sweep, §13 class |
+| R4 ✅ 🔴 | F7: wire `createAffiliateEarning` at agent-booking confirm sites so reconciliation has a spine | Sonnet | ~45k | — | Landed: atomic confirm claim (§15) fires the ledger write once; commission fields honestly 0 pending partner report (§13); 70/30 → `fee_bands.affiliate_standard` (migration 143); money-guard regex extended to cover affiliate-earning writes |
+| R5 | Credits fulfillment (lifts the F2 501 gate): `credit_purchase` webhook + real balance ledger + revenue row | Fable 🔴 | ~80k | — | Only when credits become a priority |
+| R6 ✅ (ratified + landed) | Expert-compensation split on completed review work: expert **75% / platform 25%**, admin-editable via `fee_bands.expert_review_expert_share` (migration 142). Credited at `completeExpertRequest` from the capture-time `platform_revenue` ledger row (atomic re-split, §15 idempotent; earning born `held` on the escrow spine). Legacy paid requests without a stamped PI are grandfathered (manual handling). | Fable 🔴 | ~30k | — | Ratified Jul 26: "platform gets 25% but more importantly is the ability to change the splits in the admin panel" |
+
+## Singles (independent, cheap — fill idle capacity)
+
+| ID | Item | Tier | Est. |
+|----|------|------|------|
+| X1 ✅ `2ffa1774` (structured cancellation_policy_type alongside the pre-existing free-text column) | Cancellation-policy field (per-offering data; closes the §13 hardcoded-copy arm) | Sonnet | ~45k |
+| X2 | Booking row → Message deep-link | Haiku | ~15k |
+| X3 | Repeat-bookings rollup line | Haiku | ~25k |
+| X4 ✅ `ee069bfe` | OG injection for `/services/:id` (replicate the /p/ handler) | Haiku | ~20k |
+
+---
+
+## ⛭ Decisions — RATIFIED Jul 26, 2026 (decision-maker)
+
+0. **Instagram Tier-2 = ACTIVATE** (ratified later on Jul 26, unblocking SH4/W0.6). The publish
+   wiring fix is landed; live publishing additionally needs `META_APP_ID`/`META_APP_SECRET` at
+   deploy and each expert connecting their IG account (the existing OAuth flow). Filed next:
+   point published images at the SH1 render-on-demand share-image URLs (needs the deployed public
+   origin) and the P4.4 token-refresh job.
+
+1. **S2 = redirect-when-claimed.** `/experts/:id` (and `/local-experts/:id`) 302 → `/p/:handle` once the
+   earner has claimed a handle; unclaimed earners keep the id page. `/p/` later absorbs the browse extras.
+2. **S4 vocabulary = `direct | link | cross_sell`** written at checkout; `?ref=` capture joins link→booking.
+3. **C0 = two-layer availability model.** `vendor_availability_slots` is CANONICAL for concrete bookable
+   slots (service-scoped, dated, full CRUD already in storage.ts:2285-2312); `provider_availability_schedule`
+   is retained as the recurring-pattern layer that *generates* slots (writer at storage.ts:4394);
+   `provider_availability` (schema.ts:5755) is DEPRECATED — no live readers; do not write to it, fold/drop
+   in a later migration. Ground-truthed Jul 26: slots has the only calendar-shaped CRUD.
+4. **SH0 = render-on-demand.** Share images render from a public GET endpoint (cacheable, no storage
+   infra); a public URL satisfies IG publish-time needs. Stored assets can layer later if ever required.
+5. **M0 = flat booking fee + payment-processing passthrough — NOT differential % commission.** For
+   storefront-link-acquired bookings the platform take is a FLAT booking fee plus the payment-processing
+   cost, both admin-configurable in `fee_bands` (flat band + processing percent/flat config rows — §8, no
+   literals anywhere; seed defaults marked PLACEHOLDER pending amounts). The mockup's "8% vs 25%" copy is
+   dead. 🔴 money item; fee amounts still needed from the decision-maker before the band seeds.
+   **Scope note (flagged, not assumed silently):** recorded as applying to LINK-CHANNEL bookings (the M0
+   question's frame). If the intent is platform-wide replacement of the % commission model, that is a much
+   larger change to resolveCommissionRates + the earnings ledger — reconfirm before widening.
+
+## Token-optimal execution order
+
+Decisions cost zero tokens and unblock the most work — batch them first, then run cheap lanes in parallel:
+
+1. **Decide now (one sitting):** S2 (redirect-when-claimed?), S4 vocab, C0 (availability table), SH0
+   (share assets), M0 (differential commission — can be "no/later").
+2. **Fable, one session (~90k):** briefs for S3, S4, C-lane, SH1 — the fences cheap models execute against.
+3. **Sonnet lane A (storefront):** S3 → S4 🔴 → S5 → S6 (~220k)
+4. **Sonnet lane B (trust):** V.1–V.3 + S7 (~190k) — parallel with lane A, no file overlap
+5. **Haiku batch:** N1, V.4, V.5, S5b, X2, X3, X4 (~140k) — anytime
+6. **Then:** N2 (~60k) → C1–C3 (~205k, C3 🔴) → SH1–SH4 (~220k)
+
+**Remaining spend ≈ 1.1M output tokens: ~230k Fable · ~700k Sonnet · ~185k Haiku** (M0 scratched −80k; Wave R added +225k; F2/F3 already landed).
+Fable share is ~22% — the map's tier philosophy holding. Every 🔴 item stops after gates for the
+decision-maker's diff read; nothing executes past a ⛔ until its decision is recorded here.
+
+
+## Wave FP — Frictionless Payments (ratified Jul 26, 2026: "map it out then execute it" + Cart fix)
+
+| ID | Item | Tier | Status |
+|----|------|------|--------|
+| FP-1 🔴 | Stripe Customer layer (migration 146 users.stripe_customer_id) + saved-card service (list/default/detach, §14 ownership-checked) + off-session one-click chargeSavedMethod (§15 idempotent, 3DS requires_action fallback) + /api/me/payment-methods router + one-click wired into optimize + coordination pay (useSavedCard consent flag; confirm contracts unchanged) + customer attached to cart checkout PI so the sheet offers saved cards | Fable | ✅ |
+| FP-2 ✅ `4b8f0ce7` | Checkout sheet upgrade + one-click buttons + Payment Methods card (sheet was already PaymentElement; Stripe-native save/Link UI; coordination-sheet customer parity fixed) | Sonnet | landed |
+| FP-3 ✅ `ad6d07db` | Credits retirement (−846 lines: every credits surface was fabricated demo content; 410 gates on purchase/add-credits/wallet; tables dormant). Filed: terms/privacy legal copy still describes credits — dedicated legal pass | Sonnet | landed |
+| FP-4 ✅ | Cart UI + process fix (audit-first): slot-held lines on items, per-item 409 conflict flagging, checkout-snapshot order review (was going BLANK at card entry — checkout clears the cart pre-Stripe), Stripe-cancel dead-end fixed, ~112 lines dead generateItinerary removed. Filed: GET /api/cart conciergeFee parity; slot time-of-day join in _enrichCartItems; the unreachable itinerary flowStep (wire-or-delete decision) | Sonnet | landed |
+
+PCI posture: cards live ONLY in Stripe's vault; this DB stores the opaque customer id. One-click
+guardrails: saving is opt-in at the sheet, the price is always on the button, every charge gets a
+receipt, and nothing charges without a click.
+
+## Loop-Closing Program (ratified Jul 27, 2026: "merge 311 update the optimization path then start the work")
+
+Governing spec: docs/backoffice/mockups/mockup-unified-workspace.html (v9 — one door → six sources →
+builder → 4 channels (Client/Store/Social/Direct incl. WhatsApp + booking links) → Today back office →
+8-module console → closed loop). Amended EXPERT_CONSOLE_FIX_DISPATCH applies with the four session
+amendments (seller-side-first sunset; prod-count gate; rebase on new launchpad; shared/roles lists).
+
+**Token rules (binding for this program):** agent briefs quote the two console audits' file:line facts
+verbatim — agents EDIT, never explore. Big files opened once (workspace.tsx→A2, ServiceForm.tsx→A4).
+Deletions first (A1, B1). Sonnet/low-effort for mechanical phases; Fable keeps migrations, money hunks,
+diff review, gates, commits. One behavioral-verify server boot per PR. Two PR cycles total. Spec frozen.
+
+### PR-A — Workstation lane
+- **A0** CLAUDE.md decisions (templates sunset, build-first, provider linkage GO, two palettes, Yuki landing) — Fable
+- **A1** Templates SELLER-side sunset + DMO misroute → store lane (owner reads + consumer surface + purchases INTACT) — agent
+- **A2** workspace.tsx single pass: ExpertLayout wrap · Add panel (6 sources) · Distribute panel (4 channels) · smart landing — agent + review
+- **A3** promo-text service extraction + share-card build layout + Content Studio redirect — agent
+- **A4** Provider offering linkage: migration (additive FK, 057 pattern) — Fable; ServiceForm single pass (offering-first provider create, category derived, expert tier required, tier picker partitioned, aff_*/legacy filtered) — agent
+- **A5** F8 Kyoto constant + CHECK migration + preflight manifest + event-planner explicit gate — Fable
+- **A6** /services/:id rebuilt to mockup-offering-page.html (the Yuki landing; one page for marketplace + all shared/booking links) — agent (mockup file IS the spec)
+
+### PR-B — Back-office lane
+- **B0** shared primitives (PageHeader/StatusBadge/EmptyState/StatCard) from the design-audit variant inventory
+- **B1** Money (one ledger endpoint; delete 4-tab duplication) ∥ **B2** Inbox (aggregate of 5 action endpoints) — parallel agents, disjoint files
+- **B3** Catalog (My Offerings promoted + availability) → **B4** Performance (acquisition_ref + short-link attribution read — the loop-closer) → **B5** Today + retire Dashboard → **B6** Settings/Profile merge with persisting saves
+
+## Workstation Conformance + Distribution Formats (mapped Jul 27, 2026; token-optimized)
+
+Inputs (already paid for — agents re-explore NOTHING): the 23-row spec-vs-impl divergence table
+(6×P1/12×P2/5×P3, file:line cited, incl. the exhaustive raw-hex list in workspace.tsx) and
+docs/backoffice/DISTRIBUTION_FORMATS.md (channel × type × market, expert-notes contract).
+Governing specs frozen: mockup-unified-workspace.html (v9) + mockup-destination-formats.html (v2).
+
+**The token-shaping decision: F1 is ABSORBED into the W rewrite.** W3/W4 and F1 both rewrite the
+builder render path; done sequentially the same file gets two full write+review cycles. Instead the
+single workspace.tsx rewrite is born format-aware — the canvas renders through
+`resolveFormat("client", type, market)` with only `client:default` in the registry. After PR-W,
+**no format phase ever edits workspace.tsx again**: F2–F4 add registry entries + section components
++ store/social/direct consumers only.
+
+**Token rules (binding):** briefs quote the divergence table's file:line facts verbatim; workspace.tsx
+opened by exactly ONE agent (W-2); PlanCard extraction rides the same pass; Sonnet/low-effort for the
+mechanical hex→token sweep portions; Fable keeps the ship-to-store server hunks (money-adjacent:
+listing creation), diff review, gates, commits. One behavioral boot per PR. CLAUDE.md updated once
+per PR, not per phase.
+
+### PR-W — Workstation conformance + format registry (workspace.tsx written ONCE)
+- **W-1** Entry model server half — Fable (small): `POST /api/expert/ready-made/from-trip/:tripId`
+  (ship-to-store: creates the `ready_made_trips` row FROM an existing trip, owner-gated, idempotent
+  per trip — §15 posture); retire the born-for-sale transaction (create becomes trip-only); keep old
+  route tombstoned 410. No migration (columns exist; `sourceTripId` already on the table).
+- **W-2** THE single workspace.tsx rewrite — agent (L, the big spend) + Fable review: two-column
+  layout, one header (build title + distribution chips), 3-tab panel (Add · AI Gaps · Distribute),
+  persistent dist-strip, de-dupe Schedule Check/Earnings (one home each), Build Notes into the panel,
+  day-aware add rows, all hex → `.console-scope` tokens + shared primitives (kills both #FF385C
+  gradients), single "New build" entry + unified builds list with distribution badges, Distribute
+  Store card gains Ship to store (consumes W-1), channels independent, **canvas renders via
+  `resolveFormat("client", …)`** (F1 registry file created here with `client:default` = extracted
+  current PlanCard structure; expert-notes slots per the contract).
+- **W-3** Add panel data — agent (S): persist the platform-service reference on add (stop dropping
+  bookable inventory), provider-services-first search ordering. Server + one mutation.
+- Gates + one boot + CLAUDE.md §17 update — Fable.
+
+### PR-F — the formats become additive (workspace.tsx untouched from here)
+- **F2** `client:kyoto-cultural` + `client:kyoto-wedding`/`client:event` — agent (M): registry
+  entries + section components (neighborhood grouping off `city_neighborhoods`; venue-timeline).
+- **F3** Social kit — agent (M): story-view renderer + Distribute Social card consumes it; captions/
+  share-image via the EXISTING promo-text service (no parallel engine).
+- **F4** `store:*` layouts on the Ready Made detail + preview-as-buyer; `direct:*` OG polish — agent
+  (M): different files entirely (ready-made detail page, storefront OG).
+- Gates + one boot — Fable.
+
+Sequence: merge #315 → PR-W → PR-F. Relative spend: W-2 is the one large item (unavoidable — the
+page must be rewritten to spec once); everything else is S/M because discovery is already done and
+no file is written twice.
+
+## PR-C — Console absorb-then-collapse (mapped Jul 28, 2026; token-optimized)
+
+C1's no-function-loss verification (committed 0aec4f54) is the PAID-FOR discovery: every kept entry's
+unique functions are enumerated with file/endpoint facts. Briefs quote those verbatim — agents EDIT,
+never re-explore. **Token-shaping rules:** each big file is opened by exactly ONE agent across the whole
+program (catalog.tsx→C2, inbox.tsx→C5, performance.tsx→C6, dmo-picker-modal.tsx→C7); workspace.tsx gets
+seam-scale edits only; the two genuinely new builds (Calendar, Customers) are new-file phases — cheap
+per token because nothing existing is rewritten; retirement redirects ride the SAME phase as the
+absorption that earns them (never a separate pass); one behavioral boot per PR; CLAUDE.md updated once
+per PR. Three PR cycles:
+
+### PR-Ca — absorptions that finish Catalog + the two new modules (C1 rides this branch)
+- **C2 Catalog, touched ONCE — agent (M):** storefront header (/p/:handle link + live status + preview);
+  offerings-table gains the actions C1 found missing (edit → the real /expert/services/:id/edit route,
+  pause/activate PATCH, duplicate POST — endpoints exist, wiring only); absorbs Share&Promote's
+  offering-scoped creation (per-row Share menu: feed/story share images, review cards, open-slot promo;
+  storefront caption into the header) since Performance already carries the measurement half. EARNS TWO
+  retirements in the same phase: My Offerings → /expert/catalog, Share&Promote → /expert/catalog.
+  Filed rider: draft-listing preview-as-buyer affordance in ReadyMadeListingPanel.
+- **C3 Calendar — agent (L, one of two unavoidable larges):** ONE new read-only server aggregate
+  (GET /api/me/calendar?month= — composes existing tables only: availability slots, service_bookings,
+  affiliate_booking_requests, ready-made purchases + status transitions, client-delivery steps,
+  coordination dates; §14 session-scoped; no new tables, no migration) + the new calendar page
+  (channel-filter chips, month grid, event lanes per the mockup; every event links to its owning
+  module) + sidebar entry + a referenced today-strip on Today. §13: empty lanes render empty.
+- **C4 Customers — agent (M):** new GET /api/me/customers (self-scoped aggregate from this earner's
+  service_bookings + assigned trips + purchases; no CRM fields) + the new page (list → detail with
+  their real bookings/trips/threads) + sidebar entry. Seeds from Assigned Trips' by-client view
+  (C1 fact) but does NOT yet retire that page (the Suggest flow still lives there → C5).
+
+### PR-Cb — the Inbox absorption + the folds that finish the collapse ✅ LANDED (Jul 28, 2026)
+All four phases executed as mapped (each big file touched once; gates green at tsc-219 baseline every
+phase; one production-bundle boot proof — 401s on the self-scoped aggregates, SPA routes serving, and
+the P0 purge re-proven on this head). Deltas from the map, recorded: C5 also re-pointed
+/expert/clients(+/:id) to /expert/customers (the by-client home — semantically better than Inbox) and
+fixed a latent bookings.tsx bug by lifting onto the verified GET /api/expert/bookings shape (traveler
+names now render); C7 additionally carried the Factory-wire-B per-item "Create social post" prefill
+into the refine editor (the no-function-loss rule — it would otherwise have lost its only entry
+point); C8 kept Verification as Settings' default tab (Profile is first in ORDER only) and left the
+provider Stripe-reminder branch on /provider/earnings until C9.
+- **C5 Inbox, touched ONCE — agent (L):** absorbs the C1-enumerated uniques: booking HISTORY tab
+  (confirmed/completed + stats), the visa-status dialog (PATCH /api/service-bookings/:id/visa-status),
+  the plan-snapshot view, a recent-threads queue linking into /chat, and the assignment context; the
+  Suggest flow moves to the Workstation Distribute→Client card (seam-scale workspace.tsx edit —
+  client-delivery state is its semantic home). EARNS: Bookings → /expert/inbox, Assigned Trips →
+  /expert/inbox, Messages entry retired (threads stay on /chat, reachable via Inbox queue).
+- **C6 Performance, touched ONCE — agent (M):** hosts Analytics as a tab (mount the existing page
+  component — no extraction rewrite; /expert/analytics → /expert/performance?tab=analytics, re-point
+  the two inbound redirects C1 found). EARNS: Analytics retirement.
+- **C7 DMO refine drawer — agent (M):** DmoPickerCore (its own file) gains the review-and-refine flow
+  (the dmo-library edit mutations, quoted from C1). EARNS: DMO Library → /expert/workspace.
+- **C8 renames/merges — agent (S):** Earnings → Money (route+label+redirect), Profile merged into
+  Settings as the first tab (+redirect). Sidebar reaches the NINE. Content Studio + AI Assistant stay
+  (recorded defaults).
+
+### PR-Cc — provider nine-module stamp
+- **C9 — agent (M/L):** provider sidebar onto the same 9-module IA reusing the shared shell/primitives;
+  provider pages mapped per module; same no-function-loss verification posture (quote provider console
+  audit facts; verify before any retirement). Product Builder stays OUT (own lane, gated on the bundle
+  schema + money ratifications per §17).
+
+Relative spend: C3 + C5 are the two larges (genuinely new build; biggest absorption). Everything else
+S/M because C1's discovery is reused and no file is opened twice.
+
+### W-4 — location-aware builds (decision-maker report, post-PR-F)
+The build's DESTINATION is what the data loads from (neighborhood grouping, platform-services
+search, format resolution — all derive from trips.destination), but it was implicit: create
+silently defaulted Kyoto with no input AND refused any other destination (a W-1 leftover), and
+the builder chip was read-only. W-4: create accepts a free `destination` (the §12 gate stays
+ONLY on ship-to-store + the migration-149 CHECK — a build can be for anywhere; the STORE is
+Kyoto-gated); the build PATCH allow-list gains `destination`; the builder destination chip is
+editable for authored builds (assignment trips stay read-only — the destination belongs to the
+traveler); "New build" gains a destination input. Everything downstream recomputes on context
+invalidation because the reads are derived, not stored client-side.
+
+### Replit prod dispatch — final verdict (Jul 28, 2026, browser-verified with screenshots)
+All dispatch sections PASS: §0 deploy freshness (post-republish), §1 single "New build" lane,
+§2 location-aware create, §3 builder conformance (3-tab panel Add·AI Gaps·Distribute, warm
+`--console-brand` ≈ #E85D55, no #FF385C, no "FOR SALE" badge, build-first Store copy), §4 Kyoto
+gate + idempotency, §5 KyotoCulturalView neighborhood grouping ("Elsewhere in Kyoto" honest
+bucket, Day-list fallback tab), §6 social-kit honesty (zero-item placeholder → real frames with
+the real item name; CTA frame shows the honest no-link state), §8 book-via-agent + expert inbox.
+The two P-findings (P0 test-account seeding, P1 static catch-all killing the Direct channel)
+were fixed in PR #319 and are live post-republish — the §7 "OG dead in prod" table line is the
+PRE-fix state (task #954 = the P1 fix); re-check is a one-liner curl for og:title.
+**Filed from the verdict (not built):**
+- **Workstation inline event-type picker** — format resolution works off `trips.eventType`, but
+  the builder exposes no way to see/change it, so format-switching (cultural ↔ venue-timeline)
+  is opaque for authored builds; venue-timeline was untestable via UI. Shape: surface the type
+  on the build header chip row; editable for AUTHORED builds only (assignment trips' type
+  belongs to the traveler — the W-4 destination rule); PATCH allow-list gains `eventType`.
+- **Social frame palette design pass** — story-frame thumbnails render very dark (near-black
+  gradients); legible but below visual bar. Design-taste lane, not correctness (§13 holds).

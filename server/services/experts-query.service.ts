@@ -24,7 +24,13 @@ export async function getLocalExpertFormByUserId(userId: string): Promise<any | 
 
 export async function getServiceProviderFormByUserId(userId: string): Promise<any | null> {
   const [form] = await db.select().from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, userId)).limit(1);
+    .where(eq(serviceProviderForms.userId, userId))
+    .orderBy(
+      sql`CASE WHEN ${serviceProviderForms.status} IS NULL OR ${serviceProviderForms.status} NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END`,
+      asc(serviceProviderForms.createdAt),
+      asc(serviceProviderForms.id),
+    )
+    .limit(1);
   return form ?? null;
 }
 
@@ -33,7 +39,13 @@ export async function getProviderVerificationStatus(userId: string): Promise<any
     identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
     businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
   }).from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, userId)).limit(1);
+    .where(eq(serviceProviderForms.userId, userId))
+    .orderBy(
+      sql`CASE WHEN ${serviceProviderForms.status} IS NULL OR ${serviceProviderForms.status} NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END`,
+      asc(serviceProviderForms.createdAt),
+      asc(serviceProviderForms.id),
+    )
+    .limit(1);
   return form ?? null;
 }
 
@@ -392,9 +404,25 @@ export async function getLocalKnowledgeNuggets(expertId: string): Promise<any[]>
 }
 
 export async function createLocalKnowledgeNugget(values: Record<string, any>): Promise<any> {
-  const [row] = await db.insert(localKnowledgeNuggets).values(values as any).returning();
+  // §19 layer 2 (beside the insert-schema .omit): the gem-promotion cluster is
+  // server-authored only — strip it here so every caller (including internal
+  // `as any` ones a type-level omit cannot reach) is covered. Written ONLY by
+  // the propose/approve/reject handlers (2026-08-29-replit-gem-audit ruling 4).
+  const {
+    promotionStatus: _ps,
+    promotionSubmittedAt: _psa,
+    promotionReviewedBy: _prb,
+    promotionReviewedAt: _pra,
+    promotionReviewNote: _prn,
+    promotedGemId: _pgi,
+    ...safe
+  } = values;
+  const [row] = await db.insert(localKnowledgeNuggets).values(safe as any).returning();
   return row;
 }
+
+// Nugget → gem promotion transitions live in gem-promotion.service.ts (ruling 4) —
+// one service owns the promotion_status rail; nothing here writes those columns.
 
 export async function getLocalKnowledgeNuggetById(id: string, expertId: string): Promise<any | null> {
   const [row] = await db.select().from(localKnowledgeNuggets)
@@ -469,7 +497,18 @@ export async function getVisaAssistanceServices(limit = 6): Promise<any[]> {
 
 // ─── Expert Contracts ─────────────────────────────────────────────────────────
 
-export async function getRecentExpertContracts(limit = 20): Promise<any[]> {
+/**
+ * The earner's OWN contracts. `earnerId` is a required leading parameter, not an optional
+ * filter (the L28 pattern) — the previous signature took only `limit`, and the route computed
+ * `expertId` from the session and then never passed it, so this returned the 20 most recent
+ * contracts PLATFORM-WIDE to any authenticated caller: service names, trip destinations, and
+ * amounts belonging to other earners' clients.
+ *
+ * Rows with a NULL `earner_id` (migration 157 could not attribute them — no linked booking) are
+ * excluded by the equality filter, which is the intended behavior: an unattributable financial
+ * artifact belongs in an admin surface, not in someone's console on a guess.
+ */
+export async function getRecentExpertContracts(earnerId: string, limit = 20): Promise<any[]> {
   return db.select({
     id: userAndExpertContracts.id,
     title: userAndExpertContracts.title,
@@ -480,6 +519,7 @@ export async function getRecentExpertContracts(limit = 20): Promise<any[]> {
     createdAt: userAndExpertContracts.createdAt,
   })
     .from(userAndExpertContracts)
+    .where(eq(userAndExpertContracts.earnerId, earnerId))
     .orderBy(desc(userAndExpertContracts.createdAt))
     .limit(limit);
 }

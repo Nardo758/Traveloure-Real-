@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concierge Revision P3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #FAFAF8;
+    --surface: #FFFFFF;
+    --surface-2: #F3F2EE;
+    --border: #E5E3DD;
+    --border-strong: #D6D3CA;
+    --ink: #1A1A18;
+    --muted: #7A7A72;
+    --faint: #A6A29A;
+    --accent: #14716A;
+    --accent-soft: #E1EFED;
+    --amber: #B45309;
+    --amber-soft: #F7ECDA;
+    --red: #B91C1C;
+    --red-soft: #F7E2E0;
+    --green: #15803D;
+    --green-soft: #E1EFE5;
+    --shadow: 0 1px 2px rgba(26,26,24,.05), 0 8px 24px rgba(26,26,24,.06);
+    --radius: 12px;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground: #14140F;
+      --surface: #1E1E1A;
+      --surface-2: #26261F;
+      --border: #34342C;
+      --border-strong: #43433A;
+      --ink: #ECEAE3;
+      --muted: #9C988E;
+      --faint: #6E6A61;
+      --accent: #5BB6AD;
+      --accent-soft: #10312E;
+      --amber: #E0A45C;
+      --amber-soft: #33260F;
+      --red: #E88178;
+      --red-soft: #351917;
+      --green: #6FC088;
+      --green-soft: #12261A;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14140F;
+    --surface: #1E1E1A;
+    --surface-2: #26261F;
+    --border: #34342C;
+    --border-strong: #43433A;
+    --ink: #ECEAE3;
+    --muted: #9C988E;
+    --faint: #6E6A61;
+    --accent: #5BB6AD;
+    --accent-soft: #10312E;
+    --amber: #E0A45C;
+    --amber-soft: #33260F;
+    --red: #E88178;
+    --red-soft: #351917;
+    --green: #6FC088;
+    --green-soft: #12261A;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- Masthead ---- */
+  header.masthead { padding: 72px 0 40px; border-bottom: 1px solid var(--border); }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 {
+    font-family: "Fraunces", Georgia, serif; font-weight: 600;
+    font-size: clamp(34px, 5vw, 52px); line-height: 1.04; letter-spacing: -.01em;
+    margin: 0 0 20px; text-wrap: balance; max-width: 16ch;
+  }
+  .lede { font-size: 18px; color: var(--muted); max-width: 62ch; margin: 0; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- Ratified banner ---- */
+  .ratified {
+    display: flex; gap: 14px; align-items: flex-start;
+    margin-top: 34px; padding: 18px 20px;
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-radius: var(--radius);
+  }
+  .ratified .mark { color: var(--accent); flex: none; margin-top: 1px; }
+  .ratified p { margin: 0; font-size: 14.5px; }
+  .ratified .q { font-style: italic; color: var(--ink); }
+  .ratified .who { display:block; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+
+  /* ---- Section scaffolding ---- */
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .sec-num {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--faint);
+    font-weight: 500; flex: none;
+  }
+  h2 {
+    font-family: "Fraunces", Georgia, serif; font-weight: 600;
+    font-size: 27px; letter-spacing: -.01em; margin: 0; text-wrap: balance;
+  }
+  .sec-sub { color: var(--muted); font-size: 15.5px; margin: 8px 0 30px 34px; max-width: 66ch; }
+  @media (max-width: 640px){ .sec-sub { margin-left: 0; } }
+
+  /* ---- Ladder diagram ---- */
+  .ladder { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 760px){ .ladder { grid-template-columns: 1fr; } }
+  .rung {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow);
+  }
+  .rung .step {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+  }
+  .rung h3 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+  .rung p { margin: 0; font-size: 13.5px; color: var(--muted); }
+  .rung .tag {
+    display: inline-block; margin-top: 14px; font-size: 12px; font-weight: 500;
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .tag.self { background: var(--accent-soft); color: var(--accent); }
+  .tag.admin { background: var(--red-soft); color: var(--red); }
+  .rung .arrow {
+    position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
+    color: var(--border-strong); z-index: 2;
+  }
+  @media (max-width: 760px){
+    .rung .arrow { right: 50%; top: auto; bottom: -18px; transform: translateX(50%) rotate(90deg); }
+  }
+  .ladder-note {
+    margin-top: 22px; font-size: 13.5px; color: var(--muted);
+    padding-left: 14px; border-left: 2px solid var(--accent);
+  }
+  .ladder-note strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- Panel + annotation layout ---- */
+  .split { display: grid; grid-template-columns: 1.35fr 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 860px){ .split { grid-template-columns: 1fr; } }
+  .beforeafter { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px){ .beforeafter { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel-bar {
+    display: flex; align-items: center; gap: 7px; padding: 9px 13px;
+    background: var(--surface-2); border-bottom: 1px solid var(--border);
+  }
+  .panel-bar .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
+  .panel-bar .loc {
+    margin-left: 8px; font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .panel-body { padding: 18px; }
+  .state-label {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; margin: 0 0 10px; font-weight: 500;
+  }
+  .state-label.before { color: var(--faint); }
+  .state-label.after { color: var(--green); }
+
+  /* mini app widgets */
+  .card-inset {
+    border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--surface);
+  }
+  .kicker { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 4px; }
+  .price { font-family: "Fraunces", serif; font-size: 30px; font-weight: 600; letter-spacing: -.01em; }
+  .price small { font-family: "IBM Plex Sans"; font-size: 13px; font-weight: 400; color: var(--muted); }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+  .chip {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .chip.on { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 22%, transparent); font-weight: 500; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    font-family: inherit; font-size: 13.5px; font-weight: 500; border-radius: 9px;
+    padding: 9px 15px; border: 1px solid transparent; cursor: default; width: 100%;
+  }
+  .btn.primary { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .btn.primary, :root:not([data-theme="light"]) .btn.primary { color: #0c1c1a; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .btn.primary { color:#0c1c1a; } }
+  .btn.ghost { background: transparent; border-color: var(--border-strong); color: var(--ink); }
+  .btn.danger-ghost { background: transparent; color: var(--red); border-color: transparent; width: auto; padding: 6px 4px; font-size: 12.5px; }
+  .btn.danger { background: var(--red); color: #fff; width: auto; }
+  .btn.sm { padding: 7px 12px; font-size: 12.5px; width: auto; }
+
+  .promise {
+    display: flex; gap: 10px; align-items: flex-start; margin-top: 12px;
+    padding: 11px 13px; border-radius: 10px; background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .promise .ic { color: var(--accent); flex: none; margin-top: 1px; }
+  .promise p { margin: 0; font-size: 13px; }
+  .promise b { font-weight: 600; }
+  .struck { color: var(--faint); text-decoration: line-through; font-size: 13px; }
+
+  /* booking row */
+  .brow { display: flex; gap: 13px; align-items: center; }
+  .thumb { width: 52px; height: 52px; border-radius: 9px; background: linear-gradient(135deg, var(--surface-2), var(--border)); flex: none; }
+  .brow .meta { flex: 1; min-width: 0; }
+  .brow .meta h4 { margin: 0 0 2px; font-size: 14.5px; font-weight: 600; }
+  .brow .meta p { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .status-pill { font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: 999px; }
+  .status-pill.avail { background: var(--accent-soft); color: var(--accent); }
+  .status-pill.prog { background: var(--amber-soft); color: var(--amber); }
+  .rowfoot { display: flex; align-items: center; justify-content: space-between; margin-top: 13px; padding-top: 12px; border-top: 1px dashed var(--border); }
+  .rowfoot .help { font-size: 12.5px; color: var(--muted); }
+  .rowfoot .help a { color: var(--accent); text-decoration: none; font-weight: 500; }
+
+  /* dialog */
+  .dialog { border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+  .dialog-h { padding: 15px 17px 0; }
+  .dialog-h h4 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+  .dialog-h p { margin: 0; font-size: 13px; color: var(--muted); }
+  .dialog-b { padding: 14px 17px; }
+  .fake-textarea { border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font-size: 13px; color: var(--faint); min-height: 62px; background: var(--surface-2); }
+  .disclosure { display: flex; gap: 9px; margin-top: 12px; padding: 11px 12px; border-radius: 9px; background: var(--amber-soft); }
+  .disclosure .ic { color: var(--amber); flex: none; margin-top: 1px; }
+  .disclosure p { margin: 0; font-size: 12.5px; color: var(--ink); }
+  .dialog-f { display: flex; gap: 10px; justify-content: flex-end; padding: 13px 17px; border-top: 1px solid var(--border); background: var(--surface-2); }
+
+  /* admin table */
+  .admin-wrap { overflow-x: auto; }
+  table.disputes { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+  table.disputes th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); font-weight: 500; padding: 0 12px 10px; border-bottom: 1px solid var(--border);
+  }
+  table.disputes td { padding: 13px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.disputes tr:last-child td { border-bottom: none; }
+  .buyer { font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .used-yes { color: var(--green); font-weight: 500; }
+  .used-no { color: var(--amber); font-weight: 500; }
+  .admin-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .queue-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 8px; }
+  .queue-head h3 { margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
+  .count-badge { background: var(--amber-soft); color: var(--amber); font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+  .queue-sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+
+  /* annotation card */
+  .notes { position: sticky; top: 20px; }
+  .notes h3 { font-size: 13px; font-family: "IBM Plex Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+  .note { display: flex; gap: 11px; margin-bottom: 15px; }
+  .note .n { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--faint); flex: none; padding-top: 1px; }
+  .note p { margin: 0; font-size: 13.5px; color: var(--ink); }
+  .note p span { color: var(--muted); }
+  code {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px;
+  }
+
+  /* governance grid */
+  .gov { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 720px){ .gov { grid-template-columns: 1fr; } }
+  .gov-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .gov-card .tagref { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--accent); font-weight: 500; }
+  .gov-card h4 { margin: 8px 0 7px; font-size: 15.5px; font-weight: 600; }
+  .gov-card p { margin: 0; font-size: 13.5px; color: var(--muted); }
+  .gov-card p code { font-size: 11.5px; }
+
+  .scope { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  @media (max-width: 640px){ .scope { grid-template-columns: 1fr; } }
+  .scope > div { padding: 18px 20px; }
+  .scope .in { background: var(--surface); }
+  .scope .out { background: var(--surface-2); border-left: 1px solid var(--border); }
+  @media (max-width: 640px){ .scope .out { border-left: none; border-top: 1px solid var(--border); } }
+  .scope h4 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+  .scope .in h4 { color: var(--green); }
+  .scope .out h4 { color: var(--faint); }
+  .scope ul { margin: 0; padding: 0; list-style: none; }
+  .scope li { font-size: 13.5px; padding: 5px 0 5px 22px; position: relative; }
+  .scope li::before { position: absolute; left: 0; top: 4px; font-family: "IBM Plex Mono", monospace; }
+  .scope .in li::before { content: "+"; color: var(--green); }
+  .scope .out li::before { content: "—"; color: var(--faint); }
+  .scope .out li { color: var(--muted); }
+
+  footer { padding: 40px 0 70px; color: var(--faint); font-size: 12.5px; }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  .icn { width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
+  .icn-sm { width: 15px; height: 15px; }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Concierge Revision · Phase 3 · Mock for sign-off</p>
+    <h1>No self-serve refund — a revision, then a real dispute path.</h1>
+    <p class="lede">P1 gave every buyer <strong>one consultation + one revision</strong> from their expert. P3 finishes the migration: it replaces the buyer's self-serve refund button with a two-step recourse ladder, and gives admins a <strong>ready-made dispute queue</strong> whose refund is the escape hatch. The self-serve refund is only removed <em>after</em> that recourse exists.</p>
+
+    <div class="ratified">
+      <svg class="icn mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <p>
+        <span class="q">"No refunds, but allow the user to request one modification from the expert… experts should offer one consultation and modification with every ready-made trip. Then we can eliminate the refund."</span> — plus <span class="q">"Keep the admin escape hatch."</span>
+        <span class="who">Decision-maker, ratified this session · phased build P1 (merged) → P2 (merged) → <b style="color:var(--ink)">P3 (this mock)</b></span>
+      </p>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== RECOURSE LADDER ===================== -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>The recourse ladder</h2></div>
+    <p class="sec-sub">Removing the refund button is only safe because two forms of recourse sit in front of it. A buyer never hits a dead end — they escalate one rung at a time, and money-back still exists at the top, now with a human deciding it.</p>
+
+    <div class="ladder">
+      <div class="rung">
+        <div class="step">Rung 1 · self-serve</div>
+        <h3>Request the revision</h3>
+        <p>Buyer asks their expert to adjust the plan for their dates &amp; taste — right from the Trip Slip. Grants the expert write access to the clone. Already shipped in P1/P2.</p>
+        <span class="tag self">Buyer → Expert</span>
+        <svg class="icn arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rung">
+        <div class="step">Rung 2 · self-serve</div>
+        <h3>Get help with the purchase</h3>
+        <p>Still not right? The buyer opens a concern. It becomes a dispute row for admin review — no money moves yet, and the honest copy never promises a refund.</p>
+        <span class="tag self">Buyer → Admin queue</span>
+        <svg class="icn arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rung">
+        <div class="step">Rung 3 · escape hatch</div>
+        <h3>Admin refunds or dismisses</h3>
+        <p>An admin reviews the dispute — seeing whether the revision was even used — and either refunds the buyer (reversing earnings + revoking the clone) or dismisses it.</p>
+        <span class="tag admin">Admin decides</span>
+      </div>
+    </div>
+
+    <p class="ladder-note"><strong>Why this order.</strong> The self-serve refund can't be removed until the thing replacing it exists. So P3 builds rungs 2 &amp; 3 <em>first</em>; the button removal (§3 below) is the last edit to land, and only once an admin can still make a buyer whole.</p>
+  </div>
+</section>
+
+<!-- ===================== 1. LISTING PROMISE ===================== -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>The listing states the promise</h2></div>
+    <p class="sec-sub">Before buying, the "What's inside" card on the ready-made detail page swaps its refund line for the honest concierge promise — the thing the buyer actually gets.</p>
+
+    <div class="split">
+      <div class="beforeafter">
+        <div>
+          <p class="state-label before">Before</p>
+          <div class="panel">
+            <div class="panel-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">ready-made-detail.tsx · What's inside</span></div>
+            <div class="panel-body">
+              <p class="kicker">What's inside</p>
+              <div class="badge-row">
+                <span class="chip">6 planned days</span>
+                <span class="chip">18 items</span>
+                <span class="chip">4 stays</span>
+              </div>
+              <p style="font-size:13px;color:var(--muted);margin:0 0 4px;">Buying this trip copies the full day-by-day plan into your own trips — every item editable, re-dateable, and bookable.</p>
+              <p class="struck">Refundable for 7 days.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="state-label after">After</p>
+          <div class="panel">
+            <div class="panel-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">ready-made-detail.tsx · What's inside</span></div>
+            <div class="panel-body">
+              <p class="kicker">What's inside</p>
+              <div class="badge-row">
+                <span class="chip">6 planned days</span>
+                <span class="chip">18 items</span>
+                <span class="chip on"><svg class="icn-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Concierge included</span>
+              </div>
+              <p style="font-size:13px;color:var(--muted);margin:0 0 4px;">Buying this trip copies the full day-by-day plan into your own trips — every item editable, re-dateable, and bookable.</p>
+              <div class="promise">
+                <svg class="icn ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                <p><b>Includes 1 consultation + 1 revision</b> with the expert who built it — request anytime from your Trip Slip.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <h3>What changes</h3>
+        <div class="note"><span class="n">a</span><p>The <code>"Refundable for 7 days."</code> line at <span>ready-made-detail.tsx:366</span> is replaced with the consult + revision promise.</p></div>
+        <div class="note"><span class="n">b</span><p>A <code>Concierge included</code> chip joins the badge row near the price/CTA block <span>(:372–384)</span>.</p></div>
+        <div class="note"><span class="n">c</span><p>Copy is <span>static</span> — every ready-made trip carries the same entitlement, so no new DTO field is needed <span>(§13: promise only what's true for all)</span>.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2. BUYER: refund → get help ===================== -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Buyer side: the refund button becomes "get help"</h2></div>
+    <p class="sec-sub">On My Bookings, the destructive "Request refund" button is removed. In its place the row shows the buyer's live revision status and a quiet "get help" link — which opens a concern, not a refund.</p>
+
+    <div class="split">
+      <div class="beforeafter">
+        <div>
+          <p class="state-label before">Before</p>
+          <div class="panel">
+            <div class="panel-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">my-bookings.tsx · Ready-Made row</span></div>
+            <div class="panel-body">
+              <div class="brow">
+                <div class="thumb"></div>
+                <div class="meta"><h4>Kyoto in Autumn — 6 days</h4><p>Bought Aug 14 · $240</p></div>
+              </div>
+              <div class="rowfoot">
+                <span class="help">Within refund window</span>
+                <span class="btn danger-ghost">Request refund</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="state-label after">After</p>
+          <div class="panel">
+            <div class="panel-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">my-bookings.tsx · Ready-Made row</span></div>
+            <div class="panel-body">
+              <div class="brow">
+                <div class="thumb"></div>
+                <div class="meta"><h4>Kyoto in Autumn — 6 days</h4><p>Bought Aug 14 · $240</p></div>
+                <span class="status-pill avail">1 revision available</span>
+              </div>
+              <div class="rowfoot">
+                <span class="help">Need a change? <a href="#">Request your revision →</a></span>
+                <span class="help"><a href="#" style="color:var(--muted);">Something wrong?</a></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <h3>What changes</h3>
+        <div class="note"><span class="n">a</span><p>The refund button + <code>rmRefund</code> mutation at <span>my-bookings.tsx:541–548</span> are removed — it was the endpoint's only caller.</p></div>
+        <div class="note"><span class="n">b</span><p>The row now surfaces the P2 derived revision status <span>(available / in progress / delivered)</span> as the primary affordance.</p></div>
+        <div class="note"><span class="n">c</span><p>"Something wrong?" opens the concern dialog below → creates a dispute. Recourse, not a refund.</p></div>
+      </div>
+    </div>
+
+    <!-- concern dialog -->
+    <div style="max-width:440px;margin:30px auto 0;">
+      <p class="state-label after" style="text-align:center;">"Something wrong?" → concern dialog</p>
+      <div class="dialog">
+        <div class="dialog-h">
+          <h4>Tell us what went wrong</h4>
+          <p>We'll review your concern about <b>Kyoto in Autumn</b>.</p>
+        </div>
+        <div class="dialog-b">
+          <div class="fake-textarea">The expert hasn't responded to my revision request…</div>
+          <div class="disclosure">
+            <svg class="icn ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>Our team reviews concierge concerns within 2 business days. Most are resolved with a revision from your expert — this doesn't guarantee a refund.</p>
+          </div>
+        </div>
+        <div class="dialog-f">
+          <span class="btn ghost sm">Request a revision instead</span>
+          <span class="btn primary sm" style="width:auto;">Submit concern</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3. ADMIN dispute queue ===================== -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Admin: the ready-made dispute queue</h2></div>
+    <p class="sec-sub">A new queue on the existing <b>Reconciliation &amp; Disputes</b> page, mirroring the service-booking dispute pattern already there. The admin sees whether the revision was even used, then refunds (the escape hatch) or dismisses.</p>
+
+    <div class="panel">
+      <div class="panel-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="loc">admin/reconciliation.tsx · new "Concierge disputes" card</span></div>
+      <div class="panel-body">
+        <div class="queue-head">
+          <h3><svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg> Ready-Made concierge disputes <span class="count-badge">2 open</span></h3>
+        </div>
+        <p class="queue-sub">Buyers who raised a concern after purchase. "Revision used" tells you whether they've exhausted the entitlement before asking for money back.</p>
+
+        <div class="admin-wrap">
+          <table class="disputes">
+            <thead>
+              <tr>
+                <th>Buyer &amp; trip</th>
+                <th>Expert</th>
+                <th>Reason</th>
+                <th>Revision used</th>
+                <th class="num">Paid</th>
+                <th style="text-align:right;">Resolve</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="buyer">m.dixon</div><div class="sub">Kyoto in Autumn · Aug 14</div></td>
+                <td>@ren.travels</td>
+                <td class="sub">Expert unresponsive to revision request</td>
+                <td><span class="used-no">No</span></td>
+                <td class="num">$240.00</td>
+                <td><div class="admin-actions"><span class="btn ghost sm">Dismiss</span><span class="btn danger sm">Refund buyer</span></div></td>
+              </tr>
+              <tr>
+                <td><div class="buyer">a.lopez</div><div class="sub">Lisbon Food Crawl · Aug 09</div></td>
+                <td>@tavares</td>
+                <td class="sub">Plan didn't match the photos</td>
+                <td><span class="used-yes">Yes</span></td>
+                <td class="num">$95.00</td>
+                <td><div class="admin-actions"><span class="btn ghost sm">Dismiss</span><span class="btn danger sm">Refund buyer</span></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes" style="position:static;margin-top:26px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px;">
+      <div>
+        <div class="note"><span class="n">a</span><p>New card sits beside the existing <span>"Active Disputes"</span> queue at <span>reconciliation.tsx:322</span> — same page, same visual pattern.</p></div>
+      </div>
+      <div>
+        <div class="note"><span class="n">b</span><p><b>Refund buyer</b> hits a new <code>/api/admin/ready-made/purchases/:id/refund</code>, mirroring the service-booking <code>disputes/:id/uphold</code> reversal.</p></div>
+      </div>
+      <div>
+        <div class="note"><span class="n">c</span><p>It calls the <em>same</em> refund ledger as before — with an <code>actor:"admin"</code> flag that bypasses the buyer-only + 7-day gates. One implementation, two callers.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== DATA MODEL + GOVERNANCE ===================== -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Data model &amp; governance</h2></div>
+    <p class="sec-sub">The dispute concept is net-new for ready-made purchases (today it only exists for service bookings). It lands additively, following the house rules.</p>
+
+    <div class="gov">
+      <div class="gov-card">
+        <span class="tagref">migration · additive</span>
+        <h4>Three nullable columns on <code>ready_made_purchases</code></h4>
+        <p><code>dispute_status</code> (null = none · <code>open</code> · <code>resolved_refunded</code> · <code>resolved_dismissed</code>), <code>dispute_reason</code> text, <code>disputed_at</code>. Declared in <code>shared/schema.ts</code>, no DB CHECK, migration registered — publish-trap rule.</p>
+      </div>
+      <div class="gov-card">
+        <span class="tagref">L6 · one implementation</span>
+        <h4>The refund ledger gets a second caller, not a rewrite</h4>
+        <p><code>refundReadyMadePurchaseLedger</code> gains an <code>actor</code> param. Buyer path is unchanged; admin path bypasses the <code>buyerId</code> + window gates. No parallel refund code.</p>
+      </div>
+      <div class="gov-card">
+        <span class="tagref">§14 · server-derived</span>
+        <h4>Amount &amp; actor never come from the client</h4>
+        <p>Refund amount is read from the purchase row; the admin actor is proven by session role (<code>user.role === "admin"</code>), exactly like the existing dispute-uphold route.</p>
+      </div>
+      <div class="gov-card">
+        <span class="tagref">§19 · allowlist</span>
+        <h4>Dispute fields are not client-writable</h4>
+        <p>Buyers set <code>dispute_reason</code> through the concern endpoint only; <code>dispute_status</code> transitions are server-owned. Admin resolution is audit-logged like every other money action.</p>
+      </div>
+    </div>
+
+    <div class="scope">
+      <div class="in">
+        <h4>In this phase</h4>
+        <ul>
+          <li>Listing promise copy (detail page)</li>
+          <li>Remove self-serve refund button</li>
+          <li>Buyer "get help" → concern → dispute</li>
+          <li>Admin dispute queue + refund/dismiss</li>
+          <li>Admin refund actor on the shared ledger</li>
+        </ul>
+      </div>
+      <div class="out">
+        <h4>Not in this phase</h4>
+        <ul>
+          <li>Automated refunds — always a human decides</li>
+          <li>Refunds for anything but ready-made purchases</li>
+          <li>Changing the revision flow itself (P1/P2 stands)</li>
+          <li>Partial / prorated refunds</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Concierge Revision · Phase 3 — mock for decision-maker sign-off. Grounded in current code (my-bookings.tsx, ready-made.routes.ts, ready-made-purchase.service.ts, admin/reconciliation.tsx). Nothing here is built yet — awaiting approval before implementation.
+  </div>
+</footer>
+
+</body>
+</html>

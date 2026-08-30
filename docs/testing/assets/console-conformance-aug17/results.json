@@ -1,0 +1,107 @@
+[
+  {
+    "row": "A1",
+    "verdict": "PASS",
+    "detail": "header present=true"
+  },
+  {
+    "row": "A2",
+    "verdict": "PASS",
+    "detail": "{\"single\":true,\"bundle\":true,\"property\":true} lockedCopy=true"
+  },
+  {
+    "row": "A3",
+    "verdict": "PASS",
+    "detail": "category-grid heading present=true"
+  },
+  {
+    "row": "A4",
+    "verdict": "PASS",
+    "detail": "bundles=true properties=true"
+  },
+  {
+    "row": "A5",
+    "verdict": "PASS",
+    "detail": "ladder=true submit-on-step1=false (must be Review-only)"
+  },
+  {
+    "row": "A6",
+    "verdict": "BLOCKED",
+    "detail": "account owns no property; edit dialog unreachable this run (deliberate per-step-save design verified in code S-2)"
+  },
+  {
+    "row": "B1",
+    "verdict": "PASS",
+    "detail": "{\"search\":true,\"chips\":true,\"listMap\":true,\"managePreview\":true}"
+  },
+  {
+    "row": "B2",
+    "verdict": "PASS",
+    "detail": "{\"rows\":3,\"storefrontToggle\":true,\"availabilityLink\":true,\"edit\":true,\"promote\":true}"
+  },
+  {
+    "row": "B3",
+    "verdict": "PASS",
+    "detail": "{\"readOnlyNotice\":true,\"coverage\":true,\"odbl\":true,\"unlocated\":true}"
+  },
+  {
+    "row": "B4",
+    "verdict": "DIVERGES",
+    "detail": "{\"legend\":false,\"repeatsWeekly\":false,\"nextAvailable\":true,\"slotTimes\":true}"
+  },
+  {
+    "row": "B5a",
+    "verdict": "DIVERGES",
+    "detail": "\"Repeats weekly\" title=false"
+  },
+  {
+    "row": "B5b",
+    "verdict": "PASS",
+    "detail": "no-calendar copy=true"
+  },
+  {
+    "row": "B6",
+    "verdict": "PASS",
+    "detail": "{\"editSplitPanel\":true,\"goesLive\":true,\"reReview\":true,\"nothingTakenDown\":true,\"checklist\":true,\"photosCard\":true,\"deleteCardless\":true}"
+  },
+  {
+    "row": "B6b",
+    "verdict": "PASS",
+    "detail": "drawer copy: protected=true paste=true checklist-note=true"
+  },
+  {
+    "row": "B7",
+    "verdict": "PASS",
+    "detail": "price applied=true; name staged=[\"serviceName\"]; live name untouched=true; editReviewStatus=pending"
+  },
+  {
+    "row": "B7b",
+    "verdict": "PASS",
+    "detail": "Catalog \"Edit in review\" pill=true"
+  },
+  {
+    "row": "C1",
+    "verdict": "PASS",
+    "detail": "storefront /p/ URL=true; edit handle=true"
+  },
+  {
+    "row": "C2",
+    "verdict": "PASS",
+    "detail": "{\"feed\":true,\"story\":true,\"route\":true,\"honesty\":false,\"qr\":true}"
+  },
+  {
+    "row": "C3",
+    "verdict": "PASS",
+    "detail": "{\"promote\":true,\"measurement\":true}"
+  },
+  {
+    "row": "C5",
+    "verdict": "PASS",
+    "detail": "{\"marketplace\":true,\"directLink\":true}"
+  },
+  {
+    "row": "C4",
+    "verdict": "PASS",
+    "detail": "banner=true back=true crumb=true"
+  }
+]

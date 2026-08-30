@@ -11,7 +11,7 @@ import { availableAtFor } from "../config/earnings-hold.config";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
-  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'other';
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'expert_review_fee' | 'other';
   sourceId: string;
   trackingNumber?: string;
   grossAmount: number;
@@ -41,6 +41,14 @@ export interface UnifiedRevenueDashboard {
     totalPending: number;
     activeProviders: number;
   };
+  // Platform-wide affiliate revenue (the platform's cut). Tracked in affiliate_earnings, not
+  // platform_revenue (external partner networks), so folded in here for the "all fees" view.
+  affiliate: {
+    total: number;
+    pending: number;
+    confirmed: number;
+    paid: number;
+  };
   recentTransactions: Array<{
     id: string;
     date: Date;
@@ -59,19 +67,30 @@ export interface UnifiedRevenueDashboard {
 
 class RevenueTrackingService {
   async recordRevenueEvent(event: RevenueEvent): Promise<void> {
-    // Optimization fees are 100% platform revenue — route through 'ai' source tier.
-    const isOptimizationFee = event.sourceType === 'optimization_fee';
+    // Optimization AND coordination fees are 100% platform revenue — route through the 'ai' source
+    // tier (AI_PLATFORM_FEE = 1.0). fee-literal-ok: prose naming the commission.ts constant, not an
+    // assignment. Coordination fee has no expert/provider split (the coordinator is
+    // paid via the earnings ledger on the bookings they place, not from this fee).
+    // expert_review_fee (F3): 100% platform at CAPTURE. R6 (ratified Jul 26, 2026): when the
+    // assigned expert COMPLETES the request, completeExpertRequest atomically re-splits this
+    // capture-time row (expert gets the admin-editable 'expert_review_expert_share' band rate,
+    // default 0.75; platform keeps the remainder) and credits a held expert earning.
+    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee' || event.sourceType === 'expert_review_fee';
     // Derive source flag for the resolver so affiliate events get the 70% tier.
     const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
     const rates = await resolveCommissionRates({
-      category: isOptimizationFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
-      source: isOptimizationFee ? 'ai' : affiliateSource,
+      category: isFullPlatformFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
+      source: isFullPlatformFee ? 'ai' : affiliateSource,
     });
     const platformFee = event.grossAmount * rates.platformFeeRate;
     const processingFees = platformFee * PROCESSING_FEE_RATE;
     const netAmount = platformFee - processingFees;
 
-    await storage.recordPlatformRevenue({
+    // Task 1573: use insertPlatformRevenueOnce so the DB unique constraint on paymentIntentId
+    // (migration 244) is the authoritative dedup gate. If two concurrent webhooks race past the
+    // pre-check, the second insert hits ON CONFLICT DO NOTHING and inserted===false, which causes
+    // us to skip the expert/provider earnings mints — preventing partial double-writes.
+    const { inserted } = await storage.insertPlatformRevenueOnce({
       sourceType: event.sourceType,
       sourceId: event.sourceId,
       trackingNumber: event.trackingNumber,
@@ -88,6 +107,12 @@ class RevenueTrackingService {
       status: 'recorded',
       transactionDate: new Date(),
     });
+
+    if (!inserted) {
+      // The DB constraint absorbed a duplicate — skip all dependent side-effects so we never
+      // mint a second expert/provider earning for the same payment event.
+      return;
+    }
 
     if (event.expertId && event.expertShare) {
       await storage.createExpertEarning({
@@ -117,6 +142,15 @@ class RevenueTrackingService {
     }
   }
 
+  /** Idempotent variant: no-op (returns false) when a platform_revenue row already carries this
+   *  sourceId — the §15 guard for retryable payment-completion paths (webhook redelivery, client
+   *  retry). Use whenever the same external payment id can reach the recorder twice. */
+  async recordRevenueEventOnce(event: RevenueEvent): Promise<boolean> {
+    if (event.sourceId && (await storage.hasPlatformRevenueForSource(event.sourceId))) return false;
+    await this.recordRevenueEvent(event);
+    return true;
+  }
+
   async getUnifiedDashboard(): Promise<UnifiedRevenueDashboard> {
     const now = new Date();
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -133,14 +167,18 @@ class RevenueTrackingService {
       ? ((thisMonthRevenue.totalPlatformFee - lastMonthRevenue.totalPlatformFee) / lastMonthRevenue.totalPlatformFee) * 100
       : 0;
 
-    const [expertStats, providerStats, recentTxns, dailyTrend] = await Promise.all([
+    const [expertStats, providerStats, recentTxns, dailyTrend, affiliate] = await Promise.all([
       this.getExpertEarningsStats(),
       this.getProviderEarningsStats(),
       this.getRecentTransactions(10),
       this.getDailyTrend(30),
+      storage.getPlatformAffiliateRevenueSummary(),
     ]);
 
     return {
+      // platform.* keeps its existing meaning (platform_revenue only) so existing consumers and the
+      // by-source chart are unchanged; affiliate is surfaced as its own additive field (below), and
+      // the client shows a grand total = platform.totalRevenue + affiliate.total.
       platform: {
         totalRevenue: platformSummary.totalPlatformFee,
         thisMonth: thisMonthRevenue.totalPlatformFee,
@@ -150,6 +188,7 @@ class RevenueTrackingService {
       },
       experts: expertStats,
       providers: providerStats,
+      affiliate,
       recentTransactions: recentTxns,
       dailyTrend,
     };

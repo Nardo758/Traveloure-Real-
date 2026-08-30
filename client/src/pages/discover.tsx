@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
   Select,
   SelectContent,
@@ -57,7 +59,31 @@ import {
   Zap,
   Trophy,
   CheckCircle,
+  Mountain,
+  Cake,
+  Gem,
+  Palmtree,
+  ConciergeBell,
+  Flower2,
+  Music,
+  Landmark,
+  Umbrella,
+  ShoppingBag,
+  SlidersHorizontal,
 } from "lucide-react";
+import { isExpertRole, isProviderRole } from "@shared/roles";
+import { useTripContext } from "@/lib/trip-context";
+import type { LucideIcon } from "lucide-react";
+
+// Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
+// Applied inline the same way Fraunces is (runtime theme fonts, loaded in index.html).
+const EARN_MONO = "'Geist Mono', ui-monospace, monospace";
+const SERVICE_SORT_OPTIONS = [
+  { value: "rating", label: "Top Rated" },
+  { value: "reviews", label: "Most Reviews" },
+  { value: "price_low", label: "Price: Low to High" },
+  { value: "price_high", label: "Price: High to Low" },
+] as const;
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
@@ -67,8 +93,169 @@ import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
+import { planTypeLabel, planTypeDisplay } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { CatalogItem } from "@/types/catalog";
+
+// Ready-Made shelf DTO (GET /api/ready-made) — teaser fields only; the itinerary stays behind
+// the purchase→clone gate.
+type ReadyMadeShelfListing = {
+  id: string;
+  title: string;
+  planType: string | null;
+  planTypeCustom: string | null;
+  market: string;
+  durationDays: number;
+  pricingMode: string;
+  priceCents: number | null;
+  heroImageUrl: string | null;
+  authorName: string;
+  /** source-link fallback (2026-08-25-card-source-link): a handle-less author (no /s/ page)
+   *  links to their expert profile /experts/:id — never plain text. */
+  authorId: string;
+  authorHandle: string | null;
+  /** Approval-time snapshot counts (jsonb); teaser display only, may be null (§13). */
+  insideCounts: { days?: number; items?: number; byType?: Record<string, number> } | null;
+  section: "trips_by_locals" | "advisor";
+};
+
+// Theme chip/shelf ICONS only — presentational metadata. Labels always come from the shared
+// vocabulary (planTypeLabel/planTypeDisplay, shared/ready-made-plan-types.ts), never restated
+// here, so a vocabulary change can't drift this file's text.
+const READY_MADE_THEME_ICONS: Record<string, typeof Award> = {
+  hiking_itinerary: Mountain,
+  road_trip_itinerary: Car,
+  city_itinerary: Building2,
+  food_culture_itinerary: UtensilsCrossed,
+  birthday_plan: Cake,
+  wedding_plan: Heart,
+  proposal_plan: Gem,
+  corporate_retreat_plan: Briefcase,
+  adventure_outdoors: Compass,
+  romance_honeymoon: Heart,
+  family_trip: Users,
+  wellness_retreat: Flower2,
+  photography_tour: Camera,
+  nightlife_entertainment: Music,
+  cultural_heritage: Landmark,
+  beach_island: Umbrella,
+  festival_seasonal: PartyPopper,
+  shopping_style: ShoppingBag,
+  custom: Sparkles,
+};
+
+/** Chip/shelf heading for a theme KEY (aggregate label — per-listing custom text stays on the
+ *  card via planTypeDisplay). `custom` aggregates as "Custom themes"; untyped grandfathers as
+ *  "More trips". */
+function readyMadeThemeHeading(key: string): string {
+  if (key === "custom") return "Custom themes";
+  return planTypeLabel(key) ?? "More trips";
+}
+
+/**
+ * Ready-Made shelf card, theme-first: the theme is the eyebrow (per-listing custom text via
+ * planTypeDisplay), the author type is a badge. The author row lives OUTSIDE the detail-page
+ * link so the storefront link is a real, un-nested anchor — StorefrontLink's Discover-card
+ * constraint solved by structure. No handle → plain text, never a dead /s/ link (rule 1).
+ */
+function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
+  const [, navigateTo] = useLocation();
+  const price = l.priceCents === null ? null : l.priceCents / 100;
+  const itemCount = l.insideCounts?.items ?? null;
+  const roleLabel = l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner";
+  // Card-source-link (2026-08-25-card-source-link): the author ALWAYS links to its source —
+  // claimed handle → /s/:handle, else the author's expert profile. Never plain text.
+  const sourceHref = l.authorHandle ? `/s/${l.authorHandle}` : `/experts/${l.authorId}`;
+  const sourceLabel = l.authorHandle ? `@${l.authorHandle}` : l.authorName;
+
+  return (
+    <div
+      className="h-full flex flex-col bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-shadow"
+      data-testid={`rm-shelf-card-${l.id}`}
+    >
+      {/* Photo — real cover or honest gradient placeholder (§13); opens the detail page. */}
+      <Link href={`/ready-made/${l.id}`} className="block cursor-pointer">
+        <div className="relative h-[140px] bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
+          {l.heroImageUrl && (
+            <img src={l.heroImageUrl} alt={l.title} className="w-full h-full object-cover" />
+          )}
+          <span
+            className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[var(--earn-ink)]/70 text-white"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {l.market}
+          </span>
+          <span
+            className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[12px] font-semibold bg-[var(--earn-card)] text-[color:var(--earn-ink)] border border-[color:var(--earn-border)]"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {price === null ? "—" : `$${price.toFixed(0)}`}
+            {price !== null && l.pricingMode === "per_traveler" ? "/traveler" : ""}
+          </span>
+        </div>
+      </Link>
+
+      {/* Body */}
+      <div className="p-3.5 flex-1 flex flex-col">
+        <span
+          className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]"
+          style={{ fontFamily: EARN_MONO }}
+        >
+          {planTypeDisplay(l.planType, l.planTypeCustom)}
+        </span>
+        <Link
+          href={`/ready-made/${l.id}`}
+          className="text-[15px] font-semibold text-[color:var(--earn-ink)] leading-snug line-clamp-1 mt-0.5 hover:underline"
+        >
+          {l.title}
+        </Link>
+        <div className="text-[12px] text-[color:var(--earn-muted)] mt-1 truncate">
+          {l.market} · {l.durationDays} days · by{" "}
+          <Link
+            href={sourceHref}
+            className="text-[color:var(--earn-teal-ink)] hover:underline"
+            data-testid={`link-rm-author-${l.id}`}
+          >
+            {sourceLabel}
+          </Link>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
+          <span
+            className="px-2 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wide bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {roleLabel}
+          </span>
+          {itemCount != null && (
+            <span
+              className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[var(--earn-chip)] text-[color:var(--earn-muted)]"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {itemCount} items
+            </span>
+          )}
+        </div>
+
+        {/* Get this trip — teal full-width. Disabled with a reason ONLY when price is null
+            (2026-08-25 submit/approve gate now prevents priceless new listings). */}
+        <div className="mt-auto pt-3">
+          <Button
+            size="sm"
+            disabled={price === null}
+            title={price === null ? "Pricing is finalized at approval" : undefined}
+            className="w-full bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)] disabled:opacity-60"
+            onClick={() => navigateTo(`/ready-made/${l.id}`)}
+          >
+            {price === null ? "Pricing pending" : "Get this trip"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type ServiceCategory = {
   id: string;
@@ -96,11 +283,23 @@ type Service = {
   deliveryTimeframe: string;
   revisionsIncluded?: number;
   includesExpertNotes?: boolean;
+  providerFirstName?: string | null;
+  providerLastName?: string | null;
+  providerImageUrl?: string | null;
+  providerRating?: string | null;
+  providerBusinessName?: string | null;
+  /** MP-2 storefront return path — null when the owner has no claimed handle (no /s/ page). */
+  providerHandle?: string | null;
+  /** Seller role (source-link resolution, 2026-08-25-card-source-link): expert-family → /experts/:id,
+   *  service_provider → their /providers card, when there is no claimed handle. */
+  providerRole?: string | null;
 };
 
 type DiscoverResult = {
   services: Service[];
   total: number;
+  packagesTotal?: number;
+  suggestion?: string | null;
 };
 
 interface CartData {
@@ -109,29 +308,6 @@ interface CartData {
   subtotal: string;
   total: string;
 }
-
-type ExpertTemplate = {
-  id: string;
-  expertId: string;
-  title: string;
-  description: string;
-  shortDescription?: string;
-  destination: string;
-  duration: number;
-  price: string;
-  currency?: string;
-  category?: string;
-  coverImage?: string;
-  images?: string[];
-  highlights?: string[];
-  tags?: string[];
-  isPublished: boolean;
-  isFeatured: boolean;
-  salesCount?: number;
-  viewCount?: number;
-  averageRating?: string;
-  reviewCount?: number;
-};
 
 const categoryIcons: Record<string, React.ElementType> = {
   "photography-videography": Camera,
@@ -162,306 +338,415 @@ const tripCategories = [
 ];
 
 
-function ServiceCard({ 
-  service, 
+function ServiceCard({
+  service,
   category,
   onAddToCart,
   isAddingToCart,
   isAdded,
-}: { 
-  service: Service; 
+}: {
+  service: Service;
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
 }) {
+  const [, navigateTo] = useLocation();
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
-  const Icon = category ? categoryIcons[category.slug] || Compass : Compass;
-  const description = service.shortDescription || service.description || "No description available";
   const location = service.location || "Remote";
-  
-  // Determine expert badges based on rating and review count
-  const isTopExpert = rating >= 4.8 && reviewCount >= 5;
+  // §13: a "Verified local" line is a claim, shown only once the service has real reviews.
   const isVerified = reviewCount >= 3;
-  const isHot = rating >= 4.7 && reviewCount >= 10;
-  
-  // Generate mock image based on category
-  const getCategoryImage = (categorySlug: string) => {
-    const imageMap: Record<string, string> = {
-      "photography-videography": "https://picsum.photos/seed/photography/600/400",
-      "transportation-logistics": "https://picsum.photos/seed/transport/600/400",
-      "food-culinary": "https://picsum.photos/seed/food/600/400",
-      "childcare-family": "https://picsum.photos/seed/family/600/400",
-      "tours-experiences": "https://picsum.photos/seed/tours/600/400",
-      "personal-assistance": "https://picsum.photos/seed/assistance/600/400",
-      "health-wellness": "https://picsum.photos/seed/wellness/600/400",
-      "beauty-styling": "https://picsum.photos/seed/beauty/600/400",
-      "pets-animals": "https://picsum.photos/seed/pets/600/400",
-      "events-celebrations": "https://picsum.photos/seed/events/600/400",
-      "technology-connectivity": "https://picsum.photos/seed/technology/600/400",
-      "language-translation": "https://picsum.photos/seed/language/600/400",
-    };
-    return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
-  };
+  const serviceType = category?.name || service.deliveryMethod || "Service";
 
-  // Generate provider avatar based on service ID for consistency
-  const getProviderAvatar = (serviceId: string) => {
-    const avatars = [
-      "https://picsum.photos/seed/avatar-1/150/150",
-      "https://picsum.photos/seed/avatar-2/150/150",
-      "https://picsum.photos/seed/avatar-3/150/150",
-      "https://picsum.photos/seed/avatar-4/150/150",
-      "https://picsum.photos/seed/avatar-5/150/150",
-      "https://picsum.photos/seed/avatar-6/150/150",
-      "https://picsum.photos/seed/avatar-7/150/150",
-      "https://picsum.photos/seed/avatar-8/150/150",
-      "https://picsum.photos/seed/avatar-9/150/150",
-      "https://picsum.photos/seed/avatar-10/150/150",
-      "https://picsum.photos/seed/avatar-11/150/150",
-      "https://picsum.photos/seed/avatar-12/150/150",
-    ];
-    // Use a hash of the service ID to get a consistent avatar
-    const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return avatars[hash % avatars.length];
-  };
+  // Real provider display name / initials from API data — never fabricated (§13).
+  const providerName =
+    [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") ||
+    service.providerBusinessName ||
+    "Provider";
+  const providerInitials = (
+    [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("") ||
+    service.providerBusinessName?.[0] ||
+    "P"
+  ).toUpperCase();
 
-  // Generate provider name based on service ID
-  const getProviderName = (serviceId: string) => {
-    const firstNames = ["Sarah", "Michael", "Emma", "James", "Sofia", "David", "Olivia", "Daniel", "Isabella", "Alexander", "Mia", "William"];
-    const lastNames = ["Mitchell", "Chen", "Rodriguez", "Thompson", "Garcia", "Wilson", "Lee", "Anderson", "Taylor", "Brown", "Kim", "Davis"];
-    const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return `${firstNames[hash % firstNames.length]} ${lastNames[(hash + 3) % lastNames.length]}`;
-  };
-
-  const providerAvatar = getProviderAvatar(service.id);
-  const providerName = getProviderName(service.id);
-
-  const getStatusColor = (rating: number) => {
-    if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
-    if (rating >= 4.0) return { text: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
-    return { text: "text-green-500 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20" };
-  };
-
-  const statusColor = getStatusColor(rating);
-  const heatScore = Math.round(rating * 20);
+  // Card-family source row (2026-08-25-card-source-link): claimed handle → /s/:handle;
+  // expert without handle → /experts/:id; provider without handle → their /providers card.
+  // Role comes from the /api/discover row (server-derived from users.role). Never a dead link:
+  // when neither a handle nor a resolvable role is present, the name renders as plain text.
+  const sourceHref = service.providerHandle
+    ? `/s/${service.providerHandle}`
+    : isExpertRole(service.providerRole)
+      ? `/experts/${service.userId}`
+      : isProviderRole(service.providerRole)
+        ? `/providers`
+        : null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="group"
-    >
-      <div 
-        className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-500 border border-border h-full flex flex-col"
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="group h-full">
+      <div
+        className="h-full flex flex-col bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-shadow"
         data-testid={`card-service-${service.id}`}
       >
-        {/* Image Header with Overlay */}
+        {/* Photo — honest gradient placeholder (never a stock photo, §13); opens the detail page. */}
         <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
-          <div className="relative h-48 overflow-hidden cursor-pointer">
-            <img
-              src={getCategoryImage(category?.slug || "")}
-              alt={service.serviceName}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-            
-            {/* Heat Score Badge - Top Right */}
-            <div 
-              className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
-              data-testid={`badge-heat-score-${service.id}`}
+          <div className="relative h-[140px] cursor-pointer bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
+            <span
+              className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[var(--earn-ink)]/70 text-white"
+              style={{ fontFamily: EARN_MONO }}
             >
-              <span className={cn(
-                "text-lg font-bold",
-                heatScore >= 90 ? "text-[#FF385C]" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
-              )}>
-                {heatScore}
-              </span>
-            </div>
-            
-            {/* Hot/Trending Badge - Top Left */}
-            <div className="absolute top-3 left-3 flex items-center gap-2">
-              {isHot ? (
-                <span 
-                  className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
-                  data-testid={`badge-hot-${service.id}`}
-                >
-                  <Zap className="w-3 h-3 fill-white" />
-                  Hot
-                </span>
-              ) : isTopExpert ? (
-                <span 
-                  className="px-2.5 py-1 rounded-lg bg-amber-500 dark:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 shadow-lg"
-                  data-testid={`badge-top-expert-${service.id}`}
-                >
-                  <Trophy className="w-3 h-3" />
-                  Top Expert
-                </span>
-              ) : null}
-              {reviewCount > 0 && (
-                <span 
-                  className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1 shadow-sm"
-                  data-testid={`badge-reviews-${service.id}`}
-                >
-                  <Users className="w-3 h-3" />
-                  {reviewCount}
-                </span>
-              )}
-            </div>
-
-            {/* Provider Info & Service Title */}
-            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3">
-              <div className="relative">
-                <img
-                  src={providerAvatar}
-                  alt={providerName}
-                  className="w-12 h-12 rounded-full border-2 border-white object-cover shadow-lg"
-                  data-testid={`img-provider-avatar-${service.id}`}
-                />
-                {isVerified && (
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white">
-                    <CheckCircle className="w-3 h-3 text-white" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 
-                  className="text-lg font-bold text-white line-clamp-1"
-                  data-testid={`text-service-name-${service.id}`}
-                >
-                  {service.serviceName}
-                </h3>
-                <div className="flex items-center gap-2 text-white/90 text-sm">
-                  <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
-                  <span className="text-white/60">•</span>
-                  <MapPin className="w-3 h-3" />
-                  <span data-testid={`text-location-${service.id}`}>{location}</span>
-                </div>
-              </div>
-            </div>
+              {serviceType}
+            </span>
+            <span
+              className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[var(--earn-card)] text-[color:var(--earn-ink)] border border-[color:var(--earn-border)]"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {reviewCount > 0 ? `★ ${rating.toFixed(1)}` : "New"}
+            </span>
           </div>
         </Link>
 
-        {/* Card Content */}
-        <div className="p-4 flex-1 flex flex-col">
-          {/* Description */}
-          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-            {description}
-          </p>
-
-          {/* Category Tags */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {category && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                {category.name}
-              </span>
-            )}
-            {service.deliveryTimeframe && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {service.deliveryTimeframe}
-              </span>
-            )}
-            {service.includesExpertNotes && (
-              <span
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex items-center gap-1"
-                data-testid={`badge-expert-notes-${service.id}`}
-              >
-                📝 Expert Notes
-              </span>
-            )}
-            {(service.revisionsIncluded ?? 0) > 0 && (
-              <span
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-                data-testid={`badge-revisions-${service.id}`}
-              >
-                {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"}
-              </span>
-            )}
-          </div>
-
-          {/* Price and Status */}
-          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-foreground">${price.toFixed(0)}</span>
-              <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                per service
-              </span>
-            </div>
-            <span className={cn(
-              "text-xs font-medium px-2 py-0.5 rounded-full",
-              statusColor.text,
-              statusColor.bg
-            )}>
-              {rating >= 4.5 ? "Busy" : rating >= 4.0 ? "Moderate" : "Available"}
-            </span>
-          </div>
-
-          {/* Service Tip */}
-          {rating >= 4.5 && (
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 mb-3">
-              <div className="flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 line-clamp-2">
-                  {isTopExpert 
-                    ? "Highly rated expert with proven track record and excellent reviews."
-                    : "Quality service provider with consistent positive feedback from clients."}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Bottom Stats Row */}
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border mt-auto" data-testid={`stats-footer-${service.id}`}>
-            <div className="flex items-center gap-1" data-testid={`stat-rating-${service.id}`}>
-              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-              <span className="font-medium">{rating.toFixed(1)}</span>
-            </div>
-            <div className="flex items-center gap-1" data-testid={`stat-reviews-${service.id}`}>
-              <Users className="w-3 h-3" />
-              {reviewCount}
-            </div>
-            {service.deliveryMethod && (
-              <div className="flex items-center gap-1">
-                <Compass className="w-3 h-3" />
-                {service.deliveryMethod}
-              </div>
-            )}
-          </div>
-
-          {/* Add to Cart Button */}
-          {onAddToCart && (
-            <Button
-              size="sm"
-              className={cn(
-                "w-full mt-3",
-                isAdded ? "bg-green-600 hover:bg-green-700" : ""
-              )}
-              onClick={() => onAddToCart(service.id)}
-              disabled={isAddingToCart || isAdded}
-              data-testid={`button-add-to-cart-${service.id}`}
+        {/* Body */}
+        <div className="p-3.5 flex-1 flex flex-col">
+          {isVerified && (
+            <div
+              className="flex items-center gap-1 text-[11px] font-semibold text-[color:var(--earn-green-ink)] mb-1"
+              style={{ fontFamily: EARN_MONO }}
             >
-              {isAdded ? (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Added
-                </>
-              ) : (
-                <>
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                  {isAddingToCart ? "Adding..." : "Add to Cart"}
-                </>
-              )}
-            </Button>
+              <Check className="w-3 h-3" /> Verified local
+            </div>
           )}
+          <h4
+            className="text-[15px] font-semibold text-[color:var(--earn-ink)] leading-snug line-clamp-1"
+            data-testid={`text-service-name-${service.id}`}
+          >
+            {service.serviceName}
+          </h4>
+          <div className="flex items-center gap-1.5 text-[12px] text-[color:var(--earn-muted)] mt-1 flex-wrap">
+            {service.deliveryTimeframe && (
+              <>
+                <Clock className="w-3 h-3 shrink-0" />
+                <span>{service.deliveryTimeframe}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            )}
+            <MapPin className="w-3 h-3 shrink-0" />
+            <span data-testid={`text-location-${service.id}`}>{location}</span>
+          </div>
+
+          {/* Facts row — 3 cols, mono (card family). */}
+          <div
+            className="grid grid-cols-3 gap-2 border-t border-[color:var(--earn-border)] mt-3 pt-2.5"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            <div>
+              <div className="text-[13px] font-semibold text-[color:var(--earn-ink)]">${price.toFixed(0)}</div>
+              <div className="text-[10px] text-[color:var(--earn-muted)]">per service</div>
+            </div>
+            <div>
+              <div className="text-[13px] font-semibold text-[color:var(--earn-ink)]">
+                {reviewCount > 0 ? rating.toFixed(1) : "New"}
+              </div>
+              <div className="text-[10px] text-[color:var(--earn-muted)]">guest rating</div>
+            </div>
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-[color:var(--earn-ink)] truncate">{serviceType}</div>
+              <div className="text-[10px] text-[color:var(--earn-muted)]">service type</div>
+            </div>
+          </div>
+
+          {/* Source row — every card points back to its source (2026-08-25-card-source-link). */}
+          <div className="flex items-center gap-2 mt-2.5 text-[12px] min-w-0">
+            <span
+              className="w-6 h-6 rounded-full bg-[var(--earn-chip)] text-[color:var(--earn-muted)] grid place-items-center text-[10px] font-semibold shrink-0"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {providerInitials}
+            </span>
+            {service.providerHandle ? (
+              <Link
+                href={sourceHref!}
+                className="text-[color:var(--earn-teal-ink)] hover:underline truncate"
+                data-testid={`link-provider-storefront-${service.id}`}
+              >
+                More from <span data-testid={`text-provider-name-${service.id}`}>@{service.providerHandle}</span>
+              </Link>
+            ) : sourceHref ? (
+              <Link
+                href={sourceHref}
+                className="text-[color:var(--earn-teal-ink)] hover:underline truncate"
+                data-testid={`link-provider-storefront-${service.id}`}
+              >
+                More from <span data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+              </Link>
+            ) : (
+              <span className="text-[color:var(--earn-muted)] truncate" data-testid={`text-provider-name-${service.id}`}>
+                {providerName}
+              </span>
+            )}
+          </div>
+
+          {/* Action row — platform state. provider_services are always Traveloure-bookable; the
+              affiliate ("Book on {Partner}") and not-bookable states of the card family live on the
+              partner-activities / viewpoint cards, not on a provider service. */}
+          <div className="border-t border-dashed border-[color:var(--earn-border-dash)] mt-3 pt-2.5">
+            <div
+              className="text-[9.5px] uppercase tracking-wider text-[color:var(--earn-teal-ink)] mb-1.5"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              Book on Traveloure
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                size="sm"
+                className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
+                onClick={() => navigateTo(`/services/${service.id}`)}
+              >
+                Book now
+              </Button>
+              {onAddToCart && (
+                <Button
+                  size="sm"
+                  className={cn(
+                    "bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)] text-white border border-[var(--earn-navy)]",
+                    isAdded && "opacity-90",
+                  )}
+                  onClick={() => onAddToCart(service.id)}
+                  disabled={isAddingToCart || isAdded}
+                  data-testid={`button-add-to-cart-${service.id}`}
+                >
+                  {isAdded ? "Added" : isAddingToCart ? "Adding…" : "Add to trip"}
+                </Button>
+              )}
+            </div>
+            <button
+              type="button"
+              className="text-[12px] text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] mt-2 transition-colors"
+              onClick={() =>
+                navigateTo(`/services?showExperts=true&destination=${encodeURIComponent(location)}`)
+              }
+            >
+              Ask an expert
+            </button>
+          </div>
         </div>
       </div>
     </motion.div>
   );
 }
 
-export default function DiscoverPage() {
+/**
+ * Marketplace un-group (decision-maker ratified Aug 23, ledger
+ * 2026-08-23-marketplace-ungroup): each Marketplace surface is its OWN page —
+ * /destinations, /ready-made, /events, /services — reached straight from the nav
+ * dropdown, with NO tab bar (the grouped header is gone). `surface` is REQUIRED
+ * and pins this component to one surface: the masthead titles itself for that
+ * surface and only the matching TabsContent renders. The legacy tabbed shell and
+ * ?tab= switching were removed (2026-08-25-discover-shell-removed); /discover is a
+ * redirect-only route that maps old ?tab= links onto the surface routes.
+ */
+export type MarketplaceSurface = "travelpulse" | "packages" | "events" | "services";
+
+// Each surface masthead is the earn-grammar band (2026-08-25-marketplace-earn-grammar):
+// a lucide glyph in a teal-wash tile + a Fraunces title + a muted one-line sub, with the
+// four-link Marketplace rail. `icon` is the masthead glyph per 2026-08-25-nav-icons
+// (Destinations Palmtree · Ready-Made Gem · Events Ticket · Services ConciergeBell — never a
+// generic Compass/Store/MapPin/Calendar). NOTE: Lane 2 unifies these into the single
+// NAV_LEAF_ICONS source object (layout.tsx); until then this local map carries the same map.
+const SURFACE_META: Record<MarketplaceSurface, { icon: LucideIcon; title: string; subtitle: string; url: string; seoTitle: string }> = {
+  travelpulse: {
+    icon: Palmtree,
+    title: "Destinations",
+    subtitle: "Explore destinations & trending cities.",
+    url: "/destinations",
+    seoTitle: "Destinations — Trending Cities & Travel Intel",
+  },
+  packages: {
+    icon: Gem,
+    title: "Ready-Made Trips",
+    subtitle: "Guided itineraries crafted by verified experts — buy the plan and travel it your way",
+    url: "/ready-made",
+    seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
+  },
+  events: {
+    icon: Ticket,
+    title: "Events",
+    subtitle: "Upcoming events & activities around the world.",
+    url: "/events",
+    seoTitle: "Events — Festivals & Travel Calendar",
+  },
+  services: {
+    icon: ConciergeBell,
+    title: "Services",
+    subtitle: "Book local expertise for the part of your trip that deserves to feel effortless.",
+    url: "/services",
+    seoTitle: "Services — Tours, Photography, Transport & More",
+  },
+};
+
+// The four Marketplace surfaces in rail order (Destinations · Ready-Made · Events · Services).
+// A plain link list, current one filled navy — not a tab with state (2026-08-25-surface-rail;
+// 2026-08-23-marketplace-ungroup still holds).
+const MARKETPLACE_RAIL: { key: MarketplaceSurface; label: string }[] = [
+  { key: "travelpulse", label: "Destinations" },
+  { key: "packages", label: "Ready-Made" },
+  { key: "events", label: "Events" },
+  { key: "services", label: "Services" },
+];
+
+function TwoFieldSearch({
+  query,
+  onQueryChange,
+  location,
+  onLocationChange,
+  trailing,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  location: string;
+  onLocationChange: (value: string) => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 }}
+      className={cn(
+        "mt-4 grid grid-cols-1 gap-2",
+        trailing ? "sm:grid-cols-[1.4fr_1fr_auto] max-w-4xl" : "sm:grid-cols-[1.4fr_1fr] max-w-3xl",
+      )}
+    >
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="What do you need help with?"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          className="pl-9 h-10 text-foreground"
+          data-testid="input-search"
+        />
+      </div>
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Where are you going?"
+          value={location}
+          onChange={(e) => onLocationChange(e.target.value)}
+          className="pl-9 h-10 text-foreground"
+          data-testid="input-location"
+        />
+      </div>
+      {trailing}
+    </motion.div>
+  );
+}
+
+function ServiceFiltersPopover({
+  minPrice,
+  onMinPriceChange,
+  maxPrice,
+  onMaxPriceChange,
+  minRating,
+  onMinRatingChange,
+  sortBy,
+  onSortByChange,
+  hasActiveFilters,
+  onClear,
+}: {
+  minPrice: number;
+  onMinPriceChange: (value: number) => void;
+  maxPrice: number;
+  onMaxPriceChange: (value: number) => void;
+  minRating: number;
+  onMinRatingChange: (value: number) => void;
+  sortBy: string;
+  onSortByChange: (value: string) => void;
+  hasActiveFilters: boolean;
+  onClear: () => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 whitespace-nowrap"
+          data-testid="button-filters"
+        >
+          <SlidersHorizontal className="w-4 h-4 mr-1.5" />
+          Filters +
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(20rem,calc(100vw-2rem))] space-y-4"
+        data-testid="popover-filters"
+      >
+        <div>
+          <p className="font-medium text-sm">Refine services</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Narrow the list without changing your search.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="number"
+            placeholder="Min $"
+            value={minPrice || ""}
+            onChange={(e) => onMinPriceChange(Number(e.target.value) || 0)}
+            data-testid="input-min-price"
+          />
+          <Input
+            type="number"
+            placeholder="Max $"
+            value={maxPrice || ""}
+            onChange={(e) => onMaxPriceChange(Number(e.target.value) || 0)}
+            data-testid="input-max-price"
+          />
+        </div>
+        <Select value={String(minRating)} onValueChange={(v) => onMinRatingChange(parseFloat(v))}>
+          <SelectTrigger data-testid="select-rating">
+            <SelectValue placeholder="Any rating" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">Any rating</SelectItem>
+            <SelectItem value="3">3.0+ ★</SelectItem>
+            <SelectItem value="4">4.0+ ★</SelectItem>
+            <SelectItem value="4.5">4.5+ ★</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={onSortByChange}>
+          <SelectTrigger data-testid="select-sort">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            {SERVICE_SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex justify-end border-t pt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClear}
+            disabled={!hasActiveFilters}
+            data-testid="button-clear-filters"
+          >
+            Clear
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export default function DiscoverPage({ surface }: { surface: MarketplaceSurface }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
@@ -476,27 +761,34 @@ export default function DiscoverPage() {
   const expertHandoffStartDate = urlParams.get("startDate") || "";
   const expertHandoffEndDate = urlParams.get("endDate") || "";
   const isFromQuickStart = urlParams.get("source") === "quick-start";
+  const [tripCtx] = useTripContext();
+  const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
   
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("rating");
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [minRating, setMinRating] = useState(0);
-  const [page, setPage] = useState(0);
+  const initialQuery = urlParams.get("q") || "";
+  const initialLocation = urlParams.get("location") || expertHandoffDestination || tripDestination;
+  const readNumberParam = (name: string) => {
+    const value = Number(urlParams.get(name));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const initialPage = Math.max(0, (Number.parseInt(urlParams.get("page") || "1", 10) || 1) - 1);
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [locationFilter, setLocationFilter] = useState(initialLocation);
+  const [selectedCategory, setSelectedCategory] = useState(urlParams.get("categoryId") || "all");
+  const [sortBy, setSortBy] = useState(urlParams.get("sortBy") || "rating");
+  const [minPrice, setMinPrice] = useState(readNumberParam("minPrice"));
+  const [maxPrice, setMaxPrice] = useState(readNumberParam("maxPrice"));
+  const [minRating, setMinRating] = useState(readNumberParam("minRating"));
+  const [page, setPage] = useState(initialPage);
+  const hasMountedSearch = useRef(false);
   const limit = 12;
 
   // Trip packages state
-  const [tripSearchQuery, setTripSearchQuery] = useState("");
-  const [selectedTripCategory, setSelectedTripCategory] = useState("all");
   const [favorites, setFavorites] = useState<number[]>([]);
-  const [showAllPackages, setShowAllPackages] = useState(false);
 
   // Cart state
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
@@ -506,30 +798,45 @@ export default function DiscoverPage() {
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
-  // Tab navigation state (read from URL).
-  // articles tab hidden in Phase 1a — fall back to travelpulse.
-  // "packages" added to the URL-addressable set alongside the B4 un-hide of its
-  // TabsTrigger (the trigger + TabsContent already render; this only lets
-  // ?tab=packages deep-link to it, e.g. from the calendar "More info" modal).
-  const VISIBLE_TABS = new Set(["travelpulse", "packages", "events", "services"]);
-  const rawUrlTab = urlParams.get("tab") || "travelpulse";
-  const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
+  // Surface pages are PINNED by their route. The legacy tabbed Discover shell —
+  // ?tab= switching, the TabsList, and the `articles` tab — was removed
+  // (2026-08-25-discover-shell-removed). `surface` is required, so the active
+  // surface IS `surface`. urlCity still seeds CityGrid on /destinations.
   const urlCity = urlParams.get("city") || "";
-  const [activeTab, setActiveTab] = useState(urlTab);
-
-  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks)
-  useEffect(() => {
-    setActiveTab(urlTab);
-  }, [urlTab]);
+  const activeTab = surface;
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-      setPage(0);
+      if (hasMountedSearch.current) setPage(0);
+      else hasMountedSearch.current = true;
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Keep the full discovery state addressable so refreshes, shares, and a
+  // browser-back return from a detail page restore the same result set.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const setOrDelete = (name: string, value: string, omit = false) => {
+      if (!value || omit) params.delete(name);
+      else params.set(name, value);
+    };
+    setOrDelete("q", debouncedQuery);
+    setOrDelete("location", locationFilter);
+    setOrDelete("categoryId", selectedCategory, selectedCategory === "all");
+    setOrDelete("minPrice", String(minPrice), minPrice <= 0);
+    setOrDelete("maxPrice", String(maxPrice), maxPrice <= 0);
+    setOrDelete("minRating", String(minRating), minRating <= 0);
+    setOrDelete("sortBy", sortBy, sortBy === "rating");
+    setOrDelete("page", String(page + 1), page === 0);
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
+      window.history.replaceState(window.history.state, "", nextUrl);
+    }
+  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page]);
 
   // Track search events for tourism analytics
   useEffect(() => {
@@ -594,36 +901,78 @@ export default function DiscoverPage() {
   });
 
   // Expert Templates Query
-  const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
-    queryKey: ["/api/expert-templates"],
+  // Phase-4 shelf: approved cloneable store listings (server-gated teaser feed).
+  // Theme-first redesign (ledger 2026-08-22-ready-made-themes): the shelf organizes around the
+  // listing's declared theme (plan_type — required at submit, closed vocabulary); the author
+  // type demotes to a card badge. This unfiltered feed stays mounted as the source of the chip
+  // rail's REAL per-theme counts.
+  const { data: readyMadeShelfData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+    queryKey: ["/api/ready-made"],
+    staleTime: 60_000,
+  });
+  const readyMadeShelf = readyMadeShelfData?.listings;
+
+  // One theme selected → the server-validated filter. Vocabulary keys ride ?planType=; an
+  // expert-minted theme (ledger 2026-08-22-expert-minted-themes) rides ?customLabel= — the
+  // author's own label is the category, matched against stored data server-side. While the
+  // filtered fetch loads, the client-side subset of the already-fetched feed renders instantly —
+  // same rows by construction (same read-gate, same predicate), so there is no flash of wrong
+  // content. Group-key shapes: "all" | <vocab key> | "custom:<normalized label>" | "custom"
+  // (label-less custom rows) | "__untyped__".
+  const [selectedTheme, setSelectedTheme] = useState<string>("all");
+  const selectedCustomLabel = selectedTheme.startsWith("custom:")
+    ? selectedTheme.slice("custom:".length)
+    : null;
+  const readyMadeThemeUrl = selectedCustomLabel
+    ? `/api/ready-made?customLabel=${encodeURIComponent(selectedCustomLabel)}`
+    : `/api/ready-made?planType=${encodeURIComponent(selectedTheme)}`;
+  const { data: readyMadeThemeData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+    queryKey: [readyMadeThemeUrl],
+    // The plain "custom" group (label-less rows) filters client-side only: ?planType=custom
+    // would also return every LABELED custom listing — a different set than the shelf shows.
+    enabled: selectedTheme !== "all" && selectedTheme !== "custom",
+    staleTime: 60_000,
   });
 
-  // Trending destinations from TravelPulse (replaces hardcoded trip packages)
-  const { data: trendingCitiesData, isLoading: trendingLoading } = useQuery<{ cities: any[]; count: number }>({
-    queryKey: ["/api/travelpulse/cities"],
-  });
+  // Themes present in the live feed, in feed order (badge-first, then approval recency), with
+  // real counts — chips render only for themes that actually have stock (§13: no empty aisles,
+  // never the full 20-key vocabulary as decoration). Expert-minted themes are FIRST-CLASS:
+  // each distinct custom label is its own group (key "custom:<normalized>", display label =
+  // the author's casing at first occurrence) — an expert who types a new theme has created a
+  // browsable category, not a card in a generic bucket. Label-less custom rows keep the plain
+  // "custom" group; untyped grandfathers group under a chip-less trailing shelf.
+  const readyMadeThemes = useMemo(() => {
+    const order: string[] = [];
+    const byTheme = new Map<string, ReadyMadeShelfListing[]>();
+    const customLabels = new Map<string, string>();
+    for (const l of readyMadeShelf ?? []) {
+      let key: string;
+      if (l.planType === "custom") {
+        const label = (l.planTypeCustom ?? "").trim();
+        if (label) {
+          key = `custom:${label.toLowerCase()}`;
+          if (!customLabels.has(key)) customLabels.set(key, label);
+        } else {
+          key = "custom";
+        }
+      } else {
+        key = l.planType ?? "__untyped__";
+      }
+      if (!byTheme.has(key)) {
+        byTheme.set(key, []);
+        order.push(key);
+      }
+      byTheme.get(key)!.push(l);
+    }
+    return { order, byTheme, customLabels };
+  }, [readyMadeShelf]);
 
-  // Map trending cities to trip package format for the Trip Packages tab
-  const trendingTrips = useMemo(() => {
-    if (!trendingCitiesData?.cities?.length) return [];
-    return trendingCitiesData.cities.map((city: any, idx: number) => ({
-      id: idx + 1,
-      title: `Discover ${city.cityName}`,
-      destination: `${city.cityName}, ${city.country}`,
-      duration: city.aiOptimalDuration || "5 days",
-      travelers: "2-4",
-      category: city.vibeTags?.[0] || "adventure",
-      rating: city.pulseScore ? (city.pulseScore / 20).toFixed(1) : "4.5",
-      reviews: city.activeTravelers || 0,
-      price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999, // fee-literal-ok: hotel price display fallback, not optimize fee
-      originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
-      highlights: (city.aiMustSeeAttractions || []).slice(0, 3),
-      expertPick: city.trendingScore > 70,
-      imageUrl: city.imageUrl || `https://picsum.photos/seed/city-${city.cityName?.toLowerCase() || 'travel'}/600/400`,
-      vibeTags: city.vibeTags?.slice(0, 3) || [],
-      citySlug: city.cityName?.toLowerCase().replace(/\s+/g, "-"),
-    }));
-  }, [trendingCitiesData]);
+  // One display-name resolution for group keys, vocab and expert-minted alike.
+  const themeHeadingFor = (key: string): string =>
+    readyMadeThemes.customLabels.get(key) ?? readyMadeThemeHeading(key);
+
+  // TravelPulse city data is consumed directly by the <CityGrid> component in the
+  // travelpulse tab — no mapping needed here.
   
   // Experts query for handoff - fetch experts filtered by destination/experience type
   const expertsApiUrl = useMemo(() => {
@@ -638,6 +987,22 @@ export default function DiscoverPage() {
     queryKey: [expertsApiUrl],
     enabled: showExperts,
   });
+
+  // Partner catalog activities — fetched when the user has narrowed to a location.
+  // Results are shown below the native service grid so real prices (e.g. "$89") are
+  // visible instead of tier symbols; uses catalogItemToUnifiedResult + UnifiedResultGrid.
+  const { data: catalogActivityData, isLoading: catalogActivitiesLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/activities-gyg", locationFilter],
+    enabled: !!locationFilter && activeTab === "services",
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination: locationFilter, limit: "8" });
+      const res = await fetch(`/api/catalog/activities-gyg?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Catalog fetch failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const catalogActivities = (catalogActivityData?.items ?? []).map(catalogItemToUnifiedResult);
   
   // Auto-scroll to experts section when coming from quick-start
   useEffect(() => {
@@ -720,8 +1085,21 @@ export default function DiscoverPage() {
       toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
       return;
     }
+    // §13 honest-or-absent: this page has no destination the user actually told us — no
+    // traveler-count picker either. Prefer a real destination (the cart's own service location,
+    // then whatever the user typed into the location filter); if neither exists, don't invent
+    // "Paris, France" — block with a toast instead of silently fabricating a destination.
+    const knownDestination = cart.items[0]?.service?.location || locationFilter.trim();
+    if (!knownDestination) {
+      toast({
+        title: "Tell us where you're headed",
+        description: "Search or filter by a destination first so we know where to plan for.",
+      });
+      return;
+    }
+
     setCreatingComparison(true);
-    
+
     const cartItems = cart.items.map((item: any) => ({
       name: item.service?.serviceName || "Service",
       category: item.service?.category || "service",
@@ -729,18 +1107,19 @@ export default function DiscoverPage() {
       provider: item.service?.providerName || "Provider",
       location: item.service?.location || ""
     }));
-    
+
     try {
-      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+      // NOTE (payload-preservation): the pre-existing call here never sent `baselineItems` in the
+      // POST body (unlike the other three sites) — only sessionStorage carried the cart snapshot,
+      // for the comparison page's retry path. Preserved exactly; not a candidate fix for this lane.
+      const comparison = await createComparisonRequest({
         title: "My Trip",
-        destination: cart.items[0]?.service?.location || "Paris, France",
+        destination: knownDestination,
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: cart.total,
-        travelers: 2
       });
-      
-      const comparison = await response.json();
+
       sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
       setLocation(`/itinerary-comparison/${comparison.id}`);
     } catch (error: any) {
@@ -769,19 +1148,9 @@ export default function DiscoverPage() {
     maxPrice > 0 || 
     minRating > 0 ||
     locationFilter !== "";
+  const sortLabel = SERVICE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "Top Rated";
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
-
-  // Trip filtering (uses API-driven trending data with hardcoded fallback)
-  const filteredTrips = trendingTrips.filter((trip: any) => {
-    const matchesSearch =
-      tripSearchQuery === "" ||
-      trip.title.toLowerCase().includes(tripSearchQuery.toLowerCase()) ||
-      trip.destination.toLowerCase().includes(tripSearchQuery.toLowerCase());
-    const matchesCategory =
-      selectedTripCategory === "all" || trip.category === selectedTripCategory;
-    return matchesSearch && matchesCategory;
-  });
 
   const toggleFavorite = (id: number) => {
     setFavorites((prev) =>
@@ -789,119 +1158,118 @@ export default function DiscoverPage() {
     );
   };
 
-  const influencerContent: any[] = [];
-
   return (
     <>
-      <SEOHead 
-        title="Discover Services & Experiences"
+      <SEOHead
+        title={SURFACE_META[surface].seoTitle}
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
-        url="/discover"
+        url={SURFACE_META[surface].url}
       />
       <div className="min-h-screen bg-background">
 
-        {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
-            title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
-            row beneath. py-9 = the ratified middle between the old compact py-6
-            single-row and the /experts py-12 masthead. Change the pattern in BOTH
-            places or not at all. */}
-        {/* Funnel PR1: the whole header region (hero + tab bar) lives inside ONE Tabs
-            root so the tab bar renders INSIDE the hero band (Radix TabsList needs the
-            Tabs context). The sections between the hero and the TabsContents are
-            unaffected — Tabs is context, not layout. The hero carries the ONE
-            instructional ad (browse → add to cart → we assemble & optimize); the old
-            AI-Suggestions button, Plan-Experience button, and the standalone banner
-            are all removed — each duplicated another entry (funnel audit, Jul 17).
-            The AI sell lives in the cart's paid-optimization step instead. */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
+        {/* Hero — UNIFIED header band, shared pattern with /experts: navy title +
+            one-line muted subtitle, then the page's control row beneath. py-5 =
+            compacted. Change the pattern in BOTH places or not at all — /experts
+            carries the identical band. */}
+        {/* The legacy tabbed Discover shell was removed (2026-08-25-discover-shell-removed):
+            no TabsList, no tab triggers, no ?tab= switching. `surface` is required and
+            pins the page to one surface; the Tabs root remains only so Radix mounts the
+            matching TabsContent (context, not layout). */}
+        <Tabs value={activeTab} className="w-full">
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
+            {/* Surface masthead = the ratified Ready-Made-by-Theme band: a Fraunces
+                serif title with a leading emoji + a muted one-line sub, left-aligned,
+                content immediately below. The search bar renders ONLY on Services (the
+                surface whose query it feeds). Fraunces is applied inline (loaded in
+                index.html) because --font-serif is a runtime theme token, not a static
+                one. Phase 2 replaces the emoji + this band with the earn-grammar
+                masthead tile + four-link rail. */}
+            {/* Band: teal-wash tile + Fraunces title + sub on the left; MARKETPLACE eyebrow +
+                four-link rail on the right (2026-08-25-surface-rail). The rail renders on every
+                Marketplace surface; the current one is filled navy. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-5"
+              className="flex flex-col md:flex-row md:items-start md:justify-between gap-4"
             >
-              <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
-                Explore Services & Ready Made Trips
-              </h1>
-              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1.5">
-                Expert services, ready-made trips, and AI-powered recommendations.
-              </p>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="max-w-3xl mx-auto"
-            >
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search services, destinations..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10 text-foreground"
-                  data-testid="input-search"
-                />
-              </div>
-              {/* The instructional ad — tells users what to DO (the funnel's one pitch) */}
-              <button
-                type="button"
-                onClick={() => setActiveTab("services")}
-                className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                data-testid="cta-how-it-works"
-              >
-                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
-                <p className="text-sm truncate min-w-0">
-                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
-                  <span className="text-muted-foreground hidden sm:inline">
-                    Browse services and add them to your cart — we assemble &amp; optimize your trip.
-                  </span>
-                </p>
-                <span className="ml-auto flex items-center gap-1 text-sm font-semibold text-[color:var(--earn-teal-ink)] whitespace-nowrap">
-                  Browse services <ArrowRight className="w-4 h-4" />
+              <div className="flex items-start gap-3 text-left">
+                <span className="w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] grid place-items-center shrink-0">
+                  {(() => {
+                    const SurfaceIcon = SURFACE_META[surface].icon;
+                    return <SurfaceIcon className="w-[22px] h-[22px]" />;
+                  })()}
                 </span>
-              </button>
-              {/* Tab bar — inside the hero band (merged header) */}
-              <div className="relative mt-4">
-                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                  <TabsTrigger
-                    value="travelpulse"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-travelpulse"
+                <div>
+                  <h1
+                    className="text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)] leading-tight"
+                    style={{ fontFamily: "'Fraunces', Georgia, serif" }}
                   >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">By&nbsp;</span>Location
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-packages"
-                  >
-                    <Award className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="events"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-events"
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    By Date
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="services"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-services"
-                  >
-                    <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
-                  </TabsTrigger>
-                </TabsList>
-                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+                    <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
+                  </h1>
+                  <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
+                    {SURFACE_META[surface].subtitle}
+                  </p>
+                </div>
               </div>
+              <nav className="md:text-right" aria-label="Marketplace surfaces">
+                <p
+                  className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)] mb-2"
+                  style={{ fontFamily: EARN_MONO }}
+                >
+                  Marketplace
+                </p>
+                <div className="flex flex-wrap md:justify-end gap-1.5" style={{ fontFamily: EARN_MONO }}>
+                  {MARKETPLACE_RAIL.map(({ key, label }) => {
+                    const active = key === surface;
+                    return (
+                      <Link
+                        key={key}
+                        href={SURFACE_META[key].url}
+                        className={cn(
+                          "text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors",
+                          active
+                            ? "bg-[var(--earn-navy)] text-white font-semibold"
+                            : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]",
+                        )}
+                        aria-current={active ? "page" : undefined}
+                        data-testid={`marketplace-route-${key}`}
+                      >
+                        {label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </nav>
             </motion.div>
+             {/* Two-field search (2026-08-25-two-field-search): "what" filters the results, "where"
+                 is the location filter (pre-filled from the trip's destination above). Services adds
+                 its legacy price/rating/sort controls through Filters +. Events has no search. */}
+             {surface !== "events" && (
+               <TwoFieldSearch
+                 query={searchQuery}
+                 onQueryChange={setSearchQuery}
+                 location={locationFilter}
+                 onLocationChange={setLocationFilter}
+                 trailing={
+                   surface === "services" ? (
+                     <ServiceFiltersPopover
+                       minPrice={minPrice}
+                       onMinPriceChange={setMinPrice}
+                       maxPrice={maxPrice}
+                       onMaxPriceChange={setMaxPrice}
+                       minRating={minRating}
+                       onMinRatingChange={setMinRating}
+                       sortBy={sortBy}
+                       onSortByChange={setSortBy}
+                       hasActiveFilters={hasActiveFilters}
+                       onClear={clearFilters}
+                     />
+                   ) : undefined
+                 }
+               />
+             )}
           </div>
         </section>
 
@@ -1086,44 +1454,58 @@ export default function DiscoverPage() {
               {/* Browse Services Tab */}
               <TabsContent value="services">
 
-                {/* Quick Category Chips */}
+                {/* Category chips — earn grammar (2026-08-25-card-family), active = teal fill.
+                    §13: real per-category live-stock counts need a server count endpoint (filed
+                    FOLLOWUP); until it lands these are a curated quick-filter shortlist, never a
+                    fabricated count. */}
                 {categories && categories.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    <Button
-                      key="all"
-                      variant={selectedCategory === "all" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedCategory("all")}
-                      data-testid="button-quick-cat-all"
-                    >
-                      All Services
-                    </Button>
-                    {[
-                      "tours-experiences",
-                      "food-culinary",
-                      "photography-videography",
-                      "transportation-logistics",
-                      "health-wellness",
-                      "visa-assistance",
-                    ]
-                      .map((slug) => categories.find((c: any) => c.slug === slug))
-                      .filter(Boolean)
-                      .map((cat: any) => {
-                        const Icon = categoryIcons[cat.slug] || Globe;
-                        return (
-                          <Button
+                  <>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <button
+                        key="all"
+                        type="button"
+                        onClick={() => setSelectedCategory("all")}
+                        data-testid="button-quick-cat-all"
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
+                          selectedCategory === "all"
+                            ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                            : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                        )}
+                      >
+                        All
+                      </button>
+                      {[
+                        "tours-experiences",
+                        "food-culinary",
+                        "photography-videography",
+                        "transportation-logistics",
+                        "health-wellness",
+                        "visa-assistance",
+                      ]
+                        .map((slug) => categories.find((c: any) => c.slug === slug))
+                        .filter(Boolean)
+                        .map((cat: any) => (
+                          <button
                             key={cat.id}
-                            variant={selectedCategory === cat.id ? "default" : "outline"}
-                            size="sm"
+                            type="button"
                             onClick={() => setSelectedCategory(cat.id)}
                             data-testid={`button-quick-cat-${cat.slug}`}
+                            className={cn(
+                              "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
+                              selectedCategory === cat.id
+                                ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                                : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                            )}
                           >
-                            <Icon className="w-3.5 h-3.5 mr-1.5" />
                             {cat.name}
-                          </Button>
-                        );
-                      })}
-                  </div>
+                          </button>
+                        ))}
+                    </div>
+                    <p className="text-[11.5px] text-[color:var(--earn-muted)] mb-6" style={{ fontFamily: EARN_MONO }}>
+                      Quick category filters for this destination — a curated shortlist, not the full taxonomy.
+                    </p>
+                  </>
                 )}
 
                 {/* Curated Content Hub — shows affiliate + platform-curated items matching destination */}
@@ -1137,137 +1519,30 @@ export default function DiscoverPage() {
                 )}
 
 
-                {/* Unified Filter Bar — one earn-styled bar (mirrors the /experts filter
-                    bar) replacing the old desktop sidebar Card + scattered Location/Sort
-                    row + mobile filter Sheet. Every control inline; wraps on small screens. */}
-                <div className="bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
-                  <div className="relative flex-1 min-w-[170px]">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Location"
-                      value={locationFilter}
-                      onChange={(e) => setLocationFilter(e.target.value)}
-                      className="pl-10"
-                      data-testid="input-location"
-                    />
-                  </div>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-[170px]" data-testid="select-category">
-                      <SelectValue placeholder="All categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All categories</SelectItem>
-                      {(categories ?? []).map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number"
-                    placeholder="Min $"
-                    value={minPrice || ""}
-                    onChange={(e) => setMinPrice(Number(e.target.value) || 0)}
-                    className="w-24"
-                    data-testid="input-min-price"
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max $"
-                    value={maxPrice || ""}
-                    onChange={(e) => setMaxPrice(Number(e.target.value) || 0)}
-                    className="w-24"
-                    data-testid="input-max-price"
-                  />
-                  <Select value={String(minRating)} onValueChange={(v) => setMinRating(parseFloat(v))}>
-                    <SelectTrigger className="w-[130px]" data-testid="select-rating">
-                      <SelectValue placeholder="Any rating" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">Any rating</SelectItem>
-                      <SelectItem value="3">3.0+ ★</SelectItem>
-                      <SelectItem value="4">4.0+ ★</SelectItem>
-                      <SelectItem value="4.5">4.5+ ★</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-[170px]" data-testid="select-sort">
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="rating">Top Rated</SelectItem>
-                      <SelectItem value="reviews">Most Reviews</SelectItem>
-                      <SelectItem value="price_low">Price: Low to High</SelectItem>
-                      <SelectItem value="price_high">Price: High to Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {hasActiveFilters && (
-                    <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
-                      <X className="w-4 h-4 mr-1" />
-                      Clear
-                    </Button>
-                  )}
-                </div>
-
                 <div>
-                    {/* Active Filters */}
-                    {hasActiveFilters && (
-                      <div className="flex items-center gap-2 mb-4 flex-wrap">
-                        <span className="text-sm text-muted-foreground">Active filters:</span>
-                        {selectedCategory !== "all" && (
-                          <Badge variant="secondary" className="gap-1">
-                            {getCategoryById(selectedCategory)?.name}
-                            <button
-                              onClick={() => setSelectedCategory("all")}
-                              data-testid="button-remove-category-filter"
-                              className="ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {minPrice > 0 && (
-                          <Badge variant="secondary" className="gap-1">
-                            Min: ${minPrice}
-                            <button onClick={() => setMinPrice(0)} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {maxPrice > 0 && (
-                          <Badge variant="secondary" className="gap-1">
-                            Max: ${maxPrice}
-                            <button onClick={() => setMaxPrice(0)} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {minRating > 0 && (
-                          <Badge variant="secondary" className="gap-1">
-                            {minRating}+ stars
-                            <button onClick={() => setMinRating(0)} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {locationFilter && (
-                          <Badge variant="secondary" className="gap-1">
-                            {locationFilter}
-                            <button onClick={() => setLocationFilter("")} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={clearFilters}>
-                          Clear all
-                        </Button>
-                      </div>
-                    )}
-
                     {/* Services Grid */}
                     {servicesLoading ? (
                       <CardGridSkeleton count={8} />
                     ) : result?.services && result.services.length > 0 ? (
                       <>
+                        {/* Section head (earn grammar): coral eyebrow with the server's real
+                            count + an editorial Fraunces heading + a real match line (§13). */}
+                        <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
+                          <div>
+                            <p className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>
+                              {selectedCategory === "all"
+                                ? "All services"
+                                : (categories?.find((c: any) => c.id === selectedCategory)?.name ?? "Services")}
+                              {typeof result?.total === "number" ? ` · ${result.total}` : ""}
+                            </p>
+                            <h3 className="text-[22px] font-semibold text-[color:var(--earn-ink)] leading-tight" style={{ fontFamily: "'Fraunces', Georgia, serif" }}>
+                              Good hands, exactly where you need them
+                            </h3>
+                          </div>
+                          <span className="text-[11.5px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+                            {result?.total ?? 0} {(result?.total ?? 0) === 1 ? "match" : "matches"} · {sortLabel}
+                          </span>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                           {result.services.map((service) => (
                             <ServiceCard
@@ -1309,321 +1584,208 @@ export default function DiscoverPage() {
                         )}
                       </>
                     ) : (
-                      <div className="text-center py-16">
+                      <div className="text-center py-16" data-testid="services-no-results">
                         <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No services found</h3>
-                        <p className="text-muted-foreground mb-4">
-                          Try adjusting your search or filters
-                        </p>
-                        <Button variant="outline" onClick={clearFilters}>
-                          Clear Filters
-                        </Button>
+                        {result?.suggestion ? (
+                          <p className="text-muted-foreground mb-4" data-testid="text-search-suggestion">
+                            Did you mean{" "}
+                            <button
+                              type="button"
+                              className="text-primary font-medium underline underline-offset-2 hover:no-underline"
+                              onClick={() => {
+                                setSearchQuery(result.suggestion!);
+                                setPage(0);
+                              }}
+                              data-testid="button-search-suggestion"
+                            >
+                              {result.suggestion}
+                            </button>
+                            ?
+                          </p>
+                        ) : (
+                          <p className="text-muted-foreground mb-4">
+                            Try adjusting your search or filters
+                          </p>
+                        )}
                       </div>
                     )}
+
+                  {/* Partner catalog activities — only shown when a location is filtered.
+                      Uses UnifiedResultGrid + catalogItemToUnifiedResult so real numeric
+                      prices (e.g. "$89") are displayed instead of tier symbols. */}
+                  {locationFilter && (catalogActivitiesLoading || catalogActivities.length > 0) && (
+                    <div className="mt-10" data-testid="section-partner-activities">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Ticket className="h-4 w-4 text-primary" />
+                        <h2 className="text-lg font-semibold">
+                          Activities in {locationFilter}
+                        </h2>
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                          via Partners
+                        </Badge>
+                      </div>
+                      <UnifiedResultGrid
+                        results={catalogActivities}
+                        destination={locationFilter}
+                        isLoading={catalogActivitiesLoading}
+                        showInquiryButton={false}
+                      />
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
-                {/* Ready Made Trips Section (traveler-facing label = "Ready Made Trips"; seller console keeps "templates") */}
-                <div className="mb-10">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <Award className="w-5 h-5 text-primary" />
-                        Ready Made Trips
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Buy a complete, ready-made trip crafted by verified local experts
-                      </p>
-                    </div>
-                    {expertTemplates && expertTemplates.length > 0 && (
-                      <Badge variant="secondary">
-                        {expertTemplates.length} Available
-                      </Badge>
-                    )}
-                  </div>
-
-                  {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
-                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
-                      <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <h3 className="font-semibold text-gray-700 mb-1">No ready-made trips published yet</h3>
-                      <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-                        Verified experts can publish ready-made trips here for travelers to purchase.
-                      </p>
-                      {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
-                        <Link href="/expert/templates">
-                          <Button size="sm" data-testid="button-create-first-template">
-                            Create your first template
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        </Link>
-                      ) : (
-                        <Link href="/expert-status">
-                          <Button size="sm" variant="outline" data-testid="button-become-expert">
-                            Become an expert
-                          </Button>
-                        </Link>
-                      )}
-                    </div>
-                  )}
-
-                  {(expertTemplates && expertTemplates.length > 0) && (
-                    <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {(showAllPackages ? expertTemplates : expertTemplates.slice(0, 6)).map((template, idx) => (
-                        <motion.div
-                          key={template.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.05 }}
-                        >
-                          <Card
-                            className="hover-elevate overflow-hidden group h-full"
-                            data-testid={`card-template-${template.id}`}
-                          >
-                            <CardContent className="p-0 flex flex-col h-full">
-                              <div className="relative h-40 bg-gradient-to-br from-primary/10 to-primary/5">
-                                {template.coverImage ? (
-                                  <img 
-                                    src={template.coverImage} 
-                                    alt={template.title}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="absolute inset-0 flex items-center justify-center text-primary/30">
-                                    <BookOpen className="w-16 h-16" />
-                                  </div>
-                                )}
-                                
-                                {template.isFeatured && (
-                                  <div className="absolute top-3 left-3">
-                                    <Badge>
-                                      <Star className="w-3 h-3 mr-1 fill-current" />
-                                      Featured
-                                    </Badge>
-                                  </div>
-                                )}
-
-                                <div className="absolute bottom-3 right-3 bg-background px-3 py-1.5 rounded-lg shadow-sm">
-                                  <span className="font-bold text-lg">
-                                    ${template.price}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="p-4 flex-1 flex flex-col">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                                  <MapPin className="w-4 h-4" />
-                                  <span>{template.destination}</span>
-                                </div>
-
-                                <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                                  {template.title}
-                                </h3>
-
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3 flex-1">
-                                  {template.shortDescription || template.description}
-                                </p>
-
-                                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-3">
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="w-4 h-4" />
-                                    {template.duration} days
-                                  </span>
-                                  {template.averageRating && parseFloat(template.averageRating) > 0 && (
-                                    <span className="flex items-center gap-1">
-                                      <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                                      {parseFloat(template.averageRating).toFixed(1)} ({template.reviewCount || 0})
-                                    </span>
-                                  )}
-                                  {template.salesCount && template.salesCount > 0 && (
-                                    <span className="flex items-center gap-1">
-                                      <Users className="w-4 h-4" />
-                                      {template.salesCount} sold
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex flex-wrap gap-1 mb-4">
-                                  {template.highlights?.slice(0, 2).map((h) => (
-                                    <Badge key={h} variant="secondary" className="text-xs">
-                                      {h}
-                                    </Badge>
-                                  ))}
-                                  {template.highlights && template.highlights.length > 2 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{template.highlights.length - 2} more
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                <Link href={`/expert-templates/${template.id}`}>
-                                  <Button className="w-full" data-testid={`button-view-template-${template.id}`}>
-                                    View & Purchase
-                                    <ArrowRight className="w-4 h-4 ml-2" />
-                                  </Button>
-                                </Link>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </motion.div>
-                      ))}
-                    </div>
-
-                    {expertTemplates.length > 6 && (
-                      <div className="text-center mt-6">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowAllPackages((v) => !v)}
-                          data-testid="button-view-all-templates"
-                        >
-                          {showAllPackages ? (
-                            <>Show fewer</>
-                          ) : (
-                            <>
-                              View all {expertTemplates.length} trips
-                              <ArrowRight className="w-4 h-4 ml-2" />
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-
-                    </>
-                  )}
-                </div>
-
-                {templatesLoading && (
+                {/* D3 (lane nav-storefront): the tab's content is width-aligned to the hero
+                    band (max-w-6xl) — the surrounding shared container is max-w-[1400px]
+                    for the other tabs, which left this tab visibly wider than its own
+                    header. Scoped here so the services tab keeps its wide grid. */}
+                <div className="max-w-6xl mx-auto">
+                {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
+                    sectioned by author type per the ratified store model. Surfaced now that the buy
+                    loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
+                    the shelf is empty — never an empty aisle.
+                     D3 naming: ready_made_trips = "Ready-Made Trips" (the purchasable ready-made
+                     products); the author-type sections become subheadings under that one banner. */}
+                {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
-                    <Skeleton className="h-6 w-48 mb-6" />
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-72 rounded-lg" />
-                      ))}
+                    {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
+                        live stock render, with real counts — never the full 20-key vocabulary
+                        as empty aisles (§13). Order follows the feed (badge-first, recency). */}
+                    <div className="flex flex-wrap gap-2 mb-2" data-testid="rail-ready-made-themes">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTheme("all")}
+                        data-testid="button-theme-chip-all"
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
+                          selectedTheme === "all"
+                            ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                            : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                        )}
+                      >
+                        All experiences
+                      </button>
+                      {readyMadeThemes.order
+                        .filter((key) => key !== "__untyped__")
+                        .map((key) => {
+                          // Expert-minted groups ("custom:<label>") slugify their testid since
+                          // author labels aren't DOM-safe.
+                          const isMinted = key.startsWith("custom:");
+                          const testKey = isMinted
+                            ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
+                            : key;
+                          const count = readyMadeThemes.byTheme.get(key)?.length ?? 0;
+                          const active = selectedTheme === key;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setSelectedTheme(key)}
+                              data-testid={`button-theme-chip-${testKey}`}
+                              className={cn(
+                                "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors inline-flex items-center gap-1.5",
+                                active
+                                  ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                                  : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                              )}
+                            >
+                              {themeHeadingFor(key)}
+                              <span className="text-[11px] font-semibold" style={{ fontFamily: EARN_MONO }}>{count}</span>
+                            </button>
+                          );
+                        })}
                     </div>
+                    <p className="text-[11.5px] text-[color:var(--earn-muted)] mb-6" style={{ fontFamily: EARN_MONO }}>
+                      Chips render only for themes with at least one live listing. Counts are real, never the full taxonomy.
+                    </p>
+
+                    {selectedTheme === "all" ? (
+                      // Theme shelves — the experience is the organizing idea; author type is a
+                      // badge on the card (the old "Trips by Locals"/"Trips by Trip Planners"
+                      // sections demoted, not lost).
+                      readyMadeThemes.order.map((key) => {
+                        const rows = readyMadeThemes.byTheme.get(key) ?? [];
+                        if (rows.length === 0) return null;
+                        const sectionKey = key.startsWith("custom:")
+                          ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
+                          : key;
+                        return (
+                          <div key={key} className="mb-8" data-testid={`section-theme-${sectionKey}`}>
+                            <div className="flex items-baseline gap-3 mb-3">
+                              <h3 className="text-lg font-semibold">{themeHeadingFor(key)}</h3>
+                              {rows.length > 3 && (
+                                <button
+                                  type="button"
+                                  className="ml-auto text-sm font-medium text-primary hover:underline"
+                                  onClick={() => setSelectedTheme(key)}
+                                  data-testid={`button-theme-see-all-${sectionKey}`}
+                                >
+                                  See all {rows.length} →
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {rows.slice(0, 3).map((l) => (
+                                <ReadyMadeThemeCard key={l.id} listing={l} />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      (() => {
+                        // Server-filtered rows once loaded; the client-side subset of the same
+                        // gated feed renders instantly meanwhile (same predicate by construction).
+                        // Expert-minted keys match on the normalized author label; the plain
+                        // "custom" group (label-less rows) is client-side only by design.
+                        const filteredRows =
+                          readyMadeThemeData?.listings ??
+                          (readyMadeShelf ?? []).filter((l) =>
+                            selectedCustomLabel !== null
+                              ? l.planType === "custom" &&
+                                (l.planTypeCustom ?? "").trim().toLowerCase() === selectedCustomLabel
+                              : selectedTheme === "custom"
+                                ? l.planType === "custom" && !(l.planTypeCustom ?? "").trim()
+                                : l.planType === selectedTheme,
+                          );
+                        return (
+                          <>
+                            <div
+                              className="flex items-center gap-3 flex-wrap rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 mb-4 text-sm"
+                              data-testid="bar-theme-filter"
+                            >
+                              <span>
+                                Showing <strong>{filteredRows.length}</strong>{" "}
+                                {themeHeadingFor(selectedTheme)} trip{filteredRows.length === 1 ? "" : "s"}
+                              </span>
+                              <button
+                                type="button"
+                                className="ml-auto font-medium text-primary underline"
+                                onClick={() => setSelectedTheme("all")}
+                                data-testid="button-theme-clear"
+                              >
+                                Show all experiences
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {filteredRows.map((l) => (
+                                <ReadyMadeThemeCard key={l.id} listing={l} />
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()
+                    )}
                   </div>
                 )}
 
+                </div>
+
               </TabsContent>
 
-              {/* Influencer Curated Content Tab */}
-              <TabsContent value="articles">
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
-                      <Sparkles className="w-3 h-3 mr-1" />
-                      Creator Spotlight
-                    </Badge>
-                  </div>
-                  <h2 className="text-2xl font-bold mb-2">Curated by Travel Creators</h2>
-                  <p className="text-muted-foreground">Discover authentic recommendations from verified travel influencers and local experts.</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {influencerContent.map((content, idx) => (
-                    <motion.div
-                      key={content.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      whileHover={{ y: -4 }}
-                      transition={{ duration: 0.2, delay: idx * 0.05 }}
-                    >
-                      <Card
-                        className="hover-elevate overflow-hidden cursor-pointer group h-full"
-                        data-testid={`card-influencer-${content.id}`}
-                      >
-                        <CardContent className="p-0 flex flex-col h-full">
-                          <div className="relative h-44 overflow-hidden">
-                            {content.imageUrl ? (
-                              <img
-                                src={content.imageUrl}
-                                alt={content.title}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-pink-500/10 flex items-center justify-center">
-                                <Camera className="h-12 w-12 text-purple-500/30" />
-                              </div>
-                            )}
-                            
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                            
-                            <div className="absolute top-3 right-3">
-                              <Badge 
-                                className={cn(
-                                  "text-xs border-0 font-medium",
-                                  content.platform === "instagram" && "bg-gradient-to-r from-purple-500 to-pink-500 text-white",
-                                  content.platform === "youtube" && "bg-red-500 text-white",
-                                  content.platform === "tiktok" && "bg-black text-white",
-                                  content.platform === "linkedin" && "bg-blue-600 text-white"
-                                )}
-                              >
-                                {content.platform === "instagram" && "Instagram"}
-                                {content.platform === "youtube" && "YouTube"}
-                                {content.platform === "tiktok" && "TikTok"}
-                                {content.platform === "linkedin" && "LinkedIn"}
-                              </Badge>
-                            </div>
-
-                            <div className="absolute bottom-3 left-3 right-3">
-                              <div className="flex items-center gap-3">
-                                <img
-                                  src={content.avatarUrl}
-                                  alt={content.creatorName}
-                                  className="w-10 h-10 rounded-full border-2 border-white object-cover"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-white font-semibold text-sm truncate">{content.creatorName}</p>
-                                  <p className="text-white/70 text-xs">{content.creator}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="p-4 flex-1 flex flex-col">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="text-xs">
-                                {content.category}
-                              </Badge>
-                              <Badge className="text-xs bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Verified
-                              </Badge>
-                            </div>
-                            
-                            <h3 className="font-semibold text-base mb-2 group-hover:text-[#FF385C] transition-colors line-clamp-2 flex-1">
-                              {content.title}
-                            </h3>
-                            
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-                              <MapPin className="w-4 h-4 text-[#FF385C]" />
-                              <span>{content.destination}</span>
-                            </div>
-                            
-                            <div className="flex items-center justify-between text-sm pt-3 border-t">
-                              <span className="flex items-center gap-1 text-muted-foreground">
-                                <Users className="w-4 h-4" />
-                                {content.followers}
-                              </span>
-                              <span className="flex items-center gap-1 text-emerald-600 font-medium">
-                                <TrendingUp className="w-4 h-4" />
-                                {content.engagementRate}
-                              </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-
-                <div className="text-center mt-8">
-                  <Button variant="outline" className="px-8" data-testid="button-view-all-creators">
-                    View All Creators
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              </TabsContent>
 
               {/* Events Tab - Global Calendar */}
               <TabsContent value="events">
@@ -1632,7 +1794,9 @@ export default function DiscoverPage() {
 
               {/* TravelPulse Tab */}
               <TabsContent value="travelpulse">
-                <CityGrid selectedCityName={urlCity} />
+                {/* On the /destinations SURFACE the masthead is the page header, so
+                    suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
+                <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />
               </TabsContent>
           </div>
         </section>
@@ -1663,10 +1827,9 @@ export default function DiscoverPage() {
           </div>
         </section>
 
-        {/* Earn on Traveloure — relocated from the hidden `packages` tab so the
-            Apply-to-Earn funnel is reachable on a visible surface (the packages
-            tab is not in VISIBLE_TABS). Role-gated: experts see "create a
-            template", everyone else sees "become an expert". */}
+        {/* Earn on Traveloure — the Apply-to-Earn funnel, always rendered below the
+            surface content. Role-gated: experts see "create a template", everyone
+            else sees "become an expert". */}
         <section className="py-16 border-t">
           <div className="container mx-auto px-4 max-w-4xl text-center">
             <h2 className="text-3xl font-bold mb-4">
@@ -1678,15 +1841,15 @@ export default function DiscoverPage() {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
-                <Link href="/expert/templates">
+                <Link href="/expert/workspace">
                   <Button size="lg" className="px-8" data-testid="button-create-first-template">
-                    Create your first template
+                    Build a store trip in the Workstation
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
               ) : (
                 <Link href="/expert-status">
-                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert">
+                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert-hero">
                     Become an expert
                   </Button>
                 </Link>

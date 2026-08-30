@@ -46,6 +46,9 @@ export const users = pgTable("users", {
   role: varchar("role", { length: 30 }).default("user"),
   bio: varchar("bio", { length: 500 }),
   specialties: jsonb("specialties").default([]),
+  // Namespaced user preferences (migration 150, backoffice B6): the Settings console reads/writes
+  // ONLY the `settings` key via GET/PATCH /api/me/preferences (zod allow-list + shallow merge).
+  preferences: jsonb("preferences").default({}),
   termsAcceptedAt: timestamp("terms_accepted_at"),
   privacyAcceptedAt: timestamp("privacy_accepted_at"),
   termsVersion: varchar("terms_version", { length: 20 }),
@@ -64,6 +67,23 @@ export const users = pgTable("users", {
   backgroundCheckConfirmed: boolean("background_check_confirmed").default(false),
   // Multi-currency: user's preferred display/charge currency
   preferredCurrency: varchar("preferred_currency", { length: 3 }).default("USD"),
+  // Public storefront handle (/p/{handle}) — backoffice Phase 1a (migration 136). Nullable =
+  // not claimed. Format + reserved words enforced app-side in storefront.routes.ts (no DB CHECK).
+  handle: varchar("handle", { length: 30 }).unique(),
+  // FP-1 (migration 146): the user's Stripe Customer id — the durable anchor for saved payment
+  // methods + off-session one-click charges. Cards live only in Stripe's vault, never here.
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  // Migration 147: Stripe CONNECT payout account (distinct from the Customer above — this is
+  // the earner's receiving account). These were read/written by storage.getUserStripeAccount/
+  // updateUserStripeAccount all along but never existed in schema or DB — the whole Connect
+  // chain (status/onboard/payout-readiness/webhook) threw on a schema-true database.
+  stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+  stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
+  canReceivePayments: boolean("can_receive_payments").default(false),
+  // Notification email (migration 207): experts/providers can set a separate business
+  // email for booking alert emails. Falls back to `email` when null. Never used for
+  // login/auth — account email is always authoritative for security flows.
+  notificationEmail: varchar("notification_email", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).
@@ -77,8 +97,28 @@ export const users = pgTable("users", {
   isSuspended: boolean("is_suspended").default(false).notNull(),
   suspendedAt: timestamp("suspended_at"),
   suspensionReason: varchar("suspension_reason", { length: 500 }),
+  // Vacation mode (migration 189, provider back-office wave, decision-maker approved Aug 9
+  // 2026). Business-level flag — NEVER touches provider_services rows. Non-null vacationUntil
+  // AND in the future = away; read at QUERY TIME by search/storefront/advisor/checkout surfaces
+  // (enforcement lands in the feature build, not here). Confirmed bookings are unaffected.
+  vacationUntil: timestamp("vacation_until"),
+  vacationMessage: varchar("vacation_message", { length: 200 }),
+  // Migration 223: opt-out flag for booking-alert emails. Default true = send alerts. Experts
+  // can disable this from Settings → Notifications so they rely on in-app notifications only.
+  emailBookingAlerts: boolean("email_booking_alerts").default(true),
+  // Plus occasions lane (ledger 2026-08-27-plus-is-delivery, migration 260): the member's
+  // home city — a launch/operating-market city string. In resident mode the scheduled occasion
+  // draft is built from THIS city's own gems/services, not a travel destination. Nullable = not
+  // set; the occasion-drafts scheduler skips a member with no home city (never errors). No DB
+  // CHECK — validated app-side against the market list, not the database (publish-trap posture).
+  homeCity: varchar("home_city", { length: 120 }),
 }, (table) => [
   index("users_role_idx").on(table.role),
+  // Migrations 102 + 105: partial indexes for soft-delete and suspension fast-paths.
+  // Declared here — drizzle push drops indexes not present in this file, which would
+  // remove these before any migration re-runs them.
+  index("users_is_deleted_idx").on(table.isDeleted).where(sql`is_deleted = true`),
+  index("users_is_suspended_idx").on(table.id).where(sql`is_suspended = true`),
 ]);
 
 export type UpsertUser = typeof users.$inferInsert;
@@ -97,7 +137,12 @@ export const passwordResetTokens = pgTable(
     usedAt: timestamp("used_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
-  (table) => [index("idx_password_reset_user").on(table.userId)],
+  (table) => [
+    index("idx_password_reset_user").on(table.userId),
+    // Migration 021: partial index for token expiry scans (only un-used tokens).
+    // Declared here — drizzle push drops undeclared indexes on publish.
+    index("idx_password_reset_expires").on(table.expiresAt).where(sql`used_at IS NULL`),
+  ],
 );
 
 // Email verification on signup. Same shape as password_reset_tokens — single-use,
@@ -113,5 +158,10 @@ export const emailVerificationTokens = pgTable(
     usedAt: timestamp("used_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
-  (table) => [index("idx_email_verification_user").on(table.userId)],
+  (table) => [
+    index("idx_email_verification_user").on(table.userId),
+    // Migration 022: partial index for token expiry scans (only un-used tokens).
+    // Declared here — drizzle push drops undeclared indexes on publish.
+    index("idx_email_verification_expires").on(table.expiresAt).where(sql`used_at IS NULL`),
+  ],
 );

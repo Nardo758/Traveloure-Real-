@@ -1,11 +1,11 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Building,
   MapPin,
   Phone,
   Mail,
@@ -14,13 +14,154 @@ import {
   Users,
   Calendar,
   Camera,
-  Edit,
-  CheckCircle
+  CheckCircle,
+  Pencil,
+  Loader2,
 } from "lucide-react";
+import { useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { initialsFromUser } from "@/lib/initials";
+import {
+  LocationPointPicker,
+  parseStoredPoint,
+  formatPoint,
+  type LocationPoint,
+} from "@/components/backoffice/location-point-picker";
 
-export default function ProviderProfile() {
+// Console IA C9 (§17 17→9 collapse): this page is hosted as Settings' FIRST tab (provider
+// settings.tsx lazy-mounts it with embedded — the expert C8 pattern). It has no internal
+// ?tab= reading, so no param seam is needed; embedded skips the ProviderLayout wrap and the
+// page's own p-6 (the Settings tab container already provides both).
+// /provider/profile redirects to /provider/settings?tab=profile.
+//
+// Punchlist Phase 3 (§13 honesty), amended by the Aug 10 2026 provider-console fix wave
+// (docs/findings/PROVIDER_CONSOLE_IMPROVEMENT_AUDIT.md): of the page's original 7
+// "Edit"/"Change logo"/"Manage" buttons, SIX stay removed — their fields (businessName,
+// businessType, address, phone, website, amenities, capacities, photos) are not real `users`
+// columns (shared/models/auth.ts) and no route writes them (PATCH /api/provider/settings
+// covers the seven booking/payout prefs only). Honest absence beats dead chrome; re-add
+// those only alongside a real backing endpoint. The Phase-3 note's "none are real columns"
+// overreached for ONE control: `users.bio` (the About text below) IS a real column, written
+// by the mounted PATCH /api/profile (server/replit_integrations/auth/routes.ts
+// updateProfileSchema) — so Edit About is WIRED to that rail. The avatar likewise shows
+// the real profileImageUrl when set and computes real initials (shared lib/initials.ts, the
+// sidebar's logic) instead of the old hardcoded "GE". Intake-fixes C3 (ratified Aug 27
+// 2026): the photo-UPLOAD rail now exists here too — PATCH /api/expert/photo is the SHARED
+// earner photo rail (isAuthenticated, not role-gated; validates + writes
+// users.profileImageUrl), so the provider camera button reuses it verbatim, no fork.
+export default function ProviderProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
+  const { toast } = useToast();
+
+  // Edit About — the one profile field with a real write rail (PATCH /api/profile → users.bio,
+  // the same endpoint/pattern useAuth's updatePreferredCurrency already uses).
+  const [editingAbout, setEditingAbout] = useState(false);
+  const [aboutDraft, setAboutDraft] = useState("");
+
+  const saveAboutMutation = useMutation({
+    mutationFn: async (bio: string) => {
+      const res = await apiRequest("PATCH", "/api/profile", { bio });
+      return res.json();
+    },
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(["/api/auth/user"], updatedUser);
+      setEditingAbout(false);
+      toast({ title: "About updated", description: "Your business description has been saved." });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't save",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Intake-fixes C3: profile photo upload through the SHARED earner photo rail
+  // (PATCH /api/expert/photo — isAuthenticated, not role-gated; server-validates
+  // type + decoded size and writes users.profileImageUrl). Mirrors the expert
+  // profile page's uploader (expert/profile.tsx) — same rail, no fork.
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (imageData: string) =>
+      apiRequest("PATCH", "/api/expert/photo", { imageData }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Profile photo updated" });
+    },
+    onError: (error: any) => {
+      let message = "Failed to upload photo";
+      try {
+        const raw: string = error?.message ?? "";
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart !== -1) {
+          const body = JSON.parse(raw.slice(jsonStart));
+          if (body?.message) message = body.message;
+        }
+      } catch {}
+      toast({ title: message, variant: "destructive" });
+    },
+  });
+
+  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const allowed = ["image/png", "image/jpeg"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Photo must be a PNG or JPEG image", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Photo must be smaller than 2 MB", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        uploadPhotoMutation.mutate(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Ruling 85: the provider's account-level office / place-of-business location. GET returns the
+  // provider form (or null); the ONLY fields this card touches are `officeLocation` (the confirmed
+  // {address,lat,lng} pin — NULL = not set, rendered honestly) and `address` (the existing free-text
+  // business address, reused only as the geocode SEED — never written by this card).
+  const { data: providerForm } = useQuery<{ address?: string; officeLocation?: { address?: string | null; lat: number; lng: number } | null } | null>({
+    queryKey: ["/api/provider-application"],
+  });
+  const officeLocation = providerForm?.officeLocation ?? null;
+  const officePoint: LocationPoint | null = officeLocation
+    ? parseStoredPoint(officeLocation.lat, officeLocation.lng)
+    : null;
+
+  const saveOfficeLocationMutation = useMutation({
+    // A confirmed point, or null to clear. The picker only ever calls onChange after an explicit
+    // Confirm / Remove, so every save here is a provider-confirmed value (§13).
+    mutationFn: async (point: LocationPoint | null) => {
+      const payload = point
+        ? { officeLocation: { address: providerForm?.address ?? null, lat: point.lat, lng: point.lng } }
+        : { officeLocation: null };
+      const res = await apiRequest("PATCH", "/api/provider-application", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider-application"] });
+      toast({ title: "Office location saved", description: "New listings will pre-fill their map pin from this." });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't save office location",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const businessInfo = {
     name: user?.businessName || `${user?.firstName} ${user?.lastName}`.trim() || "Service Provider",
@@ -50,22 +191,35 @@ export default function ProviderProfile() {
 
   const photos = user?.photos || [];
 
-  return (
-    <ProviderLayout title="Business Profile">
-      <div className="p-6 space-y-6">
+  const content = (
+      <div className={embedded ? "space-y-6" : "p-6 space-y-6"}>
         {/* Header Card */}
         <Card>
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-6">
               <div className="relative">
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={handlePhotoSelected}
+                  data-testid="input-provider-photo-file"
+                />
                 <Avatar className="w-24 h-24">
-                  <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C] text-2xl">GE</AvatarFallback>
+                  {user?.profileImageUrl && <AvatarImage src={user.profileImageUrl} alt={businessInfo.name} />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl" data-testid="text-avatar-initials">
+                    {initialsFromUser(user)}
+                  </AvatarFallback>
                 </Avatar>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="absolute -bottom-2 -right-2 rounded-full w-8 h-8"
-                  data-testid="button-change-logo"
+                {/* Intake-fixes C3: upload goes through the SHARED earner photo rail
+                    (PATCH /api/expert/photo → users.profileImageUrl) — see header comment. */}
+                <Button
+                  size="icon"
+                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-primary"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
+                  data-testid="button-provider-change-photo"
                 >
                   <Camera className="w-4 h-4" />
                 </Button>
@@ -82,7 +236,7 @@ export default function ProviderProfile() {
                   )}
                 </div>
                 <p className="text-console-dark">{businessInfo.type}</p>
-                
+
                 <div className="flex flex-wrap items-center gap-4 mt-3">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
@@ -109,9 +263,7 @@ export default function ProviderProfile() {
                   )}
                 </div>
               </div>
-              <Button data-testid="button-edit-profile">
-                <Edit className="w-4 h-4 mr-2" /> Edit Profile
-              </Button>
+              {/* No businessName/businessType write rail exists — button removed. */}
             </div>
           </CardContent>
         </Card>
@@ -120,29 +272,73 @@ export default function ProviderProfile() {
           {/* About & Contact */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle>About</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-about">
-                  <Edit className="w-4 h-4" />
-                </Button>
+                {!editingAbout && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAboutDraft(user?.bio ?? "");
+                      setEditingAbout(true);
+                    }}
+                    data-testid="button-edit-about"
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
-                <p className="text-console-dark" data-testid="text-description">{businessInfo.description}</p>
+                {editingAbout ? (
+                  <div className="space-y-3">
+                    <Textarea
+                      value={aboutDraft}
+                      onChange={(e) => setAboutDraft(e.target.value.slice(0, 500))}
+                      maxLength={500}
+                      rows={4}
+                      placeholder="Tell travelers about your business…"
+                      data-testid="input-about"
+                    />
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-console-mid">{aboutDraft.length}/500</p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingAbout(false)}
+                          disabled={saveAboutMutation.isPending}
+                          data-testid="button-cancel-about"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => saveAboutMutation.mutate(aboutDraft)}
+                          disabled={saveAboutMutation.isPending}
+                          data-testid="button-save-about"
+                        >
+                          {saveAboutMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-console-dark" data-testid="text-description">{businessInfo.description}</p>
+                )}
               </CardContent>
             </Card>
 
             {/* Photos */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No photo-management rail exists — button removed. */}
                 <CardTitle>Photos ({photos.length})</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-manage-photos">
-                  <Camera className="w-4 h-4 mr-1" /> Manage
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {photos.map((photo) => (
-                    <div 
+                    <div
                       key={photo.id}
                       className="aspect-video bg-console-bg rounded-lg flex items-center justify-center relative group"
                       data-testid={`photo-${photo.id}`}
@@ -159,11 +355,9 @@ export default function ProviderProfile() {
 
             {/* Capacity */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No capacity-write rail exists (not a real users column) — button removed. */}
                 <CardTitle>Venue Capacity</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-capacity">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -194,11 +388,9 @@ export default function ProviderProfile() {
           <div className="space-y-6">
             {/* Contact Info */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No address/phone/website write rail exists — button removed. */}
                 <CardTitle>Contact Information</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-contact">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-start gap-3">
@@ -220,20 +412,52 @@ export default function ProviderProfile() {
               </CardContent>
             </Card>
 
+            {/* Office / place of business (ruling 85) — the account-level confirmed location that
+                pre-fills a NEW listing's map pin. Two entry paths in one control: type the business
+                address (geocoded via POST /api/geocode) OR drop/adjust a pin; the point persists
+                ONLY on explicit Confirm. NULL renders honestly as "not set" — never a fake pin. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" /> Office / place of business
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-console-mid">
+                  Set your business location once. New service listings will pre-fill their map pin
+                  from it, so you don&apos;t have to place it every time (you can still adjust or
+                  remove the pin per listing).
+                </p>
+                <div className="text-sm" data-testid="text-office-location-status">
+                  {officePoint ? (
+                    <span className="text-console-dark">Saved: {formatPoint(officePoint)}</span>
+                  ) : (
+                    <span className="text-console-mid">No office location set yet.</span>
+                  )}
+                </div>
+                <LocationPointPicker
+                  value={officePoint}
+                  addressHint={providerForm?.address || ""}
+                  onChange={(point) => saveOfficeLocationMutation.mutate(point)}
+                  label="Place your office on the map"
+                  helpText="Type your business address and press Find, or drop a pin, then Confirm. This is saved to your account and used to pre-fill new listings."
+                  idPrefix="office-location"
+                />
+              </CardContent>
+            </Card>
+
             {/* Amenities */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No amenities write rail exists (not a real users column) — button removed. */}
                 <CardTitle>Amenities</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-amenities">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
                   {amenities.map((amenity, index) => (
-                    <Badge 
-                      key={index} 
-                      variant="outline" 
+                    <Badge
+                      key={index}
+                      variant="outline"
                       className="text-console-dark"
                       data-testid={`badge-amenity-${index}`}
                     >
@@ -246,6 +470,9 @@ export default function ProviderProfile() {
           </div>
         </div>
       </div>
-    </ProviderLayout>
   );
+
+  // C9: embedded, the host Settings page already provides the ProviderLayout shell.
+  if (embedded) return content;
+  return <ProviderLayout title="Business Profile">{content}</ProviderLayout>;
 }

@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:15
+        image: public.ecr.aws/docker/library/postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -76,6 +76,47 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - name: Assert referenced scripts exist at their expected paths
+        # Guards against scripts/verify-migration-ledger.ts or
+        # scripts/verify-fee-config-parity.ts being renamed or moved.
+        # If either file no longer exists at its expected path the step that
+        # invokes it below would fail with a cryptic "file not found" error with
+        # no hint about where to update the path reference.  This step surfaces
+        # the breakage immediately with a message pointing directly at this file.
+        #
+        # Fix when this fails:
+        #   Either restore the file to its expected path OR update both the
+        #   npx tsx invocation below AND this check to match the new location.
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+
+          check_path() {
+            local FILE="$1"
+            local WORKFLOW_STEP="$2"
+            if [ ! -f "$FILE" ]; then
+              echo "::error file=.github/workflows/selection-controls-gate.yml::Script not found at expected path: $FILE"
+              echo "  The step \"$WORKFLOW_STEP\" references this file."
+              echo "  Either restore $FILE to that path, or update the path in"
+              echo "  .github/workflows/selection-controls-gate.yml to match the new location."
+              FAIL=1
+            else
+              echo "✅  $FILE exists"
+            fi
+          }
+
+          check_path "scripts/verify-migration-ledger.ts"  "Verify migration ledger is idempotent"
+          check_path "scripts/verify-fee-config-parity.ts" "Verify fee-config parity (display == charge, #2)"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more scripts referenced by this workflow are missing."
+            echo "See the error annotations above for details."
+            exit 1
+          fi
+
+          echo "All referenced scripts are present at their expected paths ✅"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         id: playwright-cache
@@ -107,11 +148,6 @@ jobs:
           # Stripe key stub — stripe.service.ts throws at import if this is unset.
           # No real Stripe API calls are made during selection-controls tests.
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          # Amadeus stub — new Amadeus({clientId}) runs at module load time and throws
-          # ArgumentError if clientId is undefined. Providing a stub prevents the
-          # server crash on import; no real Amadeus API calls are made in CI.
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           # Build identity — exposed via GET /api/version so tests can assert
           # they are talking to this PR's artifact, not a stale deployment.
           GIT_COMMIT: ${{ github.sha }}
@@ -158,6 +194,13 @@ jobs:
         env:
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Assert spec file exists (selection-controls)
+        run: |
+          if [ ! -f "playwright/tests/selection-controls.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/selection-controls.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
       - name: Selection-controls DOM test
         run: npx playwright test selection-controls --project=chromium
         env:
@@ -177,7 +220,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:15
+        image: public.ecr.aws/docker/library/postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -218,8 +261,6 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           # Keyless AI: stub grokService.generateAutonomousItinerary so journey-2A's
@@ -249,6 +290,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           E2E_TEST_PASSWORD: TestPass123!
+      - name: Assert spec file exists (journey-2)
+        run: |
+          if [ ! -f "e2e/specs/journey-2.spec.ts" ]; then
+            echo "::error::Spec file not found: e2e/specs/journey-2.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
       - name: Journey-2 E2E test (Stage 3 exit gate)
         # Uses playwright.local.config.ts: testDir=./e2e/specs + globalSetup
         # that accepts http://localhost (NODE_ENV=development skips the Secure

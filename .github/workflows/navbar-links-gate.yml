@@ -128,7 +128,10 @@ jobs:
   # them, skips the expensive install/build, and goes straight to running tests.
   # ─────────────────────────────────────────────────────────────────────────
   navbar-links-smoke:
-    name: navbar-links-smoke (Playwright DOM gate)
+    # NOTE: this check name must EXACTLY equal the branch-protection required-status
+    # context "navbar-links-smoke" — a descriptive suffix here orphans the required
+    # context and leaves it stuck "Expected — Waiting for status to be reported".
+    name: navbar-links-smoke
     runs-on: ubuntu-latest
     needs: [setup]
     # 40, not 20: the three suites run serially and app-routes now visits ~176
@@ -138,7 +141,7 @@ jobs:
     timeout-minutes: 40
     services:
       postgres:
-        image: postgres:15
+        image: public.ecr.aws/docker/library/postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -159,6 +162,27 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      - name: Assert spec files exist (navbar-links-smoke suites)
+        # Guard: if any spec file is renamed or deleted, Playwright silently
+        # reports "0 passed" and exits 0 — letting the gate go green with no
+        # tests actually run.  This step fails fast before any test invocation.
+        run: |
+          missing=0
+          for f in \
+            playwright/tests/crash-filter-unit.spec.ts \
+            playwright/tests/navbar-links.spec.ts \
+            playwright/tests/footer-links.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Spec file not found: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::One or more spec files are missing — rename or restore them before re-running this gate."
+            exit 1
+          fi
+          echo "All spec files present ✅"
 
       - name: Crash-filter unit tests (pure logic, no browser needed)
         # Verifies the console-error filter predicates in
@@ -203,13 +227,14 @@ jobs:
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
           STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
           RESEND_API_KEY: re_ci_stub_no_real_calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
+          # P0 fail-safe gate (server/index.ts): a production-bundle boot purges
+          # test accounts unless explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
           PORT: 5000
           PGUSER: postgres
           PGPASSWORD: postgres
@@ -261,7 +286,9 @@ jobs:
   # Runs in parallel with setup — it needs no browser, no server, no DB.
   # ─────────────────────────────────────────────────────────────────────────
   hardcoded-links-check:
-    name: hardcoded-links-check (static analysis)
+    # Must EXACTLY equal the branch-protection required context "hardcoded-links-check"
+    # (see the navbar-links-smoke note above) — no descriptive suffix.
+    name: hardcoded-links-check
     runs-on: ubuntu-latest
     # No PostgreSQL service — pure file-system analysis, no DB or server needed.
     timeout-minutes: 5
@@ -274,6 +301,26 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      - name: Assert spec files exist (hardcoded-links-check suites)
+        # Guard: if any spec file is renamed or deleted, Playwright silently
+        # reports "0 passed" and exits 0 — letting the gate go green with no
+        # tests actually run.  This step fails fast before any test invocation.
+        run: |
+          missing=0
+          for f in \
+            playwright/tests/hardcoded-links.spec.ts \
+            playwright/tests/dynamic-links.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Spec file not found: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::One or more spec files are missing — rename or restore them before re-running this gate."
+            exit 1
+          fi
+          echo "All spec files present ✅"
 
       - name: Hardcoded-link cross-check (static href/to literals vs App.tsx routes)
         # Scans every .tsx / .ts file in client/src/ (except nav-config.ts, which

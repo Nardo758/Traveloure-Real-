@@ -5,14 +5,17 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { storage } from '../storage';
 import Stripe from 'stripe';
 import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
-import { sendBookingConfirmationEmail } from './email.service';
+import { enqueueBookingConfirmationEmail } from './email-outbox.service';
+import { sendBookingAlertEmail } from './email.service';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
@@ -89,10 +92,23 @@ class BookingService {
     
     // Use UUID format for consistency with the rest of the application
     const tripId = this.generateUUID();
-    
+
+    // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
+    const trackingNumber = await storage.generateTrackingNumber('TRV');
     await db.execute(sql`
-      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, created_at)
-      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', NOW())
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, created_at)
+      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, NOW())
+    `);
+
+    // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
+    // assignment only (never trips.userId), so a trip minted without this row 403s
+    // its own owner until the boot-time backfill seed happens to run. Same posture
+    // as storage.createTrip; raw SQL because this path is raw SQL (id has no DB
+    // default — supply it, mirroring server/seeds/trip-ownership.seed.ts).
+    await db.execute(sql`
+      INSERT INTO trip_collaborators (id, trip_id, user_id, role, created_at)
+      VALUES (gen_random_uuid()::text, ${tripId}, ${userId}, 'owner', NOW())
+      ON CONFLICT (trip_id, user_id) DO NOTHING
     `);
     
     console.log(`Created trip ${tripId} for ${cartItems.length} booking items`);
@@ -301,17 +317,69 @@ class BookingService {
           }
           finalPrice = dbPrice;
         } else {
-          // AI-generated item — no catalog price exists, so the client's number is
-          // the only source (§14 residual, filed). Sanitize it hard: a negative or
-          // non-finite "price" would REDUCE the PaymentIntent total for the whole
-          // cart (pay less for the real items), so clamp to [0, 100000]. This is
-          // the buyer's own charge — no payout derives from it. money-derive-ok
-          const rawPrice = Number(item.price);
-          finalPrice = Number.isFinite(rawPrice) ? Math.min(Math.max(rawPrice, 0), 100000) : 0;
-          if (finalPrice !== item.price) {
-            console.warn(
-              `[BookingService] Sanitized AI-item price for "${item.title}": client sent ${item.price}, using ${finalPrice}.`
-            );
+          // AI-generated item — resolve price from server record only (§14).
+          // Never trust the client-supplied price value.
+          const itineraryRecord = await db.execute(sql`
+            SELECT estimated_cost AS price FROM itinerary_items WHERE id = ${item.id} LIMIT 1
+          `);
+
+          if (itineraryRecord.rows && itineraryRecord.rows.length > 0) {
+            const serverPrice = itineraryRecord.rows[0].price;
+            finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
+            console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_items: ${finalPrice}`);
+          } else {
+            // Fall back to itinerary variant items (optimizer output).
+            // PROVENANCE RULE (ledger 2026-08-22-booking-price-provenance, decision-maker
+            // ratified): `itinerary_variant_items.price` is written VERBATIM from the LLM's
+            // JSON at variant insert — server-side storage, model provenance. It is never a
+            // §14 "server record" for a charge. So this branch re-derives the price from the
+            // variant item's LINKED CATALOG ROW (`provider_service_id` → `provider_services.price`,
+            // a link only ever set for services actually offered to the AI), and REFUSES an
+            // unlinked item outright — a pure AI invention has no priceable record, and
+            // apply-to-cart already skips such items, so nothing legitimate books through here.
+            const variantRecord = await db.execute(sql`
+              SELECT price, provider_service_id FROM itinerary_variant_items WHERE id = ${item.id} LIMIT 1
+            `);
+
+            if (variantRecord.rows && variantRecord.rows.length > 0) {
+              const linkedServiceId = variantRecord.rows[0].provider_service_id as string | null;
+              const llmPrice = variantRecord.rows[0].price;
+              if (!linkedServiceId) {
+                console.error(
+                  `[BookingService] REFUSED: variant item "${item.title}" (id=${item.id}) has no ` +
+                  `catalog link — its stored price is LLM-authored and cannot back a charge.`
+                );
+                errors.push(`Cannot verify price for "${item.title}" — this AI-proposed item has no catalog listing.`);
+                continue;
+              }
+              const catalogRecord = await db.execute(sql`
+                SELECT price FROM provider_services WHERE id = ${linkedServiceId} LIMIT 1
+              `);
+              const catalogPrice = catalogRecord.rows?.[0]?.price;
+              if (catalogPrice === undefined || catalogPrice === null) {
+                console.error(
+                  `[BookingService] REFUSED: variant item "${item.title}" (id=${item.id}) links to ` +
+                  `catalog row ${linkedServiceId} but that row is missing or unpriced.`
+                );
+                errors.push(`Cannot verify price for "${item.title}" — its listing is no longer available.`);
+                continue;
+              }
+              finalPrice = Number(catalogPrice);
+              // Visibility: how often the stored LLM figure would have differed from the catalog.
+              if (llmPrice !== null && Number(llmPrice) !== finalPrice) {
+                console.warn(
+                  `[BookingService] Variant price provenance: "${item.title}" stored LLM price ` +
+                  `${Number(llmPrice)} != catalog price ${finalPrice} (service ${linkedServiceId}). Using catalog.`
+                );
+              }
+              console.log(`[BookingService] AI-item "${item.title}" price re-derived from catalog row ${linkedServiceId}: ${finalPrice}`);
+            } else {
+              console.error(
+                `[BookingService] No server price record found for AI item "${item.title}" (id=${item.id}). Rejecting.`
+              );
+              errors.push(`Cannot verify price for "${item.title}" — no server record found (id=${item.id}).`);
+              continue;
+            }
           }
         }
 
@@ -451,7 +519,61 @@ class BookingService {
           status: 'pending_provider',
         });
 
-        // TODO: Send notification to provider
+        // Fire-and-forget: in-app notification + email to provider for new booking request
+        if (item.providerId) {
+          const reqId = insertedRequest?.id;
+          const providerId = item.providerId;
+          const title = item.title;
+          const date = item.date;
+          const time = item.time;
+          const price = item.price;
+          ;(async () => {
+            try {
+              const { storage } = await import('../storage');
+              const peopleRow = await db.execute(sql`
+                SELECT
+                  t.first_name AS t_first, t.last_name AS t_last,
+                  p.email AS p_email, p.notification_email AS p_notification_email,
+                  p.first_name AS p_first, p.last_name AS p_last,
+                  p.email_booking_alerts AS p_email_booking_alerts
+                FROM users t, users p
+                WHERE t.id = ${userId} AND p.id = ${providerId}
+              `);
+              const row = peopleRow.rows?.[0] as any;
+              const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
+              // Use notification_email (task #114) if set, else fall back to primary email
+              const providerEmail = (row?.p_notification_email || row?.p_email) as string | null;
+              const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+              // Migration 225: skip alert email when provider has opted out (default true)
+              const providerEmailBookingAlerts = row?.p_email_booking_alerts !== false;
+
+              await storage.createNotification({
+                userId: providerId,
+                type: 'booking_request',
+                title: 'New Booking Request',
+                message: `${travelerName} requested "${title}" on ${date}${time ? ' at ' + time : ''}.`,
+                relatedId: reqId,
+                relatedType: 'booking_request',
+                data: { bookingRequestId: reqId, serviceTitle: title, travelerName, requestedDate: date, requestedTime: time ?? null },
+              });
+
+              if (providerEmail && providerEmailBookingAlerts) {
+                sendBookingAlertEmail({
+                  providerEmail,
+                  providerName,
+                  bookingId: reqId || '',
+                  serviceName: title,
+                  travelerName,
+                  amount: String(price ?? 0),
+                }).catch(err =>
+                  console.error(`[BookingService] Provider booking request email failed for request ${reqId}:`, err)
+                );
+              }
+            } catch (notifErr) {
+              console.error(`[BookingService] Failed to notify provider ${providerId} of booking request:`, notifErr);
+            }
+          })();
+        }
       } catch (error: any) {
         errors.push(`Error submitting request for ${item.title}: ${error.message}`);
       }
@@ -535,7 +657,9 @@ class BookingService {
 
     // Gate 2: load the booking row for all subsequent checks.
     const bookingRow = await db.execute(sql`
-      SELECT user_id, status FROM bookings WHERE id = ${bookingId}
+      SELECT user_id, status, provider_id, service_amount, platform_fee, total_amount,
+             provider_payout, title, travelers, booking_date
+      FROM bookings WHERE id = ${bookingId}
     `);
 
     if (!bookingRow.rows || bookingRow.rows.length === 0) {
@@ -544,7 +668,18 @@ class BookingService {
       throw err;
     }
 
-    const booking = bookingRow.rows[0] as { user_id: string; status: string };
+    const booking = bookingRow.rows[0] as {
+      user_id: string;
+      status: string;
+      provider_id: string | null;
+      service_amount: string | null;
+      platform_fee: string | null;
+      total_amount: string | null;
+      provider_payout: string | null;
+      title: string | null;
+      travelers: number | null;
+      booking_date: string | null;
+    };
 
     // Gate 3: verify the booking belongs to the requesting user.
     if (booking.user_id !== userId) {
@@ -580,20 +715,166 @@ class BookingService {
 
     const confirmationCode = this.generateConfirmationCode();
 
-    await db.execute(sql`
-      UPDATE bookings SET
-        status = 'confirmed',
-        payment_status = 'succeeded',
-        confirmed_at = NOW(),
-        confirmation_code = ${confirmationCode},
-        deposit_paid = true,
-        stripe_payment_intent_id = ${paymentIntentId}
-      WHERE id = ${bookingId}
-        AND status = 'pending_payment'
-    `);
+    // Pre-compute earnings values before entering the transaction (avoids async imports inside tx)
+    const providerId = booking.provider_id;
+    const providerPayoutAmt = parseFloat(booking.provider_payout || '0');
+    const platformFeeAmt = parseFloat(booking.platform_fee || '0');
+    const totalAmt = parseFloat(booking.total_amount || '0');
 
-    // TODO: Update provider earnings
-    // TODO: Decrease availability
+    const { availableAtFor } = await import('../config/earnings-hold.config');
+    const { PROCESSING_FEE_RATE } = await import('./commission');
+    const earningsAvailableAt = availableAtFor('service_booking');
+
+    // Atomic transaction: confirm booking + record earnings + decrement availability.
+    // All three succeed or all roll back together.
+    await db.transaction(async (tx) => {
+      // 1. Confirm the booking — must match exactly 1 row to proceed.
+      //    Using RETURNING id so we can check the affected count inside the tx.
+      const updateResult = await tx.execute(sql`
+        UPDATE bookings SET
+          status = 'confirmed',
+          payment_status = 'succeeded',
+          confirmed_at = NOW(),
+          confirmation_code = ${confirmationCode},
+          deposit_paid = true,
+          stripe_payment_intent_id = ${paymentIntentId}
+        WHERE id = ${bookingId}
+          AND status = 'pending_payment'
+        RETURNING id
+      `);
+
+      // Guard: if 0 rows were updated, another concurrent confirm already won.
+      // Abort the transaction before writing any earnings / availability rows.
+      if (!updateResult.rows || updateResult.rows.length === 0) {
+        const err = new Error(
+          `Booking ${bookingId} was not in 'pending_payment' status — concurrent confirmation detected`
+        );
+        (err as any).code = 'BOOKING_ALREADY_CONFIRMED';
+        throw err;
+      }
+
+      if (providerId) {
+        // 2. Record provider earnings ledger entry (born held; released after clearance window)
+        //    MONEY_MAP F-4: this is a raw tx INSERT that deliberately mirrors the canonical writer
+        //    storage.createProviderEarning (server/storage.ts) for transactional atomicity — the
+        //    booking confirm + earnings write + revenue write must all commit or roll back together,
+        //    which the canonical writer (a separate `db.insert`) cannot guarantee inside this tx.
+        //    Any column/side-effect change to storage.createProviderEarning must be mirrored here.
+        if (providerPayoutAmt > 0) {
+          const earningId = crypto.randomUUID();
+          await tx.execute(sql`
+            INSERT INTO provider_earnings (
+              id, provider_id, type, amount, currency,
+              source_type, source_id, description, status, available_at, created_at
+            ) VALUES (
+              ${earningId}, ${providerId}, 'service_booking',
+              ${String(providerPayoutAmt)}, 'USD',
+              'booking', ${bookingId},
+              ${`Earnings from booking ${bookingId}${booking.title ? ' - ' + booking.title : ''}`},
+              'held', ${earningsAvailableAt}, NOW()
+            )
+          `);
+        }
+
+        // 3. Record platform revenue entry
+        //    MONEY_MAP F-4: this is a raw tx INSERT that deliberately mirrors the canonical writer
+        //    storage.recordPlatformRevenue (server/storage.ts, which also updates the daily summary)
+        //    for transactional atomicity within this cart-confirm tx. Any column/side-effect change
+        //    to storage.recordPlatformRevenue must be mirrored here (note: this raw INSERT does NOT
+        //    call updateDailyRevenueSummary — that divergence is pre-existing and out of scope for F-4).
+        if (platformFeeAmt > 0) {
+          const revenueId = crypto.randomUUID();
+          const netAmount = platformFeeAmt * (1 - PROCESSING_FEE_RATE);
+          const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
+          // ON CONFLICT DO NOTHING targets the partial unique index
+          // platform_revenue_booking_mint_uniq (migration 203):
+          //   UNIQUE (source_id) WHERE source_type = 'booking_commission' AND gross_amount >= 0
+          // This makes the INSERT idempotent: if the transaction is retried (e.g., a Stripe
+          // webhook fires twice) the second attempt silently skips rather than inserting a
+          // duplicate revenue row.  MONEY_MAP F-4 comment above still applies.
+          await tx.execute(sql`
+            INSERT INTO platform_revenue (
+              id, source_type, source_id, gross_amount, platform_fee,
+              net_amount, processing_fees, provider_id, provider_earnings,
+              description, status, transaction_date, created_at
+            ) VALUES (
+              ${revenueId}, 'booking_commission', ${bookingId},
+              ${String(totalAmt)}, ${String(platformFeeAmt)},
+              ${String(netAmount)}, ${String(processingFees)},
+              ${providerId}, ${String(providerPayoutAmt)},
+              ${`Booking commission from booking ${bookingId}`},
+              'recorded', NOW(), NOW()
+            )
+            ON CONFLICT (source_id) WHERE source_type = 'booking_commission' AND gross_amount >= 0
+            DO NOTHING
+          `);
+        }
+
+        // 4. (REMOVED — Partner Demand 2C, ledger 2026-08-17-partner-demand-2c-sunset.) This
+        //    decremented `provider_availability`, a confirmed ORPHAN table: 0 rows, NO insert path
+        //    anywhere in the repo, and no readers (bookable truth is `vendor_availability_slots`;
+        //    declared availability is `provider_availability_schedule`). The UPDATE matched zero
+        //    rows on every booking confirmation — a proven no-op — so removing it changes no
+        //    behavior and unblocks the table DROP (migration 242). It was the ONLY live writer the
+        //    row-count-based R7 pass missed; verify-then-delete (R1) with the writer gone first.
+      }
+    });
+
+    // Fire-and-forget: provider in-app notification + email (non-critical; must not block caller)
+    ;(async () => {
+      try {
+        if (!providerId) return;
+        const { storage } = await import('../storage');
+        const peopleRow = await db.execute(sql`
+          SELECT
+            t.first_name AS t_first, t.last_name AS t_last,
+            p.email AS p_email, p.notification_email AS p_notification_email,
+            p.first_name AS p_first, p.last_name AS p_last,
+            p.email_booking_alerts AS p_email_booking_alerts
+          FROM users t, users p
+          WHERE t.id = ${userId} AND p.id = ${providerId}
+        `);
+        const row = peopleRow.rows?.[0] as any;
+        const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
+        // Use notification_email (task #114) if set, else fall back to primary email
+        const providerEmail = (row?.p_notification_email || row?.p_email) as string | null;
+        const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+        // Migration 225: skip alert email when provider has opted out (default true)
+        const providerEmailBookingAlerts = row?.p_email_booking_alerts !== false;
+
+        await storage.createNotification({
+          userId: providerId,
+          type: 'booking_confirmed',
+          title: 'Booking Confirmed',
+          message: `${travelerName} confirmed "${booking.title || 'a booking'}"${booking.booking_date ? ' on ' + booking.booking_date : ''}. Confirmation: ${confirmationCode}.`,
+          relatedId: bookingId,
+          relatedType: 'booking',
+          data: {
+            bookingId,
+            serviceTitle: booking.title,
+            travelerName,
+            bookingDate: booking.booking_date,
+            confirmationCode,
+            providerPayout: providerPayoutAmt,
+          },
+        });
+
+        if (providerEmail && providerEmailBookingAlerts) {
+          sendBookingAlertEmail({
+            providerEmail,
+            providerName,
+            bookingId,
+            serviceName: booking.title || 'Service booking',
+            travelerName,
+            amount: String(booking.total_amount || providerPayoutAmt),
+          }).catch(err =>
+            console.error(`[BookingService] Provider booking confirmed email failed for booking ${bookingId}:`, err)
+          );
+        }
+      } catch (notifErr) {
+        console.error(`[BookingService] Post-confirmation notifications failed for booking ${bookingId}:`, notifErr);
+      }
+    })();
 
     // Fire-and-forget confirmation email — must not block the caller
     db.execute(sql`
@@ -605,16 +886,14 @@ class BookingService {
     `).then(result => {
       const row = result?.rows?.[0] as any;
       if (row?.email) {
-        sendBookingConfirmationEmail({
+        enqueueBookingConfirmationEmail({
           toEmail: row.email,
           userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
           bookingId,
           bookingTitle: row.title || 'Your booking',
           bookingDate: row.booking_date ?? null,
           confirmationCode,
-        }).catch(err =>
-          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
-        );
+        });
       }
     }).catch(err =>
       console.error(`[email] failed to fetch booking details for confirmation email (booking ${bookingId}):`, err)
@@ -784,15 +1063,28 @@ class BookingService {
     const budget = saved.budget || null;
     const tripId = crypto.randomUUID();
 
+    // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
+    const trackingNumber = await storage.generateTrackingNumber('TRV');
     await db.execute(sql`
       INSERT INTO trips (
         id, user_id, title, destination, start_date, end_date,
-        number_of_travelers, budget, status, created_at, updated_at
+        number_of_travelers, budget, status, tracking_number, created_at, updated_at
       ) VALUES (
         ${tripId}, ${userId}, ${`Trip to ${destination}`}, ${destination},
         ${startDate}, ${endDate}, ${travelers}, ${budget},
-        'planning', NOW(), NOW()
+        'planning', ${trackingNumber}, NOW(), NOW()
       )
+    `);
+
+    // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
+    // assignment only (never trips.userId), so a trip minted without this row 403s
+    // its own owner until the boot-time backfill seed happens to run. Same posture
+    // as storage.createTrip; raw SQL because this path is raw SQL (id has no DB
+    // default — supply it, mirroring server/seeds/trip-ownership.seed.ts).
+    await db.execute(sql`
+      INSERT INTO trip_collaborators (id, trip_id, user_id, role, created_at)
+      VALUES (gen_random_uuid()::text, ${tripId}, ${userId}, 'owner', NOW())
+      ON CONFLICT (trip_id, user_id) DO NOTHING
     `);
 
     return { tripId };

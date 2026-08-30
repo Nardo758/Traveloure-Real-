@@ -112,7 +112,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:15
+        image: public.ecr.aws/docker/library/postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -169,13 +169,14 @@ jobs:
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
           STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
           RESEND_API_KEY: re_ci_stub_no_real_calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
+          # P0 fail-safe gate (server/index.ts): a production-bundle boot purges
+          # test accounts unless explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
           PORT: 5000
           # Test-only: allow the plain-http localhost session cookie to be set
           # so globalSetup's ci-* logins yield reusable sessions. NEVER in prod.
@@ -197,6 +198,14 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a node || true
           exit 1
+
+      - name: Assert spec file exists (app-routes)
+        run: |
+          if [ ! -f "playwright/tests/app-routes.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/app-routes.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
 
       - name: App route coverage (all <Route path="..."> entries in App.tsx)
         # Extracts every path registered in client/src/App.tsx at test-collection

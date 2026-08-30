@@ -11,16 +11,32 @@ a deploy and caches per-role auth state.
 ## Layout
 
 ```
-playwright.e2e.config.ts      # desktop + mobile, points at $E2E_BASE_URL
+playwright.e2e.config.ts        # AUTH harness  → $E2E_STAGING_BASE_URL (has globalSetup)
+playwright.e2e.public.config.ts # PUBLIC harness → $E2E_BASE_URL (NO globalSetup, no login)
 e2e/
   global-setup.ts             # logs in each role once → e2e/auth/<role>.json
   fixtures/
     accounts.ts               # role → seeded account; password from env
+    base-url.ts               # single staging-first target resolution
     roles.ts                  # authFile() + extended test w/ console-error capture
   specs/
-    smoke.spec.ts             # proves the harness works
+    public-smoke.spec.ts      # UNAUTHENTICATED — the production smoke
+    smoke.spec.ts             # AUTHED — staging only
   auth/                       # generated storageState (gitignored)
 ```
+
+## Two targets (read this first)
+
+Production **purges** every `@traveloure.test` account on boot (PR #319 P0 fix), so an
+auth-dependent suite structurally cannot pass against it — the old deploy smoke died in
+`global-setup.ts` with a 401 on every PR for weeks. The suites are therefore split:
+
+| Harness | Target env var | Auth | Workflow |
+|---|---|---|---|
+| `playwright.e2e.public.config.ts` | `E2E_BASE_URL` (**production**) | none | `e2e-deploy-smoke.yml` |
+| `playwright.e2e.config.ts` | `E2E_STAGING_BASE_URL` (**staging**) | seeded accounts | `e2e-staging-auth-smoke.yml`, `e2e-tests.yml` |
+
+Provisioning staging is an owner action — see **`docs/STAGING.md`**.
 
 ## Install (on your PC)
 
@@ -31,39 +47,47 @@ npx playwright install chromium
 
 ## Env
 
-Copy `.env.e2e.example` → `.env.e2e` (gitignored) and set `E2E_BASE_URL` +
-`E2E_TEST_PASSWORD`. With `dotenv` installed the config auto-loads it; otherwise
-export the vars into your shell.
+Copy `.env.e2e.example` → `.env.e2e` (gitignored) and set `E2E_STAGING_BASE_URL`
+(auth runs), `E2E_BASE_URL` (public prod runs) and `E2E_TEST_PASSWORD`. With
+`dotenv` installed the config auto-loads it; otherwise export the vars into your shell.
 
 ## Run
 
 ```bash
-npx playwright test -c playwright.e2e.config.ts                  # all projects
-npx playwright test -c playwright.e2e.config.ts --project=chromium smoke
+npm run test:e2e:public          # UNAUTHENTICATED prod smoke  (needs E2E_BASE_URL)
+npm run test:e2e:staging:smoke   # AUTHED staging smoke        (needs E2E_STAGING_BASE_URL)
+npm run test:e2e:staging         # full authed journey suite   (needs E2E_STAGING_BASE_URL)
 npx playwright show-report
 ```
 
-(Also wired as `npm run test:e2e:deploy` etc. — see package.json.)
-
-> **`E2E_BASE_URL` is required and must be HTTPS.** There's no localhost
+> **The target is required and must be HTTPS.** There's no localhost
 > fallback: the app's session cookie is `Secure`, so it's silently dropped over
 > http (login 200, then `/api/auth/user` 401 reading as bad creds). The config
 > throws if it's unset; global-setup throws if it isn't `https://`.
 
 ## Specs
 
-- `specs/smoke.spec.ts` — landing renders (no console errors) + traveler/expert
-  sessions are authenticated (API-login fixture).
+- `specs/public-smoke.spec.ts` — **unauthenticated**: public routes render (no 404 /
+  blank shell) + `/health`, `/api/version`, `/api/ready` answer. This is what runs
+  against production. Never add a login to it.
+- `specs/smoke.spec.ts` — **authed, staging only**: landing renders with a session
+  (no console errors) + traveler/expert sessions are authenticated (API-login fixture).
 - `specs/login-ui.spec.ts` — drives the real **SignInModal** UI (desktop +
   mobile-hamburger triggers) so modal regressions are caught; the API fixture
   only covers session setup, not the human login path.
 
 ## CI
 
-`.github/workflows/e2e-deploy-smoke.yml` runs `test:e2e:deploy:smoke` against
-`secrets.E2E_BASE_URL` / `secrets.E2E_TEST_PASSWORD`. **Non-blocking by design** —
-it skips cleanly (green) when those secrets are absent and is NOT a required
-check. Promote to required only after a green run with secrets.
+- `.github/workflows/e2e-deploy-smoke.yml` runs `test:e2e:public` against
+  `secrets.E2E_BASE_URL`. No password, no login.
+- `.github/workflows/e2e-staging-auth-smoke.yml` runs `test:e2e:staging:smoke` against
+  `secrets.E2E_STAGING_BASE_URL`.
+
+Both are **non-blocking by design** (not required checks). When the target secret is
+absent the test job is **skipped (grey)** and the final check renames itself to
+`… DID NOT RUN`, with a run-summary banner — a not-configured run must never read as a
+pass. When the target IS configured, failures are real and stay red: there is no
+`continue-on-error` and no skip-on-401.
 
 ## Swap points — as filled from the real app
 

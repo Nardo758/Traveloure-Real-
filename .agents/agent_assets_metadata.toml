@@ -12,3 +12,122 @@ id = "6FLOc_pIkgpvirqf9ObwE"
 uri = "file://Traveloure-Technical-Architecture.md"
 type = "text"
 title = "Traveloure — Full Technical Architecture Document"
+
+[[outputs]]
+id = "JdlxcFuxe9C22BJu8E0jP"
+uri = "file://preview/provider-console-preview.html"
+type = "text"
+title = "Provider Console — Sidebar + Catalog preview"
+description = "Visual verification of the three UI changes: user identity card moved to sidebar header, active nav color changed to teal #35605A, Distribute badge added, and health bar repositioned to top of listing right column."
+
+[[outputs]]
+id = "1oG_vxhEKbK7-ioYbqNGS"
+uri = "file://docs/audits/optimized-slip-review-visual/light-desktop.png"
+type = "image"
+title = "Optimized Slip Review — light desktop"
+description = "Authenticated review page at 1440×1000."
+
+[[outputs]]
+id = "9PPjb36Vvmj4ADM3AGwXC"
+uri = "file://docs/audits/optimized-slip-review-visual/dark-desktop.png"
+type = "image"
+title = "Optimized Slip Review — dark desktop"
+description = "Authenticated review page with dark-color preference at 1440×1000."
+
+[[outputs]]
+id = "OZnI7yqJDa8XfBnBA5Bwi"
+uri = "file://docs/audits/optimized-slip-review-visual/light-mobile.png"
+type = "image"
+title = "Optimized Slip Review — light mobile"
+description = "Authenticated review page at 390×844."
+
+[[outputs]]
+id = "WyN2EK2_HABNnwHHLbHxD"
+uri = "file://screenshots/dispatch-destinations.jpg"
+type = "image"
+title = "Marketplace — Destinations"
+description = "Verified /destinations masthead and CityGrid surface."
+
+[[outputs]]
+id = "cp3x8iksz2eFqDCRNkHqm"
+uri = "file://screenshots/dispatch-ready-made.jpg"
+type = "image"
+title = "Marketplace — Ready-Made Trips"
+description = "Verified /ready-made masthead and Ready-Made shelf."
+
+[[outputs]]
+id = "rZUmqd9KBAPcnec5MvCT4"
+uri = "file://screenshots/dispatch-events.jpg"
+type = "image"
+title = "Marketplace — Events"
+description = "Verified /events masthead and GlobalCalendar surface."
+
+[[outputs]]
+id = "5aD_MIiBIP2lEiLFevkvA"
+uri = "file://screenshots/dispatch-services.jpg"
+type = "image"
+title = "Marketplace — Services"
+description = "Verified /services masthead, search field, filters, and service cards."
+
+[[outputs]]
+id = "pH0uYM0GCbhP-zoIcY3DM"
+uri = "file://exports/traveloure-marketplace-detail-mockups.html"
+type = "text"
+title = "Traveloure Marketplace Detail Mockups"
+description = "Self-contained HTML export of the six selected marketplace detail mockups, arranged as a continuity-versus-baseline comparison sheet."
+
+[[outputs]]
+id = "0629Mu1YTCtROYtFtvVPt"
+uri = "file://reports/rohit-daily-report-2026-08-23.md"
+type = "text"
+title = "Rohit Daily Work Report — August 23, 2026"
+description = "Repository-based report covering work completed, defects fixed, and tests or verification recorded for yesterday."
+
+[[outputs]]
+id = "s-HTb_vcNErIa0R6ZpB95"
+uri = "file://screenshots/bento-mumbai-top-feed.png"
+type = "image"
+title = "Signed-in Mumbai top feed"
+description = "Live development capture of the Mumbai destination feed after the Bento regression fixes."
+
+[[outputs]]
+id = "bCGOAmEPxD5Hermy5rk00"
+uri = "file://screenshots/bento-colaba.png"
+type = "image"
+title = "Signed-in Colaba Bento section"
+description = "Live development capture of the Colaba section with content-sized rows and contained compact actions."
+
+[[outputs]]
+id = "YNzLVvAnq4V-gMA8Cu39T"
+uri = "file://attached_assets/Rohit_Work_Test_Findings_Fixes_Report.md"
+type = "text"
+title = "Rohit — Work, Testing, Findings, and Fixes Report"
+description = "Detailed Traveloure report covering Rohit’s structural audit, tests, production findings, merged fixes, backfill analysis, and final deployment verification."
+
+[[outputs]]
+id = "6Gf6uUUTMdLmbXlDYgBy7"
+uri = "file://screenshots/dispatch-a-kyoto-feed.jpg"
+type = "image"
+title = "Dispatch A — Kyoto feed"
+description = "Development Kyoto marketplace capture after the persona supply pass."
+
+[[outputs]]
+id = "ElkM1EfgYaUC4zoKfklnM"
+uri = "file://screenshots/dispatch-a-gion-storefront.jpg"
+type = "image"
+title = "Dispatch A — Gion expert storefront"
+description = "Development public storefront showing two approved expert offerings."
+
+[[outputs]]
+id = "2TCH_kXH8jZNHg_-KZBzi"
+uri = "file://playwright-report/persona-screenshots/journey-traveler-plus-occasions.png"
+type = "image"
+title = "Dispatch A — Plus occasion"
+description = "Authenticated Plus persona occasion state before the delivery job ran."
+
+[[outputs]]
+id = "FsB9iMNTKjSNP7LGnxTTr"
+uri = "file://playwright-report/persona-screenshots/journey-guest-cart-prompt.png"
+type = "image"
+title = "Dispatch A — Guest sign-in boundary"
+description = "Guest cart sign-in prompt captured during the exploratory journey."

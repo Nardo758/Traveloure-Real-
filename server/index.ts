@@ -20,16 +20,31 @@ import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
+import { seedLocationCache } from "./seeds/location-cache.seed";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
+import { getSession } from "./replit_integrations/auth";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
+import { checkoutClaimSweepScheduler } from "./services/checkout-claim.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
-import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
+import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
+import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
+import { fxRateRefreshScheduler } from "./services/fx-rate-refresh.service";
+import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
+import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
+import { emailOutboxScheduler } from "./services/email-outbox.service";
+import { occasionDraftsScheduler } from "./services/occasion-drafts-scheduler.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { getStripeSecretKey } from "./utils/stripe-key";
+import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
+import { runDemandRollup } from "./jobs/demandRollup";
+import { runOnepagerRevalidation } from "./jobs/onepagerRevalidation";
+import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
+import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
   logger,
   httpLogger,
@@ -45,11 +60,16 @@ import {
   adminRateLimiter,
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
+import { runBackgroundJob } from "./services/background-job-runner";
 
 const app = express();
 const httpServer = createServer(app);
 
-setupWebSocket(httpServer);
+// MT-1: pass the session middleware in at call time (registerRoutes hasn't run yet, but
+// the `connection` handler only fires at runtime, well after setupAuth has applied it to
+// the app — no ordering issue). getSession() builds its own connect-pg-simple middleware
+// instance against the same `sessions` table/secret, so it verifies the same cookies.
+setupWebSocket(httpServer, getSession());
 
 declare module "http" {
   interface IncomingMessage {
@@ -174,12 +194,12 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
   };
 
-  const stripePresent = Boolean(process.env.STRIPE_SECRET_KEY);
+  const stripePresent = Boolean(getStripeSecretKey());
   checks.stripe = {
     status: stripePresent ? "ok" : "fail",
     message: stripePresent
-      ? "STRIPE_SECRET_KEY present"
-      : "STRIPE_SECRET_KEY missing — payments will fail",
+      ? "Stripe key present"
+      : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
   };
 
   const resendPresent = Boolean(process.env.RESEND_API_KEY);
@@ -212,11 +232,23 @@ app.get("/api/ready", (_req: Request, res: Response) => {
   });
 });
 
+// __GIT_SHA__ is injected at bundle time by esbuild's `define` (script/build.ts) from the real
+// `git rev-parse --short HEAD` at build time — the fix for Replit's Autoscale deploy not
+// injecting a GIT_COMMIT env var at runtime. Under dev-mode tsx (no esbuild define pass) the
+// identifier doesn't exist, so it's accessed only behind a typeof guard.
+declare const __GIT_SHA__: string | undefined;
+
 // Build-identity endpoint — lets CI confirm it is talking to the correct artifact.
-// GIT_COMMIT is injected by the CI workflow; falls back to "dev" locally.
+// Resolution order: the build-embedded SHA (works even when the deploy injects no env var) →
+// GIT_COMMIT (CI workflows set this for e2e-target environments) → GIT_SHA → "dev" locally.
 app.get("/api/version", (_req: Request, res: Response) => {
+  const sha =
+    (typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined) ??
+    process.env.GIT_COMMIT ??
+    process.env.GIT_SHA ??
+    "dev";
   res.json({
-    sha: process.env.GIT_COMMIT ?? "dev",
+    sha,
     env: process.env.NODE_ENV ?? "development",
   });
 });
@@ -322,10 +354,10 @@ async function runDatabaseSeeding() {
 
   try {
     const popularCitiesResult = await seedPopularCitiesContent();
-    if (popularCitiesResult.gems > 0 || popularCitiesResult.services > 0) {
+    if (popularCitiesResult.gems > 0) {
       logger.info(
-        { gems: popularCitiesResult.gems, services: popularCitiesResult.services },
-        "Seeded popular cities content (hidden gems + services)",
+        { gems: popularCitiesResult.gems },
+        "Seeded popular cities content (hidden gems)",
       );
     }
   } catch (err) {
@@ -401,20 +433,36 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
   }
 
-  // E2E test accounts — seeded in non-production environments only.
-  // ENVIRONMENT=PROD is set in the shared env vars for the deployed app.
-  // This guard prevents known-password admin test accounts from being created
-  // in the live production database.
-  if (process.env.ENVIRONMENT !== "PROD") {
+  try {
+    const locationResult = await seedLocationCache();
+    if (locationResult.upserted > 0) {
+      logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed location cache");
+  }
+
+  // E2E test accounts — FAIL-SAFE gate (dispatch P0 fix, Jul 28 2026).
+  // The old gate keyed on ENVIRONMENT === "PROD", an env var the deployed app
+  // did NOT actually carry — so production took the SEED branch and re-created
+  // the known-password admin account at every boot. Security gates must fail
+  // safe: seeding now requires being NON-production (NODE_ENV) OR an explicit
+  // ALLOW_TEST_ACCOUNTS=1 (set by the CI gates, which boot the production
+  // bundle against a throwaway DB and need these accounts). Anything else —
+  // including a deploy carrying no env vars at all — PURGES instead of seeding.
+  const allowTestAccounts =
+    (process.env.NODE_ENV !== "production" || process.env.ALLOW_TEST_ACCOUNTS === "1") &&
+    process.env.ENVIRONMENT !== "PROD";
+  if (allowTestAccounts) {
     try {
       await seedE2EAccounts();
-      logger.info("E2E test accounts ready (staging/dev)");
+      logger.info("E2E test accounts ready (dev/CI)");
     } catch (err) {
       logger.error({ err }, "Failed to seed E2E test accounts");
     }
   } else {
-    // PROD: purge any E2E test accounts that may have been manually seeded
-    // before this env-gate existed. Idempotent — no-op once already clean.
+    // Production (or anything not explicitly allowed): purge any test accounts
+    // present. Idempotent — no-op once clean.
     try {
       await purgeE2EAccountsFromProd();
     } catch (err) {
@@ -462,6 +510,11 @@ if (process.env.NODE_ENV === "production") {
 
   await registerRoutes(httpServer, app);
 
+  // Unknown /api/* paths must return 404 JSON, not fall through to the SPA
+  // catch-all (which returned 200 text/html and masked missing routes).
+  // Mounted immediately after registerRoutes so every real API route wins first.
+  app.use("/api", notFoundHandler);
+
   // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
   // Must be registered after API routes but before Vite's catch-all
   app.use("/__mockup", (req: Request, res: Response) => {
@@ -483,9 +536,18 @@ if (process.env.NODE_ENV === "production") {
   });
 
   // Set up frontend serving before error handlers.
-  // Production: static serving was already mounted before migrations (see pre-bind block
-  // above) so we skip it here to avoid double-mounting. Dev needs Vite dev server.
-  if (process.env.NODE_ENV !== "production") {
+  // Production: the pre-bind serveStatic catch-all now steps aside once routesReady
+  // flips (dispatch P1 fix, Jul 28 2026 — it was permanently swallowing every
+  // server-rendered route registered above: the /p/:handle, /services/:id and
+  // /ready-made/:id OG injections and the /r/:code short-link redirects — the
+  // entire Direct channel was structurally dead in prod). The REAL SPA fallback
+  // mounts HERE, after every server route, so those routes win first.
+  // Dev needs the Vite dev server.
+  if (process.env.NODE_ENV === "production") {
+    app.locals.routesReady = true;
+    const { mountSpaFallback } = await import("./static");
+    mountSpaFallback(app);
+  } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
@@ -506,6 +568,10 @@ if (process.env.NODE_ENV === "production") {
       "See: server/migrations/" +
       "scheduled_drop_deprecated_city_queues.sql"
     );
+    const personaKey = process.env.PERSONA_API_KEY ? "set" : "missing";
+    const personaTemplate = process.env.PERSONA_TEMPLATE_ID ? "set" : "missing";
+    const stripeIdentity = process.env.STRIPE_IDENTITY_WEBHOOK_SECRET ? "set" : "missing";
+    console.log(`[readiness] identity/KYB keys: PERSONA_API_KEY=${personaKey} PERSONA_TEMPLATE_ID=${personaTemplate} STRIPE_IDENTITY_WEBHOOK_SECRET=${stripeIdentity}`);
     logger.info({ port }, "Server started");
 
     cacheSchedulerService.start();
@@ -514,19 +580,141 @@ if (process.env.NODE_ENV === "production") {
     bookingExpiryScheduler.start();
     logger.info("Booking expiry scheduler started");
 
+    // Ruling 38 (checkout atomicity): reclaim checkout claims that never reached an
+    // authorization — voids the provisional booking and hands its slot capacity back, with a
+    // diary row per void. Race-safe against a late authorization and never voids a row whose
+    // PaymentIntent Stripe actually holds (see checkout-claim.service.ts).
+    checkoutClaimSweepScheduler.start();
+    logger.info("Checkout claim sweep scheduler started");
+
     adminDigestScheduler.start();
     logger.info("Admin digest scheduler started");
 
     earningsReleaseScheduler.start();
     logger.info("Earnings release scheduler started");
 
-    runDailyAdminDigest();
-    setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
+    stripeConnectReminderScheduler.start();
+    logger.info("Stripe Connect reminder scheduler started");
+
+    fxRateRefreshScheduler.start();
+    logger.info("FX rate refresh scheduler started");
+
+    // R-F: T-48h Trip Card auto-handover nudge (Console Realign, docs/briefs/CONSOLE_REALIGN_BRIEF.md).
+    tripCardHandoverScheduler.start();
+    logger.info("Trip Card handover scheduler started");
+
+    // Stale paid-itinerary-generation sweep: flips comparisons orphaned in 'generating' by a
+    // server restart/crash to 'failed' so the traveler isn't stuck on an infinite spinner.
+    itineraryGenerationSweepScheduler.start();
+    logger.info("Itinerary generation sweep scheduler started");
+
+    emailOutboxScheduler.start();
+    logger.info("Email outbox retry scheduler started");
+
+    // Plus occasion-drafts (ledger 2026-08-27-plus-is-delivery). DEFENSE-IN-DEPTH ONLY — the
+    // authoritative runner is POST /internal/run-occasion-drafts fired by a daily external trigger,
+    // because Autoscale won't hold an in-process cron. Idempotent by the occasion_drafts ledger, so
+    // this timer and the endpoint firing in the same window still produce one draft per cycle.
+    occasionDraftsScheduler.start();
+    logger.info("Occasion drafts scheduler started");
+
+    // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
+    dmoIngestScheduler.start();
+
+    // TravelPulse AI refresh scheduler — previously the ONLY refresh paths were the admin
+    // manual endpoints, so trending/city intelligence (and the happening-now surface derived
+    // from it) went permanently stale once seeded. Daily pass, first run delayed 2h to clear
+    // startup and stay behind the reconciliation job. refreshStaleAICities() only touches
+    // cities whose expiresAt has lapsed and increments ai_refresh_error_count on failure, so
+    // running it while the xAI account is out of credits is safe (errors are counted, not thrown).
+    setTimeout(() => {
+      void (async () => {
+        const { travelPulseService } = await import("./services/travelpulse.service");
+        const run = () =>
+          runBackgroundJob("travelpulse-daily-refresh", () => travelPulseService.refreshStaleAICities())
+            .then((r) => logger.info(r, "[travelpulse] daily AI refresh pass"))
+            .catch((err) => logger.error({ err }, "[travelpulse] daily AI refresh failed"));
+        await run();
+        setInterval(run, 24 * 60 * 60 * 1000);
+      })();
+    }, 2 * 60 * 60 * 1000);
 
     setTimeout(() => {
-      runStripeReconciliation();
-      setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
+      const run = () =>
+        runBackgroundJob("stripe-reconciliation", () => runStripeReconciliation())
+          .catch((err) => logger.error({ err }, "[reconciliation] scheduled pass failed"));
+      void run();
+      setInterval(() => void run(), 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+
+    // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
+    // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
+    setTimeout(() => {
+      const run = () =>
+        runBackgroundJob("availability-materialization", () => runAvailabilityMaterializationSweep())
+          .catch((err) => logger.error({ err }, "[availability-materializer] scheduled pass failed"));
+      void run();
+      setInterval(() => {
+        void run();
+      }, 24 * 60 * 60 * 1000);
+    }, 90 * 60 * 1000);
+
+    // Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): nightly rollup recompute
+    // (unmet_demand_slip + slip_funnel), REPLACE-BY-DATE/idempotent. Same delayed-first-pass +
+    // 24h cadence; all math in the L6 demand-rollup.service.ts (R16 synthetic filter applied there).
+    setTimeout(() => {
+      const run = () =>
+        runBackgroundJob("demand-rollup", () => runDemandRollup())
+          .catch((err) => logger.error({ err }, "[demand-rollup] scheduled pass failed"));
+      void run();
+      setInterval(() => {
+        void run();
+      }, 24 * 60 * 60 * 1000);
+    }, 95 * 60 * 1000);
+
+    // Partner Demand Phase 4 (R32): one-pager approval re-validation — withdraw any approval whose
+    // market dropped below the public floor or whose template was bumped. Runs just AFTER the rollup
+    // recompute (105 min delayed first pass) so it evaluates fresh figures, then daily.
+    setTimeout(() => {
+      const run = () =>
+        runBackgroundJob("onepager-revalidation", () => runOnepagerRevalidation())
+          .catch((err) => logger.error({ err }, "[onepager-revalidate] scheduled pass failed"));
+      void run();
+      setInterval(() => {
+        void run();
+      }, 24 * 60 * 60 * 1000);
+    }, 105 * 60 * 1000);
+
+    // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
+    // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
+    // "when" (pdf artifact timer, property checkout-date, in_person service-date) PLUS the payment
+    // gate, unpaid-recheck stamping and the Pass-2 ledger reconciliation. The replit line's
+    // bookingAutoCompleteScheduler is retained only for its reconciliation helper (reused inside
+    // this job) and its unit proofs — it is deliberately NOT started, so exactly one job flips
+    // bookings. HOURLY, matching the earnings release scheduler — the windows are day-scale, so
+    // hourly is ample and keeps the lag between "eligible" and "completed" under an hour. Re-running
+    // is a no-op by construction (§15 atomic conditional + migration-203 DB-guarded idempotent
+    // mint), so an overlapping or repeated pass is safe. First pass is delayed to clear startup.
+    setTimeout(() => {
+      const run = () =>
+        runBackgroundJob("booking-auto-completion", () => runBookingAutoCompletion()).catch((err) =>
+          logger.error({ err }, "[auto-complete] scheduled pass failed"),
+        );
+      void run();
+      setInterval(() => {
+        void run();
+      }, 60 * 60 * 1000);
+    }, 3 * 60 * 1000);
+
+    // DMO extraction warmup sweep (part 2/3 of the pre-extraction design, CLAUDE.md-adjacent
+    // ruling Aug 9 2026 — see server/jobs/dmoExtractionWarmup.ts). Delayed ~60s so it never
+    // competes with startup; runs ONCE per boot (a "per boot" cap, not a recurring interval —
+    // the admin-approve hook already covers new approvals, this only mops up backlog/misses).
+    setTimeout(() => {
+      void runBackgroundJob("dmo-extraction-warmup", () => runDmoExtractionWarmupSweep()).catch((err) =>
+        logger.error({ err }, "[dmo-extraction-warmup] sweep failed unexpectedly"),
+      );
+    }, 60 * 1000);
 
     (() => {
       const now = new Date();
@@ -535,18 +723,57 @@ if (process.env.NODE_ENV === "production") {
       const msUntilFirst = next2amUtc.getTime() - now.getTime();
       logger.info({ nextRunAt: next2amUtc.toISOString() }, "Nightly QA scheduled");
       setTimeout(() => {
-        runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+        const run = () =>
+          runBackgroundJob("nightly-qa", () => runNightlyQA("scheduled"))
+            .catch(err => logger.error({ err }, "Nightly QA failed"));
+        void run();
         setInterval(() => {
-          runNightlyQA("scheduled").catch(err => logger.error({ err }, "Nightly QA failed"));
+          void run();
         }, 24 * 60 * 60 * 1000);
       }, msUntilFirst);
     })();
 
-    import("./db").then(({ pool }) => {
-      pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
-        .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
-        .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-    }).catch(() => {});
+    // Bootstrap an admin account from the ADMIN_EMAIL environment variable.
+    // This replaces the former hard-coded email promotion. Set ADMIN_EMAIL in
+    // the environment (it already exists as a secret) to designate an account
+    // as admin on first boot. The promotion is idempotent and only fires when
+    // the env var is present.
+    const bootstrapAdminEmail = process.env.ADMIN_EMAIL?.trim();
+    if (bootstrapAdminEmail) {
+      // Promotion + audit record are written in ONE transaction so bootstrap
+      // promotions appear in the role-change audit trail like every other
+      // role change (actor = the promoted account itself, reason marks it).
+      import("./db").then(async ({ pool }) => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const { rows } = await client.query(
+            "SELECT id, role FROM users WHERE email = $1 AND role != 'admin' FOR UPDATE",
+            [bootstrapAdminEmail],
+          );
+          if (rows.length > 0) {
+            const { id, role: oldRole } = rows[0];
+            await client.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
+            // id has no DB-side default (schema uses a client-side $defaultFn),
+            // so it must be supplied explicitly in raw SQL.
+            await client.query(
+              `INSERT INTO access_audit_logs (id, actor_id, actor_role, action, resource_type, resource_id, target_user_id, metadata)
+               VALUES ($1, $2, $3, 'role_change', 'user', $2, $2, $4)`,
+              [crypto.randomUUID(), id, "system", JSON.stringify({ oldRole, newRole: "admin", reason: "admin_email_bootstrap" })],
+            );
+            await client.query("COMMIT");
+            logger.info({ email: bootstrapAdminEmail, oldRole }, "Admin bootstrap promotion from ADMIN_EMAIL (audited)");
+          } else {
+            await client.query("ROLLBACK");
+          }
+        } catch (err) {
+          await client.query("ROLLBACK").catch(() => {});
+          logger.error({ err }, "Admin bootstrap failed (promotion rolled back)");
+        } finally {
+          client.release();
+        }
+      }).catch((err) => logger.error({ err }, "Admin bootstrap import failed"));
+    }
 
     runDatabaseSeeding()
       .then(() => {

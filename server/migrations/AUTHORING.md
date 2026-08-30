@@ -90,6 +90,25 @@ If a file must be excluded from the runner (crashed on prod, DDL absorbed elsewh
 
 ---
 
+## Runtime behavior: migrations run ONCE at process start
+
+`runMigrations()` (invoked from `server/index.ts`) runs exactly once, at process boot, and it
+imports `MIGRATION_FILES` (`server/migrations/migration-files.ts`) at that moment. **Pulling a
+commit that adds a new migration into an already-running dev server does not apply it** — the
+new file only reaches the runner on the next full process start. A hot-reload / file-watcher
+restart of the app code is not the same thing as restarting the server process; if the dev
+server was started before the pull, the new migration is invisible to it until you stop and
+re-run `npm run dev` (this cost real debugging time — the symptom looks like "the migration
+silently didn't work" when it actually never ran).
+
+**Honest diagnostic:** the runner logs `[Migrations] Done — N newly applied, M already
+recorded` on every boot. After pulling a new migration and restarting, check that line —
+`N` should include your new migration (or `M`'s count should now include it if it already ran
+in a prior boot). The absence of that log line, or an `N`/`M` count that didn't change when you
+expected it to, is the tell that the server never picked up the new file — restart it fully.
+
+---
+
 ## Bootstrap and dry-run modes
 
 See the header comment in `run-migrations.ts` for full docs on:

@@ -26,6 +26,24 @@ export interface QARunSummary {
 export async function runQAVerify(): Promise<QARunSummary> {
   const results: QAResults = {};
 
+  // ── H1–H6: runtime health layer ──────────────────────────────────────────
+  // Everything below this line (S1..R4) is a STATIC check (grep/file-existence) — it can pass
+  // while production is actually down or every integration is dead, because it never talks to
+  // the running app. runRuntimeHealth() (server/services/runtime-health.service.ts) adds the
+  // runtime signal: self-HTTP route liveness (H1), money-secret presence (H2), the live/test
+  // Stripe key rule (H3), the provider-health rollup (H4), data invariants (H5), and scheduler
+  // startup wiring (H6). Merged into the SAME results map so the nightly diff/email machinery
+  // and the admin `GET /api/admin/qa/verify` endpoint pick these up for free — neither needed
+  // any change, since both just consume whatever this function returns.
+  try {
+    const { runRuntimeHealth } = await import("./runtime-health.service");
+    Object.assign(results, await runRuntimeHealth());
+  } catch (err: any) {
+    // The runtime layer itself must never take down the whole report — a broken runtime check
+    // should surface as its own failing entry, not an exception that loses every other check.
+    results.H_RUNTIME = { pass: false, detail: `Runtime health layer threw: ${err?.message ?? String(err)}` };
+  }
+
   // ── S1: role hardcoded to 'user' ────────────────────────────────────────
   try {
     const { readFileSync } = await import("fs");

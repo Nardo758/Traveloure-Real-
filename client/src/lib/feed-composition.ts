@@ -222,3 +222,50 @@ export function composeFeedStream(opts: ComposeFeedOpts): FeedItem[] {
 
   return out;
 }
+
+/**
+ * Append the top city-scoped Ready-Made listing to the first neighbourhood
+ * section that does not already contain one. This is deliberately a single
+ * membership addition: the same city-wide listing must not be duplicated
+ * across multiple sections, and existing section item order is untouched.
+ */
+export function appendCityWideReadyMadeFill(
+  entries: readonly unknown[],
+  template: any | null | undefined,
+  city: string,
+): void {
+  const templateId = template?.id == null ? "" : String(template.id);
+  if (!templateId) return;
+
+  // FeedRenderer's ordered list also includes separator sections. Narrow here
+  // so callers may preserve their mixed render order without pre-filtering it.
+  const sections = entries.filter(
+    (entry): entry is { items: FeedItem[]; neighbourhood: any | null } =>
+      typeof entry === "object" &&
+      entry !== null &&
+      Array.isArray((entry as { items?: unknown }).items),
+  );
+
+  const alreadyUsed = sections.some((section) =>
+    section.items.some(
+      (item) => item.kind === "package" && String(item.data?.id ?? "") === templateId,
+    ),
+  );
+  if (alreadyUsed) return;
+
+  const target = sections.find(
+    (section) =>
+      section.neighbourhood != null &&
+      !section.items.some((item) => item.kind === "package"),
+  );
+  if (!target) return;
+
+  target.items.push({
+    kind: "package",
+    id: `package-city-wide-${templateId}`,
+    data: {
+      ...template,
+      cityWideLabel: `${city}-wide`,
+    },
+  });
+}

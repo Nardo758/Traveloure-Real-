@@ -20,7 +20,8 @@
   }
 }
 
-.ticker-content-inline:hover {
+.ticker-wrapper:hover .ticker-content-inline,
+.ticker-wrapper:focus-within .ticker-content-inline {
   animation-play-state: paused;
 }
 
@@ -28,7 +29,7 @@
   .ticker-content-inline {
     animation: none;
   }
-  
+
   .ticker-wrapper {
     mask-image: none;
     -webkit-mask-image: none;

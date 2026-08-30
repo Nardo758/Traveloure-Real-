@@ -9,14 +9,16 @@ import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
 import { isAuthenticated } from '../replit_integrations/auth';
-import { requireOwnership } from '../middleware/ownershipGuard';
 import { storage } from '../storage';
 import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
-import { eq, sql } from 'drizzle-orm';
-import { getUserId } from '../utils/auth';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { getUserId, getSessionRole } from '../utils/auth';
+import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
+import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
 const router = Router();
 
@@ -35,34 +37,52 @@ async function getServiceBookingOwnerId(bookingId: string): Promise<string | nul
 
 /**
  * GET /api/bookings/:id
- * Fetch a single service booking by ID.
- * Protected by requireOwnership — only the traveler who made the booking or an admin may access.
+ * Canonical single booking handler — three access tiers:
+ *   - Admin: full row
+ *   - Traveler (owner): full row
+ *   - Provider (earner): row filtered through sanitizeBookingForExpert (strips Stripe intent IDs etc.)
+ * Any other authenticated user receives 403.
  */
-router.get(
-  '/:id',
-  isAuthenticated,
-  requireOwnership(async (req) => {
+router.get('/:id', isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const userRole = getSessionRole(req);
+
     const rows = await db
-      .select({ travelerId: serviceBookings.travelerId })
+      .select()
       .from(serviceBookings)
       .where(eq(serviceBookings.id, req.params.id))
       .limit(1);
-    return rows[0]?.travelerId ?? null;
-  }),
-  async (req, res) => {
-    try {
-      const rows = await db
-        .select()
-        .from(serviceBookings)
-        .where(eq(serviceBookings.id, req.params.id))
-        .limit(1);
-      if (!rows[0]) return res.status(404).json({ message: 'Booking not found' });
-      res.json(rows[0]);
-    } catch (err: any) {
-      res.status(500).json({ message: 'Failed to fetch booking' });
+
+    if (!rows[0]) return res.status(404).json({ message: 'Booking not found' });
+    const booking = rows[0];
+
+    // Admin sees everything
+    if (userRole === 'admin') {
+      return res.json(booking);
     }
+
+    // Traveler (owner) sees full booking
+    if (booking.travelerId === userId) {
+      return res.json(booking);
+    }
+
+    // Provider (earner) sees sanitized booking — Stripe payment fields stripped
+    if (booking.providerId === userId) {
+      const sanitized = sanitizeBookingForExpert(booking, userRole, userId);
+      return res.json(sanitized);
+    }
+
+    console.warn(
+      `[IDOR ATTEMPT] User ${userId} tried to access booking ${req.params.id} ` +
+        `(travelerId=${booking.travelerId}, providerId=${booking.providerId}) ` +
+        `at ${req.method} ${req.path}`
+    );
+    return res.status(403).json({ message: 'Access denied' });
+  } catch (err: any) {
+    res.status(500).json({ message: 'Failed to fetch booking' });
   }
-);
+});
 
 /**
  * POST /api/bookings/process-cart
@@ -72,7 +92,7 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
     // Acting user = session, NEVER the body. (Was: `userId` from req.body — an IDOR letting an
     // authenticated user create trips/bookings under another user's id.)
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { cartItems, paymentMethod = 'full', bookingMetadata } = req.body;
@@ -109,6 +129,35 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * Does `bookingId` name a CART-CHECKOUT booking (service_bookings) owned by `userId`?
+ *
+ * The two booking rails have disjoint id spaces, so this is also how confirm-payment and
+ * bulk-status decide which rail a client-supplied id belongs to. Returns null when the id is
+ * not a service_booking at all (⇒ the legacy `bookings` rail owns it) and `owned:false` when it
+ * is one but belongs to someone else (⇒ 403, never a cross-user confirmation).
+ */
+async function loadCartBooking(
+  bookingId: string,
+  userId: string,
+): Promise<{ owned: boolean; status: string | null; paymentIntentId: string | null } | null> {
+  const rows = await db
+    .select({
+      travelerId: serviceBookings.travelerId,
+      status: serviceBookings.status,
+      pi: serviceBookings.stripePaymentIntentId,
+    })
+    .from(serviceBookings)
+    .where(eq(serviceBookings.id, bookingId))
+    .limit(1);
+  if (rows.length === 0) return null;
+  return {
+    owned: rows[0].travelerId === userId,
+    status: rows[0].status ?? null,
+    paymentIntentId: rows[0].pi ?? null,
+  };
+}
+
+/**
  * POST /api/bookings/confirm-payment
  *
  * FALLBACK / POLLING ENDPOINT — the authoritative confirmation path is the
@@ -116,10 +165,19 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
  * This endpoint exists so the client can recover when the browser was closed before
  * the webhook fired, or in local dev where webhooks aren't delivered.
  *
+ * TWO RAILS (task #213, legacy-reconciliation lane)
+ * ─────────────────────────────────────────────────
+ * This endpoint used to read ONLY the legacy `bookings` table, so a CART-CHECKOUT booking id
+ * (`service_bookings`) 404'd here — the client's fallback could not confirm the very bookings
+ * `POST /api/checkout` creates (ruling 38 filed this as #213). It now detects which rail the id
+ * belongs to and, for the cart rail, drives the SAME shared promotion the webhook drives
+ * (`promotePaidCheckout`) — one promotion implementation, two callers, so the two signals can
+ * never diverge on what "confirmed" means and a double signal produces exactly one flip.
+ *
  * Behaviour:
  *   1. If the booking is already confirmed (webhook beat us here) → return 200 immediately.
- *   2. If the booking is still pending_payment → run the full server-side verification
- *      and confirm it (idempotent fallback).
+ *   2. If the booking is still pending → run the full server-side verification and confirm it
+ *      (idempotent — the atomic conditional in the shared promotion IS the guard).
  */
 router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
@@ -130,11 +188,78 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
     }
 
     // Extract userId handling both Replit Auth (user.id) and email-auth (user.claims.sub)
-    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
 
+    // ── CART RAIL (service_bookings) ────────────────────────────────────────────────────
+    const cart = await loadCartBooking(String(bookingId), userId);
+    if (cart) {
+      if (!cart.owned) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      if (cart.status === 'confirmed') {
+        return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+      }
+      // §14/security: the client-supplied paymentIntentId is NEVER trusted on its own. It must
+      // (a) be the PI the SERVER stamped on this very row, and (b) actually have succeeded at
+      // Stripe. The shared promotion re-asserts (a) inside its atomic WHERE; this check makes
+      // the failure legible instead of a silent zero-row no-op. Unlike the webhook, the client
+      // path may NOT stamp a PaymentIntent onto an unstamped claim — only a signature-verified
+      // Stripe delivery may do that.
+      if (!cart.paymentIntentId || cart.paymentIntentId !== String(paymentIntentId)) {
+        return res.status(409).json({
+          success: false,
+          error: 'payment_intent_mismatch',
+          message: 'That payment does not belong to this booking.',
+        });
+      }
+      const stripeClient = new Stripe(getStripeSecretKey() || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+      let intent: Stripe.PaymentIntent;
+      try {
+        intent = await stripeClient.paymentIntents.retrieve(String(paymentIntentId));
+      } catch (stripeErr: any) {
+        return res.status(402).json({
+          success: false,
+          error: `Stripe lookup failed: ${stripeErr?.message ?? stripeErr}`,
+        });
+      }
+      if (intent.status !== 'succeeded') {
+        return res.status(402).json({
+          success: false,
+          error: `PaymentIntent ${paymentIntentId} has status "${intent.status}", not "succeeded"`,
+        });
+      }
+
+      const { promotePaidCheckout } = await import('../services/checkout-claim.service');
+      const promotion = await promotePaidCheckout({
+        paymentIntentId: String(paymentIntentId),
+        actor: 'client',
+        actorId: userId,
+        bookingIds: [String(bookingId)],
+      });
+      if (promotion.promoted.length > 0) {
+        return res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
+      }
+      if (promotion.alreadyConfirmed.length > 0) {
+        // The webhook won the race between our read above and the atomic flip. Same outcome.
+        return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+      }
+      const exception = promotion.exceptions[0];
+      return res.status(409).json({
+        success: false,
+        error: 'reconciliation_exception',
+        message:
+          'This checkout could not be confirmed (it expired or was cancelled before the payment landed). ' +
+          'Nothing was resurrected — our team has been alerted to reconcile the payment.',
+        detail: exception?.reason ?? 'not_promotable',
+      });
+    }
+
+    // ── LEGACY RAIL (`bookings`) — process-cart / booking-demo flow. Unchanged. ──────────
     // Fast-path: if the webhook already confirmed this booking, return success immediately
     const existing = await storage.getBookingStatusForUser(bookingId, userId);
     if (existing?.status === 'confirmed') {
@@ -171,6 +296,11 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
  * Return the current status for a list of booking IDs belonging to the authenticated user.
  * Used by the client to poll whether the Stripe webhook has already confirmed the bookings
  * before falling back to the confirm-payment endpoint.
+ *
+ * TWO RAILS (task #213): `storage.getBulkBookingStatuses` reads the legacy `bookings` table, so
+ * a cart-checkout id returned NOTHING and `allConfirmed` was permanently false — the client's
+ * poll could never observe the webhook's work. Both id spaces are now answered; they are
+ * disjoint, so an id is resolved by whichever rail owns it, always scoped to the session user.
  */
 router.post('/bulk-status', isAuthenticated, async (req, res) => {
   try {
@@ -179,12 +309,31 @@ router.post('/bulk-status', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'bookingIds must be a non-empty array' });
     }
 
-    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
 
     const statuses = await storage.getBulkBookingStatuses(bookingIds, userId);
+    // Cart rail: fill in every id the legacy rail did not answer. Ownership is enforced by the
+    // traveler_id predicate, exactly as the legacy query enforces it with user_id.
+    const unresolved = (bookingIds as string[]).filter((id) => !statuses[id]);
+    if (unresolved.length > 0) {
+      const cartRows = await db
+        .select({
+          id: serviceBookings.id,
+          status: serviceBookings.status,
+          trackingNumber: serviceBookings.trackingNumber,
+        })
+        .from(serviceBookings)
+        .where(and(inArray(serviceBookings.id, unresolved), eq(serviceBookings.travelerId, userId)));
+      for (const row of cartRows) {
+        statuses[row.id] = {
+          status: row.status ?? 'unknown',
+          confirmationCode: row.trackingNumber ?? null,
+        };
+      }
+    }
     const allConfirmed = bookingIds.every((id: string) => statuses[id]?.status === 'confirmed');
     res.json({ statuses, allConfirmed });
   } catch (error: any) {
@@ -287,66 +436,57 @@ router.post('/estimate-cost', isAuthenticated, async (req, res) => {
   }
 });
 
-/**
- * POST /api/bookings/apply-promo
- * Apply promo code to booking
- */
-router.post('/apply-promo', isAuthenticated, async (req, res) => {
-  try {
-    // userId from the session, never the body (was the same client-trusted-identity class as
-    // process-cart: a client could pass another user's id to probe/bypass the per-user promo
-    // limit). This is a discount PREVIEW only — no money moves and no usage is recorded here
-    // (recordPromoUsage runs at checkout); `amount` is the client subtotal to preview against and
-    // is not authoritative — the actual charge + promo are re-derived server-side at /api/checkout.
-    const sessionUserId = getUserId(req);
-    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
-
-    const { code, amount } = req.body; // money-derive-ok: preview subtotal only; charge re-derives at /api/checkout
-
-    if (!code || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const result = await pricingService.applyPromoCode(code, amount, sessionUserId);
-
-    if (result.valid) {
-      res.json({
-        success: true,
-        ...result,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: result.error,
-      });
-    }
-  } catch (error: any) {
-    console.error('Apply promo error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
+// MONEY_MAP F-2: production guard — STRIPE_WEBHOOK_SECRET defaults to '' below, and passing an
+// empty secret into constructEvent just throws inside the try/catch on every delivery (a noisy,
+// per-request 400 that masks the real misconfiguration). In production specifically, refuse the
+// route outright instead. Logged once (not once-per-request) to avoid log-flooding a webhook
+// endpoint that Stripe will retry repeatedly while misconfigured.
+let loggedMissingWebhookSecretOnce = false;
 
 /**
  * POST /api/bookings/webhooks/stripe
  * Stripe webhook endpoint
  */
-router.post('/webhooks/stripe', async (req, res) => {
+//
+// SIGNATURE VERIFICATION USES req.rawBody, NOT req.body (L14 money-path P0).
+// This handler used to pass `req.body` to constructEvent. By the time any route runs, the global
+// express.json() in server/index.ts has already PARSED the body, so `req.body` is a plain object
+// and the exact bytes Stripe signed are gone — constructEvent could therefore NEVER verify a real
+// Stripe delivery, which made the `charge.refunded` handler unreachable over HTTP.
+// The raw bytes ARE available: that same express.json() supplies a `verify` callback that stashes
+// the Buffer on `req.rawBody`. This is exactly how the two working Stripe webhooks
+// (POST /api/webhooks/stripe and /api/webhooks/stripe-identity in webhooks.routes.ts) verify, so
+// this route now mirrors that established pattern — no new middleware, no change to body parsing
+// for any other route.
+router.post('/webhooks/stripe', async (req: any, res) => {
+  if (process.env.NODE_ENV === 'production' && !process.env.STRIPE_WEBHOOK_SECRET) {
+    if (!loggedMissingWebhookSecretOnce) {
+      console.error(
+        '[bookings webhook] STRIPE_WEBHOOK_SECRET is not set in production — refusing webhook deliveries ' +
+          'rather than attempting signature verification with an empty secret.'
+      );
+      loggedMissingWebhookSecretOnce = true;
+    }
+    return res.status(503).json({ error: 'Webhook not configured' });
+  }
+
   const sig = req.headers['stripe-signature'];
 
   if (!sig) {
     return res.status(400).json({ error: 'Missing signature' });
   }
 
+  if (!req.rawBody) {
+    return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
+  }
+
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+    const stripe = new Stripe(getStripeSecretKey() || '', {
       apiVersion: '2024-12-18.acacia' as any,
     });
 
     const event = stripe.webhooks.constructEvent(
-      req.body,
+      req.rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET || ''
     );
@@ -371,7 +511,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // Was WORLD-WRITABLE: auth-only, any user could refund any bookingId for an arbitrary amount.
     // Now: owner-or-admin gate, and the refund amount is server-derived from the booking record
     // (client-sent `amount` is ignored). Acting user from the session, never the body.
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { bookingId, reason } = req.body; // NOTE: `amount` intentionally not read — server-derived.
@@ -389,29 +529,96 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     if (ownerId === null) {
       return res.status(404).json({ error: 'Booking not found' });
     }
+    let isAdmin = false;
     if (ownerId !== sessionUserId) {
       const actor = await storage.getUser(sessionUserId);
       if (actor?.role !== 'admin') {
         return res.status(403).json({ error: 'Not authorized to refund this booking' });
       }
+      isAdmin = true;
     }
 
-    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
-    // claim + deterministic Stripe idempotencyKey).
-    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
+    // Cancellation-policy enforcement: a TRAVELER-initiated refund is bounded by the service's
+    // cancellation_policy_type + time-to-start (cancellation-policy.service.ts) — the same quote
+    // the cancel-preview endpoint shows. Admin-initiated refunds (dispute resolution, goodwill)
+    // remain full-amount and are NOT policy-limited.
+    let amountOverride: number | undefined;
+    let refundFraction = 1;
+    if (!isAdmin) {
+      const { quoteCancellationForBooking } = await import('../services/cancellation-policy.service');
+      const quote = await quoteCancellationForBooking(bookingId);
+      if (quote) {
+        if (!quote.automaticRefundAllowed) {
+          return res.status(400).json({
+            error: 'This service is non-refundable, so an automatic refund cannot be issued. Contact support if you believe an exception applies.',
+            policyType: quote.policyType,
+            refundAmount: 0,
+          });
+        }
+        if (quote.refundAmount <= 0) {
+          return res.status(400).json({
+            error: quote.message,
+            policyType: quote.policyType,
+            refundAmount: 0,
+          });
+        }
+        if (quote.refundPercent < 100) {
+          amountOverride = quote.refundAmount;
+          refundFraction = quote.refundPercent / 100;
+        }
+      }
+    }
 
-    // Escrow Phase 4 (closes §14 A2): a refund now also reverses the linked earnings ledger + the
-    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert credited.
-    // Both are idempotent no-ops when the booking has no in-escrow earnings, so this is safe on any
-    // refund. paid_out earnings are left for manual clawback (surfaced via skippedPaidOut).
-    const reversal = await storage.reverseEarningsForBooking(bookingId);
-    await storage.reversePlatformRevenueForBooking(bookingId);
+    // Escrow Phase 4 (closes §14 A2): a refund also reverses the linked earnings ledger + the
+    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert
+    // credited. Both are idempotent no-ops when the booking has no in-escrow earnings, so this
+    // is safe on any refund. paid_out earnings are never auto-clawed-back (ratified "reversal
+    // only while in escrow") — they are surfaced via skippedPaidOut for manual handling.
+    //
+    // ORDER: ledger-first, Stripe-second — matching the admin dispute-uphold path
+    // (admin.routes.ts POST /api/admin/disputes/:bookingId/uphold) and the §18 Phase 4
+    // rationale. The reversals are idempotent atomic flips, so a Stripe failure leaves a
+    // fully-reversed ledger that a retry simply re-confirms as a no-op. The previous
+    // Stripe-first order had the opposite failure mode: money out the door with the ledger
+    // still crediting the earner if the reversal then threw.
+    // PROPORTIONAL for policy partial refunds: a 50% refund reverses only half the recognised
+    // platform revenue (retained share stays recognised) and does NOT reverse earnings — the
+    // in-escrow earnings correspond to the provider's retained economics, and zeroing them for a
+    // partial refund undercounted every partial cancellation. Full refunds keep the original
+    // full-reversal behavior.
+    const reversal =
+      refundFraction >= 1
+        ? await storage.reverseEarningsForBooking(bookingId)
+        : { reversed: 0, skippedPaidOut: 0 };
+    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId, new Date(), refundFraction);
+
+    // Amount server-derived from service_bookings.total_amount (policy-scaled when partial);
+    // idempotent (atomic status claim + amount-unambiguous Stripe idempotencyKey).
+    const result = await stripePaymentService.refundServiceBooking(
+      bookingId,
+      reason,
+      amountOverride !== undefined ? { amountOverride } : undefined,
+    );
+
+    // Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
+    // SOLE writer). Without it the Trip Card keeps showing as `purchased` an item the traveler was
+    // refunded for — H2's mirror image. Runs AFTER the refund succeeds, so the ledger-first /
+    // Stripe-second ordering above is untouched; the helper is atomic, idempotent, and never
+    // throws (a plan flag must never surface as a refund failure).
+    const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
     res.json({
       success: true,
       ...result,
+      revertedPlanItems: routingReversal.reverted,
       reversedEarnings: reversal.reversed,
       skippedPaidOut: reversal.skippedPaidOut,
+      reversedRevenueRows,
+      ...(reversal.skippedPaidOut > 0
+        ? {
+            note: `${reversal.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`,
+          }
+        : {}),
     });
   } catch (error: any) {
     console.error('Refund error:', error);
@@ -429,7 +636,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
 
 router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
   try {
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
     const bookingId = req.params.id;
 
@@ -437,11 +644,58 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can confirm this booking' });
 
-    const [booking] = await db.select({ status: serviceBookings.status })
-      .from(serviceBookings).where(eq(serviceBookings.id, bookingId));
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
-    if (booking.status !== 'completed') {
-      return res.status(400).json({ error: 'Only a completed booking can be confirmed' });
+    // Delivery-eligibility reference (task 1091 review): a slot booking is confirmable once the
+    // slot day has ended; a slotless booking gets a 24h buffer after provider acceptance so the
+    // traveler can never complete-and-release a paid booking the moment it is accepted. This is
+    // the same slot-end-of-day anchor the auto-complete scheduler uses (minus its extra grace —
+    // an explicit traveler attestation of delivery is a stronger signal than a timer).
+    const bookingRes = await db.execute(sql`
+      SELECT sb.status, sb.stripe_payment_intent_id,
+             CASE WHEN vas.id IS NOT NULL THEN vas.date::timestamp + interval '1 day'
+                  ELSE COALESCE(sb.confirmed_at, sb.created_at) + interval '24 hours'
+             END AS confirmable_at
+      FROM service_bookings sb
+      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
+      WHERE sb.id = ${bookingId}
+    `);
+    const raw = bookingRes.rows?.[0] as { status: string; stripe_payment_intent_id: string | null; confirmable_at: string | null } | undefined;
+    if (!raw) return res.status(404).json({ error: 'Booking not found' });
+    const booking = { status: raw.status, stripePaymentIntentId: raw.stripe_payment_intent_id };
+
+    // Task 1091: the traveler's confirmation IS the production completion path. Previously this
+    // endpoint required status already 'completed', but nothing outside admin dispute machinery
+    // ever set 'completed' — so normally paid bookings never minted earnings. The traveler (the
+    // payer, never the earner — self-crediting is impossible on this rail) confirms delivery,
+    // which drives confirmed → completed (minting held earnings in updateServiceBookingStatus)
+    // and then early-releases them, matching the pre-existing Phase 3 semantics.
+    if (booking.status === 'confirmed') {
+      // Not before delivery: completing releases the earner's money, so it is gated on the
+      // service being plausibly delivered (slot day over / 24h past acceptance).
+      if (raw.confirmable_at && new Date(raw.confirmable_at).getTime() > Date.now()) {
+        return res.status(400).json({
+          error: 'not_yet_deliverable',
+          message: 'You can confirm completion after the service has taken place.',
+          confirmableAt: new Date(raw.confirmable_at).toISOString(),
+        });
+      }
+      // Earnings must never mint for an unpaid booking. A request-rail booking can sit in
+      // 'confirmed' without a charge (and can even carry a never-charged PI), so require a
+      // Stripe-verified succeeded PaymentIntent before completing.
+      if (!booking.stripePaymentIntentId) {
+        return res.status(400).json({ error: 'This booking has no payment on record, so it cannot be confirmed as completed.' });
+      }
+      const { stripe } = await import('../services/stripe-payment.service');
+      const pi = await stripe.paymentIntents.retrieve(booking.stripePaymentIntentId);
+      if (pi.status !== 'succeeded') {
+        return res.status(400).json({ error: 'Payment for this booking has not completed, so it cannot be confirmed as completed.' });
+      }
+      // Atomic guarded transition — a concurrent cancel/refund wins and this mints nothing.
+      const completed = await storage.updateServiceBookingStatus(bookingId, 'completed', undefined, ['confirmed']);
+      if (!completed) {
+        return res.status(409).json({ error: 'This booking changed before your confirmation was applied. Reload and try again.' });
+      }
+    } else if (booking.status !== 'completed') {
+      return res.status(400).json({ error: 'Only a confirmed or completed booking can be confirmed' });
     }
 
     const released = await storage.releaseEarningsForBooking(bookingId);
@@ -454,7 +708,7 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
 
 router.post('/:id/dispute', isAuthenticated, async (req, res) => {
   try {
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
     const bookingId = req.params.id;
     const { reason } = req.body;

@@ -15,10 +15,15 @@ import {
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
 
 // Phase 5: memoized getter — defers loadStripe until first render of a checkout surface.
+// Key selection mirrors the server resolver: in dev, prefer the TEST publishable key so the
+// client key always matches the server's effective secret key (STRIPE_SECRET_KEY_TEST).
+const _stripePublishableKey = import.meta.env.DEV
+  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
+  : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 const getStripePromise = () => {
   if (!_stripePromise) {
-    _stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+    _stripePromise = loadStripe(_stripePublishableKey);
   }
   return _stripePromise;
 };
@@ -88,65 +93,69 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Payment Element */}
-      <div className="border border-gray-200 rounded-lg p-4 bg-white min-h-[200px]">
-        <PaymentElement 
-          onReady={() => setIsReady(true)}
-          onLoadError={(error) => {
-            setErrorMessage(error.error.message || 'Failed to load payment form');
-          }}
-        />
-        {!isReady && (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-            <span className="ml-2 text-gray-500">Loading payment form...</span>
+    <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
+        {/* Payment Element */}
+        <div className="min-h-[200px] rounded-lg border border-gray-200 bg-white p-4">
+          <PaymentElement
+            onReady={() => setIsReady(true)}
+            onLoadError={(error) => {
+              setErrorMessage(error.error.message || 'Failed to load payment form');
+            }}
+          />
+          {!isReady && (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+              <span className="ml-2 text-gray-500">Loading payment form...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-800">{errorMessage}</p>
           </div>
         )}
-      </div>
 
-      {/* Error Message */}
-      {errorMessage && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-800">{errorMessage}</p>
+        {/* Security Notice */}
+        <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+          <Lock className="w-4 h-4" />
+          <span>Your payment information is secure and encrypted</span>
         </div>
-      )}
-
-      {/* Security Notice */}
-      <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-        <Lock className="w-4 h-4" />
-        <span>Your payment information is secure and encrypted</span>
       </div>
 
-      {/* Submit Button */}
-      <button
-        type="submit"
-        disabled={!stripe || !isReady || isProcessing}
-        className={`
-          w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
-          ${!stripe || !isReady || isProcessing
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
-          }
-        `}
-      >
-        {isProcessing ? (
-          <>
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Processing...
-          </>
-        ) : (
-          <>
-            <CreditCard className="w-5 h-5" />
-            Pay ${(amount / 100).toFixed(2)}
-          </>
-        )}
-      </button>
+      {/* Pinned payment action row: only the payment details above scroll. */}
+      <div className="shrink-0 border-t border-gray-200 bg-white pt-4">
+        <button
+          type="submit"
+          disabled={!stripe || !isReady || isProcessing}
+          className={`
+            w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
+            ${!stripe || !isReady || isProcessing
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
+            }
+          `}
+        >
+          {isProcessing ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Processing...
+            </>
+          ) : (
+            <>
+              <CreditCard className="w-5 h-5" />
+              Pay ${(amount / 100).toFixed(2)}
+            </>
+          )}
+        </button>
 
-      <p className="text-xs text-center text-gray-500">
-        By confirming your payment, you agree to our Terms of Service and Privacy Policy.
-      </p>
+        <p className="pt-2 text-center text-xs text-gray-500">
+          By confirming your payment, you agree to our Terms of Service and Privacy Policy.
+        </p>
+      </div>
     </form>
   );
 }
@@ -201,9 +210,9 @@ export default function StripeCheckout({
   };
 
   return (
-    <div className="max-w-md mx-auto">
+    <div className="mx-auto flex h-full min-h-0 max-w-md flex-col">
       {/* Header */}
-      <div className="mb-6 text-center">
+      <div className="mb-6 shrink-0 text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Booking</h2>
         <p className="text-gray-600">
           Total: <span className="text-2xl font-bold text-purple-600">
@@ -214,21 +223,23 @@ export default function StripeCheckout({
 
       {/* Stripe Elements */}
       {stripe && (
-        <Elements stripe={stripe} options={options}>
-          <CheckoutForm
-            clientSecret={paymentIntent.clientSecret}
-            amount={paymentIntent.amount}
-            bookingIds={bookingIds}
-            onSuccess={onSuccess}
-            onError={onError}
-          />
-        </Elements>
+        <div className="min-h-0 flex-1">
+          <Elements stripe={stripe} options={options}>
+            <CheckoutForm
+              clientSecret={paymentIntent.clientSecret}
+              amount={paymentIntent.amount}
+              bookingIds={bookingIds}
+              onSuccess={onSuccess}
+              onError={onError}
+            />
+          </Elements>
+        </div>
       )}
 
       {/* Cancel Button */}
       <button
         onClick={onCancel}
-        className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition font-medium"
+        className="mt-4 w-full shrink-0 py-3 font-medium text-gray-600 transition hover:text-gray-800"
       >
         Cancel
       </button>

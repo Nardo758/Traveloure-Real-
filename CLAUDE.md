@@ -1,3 +1,12 @@
+<!-- SLIMMED per Execution Protocol (DECISIONS.md ruling 26 §5, ruling 29) — 2026-08-04, as-of 5941a4ff.
+     This file is an INDEX: invariants + pointers + boot-time operational notes ONLY.
+     - Decisions/rulings:     docs/DECISIONS.md (append-only ledger — OUTRANKS every brief; cite by number, never paraphrase)
+     - Historical findings:   docs/findings/CLAUDE_MD_ARCHIVE.md (the 1,100+ lines moved out of this file, with as-of SHAs)
+     - Guard registry:        docs/DECISIONS.md §Guard registry (guard = runs in CI; script-only = MISSING)
+     - Merge write-back:      .github/PULL_REQUEST_TEMPLATE.md (every merge writes its own deltas back)
+     - Defect state:          lives in findings docs with as-of SHAs — NEVER here ("fix in flight" class is banned).
+     Volatile current-state claims do not belong in this file. Re-verify anything stateful at Phase 0. -->
+
 # Traveloure Codebase Architecture
 
 This document captures architectural decisions to maintain consistency across code changes. Updates require approval from the designated decision-maker.
@@ -12,29 +21,6 @@ This document captures architectural decisions to maintain consistency across co
 > repo alone can't convey. Where a "⚠️ current code" note appears, the code **diverges from intent**; that is a tracked
 > **bug**, not the design. Do not "fix" the doc to match a divergence — fix the code (or leave it flagged).
 
-1. **Approval lifecycle (D1a) — CLOSED by F2 (migration 111).** Offerings are born `submitted`, **never born-approved**.
-   Lifecycle: `draft → submitted → approved`. The `provider_services` admin approve/reject/list queue already exists
-   (`GET /api/admin/provider-services/pending` + `POST …/:id/approve|reject`, all operating on `provider_services` via
-   `mapProviderServiceToListing` → `ProviderServiceListing`; these were **renamed from the misnamed `custom-services`
-   vocabulary** — endpoints, storage fns, and the `ExpertCustomService` DTO all now carry provider-service names). **F2
-   resolution (ratified Jul 14, 2026):** ① the born default is
-   flipped `approved → submitted` at BOTH the ORM (`shared/schema.ts:578`) and the DB column (migration 111
-   `ALTER COLUMN approval_status SET DEFAULT 'submitted'`, **future-inserts-only — NO backfill, existing rows grandfathered
-   `approved`**); ② `createProviderService` clamps the born state server-side to non-approved (`draft`/`submitted`, default
-   `submitted`) so a client can't self-approve via the still-open `insertProviderServiceSchema` (the mass-assign twin of
-   marketplace Gap 2), and the duplicate path resets `approvalStatus` (was inheriting the original's `approved`);
-   ③ the **read gate is completed on ALL public `provider_services` surfaces** (they filter `approval_status = 'approved'`)
-   so a `submitted` listing cannot leak publicly — while the **expert-own console and admin reads stay intentionally
-   ungated** (owner sees their own pipeline; admin sees the queue). **F2 extension (Jul 15, 2026): the upsell engine's
-   two INDIRECT reads were missed surfaces, now gated** — `loadCoveringInventory` (a born-`submitted`-but-`active`
-   service counted as covering inventory, unlocking public recommendations + feeding price into the earnings calc) and
-   `resolveEndorsedKeysFromProviders` (an unapproved listing could power an expert-endorsement ranking boost). Both now
-   require `approval_status = 'approved'`; proven behaviorally both directions (submitted excluded, approved+verified
-   included). The supply→engine pipeline is otherwise automatic: ServiceForm create/update writes
-   `provider_neighborhood_coverage` rows inline, and the engine reads them per-request — no batch step. Grandfather + full-read-gate = complete integrity with
-   zero catalog outage (grandfathered rows are `approved` → pass the gate → stay visible; new rows are `submitted` → hidden
-   publicly until approved). `GET /api/expert/services` (`server/routes.ts`) is the owner console — correctly ungated
-   (filters by `userId` + the active/paused `status` param, never approval).
 2. **Admin auth = default-deny.** `/api/admin/*` is protected by a **blanket `requireAdmin`** guard
    (`app.use("/api/admin", …)` in `server/routes.ts`, DB role lookup on the session; 401/403; no bypass) — **landed via
    #141**; the previously world-writable `POST /api/admin/fee-config` hole is **closed on `main`**. Do **not** reintroduce
@@ -46,335 +32,150 @@ This document captures architectural decisions to maintain consistency across co
 4. **Two parallel offering catalogs, never merged.** `expert_offering_types` (`serviceTier` + `deliveryFormats`) and
    `service_offering_types` (`categoryKey` → `service_categories`) are strictly separate. **Experts are NOT a
    `service_category`.** `offering_type_key` is persisted via **two separate FKs** (migration 107), `ON DELETE SET NULL`.
-5. **One builder; selection-only signup.** `ServiceForm` is the single offering-creation surface for **both** roles; the
-   expert create wizard is retired (Phase 3). Signup is **selection-only** — listing creation is deferred to the
-   post-approval console. 🔄 **Phase 2 IN PROGRESS** (`claude/phase2-serviceform-absorption`): `ServiceForm` absorbs the
-   wizard's two unique capabilities — the from-template **gallery entry** (writing via the canonical
-   `POST /api/provider/services` with `approvalStatus` `draft`/`submitted`, **never** the born-approved
-   `POST /api/expert/services/from-template/:id`) and the **`requirements`** field. Also lands a pre-existing P1 fix
-   (Step 0.5): ServiceForm's delivery vocab is canonicalized at the write boundary (`in-person`→`in_person`,
-   `video-call`→`video`, keep `hybrid`) so writes satisfy the migration-109 CHECK — before this, ServiceForm creates with
-   those two values failed on insert. Every create path stays `draft`/`submitted`, never born-approved (D1a). The wizard is
-   **not deleted** in Phase 2 — its retirement is Phase 3. Filed for Phase 3: retire/redirect the born-approved
-   `from-template/:id` route; and **evaluate** (do not add mechanically) exposing the not-yet-in-picker canonical
-   delivery methods (`call`, `voice_notes`, `async_messaging`, `pdf`) — confirm **each** is a delivery type a
-   provider/expert should be able to *choose* in ServiceForm before adding it. In particular `pdf` (the written-deliverable
-   method the wizard's `document` mapped to) may be a template-/offering-only concept, not a picker option; adding a picker
-   option the rest of the create/booking flow doesn't support would be a new "surface-without-a-backend" trap.
-6. **Insurance.** `has_insurance` (provider self-attestation, `service_provider_forms`, migration 108) is the **sole**
-   provider insurance field; the "023 insurance evidence" was a never-shipped plan. When FEE-2 Phase 1 ships the
-   admin-validated `insurance_tier`, a **boolean-vs-tier precedence rule must be written here before both coexist.**
-7. **Coordination fee.** Fee logic lives in the service (`optimization-fee.service.ts`); rates resolve via config, no
-   literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. **Resolved (interim, #144):**
-   the fee reads the event budget from the existing `coordination_states.budget` jsonb column
-   (`{ amount: <dollars>, currency }`, written at create/patch from the request's `metadata.budget`, read ×100), **not**
-   `total_estimated_cost` (that means *cost*, not budget); absent/`{}` budget → intentional floor-only. The optimize
-   credit is **not applied** pending the Phase-4 paid-signal linkage (no unearned discount). Filed follow-ups: first-class
-   validated `budget` field (D-BUDGET(b)); the paid-signal ledger. Full contract in the "Recorded change — Coordination-fee"
-   note below.
 8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
-   touched code is a defect (see §13). The `499`/`8%` coordination constants are a pre-existing exception pending
-   migration to config (Phase 4.1 TODO in the service).
-9. **Routing realities.** `server/routes/experts.routes.ts` is **imported-but-unmounted (dark)** except the two ported
-   endpoints; ~24 endpoint families are dead in production pending the dark-families triage. **Dead endpoints return
-   200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
-   - **Route-shadow class — SWEPT (Jul 15, 2026).** The 237 inline `routes.ts` registrations that duplicated a path
-     already served by an earlier-mounted router (202 content.routes, 29 admin.routes, 6 payments.routes — including
-     the §10 `/api/discover` and §15 `/api/checkout` landmines) were **diffed pair-by-pair and deleted**; 6 superior
-     deltas found only on the dead copies were **harvested into the live copies first** (custom-venues IDOR ownership
-     ×2, the `/api/services/:id` F2 read-gate, the global-calendar country-season fallback, the admin-notifications DB
-     role lookup, the discover-location `date` passthrough). Full pair table + unresolved remainders in
-     `docs/audits/shadow-route-sweep.md`. **Rule going forward: never register a path inline in `routes.ts` that a
-     mounted router already serves** — the router copy wins on mount order and the inline copy is born dead (this class
-     ate at least three real fixes: bf93f45e, 571b593f, 23ece804 all landed on dead copies). New endpoints belong in
-     the appropriate `server/routes/*.ts` router.
-   - **Ground-truth correction (Jul 14, 2026): the "mostly-dark supply side" headline was overstated.** Re-verified on
-     `origin/main`, three surfaces the maps inferred were dark are actually **LIVE on origin/main** (not even
-     deploy-only): the **recommender** (real `server/services/recommendation.service.ts` → `getExpertRecommendations`/
-     `getProviderRecommendations`, mounted at `/api/recommendations/expert|provider|user` — **mounted, but the endpoints
-     were 500ing on 13 stale dynamic-imports of the deleted pre-unification engine files; repointed to the unified service
-     in PR #174, so "live" holds post-#174**), **provider discovery**
-     (`/service-providers` + the full `/provider/*` route set in `App.tsx`), and the **expert workspace**
-     (`/expert/workspace/:tripId`, expert-gated). What IS genuinely dark stays the `experts.routes.ts` families above
-     (import present, no `app.use`). The maps were **inference**; treat these four as re-verified fact. The remaining
-     demand/supply map claims still need reconciliation against the ground-truth corrections table.
-   - **EA console — ACTIVATED (Jul 14, 2026).** The ~32 `/api/ea/*` executive-assistant endpoints (client roster,
-     executives, events, travel, gifts, saved venues, communications, AI tasks + client push) were part of the dark
-     `experts.routes.ts` set — the **client console was fully routed** (`client/src/pages/ea/*` behind
-     `ProtectedRoute requiredRole="executive_assistant"` in `App.tsx`) but every call hit the Vite catch-all (200-HTML),
-     so the console rendered but held no real data. Extracted **verbatim** into a new **mounted** router
-     `server/routes/ea.routes.ts` (`app.use(eaRoutes)` in `routes.ts`), guarded by a **router-level `isEA` RBAC**
-     (`router.use("/api/ea", isEA)` — executive_assistant OR admin, DB role lookup; §2-style default-deny for the
-     namespace). No endpoint logic changed; the block was removed from the dark file (0 `/api/ea` remain there). This is
-     a **surface-with-a-backend** activation (client already existed), not a new build. **Filed (not activated here):**
-     the remaining dark `experts.routes.ts` families (expert workspace/vendors, knowledge-nuggets, visa, role) stay dark
-     pending their own triage.
-   - **Kyoto supply tools — `GET/PATCH /api/provider/settings` ACTIVATED (Jul 14, 2026).** Same surface-without-a-backend
-     pattern: the provider settings page (`client/src/pages/provider/settings.tsx`, routed behind
-     `ProtectedRoute requiredRole="provider"`) GET/PATCHes `/api/provider/settings`, but those handlers were dark in
-     `experts.routes.ts` **and** referenced an **undefined `requireProviderRole`** (a latent bug — they'd have thrown even
-     if reached). Extracted into a new **mounted** `server/routes/provider.routes.ts` (`app.use(providerRoutes)`),
-     writing a real `requireProviderRole` (DB role lookup, provider-or-admin, mirroring `isEA`). **Not money-path:**
-     settings are self-scoped by `userId` (unique per user); PATCH is a **zod allow-list of the 7 editable fields**
-     (never raw `req.body`), so identity columns can't be mass-assigned. `payoutFrequency`/`minimumPayoutAmount` are
-     provider *preferences*, not a charge/transfer amount — no Stripe/earning write. The money-endpoint guard passes
-     (file is not money-named and the handler performs no money operation).
-   - **Provider earnings family — deliberately NOT mounted (scoping decision).** `GET /api/provider/earnings`,
-     `/earnings/summary`, `/earnings/details` and `/api/expert/earnings/details` are also dark, but **no client consumer
-     calls them** — the provider earnings page derives its numbers from the **live** `GET /api/provider/bookings`. Mounting
-     them would be a **backend without a surface** (the inverse of the settings bug). Left dark; **filed:** activate this
-     family only alongside a real consumer that needs the server-side earnings aggregate.
-10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
-    Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
-    /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
-    and `POST /api/expert-templates/:id/purchase/confirm` server-verifies the intent (`status === 'succeeded'`, IDOR +
-    ownership + idempotency guards) before marking complete and recording the earning. The payment **guards are sound**
-    and there is no dual-path/cart leak. **But the checkout is unsafe to surface until three gaps close, and is currently
-    kept unreachable only by an orphaned purchase UI** (the `/expert-templates/:id` route is unregistered in `App.tsx`;
-    the `/discover` `packages` tab is hidden). **Governing rule: safety before surfacing — the purchase path must not
-    become reachable until Gap 1 (approval) and Gap 2 (field whitelist) hold.**
-    - **Gap 1 — approval gate: BUILT (migration 110 + shared queue).** `expert_templates` now carries the same approval
-      column set as `provider_services` (`approval_status` draft→submitted→approved/rejected, `submitted_at`/`reviewed_at`/
-      `reviewed_by`/`rejection_reason`), with a DB CHECK on the status set. The purchase gate (`routes.ts`) is now
-      **`approval_status === 'approved' AND isPublished === true`** — approval is the gate the expert cannot self-satisfy;
-      `isPublished` stays the expert's own visibility toggle (approved-but-unpublished respects the hide; published-but-
-      unapproved is not purchasable). Admin approve/reject endpoints (`/api/admin/expert-templates/:id/approve|reject`,
-      reject-reason required) ride the blanket `adminApiGuard` (§2). Experts submit via `POST /api/expert/templates/:id/submit`.
-      **A3 material-change re-review:** changing `price`/`currency` on an approved template drops it back to `submitted`.
-      **This is the shared queue = Phase 4's queue** — built once, **do not fork** a template-only path (§4/§10).
-      **Backfill effect (recorded, not silent):** existing `is_published=true` templates were backfilled to `submitted`,
-      so they need admin approval before they can sell — zero live impact today (purchase UI still orphaned, Gap 3).
-      **Phase 4's scope is now REDUCED** to: wire the `provider_services` read-gate to this existing queue + decide the
-      grandfather/backfill + born-`approved` default flip (`provider_services` was intentionally left untouched here —
-      it already has the columns, grandfathered `approved`). Phase 4 **wires, does not rebuild.**
-    - **Gap 2 — mass-assignment.** BOTH the create (`routes.ts:4396`) and PATCH (`routes.ts:4420`) endpoints spread raw
-      `req.body`, so `isPublished`/`approvalStatus`/`expertId`/earnings columns are self-settable. Fix (A1, landed on
-      this branch, **decision-independent**): write only an explicit expert-editable allow-set on both paths; never raw
-      `req.body`; force `isPublished` false at create.
-    - **Gap 3 — surfacing (Phase B, LAST). 🔄 IN PROGRESS (Jul 14, 2026) — scope CORRECTED by the action-map pass.**
-      The full buy-loop action map (expert build → submit → approve → browse → view → purchase → **receive** → review)
-      was ground-truthed and found Phase B is **bigger than "register a route + un-hide a tab"** — three client surfaces
-      don't exist at all: ① the expert builder (`/expert/templates`, routed + working CRUD) had **no submit-for-review
-      action and didn't show `approvalStatus`** — the pipeline was dead at step 1 (nothing could ever reach the admin
-      queue from the UI); ② **no public detail page or purchase UI exists anywhere** (the earlier "page wired to Stripe"
-      claim was wrong — client grep finds zero callers of `/purchase` or `/purchase/confirm`); ③ **no buyer delivery
-      surface** — `GET /api/my-purchased-templates` (live, returns purchases + full template incl. `itineraryData`) has
-      zero client consumers, so a buyer would pay and have nowhere to see what they bought. Server needs ~nothing: all
-      12 endpoints live + gated; review-create is already purchase-gated. **Build order (safety: delivery before
-      surfacing):** B1 builder submit + status (landed on `claude/marketplace-phaseB-b1` — submit/resubmit button,
-      approval badges + rejection reason, publish toggle only post-approval, dead born-published switch removed, and the
-      fake client `80%`/`×0.8` earnings literals replaced with real per-purchase `expertEarnings` sums — §8: the real
-      split is config-resolved server-side via `resolveCommissionRates`); B2 public `/expert-templates/:id` detail page
-      + purchase flow; B3 buyer's purchased-packages view (the delivery); B4 un-hide the `packages` tab **last, only
-      when the loop closes end-to-end**. Only admin-approved packages surface, at the approved/locked price.
-      **B2 landed (+ a Gap 4 it found): the itinerary content-gate.** Both public reads (`GET /api/expert-templates`
-      + `/:id`) and the purchase 202 were returning the **full `itineraryData` — the entire paid product — to anyone,
-      unauthenticated**. Public reads now return a TEASER (`itineraryPreview`: day + title only, via
-      `redactTemplateContent`); the full content returns only to a **completed** purchaser
-      (`hasUserPurchasedTemplate` — proven behaviorally: `pending_payment` does NOT unlock), the owner, or an admin.
-      The buy surface is the new public `/expert-templates/:id` page (`expert-template-detail.tsx`, registered in
-      `App.tsx`): content-gated detail + reviews + the existing safe 2-step purchase (POST `/purchase` 202 →
-      Stripe Elements via the shared `StripeCheckout` → POST `/purchase/confirm`); the client never sends an amount
-      (§14). Proven against a local DB: anonymous list/detail leak-free; purchaser unlock; `/api/my-purchased-templates`
-      returns full content (B3's data source).
-      **B3 landed (same branch): the delivery surface.** `/my-bookings` gains a **Packages** tab (first consumer of
-      `/api/my-purchased-templates`): purchase status (Purchased / Payment pending / Refunded) + "View itinerary" →
-      the B2 detail page, which unlocks full content for the purchaser. A buyer with only package purchases (no
-      bookings) now lands on the Packages tab instead of the "No bookings yet" dead-end. **B4 (three surfaces, scoped
-      by the surface map):** un-hide the Discover `packages` tab (cards already built, already link to the B2 page);
-      expert-profile packages section (`/experts/:id`, via the existing `?expertId=` filter); service-detail
-      same-owner cross-sell. **Search-indexing CLOSED (packages-in-discovery, post-B4):** `unifiedSearch` now also
-      returns matching **packages** (approved+published only; query vs title/description/destination; location vs
-      destination; price filters; skipped on category-locked browses — template categories ≠ `service_categories`),
-      rendered as a strip in `ServiceBrowser`, and the public packages feed is **quality-ordered** (featured →
-      salesCount → rating → recency, was raw insertion order). Route-shadow catch #2 (same class as the §15
-      `/api/checkout` landmine): `/api/discover` was duplicated — `content.routes.ts` is the LIVE one (mount order);
-      the shadowed `routes.ts` copy is **deleted by the §9 shadow-route sweep (Jul 15, 2026)**. The content-gate
-      redaction lives in the shared `server/utils/template-content-gate.ts` and the live copy applies it (proven
-      behaviorally: search results carry teaser only, no `itineraryData`). **Recommender ranks packages — RESOLVED
-      (Jul 16, 2026).** The demand-signal recommender is **demand-signal-typed** (recommends service *types*), and
-      packages live in a separate taxonomy (§10) — so rather than force a taxonomy bridge, package ranking was added
-      in the layer that fits: `getRecommendedPackagesForUser(city, prefs)` in `recommendation.service.ts` ranks
-      **approved+published** packages by **destination match** (the city the recommender already has) then real
-      quality (`isFeatured → salesCount → averageRating → recency`), returns **teaser fields only** (no
-      `itineraryData` — content-gate), and rides `GET /api/recommendations/user` as an **additive `packages` field**
-      (existing consumers read `.recommendations`, unaffected). Surfaced in `template-recommendations.tsx` as a
-      "Ready-made packages for `<city>`" strip → the B2 detail page; honest rating ("New" when `reviewCount=0`).
-      This is also the destination-aware ordering the packages feed wanted — done in the recommender, not a
-      duplicate feed sort. **Still filed:** `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
-      category/destination/duration are structured. **Label standard (ratified, superseded Jul 16, 2026):
-      traveler-facing = "Ready Made Trips"** (Discover tab/header, my-bookings tab, detail page) — renamed from
-      "Packages" because "Packages" read ambiguously against services/bookings and obscured that these are
-      pre-made, expert-authored *trips* the traveler buys. The seller console keeps "Itinerary Templates" (same
-      product, seller-side vocabulary — the Airbnb listings/homes split). **Routing key unchanged:** the tab
-      `value="packages"` + `?tab=packages` deep-link + `VISIBLE_TABS` routing token stay `packages` (URL/routing
-      contract); only the human-readable label text changes to "Ready Made Trips". **B4 LANDED (Phase B complete):** Discover
-      `packages` TabsTrigger restored (feed is server-gated + teaser-redacted); `/experts/:id` gains a Packages tab
-      (`?expertId=` filter, hidden when the expert has none); `/services/:id` gains a "Packages by this expert"
-      same-owner cross-sell (top 3, hidden when none). All three link into the B2 detail page.
-      - **Read-gate — CLOSED on the server (PR #172), independent of surfacing.** A ground-truth pass found the purchase
-        path is **reachable on the deployed tree** (route registered, page wired to Stripe, marketplace nav link live) —
-        i.e. Gap 3 is largely surfaced there, NOT orphaned as this doc assumed. The buy was already gated
-        (`approvalStatus==='approved' && isPublished`), but the **public reads were not**: `GET /api/expert-templates`
-        filtered only `isPublished` (a self-published-but-`submitted`/`rejected` template surfaced in the feed) and
-        `GET /api/expert-templates/:id` had **no gate**. Both now require `approved` (+ `isPublished`); the owner console
-        (`GET /api/expert/templates`, expertId-scoped) and admin reads stay ungated — the **F2 `provider_services`
-        read-gate pattern**. So "only admin-approved packages surface" now holds at the API regardless of which client
-        renders it.
-      - **Tree divergence — RECONCILED (Jul 14, 2026): the surfacing does NOT exist anywhere.** The Replit workspace and
-        `origin/main` were fully synced two-way (workspace pulled `main`, then pushed its local commits back —
-        `3fcf19c6..ee81ff05`). The workspace's un-pushed commits turned out to be the **role-RBAC backstop + UI tweaks**,
-        NOT Phase-B surfacing. Verified on reconciled main: no public `/expert-templates/:id` route in `App.tsx` (only
-        the admin route), `packages` tab still hidden in `discover.tsx` ("hidden in Phase 1a"). So the earlier
-        ground-truth claim that the purchase path was "reachable on the deployed tree" was **wrong** (or described a
-        stale deploy artifact) — the purchase UI is **unregistered everywhere**, which is *safer* than this doc assumed.
-        Once the workspace redeploys from the synced tree, deploy = main definitively. Phase B (Gap 3 surfacing) remains
-        genuinely un-built and stays gated behind Phase A holding.
-    - **Currency (decision 2 = A):** validate against the single platform currency (USD) now + keep per-listing
-      `price`/`currency`; whitelist the currency field to a known set. Conversion infra exists (`budgetService`) but is
-      budget-scoped; **Stage-2 multi-currency layers on later** — do not build it here.
-    - **State machine at the DB (decision 3 = A):** add a CHECK on `template_purchases.status` (and the new template
-      approval-status) to the valid set — the migration-109 lesson — and **flip the `status` default off `'completed'`**
-      to a pre-payment state. Enforce the money state machine at the DB, not just app code.
-    - **Price is locked at create** (`routes.ts` create reads `template.price` into the PaymentIntent + stores
-      `expertEarnings` on the purchase row; `/confirm` records from the stored row, never re-reads `template.price`) —
-      A3 adds "material `price`/`currency` change to an approved template re-enters review."
-    - **Filed follow-up — refund path (not built).** `'refunded'` is **already in the migration-110
-      `template_purchases_status_check`** as forward-compat (a status CHECK's failure mode is asymmetric: allowing an
-      unwritten value never 500s, omitting a written one does). When the refund path is built: **do not** re-add
-      `'refunded'` to the CHECK (it's already allowed — a second ADD would hit "constraint already allows this"); wire the
-      actual `status = 'refunded'` write **plus the earning reversal** (undo the `template_sale` `expert_earning`). No
-      `failed`/`cancelled`/`processing` were added — don't add a status nothing writes (a state with no transition in/out
-      is a trap); add one only with its write path.
+   touched code is a defect (see §13). **Phase 4.1 LANDED (migration 122):** the `499`/`8%` coordination constants —
+   formerly the pre-existing §8 exception — are now admin-editable `fee_bands` rows (`coordination_floor` flat-dollars
+   `499.00`; `coordination_percent` fraction `0.08`). `resolveCoordinationFee` reads them via the two bands and **falls
+   back to the same code constants when a row is absent/non-positive** (a fee floor's safe failure mode), so the seed is
+   behavior-neutral on apply and the constants survive only as the documented fallback default (`fee-literal-ok`,
+   matching the `getFee` DEFAULT_FEE_CENTS fallback posture). Idempotent `ON CONFLICT DO NOTHING`; no schema/CHECK change
+   → no publish-time push trap.
+9. **Routing realities (corrected Aug 7, 2026 — decision-maker ratified).** `server/routes/experts.routes.ts` is now
+   **MOUNTED and live** (`app.use` in `server/routes.ts`; the dark-endpoint repairs landed it — the earlier
+   "imported-but-unmounted" note was stale). The **unmounted-router guard** (`scripts/check-unmounted-routers.cjs`,
+   CI) is the arbiter of dark-route claims going forward — do not trust prose here over its output. Unchanged and
+   still load-bearing: **dead endpoints return 200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a
+   "route is dead" signal.
 11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
     works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
-12. **Market wedge — RATIFIED Jul 14, 2026: ONE market, KYOTO.** The launch is a **single-market wedge**, not the
-    8-market breadth. Ground truth that informed it: the "8 launch markets" exist only as **content-source scaffolding**
-    (`server/content/providers/DMOSourceRegistry.ts` — DMO ingestion across 8 markets), while the **real depth** (seeded
-    vendor inventory + neighborhood density) is already concentrated on **Kyoto** (`phase-d-kyoto-vendors.seed.ts`,
-    `verify-phase-1b.ts` "Kyoto is the launch market", `city-neighborhoods.seed.ts`). So Kyoto is the de-facto wedge with
-    actual liquidity; the other 7 are thin. **This one decision resolves three coupled ones** (all point the same way):
-    (a) **liquidity** — concentrate density in Kyoto, don't spread; (b) **guild-vs-talent Knowledge-Bar** — talent-selection
-    (the strong, hard-to-disintermediate moat) is feasible in ONE market, so vet for deep local Kyoto talent rather than
-    fall back to the leakable guild-document model breadth would force; (c) **Knowledge-Bar standard + expertise gate** —
-    define the *Kyoto* standard and extend the existing local-expert Knowledge-Proof (essays + tenure) into a **scored**
-    expertise gate for Kyoto. **Roadmap consequence:** marketplace build sequences behind Kyoto density; the other-7-market
-    breadth is **paused, not built out**; surfaces should reflect Kyoto depth, not thin content for 7 near-empty markets.
-    Full roadmap in `docs/audits/marketplace-maps-groundtruthed.md`. Ratified by the decision-maker (one-wedge-Kyoto).
-    - **Knowledge-Bar scored expertise gate — Phase 1 landed (migration 114).** The onboarding Knowledge-Proof (3
-      judgment-probing essays + `localityProof` tenure) is now **AI-scored** against a 4-dimension rubric (weighted /
-      current-local / negative-steer-away / personalization), Kyoto-tuned scoring context, result stored in
-      `local_expert_forms.knowledge_score` (jsonb) + `knowledge_scored_at`. Mechanism = **AI-scored + admin-confirm,
-      launched ADVISORY** (ratified): the score is decision support surfaced to the admin queue; it does **not** auto-gate
-      approval (approval still flows through `updateLocalExpertFormStatus`). Best-effort: no API key / API error /
-      unparseable output → `unscored` verdict, never blocks onboarding. Scoring is fire-and-forget after form create
-      (`server/services/expertise-scoring.service.ts`). **Phase 2 landed:** the score + per-answer rubric breakdown is
-      surfaced in the admin review queue (`admin/experts.tsx`, `knowledge-score-<id>`), labelled advisory. **Phase 2 also
-      fixed a Phase-1 shape bug:** the scorer read `knowledgeProofAnswers` as `string[]`, but onboarding stores
-      `{question, answer}` objects — it now normalizes both, so scoring actually runs on real submissions. **Filed
-      follow-ups:** Phase 3 = calibrate the rubric on real Kyoto submissions, then decide whether to tighten from advisory
-      to a harder gate; refine the Kyoto scoring context (currently a first-draft seed).
-    - **Experience-planning lens — ADOPTED WITHIN KYOTO (ratified Jul 16, 2026).** The BP reframe
-      (`research/traveloure_bp_reframed_analysis.md`) recasts Traveloure as a destination
-      *experience/event-planning* platform (weddings/proposals/birthdays/corporate events) rather than a
-      tour marketplace — transactions are $5K–$50K events, not $50–$200 tours. **The LENS is adopted;
-      the reframe's 8-market breadth is NOT** — §12's one-wedge-Kyoto (ratified *later*, Jul 14)
-      supersedes it. So the lens applies **within Kyoto** ("plan your Kyoto experience"), the other 7
-      markets stay paused. The codebase already carries the DNA (`/experiences/:slug`
-      wedding/proposal/birthday, coordination-fee engine, `getExperienceSuggestionsForCity`).
-      **Acquisition funnel — SEO slice LANDED (Jul 16, 2026):** the experience-template page
-      (`/experiences/:slug`) had **no SEO at all**; it now emits destination-aware `SEOHead` meta —
-      title/description/keywords targeting the high-intent "`<city> <event>`" search the reframe flags
-      (e.g. `?destination=Kyoto` on the wedding slug → "Plan Your Kyoto Wedding", keywords `kyoto wedding`,
-      `kyoto destination wedding`, `wedding planner kyoto`, …); falls back to an event-specific title with
-      no destination. Client-side (same SPA `SEOHead` mechanism the rest of the app uses). The
-      experience-template optimize upsell now also carries a "See planning & coordination fees" link to
-      `/pricing` (fee transparency in the planning flow; no fee literals duplicated — they resolve from
-      config). **Event-tier pricing — NOT a gap (corrected Jul 16, 2026):** it is already surfaced on the
-      live, globally-linked `/pricing` page (Pay-Per-Use section: Trip/Experience $5.99, Event $19.99
-      credited-toward-coordination, Coordination 8%-or-$499, all `fee-literal-ok` config-resolved display
-      strings). **AI optimization fee — ALREADY BUILT + BILLED (corrected Jul 16, 2026):** billing the
-      optimize is not a gap — the free path (`/api/optimization-preview`) returns a metrics *teaser* only,
-      and the **full LLM optimization is delivered behind the paid gate**: `POST /api/optimization-payments`
-      resolves the fee **server-side** via `getFee(eventType, tier)` (complexity-tiered; 24h free re-run;
-      Stripe PaymentIntent `type=optimization_fee`, ownership-verified — §14-clean), then
-      `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
-      pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
-      credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
-    - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
-      8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
-      already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,
-      `expert_dmo_collections`, `expert_dmo_collection_items`, `expert_dmo_edits`, `content_gap_alerts`,
-      `dmo_scrape_jobs`; `DMOSourceRegistry` (62 sources), `DMOCrawler` (Firecrawl/Tavily/Brave), mounted
-      `/api/expert-workspace` with `requireExpert`) but **effectively dark and broken**: the table-creating
-      migration lived UNREGISTERED in the legacy top-level `migrations/0010_add_dmo_content_layer.sql`, so
-      the tables never existed at runtime and every DB-backed endpoint errored. **D0 (this change):**
-      relocated → `server/migrations/117_add_dmo_content_layer.sql`, registered in `migration-files.ts`,
-      **made the FK `ADD CONSTRAINT`s idempotent** (`DO/EXCEPTION WHEN duplicate_object` — the tables may
-      already exist from a publish-time drizzle push, and the runner is fail-fast); added
-      `server/seeds/dmo-sources.seed.ts` (mirrors the registry into `dmo_sources` so `dmo_scrape_jobs`
-      FKs resolve; idempotent upsert on `(domain, market)`; registry `id` as PK), wired at startup. The
-      born-hidden design (`discover_page_visible=false` until expert review) **already matches D1a** — raw
-      machine/DMO content never reaches travelers without expert review. **Ingestion stays Kyoto-scoped
-      per §12**; seeding all-market source *definitions* is inert scaffolding (a definition does nothing
-      until a scrape job runs). **D1 LANDED (seed, Jul 16, 2026):** live UNESCO/crawler ingestion is gated
-      on outbound network to the DMO domains + API keys (the agent proxy 403s `whc.unesco.org`; Firecrawl/
-      Tavily/Brave keys absent), so it can only run at deploy — `server/seeds/dmo-kyoto-heritage.seed.ts`
-      instead bootstraps the pipeline with 10 REAL, born-hidden Kyoto UNESCO component sites (WHC #688,
-      Uji/Otsu excluded per §12) as thin factual `dmo_raw_content` stubs (`pending_expert_review`,
-      `discover_page_visible=false` — experts enrich before publish). Idempotent on `(source_url, source_id)`,
-      wired after the sources seed (FK). **D2 LANDED (Jul 16, 2026):** the Expert Workspace DMO Library UI
-      (`client/src/pages/expert/dmo-library.tsx`, routed `/expert/dmo-library` behind `requiredRole="expert"`,
-      linked in the expert sidebar) — the previously-missing client consumer. Kyoto-scoped
-      (`?city=Kyoto`); browse pending/published/rejected tabs → review & enrich (name/description/tags) →
-      the loop the server already enforced: `POST /content/:id/edit` then `PATCH /edits/:id/submit` then
-      `POST /content/:id/publish` (publish is server-gated on a submitted edit existing — D1a) or
-      `POST /content/:id/reject`. Rides the already-mounted `/api/expert-workspace` endpoints, no server
-      change. **NOT built (filed, Kyoto-first build order):** ingestion scheduler + live scrape wiring (D3).
-      Env for live scraping: `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY` (crawler warns-only if
-      absent). No Smartvel/ATDW per-API client exists yet (only generic scraping). Migration 117 has **no
-      CHECK constraints** → no publish-time push trap.
+12. **A PENDING advisor may not write.** Trip-item mutation paths (create/edit/delete/reorder) gate the advisor branch
+    on WRITE-access statuses (`accepted`/`assigned`, not `pending` — `TRIP_ADVISOR_WRITE_ACCESS_STATUSES`); read
+    surfaces (assigned-trips, trip GET, plancard) keep granting `pending`. `itinerary_items.origin`
+    (`'ai'|'traveler'|'expert'`, app-enforced, no CHECK — publish-trap avoidance, migration 181) is stamped
+    server-side at create; both ratified Aug 7 2026. Regenerate preserves `origin='traveler'` and `suggestedBy='expert'`.
+
+20. **Market-launch assets are DB-backed; extracted places are child rows (decision-maker ratified Aug 9, 2026).**
+    Two additive tables (migrations 185/186, both declared in `shared/schema.ts` — publish-trap rule):
+    **(a) `dmo_extracted_places`** — places extracted from a DMO guide are first-class child rows of
+    `dmo_raw_content` (ON DELETE CASCADE; UNIQUE (dmo_content_id, "position")), replacing the
+    `extracted_data.places` JSON blob as the source of truth (blob backfilled by 185, thereafter historical —
+    written never read). Re-extract is replace-by-position but **must preserve expert-added `ticketing_url`**
+    by `normalized_name` match — an expert's curation is never clobbered by a refresh. API response shapes are
+    unchanged (server maps rows → the same `places` array), so clients are untouched.
+    **(b) `market_geography`** — a market's water/parks/roads layer lives in the DB, written by the admin
+    "Add market" flow (`/api/admin/markets`, under the §2 blanket guard), which runs the Overpass extract
+    **server-side** (same UA/mirror/length-cap rules as `scripts/generate-market-geography.ts`) and can also
+    seed `city_neighborhoods` from OSM `place=suburb|neighbourhood|quarter` nodes. Lookup is **DB-first with
+    the committed `KYOTO_GEOGRAPHY` literal as server-side fallback** (absent row ≠ error; no-layer markets
+    render honestly without geography, never another city's shapes — §13 posture). The client no longer
+    bundles geometry — it fetches the public read endpoint. ODbL attribution ("© OpenStreetMap contributors")
+    remains REQUIRED wherever any of this renders. The **vector-tile interactive map is PARKED** by the same
+    ruling — do not start it as a side effect of geography work.
+
+21. **Expert Notes are two-level and traveler-facing; `trips.expert_notes` stays PRIVATE (decision-maker
+    ratified Aug 9, 2026).** UI label for both new fields is **"Expert Notes"**: per-item
+    `itinerary_items.expert_note` and trip-level `trips.expert_traveler_note` (migration 187, additive
+    nullable, declared in `shared/schema.ts`) are **delivered to the traveler** (PlanCard + delivered-plan
+    surfaces, "from your expert" treatment). **`trips.expert_notes` is a DIFFERENT field** — the Workstation's
+    private "Build notes" (`PATCH /api/trips/:id/expert-notes`) — and must never leak to traveler surfaces;
+    do not rename or merge the three. Writes to the new fields gate on the same §12 advisor WRITE statuses as
+    other item/trip mutations. Same ruling: **traveler-facing distance on map surfaces is ALLOWED** (store
+    teaser day-km legend ratified — "users should be able to see the difference"); the Delta-framework
+    brief's L3 ("distance never traveler-facing") is amended to headline *delta claims* only, not map
+    annotation. The Advisor **fundamentals** checklist (ratified list in `server/routes/advisor.routes.ts`)
+    is deterministic, §13-honest (a check with insufficient data is omitted with a reason, never guessed).
+
+22. **Service map & route stops; Catalog is the map's home (decision-maker ratified Aug 10, 2026).**
+    **(a) `service_route_points`** (migration 192, declared in `shared/schema.ts` — publish-trap rule) is the
+    child-row home for a provider service's **ordered route stops**, on the `dmo_extracted_places` pattern:
+    `ON DELETE CASCADE` FK → `provider_services`, `UNIQUE (service_id, "position")`, **nullable lat/lng — an
+    unlocated stop stays visibly flagged, never guessed onto the map** (§13). Writes are owner-gated
+    **replace-list** (`PUT /api/provider/services/:id/route-points`): positions derived server-side from array
+    order, allowlist body (§19 posture — no `createInsertSchema` denylist parsed off the body). Coordinates for
+    a stop come only from an explicit user placement (same L27-P3 confirm posture as the meeting pin).
+    **(b) Placement:** the map authoring surface lives on **Catalog** (`/provider/services`, list↔map toggle) —
+    per the C9 precedent that put availability-slot editing there (per-listing curation belongs to the "what I
+    sell" module). Workstation ladder cards may deep-link in; Workstation never owns the surface. The meeting
+    pin keeps its ONE write path (`extractServiceLocation` on POST/PATCH `/api/provider/services`, confirm-gated
+    `LocationPointPicker`) — the map view mounts the same picker, no second pin-write rail.
+    **(c) Rendering honesty:** route connectors are **straight dashed lines labeled as sequence, not travel
+    routing**; no invented distances/durations (§13). `serviceRadius` may render as a ring around the confirmed
+    pin (display only). Traveler surface (`GET /api/services/:id` now carries `routePoints`;
+    `/services/:id` page): map renders **located stops only**, shows "X of Y stops located", and renders **no
+    map at all when the service has no coordinates** — never a city-center fallback. Traveler map is
+    Leaflet/OSM; ODbL attribution ("© OpenStreetMap contributors") REQUIRED wherever it renders.
+    **(d) Distribute:** the "Route" share frame is a third format of the EXISTING share-image rail
+    (`/api/share-image/service/:id.png?format=route`, satori template beside feed/story) — layout data resolved
+    server-side from the row like the other two; measurement stays on Performance (`LinkAnalyticsPanel`), the
+    share rail never grows its own analytics.
+
+23. **Edit-split on approved listings (decision-maker ratified Aug 14, 2026 — ledger row 112, Q8).** An
+    APPROVED listing is never taken down for an edit. Edits split server-side into two lanes:
+    **safe edits** (price/pricing settings, photos & gallery order, availability/slots/blackouts, description
+    wording, what-to-bring/access notes, meeting-pin position) apply to the live row immediately;
+    **identity edits** (service name, category/offering, delivery method, safety-attestation-bearing changes,
+    adding a route where there was none) do NOT touch the live row — they land in
+    `provider_services.pending_changes` (jsonb) + `edit_review_status='pending'`, the approved version stays
+    live and bookable, and the admin review queue applies them on approval (reject discards, listing stays
+    live as-approved). The field split is decided ONLY server-side in the PATCH handler;
+    `pending_changes`/`edit_review_status` are never client-writable (§19 posture — allowlist-stripped on
+    every rail). Born-submitted (migration 111) is unchanged: this governs edits AFTER first approval only.
+    **⚠️ current code (found by the Aug 16 console sweep, S-1):** this rule is enforced but **never
+    stated to the provider**. Their only signal is an "Edit in review" pill on the Catalog row AFTER
+    the edit lands — nothing tells them beforehand which changes go live and which re-enter review.
+    The ratified mock draws that as a two-column panel on the listing home. Tracked as a defect, not
+    the design. **Constraint on the fix:** since the split is decided ONLY in the PATCH handler, any UI
+    must READ the server's own list, never restate it client-side — restating it is the
+    derivation-drift class §18 rule 1 names, and it would drift the moment a field moves lanes.
+
+24. **Gap #13 is closed on the field side; every question the flow asks has a traveler-side home
+    (ledger `2026-08-16-bring-access`, migration 228).** The ratified mock's traveler read-out draws
+    nine rows. Seven landed with lane M3; the last two — **Bring** and **Access** — had no column
+    anywhere and no wizard field, so the flow never asked and nothing could render them (the inverse
+    of T-REP's collected-and-never-read class). `provider_services.what_to_bring` and `access_notes`
+    are additive-nullable TEXT, **declared in `shared/schema.ts`** (publish-trap rule), no DB CHECK
+    (migration-181/195 posture), asked on **Logistics** — which is why they never appear on the
+    pdf/async branches. **NULL = never answered ⇒ the row is OMITTED everywhere (§13)**, never
+    rendered as "nothing to bring" or "no access notes", which are claims only a host can make; the
+    traveler surface says out loud that **no accessibility standard is claimed on the host's behalf**,
+    which is why these are free-text notes and not a checklist of certified attributes. They are
+    deliberately NOT `trip_participants.accessibility_needs`/`mobility_level` — that is a TRAVELER's
+    stated needs, a different person's answer. Both are ordinary owner-authored content (no amount,
+    identity, rate or grant), so §19's strip does not apply and none was added.
+
+25. **New ledger rulings are keyed by DATE-SLUG, not by number (ledger `2026-08-16-ledger-ids`).**
+    `docs/DECISIONS.md` ids 1–122 are **FROZEN** — cited throughout this file and the briefs, never
+    renumbered, never reused — and every NEW row is keyed `YYYY-MM-DD-<kebab-slug>`. Ruling 35's
+    "claim the next free number" made collisions structural: three lanes collided on rows 120/121/122
+    in one night while touching no common code. `check-decision-guards.cjs` now fails on a duplicate
+    id of ANY shape, so a collision is a CI failure rather than a manual renumber. Cite old rulings by
+    number and new ones by slug; both are permanent.
+
+26. **Plus is DELIVERY, and does not go on sale until it delivers (decision-maker ratified Aug 27, 2026 —
+    ledger `2026-08-27-plus-is-delivery`, `2026-08-27-plan-memberships`; migration 260).** Plus's product is
+    the **scheduled occasion draft**: 14 days before each occasion a member registers (`occasions`), an
+    idempotent scheduler builds a plan from the member's **home city** (`users.home_city`) on the EXISTING AI
+    rail — an ordinary trip with `origin:'ai'`, `in_planning` items (`saveGeneratedItinerarySnapshot`), **not**
+    a new artifact type, reusing the AI-Concierge task, **not** a new generator — and sends ONE reminder email
+    (Resend outbox). Idempotency is the `occasion_drafts` ledger (dedupe on `(occasion_id, cycle_key)` — the
+    concrete occurrence date, correct for any recurrence; §15 CLAIM→generate→PROMOTE). Because Autoscale holds
+    no in-process cron, the **authoritative runner is an internal endpoint** (`POST /internal/run-occasion-drafts`,
+    `INTERNAL_JOB_SECRET`) fired by a daily external trigger; the in-process timer is defense-in-depth only.
+    Entitlement is **`plan_memberships`** — the ONE user-level record for the recurring plans (Plus
+    `plus_annual` + Pro `pro_monthly`; `source ∈ {stripe, manual, beta}`), READ here (`isActivePlus`) and
+    WRITTEN later by the separate Plus-**checkout** lane from the Stripe subscription webhook (it populates,
+    never redefines). **Trip Pass stays per-trip (`trip_entitlements`), never in `plan_memberships`.**
+    **`PLUS_SALES_ENABLED` (default off) is this lane's gate:** the `/pricing` Join-Plus CTA reads it (public
+    flag on `/api/pricing`) and shows coming-soon until it is on. Flip it on ONLY once a draft fires
+    end-to-end AND the home market is stocked — a thin draft in an unstocked market is honest (§13, a seed-lane
+    signal), not a bug to hide. Checkout (Stripe annual) is a SEPARATE lane: this one delivers, that one collects.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
-- **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **Two arms
-  FIXED:** ① the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
-  `expert-detail.tsx` now uses `verified === true`. ② **fabricated `4.9`/`4.5` ratings on LIVE surfaces — closed (PR #177).**
-  The server was already honest (review create is booking-gated; `provider_services.averageRating`/`reviewCount` are real
-  aggregates, `null`/`0` with no reviews). The fabrication was **client-side** — hardcoded `const rating = 4.9` in the
-  expert/match/provider cards + `avgRating ?? "4.9"` / `averageRating || "4.5"` fallbacks that invented a score over the
-  honest null. All live sites now show the **real** rating when `reviewCount > 0`, else an honest **"New"** (never a fake
-  number). **Still filed (separate, NOT the same as fabrication):** (a) a real **expert-level rating aggregate** doesn't
-  exist yet (experts have no rating source — service reviews are service-scoped), so expert cards honestly show "New";
-  (b) **mock-data demo arrays** (`chat.tsx`, `explore.tsx`, `help-me-decide` sample packages, `provider/profile`) still
-  carry placeholder `rating: 4.x` — those are fake sample *content*, a "wire real data" task, not the display-fabrication
-  bug. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
-  confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap. Do not mark §13 resolved — the
-  `verified` + live-ratings arms are done. **New arm found by the data-capture audit (Jul 15, 2026), CLOSED same day
-  (migration 115 + guard):** the unconfigured Fever integration **fabricated calendar events** — without
-  `IMPACT_ACCOUNT_SID`/`IMPACT_AUTH_TOKEN`, `feverService.searchEvents` returned generated mock events and the daily
-  cache-scheduler tick wrote them into `destination_events` **born-`approved`** (ids `mock-<city>-<n>`, fake dates/
-  ratings), which the public By-Date calendar served as real. Fix: `fever-cache.service` now skips entirely when
-  `feverService.isReady()` is false (the Booking.com/OpenTable "skipping live fetch" sibling pattern); migration 115
-  purges the already-written `mock-%` rows. **CLOSED (Jul 15, 2026 — decision ratified):** AI (Grok) and Fever events
-  are now **born-`pending`**, not `approved` — the D1a born-approved lesson applied to machine content (AI can
-  hallucinate events, so it doesn't self-publish to the public By-Date calendar). Both machine insert sites flipped
-  (`travelpulse.service.ts` AI arm, `partner-events-cache.service.ts` Fever arm); they land in the **existing**
-  `getPendingDestinationEvents` admin queue alongside user-submitted events. The queue was **headless** (approve/reject
-  endpoints existed, zero client consumer) — built the admin UI (`client/src/pages/admin/destination-events.tsx`,
-  "Event Review", source-badged AI/Partner/User, approve + reject-with-reason). Grandfather: existing `approved` rows
-  untouched (no calendar outage). Proven behaviorally: born-pending → hidden from the public calendar, visible in the
-  queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
-  (docs/audits/, feed/calendar data-capture).
-- **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
-- **`expert_service_categories` — NOT a bug (corrected Jul 15, 2026).** Earlier drafts called this a "dropped-by-013
-  but still referenced" latent bug. **That premise was factually wrong:** migration 013 explicitly retains it
-  (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration **030**
-  (`030_restore_expert_service_categories.sql`, registered + startup-run) recreates and seeds it (7 rows + FK). The
-  table is **live** — it's the read-only ESO onboarding catalog. The **one real defect** was
-  `storage.getExpertServiceCategories()` hardcoded to `return []` on that false premise, which left
-  `GET /api/expert-service-categories` permanently empty (the expert service-listings + travel-expert onboarding
-  category pickers had no options). **Fixed** — the method now queries the live table.
+Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
+with `as-of` SHAs (see `docs/findings/CLAUDE_MD_ARCHIVE.md` for the §13 history archived 2026-08-04). Governing
+invariants that grew out of §13 defects remain here as §14–§16 below.
+
 
 ### §14 — Money-endpoint server-derivation rule (client-trusted amount/identity cluster)
 
@@ -383,33 +184,6 @@ charge/refund **amount from the server-side catalog/record**, and the **acting u
 from `req.body`. `req.body.amount` / `req.body.price` / `req.body.userId` must never reach a payment or ownership
 decision. This class appeared **seven times** (coordination-fee $0-budget, template mass-assignment $0.01 price,
 world-writable fee-config, then the four below); the rule closes the class so the eighth can't be written.
-
-**Closed (client-trusted money cluster, own security branch):**
-- **A1 🔴 `POST /api/expert-requests/payment-intent`** — was charging the client-sent `amount` verbatim (pay 1¢ for a
-  Full Concierge) with `userId` from body. Now: acting user from session; amount **server-derived** via
-  `resolveExpertReviewAmount(serviceType, variant.totalCost)` (`booking-actions.service.ts`) from the variant's stored
-  cost; ownership (IDOR) enforced against `getVariantOwnerAndCost`. The tier constants ($50/$50+5%/$100+8%) were
-  relocated **server-side** from the client (`fee-literal-ok`, pending migration to `fee_bands` — filed, same posture as
-  the §8 coordination constants).
-- **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
-  **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
-  **Earnings-reversal fast-follow — CLOSED by escrow Phase 4 (PR #170):** the refund now also calls
-  `storage.reverseEarningsForBooking` + `reversePlatformRevenueForBooking`, so a refunded booking no longer leaves the
-  provider/expert credited or the platform revenue recognised. Reversal is **held/releasable → `reversed` only**;
-  `paid_out` earnings are **never auto-clawed-back** (ratified "reversal only while in escrow") — surfaced as
-  `skippedPaidOut` for manual handling. Platform-revenue reversal is a **compensating negative `platform_revenue` row**
-  (double-entry — the summaries sum every row regardless of status, and also flow through the daily summary, so the net
-  is correct with no reader change); the original row is flipped `status='reversed'` as the idempotency guard. **Still
-  filed (separate):** the standalone endpoint's `createRefund` targets the legacy `bookings` table (real bookings live in
-  `service_bookings`) — Phase 4 added a correct **service-booking** refund (`stripePaymentService.refundServiceBooking`,
-  used by dispute-uphold) but did not re-point this legacy endpoint.
-- **A3 🔴 `POST /api/bookings/process-cart`** — `userId` from body (IDOR). Now: session user. **Filed fast-follow:**
-  AI-generated cart items (no `providerId`) still trust `item.price` — server has no catalog price for them; low
-  severity (buyer's own charge, no payout theft; real-provider items already re-read DB price).
-- **A4 (found during the fix) `POST /api/bookings/apply-promo`** — `userId` from body (per-user promo-limit probe/bypass
-  class). Now: session user. Preview-only (no money moves, no usage recorded here — `recordPromoUsage` runs at checkout;
-  the real charge + promo re-derive server-side at `/api/checkout`).
-
 **Guard:** `scripts/check-money-endpoints.cjs` (grep gate) fails if a payment/ownership route reads
 `req.body.amount`/`price`/`userId` into a money decision — the cheapest durable catch for the next instance. Do not
 remove it. **Now operation-scoped (hardened Jul 14, 2026 — wired into CI via `.github/workflows/build.yml`):** it scans
@@ -420,6 +194,13 @@ capture-confirm). Handler-scoping keeps the monolith from flagging unrelated rea
 safe read (e.g. a server-capped payout *withdrawal* of the user's own balance, or a preview that never charges) carries a
 `money-derive-ok` comment on the line. (First catch on landing: the two dark `payouts/request` handlers in
 `experts.routes.ts` — a non-money-named file the old guard never scanned — reviewed as safe withdrawals, annotated.)
+**EXTENDED ONE DERIVATIVE UP BY §18 (ruling 42):** the same prohibition now covers the **RATE** that
+multiplies the amount — a commission split / fee percentage / band selector is never client-settable,
+and the guard predicate and its schema-mediated blind spot are described there. Read §14 and §18 together.
+**GENERALIZED BY §19 (ruling 46):** amount, identity and rate are three instances of one class —
+**privileged-field mass-assignment through a denylist (`.omit()`) schema** — whose structural fix is a
+pick-based **allowlist** body schema. §19 also binds ruling 41's `stripePaymentIntentId` clause on the
+booking-BIRTH side. Read §14, §18 and §19 together.
 **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
 `/checkout` dup-bookings — see §15); marketplace Phase B surfacing.
@@ -432,93 +213,242 @@ the external call and (b) an **atomic conditional DB update** (`UPDATE … WHERE
 transition itself is the concurrency guard. A check-then-update (`if status==X { update }`) is the TOCTOU bug, **not**
 a guard. Claim the row atomically **first**, then make the external call — so a concurrent caller can't also pass.
 
-**Closed (money-safety idempotency cluster, own branch):**
-- **FIX 1 🔴 Payout double-transfer** (`PATCH /api/admin/payouts/:id`, `admin.routes.ts`): was no idempotency key +
-  no atomic guard → a retry/double-click re-ran a **real Stripe transfer**. Now: `storage.claim{Expert,Provider}PayoutForProcessing`
-  atomically flips `→'processing'` only if `status NOT IN ('completed','processing')` (returns undefined → 409, no
-  transfer); `createTransfer` takes a deterministic `idempotencyKey` (`payout-<type>-<id>`). Proven: 2nd invocation
-  claims 0 rows → one transfer.
-- **FIX 3 `/confirm` TOCTOU** (marketplace, `routes.ts`): the confirm now transitions via
-  `UPDATE template_purchases SET status='completed' WHERE id=:id AND status='pending_payment'` and records the earning
-  **only if a row was updated**; a concurrent/duplicate confirm updates 0 rows → returns `alreadyCompleted`, no double
-  credit. Proven at the DB. (Latent today — purchase UI orphaned — but race-safe before Phase B surfaces it.)
-- **FIX 2 `/checkout` — premise did NOT reproduce.** The live `/api/checkout` (`payments.routes.ts:283`) **already
-  dedups** on `service_bookings.idempotency_key`. The shadowed `routes.ts` `/api/checkout` duplicate (the route-order
-  landmine with no idempotency) is **deleted by the §9 shadow-route sweep (Jul 15, 2026)**. Residual (filed, not fixed):
-  the key is **optional** (`if (idempotencyKey)`) so a client omitting it bypasses dedup. Recommend: require the key
-  (or add a natural-key server dedup) — a small hardening, not "add idempotency."
-- **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
-  captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
+**§15b — the CLAIM is not the COMMITMENT (ruling 38, checkout atomicity).** "Claim first, then call" says what must
+be written *before* the external call; it does **not** license writing everything else there too. Irreversible state —
+cart clears, `purchased` flips and their diary rows, counters, notifications, **emails** — must follow the operation
+that authorizes it, never precede it. The canonical shape is **CLAIM (provisional) → AUTHORIZE → PROMOTE**, with a
+**TTL reclaim** rather than a compensating rollback (rollback code runs in exactly the conditions that broke the
+operation; expiry survives a process death). On `/api/checkout` the provisional marker needs no new state:
+`status='payment_pending' AND stripe_payment_intent_id IS NULL` **is** an unauthorized claim by construction. Two
+rules that fall out and must not be weakened: (1) the void and the authorization stamp are BOTH atomic conditionals on
+that same predicate, so a promote and a void can never both win; (2) **a sweep must never void a row whose
+PaymentIntent may exist** — a pre-flight `bookingDetails.stripeAttemptAt` marker is written before the Stripe call, an
+unmarked row is provably un-attempted and safe to void with no network call, and a marked row is only ever reconciled
+against Stripe (found ⇒ promote, definitively-absent ⇒ void, unreachable ⇒ quarantine, never guess). See
+`server/services/checkout-claim.service.ts`; proven by `server/__tests__/checkout-claim-sweep.db.test.ts` and
+journey negative **N16**.
 
-### Escrow/hold/release spine — build status (design of record: `docs/design/escrow-spine.md`)
+**§15c — ONE payment promotion, TWO callers (ruling 39; tasks #212/#213 CLOSED).** Ruling 38 recorded that both
+documented reconciliation paths were **inert for cart checkout** — `handlePaymentSucceeded` and
+`POST /api/bookings/confirm-payment` queried the legacy **`bookings`** table with `service_bookings` ids and matched
+nothing — which left the TTL sweep as the **only** recovery mechanism on the money path. Both now drive
+`promotePaidCheckout` (`server/services/checkout-claim.service.ts`, step 5 of the same spine): **one promotion
+implementation, two callers**, so the webhook and the client fallback can never diverge on what "confirmed" means.
+Rules that must not be weakened: (1) the promotion is an **atomic conditional** —
+`UPDATE … SET status='confirmed' WHERE status='payment_pending' AND stripe_payment_intent_id=<pi>` — so a double
+signal is exactly **one** flip and one diary row, the loser a no-op; (2) **only the webhook** may resolve a booking
+from the PaymentIntent's `bookingIds` metadata and stamp a PI onto an unstamped claim (a signature-verified Stripe
+delivery is Stripe's word; a client-supplied PI is not) — this is what rescues the server-died-mid-authorization
+window, where nothing keyed on `stripe_payment_intent_id` can find the row; (3) a **late signal never resurrects a
+voided row** — void wins after TTL, and the signal lands in a **reconciliation-exception** state
+(`bookingDetails.reconciliationException` + a `checkout_reconcile_exception` diary row + `logger.error`, surfaced by
+`GET /api/admin/bookings/reconciliation-exceptions`) — ops-visible, never silent; (4) the promotion is the **money
+leg only** — it must never re-run `promoteAuthorizedCheckout`'s non-idempotent effects (counter increments, provider
+emails); the one effect it does retry is `markItemPurchased`, an atomic conditional flip and therefore safe.
+The legacy `bookings` rail is **still live** (`/booking-demo`, `/itinerary-comparison/:id` →
+`POST /api/bookings/process-cart`) — do **not** delete it while making the cart rail work; both rails run, each
+no-ops on ids it does not own. Proven by `server/__tests__/checkout-payment-promotion.db.test.ts` (negatives
+**N17/N18/N19**); the sweep's 9/9 suite is untouched and still green — redundancy means every layer stands alone.
 
-The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
-`dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
-- **Phase 1 (#163, migration 112):** unified both `expert_earnings` + `provider_earnings` onto the one vocabulary
-  (`earning_status` CHECK = `held|releasable|paid_out|reversed`) + `dispute_state`; releasability-preserving backfill.
-- **Phase 2a (#167):** `releaseMaturedEarnings` job (`held → releasable` once the per-surface clearance window passes and
-  no dispute is open) + `server/config/earnings-hold.config.ts` windows (env-overridable) + hourly scheduler.
-- **Phase 2b (#169, migration 113):** retroactive `available_at` backfill for the Phase-1 `held`-NULL rows so they clear.
-- **Phase 3 (#168):** traveler `POST /api/bookings/:id/confirm-completion` (early release) + `/dispute` (block, pulls
-  `releasable → held+open`, enforcing "disputed ⟹ held") + admin `/api/admin/disputes/:id/reject`; owner-gated on
-  `service_bookings.traveler_id`; disputes list reads `service_bookings`.
-  - **Dispute-window enforcement (escrow decision 3, landed later).** `/dispute` now REJECTS a dispute raised after the
-    clearance window closes (`now > completedAt + holdWindowDays('service_booking')`, default 7d, env-overridable → the
-    same clock the release job uses) with `409 dispute_window_closed`. Previously the endpoint enforced no window — a
-    traveler could dispute a `completed` booking indefinitely, which is precisely the situation decision 4's manual
-    post-payout claw-back exists to cover. Enforcing the window aligns the dispute cutoff with the payout timing, so a
-    refund can't be raised after payout → **decision 4's "no automated post-`paid_out` claw-back" limitation is
-    now essentially unreachable by design, not a live hole.** `completedAt` null (not yet completed) → window not applied.
-    Client (`my-bookings.tsx`) surfaces the window-closed message; the server is authoritative (no client-side window literal).
-- **Phase 4 (#170) — reversal terminal.** `storage.reverseEarningsForBooking` (held/releasable → `reversed`; `paid_out`
-  **never auto-clawed-back** — ratified "reversal only while in escrow"; returns `skippedPaidOut` for manual handling) +
-  `reversePlatformRevenueForBooking` (compensating **negative** `platform_revenue` row — double-entry nets both the
-  summary and the daily rollup; original flipped `status='reversed'` as the idempotency guard). Admin
-  **`POST /api/admin/disputes/:bookingId/uphold`** reverses the ledger **then** refunds the traveler via
-  `stripePaymentService.refundServiceBooking` (service-booking-native refund off the row's own payment intent;
-  deterministic `idempotencyKey` + atomic status claim — §15). Ledger-first, Stripe-second, so a retry after a Stripe
-  failure re-runs cleanly. This closes **§14 A2**'s earnings-reversal gap (also wired into the standalone `/refund`).
-  **No migration** — `reversed` was already in the migration-112 CHECK; `platform_revenue`/`service_bookings` status have
-  no CHECK. **Filed (not built):** automated **post-payout** clawback (deliberately manual); re-pointing the legacy
-  `createRefund`/`/api/bookings/refund` off the `bookings` table onto `service_bookings`.
+### §17 — Drift DETECTION rule (one job, both rails; detect, don't repair — ruling 40)
 
-### Payout rail — model of record (decided Jul 14, 2026)
+**GOVERNING RULE:** the daily Stripe-vs-DB reconciliation job (`server/jobs/stripeReconciliation.ts`) scans
+**BOTH booking rails** — cart checkout (`service_bookings`) and the still-live legacy `bookings` — and its
+findings are **persisted rows**, never only log lines. Until this landed the scan read the legacy table only,
+so **cart-checkout charges (the primary checkout) were invisible to it**: `service_bookings` ids never appear
+in the legacy table, so the queries matched zero rows and errored on nothing — the same disjoint-id-space
+failure §15c fixed on the promotion side, one layer up. Recovery was three-layered while **detection was
+one-eyed**.
 
-**Admin-initiated payout is the current payout model.** An admin creates a payout for a provider/expert via
-`POST /api/admin/payouts` (amount **server-derived** from the recipient's available earnings, capped, $10 min) and
-processes it via `PATCH /api/admin/payouts/:id` (idempotency-safe Stripe transfer — §15 FIX 1). This path is live,
-mounted, and money-safe. The payout **storage layer** (`create{Provider,Expert}Payout`, `get{Provider,Expert}Payouts`,
-`claim…ForProcessing`, `getAll…Payouts`) stays — it backs the admin path + revenue-tracking.
+**DETECT, DON'T REPAIR.** The job writes exception rows; it never promotes at will, voids, refunds, cancels or
+invents a booking. Repair belongs to the three recovery layers (§15b/§15c) plus a human — a detector that also
+repairs is a fourth, unreviewed writer on the money path. **ONE narrow exception:** a PaymentIntent Stripe says
+succeeded whose booking is still an unpromoted claim is handed to the **EXISTING shared** `promotePaidCheckout`
+with `actor="reconciliation"`, diary-logged — that is recovery layer 2's own logic arriving late, not new
+repair code. Nothing else.
 
-**Provider/expert SELF-SERVICE payout requests are RETIRED, not deferred-in-place.** The self-service surface was
-inert dead code — dark `POST /api/{provider,expert}/payouts/request` + `GET /api/{provider,expert}/payouts` (unmounted
-`experts.routes.ts`, **zero callers** — the buttons never even POSTed), an **unrouted** `provider/payouts.tsx`, and
-~4 **decorative** "Request Payout" buttons (no `onClick`) on live dashboards/earnings pages. All removed
-(proven-dead-then-remove, folded into the List-A dead-code lane). **Rationale (the important part):** payout is the
-*release* half of an **escrow/hold/release spine that has not been designed yet** (today's model credits earnings
-early, no hold). Building a self-service "Request Payout" flow now would build the release-request UI against a payout
-architecture that's about to change underneath it — the "reinvent the same logic separately" trap. So self-service
-payout requests are **deferred to the escrow-spine design**, where release (and any request UI it needs) gets built
-once, correctly. This is *not* "cut a feature" — it's declining to build the release UI before release is designed.
-Leaving admin-initiated as the honest model keeps the payout rail from constraining that future escrow decision.
-**Self-service payout REQUESTS — LANDED (now that the escrow spine defines a real cleared balance).** The deferral
-condition ("payout is the release half of an escrow spine not yet designed") is resolved — the spine is built (#163–170)
-and the dispute window is enforced (#210), so an earner's `available` = their `releasable` earnings is now a real,
-well-defined number. `POST /api/payouts/request` (mounted in `payments.routes.ts`, role-aware provider/expert) lets an
-earner REQUEST a payout of their own cleared balance: **§14** acting user + amount are **server-derived**
-(`get{Provider,Expert}EarningsSummary(session).available`, never `req.body` — the documented "server-capped withdrawal
-of the user's own balance" money-derive-ok case); **§15** a `pending`/`processing` payout blocks a duplicate request
-($10 min, mirrors the admin path). It creates a `pending` payout via the existing `create{Provider,Expert}Payout` →
-lands in the **admin queue**, processed by the unchanged idempotent transfer (`PATCH /api/admin/payouts/:id`, §15 FIX 1).
-**The processing model of record stays admin-initiated** — this only adds the request half; no new payout mechanics, no
-Stripe change. Client: a real "Request Payout" button on `provider/earnings.tsx` + `expert/earnings.tsx` (the retired
-decorative buttons' honest replacement).
+**Rules that must not be weakened:**
+1. **Exceptions are APPEND-ONLY** (`reconciliation_exceptions`, migration 177). No UPDATE, no DELETE path.
+   Re-detection is absorbed by the UNIQUE `dedupe_key` + `ON CONFLICT DO NOTHING`, so a drift that persists a
+   month is ONE row stamped with the run that FIRST saw it — while the run row records `exceptions_detected`
+   separately from `exceptions_new`, so "still drifting" stays visible without mutating a recorded fact.
+2. **Every pass writes a `reconciliation_runs` row — including a clean one and a skipped one.** Silence must
+   be distinguishable from the job not having run; the previous version logged "Clean" to stdout and left no
+   durable trace, so a healthy quiet day and a scheduler dead since the last deploy rendered identically.
+3. **The expected charge is SERVER-DERIVED** — `SUM(total_amount + platform_fee)` over the PaymentIntent's own
+   booking rows (§14), with a tolerance that is the checkout's accumulated `.toFixed(2)` rounding, **not** a
+   rate (§8). Never taken from Stripe, never from a client.
+4. **No new writes were required on the checkout path.** The scan keys on linkage that already exists:
+   `service_bookings.stripe_payment_intent_id`, `pi.metadata.bookingIds`, the `idempotency_key` sibling
+   convention (`key`, `key#1`, …), `refunds.stripe_refund_id`, and the legacy `charge.metadata.bookingId`.
+   Adding a write to make detection easier would put the detector inside the thing it audits.
+5. **`GET /api/admin/reconciliation/exceptions` is a SIBLING of `GET /api/admin/bookings/reconciliation-exceptions`
+   (§15c), not a replacement.** That one shows exceptions a payment SIGNAL recorded on a booking row it could
+   not promote — it can only ever describe a row that exists. This one is the SCAN's output and can describe
+   money with no row behind it at all. Both are listed on `/admin/reconciliation`.
 
-*(Orphaned-component observation, filed separately — not payout-scoped: `client/src/components/shared/earnings-card.tsx`
-has no importers; its "Request Payout →" span never renders. A dead-code-lane candidate, left untouched here.)*
+**§17b — amends §15c's "webhook only" clause.** Ordering-1 capability (resolve bookings from
+`pi.metadata.bookingIds` and stamp a PI onto an unstamped claim) is gated on the PaymentIntent being **Stripe's
+own word**, and is now open to `SERVER_VERIFIED_ACTORS` = `{webhook, reconciliation}`: a signature-verified
+delivery, **or** the drift job's authenticated read of the PaymentIntent from the Stripe API with the platform's
+own secret key. Ruling 39 wrote "webhook only" because the signed delivery was then the only server-verified
+source that existed. **The clause that does NOT move: a CLIENT-supplied PaymentIntent may never resolve or stamp
+anything** (proven by N17c). See ruling 40.
+
+Proven by `server/__tests__/reconciliation-detection.db.test.ts` (negatives **N20/N21/N22**, 15 proofs); the
+sweep's 9/9 and the promotion suite's 11/11 are untouched and green.
+
+### §18 — Rate-bearing fields are never client-settable (ruling 42; extends §14 one derivative up)
+
+**GOVERNING RULE:** §14 forbids a client-supplied **amount / price / identity** from reaching a money
+decision. §18 extends the same rule to the **RATE** that multiplies the amount: a commission split, a
+fee percentage, a revenue share or a band selector is resolved from **`fee_bands` only** (§8) and is
+**never settable on any schema a client can reach** — regardless of whether anything reads it today.
+The required shape for a privileged field is **STRIP-AND-CLAMP, in two layers**: the zod insert schema
+`.omit()`s it (layer 1) **and** the storage writer strips-and-derives it (layer 2), *"so every caller is
+covered"* — the same placement the approval-lifecycle strip already uses in `updateProviderService`.
+
+**The instance this closes:** `provider_services.revenueShareRate` was exposed by
+`insertProviderServiceSchema`, parsed off `req.body` by **both** POST and PATCH
+`/api/provider/services`, spread into the row, and read at `payments.routes.ts` as *"the final override
+(takes priority over config)"* over the `fee_bands`-resolved split **at the real Stripe charge**. The
+clamp was range-only, so `1.00` was accepted ⇒ provider share 100 %, platform fee `0.00`. No UI ever
+sent the field; it was reachable only by a crafted request.
+
+**Rules that must not be weakened:**
+1. **Derivation delegates — never re-implements.** The server-side value comes from ONE call into the
+   existing `resolveCommissionRates` (via `resolveServiceOwnerShareRate`), using the same option shape
+   `/api/checkout` uses. Two authors resolving rates two ways is how this class returns.
+2. **Update paths are checked as hard as inserts.** The PATCH path was the easier of the two to reach —
+   `insertProviderServiceSchema.partial()` let a single-field request set nothing but the split on an
+   already-approved listing — and it was the one the audit found stripped on neither side.
+3. **A field with no consumer is still stripped.** The dormant fee/payout family on
+   `insertLocalExpertFormSchema` is exactly why: nothing read it, which is why nobody noticed it was
+   mass-assignable.
+4. **Guard:** `scripts/check-money-endpoints.cjs`. Its `req.body` predicate now also covers
+   `rate|share|commission|split`, and — because the actual hole was **schema-mediated** and therefore
+   invisible to any line-level `req.body` grep — it carries a second pass intersecting *insert schemas
+   that expose a rate-bearing column* with *insert schemas parsed from a request body*. A
+   privileged-by-design setter (an admin band editor) carries `money-derive-ok` on the COLUMN line in
+   `shared/schema.ts`. Do not remove either pass.
+
+**§18b — the owner rail may not move a booking out of a provisional state (ruling 42, SD-1).**
+`status='payment_pending' AND stripe_payment_intent_id IS NULL` is an unauthorized claim by
+construction (§15b) and belongs to the claim machine (`checkout-claim.service.ts`), which stays its
+**sole author**. `PATCH /api/provider|expert/bookings/:id/status` checked the *target* status and never
+the *current* one, so a provider's Accept promoted an unpaid claim to `confirmed` — after which
+`voidClaim` **and** `promotePaidCheckout` both matched **zero** rows and the claimed
+`vendor_availability_slots.booked_count` was destroyed with **no code path in the repo to return it**.
+The owner rail now carries a from-state allow-list AND the §15 **atomic conditional**
+(`updateServiceBookingStatus`'s `expectedFromStatuses`: `UPDATE … WHERE id = ? AND status IN (…)`); the
+pre-check is only the error message, **the transition itself is the guard**. Callers that omit the
+parameter keep the previous unconditional behaviour verbatim. Note the money layers held here and only
+the **inventory** layer failed — so an assertion that watches only `status` is not sufficient
+(P3 asserts the slot; P4 asserts the row stays reclaimable by both recovery layers).
+
+**§18c — no consumer + irreversible effect ⇒ DELETE, don't gate (ruling 42, AC-1).**
+`POST /api/vendor-availability/:id/book` was `storage.bookSlot(req.params.id)` behind `isAuthenticated`
+and nothing else: any account could exhaust any provider's inventory, and because it created no booking
+row the TTL sweep had nothing to reclaim and `releaseSlot` had no reachable caller. It had zero
+consumers. Gating it would have preserved a second, unaudited way to consume inventory beside the
+checkout spine. `storage.bookSlot` itself is untouched — it is checkout's atomic claim (§15/C3).
+
+**§18d — a guard states its NEGATIVE SPACE, and a predicate change ships with fixtures (ruling 43).**
+Every entry in the `docs/DECISIONS.md` Guard registry carries a one-line statement of what its predicate
+does **not** cover; green means **green-within-stated-bounds**. `phase2-fee-gate.sh` was case-sensitive
+with an `[A-Za-z]*` identifier tail and therefore blind to **every SCREAMING_SNAKE fee constant** — this
+codebase's dominant convention — while reporting PASS for its whole life. Both `-i` and `[A-Za-z_]*` are
+load-bearing. Because a wrong predicate is invisible by construction, both guards now carry committed
+`--self-test` fixtures that run in CI **immediately before** the guard itself (the ledger-lint
+precedent). The gate also honours ruling 32's second disposition: `fee-literal-debt:#<task>` exempts a
+line from failing but is **reported on every run**, so filed debt never becomes a silent baseline.
+
+### §19 — Privileged-field mass-assignment is a STANDING CLASS; the fix shape is an ALLOWLIST (ruling 46)
+
+**GOVERNING RULE:** §14 forbids a client-supplied amount/price/identity from reaching a money
+decision; §18 extended it to the RATE. §19 states the **shape** all three share and fixes it
+structurally: **a privileged column is client-settable BY DEFAULT under a denylist (`.omit()`)
+schema, and nobody edits an omit list for a column that did not exist when it was written.** The
+required fix shape for a client-reachable body is an **ALLOWLIST — a pick-based schema** — so a new
+privileged column is unreachable until someone deliberately names it.
+
+**Three instances, one class:** `provider_services.revenueShareRate` (§18/ruling 42); the dormant
+fee/payout/Stripe-linkage family on `insertLocalExpertFormSchema` (same sweep); and
+`service_bookings.stripePaymentIntentId` at `POST /api/bookings` (ruling 46). **Posture as of
+ruling 46:** all **186** `createInsertSchema(...)` calls in `shared/schema.ts` are `.omit()`-based and
+**ZERO** are `.pick()`-based. Converting the layer is filed as **`#PS18`** with a committed negative
+fixture (`booking-birth-provenance.db.test.ts` **B6**); until it lands, every one of those schemas is
+a denylist and must be read as one.
+
+**§19a — `stripePaymentIntentId` is written ONLY by the shared promotion path.** Ruling 41's clause
+stands with **no carve-out**, and it binds on the **BIRTH** side as well as the promotion side. A
+booking-create endpoint accepting the field from `req.body` **is the violation, not a tension**:
+`POST /api/bookings` `.parse`d the `.omit()`-based `insertServiceBookingSchema` off the body and
+SPREAD it into `createServiceBooking`, so a crafted request birthed a booking already carrying its
+own PaymentIntent. That is **not a promotion**, so **N17c can never catch it** — and the row then
+looks authorized to every consumer keyed on that column (the sweep skips it, `promotePaidCheckout`
+matches it, the drift job trusts it as linkage). Stripped in **three** layers: the schema `.omit()`,
+the storage strip in `createServiceBooking` (which covers the internal `as any` callers a type-level
+omit cannot reach), and the route allowlist. `stampAuthorization`/`resolveAndStamp`
+(`checkout-claim.service.ts`) remain the column's **sole** writers.
+
+**§19b — the rows already on disk get DETECTION, never silent trust or silent repair.** A fix stops
+new rows and says nothing about old ones (§17). Drift kind **`payment_provenance_unverified`**
+(`warning`, cart rail; `GET /api/admin/reconciliation/exceptions`). **Its predicate follows ruling
+41's invariant as STATED — the PROVENANCE of the id, not one implementation of it — so TWO
+independent forms each clear a row:** the §15b pre-flight `bookingDetails.stripeAttemptAt` marker
+(the spine wrote it), **or** Stripe's own `metadata.bookingIds` naming the booking when the job reads
+the PaymentIntent with the platform's own secret key (§17b). Corroboration is not a forger's
+loophole — `metadata.bookingIds` is written server-side by `createPaymentIntent`, so a lifted
+PaymentIntent names the bookings it actually paid for and never the row it was planted on, and a
+PaymentIntent absent from Stripe is never seen at all. **Do not narrow this to the marker alone:**
+that would indict every legitimate booking whose PI predates ruling 38 but which Stripe can still
+vouch for. Once a row fails both, the PS15 mass-assignment, a seeded fixture, and a pre-ruling-38 row
+are **indistinguishable** — which is why the kind is *unverified*, not *forged*, and why the job does
+nothing about it.
+
+**§19c — guard.** `scripts/check-money-endpoints.cjs`'s schema-mediated pass carries a
+PAYMENT-IDENTITY column predicate (`stripe<Thing>Id` / `paymentIntentId`) beside the rate one, with
+committed `--self-test` fixtures (§18d). It knows those **two** classes and nothing else — an amount,
+a `status`, an authorization grant (`#PS16`) is still invisible to it. That stated blind spot is the
+reason the answer is `#PS18`, not a wider grep.
+
+Proven by `server/__tests__/booking-birth-provenance.db.test.ts` (**B1–B6**, 7 proofs); sweep 9/9,
+promotion 11/11 incl. **N17c**, detection 15/15 and ruling 42's P1–P6 untouched and green.
+
+### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
+
+**GOVERNING RULE (decision-maker directive):** affiliate/partner content must behave like the Discover feeds —
+**no surface may send the traveler off-site with a raw `window.open(affiliateUrl)`**. Any "book" action on
+partner-fulfilled content routes through the in-platform **booking-agent rail**:
+`POST /api/affiliate-booking-requests` (the rail Discover's `unified-result-card` already uses) — the server
+auto-assigns a booking agent (expert), **keeps the affiliate URL server-side** (it is deliberately never returned
+to the client; the agent books through it, preserving commission and preventing disintermediation), and the
+confirmed booking is logged onto the traveler's trip (migration 051 `affiliate_booking_requests.trip_id`).
+Tracked *informational* outbound (e.g. the curated-content `POST /api/content/affiliate-redirect`, which records
+into `affiliate_clicks` before redirecting) remains allowed — the prohibition is on **untracked raw outbound and
+off-site *booking* CTAs**. First application: all 10 Travelpayouts card types
+(`client/src/components/travelpayouts/*Card.tsx`) — previously every card's "Book" was a raw
+`window.open(affiliateUrl || bookingUrl)` (untracked, funnel-leaking, inconsistent with the Amadeus add-to-cart
+hotels on the same page); now they share `useAgentBooking` → the booking-agent rail. **Filed (architectural,
+per the same directive):** fold the parallel `/api/catalog/*` Travelpayouts feed into the CENTRAL content system
+(content registry / `affiliate_products` + placement rules) so all content lives in one system — a design job
+(live-priced API feeds vs registry rows), not a mechanical move; do not build a third content home in the interim.
+
 
 ---
 
+
+### §20 — Publish-time SQL is declined by default (the deploy diff is not a schema authority)
+
+Schema changes reach production ONLY via `runMigrations` on boot, from committed migration files in `server/migrations/`. Any Replit publish/redeploy prompt that offers to run its own SQL — especially `DROP` or `ALTER` — is DECLINED by default; no variant is approved. Such a prompt means the workspace checkout and the deployment database disagree (a stale or drifted checkout schema being diffed against prod), NOT that production needs the SQL. Fix by syncing the checkout, never by approving the diff:
+
+- `git checkout main && git fetch origin && git reset --hard origin/main`
+- Restart the dev app once; confirm boot shows migrations current (no new applies, no schema complaints).
+- Republish; the confirmation screen must show a normal build with no database-migration step.
+- If destructive SQL still appears, decline and STOP, then escalate — it means something else.
+
+(ops-hardening, 2026-08-29)
 ## Service Model: Canonical Table
 
 ### Decision: `provider_services` is the canonical service source (NOT `expert_service_offerings`)
@@ -531,10 +461,10 @@ has no importers; its "Request Payout →" span never renders. A dead-code-lane 
 
 **What This Means:**
 - All **service** creation (expert custom, provider, and the `service_templates` seed catalog) writes to `provider_services`.
-  **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — see Known Decisions & Divergences §10.
+  **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — sunset decision archived in `docs/findings/CLAUDE_MD_ARCHIVE.md` (§10 block; canonical in `docs/DECISIONS.md`).
 - The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
   **F2-CLOSED (migration 111):** offerings are now born `submitted` — `provider_services.approval_status` defaults `"submitted"`
-  at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). See §1 (D1a).
+  at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). Approval-lifecycle history (§1/D1a) archived in `docs/findings/CLAUDE_MD_ARCHIVE.md`.
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
@@ -566,32 +496,8 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   all **public** `provider_services` surfaces (they filter `approval_status = 'approved'`). `GET /api/expert/services`
   (`server/routes.ts` → `storage.getProviderServicesByStatus`) is the **owner console** and stays **intentionally ungated**
   — it filters by `userId` + the active/paused `status` param so an owner sees their own `submitted`/unapproved listings.
-  Admin reads (the review queue) are likewise ungated. Only public/non-owner reads gate on `approved`. See §1 (D1a).
+  Admin reads (the review queue) are likewise ungated. Only public/non-owner reads gate on `approved`. Approval-lifecycle history (§1/D1a) archived in `docs/findings/CLAUDE_MD_ARCHIVE.md`.
 - No separate tables; no separate approval workflows
-
----
-
-## Category Mapping (historical — one-time consolidation, completed)
-
-> **Status note (Jul 2026; corrected Jul 15, 2026):** this describes the one-time migration 011–012 consolidation.
-> Its source table `expert_service_categories` was **NOT dropped** — migration 013 explicitly retains it
-> (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration 030 recreates/seeds it (7 rows +
-> FK) as the read-only ESO onboarding catalog. (Earlier drafts said "dropped by 013"; that was factually wrong — there
-> is no code-internal drift, the table is live.) The one real defect — `storage.getExpertServiceCategories()`
-> returning `[]` on that false premise — is **fixed**; it now queries the live table.
-
-When migrating services from expert taxonomy (`expert_service_categories`) to canonical (`service_categories`):
-
-1. Attempt deterministic name-match: `LOWER(TRIM(expert_cat.name)) = LOWER(TRIM(service_cat.name))`
-2. If no match found, leave `categoryId` NULL (fallback acceptable, but ideally avoid)
-3. This is critical: without category mapping, migrated services become invisible to:
-   - Category-filtered browse (feed filters by categoryId)
-   - Gem feed matching
-   - Marketplace recommendations
-
-If you see `categoryId IS NULL` rows on provider_services, it's likely a category mapping miss — investigate the source expert_service_categories row.
-
----
 
 ## Coordination Prevention
 
@@ -627,6 +533,26 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   (`check constraint … violated by some row`) and offers the **DESTRUCTIVE** "copy dev database over production"
   option. **Never accept that option** — it overwrites prod with dev. This bit us twice on the Jul 15 publish
   (`expert_earnings.status='pending'`, `service_templates.delivery_method='document'`).
+- **SECOND VARIANT OF THE SAME TRAP — the deploy push also DROPS INDEXES that `shared/schema.ts` does not
+  declare (found Jul 30, 2026; proven in isolation: a single `DROP INDEX "sb_idempotency_key_idx"` statement).**
+  This makes an index-only migration **non-durable across publishes**: publish 1 → push drops it → the migration
+  runs for the first time → recreated; **publish 2+ → push drops it → the migration is already stamped → it is
+  NEVER recreated → the index is silently gone.** Live instance: migration 155's UNIQUE partial index on
+  `service_bookings.idempotency_key`, deliberately left out of `schema.ts` to avoid a duplicate-key push failure —
+  which is measurably **load-bearing** (without it, 3 concurrent same-key checkouts produced **3 real Stripe
+  charges**; with it, 1). **Rule: an index the code depends on must be DECLARED in `shared/schema.ts`, not only
+  created in a migration** — otherwise the deploy push is authoritative and will remove it. Before declaring a
+  UNIQUE index, check prod for existing duplicates (`SELECT <col>, count(*) … GROUP BY 1 HAVING count(*) > 1`),
+  since a violated UNIQUE fails the publish and offers the destructive "copy dev over production" option.
+  **THE SAME MECHANISM APPLIES TO TABLES, not just indexes (found Jul 30, 2026 by the table-existence sweep).**
+  A table created by a registered migration but **absent from `shared/schema.ts`** is the same shape of object the
+  push targets. Live instance: **`ai_cost_tracking`** (created by `025b_ai_cost_tracking.sql`, missing from
+  `schema.ts`) is written from ~7 call sites (`claude.service.ts`, `itinerary-optimizer.ts`, chat routes,
+  content/experts/trips routers, `routes.ts`) and read by `lead-routing.service.ts` for the admin cost breakdown.
+  If a publish drops it, the migration is already stamped so `runMigrations()` will **never recreate it** — silent,
+  permanent loss of AI-cost observability. (`service_demand_requests` was dead and has since been RETIRED deliberately by migration 158 — dropped in both environments.) **Rule
+  generalized: any DB object the code depends on — index OR table — must be declared in `shared/schema.ts`, or the
+  deploy push is authoritative and will remove it.**
 - Guard: **before publishing any migration that adds/changes a CHECK**, run
   `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
   declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK
@@ -649,142 +575,28 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   unreachable `package-firewall.replit.local` URLs into `package-lock.json` — that breaks `npm ci` on every
   GitHub runner (this kept main red ~Jul 7–11). The main recurrence engine is `.replit [postMerge]` →
   `scripts/post-merge.sh` → `npm install` after every merge.
-- Guards, in order: `scripts/post-merge.sh` scrubs right after its install; the pre-commit hook
-  (`.githooks/pre-commit`, installed by the `prepare` script) scrubs staged lockfiles from manual installs;
-  the CI `lockfile-purity` gate is the backstop. All use `scripts/scrub-lockfile.cjs` (URL-only rewrite).
-- The project `.npmrc` (`registry=https://registry.npmjs.org/`) may prevent pollution from forming, but its
-  precedence against Replit's proxy is UNVERIFIED (env-level `NPM_CONFIG_*` would override it). To verify
-  from inside a Replit workspace: `npm install && grep -c "replit.local" package-lock.json` — 0 = it works.
-- Do not remove the `.npmrc`, the hooks, or the CI gate; do not run bare `npm install` and commit without
-  the scrub.
-
-**Migration 059 (Jun 10, 2026; registered in the canonical `migration-files.ts` list):** index-only — `idx_pnc_neighborhood_category` on
-`provider_neighborhood_coverage(neighborhood_id, category_key)`. The upsell engine's
-candidate gather (Engine Inventory-Sourcing brief) reads coverage by
-`(neighborhood_id, category_key)`; the existing unique constraint leads with
-`provider_id` and cannot serve that path. No schema/data semantics change.
-
-**Migration 060 (Jun 10, 2026; registered in `migration-files.ts`) — Paid Booking Concierge, Phase 3.1:**
-seeds ONE flat fee-AMOUNT band `expert_concierge_booking` in `fee_bands` (`rate_type='flat'`,
-`default_rate=9.99` PLACEHOLDER, admin-configurable), idempotent `ON CONFLICT (band_key) DO NOTHING`.
-The resolver routes the `booking_concierge` concern to this band via `decideBandKey` (named mapping,
-no fallthrough), and `resolveCommissionRates` now guards on `rate_type` so a FLAT band is never built
-into a split. The band is the fee AMOUNT only; the 75/25 split rides `expert_standard` (Phase 3.4).
-Rate-neutral for every existing category (nothing routes to it yet). Ratified by the Phase 3.1 GO.
-
-**Migration 061 (Jun 11, 2026; registered in `migration-files.ts`) — Paid Booking Concierge, Phase 3.2:**
-seeds ONE coordination-tier `expert_offering_types` row `booking_concierge` ("I'll book this off-site
-item and add it to your trip"), idempotent `ON CONFLICT (offering_type_key) DO NOTHING`, mirroring the
-039 seed. Distinct from `done_for_you_booking` (broader "book everything"): this is per-item off-site
-facilitation. Experts opt in by creating an APPROVED `provider_services` row referencing it via
-`expert_offering_type_id` (migration 057); market scoping rides `expert_neighborhoods` (no new column).
-Catalog vocabulary only — no eligibility/fee wiring yet (3.3/3.4). Ratified by the Phase 3.2 GO (CREATE).
-
-**Migration 109 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1d (D3a row remap + CHECK):**
-remaps `delivery_method` on BOTH `provider_services` and `service_templates`: `video-call→video` (NOT
-`call` — video session vs voice call is a real distinction), `in-person→in_person`, `document→pdf`
-(flatten — zero prod provider_services rows; the only real rows were the two CANONICAL_TEMPLATES seed
-rows; `document` is NOT in the enum), and `digital→pdf` (flatten — zero prod rows; surfaced by the
-refusal guard firing on one dev row in the Replit workspace DB, exactly the guard's purpose; also NOT
-in the enum). Adds the DB CHECK atomically with the remap on both tables: valid
-set = the D3a canonical `deliveryMethodEnum` (`pdf, video, call, in_person, voice_notes, async_messaging,
-hybrid`; NULL allowed). `hybrid` stays valid because ServiceForm offers it as a live delivery option —
-a CHECK without it would break every hybrid create. Guarded: REFUSES listing any unmapped value rather than
-half-applying. Companion change in the same commit: `CANONICAL_TEMPLATES` seeder literals (server/routes.ts)
-`document`→`pdf` so fresh environments seed CHECK-clean. Prod distribution at approval: pdf 67 /
-in_person 35 / call 2 / async_messaging 1, no NULLs. Ratified by the decision-maker's remap-table approval
-+ amended-CHECK confirm (Jul 11).
-
-**Migrations 107–108 (Jul 11, 2026; registered in `migration-files.ts`) — Structural Consolidation, Phase 1 (decisions D3a/D4/D5a):**
-107 adds nullable `offering_type_key` to `local_expert_forms` (FK → `expert_offering_types.offering_type_key`)
-and `service_provider_forms` (FK → `service_offering_types.offering_type_key`), both `ON DELETE SET NULL` —
-the canonical /earn selection the signup forms previously dropped (only the display name survived). Two
-parallel catalogs, two FKs; experts remain NOT `service_categories` rows. 107 also repairs the missing
-unique constraint on `service_offering_types.offering_type_key` (declared in schema.ts, absent from shipped
-DDL), guarded to REFUSE on pre-existing duplicate keys rather than half-apply. 108 adds nullable
-`has_insurance` boolean to `service_provider_forms` (applicant self-attestation, previously collected and
-dropped; NULL = pre-108 "never asked"); table chosen because signup writes it and the FEE-2 brief homes the
-admin-validated `insurance_tier` evidence there. D3a: `deliveryMethodEnum` (shared/schema.ts) is extended
-with `hybrid` — canonical set is now `pdf, video, call, in_person, voice_notes, async_messaging, hybrid`;
-the column is varchar with no DB CHECK, so this is TS-level; NO row remap has run — that requires the
-Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a·D2a·D3a·D4·D5a locked).
-**[SUPERSEDED by migration 109 (above):** the DB CHECK and the row remap are now applied on **both**
-`provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
-both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
-
-**Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
-analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by
-migration 082 but **never had a writer** — the client feed's impression tracker
-(`client/src/hooks/use-impression-tracker.ts`) POSTed to `/api/tracking/impression`, an endpoint that did not exist,
-so every card's `sourceImpressionId` was null (impression→click attribution severed). Companion code adds the
-endpoint (`content.routes.ts`, public — the feed is public; `userId` opportunistic from session; zod-validated body;
-single insert returning `{impressionId}`). 116 completes the table: `session_id` NOT NULL (guarded — skips, never
-fails, if NULL rows exist), the UNIQUE dedup index `(session_id, content_type, content_id)` the client hook's
-contract promises (duplicate POST returns the EXISTING impression id; falls back to a non-unique index + NOTICE if
-dupes pre-exist), and a `created_at` index. `(content_type, content_id)` reads ride 082's `idx_ci_content` prefix —
-no duplicate index. Same lane (no migration): `GET /api/services/demand` (real counts of unexpired
-`service_demand_signals` per offering key for the wanted-slot cards — §13: empty = empty, never fabricated;
-registered BEFORE `/api/services/:id` in `content.routes.ts` so the literal path wins), and the daily demand-signal
-generator is un-starved (scheduler primes `travel_pulse_trending` via `getTrendingDestinations` before
-`generateDemandSignals`, best-effort per city).
-
-**Migration 067 (Jun 11, 2026; registered in `migration-files.ts`) — Discover Feed Composition admin rows:**
-data-seed only, no schema change. Inserts the five `feed_*` `platform_settings` rows read by the public
-`GET /api/feed-composition-config` (Discover Feed Composition Brief): `feed_rec_cadence` ('4'),
-`feed_wanted_slot_max` ('2'), `feed_wanted_slot_spacing` ('6'), `feed_rec_label` ('Recommended'),
-`feed_rec_affiliate_label` ('Paid partner'). The endpoint already falls back to these same code defaults
-when rows are absent; seeding them makes the knobs DISCOVERABLE/editable in the admin platform-settings
-list (which shows only existing rows). Idempotent `ON CONFLICT (setting_key) DO NOTHING` — never
-overwrites an admin-tuned value, mirroring the 033 seed pattern.
-
-**Previous Coordination Failure (Jun 3, 2026):**
-- Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
-- This was uncoordinated and left the transaction path orphaned
-- Fixed by this architecture document + provider_services canonicality
-
-**Recorded migration — Expert-Assisted Booking, Phase 2 (Jun 10, 2026):**
-- Migration `051_affiliate_booking_trip_link.sql` adds a **nullable** `trip_id` FK
-  (→ `trips`, `ON DELETE SET NULL`) to `affiliate_booking_requests`. This closes the
-  Trip-logging gap on the **existing** affiliate-booking rail — no new rail, no
-  provider_services / ESO / approval / category change. Set at expert-confirmation
-  (the create trigger is a no-trip discover surface); on confirm the facilitated
-  booking is logged onto `itinerary_items` (the canonical Trip/PlanCard item model).
-- Registered in `run-migrations.ts` (runtime) and `migration-files.ts` (chain test).
-  Ratified by the decision-maker via the Phase 2 GO.
-- Keeps its shipped filename `051_…` per the migration-chain repair below; it is
-  registered after 057 in the canonical list (registry order is authoritative,
-  numeric order is not).
-
-**Recorded migration-chain repair (Jun 10, 2026):**
-- `server/migrations/migration-files.ts` is the canonical migration registration
-  list for both runtime and chain-integrity checks. `run-migrations.ts` must
-  import that list rather than carrying its own inline copy.
-- `052_phase5_expert_endorsements.sql` is a superseded duplicate schema attempt
-  for `upsell_expert_endorsements`; do **not** register or execute it. The live
-  endorsement schema remains `050_phase5_expert_endorsements.sql`.
-
-**Recorded change — Coordination-fee budget wiring + interim credit (Jul 12, 2026):**
-- **Bug (was live on `main`):** `GET /api/coordination-states/:id/fee` read the budget from
-  `state.total_estimated_cost`, a column **no code path writes**, so every coordination fee priced against a
-  **$0 budget** — the `max(floor, 8%×budget)` percent tier could never fire; every fee collapsed to the `$499`
-  floor minus an optimize credit. Reconstructed exactly: `47901 = 49900 floor − 1999 wedding optimize credit`.
-- **D-BUDGET (interim, ratified):** budget now persists to the **existing `budget` jsonb column** (no migration).
-  Contract: `budget = { amount: <number, USD dollars>, currency: "USD" }`, written at create/patch from the
-  request's `metadata.budget`; the fee reads `budget.amount × 100 → cents`; absent/`{}`/non-positive → `0` →
-  **intentional** floor-only. The fee reads `budget`, **NOT** `total_estimated_cost` (that column means *cost*,
-  not *budget* — no overloading). The first-class validated `budget` field is the **filed follow-up** (D-BUDGET(b)).
-- **D-CREDIT (interim, ratified):** the optimize-fee credit is **no longer subtracted** in `resolveCoordinationFee`
-  (`server/services/optimization-fee.service.ts`). It was applied unconditionally for all event types with **no
-  paid-signal** — the payment `confirm` (`optimization.routes.ts`) records payment on
-  `itinerary_comparisons`/`platform_revenue`, never linked to a coordination state (TODO there defers linkage to
-  Phase 4). Crediting an unpaid fee is an unearned discount; the honest interim charges floor-or-percent with **no
-  credit**. **Follow-up (filed):** record/lookup the paid optimize fee per coordination state, then credit only when paid.
-- The `499_00` floor / `0.08` percent constants are **unchanged** (they were correct; only the budget input + credit gate were).
-- **Known-issue (filed, NOT fixed here):** the coordination-state create/patch zod schemas accept `title` +
-  `metadata` that map to **no columns** (Drizzle silently drops them) — the same "looks-stored-but-isn't" class that
-  caused the $0-budget bug. And `server/__tests__/event-coordination.test.ts` is **dead** (imports uninstalled
-  `vitest`; calls unimported `getFee`) — journey-7:91 is the only live test for this fee engine.
-- Ratified by Leon's D-BUDGET(existing-`budget`-column) + D-CREDIT(interim) lock. Own money-fix lane.
+- **Source-level prevention — VERIFIED WORKING Aug 11, 2026:** `.replit [env]` pins
+  `npm_config_registry = "https://registry.npmjs.org/"` (LOWERCASE key, deliberately — Replit injects the
+  lowercase spelling and npm resolves a case-collision in its favor; the same-key pin overwrites it at
+  shell spawn). With the pin in force `npm config get registry` reports the real registry and pollution
+  never forms. The layers below are defense-in-depth for the day a platform change outflanks it.
+- Guards, in order: the `postinstall` script scrubs immediately after EVERY install — at the formation
+  event itself, regardless of who invoked the install (added Aug 11, 2026; this also covers commits made
+  through hook-bypassing interfaces, e.g. Replit's Git pane); `scripts/post-merge.sh` scrubs right after
+  its install; the git hooks scrub staged lockfiles — BOTH `.githooks/pre-commit` (normal commits) AND
+  `.githooks/pre-merge-commit` (merge commits; added Aug 11, 2026 — **git does not run pre-commit for a
+  merge**, and that gap is exactly how 55 polluted URLs reached CI on merge `3f5b40f`, failing 13 checks
+  on PR #453); the CI `lockfile-purity` gate is the backstop and the only guard that cannot be bypassed.
+  All use `scripts/scrub-lockfile.cjs` (URL-only rewrite; integrity hashes untouched).
+- **The `.npmrc` does NOT reliably prevent pollution from forming — VERIFIED by incident, Aug 11, 2026.**
+  55 `replit.local` URLs formed in this repo with the `.npmrc` present, so treat the hooks/scrubs as
+  load-bearing, never as belt-and-braces. Keep the `.npmrc` anyway (harmless, may help in some contexts).
+  NOTE the old verification one-liner (`npm install && grep -c ...`) is INVALID as a probe: an
+  up-to-date install short-circuits ("up to date ... in 2s") without resolving anything, so its clean
+  grep proves nothing. A real probe must force resolution (delete `package-lock.json` first) — but the
+  incident already answered the question; do not burn time re-proving it.
+- Do not remove the `.npmrc`, the `postinstall` scrub, either hook, or the CI gate; do not run bare
+  `npm install` and commit without the scrub.
 
 ---
 

@@ -1,14 +1,60 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
+import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
+import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
+import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
+import {
+  normalizeGeneratedEstimatedCost,
+  normalizeGeneratedItineraryPayload,
+  parseGeneratedActivityDurationMinutes,
+  MAX_GENERATED_DESTINATION_CHARS,
+  MAX_GENERATED_SPECIAL_REQUEST_CHARS,
+  validateGeneratedItineraryDateRange,
+  validateGeneratedItineraryTextLength,
+} from "../utils/generated-itinerary";
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
+import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
+// §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
+// replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
+import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
+import { getProviderHealth } from "../services/provider-health.service";
+import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
+import { nightDatesInclusive } from "../services/availability-materializer.service";
+import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
+// Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
+// Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
+import { logDemandSignal } from "./demand.routes";
+import {
+  verifyBookingRequest,
+  VerificationInFlightError,
+  VerificationThrottledError,
+} from "../services/booking-verification.service";
+
+// Additive-only honesty seam (provider-health task): looks up a single provider's CURRENT registry
+// status for a per-source catalog response. Never restructures the response — callers spread the
+// result into the existing `{items, total}` shape as an extra optional field a client can ignore.
+function sourceStatusField(provider: string): { sourceStatus: { status: string; configured: boolean; retired: boolean; detail: string | null } } | {} {
+  const entry = getProviderHealth().find((p) => p.provider === provider);
+  if (!entry) return {};
+  return {
+    sourceStatus: {
+      status: entry.status,
+      configured: entry.configured,
+      retired: entry.retired,
+      detail: entry.lastDetail,
+    },
+  };
+}
 import {
   dbHealthCheck, getServiceOfferingTypes, getExpertOfferingTypes,
   getFeedCompositionConfig, insertContactSubmission, getAdminUserIds,
@@ -20,20 +66,25 @@ import {
   getCachedDestinationIntelligenceWithDates, insertDestinationIntelligence,
   insertDestinationIntelligenceStrict, insertAiGeneratedItinerary,
   getAiItinerariesForUser, getAiItineraryById,
-  insertItineraryComparison, updateItineraryComparisonStatus,
+  insertItineraryComparison, saveGeneratedItinerarySnapshot, updateItineraryComparisonStatus,
+  stampAiGeneratedItineraryTrip,
   getActiveProviderServices, getDestinationEventsByCity,
   getExpertUserIds, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
-  insertAffiliateClick, getPlatformStats,
+  insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
   insertSearchAnalytics, insertPageViewAnalytics, insertBookingFunnelAnalytics,
   insertActivityBookingAnalytics, insertTripAnalyticsEnhanced,
   getTripAnalyticsEnhancedByTripId, updateTripAnalyticsEnhanced,
   getAdminUserByEmail, insertUser, getFirstUser,
   getAllDestinationEvents, insertHelpGuideTrips, insertTouristPlacesSearch,
   insertContentImpression, getDemandCountsForCity,
+  filterOutAwayOwners,
 } from "../services/content-query.service";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { hasExistingConversation, isBlockedBetween } from "../services/messages.service";
+import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
+import { broadcastToUser } from "../websocket";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -63,6 +114,8 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
+  bundleComponents,
+  vendorAvailabilitySlots,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -71,8 +124,13 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the write path
+// (provider.routes.ts) — read time re-derives from the components that are STILL visible on this
+// read rather than trusting the stored column, which can drift after a component is paused or
+// un-approved without the bundle itself ever being edited.
+import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
+import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
-import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -80,19 +138,20 @@ import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
+import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
-import { budgetService } from "../services/budget.service";
+import { budgetService, BudgetValidationError } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
 import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, omitFields } from "../utils/data-sanitizer";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, affiliatePartners, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
 import { generateKml } from "../services/kml-generator";
@@ -110,8 +169,6 @@ import {
   tripExpertAdvisors,
 } from "@shared/schema";
 import {
-  EXPERT_SHARE_RATE,
-  PLATFORM_FEE_RATE,
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
@@ -125,6 +182,7 @@ import plancardRoutes from "./plancard.routes";
 import identityRoutes from "./identity.routes";
 import webhooksRoutes from "./webhooks.routes";
 import { affiliateClicks } from "@shared/schema";
+import { isExpertRole } from "@shared/roles";
 import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
@@ -134,6 +192,58 @@ const router = Router();
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+function boundedJson(maxChars: number) {
+  return z.unknown().refine((value) => {
+    try {
+      const encoded = JSON.stringify(value);
+      return encoded === undefined || encoded.length <= maxChars;
+    } catch {
+      return false;
+    }
+  }, `JSON value must be at most ${maxChars} characters`);
+}
+
+const aiBlueprintRequestSchema = z.object({
+  eventType: z.string().trim().min(1).max(80).default("vacation"),
+  destination: z.string().trim().min(1).max(200).default("To be determined"),
+  travelers: z.coerce.number().int().min(1).max(50).default(2),
+  startDate: z.string().trim().max(32).optional(),
+  endDate: z.string().trim().max(32).optional(),
+  budget: z.union([z.string().trim().max(100), z.number().nonnegative().max(100_000_000)]).optional(),
+  preferences: boundedJson(5_000).optional(),
+}).strict();
+
+const aiChatRequestSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(4_000),
+  }).strict()).min(1).max(30).refine(
+    (messages) => messages.reduce((total, message) => total + message.content.length, 0) <= 12_000,
+    "Combined message content must be at most 12000 characters",
+  ),
+  tripContext: boundedJson(8_000).optional(),
+}).strict();
+
+const optimizeExperienceRequestSchema = z.object({
+  experienceType: z.string().trim().min(1).max(100),
+  destination: z.string().trim().max(200).optional(),
+  date: z.string().trim().max(32).optional(),
+  selectedServices: z.array(z.object({
+    name: z.string().trim().max(200).optional(),
+    provider: z.string().trim().max(200).optional(),
+    price: z.union([z.number().nonnegative().max(100_000_000), z.string().trim().max(50)]).optional(),
+    category: z.string().trim().max(100).optional(),
+  }).strict()).max(50).default([]),
+  preferences: boundedJson(5_000).optional(),
+}).strict();
+
+function sendValidationError(res: any, error: z.ZodError) {
+  return res.status(400).json({
+    message: "Validation failed",
+    errors: error.errors.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
+  });
+}
 
 function sanitizeInput(input: string): string {
   if (typeof input !== 'string') return input;
@@ -296,9 +406,9 @@ router.get("/api/status", (_req, res) => {
   });
 
 
-router.post("/api/contact", async (req, res) => {
+router.post("/api/contact", strictRateLimiter, async (req, res) => {
     try {
-      const input = contactSchema.parse(req.body);
+      const input = sanitizeStringFields(contactSchema.parse(req.body));
 
       // Persist the submission
       const submission = await insertContactSubmission({
@@ -363,7 +473,7 @@ router.post("/api/contact", async (req, res) => {
 
 router.post("/api/chat/start", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { expertId, message, tripId } = req.body;
 
       if (!expertId) {
@@ -376,6 +486,22 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
         return res.status(404).json({ message: "Expert not found" });
       }
 
+      // Messaging rate limit — this endpoint opens NEW conversations, so cold-contact
+      // throttling is the relevant guard here.
+      const isNewConversation = !(await hasExistingConversation(userId, expertId));
+      const rate = checkMessageRateLimit({ senderId: userId, recipientId: expertId, isNewConversation, peerIp: req.ip });
+      if (!rate.allowed) {
+        res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
+        return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
+      }
+
+      // Block enforcement: reject before any insert or notification if a block exists
+      // in either direction so a blocked sender cannot bypass the guard by using this
+      // endpoint instead of POST /api/messages or the WebSocket path.
+      if (await isBlockedBetween(userId, expertId)) {
+        return res.status(403).json({ message: "You cannot send messages to this user." });
+      }
+
       // Create initial chat message
       const chat = await insertExpertChat({
         senderId: userId,
@@ -385,6 +511,16 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
 
       // Create notification for expert
       await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
+
+      // Live-push to the expert's open chat client (same frame shape as the /ws relay).
+      broadcastToUser(expertId, {
+        type: "chat",
+        id: chat.id,
+        senderId: userId,
+        recipientId: expertId,
+        content: chat.message,
+        timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
+      });
 
       res.status(201).json({
         message: "Chat started successfully",
@@ -440,7 +576,7 @@ router.post("/api/generated-itineraries", isAuthenticated, async (req, res) => {
         return res.status(404).json({ message: "Trip not found" });
       }
       
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -474,7 +610,7 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
         return res.status(404).json({ message: "Trip not found" });
       }
       
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -494,8 +630,9 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
 
 router.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
     try {
-      const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { eventType, destination, travelers, startDate, endDate, budget, preferences } =
+        aiBlueprintRequestSchema.parse(req.body);
+      const userId = getUserId(req)!;
 
       const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
       
@@ -543,12 +680,18 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
       trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
       const blueprintContent = completion.content[0]?.type === "text" ? completion.content[0].text : null;
-      const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
+      let blueprintData: unknown = {};
+      try {
+        blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
+      } catch {
+        return res.status(502).json({ message: "AI provider returned an invalid blueprint" });
+      }
 
       const blueprint = await insertAiBlueprint({ userId, eventType: eventType || 'vacation', destination, blueprintData });
 
       res.status(201).json(blueprint);
     } catch (error) {
+      if (error instanceof z.ZodError) return sendValidationError(res, error);
       console.error("Error generating blueprint:", error);
       res.status(500).json({ message: "Failed to generate blueprint" });
     }
@@ -558,7 +701,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
 
 router.post("/api/ai/chat", isAuthenticated, async (req, res) => {
     try {
-      const { messages, tripContext } = req.body;
+      const { messages, tripContext } = aiChatRequestSchema.parse(req.body);
 
       const systemPrompt = `You are an expert travel advisor assistant for Traveloure. 
 You help users plan trips, answer questions about destinations, provide recommendations for hotels, restaurants, activities, and help with wedding/honeymoon/special event planning.
@@ -594,6 +737,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       const response = completion.content[0]?.type === "text" ? completion.content[0].text : "I'm sorry, I couldn't process your request.";
       res.json({ response });
     } catch (error) {
+      if (error instanceof z.ZodError) return sendValidationError(res, error);
       console.error("Error in AI chat:", error);
       res.status(500).json({ message: "Failed to process chat request" });
     }
@@ -605,11 +749,14 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
 
 router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      if (!user || (user.role !== "admin" && user.role !== "expert")) {
+      const user = await storage.getUser(getUserId(req)!);
+      // Full expert family (shared/roles.ts): bare `role !== "expert"` locked out
+      // local_expert / travel_expert / event_planner.
+      if (!user || (user.role !== "admin" && !isExpertRole(user.role))) {
         return res.status(403).json({ message: "Admin or expert access required" });
       }
-      const { experienceType, destination, date, selectedServices, preferences } = req.body;
+      const { experienceType, destination, date, selectedServices, preferences } =
+        optimizeExperienceRequestSchema.parse(req.body);
       
       const servicesContext = selectedServices?.map((s: any) => ({
         name: s.name,
@@ -670,6 +817,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       
       res.json(optimization);
     } catch (error) {
+      if (error instanceof z.ZodError) return sendValidationError(res, error);
       console.error("Error in experience optimization:", error);
       res.status(500).json({ 
         message: "Failed to optimize experience",
@@ -685,13 +833,22 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Vendors Routes
 
-router.get("/api/city-neighborhoods", async (_req, res) => {
+router.get("/api/city-neighborhoods", async (req, res) => {
     try {
+      // Reference data — high default (200, also the hard cap) so existing consumers still see
+      // the full catalog today, while the response can never grow unbounded.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const [agg] = await db
+        .select({ total: count() })
+        .from(cityNeighborhoods);
+      const total = Number(agg?.total ?? 0);
       const rows = await db
         .select()
         .from(cityNeighborhoods)
-        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name);
-      res.json(rows);
+        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name)
+        .limit(limit)
+        .offset(offset);
+      res.json({ data: rows, total, hasMore: offset + rows.length < total, limit, offset });
     } catch (err) {
       console.error("Error fetching city neighborhoods:", err);
       res.status(500).json({ message: "Failed to fetch neighborhoods" });
@@ -770,7 +927,7 @@ router.get("/api/service-categories/provider-counts", async (_req, res) => {
 
 router.post("/api/service-categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -796,7 +953,7 @@ router.get("/api/service-categories/:categoryId/subcategories", async (req, res)
 
 router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -817,12 +974,15 @@ router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
 
 router.get("/api/custom-venues", async (req, res) => {
     const { userId, tripId, experienceType } = req.query;
-    const venues = await storage.getCustomVenues(
+    const { limit, offset } = parsePagination(req.query);
+    const { venues, total } = await storage.getCustomVenuesPage(
       userId as string | undefined,
       tripId as string | undefined,
-      experienceType as string | undefined
+      experienceType as string | undefined,
+      limit,
+      offset,
     );
-    res.json(venues);
+    res.json({ data: venues, total, hasMore: offset + venues.length < total, limit, offset });
   });
 
   // Get single custom venue
@@ -839,7 +999,7 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
 router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
-      const input = insertCustomVenueSchema.parse(req.body);
+      const input = sanitizeStringFields(insertCustomVenueSchema.parse(req.body));
       const venue = await storage.createCustomVenue(input);
       res.status(201).json(venue);
     } catch (err) {
@@ -857,7 +1017,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
       // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f
       // applied this fix to the dead duplicate; see docs/audits/shadow-route-sweep.md).
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const venue = await storage.getCustomVenue(req.params.id);
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -865,7 +1025,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       if (venue.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const input = insertCustomVenueSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -884,7 +1044,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
       // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f).
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const venue = await storage.getCustomVenue(req.params.id);
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -1005,7 +1165,8 @@ router.get("/api/catalog/search", async (req, res) => {
         tabSlug: tabSlug as string | undefined,
       });
 
-      res.json(result);
+      // §16: partner URLs never reach the client — vaulted server-side, tokens out.
+      res.json({ ...result, items: await vaultAndStripItems(result.items) });
     } catch (error) {
       console.error("Catalog search error:", error);
       res.status(500).json({ message: "Failed to search catalog" });
@@ -1028,7 +1189,8 @@ router.get("/api/catalog/search-hybrid", async (req, res) => {
 
       const result = await experienceCatalogService.searchWithSerpFallback(parseResult.data);
 
-      res.json(result);
+      // §16: partner URLs never reach the client — vaulted server-side, tokens out.
+      res.json({ ...result, items: await vaultAndStripItems(result.items) });
     } catch (error) {
       console.error("Hybrid catalog search error:", error);
       res.status(500).json({ message: "Failed to search catalog" });
@@ -1058,7 +1220,9 @@ router.get("/api/catalog/items/:type/:id", async (req, res) => {
       if (!item) {
         return res.status(404).json({ message: "Item not found" });
       }
-      res.json(item);
+      // §16: partner URLs never reach the client — vaulted server-side, token out.
+      const [safeItem] = await vaultAndStripItems([item]);
+      res.json(safeItem);
     } catch (error) {
       console.error("Error fetching catalog item:", error);
       res.status(500).json({ message: "Failed to fetch catalog item" });
@@ -1069,8 +1233,13 @@ router.get("/api/catalog/items/:type/:id", async (req, res) => {
 
 router.get("/api/catalog/destinations", async (req, res) => {
     try {
+      // Reference data — high default limit (200 = cap); paged from the deduped in-memory set
+      // (its sources are already capped at 100 distinct rows each).
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
       const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      const total = destinations.length;
+      const page = destinations.slice(offset, offset + limit);
+      res.json({ data: page, total, hasMore: offset + page.length < total, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
@@ -1080,37 +1249,35 @@ router.get("/api/catalog/destinations", async (req, res) => {
   // === Travelpayouts Provider Routes ===
 
   // Flights: Aviasales
+  // Kiwi (Tequila) is RETIRED as a source — see server/services/travelpayouts/kiwi.service.ts for the
+  // evidence (401 against TRAVELPAYOUTS_TOKEN; Tequila closed to new partners in 2023). Aviasales is now
+  // the sole source; a `provider=kiwi` request still resolves cleanly to zero items, never an error.
 
 router.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
     try {
       const { searchAviasalesFlights } = await import("../services/travelpayouts/aviasales.service");
-      const { searchKiwiFlights } = await import("../services/travelpayouts/kiwi.service");
       const { origin, destination, departDate, returnDate, currency, limit, provider } = req.query;
 
       if (!origin) return res.status(400).json({ message: "origin is required" });
 
-      const [aviasales, kiwi] = await Promise.allSettled([
-        !provider || provider === "aviasales"
-          ? searchAviasalesFlights({ origin: origin as string, destination: destination as string, departDate: departDate as string, returnDate: returnDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
-          : Promise.resolve([]),
-        !provider || provider === "kiwi"
-          ? searchKiwiFlights({ flyFrom: origin as string, flyTo: destination as string, dateFrom: departDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
-          : Promise.resolve([]),
-      ]);
+      const items = !provider || provider === "aviasales"
+        ? await searchAviasalesFlights({ origin: origin as string, destination: destination as string, departDate: departDate as string, returnDate: returnDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
+        : [];
 
-      const items = [
-        ...(aviasales.status === "fulfilled" ? aviasales.value : []),
-        ...(kiwi.status === "fulfilled" ? kiwi.value : []),
-      ];
-
-      res.json({ items, total: items.length });
+      // Health is reported under the REAL provider ("aviasales") — this route previously
+      // labeled itself "kiwi", a retired source, which made the honest-empty seam lie.
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("aviasales") });
     } catch (error) {
       console.error("Flights search error:", error);
       res.status(500).json({ message: "Failed to search flights" });
     }
   });
 
-  // Flights: Kiwi Nomad routing
+  // Flights: Kiwi Nomad routing — RETIRED (Kiwi/Tequila is the only nomad source there is; see
+  // kiwi.service.ts). Still calls through to searchKiwiNomad so the KIWI_TEQUILA_API_KEY revival seam
+  // stays live end-to-end (not just inside the service) — it always returns [] today, so this is
+  // presently equivalent to the honest static retired shape, but a future partner key just works
+  // without a route change. `retired` reflects whether the seam is currently ACTIVE, not a hardcoded flag.
 
 router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
     try {
@@ -1127,7 +1294,7 @@ router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, retired: !process.env.KIWI_TEQUILA_API_KEY, ...sourceStatusField("kiwi") });
     } catch (error) {
       console.error("Nomad search error:", error);
       res.status(500).json({ message: "Failed to search nomad routes" });
@@ -1151,7 +1318,7 @@ router.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("gettransfer") });
     } catch (error) {
       console.error("Transfers search error:", error);
       res.status(500).json({ message: "Failed to search transfers" });
@@ -1178,7 +1345,7 @@ router.get("/api/catalog/cars", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("discovercars") });
     } catch (error) {
       console.error("Car rental search error:", error);
       res.status(500).json({ message: "Failed to search car rentals" });
@@ -1198,7 +1365,7 @@ router.get("/api/catalog/esim", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (error) {
       console.error("eSIM search error:", error);
       res.status(500).json({ message: "Failed to search eSIM plans" });
@@ -1218,7 +1385,7 @@ router.get("/api/catalog/tiqets", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("tiqets") });
     } catch (error) {
       console.error("Tiqets search error:", error);
       res.status(500).json({ message: "Failed to search Tiqets products" });
@@ -1237,7 +1404,7 @@ router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("wegotrip") });
     } catch (error) {
       console.error("WeGoTrip search error:", error);
       res.status(500).json({ message: "Failed to search WeGoTrip products" });
@@ -1257,7 +1424,7 @@ router.get("/api/catalog/viator-feed", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (error) {
       console.error("Viator feed error:", error);
       res.status(500).json({ message: "Failed to fetch Viator feed" });
@@ -1277,30 +1444,19 @@ router.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) =>
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (error) {
       console.error("Ground transport error:", error);
       res.status(500).json({ message: "Failed to search ground transport" });
     }
   });
 
-  // HotelLook hotel search (instant-connect ⚡)
+  // HotelLook RETIRED 2026-08 — Travelpayouts shut down the public Hotellook data API
+  // (engine.hotellook.com/api/v2/* return 404; see hotellook.service.ts). The endpoint
+  // stays as an explicit empty response so any stale clients don't see a broken 404/500.
 
-router.get("/api/catalog/hotels-look", isAuthenticated, async (req, res) => {
-    try {
-      const { searchHotellook } = await import("../services/travelpayouts/hotellook.service");
-      const { destination, currency, limit } = req.query;
-      if (!destination) return res.status(400).json({ message: "destination required" });
-      const items = await searchHotellook({
-        destination: destination as string,
-        currency: currency as string,
-        limit: limit ? parseInt(limit as string) : 20,
-      });
-      res.json({ items, total: items.length });
-    } catch (err) {
-      console.error("HotelLook error:", err);
-      res.status(500).json({ message: "Failed to search HotelLook" });
-    }
+router.get("/api/catalog/hotels-look", isAuthenticated, async (_req, res) => {
+    res.json({ items: [], total: 0, retired: true });
   });
 
   // Agoda hotels (instant-connect ⚡)
@@ -1317,7 +1473,7 @@ router.get("/api/catalog/agoda", isAuthenticated, async (req, res) => {
         guests: guests ? parseInt(guests as string) : 2,
         limit: limit ? parseInt(limit as string) : 4,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Agoda error:", err);
       res.status(500).json({ message: "Failed to search Agoda" });
@@ -1339,7 +1495,7 @@ router.get("/api/catalog/booking", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 5,
         currency: currency as string,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Booking.com (TP) error:", err);
       res.status(500).json({ message: "Failed to fetch Booking.com results" });
@@ -1358,7 +1514,7 @@ router.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 12,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("getyourguide") });
     } catch (err) {
       console.error("GetYourGuide error:", err);
       res.status(500).json({ message: "Failed to search GetYourGuide" });
@@ -1377,7 +1533,7 @@ router.get("/api/catalog/klook", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 6,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Klook error:", err);
       res.status(500).json({ message: "Failed to search Klook" });
@@ -1395,7 +1551,7 @@ router.get("/api/catalog/insurance", isAuthenticated, async (req, res) => {
         travelers: travelers ? parseInt(travelers as string) : 1,
         limit: limit ? parseInt(limit as string) : 3,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("SafetyWing error:", err);
       res.status(500).json({ message: "Failed to fetch insurance plans" });
@@ -1416,7 +1572,7 @@ router.get("/api/catalog/bus", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 10,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Busbud error:", err);
       res.status(500).json({ message: "Failed to search Busbud" });
@@ -1440,7 +1596,7 @@ router.get("/api/catalog/airport-transfers", isAuthenticated, async (req, res) =
       ]);
 
       const items = [...kiwiItems, ...welcomeItems];
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Airport transfers error:", err);
       res.status(500).json({ message: "Failed to search airport transfers" });
@@ -1461,7 +1617,7 @@ router.get("/api/catalog/luggage-storage", isAuthenticated, async (req, res) => 
         bags: bags ? parseInt(bags as string) : 1,
         limit: limit ? parseInt(limit as string) : 6,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Stasher error:", err);
       res.status(500).json({ message: "Failed to search Stasher" });
@@ -1483,7 +1639,7 @@ router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 4,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Rentalcars error:", err);
       res.status(500).json({ message: "Failed to search Rentalcars" });
@@ -1494,8 +1650,12 @@ router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
 
 router.get("/api/destinations", async (req, res) => {
     try {
-      const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      // Alias of /api/catalog/destinations — apply same pagination contract.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const all = await experienceCatalogService.getDestinations();
+      const deduped = Array.from(new Set(all)) as string[];
+      const page = deduped.slice(offset, offset + limit);
+      res.json({ data: page, total: deduped.length, hasMore: offset + page.length < deduped.length, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
@@ -1507,7 +1667,7 @@ router.get("/api/destinations", async (req, res) => {
   // Get user's experiences
 
 router.get("/api/user-experiences", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experiences = await storage.getUserExperiences(userId);
     res.json(experiences);
   });
@@ -1527,7 +1687,7 @@ router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const experience = await storage.createUserExperience({ ...req.body, userId });
 
       // Auto-create a linked trip
@@ -1561,7 +1721,7 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
   // Update experience
 
 router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1601,7 +1761,7 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
   // Delete experience
 
 router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1613,7 +1773,7 @@ router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => 
   // Add item to experience
 
 router.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1653,7 +1813,7 @@ router.get("/api/faqs", async (req, res) => {
 
 router.post("/api/faqs", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1672,7 +1832,7 @@ router.post("/api/faqs", isAuthenticated, async (req, res) => {
 
 router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1693,17 +1853,13 @@ router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
   // Delete FAQ (admin)
 
 router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
-    const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     await storage.deleteFAQ(req.params.id);
     res.status(204).send();
   });
-
-  // === Wallet & Credits Routes ===
-  
-  // Get current user's wallet
 
 router.get("/api/service-templates", async (_req, res) => {
     try {
@@ -1812,7 +1968,7 @@ router.get("/api/destination-calendar/seasons", async (req, res) => {
 
 router.get("/api/destination-calendar/my-events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const events = await storage.getContributorDestinationEvents(userId);
       res.json(events);
     } catch (err) {
@@ -1825,7 +1981,7 @@ router.get("/api/destination-calendar/my-events", isAuthenticated, async (req, r
 
 router.post("/api/destination-calendar/events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.createDestinationEvent({
         ...req.body,
         contributorId: userId,
@@ -1843,7 +1999,7 @@ router.post("/api/destination-calendar/events", isAuthenticated, async (req, res
 
 router.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -1868,7 +2024,7 @@ router.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, 
 
 router.post("/api/destination-calendar/events/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -1893,7 +2049,7 @@ router.post("/api/destination-calendar/events/:id/submit", isAuthenticated, asyn
 
 router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -1943,13 +2099,420 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
   });
 
 router.get("/api/services/:id", async (req, res) => {
-    const service = await storage.getProviderServiceById(req.params.id);
+    const rawService = await storage.getProviderServiceById(req.params.id);
     // Public surface: F2 read-gate (approval_status = 'approved') — harvested from the
     // routes.ts shadow copy, where 23ece804 applied the gate to the dead duplicate.
-    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+    if (!rawService || rawService.status !== "active" || rawService.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
-    res.json(service);
+    // D3 leak-prevention: this is the public service-detail read — serviceFile is the
+    // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
+    // front, so every branch below (bundle/property/room/default) inherits the strip.
+    // T-REP (G5 #13 audit): `storage.getProviderServiceById` is a bare `SELECT *`, so this was
+    // the only place standing between the full row and the public wire. §18's revenueShareRate
+    // strip already exists on the owner-write echoes (routes.ts CC-8/NEW-2) but was never applied
+    // to THIS public read — a rate-bearing field is never expose-able, no exceptions (§14/§18/§19).
+    // The rest of this list is the approval-workflow's internal bookkeeping (who reviewed it, when,
+    // why it was rejected, its pre-approval form status) — none of it is a traveler-facing fact
+    // about the LISTING; every row reaching this handler is already `approved`/`active` by the F2
+    // gate above, so these columns carry no information the traveler needs and some (rejectionReason,
+    // reviewedBy) are closer to provider-private notes than public content.
+    // S9 (docs/DECISIONS.md ledger row 102): joinLink joins the never-expose list — it is the
+    // provider's OWN meeting link for a scheduled remote session (call/video), revealed only to
+    // a CONFIRMED traveler + the owning provider (see GET /api/service-bookings), never on this
+    // public pre-purchase read (§12's PENDING-advisor read grant does not extend to it either).
+    const service = omitFields(rawService, [
+      "serviceFile",
+      "revenueShareRate",
+      "reviewedBy",
+      "rejectionReason",
+      "formStatus",
+      "submittedAt",
+      "reviewedAt",
+      "totalRevenue",
+      "joinLink",
+    ] as const);
+    // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
+    // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
+    // away state as `away:{until,message}`; the service-detail read did not carry it at all,
+    // so a texted service link during vacation mode showed a bookable page with no away
+    // signal. Same derivation (non-null vacationUntil in the future), read-only — never
+    // touches provider_services rows or their status/approval; enforcement of the actual
+    // booking block lives at the checkout claim, not here.
+    const [owner] = await db
+      .select({ vacationUntil: users.vacationUntil, vacationMessage: users.vacationMessage })
+      .from(users)
+      .where(eq(users.id, service.userId))
+      .limit(1);
+    const away =
+      owner?.vacationUntil && owner.vacationUntil.getTime() > Date.now()
+        ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
+        : null;
+    // Ruling 22: ordered route stops ride the public detail on every product shape. The
+    // traveler map renders LOCATED stops only; unlocated stops still list by name and the
+    // client states "X of Y stops located" rather than guessing a pin (§13).
+    const routePoints = await storage.getServiceRoutePoints(service.id);
+    // Lane M3 (gap #13's "Starts" row): the weekly repeat rule. `service_availability_patterns`
+    // (ledger row 102) had an owner-gated PUT and an owner-gated GET and NO public read — so a
+    // provider could author "every Tuesday and Thursday at 18:00" and no traveler could ever see
+    // it. That is the exact shape gap #13 forbids; T-REP (row 101) deferred availability to lane
+    // S7, so the rule was never applied here. Threaded through every product-shape branch like
+    // `routePoints` above, behind the SAME F2 read-gate already applied at the top of this handler
+    // (an unapproved listing leaks no schedule — the /availability endpoint's own posture).
+    // DELIBERATELY NOT `capacity`: how many seats remain is inventory and belongs to the
+    // availability calendar; this is only the rhythm the listing runs on.
+    const availabilityPatterns = (await storage.getServiceAvailabilityPatterns(service.id)).map((p) => ({
+      dayOfWeek: p.dayOfWeek,
+      startTime: p.startTime,
+      endTime: p.endTime,
+    }));
+    // B1 (ruling 81): the zones-mode surcharge rings ride the public detail so the traveler map can
+    // render the surcharge ring(s) — DISPLAY-ONLY (the charge is derived at checkout, §14). Only
+    // loaded for a zones listing; the surcharge CONFIG columns (surchargeMode/flat/per-km/max) already
+    // ride the `...service` spread. Loaded here once and threaded through every product-shape branch.
+    const surchargeTiers = service.surchargeMode === "zones"
+      ? await storage.getServiceSurchargeTiers(service.id)
+      : [];
+
+    // T-REP (G5 #13): neighborhoods served — same derivation `GET /api/provider/services/:id`
+    // (the owner's own edit surface, routes.ts) already uses to pre-populate its multi-select, run
+    // here read-only for the public detail. `provider_neighborhood_coverage` is keyed on
+    // (providerId, categoryKey) — provider-level coverage for the category this LISTING belongs to,
+    // not a column on the listing itself, so there is no bare `service.neighborhoods` to spread; it
+    // has to be joined. Non-sensitive (a coverage-area list, not PII) — no gate beyond the F2 one
+    // already applied above. Absent category/coverage rows ⇒ an honest empty list, never a guess.
+    let neighborhoods: { slug: string; name: string }[] = [];
+    if (service.categoryId) {
+      const [cat] = await db
+        .select({ categoryKey: serviceCategories.categoryKey })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.id, service.categoryId));
+      if (cat?.categoryKey) {
+        neighborhoods = await db
+          .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name })
+          .from(providerNeighborhoodCoverage)
+          .innerJoin(cityNeighborhoods, eq(providerNeighborhoodCoverage.neighborhoodId, cityNeighborhoods.id))
+          .where(and(
+            eq(providerNeighborhoodCoverage.providerId, service.userId),
+            eq(providerNeighborhoodCoverage.categoryKey, cat.categoryKey),
+          ))
+          .orderBy(providerNeighborhoodCoverage.sortOrder);
+      }
+    }
+
+    // Ruling 60 Phase B — provider CONTENT translation (system B). The active locale is the
+    // client's resolved chrome locale (Phase A: account pref → localStorage → Accept-Language →
+    // en), passed as ?locale=. §13's honesty rule for CONTENT (distinct from chrome's silent
+    // fallback): serve the `approved` translation's content when one exists; otherwise serve the
+    // ORIGINAL English with an explicit fallback flag the client renders as "shown in English /
+    // 原文（英語）". NEVER on-the-fly machine-translate; NEVER return a `draft`-status row's content
+    // to a traveler; NEVER show a JA locale a half-translated listing without the label.
+    const rawLocale = typeof req.query.locale === "string" ? req.query.locale : "en";
+    const activeLocale = isContentLocale(rawLocale) ? rawLocale : "en";
+    // Ruling 115: the comparison point is the LISTING'S OWN source language (source_locale,
+    // NULL = en — every pre-216 row was authored under ruling 60's source-is-English assumption).
+    const listingSourceLocale = effectiveSourceLocale((service as any).sourceLocale);
+    let contentOverlay: Record<string, unknown> = {};
+    let translationMeta: {
+      locale: string;
+      status: "approved" | "fallback";
+      source?: string;
+      // Kept for back-compat with pre-115 clients: true only for the original case (en-source
+      // listing, no approved translation). New clients key the label off sourceLocale instead.
+      shownInEnglish: boolean;
+      sourceLocale: string;
+    } | null = null;
+    if (activeLocale !== listingSourceLocale) {
+      const t = await storage.getServiceTranslation(service.id, activeLocale);
+      if (t && t.status === "approved") {
+        // Overlay only the fields the provider actually translated; an untranslated field falls
+        // back to the original (never blanked). status/source describe the row, not the fields.
+        if (t.serviceName) contentOverlay.serviceName = t.serviceName;
+        if (t.shortDescription) contentOverlay.shortDescription = t.shortDescription;
+        if (t.description) contentOverlay.description = t.description;
+        if (t.meetingPoint) contentOverlay.meetingPoint = t.meetingPoint;
+        translationMeta = { locale: activeLocale, status: "approved", source: t.source, shownInEnglish: false, sourceLocale: listingSourceLocale };
+      } else {
+        // No approved translation (none authored, or only a draft exists) → honest original +
+        // a truthful "shown in <source language>" label (§13). A draft's content is deliberately
+        // NOT overlaid.
+        translationMeta = {
+          locale: activeLocale,
+          status: "fallback",
+          shownInEnglish: listingSourceLocale === "en",
+          sourceLocale: listingSourceLocale,
+        };
+      }
+    }
+    const withTranslation = <T extends Record<string, unknown>>(payload: T) => ({
+      ...payload,
+      ...contentOverlay,
+      translation: translationMeta,
+    });
+
+    // §17/S10 bundles (migrations 151, Gate G4): additive component list on the public detail.
+    // LEFT JOIN (not the old INNER JOIN) so a component that has been paused/un-approved SINCE
+    // the bundle was built still produces a row — §13 requires the bundle to say so honestly
+    // (name-only, no link) rather than silently shrinking the list with no explanation. The FK is
+    // ON DELETE RESTRICT (migration 151), so a component row going missing entirely is a
+    // referential-integrity break, not an expected case; it gets the same honest fallback rather
+    // than a thrown 500.
+    if (service.productShape === "bundle") {
+      const rows = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          approvalStatus: providerServices.approvalStatus,
+          status: providerServices.status,
+        })
+        .from(bundleComponents)
+        .leftJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
+        .where(eq(bundleComponents.bundleServiceId, service.id))
+        .orderBy(asc(bundleComponents.position));
+
+      // Same F2 predicate as every other public read-gate: still approved AND active, right now —
+      // never the state the component was in when it joined the bundle.
+      const isPublicComponent = (r: (typeof rows)[number]) =>
+        r.id != null && r.approvalStatus === "approved" && r.status === "active";
+      const publicRows = rows.filter(isPublicComponent);
+
+      // FABLE-REVIEW: response shape for GET /api/services/:id (bundle branch) — an unapproved,
+      // paused, or (theoretically) missing component now renders name-only with no `id` at all,
+      // so the client cannot construct a link to it and no non-public detail (image, description,
+      // method) ever rides the wire for it. §13: never a broken link, never invented detail.
+      const bundleComponentsOut = rows.map((r) =>
+        isPublicComponent(r)
+          ? {
+              available: true as const,
+              id: r.id!,
+              serviceName: r.serviceName!,
+              shortDescription: r.shortDescription,
+              deliveryMethod: r.deliveryMethod,
+              serviceImage: r.serviceImage,
+            }
+          : {
+              available: false as const,
+              // The FK guarantees the row exists (ON DELETE RESTRICT) even when it's hidden for
+              // approval/status reasons, so the real name is still honest to show; only the
+              // theoretical missing-row case falls back to a stated placeholder, never a blank.
+              serviceName: r.serviceName ?? "Unavailable listing",
+            },
+      );
+
+      // S10/Gate G4: the displayed method chip is DERIVED fresh on every read from the components
+      // still visible above — never trusted from the stored `delivery_method` column, which only
+      // reflects whatever was true at the bundle's last create/edit (migration 208's B2 repair
+      // fixed that once; a component paused afterwards, with the bundle itself never touched,
+      // would otherwise drift it right back to stale). This value is NEVER written back to the
+      // row — read-time-only, per CLAUDE.md §18 rule 1 (derivation delegates, never re-implements)
+      // sharing the identical predicate the write path (provider.routes.ts) uses at create/patch.
+      const derivedDeliveryMethod = deriveBundleDeliveryMethodFromMethods(
+        publicRows.map((r) => r.deliveryMethod),
+      );
+
+      return res.json(withTranslation({
+        ...service,
+        // No public component carries a derivable method (e.g. every one is currently hidden) ⇒
+        // keep the last-known stored value rather than guessing (§13) — never blank the chip.
+        deliveryMethod: derivedDeliveryMethod ?? service.deliveryMethod,
+        bundleComponents: bundleComponentsOut,
+        away,
+        routePoints,
+        availabilityPatterns,
+        surchargeTiers,
+        neighborhoods,
+      }));
+    }
+    // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
+    // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
+    // exposed, so a paused/unapproved room never leaks through the property's page.
+    if (service.productShape === "property") {
+      const rooms = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+          price: providerServices.price,
+          categoryAttributes: providerServices.categoryAttributes,
+        })
+        .from(providerServices)
+        .where(and(
+          eq(providerServices.parentServiceId, service.id),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ))
+        .orderBy(asc(providerServices.price));
+      // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): pre-booking,
+      // a property's exact confirmed pin never rides the public wire — the SAME deterministic
+      // technique the Ready Made teaser map already uses, at a wider (~500m) radius, with an
+      // explicit `locationApproximate` flag so the client labels the circle honestly (§13). The
+      // exact pin is revealed only on the confirmed-booking surface — the GET
+      // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
+      // confirmed booking's row exact (mirroring the /deliverable gate's status check).
+      const jitteredProperty = applyPropertyLocationPrivacy(service);
+      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
+    }
+    // A room's detail carries a link back to its property — gated the same way (an
+    // unapproved/paused property never surfaces as a clickable link on its own room's page).
+    if (service.productShape === "property_room" && service.parentServiceId) {
+      const [property] = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          approvalStatus: providerServices.approvalStatus,
+          status: providerServices.status,
+          // Read-time-only fallback source for the room's OWN pin (S8-Q3, absolute inheritance —
+          // a room never writes its own coordinates). Never re-exposed on `visibleProperty` below;
+          // used only to seed the jitter when the room's own latitude/longitude are NULL.
+          latitude: providerServices.latitude,
+          longitude: providerServices.longitude,
+        })
+        .from(providerServices)
+        .where(eq(providerServices.id, service.parentServiceId));
+      const visibleProperty =
+        property && property.approvalStatus === "approved" && property.status === "active"
+          ? { id: property.id, serviceName: property.serviceName }
+          : null;
+      // S8/G2 privacy circle, room branch: `room.latitude ?? parent.latitude` at READ TIME ONLY
+      // (never written to either row), then jittered exactly like the property branch above.
+      const jitteredRoom = applyPropertyLocationPrivacy(service, {
+        fallbackLat: property?.latitude ?? null,
+        fallbackLon: property?.longitude ?? null,
+      });
+      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
+    }
+    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
+  });
+
+  // C2: public read-only availability calendar for a service's detail page.
+  // Same F2 read-gate as GET /api/services/:id above (approved + active only) — an
+  // unapproved/submitted listing must not leak its schedule any more than its own
+  // detail page would. Reads the C0-canonical vendor_availability_slots table only
+  // (never provider_availability_schedule/provider_availability). No booking-slot
+  // selection here — that is C3's cart/checkout concern, untouched.
+  router.get("/api/services/:id/availability", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+      const now = new Date();
+      const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam)
+        ? monthParam
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const [yearStr, monthStr] = month.split("-");
+      const year = parseInt(yearStr, 10);
+      const monthIndex = parseInt(monthStr, 10) - 1;
+      const startDate = `${month}-01`;
+      const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+      const endDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+
+      const slots = await storage.getVendorAvailabilitySlotsInRange(req.params.id, startDate, endDate);
+      const days = slots.map((slot) => {
+        const capacity = slot.capacity ?? 1;
+        const bookedCount = slot.bookedCount ?? 0;
+        const remaining = Math.max(capacity - bookedCount, 0);
+        return {
+          // C3: the slot id lets the traveler PICK this slot (add-to-cart carries it; the
+          // capacity claim itself stays server-side at checkout — the id is not sensitive).
+          id: slot.id,
+          date: slot.date,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          remaining,
+          status: remaining <= 0 ? "fully_booked" : (slot.status || "available"),
+        };
+      });
+
+      res.json({ month, days });
+    } catch (err) {
+      console.error("Error fetching service availability:", err);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  // S11 (DECISIONS.md ledger row 107, docs/briefs/S11_STAY_BOOKING_PROPOSAL.md, Open Question 6
+  // — "recommend the new redacted route"): public REDACTED per-night calendar for a property/room
+  // stay. Deliberately a NEW endpoint rather than a second consumer of `GET
+  // /api/vendor-availability/:serviceId` (that route is provider/internal-shaped — it returns raw
+  // rows including `bookedCount`, `providerId`, internal `pricing`/`discounts`/`cancellationPolicy`
+  // — building a traveler-facing consumer on top of it would bake that leak in as a de facto
+  // public API; flagged, not fixed, per the ballot's Negative Space). Returns ONLY
+  // `{date, available, nightlyRate}` per night — mirrors the T-REP read-strip precedent (ledger
+  // row 101): never bookedCount/capacity/providerId/id/internal pricing keys.
+  //
+  // Same F2 read-gate as GET /api/services/:id (approved + active) and scoped to property/room
+  // shapes only — a scheduled-slot service has its own calendar contract at GET
+  // /api/services/:id/availability (C2) above; this endpoint answers "which NIGHTS can I book",
+  // not "which time slots".
+  router.get("/api/services/:id/stay-availability", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      if (service.productShape !== "property" && service.productShape !== "property_room") {
+        return res.status(400).json({ message: "Stay availability applies only to property or property_room listings" });
+      }
+      const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+      const checkInParam = typeof req.query.checkIn === "string" && DATE_RE.test(req.query.checkIn)
+        ? req.query.checkIn
+        : new Date().toISOString().slice(0, 10);
+      // Integrator default (S7-Q1 precedent, amendable): a 60-night forward window when no
+      // checkOut is given — a browsing calendar, not a specific stay request.
+      const defaultWindowEnd = (() => {
+        const d = new Date(`${checkInParam}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 60);
+        return d.toISOString().slice(0, 10);
+      })();
+      const checkOutParam = typeof req.query.checkOut === "string" && DATE_RE.test(req.query.checkOut)
+        ? req.query.checkOut
+        : defaultWindowEnd;
+      if (checkOutParam < checkInParam) {
+        return res.status(400).json({ message: "checkOut must be on or after checkIn" });
+      }
+      // Bounded response size (same 730-night ceiling as the date-ranges write rail) — a browsing
+      // window is never unbounded.
+      const allNights = nightDatesInclusive(checkInParam, checkOutParam).slice(0, 730);
+
+      const rows = await db
+        .select({
+          date: vendorAvailabilitySlots.date,
+          capacity: vendorAvailabilitySlots.capacity,
+          bookedCount: vendorAvailabilitySlots.bookedCount,
+          pricing: vendorAvailabilitySlots.pricing,
+        })
+        .from(vendorAvailabilitySlots)
+        .where(and(
+          eq(vendorAvailabilitySlots.serviceId, service.id),
+          gte(vendorAvailabilitySlots.date, checkInParam),
+          lte(vendorAvailabilitySlots.date, checkOutParam),
+        ));
+      const byDate = new Map(rows.map((r) => [String(r.date), r]));
+
+      const nights = allNights.map((date) => {
+        const row = byDate.get(date);
+        const capacity = row?.capacity ?? 0;
+        const bookedCount = row?.bookedCount ?? 0;
+        const nightlyRaw = (row?.pricing as any)?.nightlyRate;
+        const nightlyParsed = typeof nightlyRaw === "number" ? nightlyRaw : parseFloat(nightlyRaw);
+        return {
+          date,
+          available: Boolean(row) && bookedCount < capacity,
+          nightlyRate: Number.isFinite(nightlyParsed) ? nightlyParsed : null,
+        };
+      });
+
+      res.json({ checkIn: checkInParam, checkOut: checkOutParam, nights });
+    } catch (err) {
+      console.error("Error fetching stay availability:", err);
+      res.status(500).json({ message: "Failed to fetch stay availability" });
+    }
   });
 
   // Public provider verification status (for service detail page badge)
@@ -1958,12 +2521,18 @@ router.get("/api/services", async (req, res) => {
     const categoryId = req.query.categoryId as string | undefined;
     const location = req.query.location as string | undefined;
     const services = await storage.getAllActiveServices(categoryId, location);
-    res.json(services);
+    // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the same
+    // pre-booking jitter as the public detail read, applied here so the public BROWSE list never
+    // carries an exact property/room pin either. Every other product shape is returned untouched
+    // (applyPropertyLocationPrivacy is a no-op for them) — routePoints/serviceRadius rendering for
+    // non-property shapes is unaffected.
+    res.json(services.map((s) => applyPropertyLocationPrivacy(s)));
   });
 
   // Unified Discovery Search (public - with advanced filtering)
 
 router.get("/api/discover", async (req, res) => {
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 20 });
     const filters = {
       query: req.query.q as string | undefined,
       categoryId: req.query.categoryId as string | undefined,
@@ -1972,14 +2541,14 @@ router.get("/api/discover", async (req, res) => {
       maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice as string) : undefined,
       minRating: req.query.minRating ? parseFloat(req.query.minRating as string) : undefined,
       sortBy: req.query.sortBy as "rating" | "price_low" | "price_high" | "reviews" | undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
-      offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
+      limit,
+      offset,
     };
     const result = await storage.unifiedSearch(filters);
 
     // Track search pattern for trend analytics (non-blocking)
     if (filters.query || filters.location) {
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       storage.createDestinationSearchPattern({
         destination: filters.location || filters.query || "unknown",
         city: filters.location || undefined,
@@ -1993,7 +2562,13 @@ router.get("/api/discover", async (req, res) => {
     }
 
     // Content-gate (§10): packages in search results are teaser-redacted like every public read.
-    res.json({ ...result, packages: (result.packages ?? []).map(redactTemplateContent) });
+    res.json({
+      ...result,
+      packages: (result.packages ?? []).map(redactTemplateContent),
+      hasMore: offset + result.services.length < result.total,
+      limit,
+      offset,
+    });
   });
 
   // Analytics: Get destination search trends
@@ -2066,7 +2641,7 @@ router.post("/api/analytics/search-event", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       // Log to destination search patterns for trend analysis
       await storage.createDestinationSearchPattern({
@@ -2116,7 +2691,7 @@ router.post("/api/analytics/itinerary-generated", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       // Track as AI interaction for analytics
       await insertAiInteraction({
@@ -2176,7 +2751,7 @@ router.post("/api/analytics/booking", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       // Track booking event
       console.log("[Analytics] Booking event tracked:", {
@@ -2217,7 +2792,7 @@ router.post("/api/analytics/booking", async (req, res) => {
   // Get expert's services by status
 
 router.get("/api/notifications", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const unreadOnly = req.query.unread === "true";
     const notifications = await storage.getNotifications(userId, unreadOnly);
     res.json(notifications);
@@ -2226,7 +2801,7 @@ router.get("/api/notifications", isAuthenticated, async (req, res) => {
   // Get unread count
 
 router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const count = await storage.getUnreadCount(userId);
     res.json({ count });
   });
@@ -2234,10 +2809,13 @@ router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) 
   // Mark notification as read
 
 router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const notification = await storage.markAsRead(req.params.id);
-    if (notification && notification.userId !== userId) {
-      return res.status(403).json({ message: "Not your notification" });
+    const userId = getUserId(req)!;
+    // Ownership enforced IN the update's WHERE (id + userId) — the old shape mutated first and
+    // checked after, so a cross-user write landed before the 403. 404 for missing-or-not-yours
+    // alike (no id-space oracle).
+    const notification = await storage.markAsRead(req.params.id, userId);
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" });
     }
     res.json(notification);
   });
@@ -2245,7 +2823,7 @@ router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) =>
   // Mark all as read
 
 router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     await storage.markAllAsRead(userId);
     res.json({ success: true });
   });
@@ -2253,7 +2831,13 @@ router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res
   // Delete notification
 
 router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
-    await storage.deleteNotification(req.params.id);
+    const userId = getUserId(req)!;
+    // Ownership enforced IN the delete's WHERE — audit A1 proved any authenticated user could
+    // delete any other user's notification (IDOR). 404 for missing-or-not-yours alike.
+    const deleted = await storage.deleteNotification(req.params.id, userId);
+    if (!deleted) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
     res.json({ success: true });
   });
 
@@ -2277,12 +2861,13 @@ router.get("/api/services/:serviceId/reviews", async (req, res) => {
   // Flag a review (any authenticated user)
 router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { reason } = req.body;
       const review = await getReviewById(req.params.id);
       if (!review) return res.status(404).json({ message: "Review not found" });
       if (review.status === "removed") return res.status(400).json({ message: "Review already removed" });
-      await flagReview(req.params.id, reason || null, userId);
+      const created = await flagReview(req.params.id, reason || null, userId);
+      if (!created) return res.status(409).json({ message: "You already flagged this review" });
       res.json({ success: true });
     } catch (err) {
       console.error("Flag review error:", err);
@@ -2294,15 +2879,18 @@ router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
 
 router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Verify user has a completed booking for this service
       const bookings = await storage.getServiceBookings({ 
         travelerId: userId, 
         status: "completed" 
       });
-      const hasCompletedBooking = bookings.some(b => b.serviceId === req.params.serviceId);
-      if (!hasCompletedBooking) {
+      const bookingId = typeof req.body?.bookingId === "string" ? req.body.bookingId : "";
+      const completedBooking = bookings.find(
+        b => b.id === bookingId && b.serviceId === req.params.serviceId,
+      );
+      if (!completedBooking) {
         return res.status(403).json({ message: "You can only review services you've completed" });
       }
       
@@ -2311,19 +2899,22 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         return res.status(404).json({ message: "Service not found" });
       }
       
-      const input = insertServiceReviewSchema.parse({
+      const input = sanitizeStringFields(insertServiceReviewSchema.parse({
         ...req.body,
         serviceId: req.params.serviceId,
         travelerId: userId,
         providerId: service.userId,
         status: "pending",
-      });
+      }));
       
       const review = await storage.createServiceReview(input);
       res.status(201).json(review);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message === "REVIEW_ALREADY_EXISTS") {
+        return res.status(409).json({ message: "This booking has already been reviewed" });
       }
       console.error("Error creating review:", err);
       res.status(500).json({ message: "Failed to create review" });
@@ -2402,35 +2993,9 @@ router.get("/api/amadeus/locations", async (req, res) => {
         return res.json(formattedLocations);
       }
       
-      // If not in cache, fetch from API and cache the results
-      const locations = subType === 'CITY' 
-        ? await amadeusService.searchCitiesByKeyword(keyword)
-        : await amadeusService.searchAirportsByKeyword(keyword);
-      
-      // Store in cache for future use (expires in 30 days)
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
-      
-      for (const loc of locations) {
-        await storage.upsertLocationCache({
-          iataCode: loc.iataCode,
-          locationType: loc.subType || locationType,
-          name: loc.name,
-          detailedName: loc.detailedName,
-          cityName: loc.address?.cityName,
-          cityCode: loc.address?.cityCode,
-          countryName: loc.address?.countryName,
-          countryCode: loc.address?.countryCode,
-          regionCode: loc.address?.regionCode,
-          stateCode: loc.address?.stateCode,
-          latitude: loc.geoCode?.latitude?.toString(),
-          longitude: loc.geoCode?.longitude?.toString(),
-          timeZoneOffset: loc.timeZoneOffset,
-          travelerScore: loc.analytics?.travelers?.score,
-          rawData: loc,
-          expiresAt,
-        });
-      }
+      // Cache miss: the live location provider (Amadeus) was dropped per
+      // DECISIONS.md ruling 34 (2026-08-05). location_cache is the only source now.
+      const locations: any[] = [];
       
       // Sort by relevance: exact name match first, then by traveler score
       locations.sort((a: any, b: any) => {
@@ -2460,230 +3025,9 @@ router.get("/api/amadeus/locations", async (req, res) => {
     }
   });
 
-  // Search flights
-
-router.get("/api/amadeus/flights", isAuthenticated, async (req, res) => {
-    try {
-      const { 
-        origin, destination, departureDate, returnDate, 
-        adults, children, infants, travelClass, nonStop, max 
-      } = req.query;
-      
-      if (!origin || !destination || !departureDate || !adults) {
-        return res.status(400).json({ 
-          message: "Required fields: origin, destination, departureDate, adults" 
-        });
-      }
-      
-      const flights = await amadeusService.searchFlights({
-        originLocationCode: origin as string,
-        destinationLocationCode: destination as string,
-        departureDate: departureDate as string,
-        returnDate: returnDate as string | undefined,
-        adults: parseInt(adults as string, 10),
-        children: children ? parseInt(children as string, 10) : undefined,
-        infants: infants ? parseInt(infants as string, 10) : undefined,
-        travelClass: travelClass as any,
-        nonStop: nonStop === 'true',
-        max: max ? parseInt(max as string, 10) : 10,
-      });
-      
-      res.json(flights);
-    } catch (error: any) {
-      console.error('Flight search error:', error);
-      res.status(500).json({ message: error.message || "Flight search failed" });
-    }
-  });
-
-  // Search hotels by city
-
-router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
-    try {
-      const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
-      
-      if (!cityCode || !checkInDate || !checkOutDate || !adults) {
-        return res.status(400).json({ 
-          message: "Required fields: cityCode, checkInDate, checkOutDate, adults" 
-        });
-      }
-      
-      const hotels = await amadeusService.searchHotels({
-        cityCode: cityCode as string,
-        checkInDate: checkInDate as string,
-        checkOutDate: checkOutDate as string,
-        adults: parseInt(adults as string, 10),
-        roomQuantity: rooms ? parseInt(rooms as string, 10) : 1,
-        currency: (currency as string) || 'USD',
-      });
-      
-      res.json(hotels);
-    } catch (error: any) {
-      console.error('Hotel search error:', error);
-      res.status(500).json({ message: error.message || "Hotel search failed" });
-    }
-  });
-
-  // Search Points of Interest by location
-
-router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
-    try {
-      const { latitude, longitude, radius, categories } = req.query;
-      
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
-      
-      const pois = await amadeusService.searchPointsOfInterest({
-        latitude: parseFloat(latitude as string),
-        longitude: parseFloat(longitude as string),
-        radius: radius ? parseInt(radius as string, 10) : 5,
-        categories: categories ? (categories as string).split(',') : undefined,
-      });
-      
-      res.json(pois);
-    } catch (error: any) {
-      console.error('POI search error:', error);
-      res.status(500).json({ message: error.message || "POI search failed" });
-    }
-  });
-
-  // Get POI by ID
-
-router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
-    try {
-      const poi = await amadeusService.getPointOfInterestById(req.params.id);
-      if (!poi) {
-        return res.status(404).json({ message: "POI not found" });
-      }
-      res.json(poi);
-    } catch (error: any) {
-      console.error('POI get error:', error);
-      res.status(500).json({ message: error.message || "Failed to get POI" });
-    }
-  });
-
-  // Search Amadeus Tours & Activities by location
-
-router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
-    try {
-      const { latitude, longitude, radius } = req.query;
-      
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
-      
-      const activities = await amadeusService.searchActivities({
-        latitude: parseFloat(latitude as string),
-        longitude: parseFloat(longitude as string),
-        radius: radius ? parseInt(radius as string, 10) : 20,
-      });
-      
-      res.json(activities);
-    } catch (error: any) {
-      console.error('Amadeus activities search error:', error);
-      res.status(500).json({ message: error.message || "Activities search failed" });
-    }
-  });
-
-  // Get Amadeus activity by ID
-
-router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
-    try {
-      const activity = await amadeusService.getActivityById(req.params.id);
-      if (!activity) {
-        return res.status(404).json({ message: "Activity not found" });
-      }
-      res.json(activity);
-    } catch (error: any) {
-      console.error('Amadeus activity get error:', error);
-      res.status(500).json({ message: error.message || "Failed to get activity" });
-    }
-  });
-
-  // Search airport transfers
-  const transferSearchSchema = z.object({
-    startLocationCode: z.string().min(3).max(4),
-    endAddressLine: z.string().optional(),
-    endCityName: z.string().optional(),
-    endGeoCode: z.object({
-      latitude: z.number(),
-      longitude: z.number()
-    }).optional(),
-    transferType: z.string(),
-    startDateTime: z.string(),
-    passengers: z.union([z.string(), z.number()]).transform((val) => 
-      typeof val === 'string' ? parseInt(val, 10) : val
-    ),
-  });
-
-
-router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
-    try {
-      const parseResult = transferSearchSchema.safeParse(req.body);
-      
-      if (!parseResult.success) {
-        return res.status(400).json({ 
-          message: "Invalid request body",
-          errors: parseResult.error.flatten().fieldErrors
-        });
-      }
-      
-      const { startLocationCode, endAddressLine, endCityName, endGeoCode, transferType, startDateTime, passengers } = parseResult.data;
-      
-      const transfers = await amadeusService.searchTransfers({
-        startLocationCode,
-        endAddressLine,
-        endCityName,
-        endGeoCode: endGeoCode as any,
-        transferType: transferType as any,
-        startDateTime,
-        passengers,
-      });
-      
-      res.json(transfers);
-    } catch (error: any) {
-      console.error('Transfers search error:', error);
-      res.status(500).json({ message: error.message || "Transfers search failed" });
-    }
-  });
-
-  // Get safety ratings for a location
-
-router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
-    try {
-      const { latitude, longitude, radius } = req.query;
-      
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
-      
-      const safetyRatings = await amadeusService.getSafetyRatings({
-        latitude: parseFloat(latitude as string),
-        longitude: parseFloat(longitude as string),
-        radius: radius ? parseInt(radius as string, 10) : 5,
-      });
-      
-      res.json(safetyRatings);
-    } catch (error: any) {
-      console.error('Safety ratings search error:', error);
-      res.status(500).json({ message: error.message || "Safety ratings search failed" });
-    }
-  });
-
-  // Get safety rating by ID
-
-router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
-    try {
-      const rating = await amadeusService.getSafetyRatingById(req.params.id);
-      if (!rating) {
-        return res.status(404).json({ message: "Safety rating not found" });
-      }
-      res.json(rating);
-    } catch (error: any) {
-      console.error('Safety rating get error:', error);
-      res.status(500).json({ message: error.message || "Failed to get safety rating" });
-    }
-  });
+  // GET /api/amadeus/flights RETIRED (flight-repoint, Aug 2026): the Amadeus service was
+  // deleted (DECISIONS.md ruling 34) and the stub answered `[]` to a client that no longer
+  // exists — flights are served by GET /api/catalog/flights (Aviasales/Travelpayouts).
 
   // ============ VIATOR API ROUTES ============
 
@@ -2837,39 +3181,12 @@ router.get("/api/cache/activities", async (req, res) => {
     }
   });
 
-  // Get cached flights
-
-router.get("/api/cache/flights", isAuthenticated, async (req, res) => {
-    try {
-      const { origin, destination, departureDate, returnDate, adults, travelClass, nonStop } = req.query;
-      
-      if (!origin || !destination || !departureDate || !adults) {
-        return res.status(400).json({ 
-          message: "Required fields: origin, destination, departureDate, adults" 
-        });
-      }
-      
-      const result = await cacheService.getFlightsWithCache({
-        originLocationCode: origin as string,
-        destinationLocationCode: destination as string,
-        departureDate: departureDate as string,
-        returnDate: returnDate as string | undefined,
-        adults: parseInt(adults as string, 10),
-        travelClass: (travelClass as 'ECONOMY' | 'PREMIUM_ECONOMY' | 'BUSINESS' | 'FIRST') || 'ECONOMY',
-        nonStop: nonStop === 'true',
-        max: 20,
-      });
-      
-      res.json({
-        flights: result.data,
-        fromCache: result.fromCache,
-        lastUpdated: result.lastUpdated,
-      });
-    } catch (error: any) {
-      console.error('Cached flight search error:', error);
-      res.status(500).json({ message: error.message || "Flight search failed" });
-    }
-  });
+  // GET /api/cache/flights RETIRED (flight-repoint, Aug 2026): the flight_cache table had no
+  // writer since the Amadeus drop (ruling 34), so this could only ever replay stale rows or
+  // answer empty. Its sole client (the GDS-style FlightSearch component) is deleted; the
+  // flights tab now reads GET /api/catalog/flights. The table itself is now RETIRED too —
+  // dropped by migration 176 (with transfer_cache and safety_cache) and removed from
+  // shared/schema.ts in the same commit.
 
   // Get map markers for hotels in a destination
 
@@ -3306,22 +3623,28 @@ router.post("/api/claude/transportation-analysis", isAuthenticated, async (req, 
 
   // Generate transport packages for trip segments
   const transportPackageSegmentSchema = z.object({
-    id: z.string(),
-    type: z.string(),
-    from: z.object({ name: z.string(), type: z.string() }),
-    to: z.object({ name: z.string(), type: z.string() }),
-    date: z.string().optional(),
-  });
+    id: z.string().trim().min(1).max(100),
+    type: z.string().trim().min(1).max(80),
+    from: z.object({
+      name: z.string().trim().min(1).max(200),
+      type: z.string().trim().min(1).max(80),
+    }).strict(),
+    to: z.object({
+      name: z.string().trim().min(1).max(200),
+      type: z.string().trim().min(1).max(80),
+    }).strict(),
+    date: z.string().trim().max(32).optional(),
+  }).strict();
 
   const transportPackageRequestSchema = z.object({
-    segments: z.array(transportPackageSegmentSchema).min(1),
-    destination: z.string().min(1),
-    travelers: z.number().int().min(1).default(1),
-    tripDays: z.number().int().min(1).default(1),
-  });
+    segments: z.array(transportPackageSegmentSchema).min(1).max(50),
+    destination: z.string().trim().min(1).max(200),
+    travelers: z.number().int().min(1).max(50).default(1),
+    tripDays: z.number().int().min(1).max(365).default(1),
+  }).strict();
 
 
-router.post("/api/transport-packages/generate", isAuthenticated, async (req, res) => {
+router.post("/api/transport-packages/generate", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = transportPackageRequestSchema.parse(req.body);
       const { segments, destination, travelers, tripDays } = parsed;
@@ -3570,30 +3893,15 @@ router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
     address: z.string().min(1),
   });
 
-  const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number; formattedAddress: string }> = {
-    "rome": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
-    "paris": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
-    "london": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
-    "tokyo": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
-    "new york": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
-    "barcelona": { lat: 41.3874, lng: 2.1686, formattedAddress: "Barcelona, Spain" },
-    "bangkok": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
-    "sydney": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
-    "dubai": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
-    "marrakech": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
-    "bali": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
-    "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
-    "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
-    "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
-    "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
-    "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
-    "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
-    "berlin": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
-    "hong kong": { lat: 22.3193, lng: 114.1694, formattedAddress: "Hong Kong" },
-    "goa": { lat: 15.2993, lng: 74.1240, formattedAddress: "Goa, India" },
-  };
-
-  // Geocoding endpoint - public access since it's just a geographic lookup
+  // Geocoding endpoint - public access since it's just a geographic lookup.
+  // Routes through the single server geocode path (server/utils/geocode.ts) — same one
+  // GET /api/geocode uses — instead of hand-rolling its own fetch. No fabricated fallback:
+  // a substring-matched hardcoded city-centre dictionary (FALLBACK_COORDINATES) used to stand
+  // in here on a Google miss, which contradicted the §13 / migration-129 no-fabrication
+  // posture (docs/briefs/PROVIDER_LOGISTICS_DISTRIBUTION_SPEC.md D4). A miss now returns an
+  // honest 404 — never a guessed coordinate. Both known callers already treat a non-ok
+  // response as "no location", not a crash (client/src/components/provider/catalog-map-view.tsx,
+  // client/src/pages/experience-template.tsx).
 
 router.post("/api/geocode", async (req, res) => {
     try {
@@ -3601,37 +3909,20 @@ router.post("/api/geocode", async (req, res) => {
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
-      
+
       const { address } = parsed.data;
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-      
-      if (apiKey) {
-        try {
-          const response = await fetch(
-            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
-          );
-          const data = await response.json();
-          
-          if (data.status === "OK" && data.results && data.results.length > 0) {
-            const location = data.results[0].geometry.location;
-            const formattedAddress = data.results[0].formatted_address;
-            return res.json({ lat: location.lat, lng: location.lng, formattedAddress });
-          }
-        } catch (geoErr) {
-          console.warn("Google geocoding failed, trying fallback:", geoErr);
-        }
+      const result = await geocodeAddress(address);
+      if (result) {
+        return res.json(result);
       }
-      
-      const normalizedAddress = address.toLowerCase().trim();
-      const fallback = Object.entries(FALLBACK_COORDINATES).find(([key]) => 
-        normalizedAddress.includes(key) || key.includes(normalizedAddress)
-      );
-      
-      if (fallback) {
-        return res.json(fallback[1]);
+      // DB-backed fallback (migration 217): admin-curated city-centre coordinates in
+      // geocode_fallbacks — curated data, not fabrication, so the §13 posture holds.
+      // A miss there too stays an honest 404, never a guessed coordinate.
+      const dbFallback = await storage.getGeocodeFallback(address);
+      if (dbFallback) {
+        return res.json({ ...dbFallback, fallback: true });
       }
-      
-      res.status(404).json({ message: "Location not found" });
+      return res.status(404).json({ message: "Location not found" });
     } catch (error: any) {
       console.error('Geocoding API error:', error);
       res.status(500).json({ message: error.message || "Geocoding failed" });
@@ -3682,7 +3973,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
       }
 
       // Support both Replit Auth (claims.sub) and email auth (id)
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { expertIds, limit } = parsed.data;
 
       // Normalize to a common travelerProfile shape
@@ -3851,7 +4142,7 @@ router.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const result = await aiOrchestrator.generateContent(parsed.data, { userId });
       res.json(result);
     } catch (error: any) {
@@ -3878,7 +4169,7 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { destination, dates, topics } = parsed.data;
 
       // Check cache first
@@ -3938,7 +4229,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId, ...itineraryRequest } = parsed.data;
 
       const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
@@ -3955,7 +4246,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
         endDate: itineraryRequest.dates.end,
         title: result.title,
         summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost?.toString(),
+        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
         itineraryData: result.dailyItinerary,
         accommodationSuggestions: result.accommodationSuggestions || [],
         packingList: result.packingList || [],
@@ -4000,7 +4291,7 @@ router.post("/api/grok/chat", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { messages, systemContext, preferProvider } = parsed.data;
 
       const { response, provider } = await aiOrchestrator.chat(messages, {
@@ -4034,7 +4325,7 @@ router.get("/api/grok/health", async (req, res) => {
 router.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
     try {
       const { destination, startDate, endDate } = req.query;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       if (!destination || typeof destination !== "string") {
         return res.status(400).json({ message: "Destination is required" });
@@ -4102,27 +4393,74 @@ router.get("/api/destination-intelligence", isAuthenticated, async (req, res) =>
 
 router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { 
-        destination, 
-        dates, 
+        destination: destinationRaw,
+        destinations,
+        dates: datesRaw,
+        startDate: startDateRaw,
+        endDate: endDateRaw,
         travelers, 
         budget, 
-        eventType, 
+        eventType,
+        experienceType,
         interests, 
         pacePreference,
         mustSeeAttractions,
         dietaryRestrictions,
         mobilityConsiderations,
-        tripId
+        specialRequests,
+        tripId: tripIdParam,
       } = req.body;
 
+      // Normalize destination: accept either a string or an array of {city, country} objects
+      const normalizedDestination: string | null =
+        destinationRaw && typeof destinationRaw === "string"
+          ? destinationRaw
+          : Array.isArray(destinations) && destinations.length > 0
+            ? destinations
+                .map((d: any) => [d.city, d.country].filter(Boolean).join(", "))
+                .join("; ")
+            : null;
+      const destination = normalizedDestination?.trim() || null;
+
+      // Normalize dates: accept either {start, end} object or flat startDate/endDate fields
+      const dates = datesRaw?.start
+        ? datesRaw
+        : startDateRaw && endDateRaw
+          ? { start: startDateRaw, end: endDateRaw }
+          : null;
+
       // Validate required fields
-      if (!destination || typeof destination !== "string") {
+      if (!destination) {
         return res.status(400).json({ message: "Destination is required" });
       }
+      const destinationLengthError = validateGeneratedItineraryTextLength(
+        destination,
+        "Destination",
+        MAX_GENERATED_DESTINATION_CHARS,
+      );
+      if (destinationLengthError) {
+        return res.status(400).json({ message: destinationLengthError });
+      }
+      if (specialRequests !== undefined && specialRequests !== null) {
+        const specialRequestsLengthError = validateGeneratedItineraryTextLength(
+          specialRequests,
+          "Special requests",
+          MAX_GENERATED_SPECIAL_REQUEST_CHARS,
+        );
+        if (specialRequestsLengthError) {
+          return res.status(400).json({ message: specialRequestsLengthError });
+        }
+      }
+      const normalizedSpecialRequests =
+        typeof specialRequests === "string" ? specialRequests.trim() || undefined : undefined;
       if (!dates?.start || !dates?.end) {
         return res.status(400).json({ message: "Start and end dates are required" });
+      }
+      const dateRangeError = validateGeneratedItineraryDateRange(dates.start, dates.end);
+      if (dateRangeError) {
+        return res.status(400).json({ message: dateRangeError });
       }
       if (!travelers || typeof travelers !== "number" || travelers < 1) {
         return res.status(400).json({ message: "Number of travelers must be at least 1" });
@@ -4131,12 +4469,31 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         ? interests
         : ["sightseeing", "local culture", "food"];
 
+      // Anchor-aware generation (Lane 2a): if this request targets an existing
+      // trip, steer Grok around that trip's immovable temporal commitments.
+      // No trip / no anchors → anchorBlock is "" and the prompt is unchanged.
+      let tripAnchors: Awaited<ReturnType<typeof storage.getTemporalAnchors>> = [];
+      let tripBoundaries: Awaited<ReturnType<typeof storage.getDayBoundaries>> = [];
+      let resolvedTripId = "";
+      if (tripIdParam) {
+        if (!(await verifyTripOwnership(tripIdParam, userId))) {
+          return res.status(403).json({ message: "Forbidden: you do not own this trip" });
+        }
+        resolvedTripId = tripIdParam;
+        [tripAnchors, tripBoundaries] = await Promise.all([
+          storage.getTemporalAnchors(tripIdParam),
+          storage.getDayBoundaries(tripIdParam),
+        ]);
+      }
+      const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start);
+
       // Generate itinerary using Grok — deduplicated + circuit-broken.
       //
       // Dedup key: all params that affect AI output so concurrent requests for
       // the same trip params share a single Grok call instead of N identical calls.
       // personalisation fields (dietary, mobility, mustSee) are included so users
-      // with different needs still get their own AI call.
+      // with different needs still get their own AI call. The anchor block is folded
+      // in so trips with different fixed commitments don't share a cached generation.
       const dedupKey = [
         "itinerary:grok",
         destination,
@@ -4150,45 +4507,96 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         JSON.stringify((mobilityConsiderations || []).slice().sort()),
         budget ?? "",
         eventType ?? "",
+        normalizedSpecialRequests ?? "",
+        anchorBlock,
       ].join(":");
 
       const { grokService } = await import("../services/grok.service");
-      const { result, usage } = await dedupedRequest(dedupKey, () =>
-        callWithCircuitBreaker(() =>
-          grokService.generateAutonomousItinerary({
-            destination,
-            dates,
-            travelers,
-            budget: budget || undefined,
-            eventType: eventType || undefined,
-            interests: effectiveInterests,
-            pacePreference: pacePreference || "moderate",
-            mustSeeAttractions: mustSeeAttractions || [],
-            dietaryRestrictions: dietaryRestrictions || [],
-            mobilityConsiderations: mobilityConsiderations || [],
-          })
-        )
-      );
+      // T6-2: EVERY provider failure returns the sanitized 503 shape, not just
+      // the ones that happen after the circuit breaker has tripped. The breaker
+      // still decides retryAfterSeconds (via retryAfterSecondsFromError, which
+      // reads the breaker's real "seconds remaining" when it supplied one) — it
+      // no longer decides WHETHER the response is sanitized. This makes the
+      // first failure after a breaker reset indistinguishable from a post-trip
+      // failure apart from that number, closing the leak window the breaker's
+      // FAILURE_THRESHOLD used to leave open.
+      let result: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["result"];
+      let usage: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["usage"];
+      try {
+        ({ result, usage } = await dedupedRequest(dedupKey, () =>
+          callWithCircuitBreaker(() =>
+            grokService.generateAutonomousItinerary({
+              destination,
+              dates,
+              travelers,
+              budget: budget || undefined,
+              eventType: eventType || undefined,
+              interests: effectiveInterests,
+              pacePreference: pacePreference || "moderate",
+              mustSeeAttractions: mustSeeAttractions || [],
+              dietaryRestrictions: dietaryRestrictions || [],
+              mobilityConsiderations: mobilityConsiderations || [],
+              specialRequests: normalizedSpecialRequests,
+              immovableConstraints: anchorBlock,
+            })
+          )
+        ));
+      } catch (aiError: any) {
+        // Real cause (provider name, request id, key text) stays server-side only.
+        console.error("AI itinerary generation failed:", aiError);
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+      }
 
-      // Save generated itinerary to database
-      const savedItinerary = await insertAiGeneratedItinerary({
+      const tripDayCount = Math.floor(
+        (Date.parse(`${dates.end}T00:00:00Z`) - Date.parse(`${dates.start}T00:00:00Z`))
+          / (24 * 60 * 60 * 1000),
+      ) + 1;
+      const normalizedResult = normalizeGeneratedItineraryPayload(result as any, tripDayCount);
+      const snapshot = await saveGeneratedItinerarySnapshot({
         userId,
-        tripId: tripId || null,
-        destination,
-        startDate: dates.start,
-        endDate: dates.end,
-        title: result.title,
-        summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost.toString(),
-        itineraryData: result.dailyItinerary,
-        accommodationSuggestions: result.accommodationSuggestions,
-        packingList: result.packingList,
-        travelTips: result.travelTips,
-        provider: "grok",
-        status: "generated",
+        tripId: resolvedTripId || null,
+        trip: {
+          title: normalizedResult.title || `${destination} Trip`,
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          numberOfTravelers: travelers,
+          status: "draft",
+          eventType: eventType || experienceType || "vacation",
+          specialRequests: normalizedSpecialRequests || null,
+        },
+        generatedPlan: {
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          title: normalizedResult.title,
+          summary: normalizedResult.summary,
+          totalEstimatedCost: normalizedResult.totalEstimatedCost,
+          itineraryData: normalizedResult.dailyItinerary,
+          accommodationSuggestions: normalizedResult.accommodationSuggestions,
+          packingList: normalizedResult.packingList,
+          travelTips: normalizedResult.travelTips,
+          provider: "grok",
+          status: "generated",
+        },
+        canonicalItems: normalizedResult.canonicalItems,
+        comparison: {
+          title: `${destination} Trip`,
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          budget: normalizeGeneratedEstimatedCost(budget),
+          travelers: travelers || 1,
+          status: "generating",
+        },
       });
+      resolvedTripId = snapshot.trip.id;
+      const savedItinerary = snapshot.savedItinerary;
+      const insertedItems = snapshot.insertedItems;
+      const comparison = snapshot.comparison;
 
-      // Log AI interaction
+      // Analytics is deliberately outside the snapshot transaction. It remains
+      // best-effort and cannot roll back (or partially commit) itinerary state.
       await insertAiInteraction({
         taskType: "autonomous_itinerary",
         provider: "grok",
@@ -4199,41 +4607,25 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         durationMs: 0,
         success: true,
         userId,
+        tripId: resolvedTripId,
         metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
       });
 
-      // NEW: Create comparison and trigger optimization
-      const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
-      const comparison = await insertItineraryComparison({
-        userId,
-        title: `${destination} Trip`,
-        destination,
-        startDate: dates.start,
-        endDate: dates.end,
-        budget: numericBudget,
-        travelers: travelers || 1,
-        status: 'generating',
-      });
-
-      // Convert generated itinerary to baseline items (with defensive checks)
-      const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
-      const baselineItems = dailyItinerary.flatMap((day: any, dayIndex: number) => {
-        const activities = Array.isArray(day?.activities) ? day.activities : [];
-        return activities.map((activity: any) => ({
-          id: activity.id || `${day?.day || dayIndex + 1}-${activity.time || 'item'}`,
-          name: activity.name || activity.title || 'Activity',
-          description: activity.description || '',
-          serviceType: activity.type || 'activities',
-          price: activity.estimatedCost || 0,
-          rating: 4.5,
-          location: activity.location || destination,
-          duration: activity.duration || 60,
-          dayNumber: dayIndex + 1,
-          timeSlot: activity.time?.includes('morning') ? 'morning' 
-                  : activity.time?.includes('afternoon') ? 'afternoon' 
-                  : 'evening',
-        }));
-      });
+      // Convert generated itinerary to baseline items using the DB-inserted IDs
+      const baselineItems = insertedItems.map((activity: any) => ({
+        id: activity.id,
+        name: activity.name || activity.title || 'Activity',
+        description: activity.description || '',
+        serviceType: activity.type || 'activities',
+        price: activity.estimatedCost || 0,
+        rating: 4.5,
+        location: activity.location || destination,
+        duration: activity.durationMinutes,
+        dayNumber: activity.dayNumber,
+        timeSlot: activity.time?.includes('morning') ? 'morning'
+                : activity.time?.includes('afternoon') ? 'afternoon'
+                : 'evening',
+      }));
 
       // Get available services for optimization (reduced to 30 for faster AI processing)
       const availableServices = await getActiveProviderServices(30);
@@ -4256,7 +4648,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           dates.end,
           budget,
           travelers,
-          tripId || undefined
+          resolvedTripId
           // Transport leg calculation is handled inside generateOptimizedItineraries
           // for each variant after metrics are finalized
         ).then(async (_optimResult) => {
@@ -4271,26 +4663,70 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         await updateItineraryComparisonStatus(comparison.id, 'complete');
       }
 
-      // Return comparison ID immediately (include 'id' for backwards compatibility)
+      // Post-generation anchor validation (Lane 2a): warn, never block. Only
+      // meaningful when the (owned) target trip carries anchors/boundaries — a
+      // no-op { hasConstraints:false } otherwise. Returned on the plan payload so
+      // Lane 4 can render conflicts. (Grok's dailyItinerary is a bare array, so it
+      // is surfaced on the response rather than nested inside itineraryData.)
+      let anchorValidation: ReturnType<typeof validateAnchorConflicts> | undefined;
+      try {
+        const daysForValidation = normalizedResult.dailyItinerary.map(
+          (d: any) => ({
+            day: d.day,
+            activities: (Array.isArray(d.activities) ? d.activities : []).map((a: any) => ({
+              title: a.name || a.title,
+              time: a.time,
+              durationMinutes: parseGeneratedActivityDurationMinutes(a.duration) ?? undefined,
+            })),
+          }),
+        );
+        anchorValidation = validateAnchorConflicts(
+          daysForValidation,
+          tripAnchors,
+          tripBoundaries,
+          dates.start,
+          new Date().toISOString(),
+        );
+      } catch (vErr) {
+        console.error("anchor validation failed (non-blocking):", vErr);
+      }
+
+      // Return comparison ID immediately.
+      // Also include tripId and itinerary.items with DB-assigned IDs so the
+      // PlanningWithBooking cart conversion can look up prices via booking.service.ts.
       res.json({
         success: true,
         id: savedItinerary.id,
+        tripId: resolvedTripId,
         comparisonId: comparison.id,
         itineraryId: savedItinerary.id,
+        itinerary: { items: insertedItems },
+        anchorValidation,
         message: 'Itinerary generated! Creating optimized variants...',
-        ...result,
+        title: normalizedResult.title,
+        summary: normalizedResult.summary,
+        totalEstimatedCost: normalizedResult.totalEstimatedCost === null
+          ? null
+          : Number(normalizedResult.totalEstimatedCost),
+        dailyItinerary: normalizedResult.dailyItinerary,
+        accommodationSuggestions: normalizedResult.accommodationSuggestions,
+        packingList: normalizedResult.packingList,
+        travelTips: normalizedResult.travelTips,
+        estimatedSavingsWithExpert: normalizedResult.estimatedSavingsWithExpert === null
+          ? null
+          : Number(normalizedResult.estimatedSavingsWithExpert),
         createdAt: savedItinerary.createdAt,
         status: savedItinerary.status
       });
     } catch (error: any) {
+      // Defense in depth: the primary AI call above is already caught and
+      // sanitized inline, but keep this branch as a safety net in case a
+      // breaker-open error surfaces from elsewhere in the handler.
       if (error?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") {
-        return res.status(503).json({
-          message: "Our AI is experiencing high demand. Please try again in a moment.",
-          retryAfterSeconds: error.retryAfterSeconds,
-        });
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(error)));
       }
       console.error("Error generating AI itinerary:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: error.message || "Failed to generate itinerary. Please try again."
       });
     }
@@ -4300,7 +4736,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
 
 router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { 
         destination, 
         dates, 
@@ -4330,23 +4766,42 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         : ["sightseeing", "local culture", "food"];
 
       const { tripOptimizationService } = await import("../services/trip-optimization.service");
-      
-      const result = await tripOptimizationService.generateOptimizedItineraries({
-        destination,
-        dates,
-        travelers,
-        budget: budget || undefined,
-        eventType: eventType || undefined,
-        interests: effectiveInterests2,
-        pacePreference: pacePreference || "moderate",
-        cartItems: cartItems || [],
-        mustSeeAttractions: mustSeeAttractions || [],
-        dietaryRestrictions: dietaryRestrictions || [],
-        mobilityConsiderations: mobilityConsiderations || []
-      });
 
+      // T6-1: this surface has no compatible fallback generator — the canned
+      // stub used by POST /api/trips/:id/generate-itinerary produces a single
+      // day-by-day itinerary shape, not the 3-variation
+      // {variationType, variationLabel, optimizationInsights, ...} shape this
+      // endpoint's callers expect — so on provider failure (Grok, then its
+      // internal Anthropic fallback inside grokService.generateAutonomousItinerary)
+      // return the sanitized 503 rather than fabricate a mismatched result.
+      // The real error (which used to reach the client verbatim, e.g. a raw
+      // Anthropic "invalid x-api-key" / request_id string) is logged server-side only.
+      let result: Awaited<ReturnType<typeof tripOptimizationService.generateOptimizedItineraries>>;
+      try {
+        result = await tripOptimizationService.generateOptimizedItineraries({
+          destination,
+          dates,
+          travelers,
+          budget: budget || undefined,
+          eventType: eventType || undefined,
+          interests: effectiveInterests2,
+          pacePreference: pacePreference || "moderate",
+          cartItems: cartItems || [],
+          mustSeeAttractions: mustSeeAttractions || [],
+          dietaryRestrictions: dietaryRestrictions || [],
+          mobilityConsiderations: mobilityConsiderations || []
+        });
+      } catch (aiError: any) {
+        console.error("AI optimized-itinerary generation failed:", aiError);
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+      }
+
+      // ledger 2026-08-22-ai-slip-defects: the stored row ids ride the response so the
+      // client can materialize a chosen variation via save-as-trip — from the SERVER's
+      // stored copy, never from client-round-tripped JSON.
+      const variationIds: string[] = [];
       for (const variation of result.variations) {
-        await insertAiGeneratedItinerary({
+        const savedRow = await insertAiGeneratedItinerary({
           userId,
           tripId: tripId || null,
           destination,
@@ -4354,7 +4809,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           endDate: dates.end,
           title: `${variation.variationLabel}: ${variation.title}`,
           summary: variation.summary,
-          totalEstimatedCost: variation.totalEstimatedCost.toString(),
+          totalEstimatedCost: normalizeGeneratedEstimatedCost(variation.totalEstimatedCost),
           itineraryData: variation.dailyItinerary,
           accommodationSuggestions: variation.accommodationSuggestions,
           packingList: variation.packingList,
@@ -4362,6 +4817,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           provider: "grok",
           status: "generated",
         });
+        variationIds.push(savedRow.id);
       }
 
       await insertAiInteraction({
@@ -4377,7 +4833,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         metadata: { destination, dates, travelers, interests, variationsGenerated: result.variations.length },
       });
 
-      res.json(result);
+      res.json({ ...result, variationIds });
     } catch (error: any) {
       console.error("Error generating optimized itineraries:", error);
       res.status(500).json({ 
@@ -4386,11 +4842,139 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
     }
   });
 
+  // Materialize a stored AI generation as a real Trip Slip (trip + itinerary_items)
+  // — ledger 2026-08-22-ai-slip-defects. The AIItineraryBuilder's old save path
+  // POSTed /api/trips + /api/generated-itineraries and NEVER inserted items, shipping
+  // travelers to an empty PlanCard. This endpoint materializes from the SERVER's own
+  // stored `ai_generated_itineraries` row (owner-scoped via getAiItineraryById — §14
+  // identity from the session, plan content never trusted from the client), through
+  // the SAME canonical snapshot rail the main generate handler uses (L6). Repeat
+  // saves re-apply into the same trip (the row is stamped with its trip), never
+  // minting duplicates. Body is a §19 ALLOWLIST of non-privileged trip metadata.
+  const saveAiItineraryAsTripSchema = z.object({
+    travelers: z.number().int().min(1).max(50).optional(),
+    eventType: z.string().trim().max(60).optional(),
+    preferences: z.object({
+      interests: z.array(z.string().trim().max(80)).max(20).optional(),
+      pacePreference: z.string().trim().max(40).optional(),
+      mustSeeAttractions: z.array(z.string().trim().max(120)).max(20).optional(),
+      dietaryRestrictions: z.array(z.string().trim().max(80)).max(20).optional(),
+      mobilityConsiderations: z.array(z.string().trim().max(80)).max(20).optional(),
+    }).optional(),
+  });
+
+router.post("/api/ai/itineraries/:id/save-as-trip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const parsed = saveAiItineraryAsTripSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid save request" });
+      }
+      const body = parsed.data;
+
+      const row = await getAiItineraryById(req.params.id, userId);
+      if (!row) {
+        return res.status(404).json({ message: "Itinerary not found" });
+      }
+      if (!row.startDate || !row.endDate || !row.destination) {
+        // §13: a row without real dates/destination cannot honestly become a trip.
+        return res.status(422).json({ message: "This generation is missing its dates or destination and can't be saved as a trip." });
+      }
+
+      const startDate = String(row.startDate).slice(0, 10);
+      const endDate = String(row.endDate).slice(0, 10);
+      const tripDayCount = Math.max(
+        1,
+        Math.floor(
+          (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`))
+            / (24 * 60 * 60 * 1000),
+        ) + 1,
+      );
+
+      // Re-normalize the SERVER-stored plan through the same allow-listing pass the
+      // generate rail uses — the stored blob and the materialized rows can't disagree.
+      const normalizedResult = normalizeGeneratedItineraryPayload(
+        {
+          title: row.title,
+          summary: row.summary,
+          totalEstimatedCost: row.totalEstimatedCost,
+          dailyItinerary: row.itineraryData,
+          accommodationSuggestions: row.accommodationSuggestions,
+          packingList: row.packingList,
+          travelTips: row.travelTips,
+        } as any,
+        tripDayCount,
+      );
+      if (normalizedResult.canonicalItems.length === 0) {
+        return res.status(422).json({ message: "This generation has no activities to save." });
+      }
+
+      const snapshot = await saveGeneratedItinerarySnapshot({
+        userId,
+        // A row already materialized (or generated FOR a trip) re-applies into that
+        // trip — the snapshot rail row-locks and replaces, so no duplicate trips.
+        tripId: row.tripId || null,
+        trip: {
+          title: normalizedResult.title || `${row.destination} Trip`,
+          destination: row.destination,
+          startDate,
+          endDate,
+          numberOfTravelers: body.travelers ?? 1,
+          status: "draft",
+          eventType: body.eventType || "vacation",
+          specialRequests: null,
+        },
+        generatedPlan: {
+          destination: row.destination,
+          startDate,
+          endDate,
+          title: normalizedResult.title,
+          summary: normalizedResult.summary,
+          totalEstimatedCost: normalizedResult.totalEstimatedCost,
+          itineraryData: normalizedResult.dailyItinerary,
+          accommodationSuggestions: normalizedResult.accommodationSuggestions,
+          packingList: normalizedResult.packingList,
+          travelTips: normalizedResult.travelTips,
+          provider: row.provider || "grok",
+          status: "generated",
+        },
+        canonicalItems: normalizedResult.canonicalItems,
+        comparison: {
+          title: `${row.destination} Trip`,
+          destination: row.destination,
+          startDate,
+          endDate,
+          budget: null,
+          travelers: body.travelers ?? 1,
+          status: "generating",
+        },
+      });
+
+      if (!row.tripId) {
+        await stampAiGeneratedItineraryTrip(row.id, snapshot.trip.id);
+      }
+      if (body.preferences && Object.keys(body.preferences).length > 0) {
+        // Owner-authored, non-privileged trip metadata (no amount/identity/rate — §19
+        // strip not required); best-effort outside the snapshot transaction.
+        await storage.updateTrip(snapshot.trip.id, { preferences: body.preferences } as any).catch(() => {});
+      }
+
+      res.json({
+        tripId: snapshot.trip.id,
+        comparisonId: snapshot.comparison?.id ?? null,
+        itemCount: snapshot.insertedItems.length,
+      });
+    } catch (error: any) {
+      console.error("Error saving AI itinerary as trip:", error);
+      res.status(500).json({ message: "Failed to save itinerary as a trip" });
+    }
+  });
+
   // Get user's AI-generated itineraries
 
 router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const itineraries = await getAiItinerariesForUser(userId);
       res.json(itineraries);
@@ -4404,7 +4988,7 @@ router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
 
 router.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { id } = req.params;
       
       const itinerary = await getAiItineraryById(id, userId);
@@ -4643,7 +5227,7 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await storage.getUser(req.user?.claims?.sub);
+    const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -5275,7 +5859,36 @@ router.get("/api/travelpulse/enriched/:cityName", async (req, res) => {
         });
       }
 
-      res.json(enrichedContent);
+      // §16: per-platform bookingOptions power CityDetailView's book-via-agent buttons — vault the
+      // partner URLs server-side and ship opaque bookingTokens instead. Clone first: the service
+      // may serve a cached object, and stripping in place would corrupt it for later callers.
+      const safeContent = JSON.parse(JSON.stringify(enrichedContent));
+      const vaultEntries: VaultedBooking[] = [];
+      const optionSlots: Array<{ option: any }> = [];
+      for (const section of ["restaurants", "attractions", "nightlife", "hiddenGems", "trendingNow"]) {
+        const recs = (safeContent as any)[section];
+        if (!Array.isArray(recs)) continue;
+        for (const rec of recs) {
+          if (!Array.isArray(rec?.bookingOptions)) continue;
+          for (const option of rec.bookingOptions) {
+            if (option && typeof option.url === "string" && option.url) {
+              vaultEntries.push({
+                url: option.url,
+                name: typeof rec.name === "string" ? rec.name : null,
+                provider: typeof option.platform === "string" ? option.platform : null,
+              });
+              optionSlots.push({ option });
+            }
+          }
+        }
+      }
+      const tokens = await mintBookingTokens(vaultEntries);
+      optionSlots.forEach(({ option }, i) => {
+        delete option.url;
+        option.bookingToken = tokens[i];
+      });
+
+      res.json(safeContent);
     } catch (error: any) {
       console.error("Error getting enriched content:", error);
       res.status(500).json({ message: "Failed to get enriched content", error: error.message });
@@ -5482,16 +6095,104 @@ router.get("/api/geocode", async (req, res) => {
 
 router.get("/api/search/experiences", async (req, res) => {
     try {
-      const { q, destination, category } = req.query as Record<string, string>;
+      const { q, destination, category, sources } = req.query as Record<string, string>;
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
+      }
+
+      // Sources filter (default "all" — today's exact behavior, every existing caller untouched).
+      // "platform" skips the Google Places arm entirely (no API spend); "google" skips the
+      // platform arm. Response shape is unchanged in every case.
+      const sourcesFilter = sources === "platform" || sources === "google" ? sources : "all";
+      const includePlatform = sourcesFilter !== "google";
+      const includeGoogle = sourcesFilter !== "platform";
+
+      // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
+      // platform arm has nothing for this destination+category and fell through to Google Places
+      // — a real occurrence of unmet platform-catalog demand. Fire-and-forget, minimal context
+      // (no free-text query — §13 no-PII posture).
+      if (sourcesFilter === "google") {
+        logDemandSignal({
+          kind: "places_fallthrough",
+          market: destination || null,
+          category: category || null,
+          context: { hasQuery: !!q },
+        });
       }
 
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];
 
-      // ── Google Places Text Search ──
-      if (apiKey) {
+      // ── Platform provider services FIRST (W-3 task 2: "one registry-backed search" —
+      //    platform inventory is the primary catalog; external places supplement it) ──
+      if (includePlatform) try {
+        // F2 public read-gate: approved+active listings only. (W-3 repair: this block used to call
+        // getProviderServices with a filter object in the USERID position, so it matched no rows and
+        // the platform arm of this search had always been empty — now reads the full catalog and
+        // applies the status + approval gates here.)
+        const approvedProviders = (await storage.getAllProviderServices())
+          .filter((s: any) => s.status === "active" && s.approvalStatus === "approved");
+        // §16 vacation-mode enforcement (deferred arm, ratified Aug 9 2026 — see
+        // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
+        // listings drop out of platform search results; they reappear automatically once
+        // the flag clears. Read-only — no provider_services row is touched.
+        const platformProviders = await filterOutAwayOwners(approvedProviders, (s: any) => s.userId);
+        const dest = (destination || "").toLowerCase();
+        const qLower = (q || "").toLowerCase();
+        const catLower = (category || "").toLowerCase();
+        // L27-P3: emit the row's REAL coordinates (migration 129 columns) instead of the
+        // hardcoded `location: null` this arm used to return — which is why platform
+        // inventory never pinned on the expert Workstation browse map even when it had
+        // coordinates. Shape matches what the map consumer reads (`r.location?.lat` →
+        // numbers). §13: a row without coordinates still returns null — no centroid
+        // guess, no city-centre fallback — and `locationPrecision` travels with the
+        // point so a consumer can say "approximate" when it is a neighborhood centroid
+        // rather than a confirmed pin.
+        const emitLocation = (row: any): { lat: number; lng: number } | null => {
+          const lat = parseFloat(String(row.latitude ?? ""));
+          const lng = parseFloat(String(row.longitude ?? ""));
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+          return { lat, lng };
+        };
+        for (const p of platformProviders) {
+          // W-3/QA fix: when a free-text query is present it must actually filter (name or
+          // description match required) — previously `nameMatch || destMatch` let destMatch
+          // alone satisfy the predicate, so a query matching almost every row in the searched
+          // city (which is basically all of them) made the text box a no-op. Destination stays
+          // an AND filter in both cases; an empty query keeps returning the destination's full
+          // catalog exactly as before (other callers/behavior unaffected — see grep note above).
+          const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
+          const descMatch = p.description?.toLowerCase().includes(qLower);
+          const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
+          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
+          const textMatch = !qLower || nameMatch || descMatch;
+          if (textMatch && destMatch && catMatch) {
+            results.push({
+              id: `pl_${p.id}`,
+              source: "platform",
+              name: p.serviceName,
+              address: p.location || null,
+              category: p.serviceType || (p as any).category || "activity",
+              rating: null,
+              reviewCount: null,
+              priceLevel: null,
+              priceLabel: p.price ? `$${p.price}` : null,
+              location: emitLocation(p),
+              locationPrecision: (p as any).locationPrecision ?? null,
+              photoUrl: null,
+              mapsUrl: null,
+              // W-3 task 1: the stable provider_services linkage — the client passes this
+              // as providerServiceId into POST /api/trips/:tripId/itinerary-items so a
+              // build assembled from bookable inventory keeps the inventory link.
+              platformId: p.id,
+            });
+          }
+        }
+      } catch (_) {}
+
+      // ── Google Places Text Search (secondary — supplements the platform catalog) ──
+      if (includeGoogle && apiKey) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
           hotels: "lodging",
@@ -5538,39 +6239,6 @@ router.get("/api/search/experiences", async (req, res) => {
           }
         }
       }
-
-      // ── Platform providers (secondary) ──
-      try {
-        // F2 public read-gate: approved listings only (see the twin note in routes.ts — same pre-existing
-        // userId-position arg bug; the filter keeps the gate correct if that is ever repaired).
-        const platformProviders = (await storage.getProviderServices({ status: "active" } as any))
-          .filter((s: any) => s.approvalStatus === "approved");
-        const dest = (destination || "").toLowerCase();
-        const qLower = (q || "").toLowerCase();
-        const catLower = (category || "").toLowerCase();
-        for (const p of platformProviders) {
-          const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
-          const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
-          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
-          if ((nameMatch || destMatch) && catMatch) {
-            results.push({
-              id: `pl_${p.id}`,
-              source: "platform",
-              name: p.serviceName,
-              address: p.location || null,
-              category: p.serviceType || (p as any).category || "activity",
-              rating: null,
-              reviewCount: null,
-              priceLevel: null,
-              priceLabel: p.price ? `$${p.price}` : null,
-              location: null,
-              photoUrl: null,
-              mapsUrl: null,
-              platformId: p.id,
-            });
-          }
-        }
-      } catch (_) {}
 
       res.json({ results, count: results.length });
     } catch (error: any) {
@@ -6020,7 +6688,7 @@ router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) =>
 
 router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6038,7 +6706,7 @@ router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
 
 router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6057,7 +6725,7 @@ router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => 
 
 router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6076,7 +6744,7 @@ router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) =
 
 router.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6098,6 +6766,9 @@ router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) =>
       const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
       res.json(conversion);
     } catch (error) {
+      if (error instanceof BudgetValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to convert currency" });
     }
   });
@@ -6116,7 +6787,7 @@ router.post("/api/budget/calculate-tip", isAuthenticated, async (req, res) => {
 
 router.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -6134,7 +6805,7 @@ router.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -6154,7 +6825,7 @@ router.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
 
 router.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -6172,7 +6843,7 @@ router.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) =>
 
 router.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -6190,7 +6861,7 @@ router.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) =
 
 router.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -6208,7 +6879,7 @@ router.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => 
 
 router.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -6273,7 +6944,7 @@ router.get("/api/spontaneous/opportunities", async (req, res) => {
       });
       
       const params = schema.parse(req.query);
-      const userId = (req.user as any)?.claims?.sub || null;
+      const userId = getUserId(req)!;
       
       const opportunities = await opportunityEngineService.getOpportunities(userId, {
         lat: params.lat,
@@ -6302,7 +6973,7 @@ router.get("/api/spontaneous/opportunities", async (req, res) => {
 
 router.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const preferences = await opportunityEngineService.getUserPreferences(userId);
       res.json(preferences || {});
     } catch (error) {
@@ -6314,7 +6985,7 @@ router.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => 
 
 router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const schema = z.object({
         spontaneityLevel: z.number().min(0).max(100).optional(),
@@ -6348,7 +7019,7 @@ router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) =>
 
 router.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const opportunityId = req.params.id;
       
       const result = await opportunityEngineService.bookOpportunity(userId, opportunityId);
@@ -6372,7 +7043,7 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
       const lat = req.query.lat ? parseFloat(req.query.lat as string) : undefined;
       const lng = req.query.lng ? parseFloat(req.query.lng as string) : undefined;
       
-      const userId = (req.user as any)?.claims?.sub || null;
+      const userId = getUserId(req)!;
       
       const opportunities = await opportunityEngineService.getOpportunities(userId, {
         lat,
@@ -6383,7 +7054,9 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
       });
       
       res.json({
-        opportunities,
+        // §16: the Book action goes through the tracked /api/spontaneous/:id/book rail, which
+        // re-resolves the redirect server-side by id — the client never needs the affiliate URL.
+        opportunities: opportunities.map(({ affiliateUrl: _url, ...rest }: any) => rest),
         timeWindow: window,
         total: opportunities.length,
       });
@@ -6395,26 +7068,104 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
   // === Affiliate Booking Requests ===
 
 
+// §16 CLOSED (server-derivation rewrite): the rail no longer accepts an affiliate URL from the
+// client at all — req.body.affiliateUrl is deliberately never read (§14 posture: client-supplied
+// data must not steer the transaction the booking agent performs; a forged URL is simply ignored).
+// The caller passes exactly ONE booking reference and the server re-derives the partner URL itself:
+//   • bookingToken       — opaque token minted by the affiliate-url vault when a live catalog feed
+//                          response was served (TP /api/catalog/*, catalog search family,
+//                          TravelPulse booking options). Resolution is entirely server-side.
+//   • affiliateProductId — affiliate_products registry row: URL comes from the DB row
+//                          (approved-partner-gated, same posture as /api/content/affiliate-redirect).
+//   • transportOptionId  — transport_booking_options row: URL comes from the DB row
+//                          (affiliate/deep_link options only — platform options have their own rail).
+//   • partnerRoute       — { partner: "12go" | "fever", origin?, destination? }: the server BUILDS
+//                          the partner deep link itself, so the affiliate/campaign id lives
+//                          server-side only.
+// itemName/partnerName prefer the server-resolved values; body values are display-only fallbacks.
 router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
-      const { itemName, itemDescription, partnerName, partnerCategory, affiliateUrl, travelDate, travelers, userNotes } = req.body;
-      if (!itemName || !partnerName || !affiliateUrl) {
-        return res.status(400).json({ message: "itemName, partnerName, and affiliateUrl are required" });
+      // Session shape is {claims:{sub,...}} for BOTH email and OIDC auth — a bare `.id` read
+      // is undefined and violated the users FK (audit P0). Same pattern as every live handler.
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const { itemName, itemDescription, partnerName, partnerCategory, travelDate, travelers, userNotes,
+              bookingToken, affiliateProductId, transportOptionId, partnerRoute } = req.body;
+
+      let resolved: { url: string; name: string | null; partner: string | null } | null = null;
+      if (typeof bookingToken === "string" && bookingToken) {
+        const { resolveBookingToken } = await import("../services/affiliate-url-vault.service");
+        const entry = await resolveBookingToken(bookingToken);
+        if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider };
+      } else if (typeof affiliateProductId === "string" && affiliateProductId) {
+        const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
+        const product = await affiliateScraperService.getProductById(affiliateProductId, { approvedOnly: true });
+        const url = product ? (product.affiliateUrl || product.productUrl || null) : null;
+        if (product && url) resolved = { url, name: product.name ?? null, partner: null };
+      } else if (typeof transportOptionId === "string" && transportOptionId) {
+        const option = await storage.getTransportBookingOptionById(transportOptionId);
+        if (option && option.externalUrl && (option.bookingType === "affiliate" || option.bookingType === "deep_link")) {
+          resolved = { url: option.externalUrl, name: option.title ?? null, partner: option.source ?? null };
+        }
+      } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "12go") {
+        const { affiliateService } = await import("../services/affiliate.service");
+        resolved = {
+          url: affiliateService.buildTwelveGoDeepLink({
+            origin: typeof partnerRoute.origin === "string" ? partnerRoute.origin.slice(0, 100) : undefined,
+            destination: typeof partnerRoute.destination === "string" ? partnerRoute.destination.slice(0, 100) : undefined,
+          }),
+          name: null,
+          partner: "12Go",
+        };
+      } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "fever") {
+        // Same server-side construction posture as 12Go: the Impact campaign id never
+        // lives in client code (§16).
+        const { affiliateService } = await import("../services/affiliate.service");
+        resolved = {
+          url: affiliateService.buildFeverDeepLink(),
+          name: null,
+          partner: "Fever",
+        };
+      } else {
+        return res.status(400).json({
+          message: "A booking reference is required (bookingToken, affiliateProductId, transportOptionId, or partnerRoute)",
+        });
       }
+      if (!resolved) {
+        return res.status(404).json({ message: "This item is no longer available to book — try refreshing the list" });
+      }
+
+      const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
+      const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
+
       // Auto-assign to an expert based on category (city match optional, fallback any expert)
       const expertIds2 = await getExpertUserIds(10);
-      const allExperts: any[] = expertIds2.map(id => ({ id }));
-      const expertId = allExperts.length > 0 ? allExperts[0].id : null;
+      const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
       const status = expertId ? "assigned" : "pending";
+
+      // Same MONEY_MAP F-5 (dormant) sub_id attribution seam as the /from-catalog variant below:
+      // pre-generate the id so the flag-gated token can be baked into the stored URL up front.
+      const bookingRequestId = crypto.randomUUID();
+      const affiliateUrlToStore = applyAttributionSubId(
+        resolved.url,
+        bookingRequestId,
+        process.env.TP_SUBID_ATTRIBUTION === "1"
+      );
+
       const record = await storage.createAffiliateBookingRequest({
-        userId, expertId, itemName, itemDescription: itemDescription ?? null,
-        partnerName, partnerCategory: partnerCategory ?? null,
-        affiliateUrl, travelDate: travelDate ?? null,
-        travelers: travelers ?? 1, userNotes: userNotes ?? null,
+        id: bookingRequestId,
+        userId, expertId,
+        itemName: finalItemName,
+        itemDescription: typeof itemDescription === "string" ? itemDescription.slice(0, 2000) : null,
+        partnerName: finalPartnerName,
+        partnerCategory: typeof partnerCategory === "string" ? partnerCategory.slice(0, 50) : null,
+        affiliateUrl: affiliateUrlToStore,
+        travelDate: typeof travelDate === "string" ? travelDate : null,
+        travelers: Number.isInteger(travelers) && travelers > 0 ? travelers : 1,
+        userNotes: typeof userNotes === "string" ? userNotes.slice(0, 2000) : null,
         expertNotes: null, confirmationRef: null, price: null,
         status,
-      });
+      } as any);
       // Never return affiliateUrl to client
       const { affiliateUrl: _url, ...safe } = record;
       return res.json(safe);
@@ -6424,10 +7175,90 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
     }
   });
 
+// §16 catalog variant of the rail above, for surfaces that deliberately hold NO affiliate URL
+// (the Workstation Transport drawer strips bookingUrl/affiliateUrl at its query layer). The
+// client sends only a catalog reference — {provider, itemId, destination} — and the SERVER
+// re-resolves the item from the same catalog feed and attaches its affiliateUrl itself, so the
+// URL never exists client-side while the booking agent still gets a real link to book through.
+// affiliate_url stays NOT NULL; item name/description/price come from the server-resolved
+// catalog row, never from the body.
+router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const { provider, itemId, destination, origin, travelDate, travelers, userNotes } = req.body;
+      if (!provider || !itemId) {
+        return res.status(400).json({ message: "provider and itemId are required" });
+      }
+      // Allow-list of catalog resolvers — extend here when sibling transport feeds
+      // (/api/catalog/bus, /airport-transfers) gain a book-via-agent action.
+      let resolved: { title: string; description: string | null; affiliateUrl: string; partnerName: string; partnerCategory: string } | undefined;
+      if (provider === "omio") {
+        const { searchOmioRoutes } = await import("../services/travelpayouts/omio.service");
+        const items = await searchOmioRoutes({
+          origin: typeof origin === "string" ? origin : undefined,
+          destination: typeof destination === "string" ? destination : undefined,
+          limit: 50,
+        });
+        const item = items.find((i: any) => i.id === itemId);
+        if (item?.affiliateUrl) {
+          resolved = {
+            title: item.title,
+            description: item.description ?? null,
+            affiliateUrl: item.affiliateUrl,
+            partnerName: "Omio",
+            partnerCategory: "ground-transport",
+          };
+        }
+      } else {
+        return res.status(400).json({ message: "Unknown catalog provider" });
+      }
+      if (!resolved) {
+        return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
+      }
+      const expertIds3 = await getExpertUserIds(10);
+      const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
+      const status = expertId ? "assigned" : "pending";
+
+      // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
+      // future Travelpayouts commission report echoes it back and the reconciliation matcher can
+      // adopt a REAL amount on an exact match instead of ever estimating one. Pre-generate the id
+      // (rather than reading it back post-insert) so the token can be baked into affiliateUrl BEFORE
+      // it is stored — the record is written once, never patched. Flag OFF (default) → the pure
+      // applyAttributionSubId helper returns the URL unchanged — byte-identical current behavior.
+      const bookingRequestId = crypto.randomUUID();
+      const affiliateUrlToStore = applyAttributionSubId(
+        resolved.affiliateUrl,
+        bookingRequestId,
+        process.env.TP_SUBID_ATTRIBUTION === "1"
+      );
+
+      const record = await storage.createAffiliateBookingRequest({
+        id: bookingRequestId,
+        userId, expertId,
+        itemName: resolved.title, itemDescription: resolved.description,
+        partnerName: resolved.partnerName, partnerCategory: resolved.partnerCategory,
+        affiliateUrl: affiliateUrlToStore,
+        travelDate: typeof travelDate === "string" ? travelDate : null,
+        travelers: Number.isInteger(travelers) && travelers > 0 ? travelers : 1,
+        userNotes: typeof userNotes === "string" ? userNotes.slice(0, 2000) : null,
+        expertNotes: null, confirmationRef: null, price: null,
+        status,
+      } as any);
+      // Never return affiliateUrl to client
+      const { affiliateUrl: _url2, ...safe } = record;
+      return res.json(safe);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] from-catalog create error:", err);
+      return res.status(500).json({ message: "Failed to create booking request" });
+    }
+  });
+
 
 router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const records = await storage.getAffiliateBookingRequestsByUser(userId);
       return res.json(records);
     } catch (err: any) {
@@ -6439,11 +7270,16 @@ router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, 
 
 router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== "expert" && user.role !== "admin") {
+      // Audit P0: session objects carry {claims:{sub}} — top-level .id/.role are undefined on
+      // every auth shape, so this handler 403'd all real experts. Id from the session pattern,
+      // role from the DB (§2 posture — never the session's possibly-stale/absent role string).
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
         return res.status(403).json({ message: "Expert role required" });
       }
-      const records = await storage.getAffiliateBookingRequestsByExpert(user.id);
+      const records = await storage.getAffiliateBookingRequestsByExpert(userId);
       return res.json(records);
     } catch (err: any) {
       console.error("[AffiliateBooking] expert list error:", err);
@@ -6478,8 +7314,11 @@ function deriveItineraryDayNumber(
 
 router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== "expert" && user.role !== "admin") {
+      // Audit P0: same session-shape fix as the expert list above — id from claims, role from DB.
+      const sessionUserId = getUserId(req)!;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(sessionUserId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
@@ -6491,7 +7330,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         if (req.body[key] !== undefined) data[key] = req.body[key];
       }
       // Self-assign: if setting expertId, use current user
-      if (data.expertId === "self") data.expertId = user.id;
+      if (data.expertId === "self") data.expertId = sessionUserId;
       const prior = await storage.getAffiliateBookingRequestById(id);
       if (!prior) return res.status(404).json({ message: "Request not found" });
 
@@ -6512,7 +7351,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       if (requestedTripId && isConfirming) {
         trip = await storage.getTrip(requestedTripId);
         const ownerOk = !!trip && !!prior.userId && prior.userId === trip.userId;
-        const assignedOk = await storage.isExpertAssignedToTrip(requestedTripId, user.id);
+        const assignedOk = await storage.isExpertAssignedToTrip(requestedTripId, sessionUserId);
         if (ownerOk && assignedOk) {
           data.tripId = requestedTripId; // attachment granted
         } else {
@@ -6529,12 +7368,26 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         }
       }
 
-      const updated = await storage.updateAffiliateBookingRequest(id, data);
-      if (!updated) return res.status(404).json({ message: "Request not found" });
+      // R4/F7 (§15): the confirm transition is claimed atomically so a duplicate/concurrent PATCH
+      // can't double-fire the confirm side-effects (itinerary logging + affiliate earning). Every
+      // OTHER field update (notes, price edits after the fact, non-confirm status changes) keeps
+      // using the plain update — only the pending→confirmed transition needs the atomic guard.
+      const updated = isConfirming
+        ? await storage.confirmAffiliateBookingRequest(id, data)
+        : await storage.updateAffiliateBookingRequest(id, data);
+      if (!updated) {
+        if (isConfirming) {
+          // Lost the atomic claim race — another request already confirmed this booking.
+          // Idempotent no-op: return the current (already-confirmed) row, not a 404/error.
+          const current = await storage.getAffiliateBookingRequestById(id);
+          if (current) return res.json({ ...current, alreadyConfirmed: true });
+        }
+        return res.status(404).json({ message: "Request not found" });
+      }
 
       // Log onto the canonical Trip/PlanCard only when attachment was granted (first
       // confirm wins — guarded on the transition so a repeat PATCH never duplicates).
-      if (updated.status === "confirmed" && updated.tripId && prior.status !== "confirmed") {
+      if (updated.status === "confirmed" && updated.tripId && isConfirming) {
         await storage.createItineraryItem({
           tripId: updated.tripId,
           title: updated.itemName,
@@ -6549,11 +7402,69 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           estimatedCost: updated.price ?? null,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
+          // D2: confirmed by the assigned booking agent/expert (isExpertAssignedToTrip-gated
+          // above) on the traveler's behalf — provenance is the expert.
+          origin: "expert",
         } as any);
       }
 
+      // R4/F7 — affiliate reconciliation ledger spine. Runs exactly once per booking (gated on the
+      // atomic isConfirming claim above, same as the itinerary-item write). §14: bookingAmount is
+      // read back from the persisted row (updated.price), never trusted off req.body directly for
+      // the money decision. §13: the partner's REAL commission is unknown until they report it
+      // (that's the whole F7 problem) — never invent a rate/amount here; commission fields are
+      // honestly recorded 0 pending reconciliation (the reconciliationStatus/reconciliationNotes
+      // fields exist precisely for an admin to fill these in once the partner report arrives).
+      if (isConfirming) {
+        try {
+          // §8: admin-editable band (migration 143), falls back to the AFFILIATE_PLATFORM_FEE /
+          // AFFILIATE_EXPERT_SHARE code constants — snapshotted for the eventual reconciliation
+          // pass, not applied to a fabricated commission figure today.
+          const splitRates = await resolveCommissionRates({ source: "affiliate" });
+          let partnerId: string | undefined;
+          try {
+            const [partnerRow] = await db
+              .select({ id: affiliatePartners.id })
+              .from(affiliatePartners)
+              .where(sql`LOWER(${affiliatePartners.name}) = LOWER(${updated.partnerName})`)
+              .limit(1);
+            partnerId = partnerRow?.id;
+          } catch {
+            // Best-effort name match only — never block confirmation on this.
+          }
+          await storage.createAffiliateEarning({
+            partnerId: partnerId ?? null,
+            expertId: updated.expertId ?? null,
+            bookingAmount: updated.price != null ? String(updated.price) : "0.00",
+            commissionRate: "0.00",
+            totalCommission: "0.00",
+            platformShare: "0.00",
+            expertShare: "0.00",
+            providerShare: "0.00",
+            currency: "USD",
+            partnerReferenceId: updated.confirmationRef ?? null,
+            externalReportData: {
+              affiliateBookingRequestId: updated.id,
+              partnerName: updated.partnerName,
+              note: "Confirmed via the agent-booking rail; the partner's real commission is not yet "
+                + "known (arrives via partner report) so commission/total/share fields are recorded 0, "
+                + "not fabricated — reconcile via reconciliationStatus/reconciliationNotes once the "
+                + "partner report lands.",
+              internalSplitRatesAtConfirm: {
+                platformFeeRate: splitRates.platformFeeRate,
+                expertShareRate: splitRates.expertShareRate,
+              },
+            },
+          } as any);
+        } catch (earnErr) {
+          // Non-critical: the booking is already confirmed; a ledger-write failure must not
+          // undo that or 500 the response.
+          console.error(`[AffiliateBooking] earning ledger write failed for ${id} (non-critical):`, earnErr);
+        }
+      }
+
       if (attachmentBlocked) {
-        console.warn(`[AffiliateBooking] attachment blocked for ${id} (expert ${user.id}): ${attachmentReason}`);
+        console.warn(`[AffiliateBooking] attachment blocked for ${id} (expert ${sessionUserId}): ${attachmentReason}`);
         return res.json({ ...updated, attachmentBlocked: true, attachmentReason });
       }
       // Include affiliateUrl for expert responses
@@ -6561,6 +7472,38 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
     } catch (err: any) {
       console.error("[AffiliateBooking] patch error:", err);
       return res.status(500).json({ message: "Failed to update booking request" });
+    }
+  });
+
+// AI booking copilot — verification leg (decision-maker ratified). Tavily-extracts the partner
+// product page + LLM-extracts current facts, diffs against the request, and persists a
+// verified-as-of-now snapshot the assigned expert can review before they make the (human) booking.
+// This lane never books anything itself — see server/services/booking-verification.service.ts.
+// Authorization mirrors the PATCH handler above EXACTLY (role-based: expert or admin — the same
+// pooled-expert-queue model the rest of this rail uses; no per-row expertId ownership check).
+router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async (req, res) => {
+    try {
+      const sessionUserId = getUserId(req)!;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(sessionUserId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
+        return res.status(403).json({ message: "Expert role required" });
+      }
+      const { id } = req.params;
+      const result = await verifyBookingRequest(id);
+      if (!result.available && result.reason === "request_not_found") {
+        return res.status(404).json({ message: "Request not found" });
+      }
+      return res.json(result);
+    } catch (err: any) {
+      if (err instanceof VerificationInFlightError) {
+        return res.status(409).json({ message: err.message });
+      }
+      if (err instanceof VerificationThrottledError) {
+        return res.status(429).json({ message: err.message, retryAfterMs: err.retryAfterMs });
+      }
+      console.error("[AffiliateBooking] verify error:", err);
+      return res.status(500).json({ message: "Failed to verify booking request" });
     }
   });
 
@@ -6662,7 +7605,7 @@ export async function registerDiscoveryRoutes() {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await storage.getUser(req.user?.claims?.sub);
+    const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -6671,7 +7614,7 @@ export async function registerDiscoveryRoutes() {
 
   // Trigger discovery for a destination
 
-router.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
+router.post("/api/discovery/scan", isAuthenticated, requireAdmin, async (req, res) => {
     try {
       const { destination, categories } = req.body;
 
@@ -6806,6 +7749,29 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
   
   const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
 
+  // Phase 4 affiliate read-gate helper: is the (optionally-authenticated) requester an admin?
+  // Non-blocking — public affiliate reads pass approvedOnly = !isAdmin so admins see the full
+  // catalog (incl. submitted/rejected partners) on the same endpoints the admin console uses,
+  // while travellers/experts see only approved-partner content.
+  const isRequestAdmin = async (req: any): Promise<boolean> => {
+    try {
+      if (!req.isAuthenticated?.() && !req.user) return false;
+      const uid = getUserId(req)!;
+      if (!uid) return false;
+      const user = await storage.getUser(uid);
+      return user?.role === "admin";
+    } catch {
+      // Fail closed: if the admin-role lookup fails, deny access rather than accidentally granting it.
+      return false;
+    }
+  };
+
+  // §16: registry-product DTOs for travelers carry NO partner URLs. The rail re-resolves the URL
+  // from the affiliate_products row by id (affiliateProductId), and informational outbound goes
+  // through the tracked /api/content/affiliate-redirect — neither needs the URL client-side.
+  const stripProductUrls = <T extends { affiliateUrl?: any; productUrl?: any }>(products: T[]) =>
+    products.map(({ affiliateUrl: _a, productUrl: _p, ...rest }) => rest);
+
   // Get partner categories
 
 router.get("/api/affiliate/categories", async (_req, res) => {
@@ -6851,9 +7817,11 @@ router.post("/api/affiliate/partners", isAuthenticated, async (req, res) => {
 router.get("/api/affiliate/partners", async (req, res) => {
     try {
       const { category, isActive, limit, offset } = req.query;
+      const approvedOnly = !(await isRequestAdmin(req)); // public sees approved partners only
       const result = await affiliateScraperService.getPartners({
         category: category as string,
         isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
+        approvedOnly,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
@@ -6867,7 +7835,8 @@ router.get("/api/affiliate/partners", async (req, res) => {
 
 router.get("/api/affiliate/partners/:id", async (req, res) => {
     try {
-      const partner = await affiliateScraperService.getPartnerById(req.params.id);
+      const approvedOnly = !(await isRequestAdmin(req));
+      const partner = await affiliateScraperService.getPartnerById(req.params.id, { approvedOnly });
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
       }
@@ -6881,7 +7850,10 @@ router.get("/api/affiliate/partners/:id", async (req, res) => {
 
 router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
     try {
-      const partner = await affiliateScraperService.updatePartner(req.params.id, req.body);
+      // Phase 4: approval is set ONLY via the admin approve/reject endpoints — strip any
+      // approval fields a client tries to mass-assign through this general update path (D1a).
+      const { approvalStatus, reviewedAt, reviewedBy, rejectionReason, submittedAt, ...safeBody } = req.body ?? {};
+      const partner = await affiliateScraperService.updatePartner(req.params.id, safeBody);
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
       }
@@ -6937,6 +7909,8 @@ router.get("/api/affiliate/partners/:id/jobs", isAuthenticated, async (req, res)
 router.get("/api/affiliate/products", async (req, res) => {
     try {
       const { partnerId, category, city, country, search, minPrice, maxPrice, minRating, limit, offset } = req.query;
+      const isAdmin = await isRequestAdmin(req);
+      const approvedOnly = !isAdmin; // public sees approved-partner products only
       const result = await affiliateScraperService.getProducts({
         partnerId: partnerId as string,
         category: category as string,
@@ -6946,10 +7920,15 @@ router.get("/api/affiliate/products", async (req, res) => {
         minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
         minRating: minRating ? parseFloat(minRating as string) : undefined,
+        approvedOnly,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
-      res.json(result);
+      // §16: traveler-facing product DTOs never carry partner URLs — these are registry rows, so
+      // the booking-agent rail re-resolves the URL from the DB by affiliateProductId, and the
+      // tracked informational path (/api/content/affiliate-redirect) resolves it by id too.
+      // Admin console keeps the raw rows (the partner-management surface needs the links).
+      res.json(isAdmin ? result : { ...result, products: stripProductUrls(result.products) });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get products", error: error.message });
     }
@@ -6959,11 +7938,13 @@ router.get("/api/affiliate/products", async (req, res) => {
 
 router.get("/api/affiliate/products/:id", async (req, res) => {
     try {
-      const product = await affiliateScraperService.getProductById(req.params.id);
+      const isAdmin = await isRequestAdmin(req);
+      const product = await affiliateScraperService.getProductById(req.params.id, { approvedOnly: !isAdmin });
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
-      res.json({ product });
+      // §16: see /api/affiliate/products — public DTOs carry no partner URLs.
+      res.json({ product: isAdmin ? product : stripProductUrls([product])[0] });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get product", error: error.message });
     }
@@ -7096,6 +8077,12 @@ router.get("/api/content/discover", async (req, res) => {
         price_display: p.price ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}` : null,
         affiliate_url: p.affiliateUrl || p.productUrl || null,
         source: "Affiliate Partner",
+        // Item ⑤: canonical origin + disclosure label (was a hardcoded "Affiliate Partner" — G7).
+        origin: "affiliate" as const,
+        originLabel: CONTENT_ORIGIN_TRAVELER_LABEL.affiliate, // "Paid partner"
+        // Item ④: CTA classifier so the shared resolveContentCTA can pick the right button.
+        bookingType: p.bookingType ?? null,
+        availabilityStatus: p.availabilityStatus ?? null,
         rating: p.rating ? parseFloat(String(p.rating)) : null,
         city: p.city || null,
         country: p.country || null,
@@ -7126,6 +8113,10 @@ router.get("/api/content/discover", async (req, res) => {
           price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
           affiliate_url: affiliateUrl,
           source: "Traveloure Curated",
+          // Item ⑤: registry content is platform-origin unless its type says otherwise; a registry row
+          // carrying an affiliate link is disclosed as a paid partner.
+          origin: affiliateUrl ? ("affiliate" as const) : contentOriginFor(r.contentType),
+          originLabel: affiliateUrl ? CONTENT_ORIGIN_TRAVELER_LABEL.affiliate : CONTENT_ORIGIN_TRAVELER_LABEL[contentOriginFor(r.contentType)],
           rating: meta.rating ? parseFloat(String(meta.rating)) : null,
           city: meta.city || meta.location || city,
           country: meta.country || country,
@@ -7172,102 +8163,19 @@ router.get("/api/content/discover", async (req, res) => {
     }
   });
 
-  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items.
-  // Price, title, and currency are resolved server-side from the DB record; client-supplied
-  // values are ignored to prevent price-tampering attacks.
-
-router.post("/api/content/checkout", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const user = await storage.getUser(userId);
-      const userEmail = user?.email || undefined;
-
-      const { itemId, itemType } = req.body;
-      if (!itemId || !itemType) {
-        return res.status(400).json({ message: "itemId and itemType are required" });
-      }
-
-      // --- Server-side item resolution (price is NOT trusted from client) ---
-      let resolvedTitle: string;
-      let resolvedPrice: number;       // in whole currency units, e.g. 49.99 // fee-literal-ok: comment example, fee resolves from config
-      let resolvedCurrency: string;
-      let resolvedDestination: string;
-
-      if (itemType === "affiliate") {
-        const [product] = await db
-          .select()
-          .from(affiliateProducts)
-          .where(eq(affiliateProducts.id, itemId))
-          .limit(1);
-        if (!product) return res.status(404).json({ message: "Item not found" });
-        if (!product.price || parseFloat(String(product.price)) <= 0) {
-          return res.status(400).json({ message: "This item is not available for direct purchase" });
-        }
-        resolvedTitle = product.name;
-        resolvedPrice = parseFloat(String(product.price));
-        resolvedCurrency = (product.currency || "USD").toLowerCase();
-        resolvedDestination = product.city || product.country || "";
-      } else {
-        // content_registry
-        const [item] = await db
-          .select()
-          .from(contentRegistry)
-          .where(eq(contentRegistry.id, itemId))
-          .limit(1);
-        if (!item) return res.status(404).json({ message: "Item not found" });
-        const meta = (item.metadata as any) || {};
-        if (!meta.price || parseFloat(String(meta.price)) <= 0) {
-          return res.status(400).json({ message: "This item is not available for direct purchase" });
-        }
-        resolvedTitle = item.title || "Curated Experience";
-        resolvedPrice = parseFloat(String(meta.price));
-        resolvedCurrency = (meta.currency || "USD").toLowerCase();
-        resolvedDestination = meta.city || meta.destination || meta.location || "";
-      }
-
-      const { getBaseUrl } = await import("../services/stripe.service");
-      const Stripe = (await import("stripe")).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-        apiVersion: '2024-12-18.acacia' as any,
-      });
-
-      const baseUrl = getBaseUrl();
-      const amountCents = Math.round(resolvedPrice * 100);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        mode: 'payment',
-        customer_email: userEmail,
-        line_items: [
-          {
-            price_data: {
-              currency: resolvedCurrency,
-              product_data: {
-                name: resolvedTitle,
-                description: resolvedDestination
-                  ? `Curated experience in ${resolvedDestination}`
-                  : 'Curated Traveloure experience',
-              },
-              unit_amount: amountCents,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          type: 'content_hub_purchase',
-          userId,
-          itemId: String(itemId),
-          itemType,
-        },
-        success_url: `${baseUrl}/discover?purchase=success`,
-        cancel_url: `${baseUrl}/discover?purchase=cancelled`,
-      });
-
-      res.json({ sessionId: session.id, url: session.url });
-    } catch (err: any) {
-      console.error("Content checkout error:", err);
-      res.status(500).json({ message: "Failed to create checkout session" });
-    }
+  // Content Hub Checkout — GATED OFF (MONEY_MAP F-1).
+  // This used to create a real Stripe Checkout Session for non-affiliate curated items (tagged
+  // with a dedicated content-hub-purchase metadata type), but NO webhook branch, ledger write, or
+  // fulfillment path exists for that metadata type anywhere in the codebase — a traveler could pay
+  // and nothing would be recorded or delivered. Per the W0.4 tip-endpoint 501 pattern, this now
+  // refuses honestly instead of collecting money it can't fulfill. The Stripe-session code is
+  // removed (not commented out — git history has it) pending a decision-maker call on whether to
+  // build the fulfillment leg or retire this surface. See docs/MONEY_MAP.md F-1.
+  router.post("/api/content/checkout", isAuthenticated, async (_req, res) => {
+    res.status(501).json({
+      message: "Checkout for curated content isn't available yet.",
+      code: "content_checkout_unavailable",
+    });
   });
 
   // Content Hub Affiliate Redirect — unified intermediary for ALL affiliate-linked content hub items.
@@ -7292,14 +8200,20 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         userAgent: req.headers["user-agent"] || undefined,
         ipAddress: req.ip || undefined,
       };
-      const authUserId = (req.user as any)?.claims?.sub || null;
+      const authUserId = getUserId(req)!;
       if (authUserId) trackPayload.userId = authUserId;
 
       if (itemType === "affiliate") {
         const [product] = await db
           .select()
           .from(affiliateProducts)
-          .where(eq(affiliateProducts.id, itemId))
+          .where(and(
+            eq(affiliateProducts.id, itemId),
+            eq(affiliateProducts.isActive, true),
+            // Partner-level read-gate (migration 121, audit G-SEC): never emit an affiliate URL for a
+            // product whose partner is not admin-approved. An unapproved product is treated as absent.
+            sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
+          ))
           .limit(1);
         if (!product) return res.status(404).json({ message: "Item not found" });
         affiliateUrl = product.affiliateUrl || product.productUrl || null;
@@ -7385,7 +8299,7 @@ router.post("/api/affiliates/track", async (req, res) => {
       if (!partner) {
         return res.status(400).json({ message: "partner is required" });
       }
-      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      const userId = getUserId(req)!;
       await insertAffiliateClick({
         productId: null,
         partnerId: null,
@@ -7415,14 +8329,17 @@ router.get("/api/affiliate/products/by-location", async (req, res) => {
         return res.status(400).json({ message: "city or country is required" });
       }
 
+      const isAdmin = await isRequestAdmin(req);
       const result = await affiliateScraperService.getProducts({
         city: city as string,
         country: country as string,
         category: category as string,
+        approvedOnly: !isAdmin, // traveler-facing location feed → approved partners only
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json(result);
+      // §16: see /api/affiliate/products — public DTOs carry no partner URLs.
+      res.json(isAdmin ? result : { ...result, products: stripProductUrls(result.products) });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get products by location", error: error.message });
     }
@@ -7444,7 +8361,7 @@ router.post("/api/content/:trackingNumber/flag", isAuthenticated, async (req, re
 
       const flag = await storage.createContentFlag({
         trackingNumber,
-        reporterId: user?.claims?.sub,
+        reporterId: getUserId(req)!,
         flagType,
         severity: severity || 'medium',
         description,
@@ -7466,6 +8383,20 @@ router.get("/api/platform/stats", async (_req, res) => {
     } catch (err) {
       console.error("Platform stats error:", err);
       res.status(500).json({ message: "Failed to fetch platform stats" });
+    }
+  });
+
+  // GET /api/platform/featured-testimonials — the §13 curated testimonial rail.
+  // Public, unauthenticated (the landing page is public). Returns ONLY real,
+  // admin-curated, booking-gated service_reviews — never fabricated content.
+  // Empty featured list → { testimonials: [] }; the client hides the section.
+  router.get("/api/platform/featured-testimonials", async (_req, res) => {
+    try {
+      const testimonials = await getFeaturedTestimonials();
+      res.json({ testimonials });
+    } catch (err) {
+      console.error("Featured testimonials error:", err);
+      res.status(500).json({ message: "Failed to fetch featured testimonials" });
     }
   });
 
@@ -7491,7 +8422,7 @@ router.get("/api/platform/stats", async (_req, res) => {
         return res.status(400).json({ error: "Invalid impression payload" });
       }
       const userId =
-        (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+        getUserId(req)!;
 
       const impressionId = await insertContentImpression({
         contentType: parsed.data.contentType,
@@ -7511,7 +8442,7 @@ router.get("/api/platform/stats", async (_req, res) => {
 router.post("/api/track/search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       await insertSearchAnalytics({
         sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
@@ -7551,7 +8482,7 @@ router.post("/api/track/search", async (req, res) => {
 router.post("/api/track/pageview", async (req, res) => {
     try {
       const { pageViewAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       await insertPageViewAnalytics({
         sessionId: req.body.sessionId,
@@ -7577,7 +8508,7 @@ router.post("/api/track/pageview", async (req, res) => {
 router.post("/api/track/funnel", async (req, res) => {
     try {
       const { bookingFunnelAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       await insertBookingFunnelAnalytics({
         sessionId: req.body.sessionId,
@@ -7617,7 +8548,7 @@ router.post("/api/track/funnel", async (req, res) => {
 router.post("/api/track/activity", async (req, res) => {
     try {
       const { activityBookingAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       await insertActivityBookingAnalytics({
         sessionId: req.body.sessionId,
@@ -7652,7 +8583,7 @@ router.post("/api/track/activity", async (req, res) => {
 router.post("/api/track/trip-enhanced", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       await insertTripAnalyticsEnhanced({
         tripId: req.body.tripId,
@@ -7696,7 +8627,7 @@ router.post("/api/track/trip-enhanced", async (req, res) => {
 router.post("/api/track/destination-search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
       
       // Track this search
@@ -7734,7 +8665,7 @@ router.post("/api/track/destination-search", async (req, res) => {
 router.post("/api/track/accommodation-preference", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = getUserId(req)!;
       
       if (userId && req.body.tripId) {
         await updateTripAnalyticsEnhanced(req.body.tripId, {
@@ -7749,32 +8680,10 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
     }
   });
 
-  // ─── Cross-sell Click Events ─────────────────────────────────────────────────
-  // POST /api/cross-sell-events
-  // Tracks clicks on cross-sell service chips. Lightweight write — persistence
-  // and analytics aggregation are handled by the "Cross-sell conversion tracking"
-  // downstream task. This endpoint simply validates and acknowledges.
-
-  const crossSellEventSchema = z.object({
-    sourceContentId: z.string().min(1),
-    sourceContentType: z.string().min(1),
-    targetServiceId: z.string().min(1),
-    eventType: z.enum(["click"]),
-  });
-
-  router.post("/api/cross-sell-events", async (req, res) => {
-    try {
-      const parsed = crossSellEventSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten().fieldErrors });
-      }
-      // Lightweight acknowledgement — downstream conversion tracking task handles DB persistence.
-      res.status(201).json({ ok: true, received: parsed.data });
-    } catch (err: any) {
-      console.error("[cross-sell-events] error:", err.message);
-      res.status(500).json({ ok: false });
-    }
-  });
+  // POST /api/cross-sell-events — retired from this file.
+  // The full persisting handler (storage.recordCrossSellEvents) now lives in
+  // server/routes/cross-sell.routes.ts which is mounted in routes.ts. Keeping
+  // this stub would shadow the real handler because contentRoutes is mounted first.
 
   // ─── Content-to-Supply Matching ─────────────────────────────────────────────
   // GET /api/content-match?type=restaurant&neighborhood=arashiyama&city=Kyoto&limit=3
@@ -7835,8 +8744,23 @@ router.get("/api/exchange-rates", async (_req, res) => {
     res.json({ base: "USD", rates: data.rates, cachedAt: now });
   } catch (err) {
     console.error("Exchange rate fetch error:", err);
-    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
-    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+    // DB-backed fallback (migration 217): fx_rates is seeded at migration time and
+    // refreshed daily by fx-rate-refresh.service.ts — never a hardcoded literal that
+    // goes stale between deploys. If the DB has no rows either, say so honestly.
+    try {
+      const dbRates = await storage.getLatestFxRates();
+      if (dbRates) {
+        return res.json({
+          base: "USD",
+          rates: dbRates.rates,
+          cachedAt: dbRates.updatedAt ? new Date(dbRates.updatedAt).getTime() : Date.now(),
+          fallback: true,
+        });
+      }
+    } catch (dbErr) {
+      console.error("Exchange rate DB fallback error:", dbErr);
+    }
+    res.status(503).json({ base: "USD", rates: null, error: "Exchange rates unavailable" });
   }
 });
 

@@ -37,9 +37,36 @@ import {
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
 import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
+import {
+  getTravelerProfile,
+  recordDislikeFeedback,
+  buildTravelerProfilePromptSection,
+  effectiveProfileToTransportPrefs,
+  matchesDietary,
+  type TravelerProfile,
+  type EffectiveTravelerProfile,
+} from "./services/traveler-profile.service";
+import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
+import { reconcileVariantWithBaseline } from "./services/optimizer-variant-reconciliation.service";
+import { loadRankedAnchors } from "./services/anchor-candidates";
+import { pickAutoAnchors } from "./services/anchor-candidates-map";
+import type { AnchorScore } from "./services/anchor-scoring";
+import {
+  createOptimizerGeocodeBudget,
+  resolveOptimizerActivityCoordinates,
+} from "./services/optimizer-activity-geocoder.service";
 
-const GROK_MODEL = "grok-2-1212";
+// grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
+// grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
+// already run against the same account.
+const GROK_MODEL = "grok-3";
 const CLAUDE_MODEL = "claude-sonnet-4-5";
+
+// The 2-variant response JSON runs ~120-150 tokens per item; a 7-day trip with empty-day
+// fill can exceed 10k output tokens. 5120 truncated mid-JSON, which surfaced as
+// "Failed to parse AI response" on the fallback path.
+const GROK_MAX_TOKENS = 8192; // the max grok.service.ts has proven against this account
+const CLAUDE_MAX_TOKENS = 16384;
 
 // Anthropic pricing per token (as of 2026-06)
 const ANTHROPIC_PRICING = {
@@ -77,10 +104,17 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 5120,
+        max_tokens: GROK_MAX_TOKENS,
+        response_format: { type: "json_object" },
       });
-      const content = response.choices[0]?.message?.content;
-      if (content) return content;
+      const choice = response.choices[0];
+      const content = choice?.message?.content;
+      // A length-truncated response is unparseable JSON — treat it as a Grok
+      // failure and let the Anthropic path (with a larger budget) take over.
+      if (content && choice?.finish_reason !== "length") return content;
+      if (choice?.finish_reason === "length") {
+        console.warn("Grok response truncated at max_tokens, falling back to Anthropic");
+      }
     } catch (grokError: any) {
       console.warn("Grok API failed, falling back to Anthropic:", grokError.message);
     }
@@ -90,7 +124,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   if (anthropic) {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 5120,
+      max_tokens: CLAUDE_MAX_TOKENS,
       system: systemPrompt,
       messages: [
         { role: "user", content: userPrompt },
@@ -106,6 +140,13 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
         tokensIn: response.usage.input_tokens,
         tokensOut: response.usage.output_tokens,
       }).catch(err => console.error("[cost-tracker] failed to log optimization cost:", err));
+    }
+    if (response.stop_reason === "max_tokens") {
+      // Truncated JSON is unparseable — fail with the real cause instead of a
+      // downstream "Failed to parse AI response".
+      throw new Error(
+        `Anthropic response truncated at ${CLAUDE_MAX_TOKENS} tokens — itinerary too large for one response`,
+      );
     }
     const textBlock = response.content.find((b: any) => b.type === "text");
     if (textBlock && textBlock.type === "text") return textBlock.text;
@@ -131,7 +172,7 @@ function extractJSON(text: string): string {
   return text.trim();
 }
 
-interface ItineraryItem {
+export interface ItineraryItem {
   id: string;
   name: string;
   description?: string;
@@ -141,7 +182,43 @@ interface ItineraryItem {
   location?: string;
   duration?: number;
   dayNumber?: number;
+  startTime?: string;
+  endTime?: string;
   timeSlot?: string;
+  /** Lane 5a Defect 3: the catalog row behind this baseline item, when there is one.
+   *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
+   *  Undefined for an external/AI item with no catalog row (the honest value, §13). */
+  providerServiceId?: string;
+  /** Real coordinates only (ledger 2026-08-22-optimizer-catalog-honesty): the trip item's own
+   *  pin or its linked catalog row's — set by the trip-backed loader, undefined for an unlocated
+   *  item (§13, never geocoded here). Carried onto the baseline variant items so transport-leg
+   *  computation has something real to run on. */
+  latitude?: number;
+  longitude?: number;
+  /** Lane 6 residue (drop policy a): true for a `ready_for_checkout` trip item — schedule-movable
+   *  but NEVER droppable by a variant. A generated variant that omits one is invalid and is
+   *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
+   *  sets this; cart/inline baselines have no routing status and leave it undefined. */
+  mustRetain?: boolean;
+}
+
+/**
+ * A `purchased` trip item (Lane 5b, decision-maker ratified Jul 31, 2026).
+ *
+ * NOT a baseline item and never one: the traveler has PAID for this. It enters the optimizer the
+ * way a temporal anchor does — as an immovable fixed point the plan must be built AROUND — because
+ * "an optimizer that can't see it proposes plans that collide with booked reality: a paid product
+ * contradicting a paid booking". It is never emitted as a variant item (asked of the model in the
+ * prompt AND enforced server-side by `stripFixedCommitmentEchoes`), never re-planned, and never
+ * deleted at apply (the Lane 5a `in_planning`-only delete already protects the row).
+ */
+export interface FixedCommitment {
+  id: string;
+  name: string;
+  dayNumber: number;
+  startTime?: string;
+  location?: string;
+  providerServiceId?: string;
 }
 
 interface OptimizedVariant {
@@ -365,6 +442,45 @@ export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescript
   ];
 }
 
+/**
+ * The slip shows the baseline plan + THREE AI variants (decision-maker 2026-08-23; see
+ * `docs/design/optimized-slip-review-mock.html`). `selectVariantStrategy` picks the two
+ * preference-driven primaries; this appends a genuinely-distinct THIRD from a standing pool —
+ * the first pool entry whose name differs from both primaries — so the three named strategies are
+ * always different regardless of which branch produced the pair. Deterministic (no randomness),
+ * and the branch matrix above is left untouched.
+ */
+const THIRD_STRATEGY_POOL: VariantDescriptor[] = [
+  {
+    name: "Balanced Refresh",
+    goal: "Keep the plan's overall shape but upgrade its weakest links",
+    strategy: "Leave the day-by-day structure and all protected items intact; replace only the lowest-rated or most over-priced stops with better-fitting alternatives; tighten transitions where the route backtracks — a lighter-touch third option beside the other two.",
+  },
+  {
+    name: "Local Character",
+    goal: "Trade generic stops for distinctive local experiences",
+    strategy: "Replace generic or tourist-heavy items with distinctive local alternatives matched to the traveler's stated styles, add one standout cultural or culinary experience per day, and favour venues locals actually frequent",
+  },
+  {
+    name: "Relaxed Pace",
+    goal: "Slow the itinerary down so each day breathes",
+    strategy: "Cap activities at three per day, group them by neighbourhood to cut transit, add afternoon rest windows, prefer later starts, and protect at least one fully unscheduled evening",
+  },
+  {
+    name: "Experience Enhancer",
+    goal: "Maximise the variety and quality of experiences across the itinerary",
+    strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+  },
+];
+
+export function selectThirdVariantStrategy(
+  a: VariantDescriptor,
+  b: VariantDescriptor,
+): VariantDescriptor {
+  const taken = new Set([a.name, b.name]);
+  return THIRD_STRATEGY_POOL.find((d) => !taken.has(d.name)) ?? THIRD_STRATEGY_POOL[0];
+}
+
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -373,6 +489,62 @@ function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   if (anchor.bufferAfter > 0) desc += `, ${anchor.bufferAfter}min buffer after`;
   if (anchor.location) desc += ` (${anchor.location})`;
   return desc;
+}
+
+/**
+ * Lane 5b: render `purchased` items into the prompt as immovable commitments — the same shape the
+ * anchor section above uses, because they play the same role (a fixed point the plan is built
+ * around). Deliberately NOT fed into `anchorConstraints`: `applyAnchorConstraints` PINS an anchor
+ * by inserting a synthetic activity into the day, and those activities are persisted as variant
+ * items — which would emit the purchased item into every variant, exactly what the ratification
+ * forbids. Prompt-side only; the emission ban is enforced separately and server-side.
+ */
+function buildFixedCommitmentSection(commitments: FixedCommitment[]): string {
+  if (commitments.length === 0) return '';
+  const lines = commitments
+    .slice()
+    .sort((a, b) => (a.dayNumber - b.dayNumber) || (a.startTime ?? '').localeCompare(b.startTime ?? ''))
+    .map(c => {
+      const when = c.startTime ? ` at ${c.startTime}` : '';
+      const where = c.location ? ` (${c.location})` : '';
+      return `- Day ${c.dayNumber}${when}: ${c.name}${where}`;
+    })
+    .join('\n');
+
+  return `\n\nALREADY BOOKED — FIXED COMMITMENTS (the traveler has PAID for these):
+${lines}
+
+These are already on the traveler's plan and are NOT yours to change. Do NOT include them in your variants, do NOT replace, remove, substitute or reschedule them, and do NOT place any activity that overlaps their time or that requires the traveler to be somewhere else at that time. Treat their location as where the traveler will be. Plan AROUND them.`;
+}
+
+/**
+ * Server-side enforcement of "never emitted as a variant item". The prompt asks the model not to
+ * echo a fixed commitment back; this makes it true regardless of what the model does. Necessary
+ * for coherence, not just tidiness: the purchased row SURVIVES apply-to-trip (Lane 5a's
+ * `in_planning`-only delete), so an echoed copy would land as a second, unpaid `in_planning`
+ * duplicate of a booking the traveler already holds.
+ *
+ * Match predicate = the apply-time dedupe predicate, deliberately: `providerServiceId` first
+ * (the catalog identity), then an exact case-insensitive title match (all an AI-authored item
+ * offers). Same rule in both places so the two can't disagree about what "the same item" means.
+ */
+function stripFixedCommitmentEchoes<T extends { name?: string | null; providerServiceId?: string | null }>(
+  items: T[],
+  commitments: FixedCommitment[],
+): { kept: T[]; stripped: number } {
+  if (commitments.length === 0) return { kept: items, stripped: 0 };
+  const committedServiceIds = new Set(
+    commitments.map(c => c.providerServiceId).filter((v): v is string => !!v),
+  );
+  const committedNames = new Set(commitments.map(c => (c.name ?? '').trim().toLowerCase()).filter(Boolean));
+
+  const kept = items.filter(item => {
+    if (item.providerServiceId && committedServiceIds.has(item.providerServiceId)) return false;
+    const name = (item.name ?? '').trim().toLowerCase();
+    if (name && committedNames.has(name)) return false;
+    return true;
+  });
+  return { kept, stripped: items.length - kept.length };
 }
 
 function buildLogisticsContext(expType: ExperienceType): string {
@@ -618,6 +790,73 @@ function weightTrendingServices(
   return [...prioritised, ...rest];
 }
 
+/**
+ * Platform-provider ranking by TRAVELER-PROFILE FIT (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md,
+ * sourcing rule step 1: "PLATFORM FIRST ... ranked by fit to the traveler profile"). Runs AFTER
+ * `weightTrendingServices` so trending stays the primary signal and profile fit refines within
+ * it — a STABLE sort (Node's Array#sort has been stable since V8 7.0) so services already tied
+ * on profile fit keep their trending-derived relative order.
+ *
+ * Read-side reordering ONLY: `availableServices` comes from `loadOptimizerCatalog`
+ * (optimizer-baseline.service.ts — active + approved + destination-scoped; before ledger
+ * 2026-08-22-optimizer-catalog-honesty this comment claimed an approved query that neither call
+ * site actually ran) — this never changes which services are eligible, never touches `price`,
+ * and never affects approval gates. Two fit signals, both
+ * derived from REAL service text/price data, never fabricated:
+ *   - dietary: a real keyword match (`matchesDietary`) against the service's own name/type/
+ *     description — never a guess when the traveler has no dietary tags set.
+ *   - budgetBand: the service's OWN price ranked into a tercile of THIS candidate list's own
+ *     price distribution (never a hardcoded dollar threshold — CLAUDE.md §8 forbids fee/rate
+ *     literals; this is a relative-rank comparison, not a rate) and compared against the
+ *     traveler's stated/derived budget band.
+ */
+function weightServicesByProfileFit(
+  services: ProviderService[],
+  effective: EffectiveTravelerProfile | null,
+): ProviderService[] {
+  if (!effective) return services;
+  const hasDietary = effective.dietary.length > 0;
+  const hasBudgetBand = !!effective.budgetBand;
+  if (!hasDietary && !hasBudgetBand) return services;
+
+  // Tercile price bands over THIS candidate list only — relative rank, not a literal threshold.
+  let tierOf: (price: number) => BudgetBandTier | null = () => null;
+  if (hasBudgetBand) {
+    const prices = services
+      .map((s) => parseFloat(s.price || "0"))
+      .filter((p) => Number.isFinite(p) && p > 0)
+      .sort((a, b) => a - b);
+    if (prices.length >= 3) {
+      const lowCut = prices[Math.floor(prices.length / 3)];
+      const highCut = prices[Math.floor((2 * prices.length) / 3)];
+      tierOf = (price: number): BudgetBandTier | null => {
+        if (!Number.isFinite(price) || price <= 0) return null;
+        if (price <= lowCut) return "budget";
+        if (price <= highCut) return "moderate";
+        return "luxury";
+      };
+    }
+  }
+
+  const scored = services.map((svc, idx) => {
+    let score = 0;
+    if (hasDietary) {
+      const text = `${svc.serviceName || ""} ${svc.serviceType || ""} ${svc.shortDescription || ""}`;
+      if (matchesDietary(text, effective.dietary)) score += 2;
+    }
+    if (hasBudgetBand) {
+      const tier = tierOf(parseFloat(svc.price || "0"));
+      if (tier && tier === effective.budgetBand) score += 1;
+    }
+    return { svc, score, idx };
+  });
+
+  // Stable: ties keep their original (trending-weighted) relative order.
+  scored.sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
+  return scored.map((s) => s.svc);
+}
+type BudgetBandTier = "budget" | "moderate" | "luxury";
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -630,7 +869,18 @@ export async function generateOptimizedItineraries(
   travelers?: number,
   tripId?: string,
   userTransportPrefs?: Partial<UserTransportPrefs>,
-  tripPreferences?: TripPreferences
+  tripPreferences?: TripPreferences,
+  /** Lane 5b: the trip's `purchased` items. Constraints only — see `FixedCommitment`.
+   *  Passed in by the caller (which has already authorized the trip) rather than read here from
+   *  `tripId`, because the create route deliberately does NOT pass `tripId` today and activating
+   *  its anchor/day-boundary reads as a side effect of this lane would be an unrelated behaviour
+   *  change. Empty array / omitted ⇒ every code path below is a no-op. */
+  fixedCommitments: FixedCommitment[] = [],
+  /** Phase 1c: the traveler's explicit "build around THIS" choice, already resolved + scored by the
+   *  route against real coordinates. When present, ALL THREE versions are built around it (they
+   *  still differ by strategy); when omitted, anchors are auto-picked (one hotel / neighborhood /
+   *  activity). Undefined ⇒ unchanged auto behaviour. */
+  pinnedAnchor?: AnchorScore
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -683,12 +933,90 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
     const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
 
+    // ── "Build around a location" anchors (ledger 2026-08-23-optimizer-anchors) ─────────
+    // Each of the three versions is built around a real anchor — a hotel, a neighborhood, or the
+    // trip's own centrepiece activity — scored by straight-line fit to the trip's LOCATED stops
+    // (server/services/anchor-scoring.ts). Fail-open: a lookup miss degrades to "no anchor label"
+    // (chosenAnchors stays empty and every anchor prompt line / persisted column below is omitted),
+    // never a failed optimization. §13 — an anchor is only ever a real scored candidate or absent,
+    // never fabricated; a thin catalog simply yields fewer than three anchored versions.
+    let chosenAnchors: AnchorScore[] = [];
+    if (pinnedAnchor) {
+      // 1c: the traveler explicitly chose a location to build around — every version builds around
+      // it (they still differ by strategy). Already resolved + scored by the route against real
+      // coordinates, so it is used as-is; the route dropped it if it couldn't resolve (§13).
+      chosenAnchors = [pinnedAnchor, pinnedAnchor, pinnedAnchor];
+    } else {
+      try {
+        const anchorStops = baselineItems.map((it) => {
+          const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
+          const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
+          return {
+            id: String(it.id),
+            name: (it as any).title ?? (it as any).name ?? "Stop",
+            lat: Number.isFinite(lat) ? lat : null,
+            lng: Number.isFinite(lng) ? lng : null,
+          };
+        });
+        const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
+        chosenAnchors = pickAutoAnchors(ranked, 3);
+      } catch (err) {
+        console.warn("[Optimizer] anchor scoring failed (non-critical):", (err as Error).message);
+      }
+    }
+    // A per-version prompt line — omitted (empty string) when there is no anchor for that slot, so
+    // the AI is only ever told about a real, scored location and never invents one.
+    const anchorLine = (i: number): string => {
+      const a = chosenAnchors[i];
+      if (!a) return "";
+      const kind = a.type === "hotel" ? "hotel" : a.type === "neighborhood" ? "neighborhood" : "central activity";
+      const fit = a.medianMeters != null
+        ? ` (typical straight-line distance to the trip's located stops ≈ ${(a.medianMeters / 1000).toFixed(1)} km; estimate, not routed)`
+        : "";
+      return `\nBUILD THIS VERSION AROUND a ${kind}: "${a.name}"${fit}. Cluster each day so travel radiates from this anchor; keep the trip's fixed commitments intact.`;
+    };
+
+    // ── Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) ─────────────────
+    // Profile-aware platform selection: (1) a prompt section like cityIntelligenceSection above,
+    // conditional on real signal existing (§13 — never a fabricated placeholder); (2) merged into
+    // the transport-leg scoring knobs below (mode/comfort choice only — never price, §8/§18);
+    // (3) used to re-rank the AVAILABLE SERVICES list the AI sees. Non-blocking: a lookup failure
+    // degrades to "no profile signal", never a failed optimization.
+    let travelerProfile: TravelerProfile | null = null;
+    try {
+      travelerProfile = await getTravelerProfile(userId);
+    } catch (err) {
+      console.warn("[Optimizer] Traveler profile fetch failed (non-critical):", (err as Error).message);
+    }
+    const travelerProfileSection = travelerProfile ? buildTravelerProfilePromptSection(travelerProfile) : "";
+    const profileTransportPrefs = travelerProfile ? effectiveProfileToTransportPrefs(travelerProfile.effective) : {};
+    // An explicit prefs object passed in by the caller (none does today — see the service
+    // header's note) still wins over the profile-derived defaults, same "explicit beats derived"
+    // posture the profile's own merge rule uses one layer up.
+    const effectiveTransportPrefs: Partial<UserTransportPrefs> = { ...profileTransportPrefs, ...(userTransportPrefs || {}) };
+
+    // Sprint-1 dislike loop, extended (WP-A): the chips a traveler just submitted on this
+    // regenerate are REAL feedback — record them into the durable profile so a repeated pattern
+    // (e.g. "too_packed" across multiple re-runs) becomes a derived pace signal for next time.
+    // Fire-and-forget; never blocks or fails the optimization itself.
+    if (tripPreferences?.feedback && tripPreferences.feedback.length > 0) {
+      recordDislikeFeedback(userId, tripPreferences.feedback).catch((err) => {
+        console.warn("[Optimizer] recordDislikeFeedback failed (non-critical):", (err as Error).message);
+      });
+    }
+
     // ── Adaptive variant strategy (style-matched) ─────────────────────────────
     const [variantA, variantB] = selectVariantStrategy(tripPreferences);
+    const variantC = selectThirdVariantStrategy(variantA, variantB);
 
+    // Stamp updatedAt on every transition INTO "generating" (not just create-time insert) so the
+    // stale-generating sweep (server/services/itinerary-generation-sweep-scheduler.service.ts)
+    // measures staleness from when THIS attempt actually started, not from a re-run's original,
+    // possibly days-old, createdAt/updatedAt. Without this, a regenerate call on an old comparison
+    // row would look instantly "stale" to the sweep the moment it starts.
     await db
       .update(itineraryComparisons)
-      .set({ status: "generating" })
+      .set({ status: "generating", updatedAt: new Date() } as any)
       .where(eq(itineraryComparisons.id, comparisonId));
 
     const baselineVariant = await db
@@ -725,6 +1053,9 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       await db.insert(itineraryVariantItems).values(
         baselineItems.map((item, i) => ({
           variantId: baselineVariant[0].id,
+          // Lane 5a Defect 3: carry the catalog link when the caller supplied one (cart-sourced
+          // baselines have it; inline/external ones do not → NULL, never a guess).
+          providerServiceId: item.providerServiceId ?? null,
           dayNumber: item.dayNumber || 1,
           timeSlot: item.timeSlot || "morning",
           name: item.name,
@@ -733,6 +1064,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           price: item.price?.toString(),
           rating: item.rating?.toString(),
           location: item.location,
+          // Real coordinates from the loader (item pin or linked catalog row) — the field the
+          // transport-leg gate reads; NULL for an unlocated item, never a guess (§13).
+          latitude: item.latitude != null ? item.latitude.toString() : null,
+          longitude: item.longitude != null ? item.longitude.toString() : null,
           duration: item.duration,
           sortOrder: i,
         }))
@@ -850,20 +1185,23 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           name: item.name || `Stop ${idx + 1}`,
           lat: parseFloat(item.latitude as unknown as string),
           lng: parseFloat(item.longitude as unknown as string),
-          scheduledTime: item.startTime || "09:00",
+          scheduledTime: item.startTime || "",
+          durationMinutes: item.duration,
           dayNumber: item.dayNumber,
           order: item.sortOrder ?? idx,
         }));
 
       if (baselineActivitiesWithCoords.length > 0) {
-        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, userTransportPrefs || {});
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs);
       }
     } catch (legErr) {
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
     }
 
-    // Weight trending services to appear first in the top-20 the AI sees
-    const weightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+    // Weight trending services to appear first in the top-20 the AI sees, then refine by
+    // traveler-profile fit (WP-A sourcing rule step 1: PLATFORM FIRST, ranked by profile fit).
+    const trendWeightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+    const weightedServices = weightServicesByProfileFit(trendWeightedServices, travelerProfile?.effective ?? null);
 
     const servicesList = weightedServices.map((s) => ({
       id: s.id,
@@ -880,7 +1218,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     ).join('\n');
 
     const compactBaseline = baselineItems.map(item =>
-      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
+      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration != null ? `${item.duration}min` : "duration needed"}, ${item.location || 'TBD'})`
     ).join('\n');
 
     // ── Marquee / signature item detection ────────────────────────────────────
@@ -908,13 +1246,27 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       return isKeyword || isHighValueExperience;
     });
 
+    // Drop policy a (Lane 6 residue): in-checkout (`ready_for_checkout`) items are protected
+    // regardless of price or commodity-ness — the traveler has expressed purchase intent. They
+    // join the PROTECTED prompt section (schedule-movable, never droppable); the server-side
+    // rejection below the AI call is the enforcement, this is just steering to keep false
+    // rejections rare.
+    const mustRetainItems = baselineItems.filter(item => item.mustRetain);
+    const protectedPromptItems = [
+      ...marqueeItems,
+      ...mustRetainItems.filter(item => !marqueeItems.includes(item)),
+    ];
+
     let marqueeSection = '';
-    if (marqueeItems.length > 0) {
-      const marqueeList = marqueeItems
+    if (protectedPromptItems.length > 0) {
+      const marqueeList = protectedPromptItems
         .map(item => `- Day ${item.dayNumber || 1} ${item.timeSlot || ''} | ${item.name} | $${item.price || 0}`)
         .join('\n');
-      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
+      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these; you MAY move their day/time):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
     }
+
+    // ── Lane 5b: already-purchased items as immovable constraints ─────────────
+    const fixedCommitmentSection = buildFixedCommitmentSection(fixedCommitments);
 
     // ── Empty day detection ───────────────────────────────────────────────────
     let emptyDaySection = '';
@@ -924,7 +1276,13 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
         const tripDurationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
         if (tripDurationDays > 1) {
-          const coveredDays = new Set(baselineItems.map(item => item.dayNumber || 1));
+          // Lane 5b: a day whose only content is an already-PURCHASED item is not empty. Listing
+          // it as "EMPTY DAY TO FILL" would contradict the fixed-commitment section in the same
+          // prompt and invite the model to schedule over a booking.
+          const coveredDays = new Set([
+            ...baselineItems.map(item => item.dayNumber || 1),
+            ...fixedCommitments.map(c => c.dayNumber),
+          ]);
           const emptyDays: number[] = [];
           for (let d = 1; d <= tripDurationDays; d++) {
             if (!coveredDays.has(d)) emptyDays.push(d);
@@ -941,9 +1299,9 @@ For each empty day, add activities that match the user's experience style (infer
       }
     }
 
-    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
+    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
@@ -951,20 +1309,25 @@ ${compactBaseline}
 AVAILABLE SERVICES (id|name|type|price|rating|location):
 ${compactServicesList}
 
-Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
+Generate EXACTLY 3 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
 
 VARIANT 1 — "${variantA.name}":
 - Goal: ${variantA.goal}
 - Strategy: ${variantA.strategy}
-- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
+- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS${anchorLine(0)}
 
 VARIANT 2 — "${variantB.name}":
 - Goal: ${variantB.goal}
 - Strategy: ${variantB.strategy}
-- Keep: the same trip duration and any PROTECTED ITEMS
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(1)}
 
-Rules for both variants:
-1. The two variants must differ from each other in at least 40% of their line items
+VARIANT 3 — "${variantC.name}":
+- Goal: ${variantC.goal}
+- Strategy: ${variantC.strategy}
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(2)}
+
+Rules for all three variants:
+1. The three variants must each differ from one another in at least 40% of their line items
 2. Include metrics showing WHY each variant is better than the user's plan
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
@@ -991,7 +1354,7 @@ Respond with valid JSON in this exact format:
           "rating": 4.5,
           "location": "Paris, France",
           "duration": 180,
-          "travelTimeFromPrevious": 15,
+          "travelTimeFromPrevious": null,
           "isReplacement": true,
           "replacementReason": "Similar experience at 30% lower cost",
           "originalServiceId": "service-id-if-applicable"
@@ -1006,7 +1369,9 @@ Respond with valid JSON in this exact format:
       }
     }
   ]
-}`;
+}
+
+The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, in this order: "${variantA.name}", "${variantB.name}", "${variantC.name}".`;
 
     const content = await callAI(
       "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
@@ -1025,9 +1390,51 @@ Respond with valid JSON in this exact format:
       throw new Error("Failed to parse AI response");
     }
 
+    // Ratified contract (decision-maker 2026-08-23; docs/design/optimized-slip-review-mock.html —
+    // "Three ways to sharpen your plan", columns v1/v2/v3, "the other two are discarded"): the slip
+    // shows the baseline plan plus EXACTLY THREE AI variants. The prompt asks for three (mapped to
+    // the named strategy descriptors variantA/variantB/variantC), but a model can over-produce — an
+    // audit observed Grok returning 8, and the persist loop below saved every one, so extra,
+    // undifferentiated variants reached travelers. Cap to the first three here: they correspond to
+    // the three requested strategies, in order. The floor case (<3 returned) and the ≥40%
+    // line-item distinctness enforcement are tracked separately (Task #1621).
+    if (Array.isArray(aiResponse.variants) && aiResponse.variants.length > 3) {
+      console.warn(
+        `[optimizer] model returned ${aiResponse.variants.length} variants; capping to 3 per ratified contract`,
+      );
+      aiResponse.variants = aiResponse.variants.slice(0, 3);
+    }
+
+    // Lane 5a Defect 3: the AI is asked for `originalServiceId` but the value was discarded, so
+    // every AI variant item landed with a NULL `providerServiceId` — which is why apply-to-cart
+    // always inserted 0 rows and apply-to-trip always copied NULL. We now thread it through, but
+    // an LLM can invent an id, so it is only honoured when it matches a service we actually put in
+    // front of it. Anything else (invented, empty, or an item the AI created itself) stays NULL.
+    const offeredServiceIds = new Set(availableServices.map((s) => String(s.id)));
+    const resolveOriginalServiceId = (raw: unknown): string | undefined => {
+      if (typeof raw !== "string") return undefined;
+      const id = raw.trim();
+      return id && offeredServiceIds.has(id) ? id : undefined;
+    };
+    // Real coordinates for catalog-linked variant items (ledger
+    // 2026-08-22-optimizer-catalog-honesty): a validated `providerServiceId` copies the catalog
+    // row's own migration-129 coordinates onto the variant item, which is what lets
+    // `calculateTransportLegs` actually run. An AI-invented item with no catalog row stays
+    // NULL/NULL — its location is a string the model wrote, and we never geocode a guess (§13).
+    const serviceCoordsById = new Map(
+      availableServices.map((s) => [
+        String(s.id),
+        { latitude: s.latitude ?? null, longitude: s.longitude ?? null },
+      ]),
+    );
+    const coordsForService = (serviceId: string | null | undefined) =>
+      (serviceId && serviceCoordsById.get(serviceId)) || { latitude: null, longitude: null };
+    const geocodeBudget = createOptimizerGeocodeBudget(12);
+
     await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
       const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
+        providerServiceId: resolveOriginalServiceId(item.originalServiceId),
         name: item.name,
         serviceType: item.serviceType,
         startTime: item.startTime,
@@ -1039,13 +1446,38 @@ Respond with valid JSON in this exact format:
         dayNumber: item.dayNumber,
         timeSlot: item.timeSlot,
         description: item.description,
-        travelTimeFromPrevious: item.travelTimeFromPrevious,
+        // Google Routes overwrites this after persistence. Model-supplied travel times are never
+        // treated as schedule facts.
+        travelTimeFromPrevious: undefined,
         isReplacement: item.isReplacement,
         replacementReason: item.replacementReason
       }));
 
+      // Lane 5b: a `purchased` item is NEVER a variant item. The prompt says so; this makes it
+      // true. Applied BEFORE sequencing/metrics so an echoed commitment can neither occupy a slot
+      // nor double-count its price into the variant's totals.
+      const { kept: activitiesAfterCommitmentStrip, stripped: strippedEchoes } =
+        stripFixedCommitmentEchoes(activitiesForSequencing, fixedCommitments);
+      if (strippedEchoes > 0) {
+        console.warn(
+          `[optimizer] variant "${variant.name}": dropped ${strippedEchoes} item(s) echoing an already-purchased commitment`,
+        );
+      }
+
+      // Lane C1 — whole-plan completeness. The model is allowed to move or replace every
+      // optimizable item, but it is not allowed to make one disappear. Reconcile against the
+      // canonical trip baseline after purchased echoes are stripped and before sequencing, so
+      // omitted baseline items are carried through unchanged and participate in ordering/metrics.
+      const { items: completeActivities, carriedThrough } =
+        reconcileVariantWithBaseline(activitiesAfterCommitmentStrip, baselineItems);
+      if (carriedThrough > 0) {
+        console.warn(
+          `[optimizer] variant "${variant.name}": carried through ${carriedThrough} omitted baseline item(s) unchanged`,
+        );
+      }
+
       // Apply smart sequencing to reorder activities
-      const sequencingResult = reorderItinerary(activitiesForSequencing);
+      const sequencingResult = reorderItinerary(completeActivities);
       let reorderedItems = sequencingResult.reorderedItems;
       const methodologyNotes = [...sequencingResult.allMethodologyNotes];
       const sequencingScore = sequencingResult.overallScore;
@@ -1078,6 +1510,39 @@ Respond with valid JSON in this exact format:
           anchorAdjusted.push(...adjusted);
         }
         reorderedItems = anchorAdjusted;
+      }
+
+      // Resolve honest coordinates before persistence and transport-leg calculation. Catalog and
+      // canonical baseline coordinates win. Only a validated catalog-linked activity may use the
+      // bounded, cached Google fallback; an unlinked AI invention remains NULL/NULL and never
+      // becomes a guessed city-centre pin (§13/§22c).
+      await resolveOptimizerActivityCoordinates(
+        reorderedItems,
+        baselineItems,
+        serviceCoordsById,
+        destination,
+        geocodeBudget,
+      );
+
+      // Lane 6 residue R1 (drop policy a, rulings 4/15): a variant that omits any in-checkout
+      // (`ready_for_checkout`) baseline item is INVALID — rejected here, before any row is
+      // persisted. Match is the same two-key predicate the strip/dedupe use (`providerServiceId`
+      // first, then case-insensitive title). FAIL-CLOSED: no match ⇒ rejection — the fuzzy
+      // match's failure mode must be a false rejection (regenerate), never a false acceptance.
+      if (mustRetainItems.length > 0) {
+        const omitted = mustRetainItems.filter(retained => {
+          const retainedName = retained.name.trim().toLowerCase();
+          return !reorderedItems.some(item =>
+            (retained.providerServiceId && item.providerServiceId === retained.providerServiceId) ||
+            item.name.trim().toLowerCase() === retainedName,
+          );
+        });
+        if (omitted.length > 0) {
+          console.error(
+            `[optimizer] variant "${variant.name}" REJECTED (drop policy a): omits ${omitted.length} in-checkout item(s): ${omitted.map(o => o.name).join(", ")}`,
+          );
+          return; // not persisted — an invalid variant cannot be generated, selected, or applied
+        }
       }
 
       // Calculate enhanced metrics
@@ -1118,6 +1583,14 @@ Respond with valid JSON in this exact format:
           optimizationScore: combinedOptimizationScore,
           aiReasoning: enhancedReasoning,
           sortOrder: v + 1,
+          // "Build around a location" — the anchor this version was built around, by slot (§13:
+          // absent when there was no scorable anchor for this slot, never a fabricated one).
+          anchorType: chosenAnchors[v]?.type ?? null,
+          anchorName: chosenAnchors[v]?.name ?? null,
+          anchorLat: chosenAnchors[v]?.lat != null ? chosenAnchors[v].lat.toString() : null,
+          anchorLng: chosenAnchors[v]?.lng != null ? chosenAnchors[v].lng.toString() : null,
+          anchorMedianMeters:
+            chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
         })
         .returning();
 
@@ -1128,8 +1601,19 @@ Respond with valid JSON in this exact format:
             const activityNotes = methodologyNotes.filter(
               n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
             );
+            const catalogCoords = coordsForService(item.providerServiceId);
             return {
               variantId: newVariant.id,
+              // Lane 5a Defect 3: the catalog link, validated above against the services actually
+              // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
+              providerServiceId: item.providerServiceId ?? null,
+              // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
+              latitude: item.latitude != null
+                ? item.latitude.toString()
+                : catalogCoords.latitude,
+              longitude: item.longitude != null
+                ? item.longitude.toString()
+                : catalogCoords.longitude,
               dayNumber: item.dayNumber,
               timeSlot: item.timeSlot,
               startTime: item.startTime,
@@ -1141,7 +1625,7 @@ Respond with valid JSON in this exact format:
               rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
               location: item.location,
               duration: item.duration,
-              travelTimeFromPrevious: item.travelTimeFromPrevious,
+              travelTimeFromPrevious: null,
               isReplacement: item.isReplacement,
               replacementReason: item.replacementReason,
               metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
@@ -1337,22 +1821,35 @@ Respond with valid JSON in this exact format:
             name: item.name || `Stop ${idx + 1}`,
             lat: parseFloat(item.latitude as unknown as string),
             lng: parseFloat(item.longitude as unknown as string),
-            scheduledTime: item.startTime || "09:00",
+            scheduledTime: item.startTime || "",
+            durationMinutes: item.duration,
             dayNumber: item.dayNumber,
             order: item.sortOrder ?? idx,
           }));
 
         if (activitiesWithCoords.length > 0) {
-          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, userTransportPrefs || {});
+          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs);
         }
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
       }
     }));
 
+    // ── Trip segmentation recommendation (WP-C follow-up, docs/briefs/TRIP_SEGMENTATION_DESIGN.md
+    // §5b Phase 1) — RECOMMENDATION-ONLY. Computed from this run's own server-resolved
+    // `baselineItems`/`startDate`/`endDate`/`travelers`, never from client input (§14 posture).
+    // `computeSegmentationProposal` never throws — a segmentation failure must never fail a paid
+    // optimize run (§15b posture); `null` just means no recommendation is persisted for this run.
+    const segmentationProposal = computeSegmentationProposal(baselineItems, startDate, endDate, travelers);
+
     await db
       .update(itineraryComparisons)
-      .set({ status: "generated", optimizedAt: new Date(), updatedAt: new Date() } as any)
+      .set({
+        status: "generated",
+        optimizedAt: new Date(),
+        updatedAt: new Date(),
+        segmentationProposal: segmentationProposal as any,
+      } as any)
       .where(eq(itineraryComparisons.id, comparisonId));
 
     return { success: true };
@@ -1473,6 +1970,9 @@ async function generateUpsellSuggestions(
       .where(
         and(
           eq(providerServices.status, "active"),
+          // F2 read-side gate (ledger 2026-08-22-optimizer-catalog-honesty): upsells are a
+          // traveler-facing surface, so only approved listings may appear here.
+          eq(providerServices.approvalStatus, "approved"),
           or(
             ilike(providerServices.location, `%${cityName}%`),
             ilike(providerServices.location, `%${destination}%`)

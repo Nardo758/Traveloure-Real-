@@ -1,5 +1,6 @@
 import { test, expect, authFile } from "../fixtures/roles";
 import { loginAsTestAccount } from "./helpers/auth";
+import { requireBaseUrl } from "../fixtures/base-url";
 
 test.describe("Journey 7 — Event Coordination (Wedding)", () => {
   // All tests in this describe block run as the seeded traveler account.
@@ -8,7 +9,7 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
   test.use({ storageState: authFile("traveler") });
 
   test("Concierge → Quote → Expert → Event Coordination surface", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Already authenticated via storageState — navigate directly ─
 
@@ -93,7 +94,7 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
   });
 
   test("Coordination fee endpoint returns correct fee with credit", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // storageState (set at the describe level) puts the traveler session cookie
     // into page's browser context. page.request inherits that context, so every
@@ -123,7 +124,7 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
   });
 
   test("Event timeline endpoint returns wedding timeline", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // Create a trip with wedding type and a temporal anchor
     // ... (setup)

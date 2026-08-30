@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Link } from "wouter";
 import { Plus, Loader2, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,8 +15,12 @@ import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
-import { CreditsPanel } from "@/components/dashboard/CreditsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
+import { PlanSlipStrip } from "@/components/dashboard/PlanSlipStrip";
+import { WhileYouWereAway } from "@/components/dashboard/WhileYouWereAway";
+import { TodaysMove } from "@/components/dashboard/TodaysMove";
+import { IntakePanel } from "@/components/intake-panel";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
 
 interface Notification {
   id: string | number;
@@ -24,6 +29,10 @@ interface Notification {
   type?: string;
   createdAt?: string;
   tripId?: string | null;
+  // Server field (shared/schema.ts `is_read` → `isRead`). `read` does not exist on the
+  // API response — normalized to it below, mirroring notifications.tsx:109's
+  // `read: n.isRead ?? false`, so "actions needed" and mark-as-read agree everywhere.
+  isRead?: boolean;
   read?: boolean;
 }
 
@@ -32,6 +41,29 @@ interface Conversation {
   title: string;
   userId?: string | null;
   createdAt: string;
+}
+
+// FIX 3 (W1c polish): dashboard selected-trip persistence. Keyed per-user so a shared/kiosk
+// browser doesn't leak one account's selection into another's session. Read/write are
+// best-effort — a storage failure (private mode, quota) must never break the dashboard.
+function dashboardTripStorageKey(userId: string): string {
+  return `dashboard-selected-trip-${userId}`;
+}
+
+function readStoredTripId(userId: string): string | null {
+  try {
+    return localStorage.getItem(dashboardTripStorageKey(userId));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTripId(userId: string, tripId: string): void {
+  try {
+    localStorage.setItem(dashboardTripStorageKey(userId), tripId);
+  } catch {
+    // best-effort — never block the UI on a storage failure
+  }
 }
 
 const CTA_CARDS = [
@@ -43,13 +75,6 @@ const CTA_CARDS = [
     testId: "cta-new-experience",
   },
   {
-    icon: "◆",
-    label: "Credits",
-    sub: "", // Will be dynamically set
-    href: "/credits",
-    testId: "cta-credits",
-  },
-  {
     icon: "🔍",
     label: "Find experts",
     sub: "In your destinations",
@@ -59,6 +84,7 @@ const CTA_CARDS = [
 ];
 
 export default function Dashboard() {
+  const { open: openPlanning } = usePlanning();
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
   const { data: notificationsData, isLoading: notifLoading } = useQuery<Notification[]>({
@@ -67,11 +93,13 @@ export default function Dashboard() {
   const { data: conversations, isLoading: convsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
   });
-  const { data: creditsData } = useQuery<{ balance: number }>({
-    queryKey: ["/api/credits/balance"],
-    retry: false,
-  });
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  // R-A/R-C: the "New experience" CTA keeps its exact look but opens the intake panel
+  // instead of navigating to /experiences (CONSOLE_REALIGN_BRIEF.md).
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  // Only attempt the localStorage restore once per mount — subsequent trips-list refetches
+  // (e.g. after a mutation) must not fight a since-made explicit selection.
+  const hasAttemptedRestore = useRef(false);
 
   const now = new Date();
   const allPlans = trips ?? [];
@@ -83,6 +111,35 @@ export default function Dashboard() {
   )[0]?.id ?? null;
   const effectiveTripId = selectedTripId ?? soonestTripId;
   const selectedTrip = activePlans.find(t => t.id === effectiveTripId) ?? null;
+
+  // FIX 3: restore the last-selected trip on reload, but only once the trips list has
+  // actually loaded AND the stored id is still present in it — otherwise fall back to the
+  // existing soonest-upcoming-trip default (effectiveTripId above already does that when
+  // selectedTripId stays null).
+  useEffect(() => {
+    if (hasAttemptedRestore.current) return;
+    if (isLoading || !user?.id) return;
+    hasAttemptedRestore.current = true;
+    const storedTripId = readStoredTripId(user.id);
+    if (storedTripId && activePlans.some(t => t.id === storedTripId)) {
+      setSelectedTripId(storedTripId);
+    }
+    // activePlans is derived from `trips` each render; keying off `trips`/`isLoading`/`user?.id`
+    // avoids re-running on every render while still waiting for the real fetched list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, user?.id, trips]);
+
+  // #972: the trip chip below previously only flipped this page's own local
+  // `selectedTripId` state — it never told the site-wide TripContext which
+  // trip is now active, so /cart (and anywhere else reading TripContext) kept
+  // acting on whichever trip was bound before the click. Selecting a chip
+  // must atomically re-key TripContext to the clicked trip's OWN data (see
+  // syncActiveTripToContext) in the SAME handler that updates local state.
+  const selectTrip = (trip: (typeof activePlans)[number]) => {
+    setSelectedTripId(trip.id);
+    if (user?.id) writeStoredTripId(user.id, trip.id);
+    syncActiveTripToContext(trip);
+  };
 
   if (isLoading) {
     return (
@@ -99,15 +156,29 @@ export default function Dashboard() {
       <DashboardLayout>
         <div className="py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
   }
 
-  const notifications = notificationsData ?? [];
+  // Normalize the server's `isRead` → `read`, the same one-liner notifications.tsx:109
+  // already uses — without it, `n.read` is undefined for every row (field-name
+  // mismatch) and every notification counts as unread forever, even after being
+  // marked read via the bell popover or the /notifications page.
+  const notifications = (notificationsData ?? []).map(n => ({ ...n, read: n.isRead ?? false }));
+  // R-I(2): "urgent"/"action" are notification `type`s no server code ever writes (grepped
+  // every createNotification/insertNotification/db.insert(notifications) call site), so this
+  // count was structurally always 0. The real, actually-written types that call a traveler to
+  // act are booking_request, expert_suggestion, itinerary_update, and booking_confirmed.
+  const ACTIONABLE_NOTIFICATION_TYPES = new Set([
+    "booking_request",
+    "expert_suggestion",
+    "itinerary_update",
+    "booking_confirmed",
+  ]);
   const actionsNeeded = notifications.filter(
-    n => !n.read && (n.type === "urgent" || n.type === "action")
+    n => !n.read && n.type && ACTIONABLE_NOTIFICATION_TYPES.has(n.type)
   ).length;
 
   const greetingSub =
@@ -149,38 +220,68 @@ export default function Dashboard() {
         <div className="flex gap-5">
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
+            {/* R-H: Today's move (single highest-urgency real item on the active trip) +
+                While you were away (real-data digest since the last visit). Additive —
+                the CTA row / saved trips / active plans layout below is unchanged (R-A). */}
+            <TodaysMove
+              tripId={selectedTrip?.id ?? null}
+              destination={selectedTrip?.destination}
+              startDate={selectedTrip?.startDate}
+              endDate={selectedTrip?.endDate}
+            />
+            <WhileYouWereAway
+              userId={user?.id}
+              notifications={notifications}
+              activePlans={activePlans}
+              selectedTrip={selectedTrip}
+            />
+
             {/* CTA Row */}
             <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
-                const sub =
-                  card.testId === "cta-credits"
-                    ? `${creditsData?.balance ?? 0} credits remaining`
-                    : card.sub;
+                const sub = card.sub;
+                const cardBody = (
+                  <div
+                    className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
+                    style={{ background: "#F3F3EE" }}
+                    data-testid={card.testId}
+                  >
+                    <div className="text-[18px] mb-1">{card.icon}</div>
+                    <div
+                      className="text-[13px] font-medium"
+                      style={{ color: "#1A1A18" }}
+                    >
+                      {card.label}
+                    </div>
+                    <div
+                      className="text-[11px] mt-0.5"
+                      style={{ color: "#7A7A72" }}
+                    >
+                      {sub}
+                    </div>
+                  </div>
+                );
+                // R-C: "New experience" keeps its look but opens the intake panel instead
+                // of navigating to /experiences.
+                if (card.href === "/experiences") {
+                  return (
+                    <button
+                      key={card.testId}
+                      type="button"
+                      className="flex-1 text-left"
+                      onClick={() => setIntakeOpen(true)}
+                    >
+                      {cardBody}
+                    </button>
+                  );
+                }
                 return (
                   <Link
                     key={card.testId}
                     href={card.href}
                     className="flex-1"
                   >
-                    <div
-                      className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
-                      style={{ background: "#F3F3EE" }}
-                      data-testid={card.testId}
-                    >
-                      <div className="text-[18px] mb-1">{card.icon}</div>
-                      <div
-                        className="text-[13px] font-medium"
-                        style={{ color: "#1A1A18" }}
-                      >
-                        {card.label}
-                      </div>
-                      <div
-                        className="text-[11px] mt-0.5"
-                        style={{ color: "#7A7A72" }}
-                      >
-                        {sub}
-                      </div>
-                    </div>
+                    {cardBody}
                   </Link>
                 );
               })}
@@ -240,7 +341,7 @@ export default function Dashboard() {
                       return (
                         <button
                           key={trip.id}
-                          onClick={() => setSelectedTripId(trip.id)}
+                          onClick={() => selectTrip(trip)}
                           data-testid={`trip-chip-${trip.id}`}
                           className={`flex-shrink-0 text-left rounded-xl px-3 py-2.5 border transition-all ${
                             isSelected
@@ -285,14 +386,18 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Single full PlanCard for the selected/soonest trip */}
+                {/* Single full PlanCard for the selected/soonest trip, capped by the R-A
+                    compact slip strip (tracking ref + routing-status counts + "Open slip"). */}
                 {selectedTrip && (
-                  <PlanCard
-                    trip={selectedTrip as any}
-                    index={0}
-                    role="owner"
-                    stage="full"
-                  />
+                  <>
+                    <PlanSlipStrip tripId={selectedTrip.id} />
+                    <PlanCard
+                      trip={selectedTrip as any}
+                      index={0}
+                      role="owner"
+                      stage="full"
+                    />
+                  </>
                 )}
               </div>
             ) : (
@@ -319,16 +424,15 @@ export default function Dashboard() {
                   <p className="mb-4" style={{ color: "#7A7A72" }}>
                     Start planning your next adventure!
                   </p>
-                  <Link href="/experiences">
-                    <Button
-                      className="text-white"
-                      style={{ background: "#E85D55" }}
-                      data-testid="button-first-plan"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Plan
-                    </Button>
-                  </Link>
+                  <Button
+                    className="text-white"
+                    style={{ background: "#E85D55" }}
+                    onClick={() => openPlanning()}
+                    data-testid="button-first-plan"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Plan
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -346,11 +450,12 @@ export default function Dashboard() {
                 trips={activePlans}
               />
               <TopExpertsPanel destinations={destinations} />
-              <CreditsPanel />
             </div>
           </div>
         </div>
       </div>
+
+      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
   );
 }

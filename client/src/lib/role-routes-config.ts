@@ -25,37 +25,111 @@ export interface RoleRouteConfig {
 // ── Expert routes (requiredRole="expert") ───────────────────────────────────
 
 export const expertRoutesConfig: RoleRouteConfig[] = [
-  { href: '/expert/dashboard',          description: 'Expert home dashboard' },
-  { href: '/expert/clients',            description: 'Client list' },
-  { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
-  { href: '/expert/bookings',           description: 'Booking requests' },
-  { href: '/expert/services',           description: 'Published services' },
-  { href: '/expert/earnings',           description: 'Earnings & payout history' },
-  { href: '/expert/analytics',          description: 'Performance analytics' },
+  // /expert/dashboard is kept deliberately: it redirects to /expert/today (B5 retirement),
+  // so the gate exercises the redirect AND the Today page it lands on.
+  { href: '/expert/dashboard',          description: 'Retired dashboard -> redirects to Today' },
+  { href: '/expert/today',              description: 'Today ops home (B5)' },
+  { href: '/expert/calendar',           description: 'Channel Calendar — 9th module (C3)' },
+  { href: '/expert/inbox',              description: 'Inbox — one actionable queue (B2)' },
+  { href: '/expert/catalog',            description: 'Catalog — offerings + availability slots (B3)' },
+  // /expert/ready-made is kept deliberately (B5 dashboard pattern): it redirects to
+  // /expert/catalog (C1 Store Listings retirement), so the gate exercises the redirect
+  // AND the Catalog page it lands on.
+  { href: '/expert/ready-made',         description: 'Retired Store Listings -> redirects to Catalog (C1)' },
+  { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
+  { href: '/expert/customers',          description: 'Customers — honest self-scoped aggregation (C4)' },
+  // /expert/clients is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/customers (C5) — the by-client view's home — so the gate exercises the
+  // redirect AND the Customers page it lands on.
+  { href: '/expert/clients',            description: 'Retired client list -> redirects to Customers (C5)' },
+  // /expert/assigned-trips redirects to /expert/inbox?tab=assignments (C5 Assigned Trips
+  // retirement) — the list + accept action live on Inbox's Assigned Trips tab; the Suggest
+  // flow moved to the Workstation Distribute→Client card; by-client lives on Customers.
+  { href: '/expert/assigned-trips',     description: 'Retired Assigned Trips -> redirects to Inbox assignments tab (C5)' },
+  // /expert/bookings redirects to /expert/inbox?tab=history (C5 Bookings retirement) —
+  // history/stats, visa-status management, and the trip-plan snapshot live on Inbox History.
+  { href: '/expert/bookings',           description: 'Retired Bookings -> redirects to Inbox history tab (C5)' },
+  // /expert/services is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/catalog (C2 My Offerings retirement), so the gate exercises the redirect
+  // AND the Catalog page it lands on. The ServiceForm routes (/new, /:id/edit) are
+  // parameterised/creation surfaces and stay live.
+  { href: '/expert/services',           description: 'Retired My Offerings -> redirects to Catalog (C2)' },
+  // Static creation surface (ServiceForm) — /:id/edit stays excluded (parameterised).
+  { href: '/expert/services/new',       description: 'ServiceForm — offering creation (single builder, §5)' },
+  // /expert/share-promote redirects to /expert/catalog (C2 Share & Promote retirement) —
+  // listed so the redirect is smoke-tested; C9 retired the provider twin the same way.
+  { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
+  { href: '/expert/money',              description: 'Money — earnings + payouts (C8)' },
+  // /expert/earnings is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/money (C8 Earnings → Money module rename), so the gate exercises the
+  // redirect AND the Money page it lands on.
+  { href: '/expert/earnings',           description: 'Retired Earnings -> redirects to Money (C8)' },
+  // /expert/analytics redirects to /expert/performance?tab=analytics (C6 Analytics
+  // retirement) — the analytics page is hosted as Performance's Analytics tab (its
+  // internal 9-tab picker rides ?sub= there); listed so the gate exercises the
+  // redirect AND the Performance page it lands on. /expert/revenue-optimization and
+  // /expert/leaderboard redirect the same way with &sub=.
+  { href: '/expert/analytics',          description: 'Retired Analytics -> redirects to Performance analytics tab (C6)' },
   { href: '/expert/ai-assistant',       description: 'Expert AI task delegation' },
   { href: '/expert/content-studio',     description: 'Content creation studio' },
-  { href: '/expert/profile',            description: 'Public expert profile' },
+  // /expert/profile is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/settings?tab=profile (C8 Profile → Settings first-tab merge), so the gate
+  // exercises the redirect AND the Settings page it lands on.
+  { href: '/expert/profile',            description: 'Retired Profile -> redirects to Settings profile tab (C8)' },
   { href: '/expert/settings',           description: 'Account settings' },
   { href: '/expert/verification',       description: 'Expert verification status' },
   { href: '/expert/contract-categories', description: 'Contract category management' },
   { href: '/expert/booking-partners',   description: 'Booking partner configuration' },
   { href: '/expert/workspace',          description: 'Trip planning workspace' },
-  { href: '/expert/dmo-library',        description: 'DMO destination library' },
+  // /expert/dmo-library is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/workspace (C7 DMO Library retirement) — the Add panel's DMO drawer now carries
+  // browse/add AND review-and-refine — so the gate exercises the redirect AND the
+  // Workstation it lands on.
+  { href: '/expert/dmo-library',        description: 'Retired DMO Library -> redirects to Workstation (C7)' },
 ];
 
 // ── Provider routes (requiredRole="provider") ────────────────────────────────
 
+// Console IA C9 (§17 17→9 collapse): the provider console runs the expert console's
+// nine-module IA. PB completed the NINE: the Workstation/Product Builder landed once its
+// two §17 gates were ratified (bundle join-table schema + bundle money path). Retired routes
+// are kept deliberately (the B5/C1 redirect pattern) so the gate exercises the redirect AND
+// the module page it lands on.
 export const providerRoutesConfig: RoleRouteConfig[] = [
-  { href: '/provider/dashboard',    description: 'Provider home dashboard' },
-  { href: '/provider/bookings',     description: 'Booking requests' },
-  { href: '/provider/services',     description: 'Published services' },
-  { href: '/provider/earnings',     description: 'Earnings & payout history' },
-  { href: '/provider/performance',  description: 'Performance metrics' },
-  { href: '/provider/analytics',    description: 'Analytics overview' },
-  { href: '/provider/calendar',     description: 'Availability calendar' },
-  { href: '/provider/profile',      description: 'Public provider profile' },
-  { href: '/provider/settings',     description: 'Account settings' },
-  { href: '/provider/resources',    description: 'Provider resources & guides' },
+  { href: '/provider/dashboard',    description: 'Today — ops home (C9 label-only rename)' },
+  { href: '/provider/calendar',     description: 'Channel Calendar — 9th module (C9)' },
+  { href: '/provider/workstation',  description: 'Workstation — Product Builder: single service → bundle → property ladder (PB)' },
+  { href: '/provider/inbox',        description: 'Inbox — Queue/History/Messages, absorbs Bookings + Messages (C9 Inbox)' },
+  // /provider/bookings redirects to /provider/inbox (C9 Inbox absorption, the expert C5
+  // pattern) — accept/decline, the visa-status dialog, and stats live on Inbox's Queue tab;
+  // search/filter lives on History.
+  { href: '/provider/bookings',     description: 'Retired Bookings -> redirects to Inbox (C9)' },
+  { href: '/provider/services',     description: 'Catalog — offerings + availability + share tools (C9)' },
+  // Static creation surface (ServiceForm) — /:id/edit stays excluded (parameterised).
+  { href: '/provider/services/new', description: 'ServiceForm — offering creation (single builder, §5)' },
+  { href: '/provider/properties/new', description: 'Property builder — three-step property creation flow' },
+  { href: '/provider/bundles/new',   description: 'Bundle builder — multi-service offering creation flow' },
+  { href: '/provider/availability',  description: 'Availability management' },
+  { href: '/provider/distribute',    description: 'Catalog distribution hub' },
+  { href: '/provider/customers',    description: 'Customers — honest self-scoped aggregation (C9)' },
+  { href: '/provider/performance',  description: 'Performance — hosts Analytics as a tab (C9)' },
+  { href: '/provider/market-research', description: 'Market research' },
+  // /provider/analytics redirects to /provider/performance?tab=analytics (C9 Analytics
+  // retirement — the page is hosted as Performance's Analytics tab).
+  { href: '/provider/analytics',    description: 'Retired Analytics -> redirects to Performance analytics tab (C9)' },
+  { href: '/provider/money',        description: 'Money — earnings + payout requests (C9 rename)' },
+  // /provider/earnings redirects to /provider/money (C9 Earnings → Money module rename).
+  { href: '/provider/earnings',     description: 'Retired Earnings -> redirects to Money (C9)' },
+  // /provider/profile redirects to /provider/settings?tab=profile (C9 Profile → Settings
+  // first-tab merge).
+  { href: '/provider/profile',      description: 'Retired Profile -> redirects to Settings profile tab (C9)' },
+  { href: '/provider/settings',     description: 'Account settings (hosts Profile as first tab, C9)' },
+  // /provider/share-promote redirects to /provider/services (C9 Share & Promote retirement —
+  // share kits/posting opportunities/storefront tools live on Catalog).
+  { href: '/provider/share-promote', description: 'Retired Share & Promote -> redirects to Catalog (C9)' },
+  // Legacy redirect retained so the smoke also checks that old bookmarks reach Playbook.
+  { href: '/provider/resources',    description: 'Retired Resources -> redirects to Playbook' },
+  { href: '/provider/playbook',     description: 'Provider playbook and operating guides' },
 ];
 
 // ── Executive Assistant routes (requiredRole="executive_assistant") ──────────
@@ -97,25 +171,32 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/ai-costs',            description: 'AI cost tracking' },
   { href: '/admin/payouts',             description: 'Payout management' },
   { href: '/admin/reconciliation',      description: 'Revenue reconciliation' },
-  { href: '/admin/fee-config',          description: 'Fee configuration' },
   { href: '/admin/fee-bands',           description: 'Concierge fee bands' },
   { href: '/admin/offering-types',      description: 'Offering type seed' },
   { href: '/admin/category-fees',       description: 'Category fee percentages' },
   { href: '/admin/neighborhoods',       description: 'Neighborhood management' },
+  { href: '/admin/markets',             description: 'Market management' },
   { href: '/admin/event-packages',      description: 'Event package management' },
   { href: '/admin/platform-providers',  description: 'Platform provider registry' },
   { href: '/admin/routing-queue',       description: 'Lead routing queue' },
+  { href: '/admin/concierge-requests',  description: 'Concierge request queue' },
   { href: '/admin/content-tracking',    description: 'Content tracking & moderation' },
   { href: '/admin/content-mapping',     description: 'Content mapping' },
   { href: '/admin/services',            description: 'Service management' },
+  { href: '/admin/service-requests',    description: 'Traveler service-request triage queue (migration 123)' },
+  { href: '/admin/service-approvals',   description: 'Provider-service approval queue (F2/D1a)' },
   { href: '/admin/affiliate-partners',  description: 'Affiliate partner management' },
   { href: '/admin/tourism-analytics',   description: 'Tourism analytics' },
   { href: '/admin/neighborhood-backfill', description: 'Neighborhood backfill tool' },
   { href: '/admin/gem-photo-backfill',  description: 'Gem photo backfill tool' },
+  { href: '/admin/gem-candidates',      description: 'Nugget → gem promotion review queue' },
   { href: '/admin/review-moderation',   description: 'Review moderation queue' },
+  { href: '/admin/message-moderation',  description: 'Message moderation queue' },
   { href: '/admin/destination-events',  description: 'Destination events management' },
   { href: '/admin/analytics/cross-sell', description: 'Cross-sell analytics' },
   { href: '/admin/qa-checklist',        description: 'QA checklist' },
+  { href: '/admin/content-ops',         description: 'Content Ops — YouTube ingestion, extraction status, offering requests, market checklist' },
+  { href: '/admin/audit-log',           description: 'Administrative audit log' },
 ];
 
 // ── Convenience accessors ─────────────────────────────────────────────────────

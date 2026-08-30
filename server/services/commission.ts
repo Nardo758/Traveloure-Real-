@@ -19,7 +19,7 @@
  *     'beta_flat' → fee_bands.beta_flat (current FEE-2 behavior; 0.10 default)
  *     'tiered'    → service_categories.commission_band_key → fee_bands.<band>
  *                   (seeded dormant; flipping the setting activates them)
- * - Insurance fields still load from booking_fee_configs (Phase 2 concern; out of 1.3 scope).
+ * - Insurance fields load from platform_settings (FEE-2 Phase 2, migration 124 interim; see CLAUDE.md §6).
  * - per-service revenueShareRate on providerServices is applied AFTER this resolver
  *   returns (in payments.routes.ts), so it still wins as the final override.
  *
@@ -29,23 +29,139 @@
 import { db } from "../db";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/schema";
+import {
+  AFFILIATE_STANDARD_BAND,
+  CONCIERGE_BOOKING_FEE_BAND_KEY,
+  EXPERT_STANDARD_BAND,
+  EXPERIENCE_CART_BAND_KEY,
+  TIP_HANDLING_BAND,
+} from "./fee-band-requirements";
+export { CONCIERGE_BOOKING_FEE_BAND_KEY, EXPERIENCE_CART_BAND_KEY } from "./fee-band-requirements";
 
 // 3.0.1b: Structural invariant — AI fulfillment has no expert counterparty, so the
 // platform keeps the full per-task fee by definition. Not a safety-net fallback;
 // this is an architectural truth.
-export const AI_PLATFORM_FEE = 1.00;
+export const AI_PLATFORM_FEE = 1.00; // fee-literal-ok: structural invariant documented at :33-35 — AI fulfilment has no expert counterparty, so this is an architectural truth, not a rate a band could vary
 
-export const AFFILIATE_PLATFORM_FEE = 0.70;
-export const AFFILIATE_EXPERT_SHARE = 0.30;
+// fee-literal-ok (both): documented fallbacks used ONLY when the admin-editable `affiliate_standard`
+// band (migration 143) is absent/inactive/non-percent — resolveCommissionRates Tier 2 reads the band
+// FIRST and returns these only on that failure. Same §8 safe-failure posture as coordination_floor.
+export const AFFILIATE_PLATFORM_FEE = 0.70; // fee-literal-ok: see the three-line note above
+export const AFFILIATE_EXPERT_SHARE = 0.30; // fee-literal-ok: see the three-line note above
 
-/** Stripe processing / gateway fee deducted from every platform-fee receipt. */
-export const PROCESSING_FEE_RATE = 0.03;
+/**
+ * Stripe processing / gateway fee deducted from every platform-fee receipt.
+ *
+ * fee-literal-debt:#PS2 (provider money-hardening lane, ruling 42 — audit MI-2). Unlike every other
+ * constant in this block this one is NOT a fallback behind a band: there is no `fee_bands` row for
+ * it, so it is a margin rate on the platform-fee receipt that no admin can edit without a deploy.
+ * It is live on the provider completion money path — `storage.updateServiceBookingStatus` computes
+ * `netAmount`/`processingFees` on the `platform_revenue` row minted by the completion flip — plus
+ * revenue-tracking, ready-made-purchase and booking services. Moving it into `fee_bands` owes
+ * ruling 32's two proofs (an admin band edit changes the resolved value; a missing band fails
+ * loudly) and is therefore a change with its own migration, not an annotation. Surfaced (finally)
+ * by this lane's fee-gate predicate fix — the gate was blind to SCREAMING_SNAKE for its whole life.
+ */
+export const PROCESSING_FEE_RATE = 0.03; // fee-literal-debt:#PS2
 
-// 3.0.1b: Exported field defaults — NOT resolver safety-nets. Used in route files
-// when a provider service's revenueShareRate is unset. The resolver path no longer
-// falls back to these; it throws on missing config. These are data-model defaults.
-export const EXPERT_SHARE_RATE = 0.75;
-export const PLATFORM_FEE_RATE = 0.25;
+// 3.0.1b / ruling 25: Exported field defaults — NOT resolver safety-nets. Used in route
+// files when a provider service's revenueShareRate is unset. The resolver path never
+// falls back to these; it throws on missing config. Per DECISIONS.md ruling 25 the
+// 75/25 safety net lives in fee_bands: the `expert_standard` default row (seeded in
+// migration 033, guaranteed by the idempotent re-seed in 174) is the single source of
+// truth for this split. These constants survive ONLY as the documented last-resort
+// data-model defaults and must mirror that seeded default row.
+export const EXPERT_SHARE_RATE = 0.75; // fee-literal-ok: documented last-resort data-model default mirroring the fee_bands expert_standard seed (ruling 25); fee_bands-everywhere migration in flight
+export const PLATFORM_FEE_RATE = 0.25; // fee-literal-ok: documented last-resort data-model default mirroring the fee_bands expert_standard seed (ruling 25); fee_bands-everywhere migration in flight
+
+/**
+ * Ruling 25 / Task follow-through: the runtime home of the 75/25 safety net is the
+ * `expert_standard` fee band (platform-take fraction), not the constants above.
+ * Call sites that previously used EXPERT_SHARE_RATE / PLATFORM_FEE_RATE as runtime
+ * fallbacks (e.g. when a provider service's revenueShareRate is unset) must call
+ * this instead, so an admin edit to the band takes effect without a deploy.
+ *
+ * Reads through a short in-process TTL cache — these are hot display/derivation
+ * paths and the band changes rarely. The constants remain ONLY as the last-resort
+ * fallback when the band is missing/inactive/non-percent (mirrors the seeded row).
+ */
+const EXPERT_SPLIT_CACHE_TTL_MS = 60_000;
+let expertSplitCache: { rates: { expertShareRate: number; platformFeeRate: number }; expiresAt: number } | null = null;
+
+export async function getExpertSplitRates(): Promise<{ expertShareRate: number; platformFeeRate: number }> {
+  const now = Date.now();
+  if (expertSplitCache && expertSplitCache.expiresAt > now) return expertSplitCache.rates;
+
+  const band = await getBand(EXPERT_STANDARD_BAND);
+  const rates =
+    band && band.rateType === "percent" && band.rate > 0 && band.rate < 1
+      ? { expertShareRate: 1 - band.rate, platformFeeRate: band.rate }
+      : { expertShareRate: EXPERT_SHARE_RATE, platformFeeRate: PLATFORM_FEE_RATE }; // fee-literal-ok: documented last-resort default mirroring the seeded row
+
+  expertSplitCache = { rates, expiresAt: now + EXPERT_SPLIT_CACHE_TTL_MS };
+  return rates;
+}
+
+/** Test/admin hook: drop the cached expert split so the next read hits the band. */
+export function clearExpertSplitCache(): void {
+  expertSplitCache = null;
+}
+
+/**
+ * Task #1036 / ruling 32 — expert-share fraction for a revenue-splits display row.
+ * SURFACE: the expert revenue-optimization earnings breakdown (display/analytics,
+ * not charge-time math). When the revenue_splits row exists its percentage wins;
+ * when it is missing the share resolves from the fee_bands `expert_standard` band
+ * via getExpertSplitRates() — never a hardcoded '75'. An admin band edit therefore
+ * drives the displayed breakdown (DB-backed test in
+ * server/__tests__/booking-fee-bootstrap-and-split-fallback.db.test.ts).
+ */
+export async function resolveExpertSharePct(
+  split: { expertPercentage?: string | null } | undefined,
+): Promise<number> {
+  // Strict validity (ruling 32 — invalid config must band-back, never leak through):
+  // the WHOLE string must parse (Number, not parseFloat — "75junk" is invalid) to a
+  // finite share in (0, 100]. "0" is treated as absent, preserving the endpoint's
+  // pre-#1036 `|| '75'` semantics where a zero/empty percentage fell through.
+  const raw = split?.expertPercentage?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed / 100;
+  const { expertShareRate } = await getExpertSplitRates();
+  return expertShareRate;
+}
+
+/**
+ * MI-1 (provider money-hardening lane, ruling 42) — server derivation of a provider service's
+ * `revenueShareRate`, so that column can never again carry a client-supplied number.
+ *
+ * This is deliberately ONE call into the existing `resolveCommissionRates` resolver with the SAME
+ * option shape the real charge uses (`payments.routes.ts` /api/checkout per-item block: provider-role
+ * owners route through `{source:"provider", providerId}`, everyone else through
+ * `{category, expertId}`) — NOT a second rate implementation. The single divergence risk this class
+ * has is two authors resolving rates two ways; there is one resolver and this defers to it.
+ *
+ * Returns the EXPERT/OWNER share as a fraction in [0,1]. Never throws — a resolution failure yields
+ * `null` and the caller leaves the column alone rather than guessing a rate (§8: a fee's safe
+ * failure mode is the documented fallback, never an invented number).
+ */
+export async function resolveServiceOwnerShareRate(opts: {
+  ownerUserId?: string | null;
+  ownerIsProvider: boolean;
+  feeCategory?: string | null;
+}): Promise<number | null> {
+  try {
+    const rates = await resolveCommissionRates(
+      opts.ownerIsProvider
+        ? { source: "provider", providerId: opts.ownerUserId ?? null }
+        : { category: opts.feeCategory ?? "default", expertId: opts.ownerUserId ?? null },
+    );
+    const n = rates.expertShareRate;
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+  } catch (err) {
+    console.warn("[commission] Failed to load expert share rate — returning null:", err);
+    return null;
+  }
+}
 
 /**
  * Phase 3.1 — Booking Concierge facilitation fee.
@@ -54,8 +170,13 @@ export const PLATFORM_FEE_RATE = 0.25;
  * AMOUNT is read from this band (Phase 3.4); the 75/25 split is applied
  * separately via the expert band — a flat band is never built into a split. */
 export const CONCIERGE_BOOKING_CONCERN = "booking_concierge";
-export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
 
+/** Ruling 25 follow-through (migration 174): the EXPERIENCE_CART typed-breakdown
+ *  rate resolves from this admin-editable percent band (platform-take fraction).
+ *  SCOPE: this band backs the DIAGNOSTIC/DISPLAY calculator surface
+ *  (calculateCommission). The actual cart charge + fee-preview paths resolve
+ *  per-item rates via resolveCommissionRates() — per the R3/F6 note in
+ *  payments.routes.ts, the old 0.30 literal matched no actual charged rate. */
 export interface CommissionRates {
   expertShareRate: number;
   platformFeeRate: number;
@@ -135,7 +256,7 @@ export function decideBandKey(
   defaultBandKey: string,
 ): string {
   // Phase 1.5 semantic mappings (override the generic direct-lookup fallback):
-  if (opts.category === "tip") return "tip_handling";
+  if (opts.category === "tip") return TIP_HANDLING_BAND;
 
   // Phase 3.1: the Booking Concierge concern routes to its dedicated FLAT
   // fee-amount band — a named mapping so it never silently falls through to the
@@ -148,8 +269,16 @@ export function decideBandKey(
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
   if (isProviderLine) {
-    if (policy === "beta_flat") return "beta_flat";
-    // tiered: service_categories.commission_band_key → fee_bands
+    // RULING 49: the `beta_flat` band is DEACTIVATED, so the `beta_flat` POLICY may no longer
+    // select it — `getBand` returns null for an inactive row and the resolver then throws, which is
+    // exactly the break verify-fee-config-parity caught. The policy value is left alone (it is read
+    // elsewhere and is a settings concern); what changes is that it no longer names a dead band.
+    //
+    // Provider lines now always resolve the category band (ruling 48's model) with the configured
+    // default as the last stop. The authoritative implementation is the single resolver
+    // (`fee-resolution.service.ts` → `resolveProviderRate`), which reads
+    // service_categories.commission_band_key directly and is fail-loud; this legacy helper keeps
+    // its existing callers working until the charge paths are repointed onto it (lane item 1C).
     return opts.categoryCommissionBand ?? defaultBandKey;
   }
 
@@ -223,7 +352,8 @@ export async function getBand(bandKey: string): Promise<{ rate: number; rateType
     const row = result.rows?.[0] as { rate: number | null; rate_type: string | null } | undefined;
     if (!row || row.rate === null) return null;
     return { rate: row.rate, rateType: row.rate_type ?? "percent" };
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load commission override — returning null:", err);
     return null;
   }
 }
@@ -242,14 +372,15 @@ export async function getConciergeBookingRate(): Promise<number> {
     const result = await db.execute(sql`
       SELECT CAST(default_rate AS FLOAT) AS rate
       FROM fee_bands
-      WHERE band_key = 'expert_concierge_booking'
+      WHERE band_key = ${CONCIERGE_BOOKING_FEE_BAND_KEY}
         AND rate_type = 'percent'
         AND is_active = true
       LIMIT 1
     `);
     const row = result.rows?.[0] as { rate: number | null } | undefined;
     return Number(row?.rate ?? 0);
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load concierge booking rate — returning 0:", err);
     return 0;
   }
 }
@@ -272,7 +403,7 @@ export async function requireConciergeBookingRate(): Promise<number> {
   const result = await db.execute(sql`
     SELECT CAST(default_rate AS FLOAT) AS rate
     FROM fee_bands
-    WHERE band_key = 'expert_concierge_booking'
+      WHERE band_key = ${CONCIERGE_BOOKING_FEE_BAND_KEY}
       AND rate_type = 'percent'
       AND is_active = true
     LIMIT 1
@@ -289,6 +420,25 @@ export async function requireConciergeBookingRate(): Promise<number> {
   return rate;
 }
 
+/**
+ * Ruling 25 (migration 174): EXPERIENCE_CART platform-take rate from fee_bands.
+ * THROWS if the `experience_cart_checkout` band is missing/inactive/non-percent —
+ * same fail-loud posture as requireConciergeBookingRate: a misconfigured DB must
+ * surface immediately rather than silently displaying the wrong rate.
+ * Callers pass the result to calculateCommission(..., { experienceCartRate }).
+ */
+export async function requireExperienceCartRate(): Promise<number> {
+  const band = await getBand(EXPERIENCE_CART_BAND_KEY);
+  if (!band || band.rateType !== "percent" || band.rate <= 0) {
+    throw new Error(
+      "Experience cart fee band not configured — " +
+      `${EXPERIENCE_CART_BAND_KEY} must be active with rate_type='percent' and default_rate > 0. ` +
+      "Run migrations to apply 174_seed_experience_cart_band.sql.",
+    );
+  }
+  return band.rate;
+}
+
 async function getSetting(key: string): Promise<string | null> {
   try {
     const result = await db.execute(sql`
@@ -298,7 +448,8 @@ async function getSetting(key: string): Promise<string | null> {
     `);
     const row = result.rows?.[0] as { setting_value: string | null } | undefined;
     return row?.setting_value ?? null;
-  } catch {
+  } catch (err) {
+    console.warn("[commission] Failed to load commission setting — returning null:", err);
     return null;
   }
 }
@@ -326,31 +477,48 @@ async function isEarlyAdopterProvider(providerId: string): Promise<boolean> {
   }
 }
 
-/** Insurance still loads from booking_fee_configs (Phase 2 concern). */
-async function resolveInsuranceFromCategory(category?: string | null) {
+/**
+ * FEE-2 Phase 2: insurance config relocated from booking_fee_configs to platform_settings
+ * (migration 124). booking_fee_configs is retained for its other 7 readers (transport
+ * commission, startup seed, tip commission, etc.); only this read path was migrated.
+ *
+ * Reads three keys: insurance_enabled, insurance_rate_percent, insurance_applies_to.
+ * Falls back to noInsurance if the keys are absent or unreadable — identical to the
+ * old reader's behaviour when no active booking_fee_configs row existed for a category.
+ *
+ * INTERIM: platform_settings is the interim home. When FEE-2 Phase 1 ships the
+ * admin-validated insurance_tier, update this function and write the boolean-vs-tier
+ * precedence rule in CLAUDE.md §6 before both coexist.
+ *
+ * Category param retained for API compatibility; global settings apply to all categories.
+ */
+async function resolveInsuranceFromCategory(_category?: string | null) {
   try {
-    const cat = category || "default";
     const result = await db.execute(sql`
-      SELECT
-        insurance_enabled,
-        CAST(insurance_rate_percent AS FLOAT) AS insurance_rate_percent,
-        insurance_applies_to
-      FROM booking_fee_configs
-      WHERE category = ${cat} AND is_active = true
-      LIMIT 1
+      SELECT setting_key, setting_value
+      FROM platform_settings
+      WHERE setting_key IN ('insurance_enabled', 'insurance_rate_percent', 'insurance_applies_to')
     `);
-    if (result.rows && result.rows.length > 0) {
-      const row = result.rows[0] as any;
-      return {
-        insuranceEnabled: Boolean(row.insurance_enabled),
-        insuranceRatePercent: Number(row.insurance_rate_percent ?? 0),
-        insuranceAppliesTo: Array.isArray(row.insurance_applies_to) ? row.insurance_applies_to : [] as string[],
-      };
+    if (!result.rows || result.rows.length === 0) return noInsurance;
+    const map: Record<string, string> = {};
+    for (const row of result.rows as any[]) {
+      map[row.setting_key] = row.setting_value;
     }
-  } catch {
-    // ignore
+    const enabled = map["insurance_enabled"] === "true";
+    if (!enabled) return noInsurance;
+    const rate = parseFloat(map["insurance_rate_percent"] ?? "0");
+    let appliesTo: string[] = [];
+    try { appliesTo = JSON.parse(map["insurance_applies_to"] ?? "[]"); } catch { /* keep [] */ }
+    if (!Array.isArray(appliesTo)) appliesTo = [];
+    return {
+      insuranceEnabled: true,
+      insuranceRatePercent: isFinite(rate) ? rate : 0,
+      insuranceAppliesTo: appliesTo,
+    };
+  } catch (err) {
+    console.warn("[commission] Failed to load insurance configuration — returning no-insurance defaults:", err);
+    return noInsurance;
   }
-  return noInsurance;
 }
 
 /**
@@ -383,11 +551,18 @@ export async function resolveCommissionRates(
     return { expertShareRate: 0, platformFeeRate: AI_PLATFORM_FEE, ...noInsurance };
   }
 
-  // Tier 2 — Affiliate (constant; per-partner bands seeded dormant for Phase-2 migration)
+  // Tier 2 — Affiliate: admin-editable band (migration 143), falls back to the code constants
+  // when the band is absent/inactive/non-percent (the coordination-floor safe-failure posture, §8).
+  // (Per-partner affiliate:<partner> bands remain a separate, still-dormant Phase-2 concern — that's
+  // the partner's own commission %, not this internal platform/expert split.)
   if (source === "affiliate" || revenueType === "affiliate_commission") {
+    const band = await getBand(AFFILIATE_STANDARD_BAND);
+    if (band && band.rateType === "percent") {
+      return buildRatesFromBand(band.rate, noInsurance);
+    }
     return {
-      expertShareRate: AFFILIATE_EXPERT_SHARE,
-      platformFeeRate: AFFILIATE_PLATFORM_FEE,
+      expertShareRate: AFFILIATE_EXPERT_SHARE, // fee-literal-ok: documented fallback when the band is absent/inactive
+      platformFeeRate: AFFILIATE_PLATFORM_FEE, // fee-literal-ok: documented fallback when the band is absent/inactive
       ...noInsurance,
     };
   }
@@ -418,19 +593,42 @@ export async function resolveCommissionRates(
 
   // Tier 4 / 5 — fee_bands band lookup
   const policy = (await getSetting("active_provider_commission_policy")) ?? "beta_flat";
-  const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "beta_flat";
+  // RULING 49: the hardcoded fallback was `beta_flat`, which is now DEACTIVATED — an inactive band
+  // makes `getBand` return null and the resolver throw, so this fallback had become a guaranteed
+  // failure for any provider line that reached it (caught by verify-fee-config-parity). The
+  // documented last-resort default is now `expert_standard`, which is the band the existing
+  // EXPERT_SHARE_RATE/PLATFORM_FEE_RATE code constants already mirror (:51-52) — i.e. this restores
+  // the behaviour those constants were written to describe, rather than inventing a new rate.
+  // The admin-set `default_commission_band_key` still wins when configured.
+  const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "expert_standard";
 
   // Early-adopter gate for provider-source bookings.
   // When a providerId is supplied, compare their registration date to
-  // early_adopter_cutoff_date in platform_settings:
-  //   before cutoff  → beta_flat (10% platform / 90% provider)
-  //   on/after cutoff → expert_standard (25% platform / 75% provider)
+  // early_adopter_cutoff_date in platform_settings (config-driven — no literal date here):
+  //   before cutoff  → beta_flat band (rates from fee_bands row)
+  //   on/after cutoff → expert_standard band (rates from fee_bands row)
   // Omitting providerId (existing call-sites) always resolves to beta_flat — safe.
   const isProviderLine = source === "provider" || category === "provider_commission_percent";
   let bandKey: string;
   if (isProviderLine && providerId) {
-    const earlyAdopter = await isEarlyAdopterProvider(providerId);
-    bandKey = earlyAdopter ? "beta_flat" : "expert_standard";
+    // RULING 49: `beta_flat` is DEACTIVATED — incoherent under structure C (a 10% take is worse for
+    // the provider than the commercial 0.06 and premium 0.04 bands), superseded by the four
+    // category-resolved provider bands (ruling 48). This branch previously selected it for
+    // early-adopter providers; with the band inactive that selection began THROWING at
+    // `getBand` — caught by verify-fee-config-parity, which is why this repoint ships with the
+    // deactivation rather than after it.
+    //
+    // Provider lines therefore fall through to `decideBandKey` like every other line. The
+    // authoritative category-band resolution for provider commission lives in the single resolver
+    // (`fee-resolution.service.ts` → `resolveProviderRate`, ruling 47); this legacy path keeps
+    // working for its existing callers until the charge paths are repointed onto that resolver
+    // (lane item 1C). The early-adopter cohort question is now a premium-band-for-life grant
+    // through the entity-override mechanism (ruling 49), not a band selection here.
+    bandKey = decideBandKey(
+      { source, category, categoryCommissionBand: null /* tiered lookup wires in 1C */ },
+      policy,
+      defaultBandKey,
+    );
   } else {
     bandKey = decideBandKey(
       { source, category, categoryCommissionBand: null /* tiered lookup wires in a later phase */ },

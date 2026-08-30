@@ -3,6 +3,7 @@ import { travelpayoutsCache, destinationEvents } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { feverService, FeverEvent } from "./fever.service";
 import { sharedCache } from "./shared-cache.service";
+import { reportProviderResult } from "./provider-health.service";
 
 const CACHE_DURATION_HOURS = 24;
 const CACHE_TTL_MS = CACHE_DURATION_HOURS * 60 * 60 * 1000;
@@ -83,10 +84,19 @@ class PartnerEventsCacheService {
 
       const response = await feverService.searchEvents({ city: cityCode, limit: 100 });
 
-      if (!response || !response.events || response.events.length === 0) {
+      if (!response) {
+        // searchEvents returns null on an unrecognized city OR an upstream/auth failure — the Impact.com
+        // client (fever.service.ts) doesn't currently surface a status code up through this call, so this
+        // is reported as a generic error rather than guessing auth/quota.
+        reportProviderResult("fever", "error", `No response for city ${cityCode}`);
+        return result;
+      }
+      if (!response.events || response.events.length === 0) {
+        reportProviderResult("fever", "empty");
         console.log(`[PartnerEvents] No events found for ${cityCode}`);
         return result;
       }
+      reportProviderResult("fever", "ok");
 
       const normalizedCityCode = cityCode.toUpperCase();
       const payload: FeverCachePayload = {
@@ -108,6 +118,7 @@ class PartnerEventsCacheService {
       console.log(`[PartnerEvents] Cached ${result.refreshed} events for ${cityCode}`);
     } catch (err: any) {
       result.errors.push(`Failed to refresh ${cityCode}: ${err.message}`);
+      reportProviderResult("fever", "error", err?.message);
       console.error(`[PartnerEvents] Error refreshing ${cityCode}:`, err.message);
     }
 

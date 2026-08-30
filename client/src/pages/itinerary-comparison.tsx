@@ -12,6 +12,16 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -55,9 +65,28 @@ import {
   Gift,
   ChefHat,
   Waves,
+  Route,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { Anchor } from "lucide-react";
+// Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
+// PlanCard family's proposal stage — never a parallel renderer.
+import { PlanCard } from "@/components/plancard/PlanCard";
+import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
+import type { SlipData } from "@/components/plancard/SlipView";
+import { ProposalComparisonMap } from "@/components/plancard/ProposalComparisonMap";
+import {
+  sumLegMinutes,
+  parseTotal,
+  computeProposalPreview,
+  hasHeadlineClaim,
+  formatMinutes,
+  formatAnchorLine,
+  coordinateCoverage,
+  type ProposalPreview,
+} from "@/lib/slip-proposal-preview";
 
 interface VariantItem {
   id: string;
@@ -71,6 +100,8 @@ interface VariantItem {
   price: string;
   rating: string;
   location: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   duration: number;
   travelTimeFromPrevious: number;
   isReplacement: boolean;
@@ -139,6 +170,28 @@ interface Variant {
   items: VariantItem[];
   metrics: VariantMetric[];
   days?: VariantDay[];
+  anchorType?: string | null;
+  anchorName?: string | null;
+  anchorMedianMeters?: string | number | null;
+}
+
+// Mirrors server/services/trip-segmentation.service.ts's SegmentationProposal DTO — display-only
+// on this page (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1, recommendation-only wave).
+interface SegmentProposalDTO {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  itemIds: string[];
+  externalIndexes: number[];
+  unplaced: string[];
+}
+
+interface SegmentationProposalDTO {
+  strategy: "single" | "multi_city" | "split";
+  rationale: string;
+  confidence: "high" | "low";
+  segments: SegmentProposalDTO[];
+  alternatives: SegmentationProposalDTO[];
 }
 
 interface Comparison {
@@ -153,6 +206,7 @@ interface Comparison {
   travelers: number;
   status: string;
   selectedVariantId: string | null;
+  segmentationProposal?: SegmentationProposalDTO | null;
 }
 
 interface UpsellSuggestion {
@@ -198,6 +252,89 @@ interface TransportLegApiResponse {
   fromLng: number | null;
   toLat: number | null;
   toLng: number | null;
+}
+
+/**
+ * The TravelPulse API exposes seasonal highlights from a JSONB column. Older
+ * records may contain a free-text summary, while current records are monthly
+ * objects. Keep the review context optional when the shape is unknown rather
+ * than allowing destination intelligence to crash the entire slip.
+ */
+function seasonalHighlightForTrip(raw: unknown, startDate?: string): string | null {
+  if (typeof raw === "string") {
+    return raw.trim() || null;
+  }
+
+  if (!Array.isArray(raw) || !startDate) {
+    return null;
+  }
+
+  const tripMonth = Number(startDate.slice(5, 7));
+  if (!Number.isInteger(tripMonth) || tripMonth < 1 || tripMonth > 12) {
+    return null;
+  }
+
+  const monthName = new Intl.DateTimeFormat("en", { month: "long" })
+    .format(new Date(Date.UTC(2024, tripMonth - 1, 1)))
+    .toLowerCase();
+  const matchedEntry = raw.find((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const month = (entry as { month?: unknown }).month;
+    return month === tripMonth || (typeof month === "string" && month.toLowerCase() === monthName);
+  }) as { highlight?: unknown } | undefined;
+
+  return typeof matchedEntry?.highlight === "string" ? matchedEntry.highlight.trim() || null : null;
+}
+
+/**
+ * §16: partner-fulfilled plan items (12Go ground transport, Fever events) book through the
+ * in-platform booking-agent rail — never a raw affiliate anchor. The client sends only the
+ * partner key + route context; the server builds the deep link, keeps it server-side, and a
+ * booking agent completes the booking. Own component so the hook isn't called inside a map.
+ */
+function PartnerAgentBookButton({
+  partner,
+  itemName,
+  itemDescription,
+  destination,
+}: {
+  partner: "12go" | "fever";
+  itemName: string;
+  itemDescription?: string | null;
+  destination?: string | null;
+}) {
+  const label = partner === "12go" ? "12Go" : "Fever";
+  const agentBooking = useContentAgentBooking({
+    itemName,
+    itemDescription,
+    partnerName: partner === "12go" ? "12Go Asia" : "Fever",
+    partnerCategory: partner === "12go" ? "ground-transport" : "event",
+    partnerRoute: { partner, destination: destination || undefined },
+  });
+
+  if (agentBooking.requested) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-sm text-green-700 dark:text-green-300"
+        data-testid="text-partner-agent-requested"
+      >
+        <Check className="h-3 w-3" /> Booking request sent
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={agentBooking.book}
+      disabled={agentBooking.isPending}
+      data-testid={`button-partner-agent-book-${partner}`}
+    >
+      <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+      {agentBooking.isPending ? "Sending…" : `Book ${label} via agent`}
+    </Button>
+  );
 }
 
 function VariantTransportLegs({ variantId }: { variantId: string }) {
@@ -381,6 +518,301 @@ function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destin
   );
 }
 
+/**
+ * One Spec C column = `<PlanCard stage="proposal" />`. This container owns the column's ONE
+ * data fetch (the variant's server-computed transport legs, for the muted count + cost line)
+ * and hands everything to the canonical renderer. Anchored (purchased) items arrive from the
+ * CANONICAL trip rows (the plancard DTO) — the same array for every column, identical by
+ * construction; with_expert items are excluded upstream and never reach any column.
+ */
+function ProposalColumnContainer({
+  variant,
+  comparison,
+  anchoredItems,
+  recommended,
+  applying,
+  onApply,
+  baselineTotalUsd,
+  baselineDriveMinutes,
+  isBaselineColumn,
+  boardId,
+}: {
+  variant: Variant;
+  comparison: Comparison;
+  anchoredItems: ProposalAnchorItem[];
+  recommended: boolean;
+  applying: boolean;
+  onApply: () => void;
+  /** The current plan's server-derived total, for the review-first money delta (null ⇒ omit). */
+  baselineTotalUsd: number | null;
+  /** The current plan's summed located-leg minutes, for the drive-time delta (null ⇒ omit). */
+  baselineDriveMinutes: number | null;
+  /** This column IS the user's current plan — it has no delta against itself, so no strip. */
+  isBaselineColumn: boolean;
+  boardId: string;
+}) {
+  const { data: legs } = useQuery<TransportLegApiResponse[]>({
+    queryKey: ["/api/itinerary-variants", variant.id, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${variant.id}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  // Server-computed leg values only (§4 Spec C): count + the sum of the legs' own
+  // estimatedCostUsd. All-null costs → null (never a guessed figure).
+  let legsSummary: ProposalLegsSummary | null = null;
+  if (legs && legs.length > 0) {
+    const costs = legs
+      .map((l) => (l.estimatedCostUsd != null ? parseFloat(String(l.estimatedCostUsd)) : null))
+      .filter((c): c is number => c != null && !isNaN(c));
+    legsSummary = {
+      count: legs.length,
+      totalCostUsd: costs.length > 0 ? costs.reduce((s, c) => s + c, 0) : null,
+    };
+  }
+
+  // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): what THIS proposal
+  // found vs the current plan — money saved + shorter drive time. Every figure is server-
+  // derived (the optimizer's totals, the routing provider's leg minutes) and honestly omitted
+  // when its baseline is missing (§13). The baseline column has no claim against itself.
+  const preview: ProposalPreview = computeProposalPreview({
+    baselineTotalUsd,
+    variantTotalUsd: parseTotal(variant.totalCost),
+    baselineDriveMinutes,
+    variantDriveMinutes: coordinateCoverage(variant.items).complete ? sumLegMinutes(legs) : null,
+  });
+  const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {isBaselineColumn ? (
+        <div
+          className="min-h-6"
+          aria-hidden="true"
+          data-testid="proposal-preview-strip-baseline"
+        />
+      ) : showPreview ? (
+        <ProposalPreviewStrip preview={preview} variantId={boardId} />
+      ) : null}
+    <PlanCard
+      stage="proposal"
+      trip={{
+        id: comparison.tripId || comparison.id,
+        destination: comparison.destination || "",
+        numberOfTravelers: comparison.travelers || 1,
+      }}
+      proposal={{
+        variantId: variant.id,
+         testId: boardId,
+        name: variant.name,
+         eyebrow: isBaselineColumn ? "Your current plan" : undefined,
+         displayName: isBaselineColumn ? "As you built it" : undefined,
+         tagline: isBaselineColumn ? "The order you planned, unchanged." : (variant.description || null),
+          anchorLine: formatAnchorLine({
+            anchorType: variant.anchorType,
+            anchorName: variant.anchorName,
+            anchorMedianMeters: variant.anchorMedianMeters,
+             locatedStops: coordinateCoverage(variant.items).locatedStops,
+             totalStops: coordinateCoverage(variant.items).totalStops,
+          }),
+         isBaseline: isBaselineColumn,
+        recommended,
+         totalCostUsd: parseTotal(variant.totalCost),
+         perPersonTotal: parseTotal(variant.totalCost) != null && comparison.travelers > 1
+           ? `$${Math.round(parseTotal(variant.totalCost)! / comparison.travelers).toLocaleString()}`
+           : null,
+        anchoredItems,
+        items: variant.items.map((it) => ({
+          id: it.id,
+          dayNumber: it.dayNumber,
+          startTime: it.startTime || it.timeSlot || null,
+          name: it.name,
+          price: it.price ?? null,
+           isNew: it.isReplacement,
+        })),
+        legsSummary,
+         locationCoverage: coordinateCoverage(variant.items),
+          applyLabel: isBaselineColumn ? "Keep this plan" : "Select this plan",
+        onApply,
+        applying,
+      }}
+    />
+    </div>
+  );
+}
+
+/**
+ * Review-first preview strip (ledger 2026-08-22-slip-optimize-review-first). One or two honest
+ * chips summarising what a proposal FOUND vs the current plan — money saved (green) or cost
+ * increase (amber), and shorter (green) or longer (amber) drive time. Rendered ONLY when a
+ * real, non-"same" claim exists (`hasHeadlineClaim`); a "same" or absent delta shows nothing,
+ * never a "$0 saved" / "0 min" filler (§13). Distance is deliberately never shown here — §21
+ * L3 bars distance as a headline delta claim to travelers; only transit TIME is claimed.
+ */
+function ProposalPreviewStrip({
+  preview,
+  variantId,
+}: {
+  preview: ProposalPreview;
+  variantId: string;
+}) {
+  const { money, driveTime } = preview;
+  return (
+    <div
+      className="flex min-h-6 flex-wrap items-center gap-2 text-xs"
+      data-testid={`proposal-preview-${variantId}`}
+    >
+      {money && money.direction !== "same" && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
+            money.direction === "saves" ? "review-chip--save" : "review-chip--caution",
+          )}
+          data-testid="proposal-preview-money"
+        >
+          <span data-testid={`proposal-preview-money-${variantId}`}>
+            <DollarSign className="inline h-3 w-3" />
+            {money.direction === "saves"
+              ? ` Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
+              : ` Costs $${money.amountUsd.toLocaleString()} more`}
+          </span>
+        </span>
+      )}
+      {driveTime && driveTime.direction !== "same" && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
+            driveTime.direction === "saves"
+              ? "review-chip--save"
+              : "review-chip--caution",
+          )}
+          data-testid="proposal-preview-drivetime"
+        >
+          <span data-testid={`proposal-preview-drivetime-${variantId}`}>
+            <Clock className="inline h-3 w-3" />
+            {driveTime.direction === "saves"
+              ? ` ${formatMinutes(driveTime.minutes)} less travel`
+              : ` ${formatMinutes(driveTime.minutes)} more travel`}
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ReviewHonestyLegend() {
+  const rules = [
+    ["save", "Money saved", "Baseline vs proposal total; shown only with a real positive baseline."],
+    ["caution", "Costs more, said plainly", "A pricier proposal shows “Costs $40 more” beside its time saving."],
+    ["save", "Shorter drive time", "Sum of located transport-leg minutes; time only — distance is never a headline."],
+    ["omit", "Omitted when unknown", "A stop not located ⇒ no drive-time chip; baseline shows no chips."],
+    ["recommended", "Trending & in season", "Live signals; each line disappears when empty."],
+    ["recommended", "You confirm — nothing auto-applies", "One deliberate click via apply-to-trip; original preserved, nothing charged."],
+  ] as const;
+
+  return (
+    <section
+      className="mb-6 rounded-xl border p-4 review-panel"
+      data-testid="compare-honesty-legend"
+      aria-labelledby="compare-honesty-heading"
+    >
+      <h2 id="compare-honesty-heading" className="mb-3 font-semibold">
+        How the preview stays honest
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rules.map(([tone, title, copy]) => (
+          <div key={title} className="flex items-start gap-2 text-xs text-muted-foreground">
+            <span
+              className={`review-legend-dot--${tone} mt-1.5 h-2 w-2 shrink-0 rounded-full`}
+              aria-hidden="true"
+            />
+            <p>
+              <strong className="font-medium text-foreground">{title}</strong>
+              <span className="block mt-0.5">{copy}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const SEGMENTATION_STRATEGY_LABEL: Record<SegmentationProposalDTO["strategy"], string> = {
+  single: "One trip",
+  multi_city: "One multi-city trip",
+  split: "Split into separate trips",
+};
+
+/**
+ * Read-only recommendation banner (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1 —
+ * RECOMMENDATION-ONLY: display + persist + return, no accept/apply action exists yet). Copy is
+ * the proposal's own `rationale` (shown verbatim, per the engine's contract) plus a strategy
+ * label and a per-segment city/count summary built from the segments the server already computed
+ * — nothing here re-derives or second-guesses the recommendation client-side.
+ */
+function SegmentationRecommendationBanner({ proposal }: { proposal: SegmentationProposalDTO }) {
+  // `unplaced` is duplicated onto every segment by design (module doc, trip-segmentation.service.ts)
+  // — it's the same global list everywhere, so segment 0 alone is the whole thing.
+  const unplacedCount = proposal.segments[0]?.unplaced.length ?? 0;
+
+  return (
+    <Card
+      className="mb-4 border-blue-200/50 bg-gradient-to-r from-blue-50/80 to-cyan-50/80 dark:from-blue-950/10 dark:to-cyan-950/10 dark:border-blue-800/50"
+      data-testid="banner-segmentation-recommendation"
+    >
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start gap-2">
+          <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0 mt-0.5">
+            <Route className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                Trip execution recommendation
+              </span>
+              <Badge variant="outline" className="text-[10px] h-4 border-blue-200 text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                {SEGMENTATION_STRATEGY_LABEL[proposal.strategy]}
+              </Badge>
+              {proposal.confidence === "low" && (
+                <Badge variant="outline" className="text-[10px] h-4 border-amber-200 text-amber-700 dark:border-amber-700 dark:text-amber-300">
+                  Worth a second look
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1" data-testid="text-segmentation-rationale">
+              {proposal.rationale}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1.5" data-testid="text-segmentation-summary">
+              {proposal.segments
+                .map((seg) => {
+                  const count = seg.itemIds.length + seg.externalIndexes.length;
+                  return `${seg.destination || "Unspecified"} (${count} item${count === 1 ? "" : "s"})`;
+                })
+                .join("  ·  ")}
+              {unplacedCount > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {"  ·  "}
+                  {unplacedCount} item{unplacedCount === 1 ? "" : "s"} need{unplacedCount === 1 ? "s" : ""} a home
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground/70 italic mt-1.5" data-testid="text-segmentation-apply-note">
+              Coming soon: apply this recommendation to your trip. For now this is informational only —
+              nothing here changes your plan.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ItineraryComparisonPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isLoading: authLoading } = useAuth();
@@ -417,15 +849,17 @@ export default function ItineraryComparisonPage() {
     return partnerTypes.some(t => serviceType?.toLowerCase().includes(t)) ? "partner" : "inApp";
   };
 
-  const getPartnerUrl = (item: VariantItem): string | null => {
+  // §16: this used to build raw partner URLs client-side (the 12Go affiliate id and the
+  // Fever/Impact campaign id were hardcoded here) and render a "Book on Partner Site"
+  // anchor. It now resolves only the PARTNER KEY; the booking-agent rail's `partnerRoute`
+  // reference makes the server build the deep link and an agent complete the booking.
+  const getPartnerKey = (item: VariantItem): "12go" | "fever" | null => {
     if (getBookingType(item.serviceType) !== "partner") return null;
-    const twelveGoAffiliateId = "13805109";
-    const impactCatalogId = "15532";
     if (["transport", "ground_transport", "train", "bus", "ferry"].some(t => item.serviceType?.toLowerCase().includes(t))) {
-      return `https://12go.co/en/travel?affiliate_id=${twelveGoAffiliateId}`;
+      return "12go";
     }
     if (["event", "entertainment", "concert", "show"].some(t => item.serviceType?.toLowerCase().includes(t))) {
-      return `https://feverup.com/en?utm_source=impact&utm_medium=affiliate&utm_campaign=${impactCatalogId}`;
+      return "fever";
     }
     return null;
   };
@@ -476,7 +910,13 @@ export default function ItineraryComparisonPage() {
     });
   };
 
-  const { data, isLoading, refetch } = useQuery<ComparisonData>({
+  const {
+    data,
+    isLoading,
+    isError: isComparisonReadError,
+    error: comparisonReadError,
+    refetch,
+  } = useQuery<ComparisonData>({
     queryKey: ["/api/itinerary-comparisons", id],
     enabled: !!id && !!user,
     refetchInterval: (query) => {
@@ -486,6 +926,60 @@ export default function ItineraryComparisonPage() {
       }
       return false;
     },
+  });
+
+  // ── Spec C canonical reads (SLIP_EXPERIENCE_DISPATCH §4) ──────────────────────────────
+  // The slip-backed comparison renders through the plancard family; anchors and exclusion
+  // counts come from the CANONICAL trip rows (the same plancard DTO every slip surface reads),
+  // never from variant copies. A comparison with no trip (guest/cart flow) has no slip — the
+  // legacy rendering below stays for that flow (Lane 5b's cart→trip re-point is gated).
+  const slipTripId = data?.comparison?.tripId || null;
+  const { data: slipPlancard } = useQuery<SlipData>({
+    queryKey: [`/api/trips/${slipTripId}/plancard`],
+    enabled: !!slipTripId && !!user,
+    staleTime: 30000,
+  });
+
+  const canonicalRows = (slipPlancard?.days ?? []).flatMap((d) =>
+    d.activities.map((a) => ({ a, dayNum: d.dayNum })),
+  );
+  const anchoredItems: ProposalAnchorItem[] = canonicalRows
+    .filter(({ a }) => !!a.booking || a.routingStatus === "purchased")
+    .map(({ a, dayNum }) => ({ id: a.id, dayNum, time: a.time || "", name: a.name }));
+  const withExpertRows = canonicalRows.filter(({ a }) => a.routingStatus === "with_expert");
+  const remainingCount = canonicalRows.filter(
+    ({ a }) => a.routingStatus === "in_planning" || a.routingStatus === "ready_for_checkout",
+  ).length;
+  const slipTrackingNumber = slipPlancard?.trip?.trackingNumber ?? null;
+  const slipExpertFirstName = slipPlancard?.meta?.deliveredBy?.name?.split(" ")[0] ?? null;
+
+  // Apply = the EXISTING endpoints: select the variant, then the atomic apply-to-trip, then
+  // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
+  const [applyingVariantId, setApplyingVariantId] = useState<string | null>(null);
+  const [pendingApplyVariant, setPendingApplyVariant] = useState<Variant | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [failedApplyVariant, setFailedApplyVariant] = useState<Variant | null>(null);
+  const applyVariantMutation = useMutation({
+    mutationFn: async (variantId: string) => {
+      await apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-trip`);
+      const result = await res.json();
+      return { tripId: result.tripId as string };
+    },
+    onSuccess: (r) => {
+      setApplyError(null);
+      setFailedApplyVariant(null);
+      toast({ title: "Variant applied", description: "Your slip has been updated in place." });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
+      setLocation(`/plans/${r.tripId}`);
+    },
+    onError: (_error, variantId) => {
+      setFailedApplyVariant(data?.variants.find((variant) => variant.id === variantId) || null);
+      setApplyError("We couldn't apply this proposal. Your plan is unchanged. Try again.");
+      toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
+    },
+    onSettled: () => setApplyingVariantId(null),
   });
 
   const destination = data?.comparison?.destination;
@@ -504,7 +998,7 @@ export default function ItineraryComparisonPage() {
       trendingScore?: number;
       crowdLevel?: string;
       weatherScore?: number;
-      aiSeasonalHighlights?: string;
+      aiSeasonalHighlights?: unknown;
       aiUpcomingEvents?: string;
       aiTravelTips?: string;
       aiLocalInsights?: string;
@@ -531,12 +1025,36 @@ export default function ItineraryComparisonPage() {
 
   const travelPulseIntelligenceLoading = travelPulseLoading || trendingLoading;
 
+  // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): the current plan's own
+  // transport legs, so each proposal column can show an honest drive-time DELTA against it. Keyed
+  // identically to each column's leg fetch, so React Query dedupes — no extra network. `null`
+  // summed minutes (an unlocated current plan) makes every drive-time delta omit (§13).
+  const baselineVariantId = data?.variants?.find((v) => v.source === "user")?.id ?? null;
+  const { data: baselineLegs } = useQuery<TransportLegApiResponse[]>({
+    queryKey: ["/api/itinerary-variants", baselineVariantId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${baselineVariantId}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!baselineVariantId && !!user,
+    retry: false,
+    staleTime: 120_000,
+  });
+
   const retryMutation = useMutation({
     mutationFn: async () => {
       const stored = sessionStorage.getItem(`comparison_baseline_${id}`);
       const baselineItems = stored ? JSON.parse(stored) : [];
       // Sprint-1 dislike loop: the selected chips steer the re-run — the server
       // maps them onto the variant-strategy matrix with top priority.
+      // Ground-truth note (E2/R-B): this regenerates variants for the EXISTING comparison via
+      // POST /api/itinerary-comparisons/:id/generate — a different endpoint from the
+      // POST /api/itinerary-comparisons CREATE call the client/src/lib/create-comparison.ts
+      // helper centralizes. Not one of the four create-comparison call sites despite an earlier
+      // audit grouping it with them; left as-is.
       return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, {
         baselineItems,
         ...(feedbackChips.length > 0 ? { feedback: feedbackChips } : {}),
@@ -571,10 +1089,24 @@ export default function ItineraryComparisonPage() {
 
   const applyToCartMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-cart`);
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-cart`);
+      return (await res.json()) as {
+        message?: string;
+        itemsAdded?: number;
+        skippedExternalItems?: number;
+      };
     },
-    onSuccess: () => {
-      toast({ title: "Cart updated", description: "Your selected itinerary has been added to cart" });
+    // Lane 1 W5 (H6): items with no bookable platform service are skipped by the writer — that
+    // has always been true, and was always silent. The server now returns the real counts and an
+    // explanatory message; render it instead of the flat "added to cart" claim (§13).
+    onSuccess: (data) => {
+      toast({
+        title: "Cart updated",
+        description:
+          data?.skippedExternalItems && data.skippedExternalItems > 0
+            ? data.message
+            : "Your selected itinerary has been added to cart",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       setLocation("/cart");
     },
@@ -673,7 +1205,7 @@ export default function ItineraryComparisonPage() {
           title: "Your optimized plan is ready!",
           description: "Redirecting to your trip…",
         });
-        setLocation(`/trip/${result.tripId}?optimized=1`);
+        setLocation(`/plans/${result.tripId}`);
       } catch (err: any) {
         console.error("Auto-apply failed:", err);
         toast({
@@ -689,7 +1221,7 @@ export default function ItineraryComparisonPage() {
 
   if (authLoading) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
         <Skeleton className="h-8 w-64 mb-6" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
@@ -705,11 +1237,80 @@ export default function ItineraryComparisonPage() {
     return null;
   }
 
+  const comparisonReadForbidden =
+    isComparisonReadError &&
+    comparisonReadError instanceof Error &&
+    /^403:/.test(comparisonReadError.message);
+
+  if (comparisonReadForbidden) {
+    return (
+      <div
+        className="itinerary-comparison-page mx-auto flex min-h-[50vh] max-w-2xl items-center justify-center p-6"
+        data-testid="comparison-access-denied"
+      >
+        <Card className="w-full border-destructive/50 bg-destructive/5">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="mx-auto mb-4 h-12 w-12 text-destructive" />
+            <h1 className="mb-2 text-xl font-semibold">You don&apos;t have access to this optimization review</h1>
+            <p className="mb-6 text-muted-foreground">
+              This review may belong to another account, or you may no longer have permission to view it.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/my-trips")}
+              data-testid="button-back-to-my-plans"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to My Plans
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const isGenerating = data?.comparison?.status === "generating";
   const hasFailed = data?.comparison?.status === "failed";
+  const isPendingPayment = data?.comparison?.status === "pending_payment";
   const hasVariants = data?.variants && data.variants.length > 0;
   const userVariant = data?.variants?.find((v) => v.source === "user");
   const aiVariants = data?.variants?.filter((v) => v.source === "ai_optimized") || [];
+
+  // Slip-aware exit (ledger 2026-08-22-slip-review-copy): a trip-backed comparison's escape
+  // hatch goes back to the SLIP (/plans/:tripId) — a slip traveler never came from the cart,
+  // so "Back to Cart" was the wrong door on every error/empty state after the review-first
+  // change made those states traveler-visible. Cart-originated comparisons (no tripId) keep
+  // the cart CTA unchanged.
+  const backExit = slipTripId
+    ? { label: "Back to your plan", to: `/plans/${slipTripId}` }
+    : { label: "Back to Cart", to: "/cart" };
+
+  // Review-mode zero-proposal state (design-assessment gap 1): generation finished but
+  // produced no AI variants. The old banner only armed on the autoApply path, so in review
+  // mode the traveler saw their own plan labeled "1 proposal" with no explanation and no
+  // retry. autoApply keeps its own error banner; this renders only for the review flow.
+  const generationProducedNoProposals =
+    !autoApply &&
+    data?.comparison?.status === "generated" &&
+    data?.variants != null &&
+    aiVariants.length === 0;
+
+  // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
+  const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
+  const baselineDriveMinutes = coordinateCoverage(userVariant?.items).complete
+    ? sumLegMinutes(baselineLegs)
+    : null;
+
+  // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
+  // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
+  const specColumns: Variant[] = [userVariant, ...aiVariants].filter((v): v is Variant => !!v);
+  const recommendedVariantId = (() => {
+    const scored = aiVariants.filter((v) => v.optimizationScore != null);
+    if (scored.length === 0) return null;
+    const max = Math.max(...scored.map((v) => v.optimizationScore));
+    const top = scored.filter((v) => v.optimizationScore === max);
+    return top.length === 1 ? top[0].id : null;
+  })();
 
   const getMetricIcon = (key: string) => {
     switch (key) {
@@ -764,15 +1365,27 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className={cn(
+      "itinerary-comparison-page max-w-7xl mx-auto p-6",
+      slipTripId && "review-board",
+    )}>
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{data?.comparison?.title || "Itinerary Comparison"}</h1>
-            <p className="text-muted-foreground">
-              {data?.comparison?.destination} - {data?.comparison?.travelers || 1} traveler(s)
+            {slipTripId && (
+              <p className="review-eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.16em]">
+                Optimization · Review before applying
+              </p>
+            )}
+            <h1 className="text-2xl md:text-3xl font-bold" data-testid={slipTripId ? "review-title" : undefined}>
+              {slipTripId ? `Three ways to sharpen your ${primaryCity || data?.comparison?.destination || "trip"} plan` : (data?.comparison?.title || "Itinerary Comparison")}
+            </h1>
+            <p className="text-muted-foreground max-w-2xl" data-testid={slipTripId ? "review-intro" : undefined}>
+              {slipTripId
+                ? "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is."
+                : `${data?.comparison?.destination} - ${data?.comparison?.travelers || 1} traveler(s)`}
             </p>
           </div>
         </div>
@@ -867,15 +1480,16 @@ export default function ItineraryComparisonPage() {
               <h3 className="text-lg font-semibold mb-2">Generation failed</h3>
               <p className="text-muted-foreground mb-6">
                 Something went wrong while optimizing your itinerary. Please try again.
+                {slipTripId ? " Your plan is untouched." : ""}
               </p>
               <div className="flex justify-center gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => setLocation("/cart")}
+                  onClick={() => setLocation(backExit.to)}
                   data-testid="button-back-to-cart"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Cart
+                  {backExit.label}
                 </Button>
                 <Button
                   onClick={() => retryMutation.mutate()}
@@ -905,11 +1519,11 @@ export default function ItineraryComparisonPage() {
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   variant="outline"
-                  onClick={() => setLocation("/cart")}
+                  onClick={() => setLocation(backExit.to)}
                   data-testid="button-back-to-cart-error"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Cart
+                  {backExit.label}
                 </Button>
                 <Button
                   onClick={() => {
@@ -931,21 +1545,78 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
-        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
+        {/* Review-mode zero-proposal notice (ledger 2026-08-22-slip-review-copy): generation
+            finished with no AI proposals — say so and offer the re-run, instead of silently
+            showing the traveler their own plan as "1 proposal". The autoApply flow keeps its
+            own banner above; this one renders only for the review flow. */}
+        {generationProducedNoProposals && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-no-proposals-review">
+            <CardContent className="p-6 text-center">
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-amber-500" />
+              <h3 className="text-lg font-semibold mb-2">The optimizer didn't find any alternatives</h3>
+              <p className="text-muted-foreground mb-5 max-w-xl mx-auto">
+                The run completed but produced no alternative plans — this can happen when the plan
+                is already well-organized or the AI timed out. Your plan is untouched. You can re-run
+                the optimizer{slipTripId ? "" : " or go back to your cart"}.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(backExit.to)}
+                  data-testid="button-back-no-proposals"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {backExit.label}
+                </Button>
+                <Button
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry-no-proposals"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Re-run optimization
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && !generationProducedNoProposals && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-semibold mb-2">No itinerary data found</h3>
-              <p className="text-muted-foreground mb-6">
-                It looks like the comparison is empty. Please go back to your cart and try again.
-              </p>
+              {isPendingPayment ? (
+                <>
+                  {/* Stale-refresh honesty (ledger 2026-08-22-slip-review-copy): an unpaid
+                      comparison reached in review mode (bookmark/refresh) states its real
+                      status instead of "comparison is empty… go back to your cart". */}
+                  <h3 className="text-lg font-semibold mb-2">This optimization hasn't started yet</h3>
+                  <p className="text-muted-foreground mb-6">
+                    The optimization fee for this run wasn't completed, so no proposals were
+                    generated{slipTripId ? ' — start it again from "Optimize this plan" on your plan'
+                      : " — start it again from your cart"}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold mb-2">No itinerary data found</h3>
+                  <p className="text-muted-foreground mb-6">
+                    It looks like the comparison is empty.
+                    {slipTripId ? " Head back to your plan and try again." : " Please go back to your cart and try again."}
+                  </p>
+                </>
+              )}
               <Button
                 variant="outline"
-                onClick={() => setLocation("/cart")}
+                onClick={() => setLocation(backExit.to)}
                 data-testid="button-back-to-cart"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Cart
+                {backExit.label}
               </Button>
             </CardContent>
           </Card>
@@ -953,7 +1624,7 @@ export default function ItineraryComparisonPage() {
 
         {hasVariants && (
           <>
-            {destination && (
+            {destination && !slipTripId && (
               <Card className="mb-4 border-purple-200/50 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/10 dark:to-indigo-950/10 dark:border-purple-800/50">
                 <CardContent className="py-3 px-4">
                   <div className="flex items-center gap-2">
@@ -1031,7 +1702,226 @@ export default function ItineraryComparisonPage() {
               </Card>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            {data?.comparison?.segmentationProposal && (
+              <SegmentationRecommendationBanner proposal={data.comparison.segmentationProposal} />
+            )}
+
+            {/* ── Spec C (SLIP_EXPERIENCE_DISPATCH §4): a slip-backed comparison renders through
+                the canonical PlanCard proposal stage — CompareHeader (exclusions stated HERE
+                ONCE, never as grayed rows inside columns) + three equal columns + the verbatim
+                footer sentence. NO routing actions, NO per-item apply, NO save-for-later. ── */}
+            {slipTripId && (
+              <>
+                <div className="review-panel flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4 rounded-xl border p-4" data-testid="compare-header">
+                  <p className="review-mono text-sm text-muted-foreground" data-testid="review-slip-line">
+                    {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
+                    {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
+                    {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
+                  </p>
+                  {(anchoredItems.length > 0 || withExpertRows.length > 0) && (
+                    <div className="text-sm text-muted-foreground md:text-right space-y-0.5" data-testid="compare-header-right">
+                      {anchoredItems.length > 0 && (
+                        <p className="flex items-center gap-1.5 md:justify-end">
+                          <Anchor className="w-3.5 h-3.5" />
+                          {anchoredItems.length === 1
+                            ? "1 purchased item pinned in all"
+                            : `${anchoredItems.length} purchased items pinned in all`}
+                        </p>
+                      )}
+                      {withExpertRows.length > 0 && (
+                        <p data-testid="compare-exclusion-note">
+                          {withExpertRows.length === 1
+                            ? "1 item excluded"
+                            : `${withExpertRows.length} items excluded`}{" "}
+                          ({slipExpertFirstName ? `with ${slipExpertFirstName}, your expert` : "with your expert"})
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Review-first context (ledger 2026-08-22-slip-optimize-review-first): what's
+                    trending now and what's popular around the trip's dates — the real TravelPulse
+                    signal the page already fetched. Each half is OMITTED when absent (§13), and the
+                    whole block disappears when neither exists. Context only — never a per-proposal
+                    delta claim, and no distance figure (§21 L3). */}
+                {(() => {
+                  const trending = (trendingData?.experiences ?? [])
+                    .filter((e) => e?.name)
+                    .slice(0, 3);
+                  const seasonal = seasonalHighlightForTrip(
+                    travelPulseData?.city?.aiSeasonalHighlights,
+                    data?.comparison?.startDate,
+                  );
+                  if (trending.length === 0 && !seasonal) return null;
+                  return (
+                    <div
+                      className="review-panel mb-4 space-y-2 rounded-xl border p-3"
+                      data-testid="slip-optimize-preview-context"
+                    >
+                      {trending.length > 0 && (
+                        <div className="flex items-start gap-2 text-sm" data-testid="preview-trending-now">
+                          <TrendingUp className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-green-ink)" }} />
+                          <p>
+                            <span className="font-medium">
+                              Trending now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
+                            </span>
+                            {trending.map((e) => e.name).join(" · ")}
+                          </p>
+                        </div>
+                      )}
+                      {seasonal && (
+                        <div className="flex items-start gap-2 text-sm" data-testid="preview-seasonal">
+                          <Calendar className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-teal-ink)" }} />
+                          <p>
+                            <span className="font-medium">Popular around your travel dates: </span>
+                            {seasonal}
+                          </p>
+                        </div>
+                      )}
+                      {/* Provenance qualifier (ledger 2026-08-22-first-run-prefs, §13): these
+                          signals are AI destination intelligence, not measured bookings — say
+                          so rather than implying a measured figure. Swappable to measured
+                          sources later without touching this block's shape. */}
+                      <p
+                        className="text-[11px] text-muted-foreground/80 pl-6"
+                        title="These highlights come from live AI destination intelligence, not measured bookings."
+                        data-testid="preview-provenance"
+                      >
+                        From AI destination intel
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                <ProposalComparisonMap
+                  proposals={aiVariants.map((variant, index) => ({
+                    id: variant.id,
+                    name: variant.name || `Proposal ${index + 1}`,
+                    items: variant.items,
+                  }))}
+                />
+
+                <div
+                  className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-4 mb-4"
+                  data-testid="review-proposal-grid"
+                >
+                  {specColumns.slice(0, 4).map((variant, index) => (
+                    <ProposalColumnContainer
+                      key={variant.id}
+                      variant={variant}
+                      comparison={data.comparison}
+                      anchoredItems={anchoredItems}
+                      recommended={variant.id === recommendedVariantId}
+                      applying={applyingVariantId === variant.id}
+                      baselineTotalUsd={baselineTotalUsd}
+                      baselineDriveMinutes={baselineDriveMinutes}
+                      isBaselineColumn={variant.source === "user"}
+                      boardId={variant.source === "user" ? "baseline" : `v${aiVariants.findIndex((v) => v.id === variant.id) + 1}`}
+                      onApply={() => {
+                        setPendingApplyVariant(variant);
+                      }}
+                    />
+                  ))}
+                  {isGenerating &&
+                    Array.from({ length: Math.max(0, 4 - specColumns.length) }).map((_, idx) => (
+                      <Card key={`proposal-skeleton-${idx}`} className="border-dashed opacity-80">
+                        <CardHeader className="pt-6">
+                          <Skeleton className="h-5 w-32" />
+                          <Skeleton className="h-4 w-48 mt-1" />
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center justify-center gap-3 py-10">
+                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">Optimizing…</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+
+                {/* Verbatim, load-bearing copy (§4 Spec C). */}
+                <p className="review-footer mb-6 pt-4 text-center text-sm" data-testid="compare-footer">
+                  Each version works best taken whole; your original is preserved; nothing is purchased by applying.
+                </p>
+                <ReviewHonestyLegend />
+                {applyError && (
+                  <div
+                    className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"
+                    role="alert"
+                    data-testid="apply-error"
+                  >
+                    <p className="text-sm text-destructive">{applyError}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-apply-retry"
+                      onClick={() => {
+                        setApplyError(null);
+                        if (failedApplyVariant) setPendingApplyVariant(failedApplyVariant);
+                      }}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                <AlertDialog
+                  open={!!pendingApplyVariant}
+                  onOpenChange={(open) => {
+                    if (!open && !applyVariantMutation.isPending) {
+                      setPendingApplyVariant(null);
+                    }
+                  }}
+                >
+                  <AlertDialogContent data-testid="dialog-apply-confirm">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Apply {pendingApplyVariant?.name} to your plan?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will replace the items still in planning with{" "}
+                        <span className="font-medium text-foreground">
+                          {pendingApplyVariant?.name}
+                        </span>
+                        . The other proposals will be discarded. Your purchased items stay
+                        pinned, and nothing is purchased by applying.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        data-testid="button-apply-cancel"
+                        disabled={applyVariantMutation.isPending}
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        data-testid="button-apply-confirm"
+                        disabled={applyVariantMutation.isPending}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (!pendingApplyVariant || applyVariantMutation.isPending) return;
+                          setApplyError(null);
+                          setApplyingVariantId(pendingApplyVariant.id);
+                          applyVariantMutation.mutate(pendingApplyVariant.id, {
+                            onSettled: () => setPendingApplyVariant(null),
+                          });
+                        }}
+                      >
+                        {applyVariantMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Confirm and apply
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
+
+            {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
+                slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
+            {!slipTripId && (
+            <div className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-6 mb-6">
               {/* Skeleton for user variant if still loading */}
               {isGenerating && !userVariant && (
                 <Card className="border-dashed opacity-80">
@@ -1145,7 +2035,7 @@ export default function ItineraryComparisonPage() {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -1153,7 +2043,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
@@ -1191,9 +2081,9 @@ export default function ItineraryComparisonPage() {
               )}
 
               {/* Show skeleton placeholders for pending AI variants */}
-              {isGenerating && aiVariants.length < 2 && (
+              {isGenerating && aiVariants.length < 3 && (
                 <>
-                  {Array.from({ length: 2 - aiVariants.length }).map((_, idx) => (
+                  {Array.from({ length: 3 - aiVariants.length }).map((_, idx) => (
                     <Card key={`skeleton-ai-${idx}`} className="border-dashed opacity-80">
                       <CardHeader className="pt-6">
                         <div className="flex items-center justify-between">
@@ -1387,14 +2277,14 @@ export default function ItineraryComparisonPage() {
                                       {item.name}
                                     </span>
                                     {item.isReplacement && (
-                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 shrink-0">
+                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 shrink-0">
                                         New
                                       </Badge>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -1402,7 +2292,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
@@ -1439,6 +2329,7 @@ export default function ItineraryComparisonPage() {
                 </Card>
               ))}
             </div>
+            )}
 
             {data?.upsellSuggestions && data.upsellSuggestions.length > 0 && (
               <div className="mb-6" data-testid="section-upsell-suggestions">
@@ -1549,7 +2440,9 @@ export default function ItineraryComparisonPage() {
               </div>
             )}
 
-            {data?.comparison?.selectedVariantId && (
+            {/* Legacy no-trip flow only — the Spec C branch applies per-column and navigates
+                to the slip; nothing goes to cart from a slip-backed comparison here. */}
+            {!slipTripId && data?.comparison?.selectedVariantId && (
               <Card className="border-primary bg-primary/5">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -1639,7 +2532,7 @@ export default function ItineraryComparisonPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setLocation("/cart")}
+                      onClick={() => setLocation(backExit.to)}
                       data-testid="button-keep-original"
                     >
                       Keep my original plan
@@ -1814,7 +2707,7 @@ export default function ItineraryComparisonPage() {
                       <div className="space-y-3 pl-4">
                         {day.activities.map((item, idx) => {
                           const bookingType = getBookingType(item.serviceType);
-                          const partnerUrl = getPartnerUrl(item);
+                          const partnerKey = getPartnerKey(item);
                           const legAfter = day.transportLegs?.find(l => l.legOrder === idx + 1);
 
                           return (
@@ -1827,7 +2720,7 @@ export default function ItineraryComparisonPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <h4 className="font-medium">{item.name}</h4>
                                       {item.isReplacement && (
-                                        <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
+                                        <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                           New
                                         </Badge>
                                       )}
@@ -1839,7 +2732,7 @@ export default function ItineraryComparisonPage() {
                                   <div className="flex flex-col items-end gap-1 shrink-0">
                                     <span className="font-semibold">${parseFloat(item.price || "0")}</span>
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -1847,7 +2740,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                         <Check className="h-2.5 w-2.5 mr-1" />Book on Traveloure
                                       </Badge>
                                     )}
@@ -1882,15 +2775,13 @@ export default function ItineraryComparisonPage() {
                                   </p>
                                 )}
 
-                                {partnerUrl && (
-                                  <a
-                                    href={partnerUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                                  >
-                                    Book on Partner Site <ExternalLink className="h-3 w-3" />
-                                  </a>
+                                {partnerKey && (
+                                  <PartnerAgentBookButton
+                                    partner={partnerKey}
+                                    itemName={item.name}
+                                    itemDescription={item.description || null}
+                                    destination={data?.comparison?.destination}
+                                  />
                                 )}
                               </div>
 
@@ -1954,9 +2845,16 @@ export default function ItineraryComparisonPage() {
                   data-testid="input-expert-notes"
                 />
               </div>
+              {/* §13: was "An expert will contact you within 24 hours." No such SLA
+                  exists — POST /api/expert-booking-requests notifies experts covering the
+                  destination (or the specific provider) and creates a `pending` row with no
+                  payment intent. Nobody is on a 24-hour clock, so we describe what the
+                  request actually does and what it does not charge. */}
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                An expert will contact you within 24 hours to confirm details and payment.
+                Your request goes to experts who cover this destination. You're not charged
+                anything now — payment comes later, once an expert has confirmed the details
+                with you.
               </p>
             </div>
             <DialogFooter>

@@ -83,8 +83,8 @@ export async function seedDmoKyotoHeritage(): Promise<{ upserted: number }> {
         scrapedBy: "seed:dmo-kyoto-heritage",
         license: "unknown",
         confidenceScore: "1.00", // official UNESCO listing
-        // Born-hidden — the D1a gate. Experts review + enrich before anything is published.
-        expertWorkspaceVisible: true,
+        // Born-hidden — an admin must approve this raw content into the expert library (intake gate, "B").
+        expertWorkspaceVisible: false,
         discoverPageVisible: false,
       })
       .onConflictDoNothing({

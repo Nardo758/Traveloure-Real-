@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Kyoto Flower Arrangement with Yuki — Traveloure</title>
+    <meta property="og:title" content="Book Kyoto Flower Arrangement with Yuki — Traveloure"/>
+    <meta property="og:description" content="Hands-on ikebana workshop in Kyoto. Learn traditional flower arrangement. $45 per person."/>
+    <meta property="og:image" content="https://images.unsplash.com/photo-1599599810694-b5ac4dd33e90?w=1200&h=630&fit=crop"/>
+    <meta property="og:type" content="website"/>
+    <meta property="og:url" content="https://traveloure.com/p/yuki-flowers/kyoto-ikebana"/>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafaf8; color: #2d2d2d; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { background: #fff; border-bottom: 1px solid #e8e8e2; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        header a { color: #2d2d2d; text-decoration: none; font-weight: 600; font-size: 18px; }
+        .breadcrumb { font-size: 14px; color: #7a7a72; margin-bottom: 2rem; }
+        .hero { width: 100%; height: 400px; background: linear-gradient(135deg, #d4a5a5 0%, #c9a0a0 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; margin-bottom: 2rem; }
+        .content { display: grid; grid-template-columns: 1fr 400px; gap: 2rem; padding: 0 2rem; margin-bottom: 4rem; }
+        .main h1 { font-size: 32px; margin-bottom: 0.5rem; }
+        .provider { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; font-size: 14px; color: #7a7a72; }
+        .avatar { width: 36px; height: 36px; border-radius: 50%; background: #c9a0a0; }
+        .rating { color: #ffa500; margin-right: 0.5rem; }
+        .description { font-size: 16px; line-height: 1.6; color: #4a4a4a; margin-bottom: 2rem; }
+        .details { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; font-size: 14px; }
+        .detail-item { padding: 1rem; background: #fff; border-radius: 8px; border: 1px solid #e8e8e2; }
+        .detail-label { color: #7a7a72; font-weight: 600; font-size: 12px; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .detail-value { font-size: 16px; font-weight: 500; }
+        .sidebar { padding: 2rem; background: #fff; border-radius: 8px; border: 1px solid #e8e8e2; height: fit-content; position: sticky; top: 2rem; }
+        .price { font-size: 36px; font-weight: 700; margin-bottom: 1rem; }
+        .price-currency { font-size: 18px; vertical-align: super; }
+        .custody-label { padding: 1rem; background: #fffaed; border-left: 4px solid #ffa500; margin-bottom: 1.5rem; font-size: 13px; line-height: 1.5; color: #663d00; border-radius: 4px; }
+        .custody-label strong { display: block; margin-bottom: 0.3rem; }
+        .calendar { margin-bottom: 1.5rem; }
+        .calendar-header { font-weight: 600; margin-bottom: 1rem; font-size: 14px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; }
+        .day-header { font-weight: 600; text-align: center; font-size: 12px; color: #7a7a72; padding: 0.5rem; }
+        .day { text-align: center; padding: 0.75rem; border: 1px solid #e8e8e2; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .day:hover { border-color: #c9a0a0; background: #faf5f3; }
+        .day.available { background: #fff; }
+        .day.selected { background: #c9a0a0; color: #fff; border-color: #c9a0a0; }
+        .day.booked { background: #e8e8e2; color: #7a7a72; cursor: not-allowed; opacity: 0.5; }
+        .conflict-alert { padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626; border-radius: 4px; margin-bottom: 1rem; font-size: 13px; color: #7f1d1d; display: none; }
+        .conflict-alert.show { display: block; }
+        .button { width: 100%; padding: 1rem; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; transition: all 0.2s; text-align: center; text-decoration: none; display: inline-block; }
+        .button-primary { background: #c9a0a0; color: #fff; }
+        .button-primary:hover { background: #b8888e; }
+        .button-secondary { background: #e8e8e2; color: #2d2d2d; margin-top: 0.75rem; }
+        .button-secondary:hover { background: #dcdcd6; }
+        .button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .footer { background: #1a1a18; color: #fafaf8; padding: 4rem 2rem; margin-top: 4rem; text-align: center; }
+        .footer a { color: #c9a0a0; text-decoration: none; }
+        .reviews-preview { margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e8e8e2; }
+        .reviews-preview h3 { font-size: 16px; margin-bottom: 1rem; }
+        .review { padding: 1rem 0; border-bottom: 1px solid #e8e8e2; font-size: 14px; }
+        .review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+        .review-name { font-weight: 600; }
+        .review-date { color: #7a7a72; font-size: 12px; }
+        .review-rating { color: #ffa500; font-size: 12px; }
+        .review-text { color: #4a4a4a; margin-top: 0.5rem; }
+        @media (max-width: 768px) {
+            .content { grid-template-columns: 1fr; }
+            .sidebar { position: static; }
+            .hero { height: 300px; }
+            h1 { font-size: 24px; }
+            .details { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="/">Traveloure</a>
+        <div>🌍 EN</div>
+    </header>
+
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="/">Home</a> > <a href="/p/yuki-flowers">Yuki's Offerings</a> > Kyoto Ikebana Workshop
+        </div>
+
+        <div class="hero">
+            [Flower arrangement image here]
+        </div>
+
+        <div class="content">
+            <div class="main">
+                <h1>Kyoto Flower Arrangement (Ikebana)</h1>
+
+                <div class="provider">
+                    <div class="avatar"></div>
+                    <div>
+                        <strong>Yuki Tanaka</strong> • <span class="rating">★★★★★</span> (12 reviews)
+                    </div>
+                </div>
+
+                <p class="description">
+                    Learn traditional Japanese ikebana (flower arrangement) in my Kyoto studio. A hands-on 2-hour workshop where you'll create your own arrangement to take home. Perfect for beginners—no experience needed. Includes all materials and tea.
+                </p>
+
+                <div class="details">
+                    <div class="detail-item">
+                        <div class="detail-label">Duration</div>
+                        <div class="detail-value">2 hours</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Group Size</div>
+                        <div class="detail-value">Up to 4 people</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Location</div>
+                        <div class="detail-value">Higashiyama, Kyoto</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Delivery</div>
+                        <div class="detail-value">In-person</div>
+                    </div>
+                </div>
+
+                <h3>What's Included</h3>
+                <ul style="margin: 1rem 0 2rem 1.5rem; line-height: 1.8; color: #4a4a4a;">
+                    <li>All fresh flowers and vessels</li>
+                    <li>Instructional guidance from Yuki</li>
+                    <li>Your finished arrangement to take home</li>
+                    <li>Traditional tea and snacks</li>
+                    <li>Small gift (flower seed packet)</li>
+                </ul>
+
+                <div class="reviews-preview">
+                    <h3>Recent Reviews</h3>
+                    <div class="review">
+                        <div class="review-header">
+                            <span class="review-name">Sarah (USA)</span>
+                            <span class="review-date">Jun 15, 2026</span>
+                        </div>
+                        <div class="review-rating">★★★★★</div>
+                        <div class="review-text">"Yuki was an amazing teacher. The workshop was so peaceful and I loved bringing home my arrangement. Highly recommend!"</div>
+                    </div>
+                    <div class="review">
+                        <div class="review-header">
+                            <span class="review-name">Marco (Italy)</span>
+                            <span class="review-date">Jun 8, 2026</span>
+                        </div>
+                        <div class="review-rating">★★★★★</div>
+                        <div class="review-text">"Best cultural experience in Kyoto. Worth every yen. Yuki's English is great and very patient with beginners."</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="price"><span class="price-currency">$</span>45</div>
+
+                <div class="custody-label">
+                    <strong>Direct Booking</strong>
+                    You're booking directly with Yuki. Payment is secure via Traveloure. Cancellation policy: Free cancellation up to 7 days before.
+                </div>
+
+                <div class="calendar">
+                    <div class="calendar-header">Available Dates (June)</div>
+                    <div class="calendar-grid">
+                        <div class="day-header">Sun</div>
+                        <div class="day-header">Mon</div>
+                        <div class="day-header">Tue</div>
+                        <div class="day-header">Wed</div>
+                        <div class="day-header">Thu</div>
+                        <div class="day-header">Fri</div>
+                        <div class="day-header">Sat</div>
+
+                        <div class="day booked">26</div>
+                        <div class="day booked">27</div>
+                        <div class="day booked">28</div>
+                        <div class="day booked">29</div>
+                        <div class="day booked">30</div>
+                        <div class="day available" onclick="selectDate(1)">1</div>
+                        <div class="day available" onclick="selectDate(2)">2</div>
+
+                        <div class="day available" onclick="selectDate(3)">3</div>
+                        <div class="day available" onclick="selectDate(4)">4</div>
+                        <div class="day available" onclick="selectDate(5)">5</div>
+                        <div class="day booked">6</div>
+                        <div class="day booked">7</div>
+                        <div class="day available" onclick="selectDate(8)">8</div>
+                        <div class="day available" onclick="selectDate(9)">9</div>
+
+                        <div class="day available" onclick="selectDate(10)">10</div>
+                        <div class="day booked">11</div>
+                        <div class="day available" onclick="selectDate(12)">12</div>
+                        <div class="day available" onclick="selectDate(13)">13</div>
+                        <div class="day booked">14</div>
+                        <div class="day available" onclick="selectDate(15)">15</div>
+                        <div class="day available" onclick="selectDate(16)">16</div>
+                    </div>
+                </div>
+
+                <div class="conflict-alert" id="conflictAlert">
+                    ⚠️ This time slot just booked. Please select another date.
+                </div>
+
+                <button class="button button-primary" id="bookBtn" onclick="checkout()">Book Now</button>
+                <button class="button button-secondary" onclick="copyLink()">Share This Link</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>© 2026 Traveloure. Connecting travelers with local experiences.</p>
+        <p style="margin-top: 1rem; font-size: 12px;"><a href="#">Privacy</a> • <a href="#">Terms</a> • <a href="#">Contact</a></p>
+    </div>
+
+    <script>
+        function selectDate(day) {
+            document.querySelectorAll('.day.selected').forEach(el => el.classList.remove('selected'));
+            event.target.classList.add('selected');
+            document.getElementById('conflictAlert').classList.remove('show');
+        }
+
+        function checkout() {
+            const selected = document.querySelector('.day.selected');
+            if (!selected) {
+                alert('Please select a date first');
+                return;
+            }
+            alert('Proceeding to secure checkout via Stripe...');
+        }
+
+        function copyLink() {
+            const url = 'https://traveloure.com/p/yuki-flowers/kyoto-ikebana';
+            navigator.clipboard.writeText(url);
+            alert('Link copied! Share on WhatsApp, Instagram, or email.');
+        }
+
+        // Simulate double-book conflict on click
+        setTimeout(() => {
+            const day11 = document.querySelectorAll('.day')[24];
+            if (day11) {
+                day11.onclick = function() {
+                    document.querySelectorAll('.day.selected').forEach(el => el.classList.remove('selected'));
+                    this.classList.add('selected');
+                    document.getElementById('conflictAlert').classList.add('show');
+                };
+            }
+        }, 100);
+    </script>
+</body>
+</html>

@@ -2893,6 +2893,9 @@ CREATE TABLE IF NOT EXISTS public.service_categories (
     category_key character varying(100)
 );
 
+-- RETIRED: service_demand_requests is dropped by migration 158 (empty, no code references,
+-- no FK dependents). Kept here only so the baseline replays history faithfully on fresh
+-- environments; 158 removes it afterwards. Do not build on this table — use service_requests.
 CREATE TABLE IF NOT EXISTS public.service_demand_requests (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     offering_type_key text NOT NULL,

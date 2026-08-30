@@ -1,8 +1,12 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
+import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optimization-gate";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
+import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
+import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +22,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -50,10 +55,12 @@ import {
   Route,
   Globe,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
+import { getAcquisitionRef } from "@/lib/acquisition";
+import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -80,7 +87,12 @@ interface CartItem {
   } | null;
   quantity: number;
   scheduledDate: string | null;
+  slotId?: string | null;
+  // Slot detail joined server-side (_enrichCartItems) — real times, never fabricated client-side.
+  slot?: { date: string; startTime: string | null; endTime: string | null } | null;
   notes: string | null;
+  // B1 (ruling 81): the traveler's confirmed pickup for this line — the travel-surcharge trigger.
+  pickupLocation?: { address: string | null; lat: number; lng: number } | null;
   service: {
     id: string;
     serviceName: string;
@@ -90,6 +102,12 @@ interface CartItem {
     userId: string;
     serviceType: string | null;
     providerName: string | null;
+    // §17 property rooms (migration 153): 'per_night' marks a room-stay item —
+    // charge is nights × price, never quantity × price. NULL/undefined = flat price.
+    pricingUnit?: string | null;
+    // B1 (ruling 81): the listing's surcharge mode — non-'none' means this line prompts for a
+    // pickup location so a travel surcharge can be applied honestly.
+    surchargeMode?: string | null;
   } | null;
 }
 
@@ -98,6 +116,8 @@ interface CartData {
   subtotal: string;
   platformFee: string;
   conciergeFee: string;
+  // B1 (ruling 81): the server-derived travel surcharge for the cart, disclosed as its own line.
+  travelSurcharge?: string;
   total: string;
   itemCount: number;
 }
@@ -168,7 +188,7 @@ interface OptimizationResult {
   warnings: string[];
 }
 
-type FlowStep = "cart" | "trip-details" | "optimize" | "itinerary" | "payment";
+type FlowStep = "cart" | "optimize" | "itinerary" | "payment";
 
 interface OptimizationPreview {
   estimatedSavingsPct: number;
@@ -194,9 +214,163 @@ interface OptimizationPaymentState {
   currency: string;
 }
 
+// L1: mirrors the server's getRoomNights (server/routes/payments.routes.ts) — a §17
+// property-room item carries its stay in contentMeta.{checkIn,checkOut} (the pricing
+// unit that gates it is item.service.pricingUnit === "per_night"). Client-side display
+// only; the server independently re-derives and re-validates this at checkout (§14).
+function getRoomStay(item: CartItem): { checkIn: string; checkOut: string; nights: number } | null {
+  if (item.service?.pricingUnit !== "per_night") return null;
+  const meta = (item.contentMeta ?? {}) as Record<string, unknown>;
+  const checkIn = typeof meta.checkIn === "string" ? meta.checkIn : null;
+  const checkOut = typeof meta.checkOut === "string" ? meta.checkOut : null;
+  if (!checkIn || !checkOut || !/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) return null;
+  if (checkOut <= checkIn) return null;
+  const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
+  if (!Number.isFinite(nights) || nights < 1) return null;
+  return { checkIn, checkOut, nights };
+}
+
+/**
+ * B1 (ruling 81): the traveler's pickup-location capture for a travel-surcharge listing. The traveler
+ * types an address, we GEOCODE it via the existing POST /api/geocode (the same rail the map uses),
+ * they CONFIRM the resolved point, and it is PATCHed onto the cart row (cart_items.pickup_location).
+ * The surcharge AMOUNT is NEVER computed here — the server derives it at checkout/preview from these
+ * confirmed coords + the listing config (§14). No pickup ⇒ no surcharge (§13). Only rendered for a
+ * surcharge-enabled listing.
+ */
+function PickupLocationField({ item }: { item: CartItem }) {
+  const { toast } = useToast();
+  const [address, setAddress] = useState(item.pickupLocation?.address ?? "");
+  const [geocoding, setGeocoding] = useState(false);
+
+  const savePickup = useMutation({
+    mutationFn: async (pickupLocation: { address: string | null; lat: number; lng: number } | null) => {
+      return apiRequest("PATCH", `/api/cart/${item.id}`, { pickupLocation });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/cart"] }),
+  });
+
+  const confirmAddress = async () => {
+    if (!address.trim()) return;
+    setGeocoding(true);
+    try {
+      const res = await apiRequest("POST", "/api/geocode", { address: address.trim() });
+      const data = await res.json();
+      const lat = typeof data?.lat === "number" ? data.lat : parseFloat(String(data?.lat ?? data?.latitude));
+      const lng = typeof data?.lng === "number" ? data.lng : parseFloat(String(data?.lng ?? data?.longitude));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast({ title: "Couldn't find that address", description: "Try a more specific address.", variant: "destructive" });
+        return;
+      }
+      // We confirm the traveler-typed address to real coordinates — a real location, never a guess (§13).
+      savePickup.mutate({ address: address.trim(), lat, lng });
+    } catch {
+      toast({ title: "Couldn't look up that address", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
+  const confirmed = !!item.pickupLocation;
+  return (
+    <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2.5" data-testid={`pickup-field-${item.id}`}>
+      <p className="text-xs font-medium flex items-center gap-1.5">
+        <MapPin className="w-3.5 h-3.5" />
+        Pickup location
+      </p>
+      <p className="text-[11px] text-muted-foreground mt-0.5">
+        This provider may add a travel fee for a distant pickup. Tell us where to collect you — we'll
+        show any surcharge before you pay. Leave blank for no pickup.
+      </p>
+      <div className="flex items-center gap-2 mt-2">
+        <Input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Enter a pickup address"
+          className="h-8 text-sm"
+          data-testid={`input-pickup-address-${item.id}`}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={confirmAddress}
+          disabled={geocoding || savePickup.isPending || !address.trim()}
+          data-testid={`button-confirm-pickup-${item.id}`}
+        >
+          {geocoding || savePickup.isPending ? "…" : "Confirm"}
+        </Button>
+        {confirmed && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => { setAddress(""); savePickup.mutate(null); }}
+            data-testid={`button-clear-pickup-${item.id}`}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+      {confirmed && (
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1.5" data-testid={`text-pickup-confirmed-${item.id}`}>
+          Pickup confirmed{item.pickupLocation?.address ? `: ${item.pickupLocation.address}` : ""}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * THE CLIENT POLLING FALLBACK for a cart checkout (task #213, legacy-reconciliation lane).
+ *
+ * The Stripe webhook (`payment_intent.succeeded`) is the authoritative confirmation path, but it
+ * is asynchronous and is not delivered at all in local dev. This flow previously had NO client
+ * fallback whatsoever: `StripeCheckout` took `bookingIds` and never used them, so the traveler's
+ * browser observed a successful payment and told the server nothing. Both endpoints below now
+ * cover cart bookings (they used to query the legacy `bookings` table with `service_bookings`
+ * ids and match nothing) and BOTH are idempotent server-side — the atomic conditional in the
+ * shared promotion is the guard, so a webhook that lands mid-poll simply wins and every call
+ * here becomes a no-op. Never a double flip, and never a reason to block the traveler.
+ */
+async function confirmCheckoutPayment(
+  bookingIds: string[],
+  paymentIntentId: string,
+  attempts = 4,
+  delayMs = 1200,
+): Promise<void> {
+  if (bookingIds.length === 0) return;
+  for (let i = 0; i < attempts; i++) {
+    await new Promise((r) => setTimeout(r, delayMs));
+    try {
+      const res = await fetch("/api/bookings/bulk-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bookingIds }),
+      });
+      if (res.ok && (await res.json()).allConfirmed) return; // the webhook got there first
+    } catch {
+      /* transient — keep polling, then fall through to the explicit confirm */
+    }
+  }
+  await Promise.all(
+    bookingIds.map((bookingId) =>
+      fetch("/api/bookings/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bookingId, paymentIntentId }),
+      }).catch(() => undefined),
+    ),
+  );
+}
+
 export default function CartPage() {
   const { user, isLoading: authLoading, updatePreferredCurrency } = useAuth();
   const { openSignInModal } = useSignInModal();
+  // FP-2: one-click "pay with saved card" for the optimization fee.
+  const savedPayment = useSavedPayment(!!user);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -204,10 +378,8 @@ export default function CartPage() {
   // Generated once per page mount — stays stable across multiple "Pay Now" clicks
   // so duplicate submissions carry the same key and are de-duped server-side + by Stripe.
   const [checkoutIdempotencyKey] = useState<string>(() => crypto.randomUUID());
-  const [generating, setGenerating] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
-  const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
 
   // Optimization preview + payment state (G3 + G4)
@@ -215,6 +387,8 @@ export default function CartPage() {
   const [optimizationPreview, setOptimizationPreview] = useState<OptimizationPreview | null>(null);
   const [optimizationPayment, setOptimizationPayment] = useState<OptimizationPaymentState | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // FP-2: one-click charge in flight (separate from paymentLoading, which covers the sheet setup path).
+  const [oneClickLoading, setOneClickLoading] = useState(false);
   // Funnel PR2: quiet preview fetched on the CART step so the optimization's real
   // value (savings %, plan score) is visible before the user reaches the optimize
   // step. Same free endpoint the optimize step uses; the nudge renders only when
@@ -229,9 +403,18 @@ export default function CartPage() {
   const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
   const [tripTitle, setTripTitle] = useState("");
   const [tripDestination, setTripDestination] = useState("");
-  const [tripStartDate, setTripStartDate] = useState("");
-  const [tripEndDate, setTripEndDate] = useState("");
-  const [tripTravelers, setTripTravelers] = useState(2);
+  // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
+  // Seeded from the experience context so an experience-template flow's up-front dates carry over.
+  // Live trip context (P2): dates derive from the shared TripContext hook so an
+  // edit anywhere (EditTripPanel, another surface) reflects here immediately.
+  const [liveTripCtx] = useTripContext();
+  const tripStartDate = liveTripCtx.startDate || "";
+  const tripEndDate = liveTripCtx.endDate || "";
+  const [editTripOpen, setEditTripOpen] = useState(false);
+  const [tripTravelers, setTripTravelers] = useState(() => {
+    const t = getTripContext().travelers;
+    return t && t > 0 ? t : 2;
+  });
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
   const [guestPendingIds, setGuestPendingIds] = useState<string[]>(() => {
@@ -240,6 +423,7 @@ export default function CartPage() {
     } catch { return []; }
   });
   const [migrationDone, setMigrationDone] = useState(false);
+  const migrationStartedRef = useRef(false);
 
   // Initialize guest session ID on first visit (ensures localStorage entry exists)
   useEffect(() => {
@@ -248,9 +432,11 @@ export default function CartPage() {
 
   // Migrate guest cart items to DB after sign-in.
   // Only clears IDs that successfully POST; keeps failed ones for retry and surfaces an error.
+  // migrationStartedRef prevents re-entry; migrationDone flips only after all POSTs settle
+  // so "Prepare Trip" cannot fire against a not-yet-migrated cart.
   useEffect(() => {
-    if (authLoading || !user || guestPendingIds.length === 0 || migrationDone) return;
-    setMigrationDone(true);
+    if (authLoading || !user || guestPendingIds.length === 0 || migrationStartedRef.current) return;
+    migrationStartedRef.current = true;
     Promise.all(
       guestPendingIds.map(async (serviceId) => {
         try {
@@ -273,32 +459,35 @@ export default function CartPage() {
       if (results.some((r) => r.ok)) {
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       }
+      setMigrationDone(true);
     });
-  }, [user, authLoading, guestPendingIds, migrationDone]);
+  }, [user, authLoading, guestPendingIds]);
 
-  // Load experience context from sessionStorage on mount
+  // Load experience context on mount.
+  // Only apply an experienceSlug filter when the context has an explicit slug —
+  // i.e. the user arrived via an experience-template flow. In all other cases
+  // (direct /cart visit, general browsing) we leave experienceSlug null so the
+  // API returns every item for the user rather than a narrow slug-filtered subset.
+  // Previously this effect set a synthetic fallback like "general" or
+  // "travel_paris" which caused the server to exclude items stored under real
+  // experience slugs, making the cart appear empty even though the TripStrip
+  // (which fetches without a slug) correctly showed a non-zero count.
   useEffect(() => {
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        const context = JSON.parse(storedContext);
-        if (context.experienceSlug) {
-          setExperienceSlug(context.experienceSlug);
-          setExperienceTitle(context.title || context.experienceType);
-        } else {
-          // Use experienceType + destination as fallback key to avoid cross-experience contamination
-          const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
-          setExperienceSlug(fallbackKey);
-          setExperienceTitle(context.title || context.experienceType);
-        }
-      } catch (e) {
-        console.error("Failed to parse experience context");
-        setExperienceSlug("general");
-      }
-    } else {
-      setExperienceSlug("general");
+    const context = getTripContext();
+    if (context.experienceSlug) {
+      setExperienceSlug(context.experienceSlug);
     }
+    // No slug → experienceSlug stays null → fetches all items unfiltered.
   }, []);
+
+  // Header title + the optimize/payment/comparison request assembly's `comparisonContext.destination`
+  // BOTH derive from this ONE live selector (liveTripCtx, the useTripContext() hook above) — never a
+  // separate frozen-at-mount snapshot. A one-time useState+effect here previously froze this value at
+  // page load, so it could silently disagree with `ctx.tripId` (read fresh via getTripContext() at
+  // request time) once the trip context changed later on the same page visit — "two reads that can
+  // disagree" on which trip is active. Deriving it every render from the same hook the rest of the
+  // page's live trip state (tripStartDate/tripEndDate above) already uses closes that gap.
+  const experienceTitle = liveTripCtx.title || liveTripCtx.experienceType || null;
 
   // Load external cart items from sessionStorage when experience slug changes
   useEffect(() => {
@@ -362,6 +551,25 @@ export default function CartPage() {
     amount: number;
   } | null>(null);
   const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
+  // FP-4: once /api/checkout succeeds it clears the cart server-side (bookings are
+  // created payment_pending before the Stripe charge), so the live cart query goes
+  // empty right under the payment step. Snapshot the real checkout response here so
+  // the Order Review + fee breakdown the traveler sees while entering card details
+  // reflects what they're actually about to pay — not an empty cart or the pre-checkout
+  // (concierge-fee-less) estimate. Server-derived fields only, no invented numbers (§13/§14).
+  const [checkoutOrderSnapshot, setCheckoutOrderSnapshot] = useState<{
+    items: CartItem[];
+    externalItems: ExternalCartItem[];
+    subtotal: string;
+    platformFee: string;
+    conciergeFee: string;
+    travelSurcharge: string;
+    total: string;
+  } | null>(null);
+  // FP-4: C3 slot-conflict — which cart item(s) (by serviceId) the last checkout
+  // attempt flagged as slot_unavailable, so the traveler sees WHICH item to fix
+  // instead of just a toast that vanishes.
+  const [flaggedSlotItemIds, setFlaggedSlotItemIds] = useState<Set<string>>(new Set());
 
   // ── Start Planning flow ──────────────────────────────────────────────────
   const [showPlanningDialog, setShowPlanningDialog] = useState(false);
@@ -381,19 +589,53 @@ export default function CartPage() {
     }
   }, [user?.preferredCurrency]);
 
+  // Single source of truth (§13): this is the SAME unfiltered GET /api/cart query,
+  // under the identical react-query key, that TripStrip's cart chip reads — so "Your
+  // Cart" can never show fewer items/less money than the chip that links here.
+  //
+  // Previously this fetched `/api/cart?experience=${experienceSlug}`, server-side
+  // filtered to items tagged with the CURRENT TripContext.experienceSlug (+ unslugged
+  // items). TripContext.experienceSlug is sticky (sessionStorage, mirrored to the
+  // server via trip-context.ts) and drifts independently of what's actually in the
+  // cart: browsing a second, unrelated experience template after adding real items
+  // updates the context's slug without touching those items' stored slug, so the
+  // filtered fetch silently excluded them — "Your cart is empty" here while the chip
+  // (which always reads the full, unfiltered cart) correctly showed a nonzero count
+  // and total. Root-caused + reproduced against a real cart (see the trip-strip
+  // divergence writeup); the matching server-side defect — unslugged adds were being
+  // stamped with the literal string "general" instead of left NULL, defeating
+  // storage.getCartItems()'s own "unslugged items belong in every experience view"
+  // fallback — is fixed in routes.ts POST /api/cart. Fixing the query here is the
+  // durable half: it can't diverge from the chip regardless of what any experience
+  // slug (past, present, or a poisoned trip_contexts row) says.
   const { data: cart, isLoading } = useQuery<CartData>({
-    queryKey: ["/api/cart", experienceSlug],
+    queryKey: ["/api/cart"],
     queryFn: async () => {
-      const url = experienceSlug ? `/api/cart?experience=${experienceSlug}` : "/api/cart";
       const guestId = localStorage.getItem("traveloure_guest_session");
       const headers: Record<string, string> = {};
       if (guestId) headers["X-Guest-Session"] = guestId;
-      const res = await fetch(url, { credentials: "include", headers });
+      const res = await fetch("/api/cart", { credentials: "include", headers });
       if (!res.ok) throw new Error("Failed to fetch cart");
       return res.json();
     },
     enabled: !authLoading,
   });
+
+  // L1: when the trip-level date range isn't set yet, a room-stay item's own dates
+  // are real trip dates too — falling back to them keeps the "Add your travel dates"
+  // banner/nudge from claiming no dates exist when one is plainly visible in the cart.
+  const roomStayFallbackDates = (() => {
+    if (tripStartDate && tripEndDate) return null;
+    const stays = (cart?.items || [])
+      .map((item) => getRoomStay(item))
+      .filter((s): s is { checkIn: string; checkOut: string; nights: number } => !!s);
+    if (stays.length === 0) return null;
+    const checkIns = stays.map((s) => s.checkIn).sort();
+    const checkOuts = stays.map((s) => s.checkOut).sort();
+    return { start: checkIns[0], end: checkOuts[checkOuts.length - 1] };
+  })();
+  const effectiveTripStartDate = tripStartDate || roomStayFallbackDates?.start || "";
+  const effectiveTripEndDate = tripEndDate || roomStayFallbackDates?.end || "";
 
   const { data: userTrips = [] } = useQuery<any[]>({
     queryKey: ["/api/trips"],
@@ -404,6 +646,24 @@ export default function CartPage() {
     queryKey: ["/api/exchange-rates"],
     staleTime: 60 * 60 * 1000,
   });
+
+  // B2 one-click: does this traveler have a vaulted card? Drives (a) `useSavedCard` on the
+  // checkout POST and (b) honest button copy — the button that CHARGES must say so. The endpoint
+  // degrades to { available:false, methods:[] } on any failure, so absence of data simply means
+  // the normal two-step flow; one-click is only ever an upgrade, never a gate.
+  const { data: savedMethodsData } = useQuery<{
+    available: boolean;
+    defaultPaymentMethodId: string | null;
+    methods: Array<{ id: string; brand: string; last4: string }>;
+  }>({
+    queryKey: ["/api/me/payment-methods"],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const defaultSavedCard = savedMethodsData?.available
+    ? (savedMethodsData.methods.find((m) => m.id === savedMethodsData.defaultPaymentMethodId) ??
+       savedMethodsData.methods[0] ?? null)
+    : null;
 
   const convertToItineraryMutation = useMutation({
     mutationFn: async (payload: {
@@ -416,13 +676,13 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: { tripId: string; convertedCount: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
         title: `${data.convertedCount} item${data.convertedCount !== 1 ? "s" : ""} added to your trip!`,
         description: "View and arrange them in your trip itinerary.",
       });
       setShowPlanningDialog(false);
-      setLocation(`/trip/${data.tripId}`);
+      setLocation(`/plans/${data.tripId}`);
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to add items to trip" });
@@ -446,7 +706,7 @@ export default function CartPage() {
       return apiRequest("PATCH", `/api/cart/${id}`, { quantity });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to update item" });
@@ -458,7 +718,7 @@ export default function CartPage() {
       return apiRequest("DELETE", `/api/cart/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Item removed from cart" });
     },
     onError: () => {
@@ -478,7 +738,7 @@ export default function CartPage() {
       return apiRequest("POST", "/api/cart", { serviceId: c.bookable.serviceId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Added to your cart" });
     },
     onError: () => {
@@ -488,6 +748,11 @@ export default function CartPage() {
   });
 
   const checkoutMutation = useMutation({
+    onMutate: () => {
+      // A fresh attempt supersedes any earlier slot flag — if the same item fails
+      // again the error handler below re-flags it.
+      setFlaggedSlotItemIds(new Set());
+    },
     mutationFn: async () => {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
@@ -495,13 +760,75 @@ export default function CartPage() {
       const res = await apiRequest("POST", "/api/checkout", {
         currency: displayCurrency,
         idempotencyKey: checkoutIdempotencyKey,
+        // B2: ask for the off-session confirm only when a vaulted card is known to exist. The
+        // server re-verifies independently (a stale/false claim here degrades to the interactive
+        // sheet, never an error) and derives every amount from the claimed rows (§14).
+        useSavedCard: !!defaultSavedCard,
+        // S4: raw captured short-link code; the SERVER derives the attribution source
+        // (direct | link | cross_sell) — the client never asserts it.
+        ...(getAcquisitionRef() ? { ref: getAcquisitionRef() } : {}),
       });
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
-      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      // Merge resolution (FP-4 × Replit TripStrip fix): the snapshot below MUST read the live
+      // cart items BEFORE any invalidation empties them (FP-4), so the Replit branch's
+      // top-of-function invalidation is dropped; its base-key ['/api/cart'] pattern (so the
+      // TripStrip count updates — slug-scoped keys missed it) is applied to the invalidations
+      // at the END of this handler instead. Both intents preserved.
+      // Ruling 38 (truthfulness): a 2xx from /api/checkout is NOT by itself a booking.
+      // `{duplicate:true}` with no paymentIntent means the server found a prior claim it could
+      // not hand a payment sheet for — the old code fell into the `else` below and told the
+      // traveler "Booking created!" then redirected to /bookings, which is how a checkout that
+      // never obtained a PaymentIntent was reported as a success. Never again: no success copy
+      // and no redirect unless there is something real behind it.
+      if (!data.paymentIntent && data.duplicate) {
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: "Checkout couldn't be resumed",
+          description:
+            data.note ||
+            "We couldn't reopen the payment for this checkout. Nothing has been charged — please refresh and try again.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
+      // B2 one-click: the off-session confirm already SUCCEEDED server-side — there is no
+      // payment step left, and the clientSecret must NOT be confirmed again. Same polling
+      // fallback as the interactive path (idempotent; the server promoted inline as actor
+      // "checkout", so this converges instantly), then straight to the traveler's bookings.
+      // ONE click total: the button below was the entire checkout.
+      if (data.oneClick && data.status === "succeeded") {
+        confirmCheckoutPayment(
+          data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [],
+          data.paymentIntent?.paymentIntentId,
+        ).catch(() => {});
+        toast({
+          title: "Booked & paid",
+          description: `Charged to your saved ${defaultSavedCard?.brand ?? "card"} •••• ${defaultSavedCard?.last4 ?? ""}.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+        setLocation("/bookings");
+        return;
+      }
+      // B2: `oneClick && requiresAction` (declined / bank demands 3DS) deliberately falls
+      // through to the branch below — the returned clientSecret opens the normal payment sheet.
       if (data.paymentIntent) {
+        // FP-4: snapshot the real, server-derived breakdown (incl. conciergeFee, which
+        // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
+        // to go empty (checkout already cleared it server-side), but the payment step
+        // still needs to show the traveler exactly what they're paying for.
+        setCheckoutOrderSnapshot({
+          items: cart?.items || [],
+          externalItems,
+          subtotal: data.subtotal,
+          platformFee: data.platformFee,
+          conciergeFee: data.conciergeFee ?? "0",
+          travelSurcharge: data.travelSurcharge ?? "0",
+          total: data.total,
+        });
         setCheckoutPaymentIntent(data.paymentIntent);
         setCheckoutBookingIds(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []);
         setFlowStep("payment");
@@ -509,13 +836,78 @@ export default function CartPage() {
         toast({ title: "Booking created!", description: "Your services have been booked." });
         setLocation("/bookings");
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
     },
     onError: (error: any) => {
-      if (error?.message === "No platform items to checkout") {
+      const msg = String(error?.message ?? "");
+      if (msg === "No platform items to checkout") {
         toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
-      } else {
-        toast({ variant: "destructive", title: "Checkout failed" });
+        return;
       }
+      // L1b: the server's error body is JSON shaped `{ error, message, serviceId? }` inside
+      // a `"<status>: <bodyText>"` message (see queryClient.ts throwIfResNotOk) — parse it so
+      // the toast can carry the server's own, specific explanation instead of hiding it.
+      let parsedBody: any = null;
+      try {
+        const jsonStart = msg.indexOf(": ");
+        parsedBody = JSON.parse(jsonStart >= 0 ? msg.slice(jsonStart + 2) : msg);
+      } catch { /* not JSON (network error, etc.) — falls through to the generic message below */ }
+
+      const errorCode = parsedBody?.error as string | undefined;
+      // Ruling 38: the payment provider could not be reached, or the claim expired before
+      // payment started. In BOTH cases the server committed nothing — the cart is intact and a
+      // retry is the correct next action, so say exactly that instead of the old generic
+      // "Your payment could not be processed" (which was written for a charge that failed).
+      if (errorCode === "payment_unavailable" || errorCode === "checkout_claim_expired") {
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: errorCode === "payment_unavailable" ? "Payment provider unavailable" : "Checkout expired",
+          description:
+            parsedBody?.message ||
+            "Nothing was charged and nothing was booked. Your cart is intact — please try again.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
+      if (errorCode === "checkout_key_spent") {
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: "Start a new checkout",
+          description:
+            parsedBody?.message ||
+            "This checkout has already been completed or has expired. Please start a new one.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
+      if (errorCode === "slot_unavailable" || errorCode === "nights_unavailable") {
+        // C3/§17: a picked availability slot or room-night filled between add-to-cart and
+        // checkout — nothing was charged and no booking was created. Flag the specific item
+        // (when the server told us which one) so the traveler sees WHICH item to fix instead
+        // of just a toast that disappears.
+        if (typeof parsedBody?.serviceId === "string") {
+          setFlaggedSlotItemIds((prev) => new Set(prev).add(parsedBody.serviceId));
+        }
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: errorCode === "nights_unavailable" ? "Those dates just booked" : "That time slot just booked",
+          description: parsedBody?.message
+            || "One of your items is no longer available for the dates/time you picked. Please pick another, or remove it.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
+
+      toast({
+        variant: "destructive",
+        title: "Checkout failed",
+        description: parsedBody?.message || parsedBody?.detail
+          || "Your payment could not be processed. You have not been charged — please try again.",
+      });
     },
   });
 
@@ -536,7 +928,10 @@ export default function CartPage() {
   const combinedSubtotal = platformSubtotal + externalSubtotal;
   const platformFee = parseFloat(cart?.platformFee || "0");
   const conciergeFee = parseFloat(cart?.conciergeFee || "0");
-  const combinedTotal = combinedSubtotal + platformFee + conciergeFee;
+  // B1 (ruling 81): the server-derived travel surcharge for this cart (0 unless a surcharge listing
+  // has a confirmed pickup outside its coverage). Shown as its own line; part of the total.
+  const travelSurcharge = parseFloat(cart?.travelSurcharge || "0");
+  const combinedTotal = combinedSubtotal + platformFee + conciergeFee + travelSurcharge;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const exchangeRates = exchangeRatesData?.rates ?? {};
@@ -567,15 +962,30 @@ export default function CartPage() {
     (item) => item.isContentItem || (!!item.contentId && !!item.contentType)
   );
 
+  // Fix #970: the convert-to-trip control used to gate on `contentItems` alone (Discover
+  // saves), so a cart holding ONLY a platform-service row (serviceId, no contentId/contentType)
+  // had no "Start Planning" / "Add to Trip Itinerary" control at all — even though
+  // POST /api/cart/convert-to-itinerary (W3) already converts service rows and preserves
+  // providerServiceId on the created itinerary item. planCandidateItems mirrors that server
+  // gate exactly (content OR a real service), so the control renders whenever the cart has
+  // ANY convertible item.
+  const planCandidateItems = (cart?.items || []).filter(
+    (item) => item.isContentItem || (!!item.contentId && !!item.contentType) || !!item.serviceId
+  );
+
   const openPlanningDialog = () => {
     if (!user) { openSignInModal(); return; }
-    setSelectedPlanItemIds(new Set(contentItems.map((i) => i.id)));
+    setSelectedPlanItemIds(new Set(planCandidateItems.map((i) => i.id)));
     setPlanningTripMode("existing");
     setPlanningTripId("");
     setNewTripName("");
+    // §13: `provider_services.location` defaults to the literal "Unknown" — that is the
+    // absence of a location, not a place name, so it must never be used as a destination fallback.
+    const firstServiceLocation = planCandidateItems.find((i) => i.serviceId)?.service?.location;
     setNewTripDestination(
       (contentItems[0]?.contentMeta as any)?.city ||
       (contentItems[0]?.contentMeta as any)?.location ||
+      (firstServiceLocation && firstServiceLocation !== "Unknown" ? firstServiceLocation : "") ||
       ""
     );
     setShowPlanningDialog(true);
@@ -617,14 +1027,8 @@ export default function CartPage() {
       setCartNudge(null);
       return;
     }
-    let eventType: string | undefined;
-    try {
-      const stored = sessionStorage.getItem("experienceContext");
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        eventType = ctx.experienceType || ctx.eventType;
-      }
-    } catch { /* ignore */ }
+    const ctxForEvent = getTripContext();
+    const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
     const items = [
       ...platformItems.map((item: any) => ({
         serviceType: item.service?.serviceType || "sightseeing",
@@ -665,14 +1069,8 @@ export default function CartPage() {
       return;
     }
 
-    let eventType: string | undefined;
-    try {
-      const stored = sessionStorage.getItem("experienceContext");
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        eventType = ctx.experienceType || ctx.eventType;
-      }
-    } catch { /* ignore */ }
+    const ctxForEvent = getTripContext();
+    const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
 
     const items = [
       ...platformItems.map(item => ({
@@ -710,6 +1108,89 @@ export default function CartPage() {
   };
 
   // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
+  // The heavy lifting; runs once a trip date is known (already set, or just collected via the modal).
+  const proceedOptimize = async (effStart: string, effEnd: string) => {
+    setResolvingTrip(true);
+    try {
+      const ctxAtResolve = getTripContext();
+      const ctxExperienceSlug = ctxAtResolve.experienceSlug || undefined;
+      const ctxUserExperienceId = ctxAtResolve.userExperienceId || ctxAtResolve.id || undefined;
+      const ctxDestination = ctxAtResolve.destination || ctxAtResolve.city || undefined;
+      const ctxTripId = ctxAtResolve.tripId || undefined;
+
+      const res = await fetch("/api/cart/resolve-trip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          experienceSlug: ctxExperienceSlug,
+          userExperienceId: ctxUserExperienceId,
+          tripId: ctxTripId,
+          startDate: effStart || undefined,
+          endDate: effEnd || undefined,
+          destination: ctxDestination,
+          travelers: ctxAtResolve.travelers || undefined,
+          // External (affiliate/AI) items exist only in sessionStorage — send a
+          // minimal descriptor list so an external-only cart can resolve a trip.
+          // No prices sent: the server ignores them by design.
+          externalItems: externalItems.map((item) => ({
+            name: item.name,
+            date: item.date,
+          })),
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
+      const data = await res.json();
+      const trip = data.trip;
+
+      setResolvedTrip(trip);
+      setTripTitle(trip.title || "");
+      setTripDestination(trip.destination || "");
+      // The user's explicitly-set header dates WIN over a reused trip's stored dates — a returning
+      // trip must not silently clobber a fresh edit. Fall back to the trip's dates only when the
+      // header had none (defensive: handleOptimizeClick already requires them).
+      setTripTravelers(trip.numberOfTravelers || 2);
+      // Prefill "What are you planning?" from an existing template context
+      // (wedding/proposal template flows keep their type); default "trip".
+      {
+        const ctx = getTripContext();
+        setTripEventType(ctx.experienceType || ctx.eventType || "trip");
+      }
+
+      // Persist the resolved tripId — and the identity-coupled display fields it's
+      // now bound to — into the context in ONE atomic switchTripContext call.
+      // Money-adjacent invariant: this is the write that re-keys the context to
+      // whichever trip resolve-trip actually returned, so `tripId` and the
+      // destination/title shown on screen can never disagree afterward. A plain
+      // merge (updateTripContext) here would only touch tripId/dates/travelers,
+      // silently leaving destination/title/experienceType at whatever the LIVE
+      // context held by the time this `await` resolved — which is not necessarily
+      // `ctxAtResolve` (the snapshot that was actually sent to and used by
+      // resolve-trip) if another write raced in during the network round-trip.
+      // Pinning every identity field to `ctxAtResolve`/`trip` here closes that gap.
+      // The user's explicit header dates WIN over a reused trip's stored dates;
+      // fall back to the trip's dates only when none were set (dates derive from
+      // the context hook, so this single write updates the header display too).
+      switchTripContext({
+        tripId: trip.id,
+        destination: trip.destination || ctxAtResolve.destination,
+        title: trip.title || ctxAtResolve.title,
+        startDate: effStart || trip.startDate || undefined,
+        endDate: effEnd || trip.endDate || undefined,
+        travelers: trip.numberOfTravelers || ctxAtResolve.travelers || undefined,
+        experienceType: ctxAtResolve.experienceType,
+      });
+
+      // Trip Details step removed (Trip-Strip P3): the strip + EditTripPanel own
+      // trip state, so Continue goes straight into the optimization preview.
+      await fetchPreview();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Trip preparation failed", description: err.message });
+    } finally {
+      setResolvingTrip(false);
+    }
+  };
+
   const handleOptimizeClick = async () => {
     if (!user) {
       openSignInModal();
@@ -726,102 +1207,48 @@ export default function CartPage() {
       return;
     }
 
-    setResolvingTrip(true);
-    try {
-      let ctxExperienceSlug: string | undefined;
-      let ctxUserExperienceId: string | undefined;
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        if (stored) {
-          const ctx = JSON.parse(stored);
-          ctxExperienceSlug = ctx.experienceSlug || undefined;
-          ctxUserExperienceId = ctx.userExperienceId || ctx.id || undefined;
-        }
-      } catch { /* ignore */ }
-
-      const res = await fetch("/api/cart/resolve-trip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ experienceSlug: ctxExperienceSlug, userExperienceId: ctxUserExperienceId }),
-      });
-      if (!res.ok) throw new Error("Could not prepare trip");
-      const data = await res.json();
-      const trip = data.trip;
-
-      setResolvedTrip(trip);
-      setTripTitle(trip.title || "");
-      setTripDestination(trip.destination || "");
-      setTripStartDate(trip.startDate || "");
-      setTripEndDate(trip.endDate || "");
-      setTripTravelers(trip.numberOfTravelers || 2);
-      // Prefill "What are you planning?" from an existing template context
-      // (wedding/proposal template flows keep their type); default "trip".
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        setTripEventType(ctx.experienceType || ctx.eventType || "trip");
-      } catch {
-        setTripEventType("trip");
-      }
-
-      // Persist the resolved tripId back into the experience context so
-      // downstream steps (createComparison, requestOptimizationPayment) pick it up
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        ctx.tripId = trip.id;
-        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-      } catch { /* ignore */ }
-
-      setFlowStep("trip-details");
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Could not prepare trip", description: err.message });
-    } finally {
-      setResolvingTrip(false);
+    // Every trip needs dates before it can be prepared. Dates live in the always-visible trip-date
+    // header at the top of the cart (not a step, not a modal) — if unset, nudge the user there.
+    // L1: fall back to a room-stay item's own dates first — the item already carries real
+    // dates, so re-asking for them here would be the same "UI lies about state" bug.
+    const effStart = effectiveTripStartDate;
+    const effEnd = effectiveTripEndDate;
+    if (!effStart || !effEnd) {
+      setEditTripOpen(true);
+      toast({ title: "Add your travel dates", description: "Set your trip dates to continue." });
+      return;
     }
+    if (new Date(effEnd) < new Date(effStart)) {
+      toast({ variant: "destructive", title: "Invalid dates", description: "End date can't be before the start date." });
+      return;
+    }
+    await proceedOptimize(effStart, effEnd);
   };
 
-  // ── G6: Save user edits to the trip details, then proceed to preview ─────
-  const handleConfirmTripDetails = async () => {
-    if (!resolvedTrip) return;
-
-    // Persist any user edits to the trip record (non-blocking on failure)
-    try {
-      await fetch(`/api/trips/${resolvedTrip.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title: tripTitle,
-          destination: tripDestination,
-          startDate: tripStartDate,
-          endDate: tripEndDate,
-          numberOfTravelers: tripTravelers,
-        }),
+  // Fix #971: shared refusal handling for `POST /api/optimization-payments` — that endpoint now
+  // runs the SAME `trip_empty_convert_cart` pre-flight `createComparison`'s
+  // `POST /api/itinerary-comparisons` call already handled below (server/routes/optimization.routes.ts),
+  // so a signed-in user with an empty trip and a full cart is refused BEFORE any Stripe call
+  // instead of paying first and only finding out when the comparison is created. Both entry
+  // points into that endpoint (the payment-sheet flow and the one-click saved-card flow) route
+  // through this so the same guidance dialog opens either way. Returns true when the response
+  // WAS this refusal — the caller stops there, having already surfaced the dialog.
+  const handleOptimizationPaymentRefusal = (status: number, body: any): boolean => {
+    if (status === 409 && body?.error === "trip_empty_convert_cart") {
+      toast({
+        title: "Add your cart to the trip first",
+        description: "These items aren't on your trip yet, so there's nothing for the optimizer to work with.",
       });
-
-      // Update sessionStorage so the optimizer uses the confirmed values
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        ctx.tripId = resolvedTrip.id;
-        ctx.destination = tripDestination;
-        ctx.startDate = tripStartDate;
-        ctx.endDate = tripEndDate;
-        ctx.travelers = tripTravelers;
-        // Funnel PR2: the explicit answer replaces the silent "general" fallback —
-        // this is what getFee/complexityTier price against downstream.
-        if (tripEventType) ctx.experienceType = tripEventType;
-        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-      } catch { /* ignore */ }
-    } catch { /* non-fatal */ }
-
-    // Proceed to the optimization preview step
-    await fetchPreview();
+      setShowPlanningDialog(true);
+      return true;
+    }
+    return false;
   };
 
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
+  // Lane A (A1): the request/branching sequence lives in the SHARED optimization-gate
+  // module now (client/src/lib/optimization-gate.ts) — one implementation for cart and
+  // the slip's "Optimize this plan". This function keeps only cart-specific UI wiring.
   const requestOptimizationPayment = async () => {
     if (!user) {
       openSignInModal();
@@ -831,55 +1258,88 @@ export default function CartPage() {
     setPaymentLoading(true);
     try {
       // Send DB identifiers so the server derives the tier server-side
-      let tripId: string | undefined;
-      let userExperienceId: string | undefined;
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        if (stored) {
-          const ctx = JSON.parse(stored);
-          tripId = ctx.tripId;
-          userExperienceId = ctx.userExperienceId || ctx.id;
-        }
-      } catch { /* ignore */ }
+      const ctxAtPayment = getTripContext();
+      const tripId: string | undefined = ctxAtPayment.tripId;
+      const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
 
-      const res = await fetch("/api/optimization-payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ tripId, userExperienceId, comparisonContext: { destination: experienceTitle } }),
+      const outcome = await requestOptimizationGate({
+        tripId,
+        userExperienceId,
+        destination: experienceTitle,
       });
-      if (!res.ok) throw new Error("Could not create payment");
-      const data = await res.json();
-
-      if (data.freeRerun) {
+      if (outcome.kind === "refused") {
+        handleOptimizationPaymentRefusal(outcome.status, outcome.body);
+        return;
+      }
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
         // Skip payment for 24h free re-run
         await createComparison();
         return;
       }
-
-      setOptimizationPayment({
-        clientSecret: data.clientSecret,
-        paymentIntentId: data.paymentIntentId,
-        feeCents: data.feeCents,
-        currency: data.currency || "USD",
-      });
+      if (outcome.kind === "payment_sheet") {
+        setOptimizationPayment(outcome.payment);
+      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Payment setup failed", description: err.message });
     } finally {
+      // Runs on every path out of this function — success, the refusal `return`, and the
+      // catch — so "Setting up…" never hangs regardless of which of those fires.
       setPaymentLoading(false);
+    }
+  };
+
+  // FP-2: one-click — charge the saved default card off-session, no payment sheet.
+  // Tri-state per FP-1's contract: succeeded (skip straight to /confirm), requiresAction
+  // (fall back to the sheet with the returned clientSecret), or the endpoint's normal
+  // freeRerun short-circuit (identical to the sheet path).
+  const payWithSavedCard = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (!optimizationPreview) return;
+    setOneClickLoading(true);
+    try {
+      const ctxAtPayment = getTripContext();
+      const tripId: string | undefined = ctxAtPayment.tripId;
+      const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
+
+      const outcome = await requestOptimizationGate({
+        tripId,
+        userExperienceId,
+        destination: experienceTitle,
+        useSavedCard: true,
+      });
+      if (outcome.kind === "refused") {
+        handleOptimizationPaymentRefusal(outcome.status, outcome.body);
+        return;
+      }
+      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
+        await createComparison();
+        return;
+      }
+      if (outcome.kind === "paid") {
+        toast({ title: "Payment successful", description: "Building your optimized itinerary..." });
+        await handleOptimizationPaymentSuccess(outcome.paymentIntentId);
+        return;
+      }
+      if (outcome.kind === "payment_sheet") {
+        // Bank demands 3DS — fall back to the interactive sheet for this one charge.
+        setOptimizationPayment(outcome.payment);
+        return;
+      }
+      // No saved method after all (shouldn't happen if hasDefault was true) — fall back to the sheet.
+      await requestOptimizationPayment();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Payment failed", description: err.message });
+    } finally {
+      setOneClickLoading(false);
     }
   };
 
   // Called after optimization payment succeeds
   const handleOptimizationPaymentSuccess = async (paymentIntentId: string) => {
-    try {
-      await fetch("/api/optimization-payments/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ paymentIntentId }),
-      });
-    } catch { /* non-critical */ }
+    await confirmOptimizationPayment(paymentIntentId);
     await createComparison(paymentIntentId);
   };
 
@@ -899,15 +1359,7 @@ export default function CartPage() {
     }
     setCreatingComparison(true);
     
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        experienceContext = JSON.parse(storedContext);
-      } catch (e) {
-        console.error("Failed to parse experience context");
-      }
-    }
+    const experienceContext: TripContext | undefined = getTripContext();
 
     // Build baseline items from platform items
     const platformBaselineItems = platformItems.map(item => ({
@@ -962,156 +1414,64 @@ export default function CartPage() {
           }
         }
       }
-      return "Your destination";
+      return null;
     };
-    
+
+    // §13 honest-or-absent (mirrors discover.tsx's createComparison): don't invent
+    // "Your destination" — if nothing real resolves, block with a toast instead.
+    const knownDestination = getComparisonDestination();
+    if (!knownDestination) {
+      toast({
+        title: "Tell us where you're headed",
+        description: "Add an item with a location, or start from a trip with a destination, so we know where to plan for.",
+      });
+      setCreatingComparison(false);
+      return;
+    }
+
     try {
-      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+      const comparison = await createComparisonRequest({
         title: experienceContext?.title || "My Trip",
-        destination: getComparisonDestination(),
+        destination: knownDestination,
         startDate: experienceContext?.startDate || new Date().toISOString().split('T')[0],
         endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: String(combinedTotal),
-        travelers: experienceContext?.travelers || 2,
+        // Real traveler count when known; otherwise omitted — server defaults to 1 (§13, no invented "2").
+        ...(typeof experienceContext?.travelers === "number" ? { travelers: experienceContext.travelers } : {}),
         baselineItems,
         tripId: experienceContext?.tripId,
         userExperienceId: experienceContext?.userExperienceId || experienceContext?.id,
-        ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
+        optimizationPaymentId,
       });
-      
-      const comparison = await response.json();
-      // G7: if we have a tripId, signal the comparison page to auto-apply and redirect
+
+      // G7: if we have a tripId, signal the comparison page to auto-apply and redirect. This
+      // ?autoApply=1 query-param behavior is UNCHANGED (R-E only changed where the auto-apply
+      // path itself lands — see itinerary-comparison.tsx).
       const autoApplyFlag = experienceContext?.tripId ? "?autoApply=1" : "";
       setLocation(`/itinerary-comparison/${comparison.id}${autoApplyFlag}`);
     } catch (error: any) {
+      // Lane 5b: the optimizer reads the TRIP now, so a full cart against an empty trip is a
+      // specific, fixable state rather than a generic failure. The server names it; we open the
+      // existing "add these to a trip" dialog instead of dead-ending on a red toast.
+      // (Matching on the message body follows the `dispute_window_closed` precedent in
+      // my-bookings.tsx — apiRequest throws `"<status>: <body>"`.)
+      const msg = typeof error?.message === "string" ? error.message : "";
+      if (msg.includes("trip_empty_convert_cart")) {
+        toast({
+          title: "Add your cart to the trip first",
+          description: "These items aren't on your trip yet, so there's nothing for the optimizer to work with.",
+        });
+        setShowPlanningDialog(true);
+        return;
+      }
       console.error("Failed to create comparison:", error);
-      toast({ 
-        variant: "destructive", 
+      toast({
+        variant: "destructive",
         title: "Failed to generate itinerary",
         description: error?.message || "Please try again"
       });
     } finally {
       setCreatingComparison(false);
-    }
-  };
-
-  const generateItinerary = async () => {
-    // Prevent double-clicks
-    if (generating) return;
-    
-    const platformItems = cart?.items || [];
-    // Wait for data to be ready
-    if (isLoading) {
-      toast({ title: "Loading cart...", description: "Please wait a moment" });
-      return;
-    }
-    if (platformItems.length === 0 && externalItems.length === 0) {
-      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
-      return;
-    }
-    setGenerating(true);
-    
-    // Try to get experience context from session storage
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        experienceContext = JSON.parse(storedContext);
-      } catch (e) {
-        console.error("Failed to parse experience context");
-      }
-    }
-    
-    // Build services from platform items
-    const platformServices = platformItems.map(item => ({
-      name: item.service?.serviceName,
-      provider: item.service?.providerName || "Provider",
-      price: parseFloat(item.service?.price || "0"),
-      category: item.service?.serviceType || "service"
-    }));
-    
-    // Build services from external items  
-    const externalServices = externalItems.map(item => ({
-      name: item.name,
-      provider: item.provider || "External Provider",
-      price: item.price,
-      category: item.type
-    }));
-    
-    // Derive destination from available data
-    const getDestination = () => {
-      if (experienceContext?.destination) return experienceContext.destination;
-      if (platformItems[0]?.service?.location) return platformItems[0].service.location;
-      
-      // Check external items for destination data
-      for (const extItem of externalItems) {
-        if (extItem?.metadata?.meetingPoint) return extItem.metadata.meetingPoint;
-        // Flight destination (from name like "NYC → LAX")
-        if (extItem?.name?.includes('→')) {
-          const destCode = extItem.name.split('→')[1]?.trim();
-          if (destCode) return destCode;
-        }
-        // Hotel location (from rawData if available)
-        if (extItem?.type === 'hotels' || extItem?.type === 'accommodations') {
-          const rawData = extItem?.metadata?.rawData;
-          // Check various Amadeus hotel location fields
-          if (rawData?.hotel?.address?.cityName) return rawData.hotel.address.cityName;
-          if (rawData?.hotel?.cityCode) return rawData.hotel.cityCode;
-          if (rawData?.destinationLocation) return rawData.destinationLocation;
-        }
-        // Flight destination from rawData
-        if (extItem?.type === 'flights') {
-          const rawData = extItem?.metadata?.rawData;
-          if (rawData?.itineraries?.[0]?.segments) {
-            const segments = rawData.itineraries[0].segments;
-            const lastSegment = segments[segments.length - 1];
-            if (lastSegment?.arrival?.iataCode) return lastSegment.arrival.iataCode;
-          }
-        }
-      }
-      return "Your destination";
-    };
-    
-    // CON-A.P1: free preview path. Full LLM optimization is delivered via the gated
-    // paid path (/api/optimization-payments → /confirm) surfaced from the Concierge UI.
-    const previewItems = [
-      ...platformServices.map(s => ({
-        serviceType: s.category || "sightseeing",
-        price: s.price,
-        duration: 90,
-        dayNumber: 1,
-      })),
-      ...externalServices.map((s, i) => ({
-        serviceType: s.category || "activity",
-        price: s.price,
-        duration: 120,
-        dayNumber: Math.floor(i / 3) + 1,
-      })),
-    ];
-
-    try {
-      const response = await fetch("/api/optimization-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          items: previewItems,
-          eventType: experienceContext?.experienceType,
-        }),
-      });
-      if (response.ok) {
-        const preview: OptimizationPreview = await response.json();
-        setOptimizationPreview(preview);
-        setOptimizationPayment(null);
-        setFlowStep("optimize");
-      } else {
-        toast({ variant: "destructive", title: "Failed to generate itinerary" });
-      }
-    } catch (error) {
-      console.error("Failed to generate itinerary:", error);
-      toast({ variant: "destructive", title: "Failed to generate itinerary" });
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -1138,7 +1498,6 @@ export default function CartPage() {
         {(() => {
           const steps: Array<{ key: FlowStep; label: string; icon: ReactNode; reachable: boolean }> = [
             { key: "cart", label: "Cart", icon: <ShoppingCart className="w-4 h-4" />, reachable: true },
-            { key: "trip-details", label: "Trip", icon: <MapPin className="w-4 h-4" />, reachable: !!resolvedTrip },
             { key: "optimize", label: "Optimize", icon: <Lock className="w-4 h-4" />, reachable: !!optimizationPreview },
             { key: "itinerary", label: "Itinerary", icon: <Sparkles className="w-4 h-4" />, reachable: !!optimizationResult },
             { key: "payment", label: "Payment", icon: <CreditCard className="w-4 h-4" />, reachable: (cart?.items?.length || 0) > 0 || !!checkoutPaymentIntent },
@@ -1154,9 +1513,9 @@ export default function CartPage() {
                     disabled={!s.reachable}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors ${
                       flowStep === s.key
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : s.reachable
-                          ? "bg-muted hover:bg-[#FF385C]/15 hover:text-[#FF385C] cursor-pointer"
+                          ? "bg-muted hover:bg-primary/15 hover:text-primary cursor-pointer"
                           : "bg-muted/60 text-muted-foreground/60 cursor-default"
                     }`}
                     data-testid={`step-pill-${s.key}`}
@@ -1178,11 +1537,8 @@ export default function CartPage() {
             onClick={() => {
               if (flowStep === "cart") {
                 window.history.back();
-              } else if (flowStep === "trip-details") {
-                setFlowStep("cart");
-                setResolvedTrip(null);
               } else if (flowStep === "optimize") {
-                setFlowStep("trip-details");
+                setFlowStep("cart");
                 setOptimizationPreview(null);
                 setOptimizationPayment(null);
               } else if (flowStep === "itinerary") {
@@ -1200,15 +1556,13 @@ export default function CartPage() {
           >
             <ArrowLeft className="w-4 h-4" />
             {flowStep === "cart" ? "Back" :
-              flowStep === "trip-details" ? "Cart" :
-              flowStep === "optimize" ? "Trip Details" :
+              flowStep === "optimize" ? "Cart" :
               flowStep === "itinerary" ? "Cart" :
               optimizationResult ? "Itinerary" : "Cart"}
           </Button>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
               {flowStep === "cart" && "Your Cart"}
-              {flowStep === "trip-details" && "Your Trip Details"}
               {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}
@@ -1224,8 +1578,47 @@ export default function CartPage() {
           )}
         </div>
 
-        {/* Guest nudge — only shown when unauthenticated and there are items */}
-        {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (
+        {/* Trip-date header — read-only summary of the strip-owned trip dates (P3b).
+            Edits go through the shared EditTripPanel; the dates derive live from TripContext. */}
+        {flowStep === "cart" && totalItemCount > 0 && (
+          <div
+            className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
+            data-testid="header-trip-dates"
+          >
+            <Calendar className="w-4 h-4 text-primary shrink-0" />
+            <span
+              className={`text-sm flex-1 ${effectiveTripStartDate && effectiveTripEndDate ? "font-medium" : "text-muted-foreground"}`}
+              data-testid="text-header-trip-dates"
+            >
+              {effectiveTripStartDate && effectiveTripEndDate
+                ? `${format(parseISO(effectiveTripStartDate), "MMM d")} → ${format(parseISO(effectiveTripEndDate), "MMM d")}${
+                    !tripStartDate || !tripEndDate ? " (from your room dates)" : ""
+                  }`
+                : "Add your travel dates"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setEditTripOpen(true)}
+              data-testid="button-edit-trip"
+            >
+              Edit trip
+            </Button>
+          </div>
+        )}
+        <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
+
+        {/* Guest nudge — only shown when unauthenticated and there are items. `totalItemCount`
+            alone under-counts here: it's server-cart-derived (cart?.itemCount) plus external
+            items, and never includes `guestPendingIds` — the localStorage-only items a genuine
+            signed-out click writes via discover.tsx's saveToGuestCart (never POSTed to
+            /api/cart, so they never reach cart?.itemCount). The empty-cart branch below and the
+            "Generate itinerary" disabled-check already OR in guestPendingIds.length for the same
+            reason; this banner — the one surface whose whole job is nudging a guest with a
+            browser-local cart to sign in — had not, so it never fired for a real guest-cart-only
+            visitor (2026-08-29 persona-nightly run #6, journey-guest.spec.ts step 5). */}
+        {!user && !authLoading && (totalItemCount > 0 || guestPendingIds.length > 0) && flowStep === "cart" && (
           <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="banner-guest-nudge">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-800 dark:text-amber-200 flex-1">
@@ -1242,8 +1635,10 @@ export default function CartPage() {
           </div>
         )}
 
-        {/* Guest nudge — empty cart prompt for unauthenticated users without items */}
-        {!user && !authLoading && totalItemCount === 0 && flowStep === "cart" && !isLoading && !optimizationResult && (
+        {/* Guest nudge — empty cart prompt for unauthenticated users without items. Mirrors the
+            banner-guest-nudge fix above: a guest with only localStorage guestPendingIds is not
+            empty either, so it must be excluded here too or both banners would render at once. */}
+        {!user && !authLoading && totalItemCount === 0 && guestPendingIds.length === 0 && flowStep === "cart" && !isLoading && !optimizationResult && (
           <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800" data-testid="banner-guest-empty-nudge">
             <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0" />
             <p className="text-sm text-blue-800 dark:text-blue-200 flex-1">
@@ -1272,7 +1667,7 @@ export default function CartPage() {
               <h2 className="text-xl font-semibold mb-2">Your cart is empty</h2>
               <p className="text-muted-foreground mb-6">Browse our services and add something you like</p>
               <Button asChild data-testid="button-browse-services">
-                <Link href="/discover">Browse Services</Link>
+                <Link href="/services">Browse Services</Link>
               </Button>
             </CardContent>
           </Card>
@@ -1293,18 +1688,26 @@ export default function CartPage() {
                       type="button"
                       onClick={handleOptimizeClick}
                       disabled={resolvingTrip || previewLoading}
-                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[#FF385C]/30 bg-[#FF385C]/5 px-4 py-2.5 text-left text-sm hover:bg-[#FF385C]/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
+                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-left text-sm hover:bg-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
                       data-testid="cart-optimize-nudge"
                     >
-                      <Sparkles className="w-4 h-4 text-[#FF385C] flex-shrink-0" />
+                      <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
                       <span className="font-medium">
                         Preview: up to {cartNudge.estimatedSavingsPct}% savings
                         {cartNudge.estimatedCostDelta < 0 && (
                           <> (~{formatPrice(Math.abs(cartNudge.estimatedCostDelta / 100))} less)</>
                         )}
                       </span>
-                      <span className="text-muted-foreground">Plan score {cartNudge.currentScore}/100</span>
-                      <span className="ml-auto font-semibold text-[#FF385C] whitespace-nowrap">
+                      {/* D5 (UX audit Jul 29): "Plan score" shown with no explanation of what
+                          it measures — a real title tooltip closes that (display text only,
+                          the underlying field name is unchanged). */}
+                      <span
+                        className="text-muted-foreground"
+                        title="Plan score: how tightly scheduled and cost-efficient your current cart is, out of 100. Lower scores mean more room for the optimizer to improve it."
+                      >
+                        Plan score {cartNudge.currentScore}/100
+                      </span>
+                      <span className="ml-auto font-semibold text-primary whitespace-nowrap">
                         {cartNudge.freeRerun ? "Optimize free →" : `Optimize · ${formatPrice(cartNudge.feeCents / 100)} →`}
                       </span>
                     </button>
@@ -1319,11 +1722,18 @@ export default function CartPage() {
                       price: (item.contentMeta as any).price || null,
                     } : null);
 
-                    const contentTypeLabel = item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : "Discover Item";
+                    // Fix 2 (journey UI fixes): the backend deliberately marks a plan item routed
+                    // through to checkout with contentType:"itinerary_item" (cart-projection.service.ts
+                    // — EXTERNAL_PROJECTION_CONTENT_TYPE) whenever it has no providerServiceId. That's
+                    // correct server-side; the bug was this component rendering it with the generic
+                    // Discover badge/copy, which is simply false for something that came from the
+                    // traveler's own trip plan, not a Discover save.
+                    const isTripRoutedItem = item.contentType === "itinerary_item";
+                    const contentTypeLabel = isTripRoutedItem ? "From your trip" : item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : "Discover Item";
 
                     if (isContent && contentDisplay) {
                       return (
-                        <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
+                        <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-primary/20">
                           <CardContent className="p-4">
                             <div className="flex gap-4">
                               {contentDisplay.imageUrl && (
@@ -1336,7 +1746,7 @@ export default function CartPage() {
                                   <h3 className="font-semibold truncate" data-testid={`text-service-name-${item.id}`}>
                                     {contentDisplay.name}
                                   </h3>
-                                  <Badge variant="outline" className="text-xs border-[#FF385C]/40 text-[#FF385C] flex-shrink-0">
+                                  <Badge variant="outline" className="text-xs border-primary/40 text-primary flex-shrink-0">
                                     {contentTypeLabel}
                                   </Badge>
                                 </div>
@@ -1358,8 +1768,18 @@ export default function CartPage() {
                                     </span>
                                   )}
                                 </div>
+                                {/* Fix 3 (journey UI fixes): ground-truthed against /api/checkout
+                                    (payments.routes.ts) — every content-type cart row (isContentItem,
+                                    including this itinerary_item projection) is enriched with
+                                    `service: null` (storage._enrichCartItems) and checkout's subtotal
+                                    loop + booking-creation loop both `if (!item.service) continue;` —
+                                    so this price is genuinely never added to the subtotal/total and no
+                                    booking is created for it. "Will be resolved at checkout" was false
+                                    for a trip-routed item (nothing resolves it); label it honestly. */}
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Saved from Discover — will be resolved at checkout
+                                  {isTripRoutedItem
+                                    ? "Routed from your trip plan — shown for reference only, not included in this checkout total"
+                                    : "Saved from Discover — will be resolved at checkout"}
                                 </p>
                               </div>
                             </div>
@@ -1381,9 +1801,28 @@ export default function CartPage() {
                       );
                     }
 
+                    const slotFlagged = !!(item.serviceId && flaggedSlotItemIds.has(item.serviceId));
+                    // L1: a §17 property-room item is priced nights × rate, never
+                    // quantity × price — mirror the server's own math (payments.routes.ts
+                    // getRoomNights) so the display can never diverge from the charge.
+                    const roomStay = getRoomStay(item);
+                    const roomRate = parseFloat(item.service?.price || "0");
+                    const roomTotal = roomStay ? roomRate * roomStay.nights : null;
+
                     return (
-                    <Card key={item.id} data-testid={`cart-item-${item.id}`}>
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className={slotFlagged ? "border-destructive/60" : undefined}>
                       <CardContent className="p-4">
+                        {slotFlagged && (
+                          <div
+                            className="mb-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                            data-testid={`banner-slot-unavailable-${item.id}`}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              This time slot was just booked by someone else. Pick a new time from the service page, or remove this item below.
+                            </span>
+                          </div>
+                        )}
                         <div className="flex gap-4">
                           <div className="flex-1">
                             <h3 className="font-semibold" data-testid={`text-service-name-${item.id}`}>
@@ -1401,45 +1840,84 @@ export default function CartPage() {
                                   {item.service.location}
                                 </span>
                               )}
-                              {item.scheduledDate && (
+                              {roomStay ? (
+                                <span className="flex items-center gap-1 font-medium text-foreground" data-testid={`text-room-dates-${item.id}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {format(parseISO(roomStay.checkIn), "MMM d")} → {format(parseISO(roomStay.checkOut), "MMM d")}
+                                </span>
+                              ) : item.scheduledDate ? (
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
                                   {format(new Date(item.scheduledDate), "PPP")}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
+                            {roomStay ? (
+                              <p className="text-sm text-muted-foreground mt-1.5" data-testid={`text-room-nights-${item.id}`}>
+                                {roomStay.nights} night{roomStay.nights !== 1 ? "s" : ""} × {formatPrice(roomRate)} = {formatPrice(roomTotal || 0)}
+                              </p>
+                            ) : item.slotId && item.scheduledDate && (
+                              <div
+                                className="flex items-center gap-1 mt-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                                data-testid={`text-slot-held-${item.id}`}
+                              >
+                                <Lock className="w-3 h-3" />
+                                Time slot held at checkout:{" "}
+                                {item.slot?.date
+                                  ? format(new Date(`${item.slot.date}T00:00:00`), "PPP")
+                                  : format(new Date(item.scheduledDate), "PPP")}
+                                {item.slot?.startTime && (
+                                  <span>
+                                    {" · "}{item.slot.startTime}
+                                    {item.slot.endTime ? `–${item.slot.endTime}` : ""}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(parseFloat(item.service?.price || "0"))}
+                              {formatPrice(roomStay ? (roomTotal || 0) : parseFloat(item.service?.price || "0"))}
                             </p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => updateItemMutation.mutate({ id: item.id, quantity: Math.max(1, (item.quantity || 1) - 1) })}
-                                disabled={item.quantity <= 1 || updateItemMutation.isPending}
-                                data-testid={`button-decrease-${item.id}`}
-                              >
-                                <Minus className="w-3 h-3" />
-                              </Button>
-                              <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
-                                {item.quantity || 1}
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => updateItemMutation.mutate({ id: item.id, quantity: (item.quantity || 1) + 1 })}
-                                disabled={updateItemMutation.isPending}
-                                data-testid={`button-increase-${item.id}`}
-                              >
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                            </div>
+                            {roomStay ? (
+                              // A room stay is one room for the whole date range — quantity
+                              // is meaningless here (the server ignores it, see resolveItemBaseAmount)
+                              // so no stepper is shown, just an honest "1 room" label.
+                              <p className="text-xs text-muted-foreground mt-2" data-testid={`text-room-unit-${item.id}`}>
+                                1 room
+                              </p>
+                            ) : (
+                              <div className="flex items-center gap-2 mt-2">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateItemMutation.mutate({ id: item.id, quantity: Math.max(1, (item.quantity || 1) - 1) })}
+                                  disabled={item.quantity <= 1 || updateItemMutation.isPending}
+                                  data-testid={`button-decrease-${item.id}`}
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </Button>
+                                <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
+                                  {item.quantity || 1}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateItemMutation.mutate({ id: item.id, quantity: (item.quantity || 1) + 1 })}
+                                  disabled={updateItemMutation.isPending}
+                                  data-testid={`button-increase-${item.id}`}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
+                        {item.service?.surchargeMode && item.service.surchargeMode !== "none" && (
+                          <PickupLocationField item={item} />
+                        )}
                         <div className="flex justify-end mt-3">
                           <Button
                             variant="ghost"
@@ -1459,7 +1937,7 @@ export default function CartPage() {
                   })}
                   
                   {externalItems.map((item) => (
-                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-primary/20">
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="flex-1">
@@ -1467,7 +1945,7 @@ export default function CartPage() {
                               <h3 className="font-semibold" data-testid={`text-service-name-${item.id}`}>
                                 {item.name}
                               </h3>
-                              <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
+                              <Badge variant="outline" className="text-xs border-primary text-primary">
                                 {item.provider}
                               </Badge>
                             </div>
@@ -1551,7 +2029,7 @@ export default function CartPage() {
 
                   {/* Guest pending items — saved in localStorage before sign-in */}
                   {!user && guestPendingIds.map((serviceId) => (
-                    <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-[#FF385C]/20">
+                    <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-primary/20">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-3">
                           <ShoppingCart className="w-8 h-8 text-muted-foreground shrink-0" />
@@ -1607,8 +2085,17 @@ export default function CartPage() {
                       </div>
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span className="text-muted-foreground">
+                            Destination Concierge booking fee
+                            <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                          </span>
                           <span data-testid="text-concierge-fee">{formatPrice(conciergeFee)}</span>
+                        </div>
+                      )}
+                      {travelSurcharge > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Travel surcharge</span>
+                          <span data-testid="text-travel-surcharge">{formatPrice(travelSurcharge)}</span>
                         </div>
                       )}
                       <Separator />
@@ -1643,14 +2130,14 @@ export default function CartPage() {
                       />
                     </div>
                     <CardFooter className="flex flex-col gap-3">
-                      {contentItems.length > 0 && (
+                      {planCandidateItems.length > 0 && (
                         <div className="w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
                           <div className="flex items-start gap-2 mb-2">
                             <Route className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
-                              <h4 className="text-sm font-medium">Start Planning Your Trip</h4>
+                              <h4 className="text-sm font-medium">Add to Trip Itinerary</h4>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Add your {contentItems.length} saved discover item{contentItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
+                                Add your {planCandidateItems.length} saved item{planCandidateItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
                               </p>
                             </div>
                           </div>
@@ -1661,7 +2148,7 @@ export default function CartPage() {
                             data-testid="button-start-planning"
                           >
                             <Route className="w-4 h-4 mr-2" />
-                            Start Planning
+                            Add to itinerary
                           </Button>
                         </div>
                       )}
@@ -1670,21 +2157,26 @@ export default function CartPage() {
                           details and the optimize step first — so the "Generate
                           Itinerary" label lives on the step where generation
                           actually fires, not in the cart. */}
-                      <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-[#FF385C]/20">
+                      <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-primary/20">
                         <div className="flex items-start gap-2 mb-2">
-                          <Sparkles className="w-4 h-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
+                          <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                           <div>
                             <h4 className="text-sm font-medium">Plan &amp; optimize this trip</h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Next: confirm your trip details, then our AI organizes your selections into an itinerary with optimized alternatives.
+                              Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime.
                             </p>
                           </div>
                         </div>
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={handleOptimizeClick}
-                          disabled={previewLoading || resolvingTrip}
+                          disabled={
+                            previewLoading ||
+                            resolvingTrip ||
+                            (migrationStartedRef.current && !migrationDone) ||
+                            ((cart?.items?.length || 0) === 0 && externalItems.length === 0 && guestPendingIds.length === 0)
+                          }
                           data-testid="button-generate-itinerary-comparison"
                         >
                           {(previewLoading || resolvingTrip) ? (
@@ -1692,7 +2184,7 @@ export default function CartPage() {
                           ) : (
                             <MapPin className="w-4 h-4 mr-2" />
                           )}
-                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing..." : "Continue — Trip Details"}
+                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing your cart..." : "Continue — Optimize"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
@@ -1716,122 +2208,6 @@ export default function CartPage() {
               </div>
             )}
 
-            {/* Step 1.5: Trip Details (G6) */}
-            {flowStep === "trip-details" && resolvedTrip && (
-              <div className="max-w-2xl mx-auto space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5 text-[#FF385C]" />
-                      Confirm your trip
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      We've pre-filled these from your cart. Review and edit before the AI optimizes your plan.
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-title">Trip name</Label>
-                      <Input
-                        id="trip-title"
-                        value={tripTitle}
-                        onChange={(e) => setTripTitle(e.target.value)}
-                        placeholder="My trip to Tokyo"
-                        data-testid="input-trip-title"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-destination">Destination</Label>
-                      <Input
-                        id="trip-destination"
-                        value={tripDestination}
-                        onChange={(e) => setTripDestination(e.target.value)}
-                        placeholder="Tokyo, Japan"
-                        data-testid="input-trip-destination"
-                      />
-                    </div>
-
-                    {/* Funnel PR2: explicit "What are you planning?" — values map to the
-                        real complexityTier set (wedding/corporate = complex; proposal/
-                        honeymoon/anniversary = standard; trip = simple), so the answer
-                        drives the actual optimization fee tier, not just a label. */}
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-event-type">What are you planning?</Label>
-                      <Select value={tripEventType} onValueChange={setTripEventType}>
-                        <SelectTrigger id="trip-event-type" data-testid="select-trip-event-type">
-                          <SelectValue placeholder="What are you planning?" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="trip">A trip</SelectItem>
-                          <SelectItem value="wedding">A wedding</SelectItem>
-                          <SelectItem value="proposal">A proposal</SelectItem>
-                          <SelectItem value="honeymoon">A honeymoon</SelectItem>
-                          <SelectItem value="anniversary">An anniversary</SelectItem>
-                          <SelectItem value="corporate">A corporate event</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-start">Start date</Label>
-                        <Input
-                          id="trip-start"
-                          type="date"
-                          value={tripStartDate}
-                          onChange={(e) => setTripStartDate(e.target.value)}
-                          data-testid="input-trip-start-date"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-end">End date</Label>
-                        <Input
-                          id="trip-end"
-                          type="date"
-                          value={tripEndDate}
-                          onChange={(e) => setTripEndDate(e.target.value)}
-                          data-testid="input-trip-end-date"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-travelers">Number of travelers</Label>
-                      <Input
-                        id="trip-travelers"
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={tripTravelers}
-                        onChange={(e) => setTripTravelers(Math.max(1, parseInt(e.target.value) || 1))}
-                        data-testid="input-trip-travelers"
-                      />
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-col gap-3">
-                    <Button
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                      size="lg"
-                      onClick={handleConfirmTripDetails}
-                      disabled={previewLoading || !tripDestination.trim()}
-                      data-testid="button-confirm-trip-details"
-                    >
-                      {previewLoading ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-4 h-4 mr-2" />
-                      )}
-                      {previewLoading ? "Analyzing your cart..." : "Confirm & Optimize"}
-                    </Button>
-                    <p className="text-xs text-center text-muted-foreground">
-                      This trip will appear on your dashboard
-                    </p>
-                  </CardFooter>
-                </Card>
-              </div>
-            )}
-
             {/* Step 1.5: Optimization Preview + Payment Gate */}
             {flowStep === "optimize" && optimizationPreview && (
               <div className="grid gap-6 lg:grid-cols-3">
@@ -1840,7 +2216,7 @@ export default function CartPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                        <Sparkles className="w-5 h-5 text-primary" />
                         Optimization Preview
                       </CardTitle>
                     </CardHeader>
@@ -1854,11 +2230,11 @@ export default function CartPage() {
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-medium">Current efficiency score</span>
-                          <span className="text-sm font-bold text-[#FF385C]">{optimizationPreview.currentScore}/100</span>
+                          <span className="text-sm font-bold text-primary">{optimizationPreview.currentScore}/100</span>
                         </div>
                         <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#FF385C] transition-all"
+                            className="h-full bg-primary transition-all"
                             style={{ width: `${optimizationPreview.currentScore}%` }}
                           />
                         </div>
@@ -1914,7 +2290,7 @@ export default function CartPage() {
                               <span className="text-xs w-20 text-muted-foreground">{labels[key]}</span>
                               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-[#FF385C]/70 rounded-full"
+                                  className="h-full bg-primary/70 rounded-full"
                                   style={{ width: `${val}%` }}
                                 />
                               </div>
@@ -1931,7 +2307,7 @@ export default function CartPage() {
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                          <Lock className="w-5 h-5 text-[#FF385C]" />
+                          <Lock className="w-5 h-5 text-primary" />
                           Pay Optimization Fee
                         </CardTitle>
                       </CardHeader>
@@ -1999,9 +2375,41 @@ export default function CartPage() {
                         </div>
                       )}
 
-                      {!optimizationPayment && (
+                      {/* FP-2: one-click when a default saved card exists and this isn't the
+                          free re-run (nothing to charge there). */}
+                      {!optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault ? (
+                        <div className="space-y-2">
+                          <Button
+                            className="w-full bg-primary hover:bg-primary/90"
+                            size="lg"
+                            onClick={payWithSavedCard}
+                            disabled={oneClickLoading || paymentLoading || creatingComparison}
+                            data-testid="button-pay-saved-card-optimization"
+                          >
+                            {oneClickLoading || creatingComparison ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Lock className="w-4 h-4 mr-2" />
+                            )}
+                            {creatingComparison
+                              ? "Building..."
+                              : oneClickLoading
+                                ? "Charging..."
+                                : `Pay ${formatPrice(optimizationPreview.feeCents / 100)} with ${formatCardLabel(savedPayment.defaultCard)}`}
+                          </Button>
+                          <button
+                            type="button"
+                            className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                            onClick={requestOptimizationPayment}
+                            disabled={oneClickLoading || paymentLoading || creatingComparison}
+                            data-testid="button-use-different-card-optimization"
+                          >
+                            Use a different card
+                          </button>
+                        </div>
+                      ) : !optimizationPayment && (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={requestOptimizationPayment}
                           disabled={paymentLoading || creatingComparison}
@@ -2058,19 +2466,19 @@ export default function CartPage() {
                       <Card>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2">
-                            <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                            <Sparkles className="w-5 h-5 text-primary" />
                             Optimization Score
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div className="flex items-center gap-4">
-                            <div className="text-4xl font-bold text-[#FF385C]">
+                            <div className="text-4xl font-bold text-primary">
                               {optimizationResult.overallScore}%
                             </div>
                             <div className="flex-1">
                               <div className="h-3 bg-muted rounded-full overflow-hidden">
                                 <div 
-                                  className="h-full bg-[#FF385C] transition-all"
+                                  className="h-full bg-primary transition-all"
                                   style={{ width: `${optimizationResult.overallScore}%` }}
                                 />
                               </div>
@@ -2166,7 +2574,10 @@ export default function CartPage() {
                       </div>
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span className="text-muted-foreground">
+                            Destination Concierge booking fee
+                            <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                          </span>
                           <span>{formatPrice(conciergeFee)}</span>
                         </div>
                       )}
@@ -2189,7 +2600,7 @@ export default function CartPage() {
                       )}
                       {(cart?.items?.length || 0) > 0 ? (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={proceedToPayment}
                           data-testid="button-proceed-payment"
@@ -2239,7 +2650,16 @@ export default function CartPage() {
                         <StripeCheckout
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
-                          onSuccess={(paymentIntentId) => {
+                          onSuccess={async (paymentIntentId) => {
+                            // #213 (legacy-reconciliation lane): the CLIENT POLLING FALLBACK, which
+                            // this flow never had. The webhook is the authoritative confirmation, but
+                            // it is asynchronous (and undelivered in local dev), so poll bulk-status
+                            // for it and, if it hasn't landed, drive the same shared promotion through
+                            // confirm-payment. Both are idempotent — the server's atomic conditional
+                            // is the guard, so a webhook arriving mid-poll simply wins and this
+                            // becomes a no-op. Best-effort: never block the traveler's confirmation
+                            // screen on it (the booking is already paid; the webhook will catch up).
+                            await confirmCheckoutPayment(checkoutBookingIds, paymentIntentId).catch(() => {});
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
                             setLocation("/bookings");
@@ -2247,7 +2667,18 @@ export default function CartPage() {
                           onError={(error) => {
                             toast({ variant: "destructive", title: "Payment failed", description: error });
                           }}
-                          onCancel={() => setFlowStep("itinerary")}
+                          onCancel={() => {
+                            // FP-4: this used to jump to the "itinerary" step, which is only ever
+                            // populated by a full-optimization run this flow doesn't produce — landing
+                            // there showed an empty page with no way back to the pending payment.
+                            // The booking was already created payment_pending server-side before this
+                            // Stripe step; staying here (same clientSecret) lets the traveler retry
+                            // immediately instead of losing track of it.
+                            toast({
+                              title: "Payment not completed",
+                              description: "Your booking is saved and pending payment. Retry above, or finish it later from My Bookings.",
+                            });
+                          }}
                         />
                       </CardContent>
                     </Card>
@@ -2278,17 +2709,28 @@ export default function CartPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {(cart?.items || []).map((item) => (
-                          <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
-                            <div>
-                              <div className="font-medium">{item.service?.serviceName}</div>
-                              <div className="text-sm text-muted-foreground">Qty: {item.quantity}</div>
+                        {(checkoutOrderSnapshot ? checkoutOrderSnapshot.items : (cart?.items || [])).map((item) => {
+                          // L1: same nights × rate math as the cart step — the Order Review
+                          // must not repeat the quantity-based lie for a room stay.
+                          const roomStay = getRoomStay(item);
+                          const rate = parseFloat(item.service?.price || "0");
+                          const lineTotal = roomStay ? rate * roomStay.nights : rate * item.quantity;
+                          return (
+                            <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
+                              <div>
+                                <div className="font-medium">{item.service?.serviceName}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {roomStay
+                                    ? `${format(parseISO(roomStay.checkIn), "MMM d")} → ${format(parseISO(roomStay.checkOut), "MMM d")} · ${roomStay.nights} night${roomStay.nights !== 1 ? "s" : ""}`
+                                    : `Qty: ${item.quantity}`}
+                                </div>
+                              </div>
+                              <div className="font-medium">
+                                {formatPrice(lineTotal)}
+                              </div>
                             </div>
-                            <div className="font-medium">
-                              {formatPrice(parseFloat(item.service?.price || "0") * item.quantity)}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {externalItems.map((item) => (
                           <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
                             <div>
@@ -2311,9 +2753,15 @@ export default function CartPage() {
                       <CardTitle>Complete Booking</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      {/* FP-4: once checkout has run, these figures come straight from that
+                          response — the exact amount Stripe is charging above — instead of the
+                          live cart query (already emptied server-side) or the pre-checkout
+                          estimate (which never includes the Booking Concierge fee; see filed gap). */}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPrice(combinedSubtotal)}</span>
+                        <span data-testid="text-subtotal-payment">
+                          {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.subtotal) : combinedSubtotal)}
+                        </span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
@@ -2323,18 +2771,38 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform fee</span>
-                        <span>{formatPrice(platformFee)}</span>
+                        <span data-testid="text-platform-fee-payment">
+                          {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.platformFee) : platformFee)}
+                        </span>
                       </div>
-                      {conciergeFee > 0 && (
+                      {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee) > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Booking Concierge fee</span>
-                          <span data-testid="text-concierge-fee-payment">{formatPrice(conciergeFee)}</span>
+                          <span className="text-muted-foreground">
+                            Destination Concierge booking fee
+                            <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                          </span>
+                          <span data-testid="text-concierge-fee-payment">
+                            {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee)}
+                          </span>
+                        </div>
+                      )}
+                      {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.travelSurcharge) : travelSurcharge) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Travel surcharge</span>
+                          <span data-testid="text-travel-surcharge-payment">
+                            {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.travelSurcharge) : travelSurcharge)}
+                          </span>
                         </div>
                       )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span data-testid="text-total-payment">
+                          {formatPrice(
+                            (checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.total) : combinedTotal) -
+                              (optimizationResult?.estimatedTotal?.savings || 0)
+                          )}
+                        </span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
@@ -2349,8 +2817,9 @@ export default function CartPage() {
                         </div>
                       )}
                       {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
+                        <>
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={() => checkoutMutation.mutate()}
                           disabled={checkoutMutation.isPending}
@@ -2361,6 +2830,11 @@ export default function CartPage() {
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                               Processing...
                             </>
+                          ) : defaultSavedCard ? (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              {`Book & Pay — ${defaultSavedCard.brand} •••• ${defaultSavedCard.last4}`}
+                            </>
                           ) : (
                             <>
                               <CheckCircle className="w-4 h-4 mr-2" />
@@ -2368,6 +2842,12 @@ export default function CartPage() {
                             </>
                           )}
                         </Button>
+                        {defaultSavedCard && (
+                          <p className="text-xs text-muted-foreground text-center w-full">
+                            One click — your saved card is charged immediately. No further steps.
+                          </p>
+                        )}
+                        </>
                       ) : !checkoutPaymentIntent ? (
                         <div className="w-full text-center text-muted-foreground text-sm">
                           External bookings must be completed on provider websites
@@ -2399,10 +2879,19 @@ export default function CartPage() {
                 Select items to add ({selectedPlanItemIds.size} selected)
               </Label>
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {contentItems.map((item) => {
+                {planCandidateItems.map((item) => {
                   const meta = item.contentMeta as any || {};
-                  const name = meta.name || item.contentId || "Discover item";
-                  const city = meta.city || meta.location || null;
+                  const isContent = item.isContentItem || (!!item.contentId && !!item.contentType);
+                  // Fix #970: a platform-service row has no contentMeta — its honest name/
+                  // location/price come from the joined `service` (never invented; §13's
+                  // "Unknown" location literal is filtered out, matching the rest of this file).
+                  const name = isContent
+                    ? (meta.name || item.contentId || "Discover item")
+                    : (item.service?.serviceName || "Platform service");
+                  const city = isContent
+                    ? (meta.city || meta.location || null)
+                    : (item.service?.location && item.service.location !== "Unknown" ? item.service.location : null);
+                  const price = isContent ? null : item.service?.price;
                   const checked = selectedPlanItemIds.has(item.id);
                   return (
                     <label
@@ -2429,6 +2918,11 @@ export default function CartPage() {
                           </p>
                         )}
                       </div>
+                      {price && parseFloat(String(price)) > 0 && (
+                        <span className="text-xs text-muted-foreground shrink-0" data-testid={`text-plan-item-price-${item.id}`}>
+                          {formatPrice(parseFloat(String(price)))}
+                        </span>
+                      )}
                     </label>
                   );
                 })}
@@ -2540,6 +3034,7 @@ export default function CartPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </>
   );
 }

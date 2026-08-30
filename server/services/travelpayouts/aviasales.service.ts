@@ -1,5 +1,13 @@
-import { tpFetch, getTravelpayoutsToken } from "./travelpayouts-client";
+import { tpFetch, getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus, type ProviderOutcome } from "../provider-health.service";
+
+/** tpFetch throws `Travelpayouts API error <status>: …` — recover the status for classification. */
+function outcomeFromTpError(err: unknown): ProviderOutcome {
+  const msg = err instanceof Error ? err.message : String(err);
+  const match = msg.match(/error (\d{3})/);
+  return match ? outcomeFromHttpStatus(parseInt(match[1], 10)) : "error";
+}
 
 export interface AviasalesFlightParams {
   origin: string;
@@ -50,16 +58,18 @@ export async function searchAviasalesFlights(params: AviasalesFlightParams): Pro
           duration: f.duration ? `${Math.floor(f.duration / 60)}h ${f.duration % 60}m` : null,
           categories: ["flight"],
           tags: f.airline ? [f.airline] : [],
-          bookingUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsToken()}`,
-          affiliateUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsToken()}`,
+          bookingUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsMarker()}`,
+          affiliateUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsMarker()}`,
           source: "travelpayouts/aviasales",
           lastUpdated: new Date(),
         } as CatalogItem);
       }
     }
 
+    reportProviderResult("aviasales", items.length > 0 ? "ok" : "empty");
     return items;
   } catch (err) {
+    reportProviderResult("aviasales", outcomeFromTpError(err), err instanceof Error ? err.message : String(err));
     console.warn("[Aviasales] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }

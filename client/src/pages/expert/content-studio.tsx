@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useSearch } from "wouter";
@@ -7,9 +7,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { connectInstagram } from "@/lib/instagram-connect";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/backoffice/primitives";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -89,6 +91,13 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import {
+  shouldShowInstagramBanner,
+  getInstagramBannerHeading,
+  getInstagramBannerButtonLabel,
+  isInstagramBannerAmberVariant,
+  type InstagramDisconnectReason,
+} from "@/lib/instagram-banner-utils";
 
 const contentTypes = [
   { id: "travel-guide", label: "Travel Guide", icon: BookOpen, color: "text-blue-500", description: "Comprehensive destination guides" },
@@ -152,6 +161,11 @@ type LocalKnowledgeNugget = {
   targetAudience?: string | null;
   notFor?: string | null;
   seasonality?: string[];
+  // Gem-promotion candidate path (2026-08-29-replit-gem-audit ruling 4) — read-only
+  // here: written solely by the propose/approve/reject rails, never by this form.
+  promotionStatus?: "submitted" | "approved" | "rejected" | null;
+  promotionReviewNote?: string | null;
+  promotedGemId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -174,51 +188,12 @@ type ContentItem = {
   updatedAt: string;
 };
 
-const mockContent: ContentItem[] = [
-  {
-    id: 1,
-    title: "Hidden Gems of Kyoto: A Local's Guide",
-    contentType: "travel-guide",
-    description: "Discover the secret spots in Kyoto that most tourists miss. From hidden temples to authentic local eateries.",
-    destination: "Kyoto, Japan",
-    coverImageUrl: "https://picsum.photos/seed/studio-tokyo/800/500",
-    tags: ["japan", "kyoto", "hidden-gems", "local-guide"],
-    status: "published",
-    views: 2340,
-    likes: 189,
-    createdAt: "2026-01-15T10:00:00Z",
-    updatedAt: "2026-01-20T14:30:00Z",
-  },
-  {
-    id: 2,
-    title: "Top 10 Beach Resorts in Bali",
-    contentType: "top-list",
-    description: "The ultimate ranking of Bali's best beach resorts for every budget.",
-    destination: "Bali, Indonesia",
-    coverImageUrl: "https://picsum.photos/seed/studio-bali/800/500",
-    tags: ["bali", "resorts", "beach", "luxury"],
-    status: "published",
-    instagramPostId: "123456789",
-    views: 5620,
-    likes: 432,
-    createdAt: "2026-01-10T08:00:00Z",
-    updatedAt: "2026-01-18T09:15:00Z",
-  },
-  {
-    id: 3,
-    title: "Street Food Tour: Bangkok Edition",
-    contentType: "food-guide",
-    description: "A comprehensive guide to the best street food in Bangkok's vibrant markets.",
-    destination: "Bangkok, Thailand",
-    coverImageUrl: "https://picsum.photos/seed/studio-culinary/800/500",
-    tags: ["bangkok", "street-food", "thailand", "foodie"],
-    status: "draft",
-    views: 0,
-    likes: 0,
-    createdAt: "2026-01-25T16:00:00Z",
-    updatedAt: "2026-01-25T16:00:00Z",
-  },
-];
+// §13: the social "Content" library has no backend yet (no content-store endpoint),
+// so this is empty rather than seeded with fabricated posts + invented view/like
+// counts. The stat cards and grid below now honestly read 0 / show the empty state.
+// The real half of this page — Knowledge Nuggets (/api/expert/knowledge-nuggets) —
+// is untouched. Filed: a real content-library backend to populate this.
+const mockContent: ContentItem[] = [];
 
 function generateHashtags(destination: string, contentType: string): string {
   const baseHashtags = ["#travel", "#wanderlust", "#travelgram", "#instatravel", "#traveloure"];
@@ -253,10 +228,15 @@ export default function ContentStudio() {
   const [editingNugget, setEditingNugget] = useState<LocalKnowledgeNugget | null>(null);
   const [nuggetSearch, setNuggetSearch] = useState("");
 
-  const { data: instagramStatus } = useQuery<{ connected: boolean }>({
+  const { data: instagramStatus, isLoading: instagramStatusLoading } = useQuery<{
+    connected: boolean;
+    reason?: InstagramDisconnectReason;
+    accountType?: string;
+  }>({
     queryKey: ["/api/instagram/status"],
   });
   const isInstagramConnected = instagramStatus?.connected ?? false;
+  const instagramDisconnectReason = instagramStatus?.reason as InstagramDisconnectReason;
 
   const { data: nuggets = [], isLoading: nuggetsLoading } = useQuery<LocalKnowledgeNugget[]>({
     queryKey: ["/api/expert/knowledge-nuggets"],
@@ -299,6 +279,17 @@ export default function ContentStudio() {
       toast({ title: "Nugget deleted" });
     },
     onError: () => toast({ title: "Error", description: "Failed to delete nugget", variant: "destructive" }),
+  });
+
+  // Propose a nugget as a hidden-gem candidate (ruling 4). Submission only —
+  // review + scoring are admin-side; this never sets a status itself.
+  const proposeGemMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/expert/knowledge-nuggets/${id}/propose-gem`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/knowledge-nuggets"] });
+      toast({ title: "Proposed as a gem", description: "Your nugget is now in admin review." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to propose nugget as gem", variant: "destructive" }),
   });
 
   const openEditNugget = (nugget: LocalKnowledgeNugget) => {
@@ -346,13 +337,45 @@ export default function ContentStudio() {
 
   const publishToInstagramMutation = useMutation({
     mutationFn: async (data: { imageUrl: string; caption: string }) => {
-      return apiRequest("/api/instagram/publish", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } });
+      // W0.6 fix (SH4, Tier-2 activation ratified): apiRequest's signature is
+      // (method, url, data) — the old call passed the URL into the method slot, so the
+      // request never reached the server.
+      return apiRequest("POST", "/api/instagram/publish", data);
     },
     onSuccess: () => {
       toast({ title: "Published!", description: "Your content is now live on Instagram." });
     },
     onError: (error: any) => {
-      toast({ title: "Publish Failed", description: error.message || "Could not publish to Instagram", variant: "destructive" });
+      // The server returns { error, reason } in the JSON body. apiRequest
+      // stringifies the body as the error message: "<status>: <json-body>".
+      // Parse the reason so we can show a reconnect prompt instead of a
+      // raw API error when the token has expired.
+      let reason: string | undefined;
+      try {
+        const jsonStart = (error.message as string).indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse((error.message as string).slice(jsonStart));
+          reason = parsed?.reason;
+        }
+      } catch {
+        // ignore parse errors — fall through to generic message
+      }
+
+      if (reason === "token_expired") {
+        toast({
+          title: "Instagram Session Expired",
+          description: "Your Instagram session has expired. Please reconnect your account.",
+          variant: "destructive",
+        });
+        // Refresh status so the reconnect banner appears immediately.
+        queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] });
+      } else {
+        toast({
+          title: "Publish Failed",
+          description: error.message || "Could not publish to Instagram",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -376,6 +399,45 @@ export default function ContentStudio() {
   const watchDestination = form.watch("destination");
   const watchPublishToInstagram = form.watch("publishToInstagram");
 
+  // Factory wire B (sidebar audit, ratified 2026-07-25): the Workspace and DMO Library hand a
+  // build or library item to the studio as a prefilled draft via query params
+  // (?prefill=1&title=…&destination=…&type=…&description=…). Applied once per arrival — the
+  // studio stays the author of the content; the params only seed the form.
+  const prefillApplied = useRef(false);
+  useEffect(() => {
+    if (prefillApplied.current) return;
+    const params = new URLSearchParams(searchParams);
+    if (params.get("prefill") !== "1") return;
+    prefillApplied.current = true;
+    const title = params.get("title");
+    const destination = params.get("destination");
+    const type = params.get("type");
+    const description = params.get("description");
+    if (title) form.setValue("title", title.slice(0, 255));
+    if (destination) form.setValue("destination", destination.slice(0, 120));
+    if (type && contentTypes.some((t) => t.id === type)) form.setValue("contentType", type);
+    if (description) form.setValue("description", description.slice(0, 2000));
+    setPageSection("content");
+    setIsCreateOpen(true);
+
+    // Phase A3: when the caller also names a real offering (targetType/targetId — e.g. workspace's
+    // "Create promo in Content Studio" for a Ready Made build), prefill the Instagram caption from
+    // the shared server-side promo-text service. Non-blocking: a fetch failure just leaves the
+    // caption empty, the rest of the prefill above is untouched either way.
+    const targetType = params.get("targetType");
+    const targetId = params.get("targetId");
+    if (targetType && targetId) {
+      fetch(`/api/promo-text?targetType=${encodeURIComponent(targetType)}&targetId=${encodeURIComponent(targetId)}`, {
+        credentials: "include",
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.caption) form.setValue("instagramCaption", data.caption.slice(0, 2200));
+        })
+        .catch(() => {});
+    }
+  }, [searchParams, form]);
+
   const handleGenerateHashtags = () => {
     if (watchDestination && watchContentType) {
       const hashtags = generateHashtags(watchDestination, watchContentType);
@@ -387,21 +449,24 @@ export default function ContentStudio() {
   };
 
   const handleConnectInstagram = async () => {
-    const clientId = import.meta.env.VITE_META_APP_ID;
-    if (!clientId) {
-      toast({ 
-        title: "Configuration Required", 
-        description: "Instagram integration requires Meta App setup.", 
-        variant: "destructive" 
-      });
-      return;
+    // D4: this now delegates to the SHARED connect helper (client/src/lib/instagram-connect.ts)
+    // also used by the share kit's publish button — one OAuth-redirect implementation, not two.
+    const result = await connectInstagram();
+    if (!result.ok) {
+      toast(
+        result.reason === "missing_config"
+          ? {
+              title: "Configuration Required",
+              description: "Instagram integration requires Meta App setup.",
+              variant: "destructive",
+            }
+          : {
+              title: "Configuration Error",
+              description: "Could not load Instagram configuration. Please try again.",
+              variant: "destructive",
+            },
+      );
     }
-    
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
-    const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
-    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-    
-    window.location.href = authUrl;
   };
 
   const filteredContent = mockContent.filter(item => {
@@ -436,16 +501,9 @@ export default function ContentStudio() {
     return contentTypes.find(t => t.id === typeId) || contentTypes[0];
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "published":
-        return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Published</Badge>;
-      case "scheduled":
-        return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Scheduled</Badge>;
-      default:
-        return <Badge variant="secondary">Draft</Badge>;
-    }
-  };
+  // B0: local switch replaced by the shared StatusBadge primitive (client/src/components/backoffice/primitives.tsx).
+  // Content status is a fixed draft/scheduled/published enum, matching DEFAULT_STATUS_MAP.
+  const getStatusBadge = (status: string) => <StatusBadge status={status || "draft"} />;
 
   return (
     <ExpertLayout>
@@ -599,6 +657,35 @@ export default function ContentStudio() {
                             ))}
                           </div>
                         )}
+                        {/* Gem-promotion rail (ruling 4): propose → admin review + scoring.
+                            Status is server-authored; this surface only submits + reflects. */}
+                        <div className="flex items-center gap-2 pt-1">
+                          {nugget.promotionStatus === "submitted" ? (
+                            <Badge variant="outline" className="text-xs text-amber-700 border-amber-300" data-testid={`status-gem-review-${nugget.id}`}>
+                              Gem — in admin review
+                            </Badge>
+                          ) : nugget.promotionStatus === "approved" ? (
+                            <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300" data-testid={`status-gem-approved-${nugget.id}`}>
+                              Shared as a gem
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => proposeGemMutation.mutate(nugget.id)}
+                              disabled={proposeGemMutation.isPending}
+                              data-testid={`button-propose-gem-${nugget.id}`}
+                            >
+                              Propose as gem
+                            </Button>
+                          )}
+                          {nugget.promotionStatus === "rejected" && nugget.promotionReviewNote && (
+                            <p className="text-xs text-muted-foreground" data-testid={`text-gem-reject-note-${nugget.id}`}>
+                              <span className="font-medium text-red-500">Not approved:</span> {nugget.promotionReviewNote}
+                            </p>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   );
@@ -750,6 +837,77 @@ export default function ContentStudio() {
           </div>
         </div>
 
+        {/* Instagram connection banner — shown whenever the account is not connected */}
+        {shouldShowInstagramBanner(instagramStatus, instagramStatusLoading) && (
+          <Card
+            className={cn(
+              "border",
+              isInstagramBannerAmberVariant(instagramDisconnectReason)
+                ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+                : "border-pink-200 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-orange-500/5"
+            )}
+            data-testid="card-instagram-connect-banner"
+          >
+            <CardContent className="p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason)
+                        ? "bg-amber-100 dark:bg-amber-900"
+                        : "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500"
+                    )}
+                  >
+                    {isInstagramBannerAmberVariant(instagramDisconnectReason) ? (
+                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <Instagram className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={cn(
+                      "font-semibold",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason) && "text-amber-800 dark:text-amber-300"
+                    )}>
+                      {getInstagramBannerHeading(instagramDisconnectReason)}
+                    </p>
+                    <p className={cn(
+                      "text-sm mt-0.5",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason)
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground"
+                    )}>
+                      {instagramDisconnectReason === "personal_account"
+                        ? "Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app under Settings → Account → Switch to Professional Account, then reconnect here."
+                        : instagramDisconnectReason === "token_expired"
+                        ? "Your Instagram connection has expired. Reconnect to continue publishing directly from Content Studio."
+                        : instagramDisconnectReason === "verification_error"
+                        ? "We couldn't reach Instagram to verify your connection. Your account is likely still connected — try again in a moment."
+                        : "Link your Business or Creator Instagram account to publish content directly from Content Studio."}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={
+                    instagramDisconnectReason === "verification_error"
+                      ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+                      : handleConnectInstagram
+                  }
+                  className={cn(
+                    "flex-shrink-0 gap-2",
+                    isInstagramBannerAmberVariant(instagramDisconnectReason) && "bg-amber-600 hover:bg-amber-700 text-white"
+                  )}
+                  data-testid="button-instagram-banner-connect"
+                >
+                  <Instagram className="w-4 h-4" />
+                  {getInstagramBannerButtonLabel(instagramDisconnectReason)}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4">
@@ -863,7 +1021,34 @@ export default function ContentStudio() {
                           Duplicate
                         </DropdownMenuItem>
                         {!item.instagramPostId && (
-                          <DropdownMenuItem data-testid={`menu-instagram-${item.id}`}>
+                          <DropdownMenuItem
+                            data-testid={`menu-instagram-${item.id}`}
+                            // W0.6 fix (SH4): this item was decorative (no onClick). Publishes the
+                            // item's own image + a caption from its real fields; honest guards —
+                            // not connected or no image → an explanatory toast, never fake success.
+                            onClick={() => {
+                              if (!isInstagramConnected) {
+                                toast({
+                                  title: "Instagram not connected",
+                                  description: "Connect your Instagram account in the panel above first.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              if (!item.coverImageUrl) {
+                                toast({
+                                  title: "No image to publish",
+                                  description: "This content item has no cover image — Instagram requires one.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              publishToInstagramMutation.mutate({
+                                imageUrl: item.coverImageUrl,
+                                caption: `${item.title}\n\n${item.destination}`,
+                              });
+                            }}
+                          >
                             <Instagram className="w-4 h-4 mr-2" />
                             Post to Instagram
                           </DropdownMenuItem>
@@ -1120,9 +1305,51 @@ export default function ContentStudio() {
                       />
 
                       {!isInstagramConnected && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
-                          <AlertCircle className="w-4 h-4" />
-                          <span className="text-sm">Connect your Instagram account to publish directly</span>
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm">
+                            {instagramDisconnectReason === "personal_account" ? (
+                              <>
+                                <span className="font-medium">Business or Creator account required.</span>{" "}
+                                Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app, then{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-reconnect-instagram-inline"
+                                >
+                                  reconnect here
+                                </button>
+                                .
+                              </>
+                            ) : instagramDisconnectReason === "token_expired" ? (
+                              <>
+                                Your Instagram session has expired.{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-reconnect-instagram-inline"
+                                >
+                                  Reconnect your account
+                                </button>{" "}
+                                to publish directly.
+                              </>
+                            ) : (
+                              <>
+                                Connect your Instagram account to publish directly.{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-connect-instagram-inline"
+                                >
+                                  Connect now
+                                </button>
+                                .
+                              </>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

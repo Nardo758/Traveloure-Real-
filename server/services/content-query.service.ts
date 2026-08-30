@@ -11,13 +11,19 @@ import {
 import {
   users, contactSubmissions, userAndExpertChats, notifications,
   aiBlueprints, serviceProviderForms, expertServiceOfferings, expertServiceCategories,
-  aiInteractions, serviceReviews, reviewModerationLogs,
+  aiInteractions, serviceReviews,
   localExpertForms, destinationIntelligence, aiGeneratedItineraries,
   itineraryComparisons, providerServices, destinationEvents,
-  affiliateProducts, contentRegistry, affiliateClicks,
-  trips, serviceBookings, expertMatchScores,
+  affiliateProducts, affiliatePartners, contentRegistry, affiliateClicks,
+  trips, serviceBookings, expertMatchScores, itineraryItems, tripCollaborators,
+  contentVersions,
   experienceTypes,
 } from "@shared/schema";
+import { contentOriginFor } from "@shared/content-origin";
+import { storage } from "../storage";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
+import { flagReviewSignal } from "./review-mutation.service";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -33,8 +39,12 @@ export async function dbHealthCheck(): Promise<boolean> {
 // ─── Offering Types ───────────────────────────────────────────────────────────
 
 export async function getServiceOfferingTypes(market?: string | null): Promise<any[]> {
+  // `id` added (§17 offering-first provider create): ServiceForm needs the row's
+  // PK to persist provider_services.service_offering_type_id (migration 148 FK).
+  // Additive column in the SELECT only — existing consumers (earn.tsx) ignore
+  // unknown fields, so this is backward-compatible.
   const result = await db.execute(sql`
-    SELECT offering_type_key, category_key, display_name, tagline,
+    SELECT id, offering_type_key, category_key, display_name, tagline,
            is_surprising, market_scoped, sort_order
     FROM service_offering_types
     WHERE is_active = true
@@ -220,16 +230,8 @@ export async function getReviewById(reviewId: string): Promise<any | null> {
   return review ?? null;
 }
 
-export async function flagReview(reviewId: string, reason: string | null, actorId: string): Promise<void> {
-  await db.update(serviceReviews)
-    .set({ status: "flagged", flagReason: reason || null } as any)
-    .where(eq(serviceReviews.id, reviewId));
-  await db.insert(reviewModerationLogs).values({
-    reviewId,
-    action: "flag",
-    actorId,
-    reason: reason || null,
-  } as any);
+export async function flagReview(reviewId: string, reason: string | null, actorId: string): Promise<boolean> {
+  return flagReviewSignal(reviewId, reason, actorId);
 }
 
 // ─── Expert Matching ──────────────────────────────────────────────────────────
@@ -299,6 +301,151 @@ export async function insertDestinationIntelligenceStrict(values: Record<string,
 export async function insertAiGeneratedItinerary(values: Record<string, any>): Promise<any> {
   const [saved] = await db.insert(aiGeneratedItineraries).values(values as any).returning();
   return saved;
+}
+
+/** Stamp the trip a stored generation was materialized into, so a repeated save
+ *  re-applies to the SAME trip instead of minting duplicates
+ *  (ledger 2026-08-22-ai-slip-defects; owner-scoped reads go through getAiItineraryById). */
+export async function stampAiGeneratedItineraryTrip(id: string, tripId: string): Promise<void> {
+  await db
+    .update(aiGeneratedItineraries)
+    .set({ tripId } as any)
+    .where(eq(aiGeneratedItineraries.id, id));
+}
+
+export interface SaveGeneratedItinerarySnapshotInput {
+  userId: string;
+  tripId?: string | null;
+  trip: {
+    title: string;
+    destination: string;
+    startDate: string;
+    endDate: string;
+    numberOfTravelers: number;
+    status: string;
+    eventType: string;
+    specialRequests: string | null;
+  };
+  generatedPlan: Record<string, any>;
+  canonicalItems: NormalizedGeneratedCanonicalItem[];
+  comparison: Record<string, any>;
+}
+
+/**
+ * Persists every traveler-visible representation of one AI generation as one
+ * snapshot. Existing trips are row-locked so concurrent regenerations cannot
+ * interleave their delete/insert phases.
+ */
+export async function saveGeneratedItinerarySnapshot(
+  input: SaveGeneratedItinerarySnapshotInput,
+): Promise<{
+  trip: any;
+  savedItinerary: any;
+  insertedItems: Array<NormalizedGeneratedCanonicalItem & { id: string }>;
+  comparison: any;
+}> {
+  // Sequence increments are intentionally outside the snapshot transaction:
+  // tracking numbers may have gaps after a rollback, but are never reused.
+  const trackingNumber = input.tripId ? null : await storage.generateTrackingNumber("TRV");
+
+  return db.transaction(async (tx) => {
+    let trip: any;
+    if (input.tripId) {
+      const locked = await tx.execute(sql`
+        SELECT *
+        FROM trips
+        WHERE id = ${input.tripId} AND user_id = ${input.userId}
+        FOR UPDATE
+      `);
+      trip = locked.rows[0];
+      if (!trip) throw new Error("Trip not found or not owned by user");
+    } else {
+      [trip] = await tx.insert(trips).values({
+        userId: input.userId,
+        trackingNumber,
+        title: input.trip.title,
+        destination: input.trip.destination,
+        startDate: input.trip.startDate,
+        endDate: input.trip.endDate,
+        numberOfTravelers: input.trip.numberOfTravelers,
+        status: input.trip.status,
+        eventType: input.trip.eventType,
+        specialRequests: input.trip.specialRequests,
+        marketSlug: resolveMarketSlug(input.trip.destination),
+      } as any).returning();
+
+      await tx.insert(tripCollaborators).values({
+        tripId: trip.id,
+        userId: input.userId,
+        role: "owner",
+      }).onConflictDoNothing();
+
+      const [registryEntry] = await tx.insert(contentRegistry).values({
+        trackingNumber: trackingNumber!,
+        contentType: "trip",
+        contentId: trip.id,
+        ownerId: input.userId,
+        title: trip.title || "Untitled Trip",
+        status: trip.status === "draft" ? "draft" : "published",
+        publishedAt: trip.status === "draft" ? null : new Date(),
+        metadata: { destination: trip.destination, eventType: trip.eventType },
+      } as any).returning();
+      await tx.insert(contentVersions).values({
+        trackingNumber: registryEntry.trackingNumber,
+        version: 1,
+        changeType: "created",
+        changedBy: input.userId,
+        newData: {
+          title: registryEntry.title,
+          description: registryEntry.description,
+          status: registryEntry.status,
+        },
+      } as any);
+    }
+
+    const tripId = input.tripId || trip.id;
+    const [savedItinerary] = await tx.insert(aiGeneratedItineraries).values({
+      ...input.generatedPlan,
+      userId: input.userId,
+      tripId,
+    } as any).returning();
+
+    // item-removed:replace — one complete AI regeneration, not individual removals.
+    await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    const insertedRows = input.canonicalItems.length === 0
+      ? []
+      : await tx.insert(itineraryItems).values(
+        input.canonicalItems.map((activity, sortOrder) => ({
+          tripId,
+          title: activity.title,
+          description: activity.description,
+          itemType: activity.type,
+          status: "planned",
+          dayNumber: activity.dayNumber,
+          startTime: activity.time,
+          durationMinutes: activity.durationMinutes,
+          locationName: activity.location || input.trip.destination,
+          estimatedCost: activity.estimatedCost,
+          currency: "USD",
+          suggestedBy: "ai",
+          origin: "ai",
+          sortOrder,
+        })),
+      ).returning({ id: itineraryItems.id });
+
+    const insertedItems = input.canonicalItems.map((activity, index) => ({
+      ...activity,
+      id: insertedRows[index].id,
+    }));
+
+    const [comparison] = await tx.insert(itineraryComparisons).values({
+      ...input.comparison,
+      userId: input.userId,
+      tripId,
+    } as any).returning();
+
+    return { trip, savedItinerary, insertedItems, comparison };
+  });
 }
 
 export async function getAiItinerariesForUser(userId: string): Promise<any[]> {
@@ -392,17 +539,24 @@ export async function getAffiliateProductsByIds(ids: string[]): Promise<any[]> {
   return db.select().from(affiliateProducts)
     .where(and(
       eq(affiliateProducts.isActive, true),
+      // Phase 4 partner-level read-gate (migration 121): a placement rule must never surface a
+      // product whose partner is not admin-approved. This mirrors getAffiliateProductsByLocation —
+      // the two public read paths must gate identically (audit G-SEC).
+      sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
       inArray(affiliateProducts.id, ids),
     ));
 }
 
 export async function getContentRegistryByIds(ids: string[]): Promise<any[]> {
   if (!ids.length) return [];
-  return db.select().from(contentRegistry)
+  const rows = await db.select().from(contentRegistry)
     .where(and(
       eq(contentRegistry.status, "published"),
       inArray(contentRegistry.id, ids),
     ));
+  // Hard invariant: never return 'sourced' (DMO) content to a traveler surface, even if an admin
+  // placement rule points at it.
+  return rows.filter(r => contentOriginFor(r.contentType) !== "sourced");
 }
 
 export async function getAffiliateProductsByLocation(params: {
@@ -413,6 +567,8 @@ export async function getAffiliateProductsByLocation(params: {
 }): Promise<any[]> {
   const base = and(
     eq(affiliateProducts.isActive, true),
+    // Phase 4 partner-level read-gate: only surface products whose partner is admin-approved.
+    sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
     or(
       ilike(affiliateProducts.city, `%${params.city}%`),
       ilike(affiliateProducts.country, `%${params.country}%`),
@@ -436,6 +592,10 @@ export async function getContentRegistryByLocation(params: {
   allowedContentTypes: string[];
   excludeIds?: string[];
 }): Promise<any[]> {
+  // Hard invariant: 'sourced' (DMO) content is EXPERT-WORKSPACE-ONLY and never reaches a traveler
+  // surface. Filter it out of the allowed set even if a surface map ever mistakenly includes it.
+  const travelerTypes = params.allowedContentTypes.filter(t => contentOriginFor(t) !== "sourced");
+  if (!travelerTypes.length) return [];
   const locationFilter = sql`(
     ${contentRegistry.metadata}->>'location' ILIKE ${"%" + params.city + "%"}
     OR ${contentRegistry.metadata}->>'city' ILIKE ${"%" + params.city + "%"}
@@ -446,13 +606,121 @@ export async function getContentRegistryByLocation(params: {
   const conditions = [
     eq(contentRegistry.status, "published"),
     locationFilter,
-    inArray(contentRegistry.contentType, params.allowedContentTypes as any),
+    inArray(contentRegistry.contentType, travelerTypes as any),
     ...(params.excludeIds?.length
       ? [sql`${contentRegistry.id}::text != ALL(ARRAY[${sql.raw(params.excludeIds.map(id => `'${id.replace(/'/g, "''")}'`).join(","))}]::text[])`]
       : []),
   ];
 
   return db.select().from(contentRegistry).where(and(...conditions)).limit(20);
+}
+
+/**
+ * §16 vacation-mode enforcement (deferred arm of the ratified Aug 9 2026 vacation-mode
+ * ruling — CLAUDE.md §06b/mockup). Every platform search/surfacing rail that lists rows
+ * owned by an earner must exclude rows whose owner is CURRENTLY away
+ * (`users.vacationUntil` non-null and in the future) — the listing itself is untouched
+ * (read-only, no provider_services/content_registry row is written), so it reappears
+ * automatically the moment the flag clears or expires. Shared by every surfacing rail so
+ * "away" can't drift between call sites (searchWorkstationPlatformContent below, the public
+ * `/api/provider-services` listing, and the platform arm of `/api/search/experiences`).
+ * `getOwnerId` returning null/undefined (no owner, or an owner field absent on the row)
+ * always passes — there is nothing to be away FROM.
+ */
+export async function filterOutAwayOwners<T>(
+  rows: T[],
+  getOwnerId: (row: T) => string | null | undefined,
+): Promise<T[]> {
+  const ownerIds = Array.from(
+    new Set(rows.map(getOwnerId).filter((id): id is string => !!id)),
+  );
+  if (ownerIds.length === 0) return rows;
+  const awayRows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, ownerIds), sql`${users.vacationUntil} > now()`));
+  if (awayRows.length === 0) return rows;
+  const awaySet = new Set(awayRows.map((r) => r.id));
+  return rows.filter((row) => {
+    const ownerId = getOwnerId(row);
+    return !ownerId || !awaySet.has(ownerId);
+  });
+}
+
+/**
+ * W1-A: the Workstation Add panel's "Platform content" pill — a read-only search over the
+ * central content_registry, scoped to the build's destination + an optional free-text query.
+ * Mirrors the traveler resolver's read-gates (getContentRegistryByLocation above): only
+ * `status = 'published'` rows (the same gate every content type's own approval queue funnels
+ * into before it can be marked published), and the §12/DMO invariant — 'sourced' (dmo_content)
+ * origin rows are HARD-EXCLUDED, exactly like the traveler resolver, so DMO content never
+ * leaves its own pill through this surface either. Returns teaser-safe fields only (never the
+ * full metadata blob) — id/type/title/description/image/city/lat/lng, and only when present in
+ * the row's own metadata (§13: never fabricate a coordinate or image that isn't really there).
+ */
+export async function searchWorkstationPlatformContent(params: {
+  city?: string;
+  query?: string;
+  limit?: number;
+}): Promise<Array<{
+  id: string;
+  type: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  city: string | null;
+  latitude?: string;
+  longitude?: string;
+}>> {
+  const limit = Math.min(50, Math.max(1, params.limit ?? 30));
+  const conditions = [eq(contentRegistry.status, "published")];
+
+  const city = (params.city ?? "").trim();
+  if (city) {
+    conditions.push(sql`(
+      ${contentRegistry.metadata}->>'city' ILIKE ${"%" + city + "%"}
+      OR ${contentRegistry.metadata}->>'location' ILIKE ${"%" + city + "%"}
+      OR ${contentRegistry.metadata}->>'destination' ILIKE ${"%" + city + "%"}
+    )`);
+  }
+
+  const q = (params.query ?? "").trim();
+  if (q) {
+    conditions.push(or(
+      ilike(contentRegistry.title, `%${q}%`),
+      ilike(contentRegistry.description, `%${q}%`),
+    ) as any);
+  }
+
+  const rows = await db.select().from(contentRegistry)
+    .where(and(...conditions))
+    .limit(limit);
+
+  // §16 vacation-mode enforcement (see filterOutAwayOwners doc above) — an away owner's
+  // content_registry rows drop out of this Workstation search until the flag clears.
+  const liveRows = await filterOutAwayOwners(rows, (r) => r.ownerId);
+
+  // Hard invariant (§12/DMO model): 'sourced' content never leaves the DMO pill — even here,
+  // even though it's read-only, even if a future placement rule ever pointed at one.
+  return liveRows
+    .filter(r => contentOriginFor(r.contentType) !== "sourced")
+    .map(r => {
+      const meta: any = r.metadata || {};
+      const rawLat = meta.lat ?? meta.latitude;
+      const rawLng = meta.lng ?? meta.longitude;
+      const lat = rawLat == null ? NaN : Number(rawLat);
+      const lng = rawLng == null ? NaN : Number(rawLng);
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+      return {
+        id: r.id,
+        type: r.contentType,
+        title: r.title,
+        description: r.description,
+        image: meta.cover_image || meta.imageUrl || meta.image_url || meta.image || null,
+        city: meta.city || meta.location || null,
+        ...(hasCoords ? { latitude: String(lat), longitude: String(lng) } : {}),
+      };
+    });
 }
 
 // ─── Affiliate Click Tracking ─────────────────────────────────────────────────
@@ -479,9 +747,11 @@ export async function getPlatformStats(): Promise<{
   const [reviewCount] = await db.select({ count: count() }).from(serviceReviews);
   const [bookingCount] = await db.select({ count: count() }).from(serviceBookings);
   const allReviews = await db.select({ rating: serviceReviews.rating }).from(serviceReviews);
+  // §13: never fabricate a rating. With zero reviews the honest average is "0" (the frontend can
+  // render "New"); the old "4.9" fallback invented a score over an empty aggregate (the PR #177 class).
   const avgRating = allReviews.length > 0
     ? (allReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviews.length).toFixed(1)
-    : "4.9";
+    : "0";
   const allTrips = await db.select({ destination: trips.destination }).from(trips);
   const uniqueCountries = new Set(
     allTrips.map(t => t.destination?.split(",").pop()?.trim()).filter(Boolean),
@@ -495,6 +765,89 @@ export async function getPlatformStats(): Promise<{
     totalCountries: uniqueCountries.size || 0,
     avgRating,
   };
+}
+
+// ─── Featured Testimonials (curated rail, CLAUDE.md §13 trust-claims cluster) ─
+//
+// The landing page previously carried fabricated testimonials (invented names,
+// invented "$2,400 saved" claims). §13 mandates removal with no replacement
+// fabrication; the decision-maker ratified an admin-curated rail instead: an
+// admin picks real, booking-gated `service_reviews` to feature, stored as a
+// `platform_settings` JSON array of review ids (`featured_testimonial_review_ids`).
+// This reader resolves those ids against the real table — unknown/deleted ids
+// and reviews that aren't (or are no longer) 'approved' are silently skipped,
+// never invented, never a fallback fabrication. Empty setting → empty array,
+// and the landing page hides the section entirely (see PublicTestimonial type
+// mirrored client-side).
+export async function getFeaturedTestimonials(): Promise<Array<{
+  id: string;
+  rating: number;
+  reviewText: string | null;
+  reviewerName: string;
+  serviceName: string;
+  createdAt: Date | string | null;
+}>> {
+  const settingResult = await db.execute(sql`
+    SELECT setting_value FROM platform_settings
+    WHERE setting_key = 'featured_testimonial_review_ids'
+    LIMIT 1
+  `);
+  const raw = (settingResult.rows?.[0] as any)?.setting_value as string | undefined;
+  if (!raw) return [];
+
+  let ids: string[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      ids = parsed.filter((x): x is string => typeof x === "string" && x.length > 0);
+    }
+  } catch {
+    return []; // malformed setting → honest empty, never throw into a public surface
+  }
+  if (ids.length === 0) return [];
+
+  const rows = await db
+    .select({
+      id: serviceReviews.id,
+      rating: serviceReviews.rating,
+      reviewText: serviceReviews.reviewText,
+      createdAt: serviceReviews.createdAt,
+      status: serviceReviews.status,
+      serviceName: providerServices.serviceName,
+      reviewerFirst: users.firstName,
+      reviewerLast: users.lastName,
+    })
+    .from(serviceReviews)
+    .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+    .leftJoin(users, eq(serviceReviews.travelerId, users.id))
+    .where(inArray(serviceReviews.id, ids));
+
+  // Only 'approved' reviews may surface — the same moderation gate the public
+  // rating aggregate honors. A review an admin featured before it cleared
+  // moderation, or one later flagged/removed, must never leak onto the
+  // landing page just because its id is still sitting in the curated list.
+  const byId = new Map(rows.filter((r) => r.status === "approved").map((r) => [r.id, r]));
+
+  // Preserve the admin's curated order; unknown/deleted/unapproved ids are
+  // silently skipped (never surfaced, never substituted with anything invented).
+  const ordered = ids
+    .map((id) => byId.get(id))
+    .filter((r): r is NonNullable<typeof r> => !!r);
+
+  return ordered.map((r) => {
+    const first = (r.reviewerFirst || "").trim();
+    const lastInitial = (r.reviewerLast || "").trim().charAt(0);
+    // Same privacy posture as GET /api/experts/:id/reviews: first name + last initial.
+    const reviewerName = first ? (lastInitial ? `${first} ${lastInitial}.` : first) : "Traveler";
+    return {
+      id: r.id,
+      rating: r.rating,
+      reviewText: r.reviewText,
+      reviewerName,
+      serviceName: r.serviceName ?? "Traveloure",
+      createdAt: r.createdAt,
+    };
+  });
 }
 
 // ─── Analytics Tracking ───────────────────────────────────────────────────────

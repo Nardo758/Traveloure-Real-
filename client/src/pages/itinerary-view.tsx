@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,8 +30,9 @@ import { HeroSection } from "@/components/plancard/HeroSection";
 import { StatsRow, CostIcon, type ExtraStat } from "@/components/plancard/StatsRow";
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
-import { TransportSection } from "@/components/plancard/TransportSection";
+import { TransportSection, LegBookingPanel } from "@/components/plancard/TransportSection";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { useAuth } from "@/hooks/use-auth";
 
 interface SharedItineraryResponse {
   variant: {
@@ -86,14 +90,27 @@ interface SharedItineraryResponse {
 
 function formatTime(timeStr?: string | null): string {
   if (!timeStr) return "";
-  try {
-    return new Date(timeStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  } catch {
+  // The share endpoint's variant items only ever carry a bare "HH:MM" (or "HH:MM:SS")
+  // string (itinerary_variant_items.start_time is a varchar(20), no date component) —
+  // it's already display-ready. `new Date("09:00")` produces an Invalid Date (no throw),
+  // so routing this through Date parsing rendered the literal string "Invalid Date".
+  const bareTime = timeStr.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (bareTime) {
+    const hours = parseInt(bareTime[1], 10);
+    if (hours >= 0 && hours <= 23) {
+      return `${String(hours).padStart(2, "0")}:${bareTime[2]}`;
+    }
     return timeStr;
   }
+  // Reserve Date parsing for genuinely ISO/timestamp-shaped inputs; never surface
+  // "Invalid Date" to the user — fall back to the raw string when unparseable.
+  const parsed = new Date(timeStr);
+  if (isNaN(parsed.getTime())) return timeStr;
+  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export default function ItineraryViewPage() {
+  const { open: openPlanning } = usePlanning();
   const { token } = useParams<{ token: string }>();
   const [location, navigate] = useLocation();
   const { toast } = useToast();
@@ -441,11 +458,16 @@ export default function ItineraryViewPage() {
       <div className="max-w-2xl mx-auto p-4 pb-12">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-primary" data-testid="text-brand-logo">Traveloure</span>
+            <div data-testid="text-brand-logo"><TraveloureLogo className="h-6" /></div>
             <Badge variant="secondary" className="text-xs" data-testid="badge-view-mode">
               {isExpertView ? "Expert Review" : "Shared Itinerary"}
             </Badge>
           </div>
+          <div className="flex items-center gap-1">
+          {/* Ruling 116 (distribution-language audit P3): the shared-itinerary link is a
+              distribution surface — the recipient can switch the UI language (chrome only;
+              trip content has no translation system). Same ONE selector (ruling 60 (b)). */}
+          <LanguageMenu />
           <Button
             variant="ghost"
             size="sm"
@@ -464,6 +486,7 @@ export default function ItineraryViewPage() {
             <Share2 className="h-4 w-4" />
             Share
           </Button>
+          </div>
         </div>
 
         {isExpertView && (
@@ -731,7 +754,7 @@ export default function ItineraryViewPage() {
             <p className="text-sm text-muted-foreground mb-3">
               Plan your own trip with Traveloure
             </p>
-            <Button onClick={() => window.location.href = "/"} data-testid="button-plan-trip">
+            <Button onClick={() => openPlanning()} data-testid="button-plan-trip">
               Plan My Trip
             </Button>
           </div>
@@ -1141,6 +1164,14 @@ interface ExpertTransportSectionProps {
 function ExpertTransportSection({
   tripId, tripDestination, day, rawTransportLegs, transportDiffs, onModeChange,
 }: ExpertTransportSectionProps) {
+  // This view is reachable anonymously (a plain "view"-only share link) — the booking-agent
+  // rail requires auth (POST /api/affiliate-booking-requests), so a signed-out viewer gets NO
+  // booking affordance at all rather than one that would 401 (§13/§16). §16: the server never
+  // sends this page a raw affiliate URL (the old `linkedProductUrl` key was deleted with its
+  // read in trips.routes.ts); the affordance below reuses the SAME LegBookingPanel /
+  // booking-agent rail as the live plancard TransportSection — options are fetched per-leg
+  // (GET /api/transport-legs/:legId/options) only once a signed-in viewer expands "Book this leg".
+  const { isAuthenticated } = useAuth();
   return (
     <div className="p-5" data-testid={`expert-transport-section-${tripId}`}>
       {day.transports?.length > 0 && (
@@ -1240,6 +1271,9 @@ function ExpertTransportSection({
                     undo
                   </button>
                 </div>
+              )}
+              {isAuthenticated && (
+                <LegBookingPanel legId={tr.id} fromName={tr.fromName} toName={tr.toName} />
               )}
             </div>
           </div>

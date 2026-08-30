@@ -38,7 +38,7 @@ export interface AffiliateAttribution {
 
 // 60-second in-memory cache for the DB lookup. Affiliate rate changes are
 // admin-driven (rare) — short TTL keeps freshness without per-link load.
-const COMMISSION_CACHE_TTL_MS = 60_000;
+const COMMISSION_CACHE_TTL_MS = 60_000; // fee-literal-ok: a cache lifetime in milliseconds, not a rate. Surfaced by the ruling-42 fee-gate predicate fix (SCREAMING_SNAKE + underscore tail now in scope)
 const commissionCache = new Map<string, { value: number | null; expiresAt: number }>();
 
 class AffiliateService {
@@ -236,6 +236,31 @@ class AffiliateService {
       }
     }
     return null;
+  }
+
+  /**
+   * §16 server-side 12Go deep-link builder for the booking-agent rail's `partnerRoute` reference.
+   * Several client surfaces used to construct 12Go affiliate URLs in the browser and POST them back
+   * to the rail; the rail no longer accepts client URLs, so the link (and the affiliate id) is
+   * built here, server-side only, from the route params the traveler picked.
+   */
+  buildTwelveGoDeepLink(opts: { origin?: string; destination?: string } = {}): string {
+    const { affiliateId, baseUrl } = this.partners.twelvego;
+    const params = new URLSearchParams({ affiliate_id: affiliateId });
+    if (opts.destination) params.set("q", opts.destination);
+    if (opts.origin) params.set("departcity", opts.origin);
+    return `${baseUrl}/en?${params.toString()}`;
+  }
+
+  /**
+   * §16 server-side Fever deep-link builder for the rail's `partnerRoute` reference —
+   * same posture as buildTwelveGoDeepLink: the Impact campaign id used to live hardcoded
+   * in client surfaces (itinerary-comparison "Book on Partner Site"); it now exists only
+   * here, server-side.
+   */
+  buildFeverDeepLink(): string {
+    const campaignId = process.env.FEVER_IMPACT_CAMPAIGN_ID || "15532";
+    return `https://feverup.com/en?utm_source=impact&utm_medium=affiliate&utm_campaign=${campaignId}`;
   }
 
   /**
