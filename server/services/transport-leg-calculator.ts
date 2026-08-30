@@ -58,6 +58,36 @@ export interface UserTransportPrefs {
   budgetTier: "budget" | "moderate" | "luxury";
 }
 
+export interface SameDayActivityPair {
+  from: ActivityLocation;
+  to: ActivityLocation;
+  dayNumber: number;
+  legOrder: number;
+}
+
+/** Activity legs never bridge overnight boundaries; an inter-day transfer needs explicit intent. */
+export function buildSameDayActivityPairs(activities: ActivityLocation[]): SameDayActivityPair[] {
+  const dayGroups: Record<number, ActivityLocation[]> = {};
+  for (const activity of activities) {
+    if (!dayGroups[activity.dayNumber]) dayGroups[activity.dayNumber] = [];
+    dayGroups[activity.dayNumber].push(activity);
+  }
+
+  const pairs: SameDayActivityPair[] = [];
+  for (const dayNumber of Object.keys(dayGroups).map(Number).sort((a, b) => a - b)) {
+    const sorted = dayGroups[dayNumber].sort((a, b) => a.order - b.order);
+    for (let index = 0; index < sorted.length - 1; index++) {
+      pairs.push({
+        from: sorted[index],
+        to: sorted[index + 1],
+        dayNumber,
+        legOrder: index + 1,
+      });
+    }
+  }
+  return pairs;
+}
+
 const DEFAULT_PREFS: UserTransportPrefs = {
   prioritize: "time",
   avoidModes: [],
@@ -65,6 +95,43 @@ const DEFAULT_PREFS: UserTransportPrefs = {
   accessibility: false,
   budgetTier: "moderate",
 };
+
+const REGIONAL_DISTANCE_KM = 20;
+const REGIONAL_SPEED_KMH = {
+  road: 70,
+  transit: 55,
+  rail: 90,
+  water: 35,
+} as const;
+
+function regionalModeSpeed(mode: string, configuredSpeed: number): number | null {
+  const normalized = mode.toLowerCase();
+  if (normalized.includes("train") || normalized.includes("rail")) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.rail);
+  }
+  if (
+    normalized.includes("taxi") ||
+    normalized.includes("rideshare") ||
+    normalized.includes("car") ||
+    normalized.includes("driver")
+  ) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.road);
+  }
+  if (
+    normalized.includes("transit") ||
+    normalized.includes("bus") ||
+    normalized.includes("coach")
+  ) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.transit);
+  }
+  if (
+    normalized.includes("ferry") ||
+    normalized.includes("boat")
+  ) {
+    return Math.max(configuredSpeed, REGIONAL_SPEED_KMH.water);
+  }
+  return null;
+}
 
 export async function calculateTransportLegs(
   variantId: string,
@@ -75,23 +142,17 @@ export async function calculateTransportLegs(
   const prefs = { ...DEFAULT_PREFS, ...userPrefs };
   const profile = getDestinationProfile(destination);
 
-  const dayGroups: Record<number, ActivityLocation[]> = {};
-  for (const act of activities) {
-    if (!dayGroups[act.dayNumber]) dayGroups[act.dayNumber] = [];
-    dayGroups[act.dayNumber].push(act);
-  }
-
   const allLegs: TransportLegResult[] = [];
-
-  for (const dayNum of Object.keys(dayGroups).map(Number).sort((a, b) => a - b)) {
-    const sorted = dayGroups[dayNum].sort((a, b) => a.order - b.order);
-
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const from = sorted[i];
-      const to = sorted[i + 1];
-      const leg = computeSingleLeg(from, to, dayNum, i + 1, profile, prefs);
-      allLegs.push(leg);
-    }
+  for (const pair of buildSameDayActivityPairs(activities)) {
+    const leg = computeSingleLeg(
+      pair.from,
+      pair.to,
+      pair.dayNumber,
+      pair.legOrder,
+      profile,
+      prefs,
+    );
+    if (leg) allLegs.push(leg);
   }
 
   await persistTransportLegs(variantId, allLegs, destination);
@@ -124,7 +185,7 @@ export function computeTransportLeg(
   legOrder: number,
   destination: string,
   userPrefs: Partial<UserTransportPrefs> = {}
-): TransportLegResult {
+): TransportLegResult | null {
   return computeSingleLeg(
     from,
     to,
@@ -142,9 +203,10 @@ function computeSingleLeg(
   legOrder: number,
   profile: DestinationTransportProfile,
   userPrefs: UserTransportPrefs
-): TransportLegResult {
+): TransportLegResult | null {
   const distanceMeters = haversineDistance(from.lat, from.lng, to.lat, to.lng);
   const distanceKm = distanceMeters / 1000;
+  const isRegional = distanceKm >= REGIONAL_DISTANCE_KM;
   const departureHour = parseHour(from.scheduledTime);
 
   const evaluations: Array<TransportAlternative & { _score: number }> = [];
@@ -159,8 +221,19 @@ function computeSingleLeg(
     if (userPrefs.accessibility && modeConfig.accessibilityScore < 50) continue;
 
     const realDistanceKm = distanceKm * 1.3;
-    const travelMinutes = (realDistanceKm / modeConfig.averageSpeedKmh) * 60;
+    const normalizedMode = modeConfig.mode.toLowerCase();
+    const isWalk = normalizedMode === "walk" || normalizedMode.includes("walking");
+    const regionalSpeed = isRegional
+      ? regionalModeSpeed(modeConfig.mode, modeConfig.averageSpeedKmh)
+      : null;
+    if (isRegional && regionalSpeed == null) continue;
+
+    const effectiveSpeed = regionalSpeed ?? modeConfig.averageSpeedKmh;
+    const travelMinutes = (realDistanceKm / effectiveSpeed) * 60;
     const totalMinutes = Math.max(1, Math.ceil(travelMinutes + modeConfig.waitTimeMinutes));
+    // A walk that exceeds the traveler's own limit is not an option. Previously the scorer could
+    // still choose a free multi-hour/multi-day walk after every long mode's time score hit zero.
+    if (isWalk && totalMinutes > userPrefs.maxWalkMinutes) continue;
 
     let costUsd: number | null = null;
     if (modeConfig.baseCostPerKm > 0 || modeConfig.flagFall > 0) {
@@ -180,23 +253,20 @@ function computeSingleLeg(
     });
   }
 
-  if (evaluations.length === 0) {
-    const walkMins = Math.max(1, Math.ceil((distanceKm * 1.3 / 4.5) * 60));
-    evaluations.push({
-      mode: "walk",
-      durationMinutes: walkMins,
-      costUsd: null,
-      energyCost: Math.min(20, Math.ceil(distanceKm * 3)),
-      reason: "Only available mode",
-      _score: 50,
-    });
-  }
+  // Honest absence: no plausible mode means no persisted leg, never an invented walking fallback.
+  if (evaluations.length === 0) return null;
 
-  evaluations.sort((a, b) => b._score - a._score);
+  // Regional transfers are utility travel: choose the fastest plausible motorized mode. Local
+  // legs retain the preference-weighted scorer.
+  evaluations.sort((a, b) =>
+    isRegional
+      ? (a.durationMinutes - b.durationMinutes) || (b._score - a._score)
+      : b._score - a._score
+  );
 
   evaluations.forEach((e, i) => {
     if (i === 0) {
-      e.reason = "Best match for your preferences";
+      e.reason = isRegional ? "Fastest plausible regional option" : "Best match for your preferences";
     } else if (e.costUsd === null || e.costUsd === 0) {
       e.reason = "Free option";
     } else if (evaluations[0].durationMinutes > e.durationMinutes) {

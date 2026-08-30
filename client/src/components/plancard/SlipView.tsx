@@ -459,7 +459,7 @@ function TransitionLogFooter({
   );
 }
 
-// ── Finalize / Reopen (ruling R-F) ───────────────────────────────────────────────────────
+// ── Adopt Optimization / Reopen (ruling R-F) ─────────────────────────────────────────────
 
 /** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
  *  uses, so client and scheduler agree on when Trip Card becomes primary. */
@@ -484,14 +484,14 @@ function useFinalizeMutation(tripId: string) {
           title: "Trip Card is ready",
           description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
             data.stagedCount > 1 ? "aren't" : "isn't"
-          } booked yet. You can finalize now and book them later.`,
+          } booked yet. You can adopt this optimization now and book them later.`,
         });
       } else {
-        toast({ title: "Trip Card is ready", description: "Your plan is finalized." });
+        toast({ title: "Trip Card is ready", description: "Your optimization is adopted." });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Couldn't finalize plan", description: err?.message || "Please try again", variant: "destructive" });
+      toast({ title: "Couldn't adopt optimization", description: err?.message || "Please try again", variant: "destructive" });
     },
   });
 }
@@ -832,17 +832,17 @@ function SlipActions({
           )}
         </DialogContent>
       </Dialog>
-      {/* Finalize is owner-gated server-side (verifyTripOwnership) — never render it for a
-          non-owner viewer. Once finalized, the primary banner (above) owns the finalize/reopen
+      {/* Adopt Optimization is owner-gated server-side (verifyTripOwnership) — never render it for a
+          non-owner viewer. Once adopted, the primary banner (above) owns the finalize/reopen
           affordance — no duplicate control here. */}
       {isOwner && !trip.finalizedAt && (
         <Button
           size="sm"
           onClick={() => finalizeMutation.mutate()}
           disabled={finalizeMutation.isPending}
-          data-testid="slip-action-finalize"
+          data-testid="slip-action-adopt-optimization"
         >
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Finalize plan
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Adopt Optimization
         </Button>
       )}
     </div>

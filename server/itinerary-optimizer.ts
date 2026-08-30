@@ -51,6 +51,10 @@ import { reconcileVariantWithBaseline } from "./services/optimizer-variant-recon
 import { loadRankedAnchors } from "./services/anchor-candidates";
 import { pickAutoAnchors } from "./services/anchor-candidates-map";
 import type { AnchorScore } from "./services/anchor-scoring";
+import {
+  createOptimizerGeocodeBudget,
+  resolveOptimizerActivityCoordinates,
+} from "./services/optimizer-activity-geocoder.service";
 
 // grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
 // grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
@@ -1424,6 +1428,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
     );
     const coordsForService = (serviceId: string | null | undefined) =>
       (serviceId && serviceCoordsById.get(serviceId)) || { latitude: null, longitude: null };
+    const geocodeBudget = createOptimizerGeocodeBudget(12);
 
     await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
@@ -1504,6 +1509,18 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         reorderedItems = anchorAdjusted;
       }
 
+      // Resolve honest coordinates before persistence and transport-leg calculation. Catalog and
+      // canonical baseline coordinates win. Only a validated catalog-linked activity may use the
+      // bounded, cached Google fallback; an unlinked AI invention remains NULL/NULL and never
+      // becomes a guessed city-centre pin (§13/§22c).
+      await resolveOptimizerActivityCoordinates(
+        reorderedItems,
+        baselineItems,
+        serviceCoordsById,
+        destination,
+        geocodeBudget,
+      );
+
       // Lane 6 residue R1 (drop policy a, rulings 4/15): a variant that omits any in-checkout
       // (`ready_for_checkout`) baseline item is INVALID — rejected here, before any row is
       // persisted. Match is the same two-key predicate the strip/dedupe use (`providerServiceId`
@@ -1582,21 +1599,17 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
               n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
             );
             const catalogCoords = coordsForService(item.providerServiceId);
-            const reconciledItem = item as SequencedActivity & {
-              latitude?: number;
-              longitude?: number;
-            };
             return {
               variantId: newVariant.id,
               // Lane 5a Defect 3: the catalog link, validated above against the services actually
               // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
               providerServiceId: item.providerServiceId ?? null,
               // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
-              latitude: reconciledItem.latitude != null
-                ? reconciledItem.latitude.toString()
+              latitude: item.latitude != null
+                ? item.latitude.toString()
                 : catalogCoords.latitude,
-              longitude: reconciledItem.longitude != null
-                ? reconciledItem.longitude.toString()
+              longitude: item.longitude != null
+                ? item.longitude.toString()
                 : catalogCoords.longitude,
               dayNumber: item.dayNumber,
               timeSlot: item.timeSlot,
