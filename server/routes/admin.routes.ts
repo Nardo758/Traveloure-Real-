@@ -7,7 +7,7 @@ import { db } from "../db";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
-  users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
+  users, contactSubmissions, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
@@ -15,7 +15,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -264,6 +264,59 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin revenue error:", err);
       res.status(500).json({ message: "Failed to fetch revenue" });
+    }
+  });
+
+  // Admin: list contact submissions
+router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const status = req.query.status as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
+      const baseQuery = db.select().from(contactSubmissions);
+      const submissions = status
+        ? await baseQuery.where(eq(contactSubmissions.status, status)).orderBy(desc(contactSubmissions.createdAt)).limit(limit)
+        : await baseQuery.orderBy(desc(contactSubmissions.createdAt)).limit(limit);
+
+      res.json(submissions);
+    } catch (err) {
+      console.error("List contact submissions error:", err);
+      res.status(500).json({ message: "Failed to load contact submissions" });
+    }
+  });
+
+  // Admin: update contact submission status
+router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const [adminUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { status, responseNotes, assignedAdminId } = req.body;
+      const updates: any = {};
+      if (status) updates.status = status;
+      if (status === "resolved") updates.resolvedAt = new Date();
+      if (responseNotes !== undefined) updates.responseNotes = responseNotes;
+      if (assignedAdminId !== undefined) updates.assignedAdminId = assignedAdminId;
+
+      const [updated] = await db.update(contactSubmissions)
+        .set(updates)
+        .where(eq(contactSubmissions.id, req.params.id))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "Submission not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Update contact submission error:", err);
+      res.status(500).json({ message: "Failed to update contact submission" });
     }
   });
 
@@ -584,15 +637,10 @@ router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
 
       const roleFilter = req.query.role as string | undefined;
 
+      // expertId and isActive columns were dropped in migration 013 — all ESO rows are platform templates
       const rows = await db
         .select()
         .from(expertServiceOfferings)
-        .where(
-          and(
-            isNull(expertServiceOfferings.expertId),
-            eq(expertServiceOfferings.isActive, true)
-          )
-        )
         .orderBy(expertServiceOfferings.sortOrder);
 
       // Apply role filter in JS (simpler than Postgres array operator for admin use)
@@ -642,18 +690,13 @@ router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (re
         return res.status(400).json({ message: `Invalid roles: ${invalid.join(", ")}` });
       }
 
+      // updatedAt and expertId columns were dropped in migration 013
       const [updated] = await db
         .update(expertServiceOfferings)
         .set({
           targetRoles: targetRoles.length > 0 ? targetRoles : null,
-          updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(expertServiceOfferings.id, req.params.id),
-            isNull(expertServiceOfferings.expertId)
-          )
-        )
+        .where(eq(expertServiceOfferings.id, req.params.id))
         .returning();
 
       if (!updated) {
@@ -904,41 +947,8 @@ router.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (re
 
       const approved = await storage.approveExpertCustomService(req.params.id, adminId);
 
-      // Promote approved service to ESO (canonical catalog) if not already there
-      try {
-        const existing = await db.select({ id: expertServiceOfferings.id })
-          .from(expertServiceOfferings)
-          .where(eq(expertServiceOfferings.externalId, service.id))
-          .then(r => r[0]);
-        if (!existing) {
-          let categoryRow = await db.select({ id: expertServiceCategories.id })
-            .from(expertServiceCategories)
-            .where(eq(expertServiceCategories.name, "Itinerary Planning"))
-            .then(r => r[0]);
-          if (!categoryRow) {
-            const [ins] = await db.insert(expertServiceCategories)
-              .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
-              .returning({ id: expertServiceCategories.id });
-            categoryRow = ins;
-          }
-          const catId = (service as any).existingCategoryId ?? categoryRow.id;
-          await db.insert(expertServiceOfferings).values({
-            categoryId:   catId,
-            name:         service.title,
-            description:  service.description ?? null,
-            price:        service.price,
-            isDefault:    false,
-            sortOrder:    400,
-            expertId:     service.expertId,
-            externalId:   service.id,
-            status:       "approved",
-            reviewedAt:   new Date(),
-            reviewedBy:   adminId,
-          });
-        }
-      } catch (esoErr) {
-        console.warn("[ESO] Failed to promote approved custom service to ESO (non-fatal):", esoErr);
-      }
+      // ESO promotion was using expert_id / external_id columns dropped in migration 013.
+      // Expert-owned services now live in provider_services; no ESO write needed here.
 
       res.json(approved);
     } catch (err) {
@@ -1206,12 +1216,13 @@ router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { status, contentType, ownerId, flagged, limit, offset } = req.query;
+      const { status, contentType, ownerId, flagged, provider, limit, offset } = req.query;
       const content = await storage.getContentRegistry({
         status: status as string,
         contentType: contentType as string,
         ownerId: ownerId as string,
         flagged: flagged === 'true',
+        provider: provider as string,
         limit: limit ? parseInt(limit as string) : 50,
         offset: offset ? parseInt(offset as string) : 0,
       });
@@ -1219,6 +1230,23 @@ router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
       res.json(content);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get content registry", error: error.message });
+    }
+  });
+
+  // Get distinct affiliate providers present in the content registry
+
+router.get("/api/admin/content/providers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const providers = await storage.getAffiliateProviders();
+      res.json(providers);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get providers", error: error.message });
     }
   });
 
@@ -3902,6 +3930,75 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
     }
   }
 
+  // === Review Moderation Routes (REV-MOD) ===
+
+router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await db.select({ role: users.role }).from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const status = req.query.status as string | undefined;
+      const rows = status
+        ? await db.select().from(serviceReviews).where(eq(serviceReviews.status, status)).orderBy(desc(serviceReviews.createdAt))
+        : await db.select().from(serviceReviews).where(
+            sql`status IN ('pending', 'flagged')`
+          ).orderBy(desc(serviceReviews.createdAt));
+      // Enrich with traveler + service names
+      const enriched = await Promise.all(rows.map(async r => {
+        const traveler = await storage.getUser(r.travelerId);
+        const service = await storage.getProviderServiceById(r.serviceId);
+        const logs = await db.select().from(reviewModerationLogs).where(eq(reviewModerationLogs.reviewId, r.id)).orderBy(desc(reviewModerationLogs.createdAt));
+        return {
+          ...r,
+          travelerName: traveler ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email : "Unknown",
+          serviceName: service?.serviceName ?? "Unknown Service",
+          logs,
+        };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      console.error("Admin reviews error:", err);
+      res.status(500).json({ message: "Failed to fetch reviews" });
+    }
+  });
+
+router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const admin = await db.select({ role: users.role }).from(users).where(eq(users.id, actorId)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const { status, reason } = req.body;
+      if (!["approved", "flagged", "removed", "pending"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status. Must be approved, flagged, removed, or pending." });
+      }
+      const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, req.params.id)).limit(1);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      const [updated] = await db.update(serviceReviews).set({
+        status,
+        moderatedBy: actorId,
+        moderatedAt: new Date(),
+        ...(status === "flagged" && reason ? { flagReason: reason } : {}),
+      }).where(eq(serviceReviews.id, req.params.id)).returning();
+      await db.insert(reviewModerationLogs).values({ reviewId: req.params.id, action: status, actorId, reason: reason || null });
+
+      // Recalculate service rating/count from approved reviews only
+      const serviceId = review.serviceId;
+      const allSvcReviews = await db.select({ id: serviceReviews.id, rating: serviceReviews.rating, status: serviceReviews.status })
+        .from(serviceReviews).where(eq(serviceReviews.serviceId, serviceId));
+      const approvedSvcReviews = allSvcReviews.filter(r => r.status === "approved");
+      const newAvg = approvedSvcReviews.length > 0
+        ? approvedSvcReviews.reduce((sum, r) => sum + r.rating, 0) / approvedSvcReviews.length
+        : 0;
+      await db.update(providerServices)
+        .set({ averageRating: newAvg.toFixed(2), reviewCount: approvedSvcReviews.length, updatedAt: new Date() })
+        .where(eq(providerServices.id, serviceId));
+
+      res.json(updated);
+    } catch (err) {
+      console.error("Admin review status error:", err);
+      res.status(500).json({ message: "Failed to update review status" });
+    }
+  });
+
   // Hook into itinerary generation to auto-capture analytics
 
 router.get("/api/admin/fee-config", isAuthenticated, async (req, res) => {
@@ -3909,12 +4006,15 @@ router.get("/api/admin/fee-config", isAuthenticated, async (req, res) => {
       const result = await db.execute(sql`
         SELECT
           id, category,
-          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
-          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
+          CAST(platform_fee_percent   AS FLOAT) AS platform_fee_percent,
+          CAST(expert_share_percent   AS FLOAT) AS expert_share_percent,
           ai_keeps_100,
           CAST(min_fee AS FLOAT) AS min_fee,
           CAST(max_fee AS FLOAT) AS max_fee,
           is_active,
+          insurance_enabled,
+          CAST(insurance_rate_percent AS FLOAT) AS insurance_rate_percent,
+          insurance_applies_to,
           updated_by,
           updated_at
         FROM booking_fee_configs
@@ -3938,28 +4038,43 @@ router.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
         minFee,
         maxFee,
         isActive,
+        insuranceEnabled,
+        insuranceRatePercent,
+        insuranceAppliesTo,
       } = req.body;
 
       if (!category) return res.status(400).json({ error: "category required" });
 
+      const insuranceRate = typeof insuranceRatePercent === "number" ? insuranceRatePercent : 0;
+      // Validate and serialize insurance_applies_to as JSON string; bind via parameter to avoid injection
+      const rawAppliesTo = Array.isArray(insuranceAppliesTo) ? insuranceAppliesTo : [];
+      const validAppliesTo = rawAppliesTo.filter((v: any) => typeof v === "string" && v.length <= 100);
+      const insuranceApplyJson = JSON.stringify(validAppliesTo);
+
       await db.execute(sql`
         INSERT INTO booking_fee_configs (
           id, category, platform_fee_percent, expert_share_percent,
-          ai_keeps_100, min_fee, max_fee, is_active, updated_by, created_at, updated_at
+          ai_keeps_100, min_fee, max_fee, is_active,
+          insurance_enabled, insurance_rate_percent, insurance_applies_to,
+          updated_by, created_at, updated_at
         ) VALUES (
           gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 75},
           ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
+          ${insuranceEnabled ?? false}, ${insuranceRate}, ${insuranceApplyJson}::jsonb,
           ${userId}, NOW(), NOW()
         )
         ON CONFLICT (category) DO UPDATE SET
-          platform_fee_percent = EXCLUDED.platform_fee_percent,
-          expert_share_percent  = EXCLUDED.expert_share_percent,
-          ai_keeps_100          = EXCLUDED.ai_keeps_100,
-          min_fee               = EXCLUDED.min_fee,
-          max_fee               = EXCLUDED.max_fee,
-          is_active             = EXCLUDED.is_active,
-          updated_by            = EXCLUDED.updated_by,
-          updated_at            = NOW()
+          platform_fee_percent    = EXCLUDED.platform_fee_percent,
+          expert_share_percent    = EXCLUDED.expert_share_percent,
+          ai_keeps_100            = EXCLUDED.ai_keeps_100,
+          min_fee                 = EXCLUDED.min_fee,
+          max_fee                 = EXCLUDED.max_fee,
+          is_active               = EXCLUDED.is_active,
+          insurance_enabled       = EXCLUDED.insurance_enabled,
+          insurance_rate_percent  = EXCLUDED.insurance_rate_percent,
+          insurance_applies_to    = EXCLUDED.insurance_applies_to,
+          updated_by              = EXCLUDED.updated_by,
+          updated_at              = NOW()
       `);
 
       res.json({ success: true });

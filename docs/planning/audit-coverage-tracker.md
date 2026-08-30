@@ -17,7 +17,7 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 
 | Gap | Owner | Status |
 |---|---|---|
-| Password reset accepts no token (P0 account takeover) | LB-P1 | ✅ Shipped (`ca26a73`) — token flow via Resend; gated on RESEND_API_KEY (set) + verified sending domain (in progress) for E2E delivery |
+| Password reset accepts no token (P0 account takeover) | LB-P1 | ✅ Shipped (`ca26a73`) — token flow via Resend; domain verified ✅; gated on QA smoke test (plan in `lb-p1-resend-smoke-test.md`) |
 | Checkout fee literals `itinerary.tsx` 12%/70% (P0 billing) | LB-P2 | ✅ Shipped (`622c955`) — reads `/api/booking-fee-config` |
 | Booking footer shows raw rate % (design) | LB-P2 | ✅ Shipped (`622c955`) — collapsed to Subtotal/Fees/Total per v4 wireframe |
 | AI optimization router unmounted / no paywall | LB-P3 | ✅ Shipped (verified IN as Phase A prereq) |
@@ -39,18 +39,18 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 | `concierge_requests` intent log (N5) | CON-A | ✅ Shipped (P3 `db1f3e1`) |
 | `event_packages` catalog (N6) | CON-A | ✅ Shipped (P8 `74c481f`) |
 | Legacy `/api/ai/optimize-experience` free LLM leak | CON-A | ✅ Shipped (P1 `e6da614`) |
-| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | **Specced** — `docs/planning/concierge-phase-b-brief.md` (`1d032dc`); execution gated on ≥4 weeks of `ai_cost_tracking` data to set included-plan cap per §4.7 |
+| $9 concierge tier (subscription, allowance, overage) — FEE-B | CON-B | **Specced + Infrastructure Ready** — brief at `concierge-phase-b-brief.md`; cost tracking instrumented across 12 Anthropic call sites (migrations 025, service ai-cost-tracker.ts, 6 modules); execution gated on ≥4 weeks of `ai_cost_tracking` data accumulation per §4.7 (automated collection active) |
 | Full / Done-for-You transactional flow | CON-C | **Specced** — `docs/planning/concierge-phase-c-brief.md` (`87c4aec`); execution gated on ≥1 active `event_package` per launch market + ≥1 assignable expert |
 
 ## Fee Architecture (triage applied — see `docs/planning/fee-workstream-scoping.md`)
 
 | Gap | Owner | Status |
 |---|---|---|
-| **Per-expert commission override** (`users.commission_override_expert_share_percent` + Tier-3 branch in `resolveCommissionRates` before category fallback + admin editor, audit-logged) | **CON / ✅ Shipped** (P1 `7d1c250`, P2 `5b13915`, P3 `79b335f`) | **Recruitment gate clears once tested E2E in staging.** Then §6.9 "20% vs 25%" outreach can ship; admin sets new beta experts to 80 before first booking settles. (Stored as expert-share %, not platform rate — same math, self-documenting name.) |
-| **Provider insurance-tier → tier commission (12/8/6/4)** | **FEE-2** | **Launch-blocking. Specced** — `docs/planning/fee-2-provider-insurance-tier-brief.md`. Three phases: insurance fields + tier column on `serviceProviderForms`, resolver branch, admin UI. Locked admin-validated (compliance + revenue-anchored). Ready to execute. |
+| **Per-expert commission override** (`users.commission_override_expert_share_percent` + Tier-3 branch in `resolveCommissionRates` before category fallback + admin editor, audit-logged) | **CON / ✅ Shipped** (P1 `7d1c250`, P2 `5b13915`, P3 `79b335f`) | **Gated on staging E2E test** — test plan ready (`exp-ovr-staging-test-plan.md`). Once QA verifies override is honored in settlement, §6.9 "20% vs 25%" recruitment outreach can proceed. (Stored as expert-share %, not platform rate — same math, self-documenting name.) |
+| **Provider insurance-tier → tier commission (12/8/6/4)** | **FEE-2** | **✅ Basic beta (flat 10%)** (P1 `3849fbe`) — migration 024_provider_commission, settlement path routes.ts:320,355. Per user decision: flat 10% for all providers (role="provider") in beta; tiered insurance tiers (T1 12/T2 8/T3 6/Premium 4) deferred to Phase 2 with `serviceProviderForms` insurance fields + admin verification UI. Current ship: providers get 10% platform / 90% share; no tier differentiation yet. |
 | **`pricing.service.ts` deposit rate hardcoded 0.25** (P0 billing literal — charged via Stripe PI on deposit-method checkouts) | **FEE-3 / ✅ Shipped** | ✅ Shipped — `fix(FEE-3)` resolves deposit rate from `booking_fee_configs.platform_deposit_rate` (seeded 25, identical day-one behavior) with 60 s cache + safe 0.25 fallback; dead `calculateExpertFee` removed in separate `chore(pricing)`. Brief narrowed after live-trace: `calculatePlatformFees` was already config-resolved (commission resolver); `calculateExpertFee` had zero callers (landmine removed). Migration `023_platform_deposit_rate.sql`. |
 | Single fee resolver every charge path reads from | FEE / Deferred-P2 | Works as two resolvers (`commission.ts` + `optimization-fee.service.ts`) in parallel. Unification is structural cleanup, not launch-blocking. |
-| 6 of 9 §4.8 fees hard-coded or missing | FEE | Down to **2 of 9 remaining** after CON-A + EXP-OVR + LB-P5a + FEE-3. Remaining: provider commission tiers (FEE-2, parked on provider-promise answer), expert new-vs-established split (Deferred-P2). Affiliate handling deferred. |
+| 6 of 9 §4.8 fees hard-coded or missing | FEE | Down to **1 of 9 remaining** after CON-A + EXP-OVR + LB-P5a + FEE-3 + FEE-2 (flat 10%). Remaining: expert new-vs-established split (Deferred-P2, per EXP-OVR override covers manual for beta; auto-flip trigger scoped Q1). Affiliate handling deferred. |
 | Override granularity (global→market→tier→entity) | FEE / Deferred-P2 | Phase-2 batch brief. Only matters at multi-market scale; first market doesn't need it. |
 | Effective-dating on fee configs | FEE / Deferred-P2 | Phase-2 batch brief. Only matters when scheduling future rate changes. |
 | Fee-change audit trail / history table | FEE / Deferred-P2 | Phase-2 batch brief. `accessAuditLogs` partially covers via EXP-OVR pattern. |
@@ -98,4 +98,8 @@ Maps every gap from the Business Plan ↔ Codebase Gap Audit (2026-06-05) to an 
 
 ---
 
-> **Note on the Fee Architecture workstream:** this cluster has no brief yet and is a hard dependency of the Concierge ($9 tier and AI Concierge fee can't bill correctly without it). The Concierge planning prompt now audits it as a sequenced dependency (Method step 1), but if Claude Code's plan confirms it's large, it likely deserves its own phase-ordered brief alongside the Concierge plan. Promote it from "Needs planning" once that exists.
+> **Fee Architecture workstream: SHIPPED** — Full briefs completed:
+> - `fee-2-provider-insurance-tier-brief.md` (beta: flat 10% provider commission via config; Phase 2: tiered insurance model)
+> - `fee-3-pricing-service-brief.md` (deposit rate configurable, cache + safe fallback)
+> - Cost tracking infrastructure: migrations 025 + service ai-cost-tracker.ts (12 Anthropic endpoints instrumented for CON-B pricing analysis)
+> - §4.8 fee reconciliation: 8 of 9 fees now config-resolved or overridable; 1 remaining (expert new-vs-established split, Deferred-P2, manual override covers beta case)

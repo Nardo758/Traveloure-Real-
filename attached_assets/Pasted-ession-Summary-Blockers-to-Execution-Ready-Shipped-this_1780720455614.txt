@@ -1,0 +1,61 @@
+ession Summary — Blockers to Execution-Ready
+Shipped (this session):
+
+✅ FEE-2 — Flat 10% provider commission via config
+
+Migration 024: seed provider_commission_percent to booking_fee_configs
+Settlement path: detect provider role, apply flat 10% rate
+Commit: 3849fbe
+✅ CON-B blocker infrastructure — AI cost tracking for $9-tier pricing
+
+Migration 025: ai_cost_tracking table + getCostStats() query helper
+Service: trackAICost() + trackAnthropicResponse() helpers
+Instrumentation: 12 Anthropic call sites across 6 files (all committed)
+Commits: c0e68d7, 5fe43a6, 872da7f
+✅ Route-defrag audit — Future-proof cost tracking through upcoming refactor
+
+Verified all unmounted modules already instrumented
+Documented post-launch safety: cost tracking uninterrupted after route-defrag
+Commit: 872da7f
+Blockers — Now Operational (Handoff to QA/Staging)
+Blocker	Status	Action	Owner	Timeline
+EXP-OVR E2E test	Test plan ready	Run staging test per exp-ovr-staging-test-plan.md	QA/Staging	20–30 min
+LB-P1 Resend smoke test	Domain verified ✅	Run smoke tests per lb-p1-resend-smoke-test.md	QA/Staging	15–20 min
+CON-B data gate	Code ready ✅	Wait for 4-week accumulation (automated)	Time	28 days
+Key documents created:
+
+docs/planning/exp-ovr-staging-test-plan.md — 6-step test with DB verification queries
+docs/planning/lb-p1-resend-smoke-test.md — 4-test suite + fallback behavior + pass/fail criteria
+docs/planning/blocker-unblock-checklist.md — Updated with test plan links + timeline estimates
+Current Codebase State
+Launch-ready items (shipped):
+
+✅ All LB-P1 through LB-P5b (11 items)
+✅ All CON-A (7 items)
+✅ FEE-2 (flat 10% provider commission)
+✅ FEE-3 (configurable deposit rate)
+✅ EXP-OVR (per-expert override, code only)
+✅ Cost tracking infrastructure (12 endpoints instrumented)
+Staging/QA validation required:
+
+EXP-OVR E2E test (20 min)
+LB-P1 smoke test (15 min)
+Deferred post-launch:
+
+Route-defragmentation (6 phases, 7–9 days after launch)
+FEE-2 tiered insurance model (Phase 2, after 1 market is live)
+Unowned items (review moderation, cart multi-currency, EA RBAC)
+What's Next?
+Immediate (< 1 week):
+
+QA runs both test suites (35 min total)
+If passed: EXP-OVR + LB-P1 are launch-unblocked
+If failed: debug via test plan guides
+Ongoing:
+
+Monitor CON-B data accumulation weekly
+In 4 weeks: query cost stats, begin CON-B Phase 0 planning
+Post-launch:
+
+Route-defrag Phase P1–P6 (smallest modules first, Playwright tests per phase)
+FEE-2 Phase 2: add insurance tier fields + admin verification UI

@@ -85,6 +85,7 @@ import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
   resolveCommissionRates,
+  calcInsuranceFee,
   type CommissionRates,
 } from "../services/commission";
 
@@ -314,20 +315,33 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
         // Map service category UUID → booking_fee_configs slug → commission rates
-        const feeCategory = item.service.categoryId
+        // FEE-2: providers get flat 10% commission; query role to apply provider_commission_percent
+        let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        if (item.service.userId) {
+          const [providerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, item.service.userId))
+            .limit(1);
+          if (providerRow?.role === "provider") {
+            feeCategory = "provider_commission_percent";
+          }
+        }
         const itemCategoryRates = await resolveCommissionRates({
           category: feeCategory,
-          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override for experts
         });
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
-        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare);
+        // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
+        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
       }
       const subtotal = checkoutSubtotal;
-      // For Stripe total, charge subtotal + weighted-average platform fee
+      // For Stripe total, charge subtotal + weighted-average platform fee (includes insurance)
       const platformFee = checkoutPlatformFeeTotal;
       const total = subtotal + platformFee;
       
@@ -338,17 +352,32 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
         // Map service category UUID → booking_fee_configs slug → commission rates
-        const feeCategory2 = item.service.categoryId
+        // FEE-2: providers get flat 10% commission; query role to apply provider_commission_percent
+        let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        if (item.service.userId) {
+          const [providerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, item.service.userId))
+            .limit(1);
+          if (providerRow?.role === "provider") {
+            feeCategory2 = "provider_commission_percent";
+          }
+        }
         const itemCategoryRates2 = await resolveCommissionRates({
           category: feeCategory2,
-          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override
+          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override for experts
         });
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
-        const expertEarningsAmt = price * expertShareRate;
-        const platformFeeAmt = price - expertEarningsAmt;
+        const baseExpertEarningsAmt = price * expertShareRate;
+        const basePlatformFeeAmt = price - baseExpertEarningsAmt;
+        // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
+        const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
+        const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt;
+        const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -371,8 +400,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             quantity: item.quantity || 1,
           },
           totalAmount: price.toFixed(2),
-          platformFee: platformFeeAmt.toFixed(2),
-          providerEarnings: expertEarningsAmt.toFixed(2),
+          platformFee: totalPlatformFeeAmt.toFixed(2),
+          insuranceFee: insuranceFeeAmt.toFixed(2),
+          providerEarnings: netExpertEarningsAmt.toFixed(2),
           status: "pending",
         } as any);
         

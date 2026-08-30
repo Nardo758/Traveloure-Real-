@@ -1,4 +1,5 @@
-import { Clock, Route, ExternalLink } from "lucide-react";
+import { Clock, Route, ExternalLink, ChevronDown } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
 import { openInMaps } from "@/lib/navigate";
@@ -50,6 +51,113 @@ function BookingSourceBadge({ transport }: { transport: PlanCardTransport }) {
   }
 
   return null;
+}
+
+// Mode selector for the transport tab. Reads/writes the SAME userSelectedMode
+// field via the SAME mutation shape as the activities-view picker (Phase 1):
+// PATCH /api/transport-legs/:legId/mode { selectedMode }, optimistic update,
+// rollback + toast on error, invalidate the plancard query on success.
+function TransportModeSelector({
+  tripId,
+  transport,
+  allowActions,
+}: {
+  tripId: string;
+  transport: PlanCardTransport;
+  allowActions: boolean;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [override, setOverride] = useState<string | null>(null);
+
+  const activeMode =
+    override ?? transport.userSelectedMode ?? transport.recommendedMode ?? transport.mode;
+  const modeColor = MODE_COLORS[activeMode] || "#94a3b8";
+
+  const recommended = transport.recommendedMode ?? transport.mode;
+  const options = [
+    recommended,
+    ...(transport.alternativeModes ?? []).map((a) => a.mode).filter((m) => m !== recommended),
+  ];
+
+  const updateMode = useMutation({
+    mutationFn: (selectedMode: string) =>
+      apiRequest("PATCH", `/api/transport-legs/${transport.id}/mode`, { selectedMode }),
+    onMutate: (selectedMode: string) => {
+      const prev = override ?? transport.userSelectedMode ?? transport.recommendedMode ?? transport.mode;
+      setOverride(selectedMode);
+      return { prev };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    onError: (_err, _selectedMode, context) => {
+      if (context?.prev) setOverride(context.prev);
+      toast({
+        title: "Update failed",
+        description: "Could not change transport mode",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Read-only badge for viewers — preserves the original look.
+  if (!allowActions || options.length <= 1) {
+    return (
+      <span
+        className="px-2.5 py-0.5 rounded-md text-[11px] font-bold capitalize"
+        style={{ backgroundColor: `${modeColor}20`, color: modeColor }}
+        data-testid={`badge-transport-mode-${transport.id}`}
+      >
+        {activeMode}
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="px-2.5 py-0.5 rounded-md text-[11px] font-bold capitalize inline-flex items-center gap-1"
+        style={{ backgroundColor: `${modeColor}20`, color: modeColor }}
+        data-testid={`badge-transport-mode-${transport.id}`}
+      >
+        {activeMode}
+        <ChevronDown className="w-3 h-3" />
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 mt-1 flex flex-wrap gap-1.5 p-2 rounded-lg border border-border bg-popover shadow-md min-w-[180px]"
+          data-testid={`mode-picker-${transport.id}`}
+        >
+          {options.map((m) => {
+            const isActive = m === activeMode;
+            const c = MODE_COLORS[m] || "#94a3b8";
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  updateMode.mutate(m);
+                  setOpen(false);
+                }}
+                disabled={updateMode.isPending}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium capitalize transition-all border ${
+                  isActive ? "border-current shadow-sm" : "border-transparent hover:bg-muted/60"
+                }`}
+                style={{ backgroundColor: `${c}15`, color: c }}
+                data-testid={`mode-option-${transport.id}-${m}`}
+              >
+                <ModeIcon mode={m} className="w-3.5 h-3.5" />
+                {m}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function TransportSection({ tripId, tripDestination, day, allowActions = true }: TransportSectionProps) {
@@ -150,13 +258,7 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
                 <span className="text-foreground font-semibold truncate" data-testid={`text-transport-to-${tr.id}`}>{tr.toName || tr.to}</span>
               </div>
               <div className="flex flex-wrap gap-2.5 mt-1.5 items-center">
-                <span
-                  className="px-2.5 py-0.5 rounded-md text-[11px] font-bold capitalize"
-                  style={{ backgroundColor: `${modeColor}20`, color: modeColor }}
-                  data-testid={`badge-transport-mode-${tr.id}`}
-                >
-                  {tr.mode}
-                </span>
+                <TransportModeSelector tripId={tripId} transport={tr} allowActions={allowActions} />
                 <span className="text-[12px] text-muted-foreground flex items-center gap-1" data-testid={`text-transport-duration-${tr.id}`}>
                   <Clock className="w-3 h-3" /> {tr.duration} min
                 </span>

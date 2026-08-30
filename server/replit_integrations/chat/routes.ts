@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { chatStorage } from "./storage";
 import { isAuthenticated } from "../auth";
+import { trackAICost, calculateAnthropicCost } from "../../services/ai-cost-tracker";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -131,7 +132,9 @@ export function registerChatRoutes(app: Express): void {
       res.setHeader("Connection", "keep-alive");
 
       let fullResponse = "";
-      
+      let inputTokens = 0;
+      let outputTokens = 0;
+
       const stream = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 2048,
@@ -144,7 +147,22 @@ export function registerChatRoutes(app: Express): void {
           const text = event.delta.text;
           fullResponse += text;
           res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        } else if (event.type === "message_start") {
+          inputTokens = event.message.usage?.input_tokens ?? 0;
+        } else if (event.type === "message_delta") {
+          outputTokens = event.usage?.output_tokens ?? outputTokens;
         }
+      }
+
+      // Track cost for CON-B analysis (chat is informational; tracked as ai_chat)
+      if (inputTokens > 0 || outputTokens > 0) {
+        trackAICost({
+          sourceType: "ai_chat",
+          modelUsed: "claude-sonnet-4-20250514",
+          costUsd: calculateAnthropicCost(inputTokens, outputTokens),
+          tokensIn: inputTokens,
+          tokensOut: outputTokens,
+        }).catch(err => console.error("[cost-tracker] chat:", err));
       }
 
       await chatStorage.createMessage(conversationId, "assistant", fullResponse);

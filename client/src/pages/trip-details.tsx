@@ -4,7 +4,7 @@ import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, isValid } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -406,7 +406,9 @@ export default function TripDetails() {
             <div className="flex flex-wrap gap-6 text-white/90">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
-                {format(startDate, "MMMM d")} - {format(endDate, "MMMM d, yyyy")}
+                {isValid(startDate) && isValid(endDate)
+                  ? `${format(startDate, "MMMM d")} – ${format(endDate, "MMMM d, yyyy")}`
+                  : "Dates not set"}
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5" />
@@ -578,15 +580,15 @@ export default function TripDetails() {
                           id: String(itinerary.id),
                           destination: itinerary.destination,
                           title: itinerary.title,
-                          startDate: format(new Date(itinerary.startDate), "yyyy-MM-dd"),
-                          endDate: format(new Date(itinerary.endDate), "yyyy-MM-dd"),
+                          startDate: (() => { const d = new Date(itinerary.startDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
+                          endDate: (() => { const d = new Date(itinerary.endDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
                           numberOfTravelers: itinerary.travelers,
                           budget: itinerary.budget,
                         };
 
                         const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
                           dayNum: d.day,
-                          date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
+                          date: (() => { const p = d.date instanceof Date ? d.date : new Date(d.date); return isValid(p) ? format(p, "yyyy-MM-dd") : ""; })(),
                           label: (() => {
                             const parsed = d.date instanceof Date ? d.date : new Date(d.date);
                             return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);

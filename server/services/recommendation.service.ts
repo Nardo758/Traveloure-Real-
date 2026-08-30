@@ -37,7 +37,6 @@ import {
   travelPulseTrending,
   providerServices,
   expertSelectedServices,
-  expertCustomServices,
   expertServiceOfferings,
   users,
   HotelCache,
@@ -807,18 +806,20 @@ class RecommendationService {
       services.add(normalized);
     }
 
+    // expert_custom_services table dropped in migration 013; approved services
+    // now live in provider_services with approvalStatus = 'approved'.
     const customServices = await db
-      .select({ title: expertCustomServices.title })
-      .from(expertCustomServices)
+      .select({ serviceName: providerServices.serviceName })
+      .from(providerServices)
       .where(
         and(
-          eq(expertCustomServices.expertId, expertId),
-          eq(expertCustomServices.status, "approved")
+          eq(providerServices.userId, expertId),
+          eq(providerServices.approvalStatus, "approved")
         )
       );
 
     for (const service of customServices) {
-      const normalized = this.normalizeServiceType(service.title);
+      const normalized = this.normalizeServiceType(service.serviceName);
       services.add(normalized);
     }
 
