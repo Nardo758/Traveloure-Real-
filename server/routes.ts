@@ -2198,6 +2198,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // === Provider Application Routes ===
+
+  // Rejected/deleted/deactivated forms are retained as history. A provider may submit a new
+  // current application after one of those terminal/history states, but concurrent requests
+  // for a current application are guarded by the database partial unique index.
+  const PROVIDER_APPLICATION_HISTORY_STATUSES = new Set(["rejected", "deleted", "deactivated"]);
+  const isCurrentProviderApplication = (form: { status?: string | null } | undefined): boolean =>
+    !!form && !PROVIDER_APPLICATION_HISTORY_STATUSES.has(form.status ?? "");
   
   // Get current user's provider application
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
@@ -2232,7 +2239,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = getUserId(req)!;
       
       const existing = await storage.getServiceProviderForm(userId);
-      if (existing) {
+      if (isCurrentProviderApplication(existing)) {
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
@@ -2246,6 +2253,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if ((err as any)?.code === "23505" || (err as any)?.cause?.code === "23505") {
+        return res.status(400).json({ message: "You already have an application submitted" });
       }
       console.error("Error creating provider application:", err);
       res.status(500).json({ message: "Failed to submit application" });
@@ -2301,7 +2311,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const existing = await storage.getServiceProviderForm(userId);
-      if (existing) {
+      if (isCurrentProviderApplication(existing)) {
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = insertServiceProviderFormSchema.parse(req.body);
@@ -2312,6 +2322,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if ((err as any)?.code === "23505" || (err as any)?.cause?.code === "23505") {
+        return res.status(400).json({ message: "You already have an application submitted" });
       }
       res.status(500).json({ message: "Failed to submit application" });
     }
@@ -2382,12 +2395,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const [form] = await db
-        .select()
-        .from(serviceProviderForms)
-        .where(eq(serviceProviderForms.userId, userId))
-        .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
-        .limit(1);
+      const form = await storage.getServiceProviderForm(userId);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
       const [userRow] = await db
@@ -2507,12 +2515,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // account instant-booking flag is read ONCE (never duplicated per row); showPrice is already
     // concrete via its column DEFAULT. The RAW column value is preserved for any consumer that
     // needs it — resolution only fills the unset case.
-    const [ownerForm] = await db
-      .select({ instantBooking: serviceProviderForms.instantBooking })
-      .from(serviceProviderForms)
-      .where(eq(serviceProviderForms.userId, userId))
-      .limit(1);
-    const ownerInstantBooking = ownerForm?.instantBooking ?? false;
+      const ownerForm = await storage.getServiceProviderForm(userId);
+      const ownerInstantBooking = ownerForm?.instantBooking ?? false;
     const withDisplayOptions = services.map((s) => ({
       ...s,
       showPrice: (s as any).showPrice ?? true,
@@ -5820,12 +5824,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // choose the role-specific canonical storefront path — additive, null when the user is absent.
   app.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
-      const [form] = await db.select({
-        identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
-        businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
-      }).from(serviceProviderForms)
-        .where(eq(serviceProviderForms.userId, req.params.userId))
-        .limit(1);
+      const form = await storage.getServiceProviderForm(req.params.userId);
       // Ledger 90 (FP-5, I3): `displayName` is additive here. The service-detail page's
       // "Contact Provider" CTA needs the owner's display name to open a working chat thread —
       // `/api/experts/:id` resolves EXPERT-FAMILY roles only, so a `service_provider` owner 404s

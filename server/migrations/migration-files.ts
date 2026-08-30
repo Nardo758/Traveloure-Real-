@@ -1331,4 +1331,8 @@ export const MIGRATION_FILES = [
   // unique provider/query-hash index, both declared in shared/schema.ts; status vocabulary is
   // app-enforced with no CHECK. Successful and negative results have bounded TTLs.
   "267_optimizer_geocode_cache.sql",
+  // 268: one current provider application per user. Rejected/deleted/deactivated rows remain
+  // review/account history; only duplicate current rows are removed before the partial unique
+  // index is installed. The index is also declared in shared/schema.ts for publish durability.
+  "268_provider_application_current_unique.sql",
 ] as const;

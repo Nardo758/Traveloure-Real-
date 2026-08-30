@@ -24,7 +24,13 @@ export async function getLocalExpertFormByUserId(userId: string): Promise<any | 
 
 export async function getServiceProviderFormByUserId(userId: string): Promise<any | null> {
   const [form] = await db.select().from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, userId)).limit(1);
+    .where(eq(serviceProviderForms.userId, userId))
+    .orderBy(
+      sql`CASE WHEN ${serviceProviderForms.status} IS NULL OR ${serviceProviderForms.status} NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END`,
+      asc(serviceProviderForms.createdAt),
+      asc(serviceProviderForms.id),
+    )
+    .limit(1);
   return form ?? null;
 }
 
@@ -33,7 +39,13 @@ export async function getProviderVerificationStatus(userId: string): Promise<any
     identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
     businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
   }).from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, userId)).limit(1);
+    .where(eq(serviceProviderForms.userId, userId))
+    .orderBy(
+      sql`CASE WHEN ${serviceProviderForms.status} IS NULL OR ${serviceProviderForms.status} NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END`,
+      asc(serviceProviderForms.createdAt),
+      asc(serviceProviderForms.id),
+    )
+    .limit(1);
   return form ?? null;
 }
 

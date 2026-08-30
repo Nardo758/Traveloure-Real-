@@ -1842,13 +1842,19 @@ export class DatabaseStorage implements IStorage {
 
   // Service Provider Forms
   async getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined> {
-    // service_provider_forms has no unique user_id constraint. Keep this canonical
-    // ordering aligned with the persona seed and publish-verification resolver.
+    // Current applications win over retained rejected/deleted/deactivated history. Among
+    // duplicate legacy current rows, keep the deterministic earliest row until migration 265
+    // removes the extras. The predicate/order must stay aligned with the database guard and
+    // persona seed so verification reads cannot drift between surfaces.
     const [form] = await db
       .select()
       .from(serviceProviderForms)
       .where(eq(serviceProviderForms.userId, userId))
-      .orderBy(asc(serviceProviderForms.createdAt), asc(serviceProviderForms.id))
+      .orderBy(
+        sql`CASE WHEN ${serviceProviderForms.status} IS NULL OR ${serviceProviderForms.status} NOT IN ('rejected', 'deleted', 'deactivated') THEN 0 ELSE 1 END`,
+        asc(serviceProviderForms.createdAt),
+        asc(serviceProviderForms.id),
+      )
       .limit(1);
     return form;
   }
@@ -1900,9 +1906,13 @@ export class DatabaseStorage implements IStorage {
     userId: string,
     officeLocation: { address: string | null; lat: number; lng: number } | null,
   ): Promise<ServiceProviderForm | undefined> {
+    // Only mutate the canonical current row. Rejected/deleted/deactivated rows are retained as
+    // review history and must not be rewritten by an account-level settings update.
+    const existing = await this.getServiceProviderForm(userId);
+    if (!existing) return undefined;
     const [updated] = await db.update(serviceProviderForms)
       .set({ officeLocation })
-      .where(eq(serviceProviderForms.userId, userId))
+      .where(eq(serviceProviderForms.id, existing.id))
       .returning();
     return updated;
   }
@@ -3555,7 +3565,10 @@ export class DatabaseStorage implements IStorage {
         db
           .select({ userId: serviceProviderForms.userId, businessName: serviceProviderForms.businessName, name: serviceProviderForms.name })
           .from(serviceProviderForms)
-          .where(inArray(serviceProviderForms.userId, userIds)),
+          .where(and(
+            inArray(serviceProviderForms.userId, userIds),
+            sqlOp`${serviceProviderForms.status} IS NULL OR ${serviceProviderForms.status} NOT IN ('rejected', 'deleted', 'deactivated')`,
+          )),
       ]);
       const userMap = new Map(userRows.map(u => [u.id, u]));
       const ratingMap = new Map(ratingRows.map(r => [r.userId, r.avgRating]));
