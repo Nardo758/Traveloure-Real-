@@ -16,3 +16,10 @@ The migration runner (`run-migrations.ts`) does `throw err` on any failure — f
 
 ## How to apply
 Before writing a seed migration that INSERTs into a table with a varchar/text `id` column: check `information_schema.columns` for `column_default`. If NULL, prepend the ALTER TABLE SET DEFAULT statement to the same migration file.
+
+## Numbering safety
+Migration filenames and the registry must be checked against the latest `origin/main` immediately before renumbering. A number that is free on a stale lane can be claimed by a later main migration before the lane ships.
+
+**Why:** A provider-application migration was moved to 266 on a stale branch, but current main had since claimed both 266 and 267.
+
+**How to apply:** Fetch main, inspect the full suffix range, choose the next unused number, and validate the combined main-plus-lane namespace before pushing.
