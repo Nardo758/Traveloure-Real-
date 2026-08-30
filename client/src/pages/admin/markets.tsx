@@ -82,12 +82,37 @@ function ChecklistBadge({ label, item }: { label: string; item: ChecklistItem | 
 const OVERPASS_BBOX_HINT =
   "Bbox order is [west, south, east, north] in decimal degrees. A quick way to find one: draw a box on a site like bboxfinder.com over the city core and copy its 4 numbers in that order. Keep each side to roughly 1 degree or less — Overpass rejects huge boxes.";
 
+// 3.5 Item 3 — the ADMIN cross-market demand view. Reads /api/admin/demand-rollup (cross_partner
+// floor, R27; includes the __unmapped__ bucket, R13). The admin is NOT the party a figure is about,
+// so its floor is 10 whatever the cell's grain — the server enforces this; the page only renders it.
+const UNMAPPED_MARKET_SLUG = "__unmapped__";
+interface AdminRollupBucket {
+  slipAmount: number | null; slipCount: number; slipValuedCount: number;
+  stayTrips: number; stayNights: number; stayTravelers: number | null;
+}
+interface AdminRollupSummary { marketSlug: string; requested: AdminRollupBucket; missed: AdminRollupBucket }
+interface AdminRollupRow { marketSlug: string; status: "ok" | "no_data"; n: number }
+interface AdminRollupResult {
+  cadence: string; floor: number; summary: AdminRollupSummary[]; rows: AdminRollupRow[];
+}
+function usd(n: number | null): string {
+  return n == null ? "—" : n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+function marketLabel(slug: string): string {
+  return slug === UNMAPPED_MARKET_SLUG ? "Unmapped destinations" : slug;
+}
+
 export default function AdminMarkets() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery<{ markets: AdminMarketRow[] }>({
     queryKey: ["/api/admin/markets"],
+  });
+
+  // 3.5 Item 3 — cross-market unmet demand (admin cross_partner read, incl. __unmapped__).
+  const { data: demand } = useQuery<AdminRollupResult>({
+    queryKey: ["/api/admin/demand-rollup"],
   });
 
   const [showForm, setShowForm] = useState(false);
@@ -157,6 +182,20 @@ export default function AdminMarkets() {
   });
 
   const markets = data?.markets ?? [];
+
+  // Per-market floor STATUS (not a demand figure — status/max only, no client math over amounts):
+  // a market is "below floor" when every one of its cells is suppressed. Cleared markets carry
+  // figures in `summary`; below-floor ones are named honestly, never shown with a guessed number.
+  const clearedMarkets = new Set((demand?.summary ?? []).map((s) => s.marketSlug));
+  const belowFloorMarkets: string[] = [];
+  const seenBelow = new Set<string>();
+  for (const r of demand?.rows ?? []) {
+    if (clearedMarkets.has(r.marketSlug) || seenBelow.has(r.marketSlug)) continue;
+    // only add once we've confirmed no cell for this market cleared the floor
+    const anyOk = (demand?.rows ?? []).some((x) => x.marketSlug === r.marketSlug && x.status === "ok");
+    if (!anyOk) { belowFloorMarkets.push(r.marketSlug); seenBelow.add(r.marketSlug); }
+  }
+  belowFloorMarkets.sort();
 
   const submit = () => {
     setFormError(null);
@@ -337,6 +376,68 @@ export default function AdminMarkets() {
             )}
           </CardContent>
         </Card>
+
+        {/* 3.5 Item 3 — cross-market unmet demand. Admin is a CROSS-PARTNER reader (R27): its floor
+            is the higher bar (server-enforced); below-floor markets are named, never numbered (§13).
+            Includes the __unmapped__ bucket (R13) — unresolved destinations (Lisbon, SF, …). */}
+        {demand && (
+          <Card data-testid="card-admin-demand">
+            <CardHeader>
+              <CardTitle className="text-base">Cross-market unmet demand</CardTitle>
+              <CardDescription>
+                {demand.cadence} · cross-partner floor {demand.floor} (R27 — the admin is not the party
+                a figure is about, so it reads at the higher bar). Requested and missed are never summed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {demand.summary.length === 0 ? (
+                <p className="text-sm text-gray-500" data-testid="text-admin-demand-empty">
+                  No market has demand above the cross-partner floor of {demand.floor} yet.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Market</th>
+                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Requested ($ / stays)</th>
+                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Missed ($ / stays)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {demand.summary.map((m) => (
+                        <tr key={m.marketSlug} className="border-b border-gray-100" data-testid={`row-admin-demand-${m.marketSlug}`}>
+                          <td className="py-2 px-3">
+                            <span className={`font-medium ${m.marketSlug === UNMAPPED_MARKET_SLUG ? "text-amber-700" : "text-gray-900"}`}>
+                              {marketLabel(m.marketSlug)}
+                            </span>
+                            {m.marketSlug === UNMAPPED_MARKET_SLUG && (
+                              <span className="block text-xs text-gray-400">destinations outside the operating markets</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-gray-700">
+                            {usd(m.requested.slipAmount)} <span className="text-xs text-gray-400">· {m.requested.slipCount} exp</span>
+                            {m.requested.stayTrips > 0 && <span className="block text-xs text-gray-500">{m.requested.stayTrips} stays · {m.requested.stayNights} nights</span>}
+                          </td>
+                          <td className="py-2 px-3 text-gray-700">
+                            {usd(m.missed.slipAmount)} <span className="text-xs text-gray-400">· {m.missed.slipCount} exp</span>
+                            {m.missed.stayTrips > 0 && <span className="block text-xs text-gray-500">{m.missed.stayTrips} stays · {m.missed.stayNights} nights</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {belowFloorMarkets.length > 0 && (
+                <p className="text-xs text-gray-400 mt-3" data-testid="text-admin-demand-belowfloor">
+                  Below the cross-partner floor of {demand.floor} (omitted, §13):{" "}
+                  {belowFloorMarkets.map(marketLabel).join(", ")}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Manual launch steps — hardcoded summary of docs/MARKET_LAUNCH_CHECKLIST.md (canonical
             text lives there; keep both in sync). */}

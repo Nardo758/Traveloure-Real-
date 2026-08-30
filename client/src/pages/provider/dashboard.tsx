@@ -162,6 +162,65 @@ function buildTrendingItems(data: DemandSignalsResponse): TrendingItem[] {
   return items.slice(0, 6);
 }
 
+// 3.4 Item 2.1 — the Today card's demand signal (server-chosen; mirrors the server TopDemandSignal).
+interface TopDemandSignal {
+  shape: "service" | "stay";
+  marketSlug: string;
+  marketName: string;
+  amount?: number;   // service-shaped $ (R19 — never on a stay)
+  count?: number;
+  trips?: number;    // stay-shaped (R19 — NO $)
+  nights?: number;
+}
+
+/** ONE card for today's single highest-value demand opportunity (3.4 Item 2.1). Never a feed —
+ *  the server picks the one signal. Gold edge; deep-links to Market Research (the closing station,
+ *  where the market's demand + create/fill actions live). R19: a service signal shows $, a stay
+ *  signal shows trips/nights and NEVER a dollar figure. Renders nothing when there is no signal. */
+function TodayDemandCard({ signal }: { signal: TopDemandSignal | null | undefined }) {
+  if (!signal) return null;
+  const money =
+    signal.amount != null
+      ? signal.amount.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+      : null;
+  return (
+    <Link href="/provider/market-research">
+      <div
+        className="flex items-center justify-between gap-3 rounded-lg border border-console-light border-l-4 border-l-amber-400 bg-amber-50/40 px-4 py-3 cursor-pointer hover:bg-amber-50 transition-colors"
+        data-testid="card-today-demand"
+      >
+        <div className="flex items-start gap-2.5 min-w-0">
+          <TrendingUp className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            {signal.shape === "service" ? (
+              <>
+                <p className="text-[13px] font-bold text-console-darkest" data-testid="text-today-demand-headline">
+                  {money} in requested {signal.marketName} experiences with no open slot
+                </p>
+                <p className="text-[11.5px] text-console-mid mt-0.5">
+                  {signal.count ?? 0} planned {signal.count === 1 ? "experience" : "experiences"} · your highest-value opening today
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] font-bold text-console-darkest" data-testid="text-today-demand-headline">
+                  {signal.trips ?? 0} {signal.trips === 1 ? "trip" : "trips"} seeking a {signal.marketName} stay
+                </p>
+                <p className="text-[11.5px] text-console-mid mt-0.5">
+                  {signal.nights ?? 0} {signal.nights === 1 ? "night" : "nights"} requested · no on-platform stay yet
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+        <span className="text-[12px] font-semibold text-amber-700 whitespace-nowrap flex items-center gap-0.5">
+          See demand <ChevronRight className="w-3.5 h-3.5" />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export default function ProviderDashboard() {
   const { user } = useAuth();
 
@@ -196,6 +255,14 @@ export default function ProviderDashboard() {
     enabled: !!user,
   });
   const trendingItems = demandData?.market ? buildTrendingItems(demandData) : [];
+
+  // 3.4 Item 2.1 — the Today card's ONE highest-value demand signal, chosen SERVER-SIDE
+  // (/api/me/demand-rollup/top). The card renders the server's chosen signal verbatim (no client
+  // math, no ranking here); absent/null ⇒ no card (§13 honest absence, never a feed).
+  const { data: topDemand } = useQuery<{ signal: TopDemandSignal | null }>({
+    queryKey: ["/api/me/demand-rollup/top"],
+    enabled: !!user,
+  });
 
   // Same query key SetupChecklistCard uses internally — read here only to size the compact
   // summary row (doneCount/total, eligibility). No extra request: react-query serves both
@@ -316,6 +383,9 @@ export default function ProviderDashboard() {
         <h2 className="text-lg font-bold text-console-darkest" data-testid="text-welcome">
           Welcome back!
         </h2>
+
+        {/* 3.4 Item 2.1 — Today's single highest-value demand opportunity (server-chosen; gold edge). */}
+        <TodayDemandCard signal={topDemand?.signal} />
 
         {/* Build 1: "Open your business" activation checklist — a compact summary row by
             default; expands to the full card (unchanged behavior/testids inside). Starts

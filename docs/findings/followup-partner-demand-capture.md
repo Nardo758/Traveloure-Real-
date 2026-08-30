@@ -37,3 +37,45 @@ verb stays "create a service here" only.
 - **R23 smart verbs** turn on when item category accrues (item 3).
 
 Nothing here is cancelled; each is data-gated with a named unblock condition. No fixes applied at filing time.
+
+---
+
+## Phase 3 close-out followups (added 2026-08-19, ledger `2026-08-19-partner-demand-phase3-complete`)
+
+Surfaced while building 3.3–3.5; each is a real project with a named unblock, none is a bug in what shipped.
+
+### 5. R21 forward calendar-pressure shading (Calendar)
+Ships DARK behind `SHOW_PRESSURE_SHADING` in `client/src/pages/provider/calendar.tsx`. **Unblock:**
+confirm `trend_scores` carries forward calendar-pressure rows for the caller's markets (written by
+`server/services/trend-engine/trend-score.service.ts`; one-query check in
+`docs/findings/partner-demand-3.3-ghost-fixture.md` Part B), then wire the decomposed calendar-pressure
+read into `pressureShade()` and flip the flag. The composite `trend_score`/`crowd_band` must NEVER render (R21).
+
+### 6. `getBenchmarkFacts` denorm read (business advisor)
+`server/routes/demand.routes.ts` `getBenchmarkFacts` reads the banned `providerServices.totalRevenue`
+denorm (Locked Decision 3) for a category benchmark — flagged at the `check-demand-rollup.cjs` HARD STOP as
+legacy debt OUTSIDE the 2B module (not policed or laundered by that gate). **Fix:** compute the benchmark
+from a `serviceBookings` SUM (the real number) instead of the denorm. Sized: one query swap + the gate can
+then extend to scan that file.
+
+### 7. Ghost-slot category scoping (Calendar 1.2)
+Ghost slots are MARKET-LEVEL today ("requested in Kyoto"). **Unblock:** when the demand cohort accrues a
+category link (item 3 above), a ghost can narrow to the caller's category with honest sub-cohort copy —
+without it, market-level is the only honest framing (never "from you").
+
+### 8. "Watch this area" threshold alerts
+Named NOT-in-v1 by R24. A partner subscribes to a market/category and is alerted when unmet demand crosses a
+threshold. Depends on the rollup (shipped) + a subscription table + a notify job. Between-phases.
+
+### 9. PlanCard traveler-facing demand layer
+The traveler PlanCard could surface an expert-curated demand/pressure hint. Deferred — traveler-surface
+demand framing needs its own ratification (R24 anti-disintermediation boundaries apply).
+
+### 10. Property $-valuation (stay demand)
+`unmet_demand_stay` is count-only (R19 — NO $ until property-pricing data earns trust). **Unblock:** a
+trusted property price source, at which point stay demand could carry a $ figure and the Today card / admin
+strip could rank stays by value. Explicitly a Phase-4+ decision, not started.
+
+### 11. One-pager generation (Phase 4)
+The `/admin/fee-bands` recruitment one-pager control is wired but generation is R18-gated
+(`/api/admin/demand-one-pager` stub). **Unblock:** Phase 4 authorization + the satori/template build.

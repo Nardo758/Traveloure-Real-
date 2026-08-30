@@ -31,10 +31,13 @@ import {
   shortLinks,
   serviceBookings,
   users,
+  partnerDemandRollup,
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
-import { readPartnerDemandRollup, readAdminDemandRollup } from "../services/demand-rollup.service";
+import { readPartnerDemandRollup, readAdminDemandRollup, readTopDemandSignal } from "../services/demand-rollup.service";
+import { buildDemandRollupFacts, type DemandRollupFacts } from "../services/demand-rollup.compute";
+import { DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 const router = Router();
 
@@ -487,25 +490,36 @@ async function getLinkStatsFacts(userId: string): Promise<LinkStatsFacts> {
   return { totalClicks, totalBookings, totalRevenue, conversionRate: totalClicks > 0 ? totalBookings / totalClicks : null };
 }
 
+// 3.4 Item 2.2 — the L6 rollup demand figures ride into the advisor prompt WITH their governance
+// labels (R5/R19/R20), so the model can never blend units or sum dispositions. The labeling is a
+// PURE function in the L6 module (buildDemandRollupFacts — unit-tested with no DB); this route only
+// supplies the server-aggregated, floor-cleared summary to it.
+async function getDemandRollupFacts(userId: string): Promise<DemandRollupFacts> {
+  const rollup = await readPartnerDemandRollup(userId);
+  return buildDemandRollupFacts(rollup.summary);
+}
+
 interface BusinessAdvisorFacts {
   market: string | null;
   listingHealth: ListingHealthSummary | null;
   benchmarks: BenchmarkFacts;
   linkStats: LinkStatsFacts;
   demand: { signals: DemandSignalRow[]; crowd: CrowdMonthRow[] | null; events: UpcomingEventRow[] | null };
+  demandRollup: DemandRollupFacts; // 3.4 Item 2.2 — labeled L6 figures (R5/R19/R20)
 }
 
 /** Assembles the FACTS object server-side and a stable factsHash over it, in one pass — mirrors
  *  assembleFacts() in advisor.routes.ts's narration pattern (no AI call here). */
 async function assembleBusinessAdvisorFacts(userId: string): Promise<{ facts: BusinessAdvisorFacts; factsHash: string }> {
   const market = await deriveMarket(userId);
-  const [listingHealth, benchmarks, linkStats, demandResult, crowd, events] = await Promise.all([
+  const [listingHealth, benchmarks, linkStats, demandResult, crowd, events, demandRollup] = await Promise.all([
     getListingHealthSummary(userId),
     getBenchmarkFacts(userId),
     getLinkStatsFacts(userId),
     market ? getDemandSignals(market) : Promise.resolve({ signals: [] as DemandSignalRow[], lowSignal: true }),
     market ? getCrowd(market) : Promise.resolve(null),
     market ? getUpcomingEvents(market) : Promise.resolve(null),
+    getDemandRollupFacts(userId),
   ]);
 
   const facts: BusinessAdvisorFacts = {
@@ -514,6 +528,7 @@ async function assembleBusinessAdvisorFacts(userId: string): Promise<{ facts: Bu
     benchmarks,
     linkStats,
     demand: { signals: demandResult.signals, crowd, events },
+    demandRollup,
   };
   const factsHash = crypto.createHash("sha1").update(JSON.stringify(facts)).digest("hex");
   return { facts, factsHash };
@@ -530,6 +545,7 @@ Rules:
 - If listingHealth.topGaps is non-empty, mention closing the biggest gap first.
 - If benchmarks.status is "no_data", say so honestly rather than comparing to a number.
 - If demand.signals is non-empty, connect at least one signal to a concrete next step.
+- demandRollup carries the market's unmet-demand figures. OBEY demandRollup.rulesNote exactly: NEVER blend a service dollar figure (serviceDollars) with a stay count (stayTrips/stayNights), and NEVER sum "requested" (live) with "missed" (expired) demand — report each in its own kind and unit, or not at all.
 - Write plain prose. No markdown, no bullet lists, no headers.`;
 
 router.post("/api/me/business-advisor", aiRateLimit, isAuthenticated, async (req, res) => {
@@ -633,6 +649,19 @@ router.get("/api/me/demand-rollup", isAuthenticated, async (req, res) => {
   }
 });
 
+// PARTNER Today card (3.4 Item 2.1): the ONE highest-value demand signal, selected server-side
+// (R19-honest, floor-cleared only) so the dashboard renders a single card with no client math.
+router.get("/api/me/demand-rollup/top", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const out = await readTopDemandSignal(userId);
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/me/demand-rollup/top error:", error);
+    res.status(500).json({ message: "Failed to fetch top demand signal" });
+  }
+});
+
 // ADMIN variant: every market incl. the unmapped bucket (R13). Inherits the §2 blanket admin guard
 // (`app.use("/api/admin", adminApiGuard)`, mounted before this router) — no per-route opt-in (§2).
 router.get("/api/admin/demand-rollup", async (req, res) => {
@@ -645,6 +674,69 @@ router.get("/api/admin/demand-rollup", async (req, res) => {
     console.error("[demand] /api/admin/demand-rollup error:", error);
     res.status(500).json({ message: "Failed to fetch admin demand rollup" });
   }
+});
+
+// ADMIN 3.5 Item 3 — demand-rollup HEALTH (observability, not a demand figure). Row counts +
+// freshness so ops can tell a healthy quiet day from a scheduler that stopped running (the §17
+// "silence must be distinguishable" posture, applied to the rollup table). Inherits the §2 admin
+// guard. No floor/metric math here — just counts and the latest computed_at.
+router.get("/api/admin/demand-rollup/health", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        metric: partnerDemandRollup.metric,
+        count: sql<number>`count(*)::int`,
+        latest: sql<string | null>`max(${partnerDemandRollup.computedAt})`,
+      })
+      .from(partnerDemandRollup)
+      .groupBy(partnerDemandRollup.metric);
+    const totals = await db
+      .select({
+        totalRows: sql<number>`count(*)::int`,
+        markets: sql<number>`count(distinct ${partnerDemandRollup.marketSlug})::int`,
+        latest: sql<string | null>`max(${partnerDemandRollup.computedAt})`,
+      })
+      .from(partnerDemandRollup);
+    res.json({
+      totalRows: Number(totals[0]?.totalRows ?? 0),
+      distinctMarkets: Number(totals[0]?.markets ?? 0),
+      lastComputedAt: totals[0]?.latest ?? null,
+      byMetric: rows.map((r) => ({ metric: r.metric, count: Number(r.count), lastComputedAt: r.latest ?? null })),
+    });
+  } catch (error) {
+    console.error("[demand] /api/admin/demand-rollup/health error:", error);
+    res.status(500).json({ message: "Failed to fetch demand rollup health" });
+  }
+});
+
+// ADMIN 3.5 Item 3 — the demand suppression floors, READ-ONLY, served FROM CONFIG (no literals on
+// the client). R27: the tier keys on WHO reads a figure, not the cell's grain. These are config-set
+// (server/config/demand-floors.config.ts) and moved ONLY by the decision-maker in code — there is no
+// DB override and this endpoint never writes; a Leon-editable, audit-logged floor control is a
+// separate ratified change (it would need a floors table, escalate per Coordination Prevention).
+router.get("/api/admin/demand-floors", async (_req, res) => {
+  res.json({
+    editable: false,
+    source: "server/config/demand-floors.config.ts",
+    windowDays: DEMAND_WINDOW_DAYS,
+    tiers: [
+      { audience: "own_book", floor: DEMAND_FLOORS.ownBook, label: "Own book", scope: "Shown to the party the figure is ABOUT (a partner viewing their own market/listing). The lowest bar." },
+      { audience: "cross_partner", floor: DEMAND_FLOORS.crossPartner, label: "Cross-partner", scope: "Shown to someone OTHER than its subject — admin cross-partner views, the recruitment one-pager." },
+      { audience: "sold", floor: DEMAND_FLOORS.sold, label: "Sold", scope: "A figure in a SOLD dataset. The highest bar; nothing renders it today." },
+    ],
+  });
+});
+
+// ADMIN 3.5 Item 3 — the recruitment one-pager control. The UI ships, but GENERATION is R18-gated
+// to Phase 4: this endpoint is a STUB that authorizes nothing and produces no artifact. It returns
+// an honest "awaiting Phase 4 authorization" so the button is wired end-to-end without doing the
+// thing that isn't authorized yet (§13 — never a fake success).
+router.post("/api/admin/demand-one-pager", async (_req, res) => {
+  res.status(200).json({
+    status: "awaiting_phase_4",
+    generated: false,
+    message: "One-pager generation is disabled until Phase 4 authorization (R18). This control is wired; generation is not yet enabled.",
+  });
 });
 
 // ── Market Research layer prefs — the registry rail (R25-final.1; ledger 3.1c, R25-final) ────────
