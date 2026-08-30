@@ -12,10 +12,15 @@
  *   2. Tier-level default row (event_type IS NULL)
  *   3. Code-level DEFAULT_FEE_CENTS fallback (§4.8 standard: $9.99 across tiers). fee-literal-ok: comment
  */
-import { and, eq, isNull, or, inArray } from "drizzle-orm";
+import { and, desc, eq, isNull, or, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { optimizationFees, feeBands, coordinationFeeCredits } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
+import { logger } from "../infrastructure/logger";
+import {
+  COORDINATION_FLOOR_BAND,
+  COORDINATION_PERCENT_BAND,
+} from "./fee-band-requirements";
 
 // 3.0.1b: Fail-loud resolver. If the DB is missing both the event-type row AND
 // the tier-level default, throw instead of silently serving a wrong fallback.
@@ -58,7 +63,7 @@ export async function getFee(
   const creditTowardCoordination = branch === "event";
 
   if (eventType) {
-    const [evRow] = await db
+    const evRows = await db
       .select({
         priceCents: optimizationFees.priceCents,
         currency: optimizationFees.currency,
@@ -69,7 +74,30 @@ export async function getFee(
         eq(optimizationFees.eventType, eventType),
         eq(optimizationFees.isActive, true),
       ))
-      .limit(1);
+      // DETERMINISTIC, FAIL-SAFE ORDER (spec-coverage sweep, Aug 16 2026).
+      // This was `.limit(1)` with NO ordering, and the table has no constraint holding it to one
+      // active row per event_type — so when a second row existed, WHICH FEE APPLIED was whatever
+      // Postgres returned first: arbitrary, and free to change with a vacuum or an unrelated
+      // insert. `is_disabled` rode the same coin flip, meaning the quote could offer a paid AI
+      // path an admin had explicitly DISABLED. Ordering `is_disabled DESC` first makes the
+      // ambiguous case resolve the safe way — an admin's "off" is honoured rather than raced —
+      // then `updated_at DESC` prefers the most recently edited row, with `id` as a final
+      // tiebreak so the result is stable across identical timestamps.
+      .orderBy(
+        desc(optimizationFees.isDisabled),
+        desc(optimizationFees.updatedAt),
+        optimizationFees.id,
+      )
+      .limit(2); // 2, not 1 — so a duplicate can be DETECTED and logged rather than hidden.
+    const evRow = evRows[0];
+    if (evRows.length > 1) {
+      logger.warn(
+        { eventType, matched: evRows.length },
+        "optimization_fees: more than one ACTIVE row for this event_type — the fee is being " +
+        "resolved by the fail-safe order (disabled wins, then newest). Deactivate the duplicate; " +
+        "the invariant is one active row per event_type.",
+      );
+    }
     if (evRow) {
       return {
         priceCents: evRow.priceCents,
@@ -80,7 +108,8 @@ export async function getFee(
     }
   }
 
-  const [tierRow] = await db
+  // Same fail-safe order on the tier-level default — it had the identical unordered LIMIT 1.
+  const tierRows = await db
     .select({
       priceCents: optimizationFees.priceCents,
       currency: optimizationFees.currency,
@@ -92,7 +121,20 @@ export async function getFee(
       isNull(optimizationFees.eventType),
       eq(optimizationFees.isActive, true),
     ))
-    .limit(1);
+    .orderBy(
+      desc(optimizationFees.isDisabled),
+      desc(optimizationFees.updatedAt),
+      optimizationFees.id,
+    )
+    .limit(2);
+  const tierRow = tierRows[0];
+  if (tierRows.length > 1) {
+    logger.warn(
+      { tier, matched: tierRows.length },
+      "optimization_fees: more than one ACTIVE tier-default row for this complexity_tier — " +
+      "resolved by the fail-safe order. Deactivate the duplicate.",
+    );
+  }
 
   if (tierRow) {
     return {
@@ -150,12 +192,12 @@ async function resolveCoordinationParams(): Promise<{ floorCents: number; percen
     const [floorRow] = await db
       .select({ defaultRate: feeBands.defaultRate })
       .from(feeBands)
-      .where(and(eq(feeBands.bandKey, "coordination_floor"), eq(feeBands.isActive, true)))
+      .where(and(eq(feeBands.bandKey, COORDINATION_FLOOR_BAND), eq(feeBands.isActive, true)))
       .limit(1);
     const [percentRow] = await db
       .select({ defaultRate: feeBands.defaultRate })
       .from(feeBands)
-      .where(and(eq(feeBands.bandKey, "coordination_percent"), eq(feeBands.isActive, true)))
+      .where(and(eq(feeBands.bandKey, COORDINATION_PERCENT_BAND), eq(feeBands.isActive, true)))
       .limit(1);
     // Honor a present, valid, NON-NEGATIVE row — including an explicit 0 (an admin
     // may genuinely want a $0 floor or 0% percent). Only fall back to the code

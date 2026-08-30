@@ -9,17 +9,18 @@
 
 import { Router } from "express";
 import Stripe from "stripe";
-import crypto from "crypto";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
+import { activateVerificationHeldListings } from "../services/publish-verification.service";
 import { db } from "../db";
-import { localExpertForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests } from "@shared/schema";
+import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(getStripeSecretKey()!, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
@@ -65,6 +66,13 @@ router.post("/stripe-identity", async (req: any, res) => {
     if (event.type === "identity.verification_session.verified") {
       const ft = formType === "expert" ? "expert" : "provider";
       await storage.updateFormIdentityVerification(ft, userId, "verified", new Date());
+      // QA_PUNCH_LIST.md P0 auto-activation sweep: identity verifying may be the LAST
+      // outstanding half of the publish predicate for this user (the whole predicate for
+      // experts; one of two for providers) — re-evaluate and promote any approved+draft
+      // held listings. No-ops safely if the provider side is still unverified.
+      await activateVerificationHeldListings(userId).catch((err) =>
+        console.error("[webhooks/stripe-identity] activateVerificationHeldListings failed (non-fatal):", err)
+      );
     } else if (event.type === "identity.verification_session.requires_input") {
       const ft = formType === "expert" ? "expert" : "provider";
       await storage.updateFormIdentityVerification(ft, userId, "failed");
@@ -76,60 +84,10 @@ router.post("/stripe-identity", async (req: any, res) => {
   res.json({ received: true });
 });
 
-// POST /api/webhooks/persona
-// Verifies Persona HMAC signature when PERSONA_WEBHOOK_SECRET is configured.
-router.post("/persona", async (req: any, res) => {
-  const personaSecret = process.env.PERSONA_WEBHOOK_SECRET;
-
-  if (personaSecret) {
-    const personaSig = req.headers["persona-signature"] as string | undefined;
-    if (!personaSig) {
-      return res.status(400).json({ message: "Missing Persona-Signature header" });
-    }
-    // Persona uses t=<timestamp>,v1=<hmac> format
-    const parts: Record<string, string> = {};
-    personaSig.split(",").forEach(part => {
-      const [k, v] = part.split("=", 2);
-      parts[k] = v;
-    });
-    const timestamp = parts["t"];
-    const signature = parts["v1"];
-    if (!timestamp || !signature) {
-      return res.status(400).json({ message: "Malformed Persona-Signature header" });
-    }
-    // Rebuild signed payload: timestamp + "." + raw body
-    const rawPayload = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
-    const expected = crypto
-      .createHmac("sha256", personaSecret)
-      .update(`${timestamp}.${rawPayload}`)
-      .digest("hex");
-    if (expected !== signature) {
-      console.error("Persona webhook signature mismatch");
-      return res.status(400).json({ message: "Invalid Persona webhook signature" });
-    }
-  } else if (process.env.NODE_ENV === "production") {
-    // In production, PERSONA_WEBHOOK_SECRET must be set
-    return res.status(400).json({ message: "PERSONA_WEBHOOK_SECRET must be set in production" });
-  }
-
-  try {
-    const event = req.body;
-    const inquiryId: string | undefined = event.data?.id;
-    const status: string | undefined = event.data?.attributes?.status;
-
-    if (!inquiryId) return res.json({ received: true });
-
-    const newStatus =
-      status === "approved" ? "verified" :
-      status === "declined" ? "failed" :
-      "submitted";
-
-    await storage.updateProviderBusinessVerificationByInquiry(inquiryId, newStatus);
-  } catch (err) {
-    console.error("Persona webhook processing error:", err);
-  }
-
-  res.json({ received: true });
+// POST /api/webhooks/persona — RETIRED (Persona KYB removed Aug 2026)
+// Business verification now flows through the Stripe account.updated webhook below.
+router.post("/persona", (_req, res) => {
+  res.status(410).json({ message: "Persona KYB webhook retired. Business verification is now Stripe Connect-derived." });
 });
 
 // ─── Core Stripe event processor ────────────────────────────────────────────
@@ -255,6 +213,71 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           }
         }
 
+        // ── Path D: Derive businessVerificationStatus for service providers ──
+        // Stripe Connect Express performs its own KYB during Express onboarding.
+        // We map the account's verification signals to businessVerificationStatus
+        // so providers no longer need a separate Persona check. This replaces the
+        // retired Persona webhook handler.
+        //
+        // Lookup: users.stripeAccountId → users.id → serviceProviderForms.userId
+        // (serviceProviderForms has no stripeAccountId column; the Connect account ID
+        //  is stored only on the users row.)
+        //
+        // Mapping:
+        //   rejected.* disabled_reason          → "failed"
+        //   details_submitted + charges_enabled → "verified"
+        //   details_submitted only              → "submitted"  (mid-onboarding, manual fallback)
+        //   anything else                       → "pending"
+        const userByConnectId = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.stripeAccountId, account.id))
+          .limit(1);
+
+        if (userByConnectId.length > 0) {
+          const provUserId = userByConnectId[0].id;
+          const [providerForm] = await db
+            .select({
+              id: serviceProviderForms.id,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, provUserId))
+            .limit(1);
+
+          if (providerForm) {
+            const newBizStatus =
+              (disabledReason && /^rejected/i.test(disabledReason))
+                ? "failed"
+                : (!isRestricted && account.details_submitted && account.charges_enabled)
+                ? "verified"
+                : account.details_submitted
+                ? "submitted"
+                : "pending";
+
+            if (newBizStatus !== providerForm.businessVerificationStatus) {
+              await db
+                .update(serviceProviderForms)
+                .set({ businessVerificationStatus: newBizStatus } as any)
+                .where(eq(serviceProviderForms.id, providerForm.id));
+              console.log(
+                `[WEBHOOK] account.updated: provider userId=${provUserId} ` +
+                `businessVerificationStatus → ${newBizStatus} (connectId=${account.id})`
+              );
+              // QA_PUNCH_LIST.md P0 auto-activation sweep: business verifying may be the
+              // last outstanding half of the provider publish predicate — re-evaluate and
+              // promote any approved+draft held listings. Only worth attempting on the
+              // "verified" transition; the sweep itself re-checks the full predicate
+              // (identity too) and no-ops safely if it still fails.
+              if (newBizStatus === "verified") {
+                await activateVerificationHeldListings(provUserId).catch((err) =>
+                  console.error("[webhooks/stripe] activateVerificationHeldListings failed (non-fatal):", err)
+                );
+              }
+            }
+          }
+        }
+
         console.log(
           `[WEBHOOK] account.updated: connectId=${account.id} userId=${userId ?? "—"} ` +
           `newStripeStatus=${newStripeConnectStatus} restricted=${isRestricted}`
@@ -281,10 +304,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-        // ── Step 1: Confirm cart bookings (authoritative path) ──────────────
-        // stripePaymentService.handlePaymentSucceeded() is idempotent — it skips
-        // bookings that are already confirmed and generates confirmation codes for
-        // any that are still in pending_payment status.
+        // ── Step 1: Confirm bookings on BOTH rails (authoritative path) ─────
+        // handlePaymentSucceeded now drives the shared payment promotion
+        // (checkout-claim.service.ts `promotePaidCheckout`) for the CART rail —
+        // service_bookings, resolved by the stamped PaymentIntent id and, for a
+        // claim whose PI was never stamped, by the PI's own bookingIds metadata —
+        // and then the legacy `bookings` rail unchanged. Both are idempotent:
+        // an already-confirmed booking matches 0 rows and is a no-op.
         try {
           await stripePaymentService.handlePaymentSucceeded(paymentIntent);
         } catch (bookingErr: any) {
@@ -292,27 +318,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           // Non-fatal: continue to revenue tracking even if booking confirmation fails
         }
 
-        // ── Step 2: Crash-recovery for service_bookings ─────────────────────
-        // If the checkout server crashed after the Stripe charge but before Step C
-        // (stamping stripe_payment_intent_id) or before the client received the
-        // response, these rows remain at status="payment_pending".
-        // The webhook is the authoritative recovery path.
-        try {
-          const recovered = await db.execute(sql`
-            UPDATE service_bookings
-            SET status       = 'confirmed',
-                confirmed_at = NOW()
-            WHERE stripe_payment_intent_id = ${paymentIntent.id}
-              AND status = 'payment_pending'
-            RETURNING id
-          `);
-          if (recovered.rows.length > 0) {
-            const ids = (recovered.rows as any[]).map((r: any) => r.id).join(', ');
-            console.info(`[RECOVERY] payment_intent.succeeded: confirmed ${recovered.rows.length} payment_pending service_booking(s) [${ids}] via webhook for PI ${paymentIntent.id}`);
-          }
-        } catch (recoveryErr: any) {
-          console.error("payment_intent.succeeded: service_booking crash-recovery error:", recoveryErr.message);
-        }
+        // ── Step 2 REMOVED (legacy-reconciliation lane, task #212) ──────────
+        // A raw inline `UPDATE service_bookings SET status='confirmed' WHERE
+        // stripe_payment_intent_id = … AND status='payment_pending'` used to live here.
+        // It was a SECOND, divergent implementation of the payment promotion: no diary
+        // row (rulings 12/16/18), no actor attribution, no plan-side catch-up, and — because
+        // it keyed exclusively on a stamped PI id — no help whatsoever in the one case the
+        // webhook is the only possible rescuer (server died mid-authorization, PI created,
+        // never stamped). Step 1 now performs the same transition through the ONE shared
+        // promotion, which handles all of the above. Do not reintroduce an inline UPDATE here.
 
         // ── Step 3: Revenue tracking ────────────────────────────────────────
         const sourceType = paymentIntent.metadata?.sourceType as any;
@@ -321,6 +335,11 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         const providerId = paymentIntent.metadata?.providerId;
 
         if (sourceId && sourceType) {
+          // Fast-path pre-check (advisory, not the authoritative dedup gate).
+          // The real guard is the DB unique index on metadata->>'paymentIntentId'
+          // (migration 244): recordRevenueEvent → insertPlatformRevenueOnce uses
+          // ON CONFLICT DO NOTHING and skips earnings mints when inserted===false,
+          // so a concurrent duplicate that slips past this read is handled safely.
           const alreadyRecorded = await storage.hasPaymentIntentRevenue(paymentIntent.id);
           if (alreadyRecorded) {
             console.info(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
@@ -349,7 +368,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
             });
             console.info(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId} paymentIntentId=${paymentIntent.id}`);
           } catch (err: any) {
-            console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
+            // Treat a unique-constraint violation (postgres 23505) as a successful dedup —
+            // this is the last-resort safety net if the ON CONFLICT DO NOTHING path in
+            // insertPlatformRevenueOnce ever doesn't fire (e.g. the index is missing).
+            const pgCode = (err as any)?.code ?? (err?.cause as any)?.code;
+            if (pgCode === "23505") {
+              console.info(`Stripe payment_intent.succeeded: duplicate revenue row blocked by DB constraint for paymentIntentId=${paymentIntent.id}`);
+            } else {
+              console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
+            }
           }
         }
         break;

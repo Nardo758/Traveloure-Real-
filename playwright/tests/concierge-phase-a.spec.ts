@@ -29,9 +29,19 @@ function sql(query: string): string {
   const db = process.env.DATABASE_URL;
   if (!db) throw new Error("DATABASE_URL is not set");
   const escaped = query.replace(/'/g, `'\\''`);
-  return execSync(`psql '${db}' -t -A -c '${escaped}'`, {
+  const raw = execSync(`psql '${db}' -t -A -c '${escaped}'`, {
     encoding: "utf8",
   }).trim();
+  // psql prints the COMMAND TAG after the rows for a data-modifying statement, so an
+  // `INSERT … RETURNING id` comes back as "<uuid>\nINSERT 0 1" even under -t -A. Left
+  // unstripped, the very next `expect(id).toMatch(/^[0-9a-f-]{36}$/)` rejects the id the
+  // query correctly returned — which is why the $0=off test in this file had never passed
+  // on any machine since the day it was written (spec-coverage sweep, Aug 16 2026).
+  return raw
+    .split("\n")
+    .filter((line) => !/^(INSERT|UPDATE|DELETE|SELECT|COPY)\s+\d/.test(line.trim()))
+    .join("\n")
+    .trim();
 }
 
 async function registerUser(
@@ -188,6 +198,24 @@ test.describe("Concierge Phase A — surface contract", () => {
       // Inserts a temporary 'birthday' row with is_disabled=true, runs the quote,
       // and confirms the AI tier is unavailable. Cleans up at the end so the
       // global optimization_fees state is unchanged.
+      // The resolver's event-type branch is `WHERE event_type = ? AND is_active` with
+      // LIMIT 1 and NO ORDER BY and no tier filter (server/services/optimization-fee.service.ts),
+      // so when more than one active row exists for an event type, WHICH ROW WINS IS ARBITRARY.
+      // The seed already ships an active, NOT-disabled `birthday` row, so simply adding a
+      // disabled one and asserting the quote refuses is a coin flip — it lost here. Park the
+      // other active birthday rows for the duration so the disabled row is unambiguously the
+      // one resolved, and restore them in `finally`.
+      // (The non-determinism itself is a PRODUCT finding, filed for the decision-maker — a fee
+      // row is money, and this spec must not paper over it by asserting whichever row wins.)
+      const parked = sql(
+        `UPDATE optimization_fees SET is_active = false
+          WHERE event_type = 'birthday' AND is_active = true
+        RETURNING id`,
+      )
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       const tempId = sql(
         `INSERT INTO optimization_fees (id, complexity_tier, event_type, price_cents, currency, is_active, is_disabled, created_at, updated_at)
          VALUES (gen_random_uuid(), 'standard', 'birthday', 999, 'USD', true, true, NOW(), NOW())
@@ -213,7 +241,15 @@ test.describe("Concierge Phase A — surface contract", () => {
         // Recommendation must fall back to expert (or ai if expert unavailable) — never offer the disabled AI.
         expect(["ai", "expert", "full"]).toContain(body.route.recommended);
       } finally {
+        // Order matters: drop the temp row FIRST, then un-park, so the table never
+        // momentarily has both the disabled temp row and the real rows active.
         sql(`DELETE FROM optimization_fees WHERE id = '${tempId}'`);
+        if (parked.length > 0) {
+          sql(
+            `UPDATE optimization_fees SET is_active = true
+              WHERE id IN (${parked.map((id) => `'${id}'`).join(",")})`,
+          );
+        }
       }
     },
   );

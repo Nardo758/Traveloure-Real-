@@ -1,0 +1,695 @@
+{
+  "seed": "2026-08-24",
+  "chosenStep": "admin",
+  "engine": "chromium",
+  "project": "chromium",
+  "result": "PASS - two responsive admin loops",
+  "loops": [
+    {
+      "variant": "desktop-keyboard",
+      "viewport": {
+        "width": 1365,
+        "height": 900
+      },
+      "routes": [
+        "/admin/users",
+        "/admin/providers",
+        "/admin/revenue",
+        "/admin/payouts",
+        "/admin/service-approvals"
+      ],
+      "screenshot": "deep-admin-boundary-chromium-desktop-keyboard.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 13,
+      "criticalA11y": 8,
+      "a11yFindings": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 27
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 59
+        },
+        {
+          "id": "image-alt",
+          "impact": "critical",
+          "help": "Images must have alternative text",
+          "nodes": 8
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 34
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "help": "ARIA attributes must conform to valid values",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 31
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 45
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 27
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        }
+      ],
+      "surfaceAudits": [
+        {
+          "surface": "non-admin-access-boundary",
+          "screenshot": "deep-admin-boundary-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/users",
+          "screenshot": "deep-admin-users-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 27
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/providers",
+          "screenshot": "deep-admin-providers-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 2,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 59
+            },
+            {
+              "id": "image-alt",
+              "impact": "critical",
+              "help": "Images must have alternative text",
+              "nodes": 8
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/revenue",
+          "screenshot": "deep-admin-revenue-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 34
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/payouts",
+          "screenshot": "deep-admin-payouts-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 2,
+          "a11yFindings": [
+            {
+              "id": "aria-valid-attr-value",
+              "impact": "critical",
+              "help": "ARIA attributes must conform to valid values",
+              "nodes": 1
+            },
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 31
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/service-approvals",
+          "screenshot": "deep-admin-service-approvals-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 45
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "admin-users-after-suspend-reactivate",
+          "screenshot": "deep-admin-users-reverified-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 2
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 27
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        }
+      ],
+      "consoleErrors": [],
+      "details": {
+        "dbRecordsChecked": 3,
+        "accessBoundaryVerified": true,
+        "destructiveFixtureSuspendedAndReactivated": "17f8b768-8559-4e76-941e-8dad6539f4a4"
+      }
+    },
+    {
+      "variant": "mobile-touch",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "routes": [
+        "/admin/users",
+        "/admin/providers",
+        "/admin/revenue",
+        "/admin/payouts",
+        "/admin/service-approvals"
+      ],
+      "screenshot": "deep-admin-boundary-chromium-mobile-touch.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 13,
+      "criticalA11y": 8,
+      "a11yFindings": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 23
+        },
+        {
+          "id": "image-alt",
+          "impact": "critical",
+          "help": "Images must have alternative text",
+          "nodes": 8
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 9
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "aria-valid-attr-value",
+          "impact": "critical",
+          "help": "ARIA attributes must conform to valid values",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 19
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        }
+      ],
+      "surfaceAudits": [
+        {
+          "surface": "non-admin-access-boundary",
+          "screenshot": "deep-admin-boundary-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/users",
+          "screenshot": "deep-admin-users-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 2
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/providers",
+          "screenshot": "deep-admin-providers-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 2,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 23
+            },
+            {
+              "id": "image-alt",
+              "impact": "critical",
+              "help": "Images must have alternative text",
+              "nodes": 8
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/revenue",
+          "screenshot": "deep-admin-revenue-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 9
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/payouts",
+          "screenshot": "deep-admin-payouts-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 2,
+          "a11yFindings": [
+            {
+              "id": "aria-valid-attr-value",
+              "impact": "critical",
+              "help": "ARIA attributes must conform to valid values",
+              "nodes": 1
+            },
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 5
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "/admin/service-approvals",
+          "screenshot": "deep-admin-service-approvals-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 19
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "admin-users-after-suspend-reactivate",
+          "screenshot": "deep-admin-users-reverified-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 2
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 2
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        }
+      ],
+      "consoleErrors": [],
+      "details": {
+        "dbRecordsChecked": 3,
+        "accessBoundaryVerified": true,
+        "destructiveFixtureSuspendedAndReactivated": "febe4778-8698-4635-b692-1321ea631111"
+      }
+    }
+  ]
+}

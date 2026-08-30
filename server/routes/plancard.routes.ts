@@ -1,49 +1,33 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import {
-  insertActivityCommentSchema,
   insertItineraryChangeSchema,
+  itineraryItems,
+  itineraryComparisons,
+  itineraryVariants,
+  sharedItineraries,
 } from "@shared/schema";
+import { db } from "../db";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
-import { geocodeAddress } from "../utils/geocode";
+import { isTripAuthor } from "../utils/trip-authorship";
+import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { logItemTransition } from "../services/item-transition-log.service";
+import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
+import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
+
+// OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
+// platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
+// mirror the COMMODITY_TYPES transport vocabulary in itinerary-optimizer.ts.
+const GAP_TRANSPORT_TYPES = new Set(["flight", "flights", "transport", "transportation", "transfer"]);
+function gapItemKind(serviceType: string | undefined): "transport" | "service" {
+  return GAP_TRANSPORT_TYPES.has((serviceType || "").toLowerCase()) ? "transport" : "service";
+}
 
 const router = Router();
-
-// Resolve-on-write: populate latitude/longitude for itinerary items that lack
-// them, once, via the single server geocode path, and persist back to the row so
-// subsequent reads use the stored value. Bounded per request so a cold trip
-// can't stall the response; safe to fail (the map simply omits a pin without
-// coordinates). The PlanCard client never geocodes — pins read these columns.
-async function resolveMissingItemCoordinates(
-  items: Array<{ id: string; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
-  destination: string | null | undefined,
-): Promise<void> {
-  const MAX_PER_REQUEST = 12;
-  let resolved = 0;
-  for (const item of items) {
-    if (resolved >= MAX_PER_REQUEST) break;
-    if (item.latitude != null && item.longitude != null) continue;
-    const address = [item.locationName, item.locationAddress, destination]
-      .filter((p) => p && String(p).trim().length > 0)
-      .join(", ");
-    if (!address) continue;
-    try {
-      const geo = await geocodeAddress(address);
-      if (!geo) continue;
-      const lat = geo.lat.toString();
-      const lng = geo.lng.toString();
-      await storage.updateItineraryItemCoordinates(item.id, lat, lng);
-      // Reflect in the in-memory row so this same response carries the pin.
-      item.latitude = lat;
-      item.longitude = lng;
-      resolved++;
-    } catch {
-      // best-effort; leave this item un-pinned
-    }
-  }
-}
 
 function logChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
   return storage.createItineraryChange({
@@ -61,7 +45,7 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
 router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, async (req, res) => {
   try {
     const { id: comparisonId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
 
     const comparison = await storage.getItineraryComparison(comparisonId);
     if (!comparison || comparison.userId !== userId) {
@@ -70,6 +54,21 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     if (!comparison.tripId) {
       return res.status(400).json({ error: "Comparison has no associated trip" });
     }
+
+    // SECURITY (destructive cross-trip IDOR): owning the COMPARISON is not the same as being
+    // allowed to mutate the TRIP it points at — `itinerary_comparisons.tripId` is caller-supplied,
+    // so a comparison can name someone else's trip. This handler then wipes that trip
+    // (`deleteItineraryItemsByTrip`) and re-inserts the variant, so without a trip-side check any
+    // authenticated user could destroy and overwrite any other user's itinerary. BOTH checks must
+    // hold: the comparison-ownership check above AND the canonical trip authorization here
+    // (owner ‖ trip-assigned expert ‖ trip author ‖ audit-logged admin), performed BEFORE the delete.
+    const denied = await authorizeTripLogistics(
+      comparison.tripId,
+      userId,
+      "POST /api/itinerary-comparisons/:id/apply-to-trip",
+    );
+    // Local convention in this router: `{ error }` bodies, 403 for an authorized-user-wrong-trip.
+    if (denied) return res.status(denied.status).json({ error: denied.message });
 
     // Find best variant: prefer selectedVariantId, else top AI variant by optimizationScore
     let variant: any = null;
@@ -85,28 +84,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
 
     const variantItems = await storage.getOrderedVariantItemsByVariantId(variant.id);
 
-    // Replace itinerary items for this trip
-    await storage.deleteItineraryItemsByTrip(comparison.tripId);
-
-    await storage.bulkInsertItineraryItems(variantItems.map((item: any) => ({
-      tripId: comparison.tripId,
-      title: item.name,
-      description: item.description || "",
-      itemType: item.serviceType || "activity",
-      status: "planned",
-      dayNumber: item.dayNumber,
-      startTime: item.startTime || "",
-      durationMinutes: item.duration || 60,
-      locationName: item.location || "",
-      estimatedCost: item.price ? String(item.price) : null,
-      currency: "USD",
-      sortOrder: item.sortOrder ?? 0,
-      suggestedBy: "AI Optimizer",
-      latitude: item.latitude ? String(item.latitude) : null,
-      longitude: item.longitude ? String(item.longitude) : null,
-    })));
-
-    // Read metrics for delta computation
+    // Read metrics for delta computation — a read, deliberately BEFORE the transaction below.
     const metrics = await storage.getVariantMetricsAllByVariantId(variant.id);
 
     const rawMetrics: Record<string, number> = {};
@@ -123,21 +101,162 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       optimizationScore: variant.optimizationScore ?? null,
     };
 
-    // Insert AI changelog entry
-    await storage.createItineraryChange({
-      tripId: comparison.tripId,
-      activityId: null,
-      who: "AI Optimizer",
-      action: `Applied optimized itinerary${delta.savings != null ? ` — saved $${Math.round(delta.savings)}` : ""}${delta.savingsPercent != null ? `, ${Math.round(delta.savingsPercent)}% tighter schedule` : ""}`,
-      changeType: "optimize",
-      role: "ai",
-      metadata: { comparisonId, variantId: variant.id, delta },
+    const tripId = comparison.tripId;
+
+    // ── Lane 6 residue R2: apply is ONE atomic action ─────────────────────────────────────────
+    // Before this transaction the four writes below ran as independent autocommit statements, and
+    // the insert was a per-row loop — a mid-loop failure left the trip with its `in_planning` rows
+    // already deleted and only PART of the variant applied (the sharpest data-loss window in the
+    // whole flow). Now the delete, the batch insert, the changelog entry, the comparison stamp,
+    // and the R3 variant discard commit together or not at all.
+    const applied = await db.transaction(async (tx) => {
+      // Replace itinerary items for this trip — ROUTING-STATUS-AWARE (Lane 5a Defect 2).
+      // Only `in_planning` items are the optimizer's to replace; `with_expert` /
+      // `ready_for_checkout` / `purchased` rows survive untouched (a `purchased` row carries
+      // `booking_id`, migration 159). Inserted variant items take the migration-159 default
+      // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
+      // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
+      // This transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
+      // diary row); a plan rebuild is not a removal, so no per-row `item_removed` (§13, R15).
+      await tx
+        .delete(itineraryItems)
+        .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")));
+      const [remaining] = await tx
+        .select({ n: count() })
+        .from(itineraryItems)
+        .where(eq(itineraryItems.tripId, tripId));
+      const preservedRoutedItems = Number(remaining?.n ?? 0);
+
+      // ── Lane 5b: apply-time dedupe against the rows that SURVIVED the delete ──────────────
+      // `ready_for_checkout` items are optimizer INPUT (still plan) while the delete spares
+      // them — so a variant can propose an item already sitting on the trip, and a naive insert
+      // would duplicate it. Deduped against ALL survivors ("never create a second copy of
+      // something already on this plan" — most important for a `purchased` row). Predicate
+      // (ratified): `providerServiceId` first, then exact case-insensitive title — the same
+      // predicate `stripFixedCommitmentEchoes` uses, so the two ends cannot disagree.
+      const survivingItems = await tx
+        .select()
+        .from(itineraryItems)
+        .where(eq(itineraryItems.tripId, tripId));
+      const survivingServiceIds = new Set(
+        survivingItems.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v),
+      );
+      const survivingTitles = new Set(
+        survivingItems.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
+      );
+      const applicableVariantItems = variantItems.filter((item: any) => {
+        if (item.providerServiceId && survivingServiceIds.has(item.providerServiceId)) return false;
+        const name = String(item.name ?? "").trim().toLowerCase();
+        if (name && survivingTitles.has(name)) return false;
+        return true;
+      });
+      const dedupedAgainstRoutedItems = variantItems.length - applicableVariantItems.length;
+
+      // W5 (H5): preserve the service link through the apply — `?? null` is the honest value for
+      // an AI-invented item with no catalog row behind it. ONE batch insert (was a per-row loop).
+      if (applicableVariantItems.length > 0) {
+        await tx.insert(itineraryItems).values(applicableVariantItems.map((item: any) => ({
+          tripId,
+          providerServiceId: item.providerServiceId ?? null,
+          title: item.name,
+          description: item.description || "",
+          itemType: item.serviceType || "activity",
+          status: "planned",
+          dayNumber: item.dayNumber,
+          startTime: item.startTime || "",
+          durationMinutes: item.duration ?? null,
+          locationName: item.location || "",
+          estimatedCost: item.price ? String(item.price) : null,
+          currency: "USD",
+          sortOrder: item.sortOrder ?? 0,
+          suggestedBy: "AI Optimizer",
+          origin: "ai",
+          latitude: item.latitude ? String(item.latitude) : null,
+          longitude: item.longitude ? String(item.longitude) : null,
+        })));
+      }
+
+      // Diary entry — Lane S rulings 11/16: the apply event now lives in the append-only
+      // `item_transition_log` as a TRIP-SCOPED row (itemId NULL; the eventType design working as
+      // intended), written in the SAME transaction as the apply so the diary can't record an
+      // apply that rolled back. `itinerary_changes` STOPS writing this event in the same change —
+      // one truth per event type; it keeps content-change display semantics only. (Deriving the
+      // traveler-facing feed from this log is the named follow-up, not this lane.)
+      await logItemTransition(tx, {
+        tripId,
+        itemId: null,
+        eventType: "variant_applied",
+        actorType: "optimizer",
+        actorId: userId,
+      });
+
+      // Mark comparison with optimizedAt timestamp + the applied variant.
+      await tx
+        .update(itineraryComparisons)
+        .set({ optimizedAt: new Date(), selectedVariantId: variant.id } as any)
+        .where(eq(itineraryComparisons.id, comparisonId));
+
+      // ── Lane 6 residue R3 (ruling 14): discard UNSHARED LOSING variants ────────────────────
+      // The applied/selected variant + its metrics are KEPT — the plancard, dashboard
+      // trip-scores, and Spec B's move-rationale all read them after apply (it is the sanctioned
+      // §0 copy: it equals the slip by construction while this transaction stays atomic). A
+      // losing variant referenced by `shared_itineraries` is also kept (a share is
+      // correspondence; `variantId` is ON DELETE CASCADE, so deleting it would destroy the live
+      // share link — the "outdated proposal" treatment for those is a named follow-up). Everything
+      // else — losing AI variants and the baseline copy — is discarded; `itinerary_variant_items`,
+      // `itinerary_variant_metrics`, and variant-scoped `transport_legs` follow by CASCADE.
+      const comparisonVariants = await tx
+        .select({ id: itineraryVariants.id })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.comparisonId, comparisonId));
+      const losingIds = comparisonVariants.map((v) => v.id).filter((vid) => vid !== variant.id);
+      let discardedVariants = 0;
+      if (losingIds.length > 0) {
+        const sharedRows = await tx
+          .select({ id: sharedItineraries.variantId })
+          .from(sharedItineraries)
+          .where(inArray(sharedItineraries.variantId, losingIds));
+        const sharedSet = new Set(sharedRows.map((r) => r.id));
+        const deletable = losingIds.filter((vid) => !sharedSet.has(vid));
+        if (deletable.length > 0) {
+          const deleted = await tx
+            .delete(itineraryVariants)
+            .where(inArray(itineraryVariants.id, deletable))
+            .returning({ id: itineraryVariants.id });
+          discardedVariants = deleted.length;
+        }
+      }
+
+      // WP-B: items actually inserted with no providerServiceId are the optimizer's EXTERNAL FILL
+      // case (no platform match) — captured here, ledgered after the transaction commits (§15b:
+      // a ledger write must never be able to roll back a real apply, nor fail one).
+      const unmatchedItems = applicableVariantItems.filter((item: any) => !item.providerServiceId);
+
+      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants, unmatchedItems };
     });
 
-    // Mark comparison with optimizedAt timestamp
-    await storage.updateComparisonOptimizedAt(comparisonId, variant.id);
+    // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
+    // place, how many proposed items were dropped because the plan already held them, and how
+    // many losing variants were discarded. Existing consumers read `tripId`/`delta` and are
+    // unaffected; no UI is built on these yet.
+    const { unmatchedItems, ...appliedSummary } = applied;
 
-    res.json({ tripId: comparison.tripId, delta });
+    // ── WP-B gap-fill ledger hook (single try/catch'd call — §15b: best-effort, NEVER fails Apply) ──
+    try {
+      const gapFillInputs: GapFillInput[] = (unmatchedItems as any[]).map((item) => ({
+        city: comparison.destination || "Unknown",
+        category: item.serviceType || "activity",
+        itemKind: gapItemKind(item.serviceType),
+        source: "unfilled", // no tracked pipeline (Tavily/Google/Grok) attributable per-item at Apply time
+        tripId,
+        details: { name: item.name ?? null, dayNumber: item.dayNumber ?? null },
+      }));
+      await recordGapFills(gapFillInputs);
+    } catch (ledgerErr: any) {
+      console.warn("[plancard] gap-fill ledger hook failed (non-fatal):", ledgerErr?.message || ledgerErr);
+    }
+
+    res.json({ tripId, delta, ...appliedSummary });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });
@@ -147,7 +266,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
 router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
 
     const trip = await storage.getTrip(tripId);
     if (!trip) {
@@ -160,349 +279,65 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Legacy fallback: check trip_expert_advisors for assigned experts
       const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
       const isAssignedExpert = assignment && ['pending', 'accepted'].includes(assignment.status);
-      if (!isAssignedExpert) {
+      // Authoring mode (ready-made brief §2/§4): the trip's AUTHOR may render their own build.
+      // A PARALLEL named branch beside getTripRole — the helper itself is deliberately untouched
+      // (known pre-launch bypass, separate fix). getTripRole returns null for an author (no
+      // collaborator/advisor row), so without this branch authoring mode 403s its own itinerary.
+      const isAuthor = isAssignedExpert ? false : await isTripAuthor(tripId, userId);
+      if (!isAssignedExpert && !isAuthor) {
         return res.status(403).json({ error: "Access denied" });
       }
     }
 
-    const items = await storage.getItineraryItems(tripId);
-
-    // Resolve-on-write: fill + persist any missing pin coordinates via the single
-    // server geocode path, so the client never geocodes.
-    await resolveMissingItemCoordinates(items as any, trip.destination);
-
-    const comparison = await storage.getItineraryComparisonByTripId(tripId);
-
-    let variantLegs: any[] = [];
-    let variantMetrics: any[] = [];
-
-    if (comparison) {
-      const variantId = comparison.selectedVariantId;
-      let variant;
-      if (variantId) {
-        variant = await storage.getItineraryVariantById(variantId);
-      }
-      if (!variant) {
-        variant = await storage.getFirstVariantByComparisonId(comparison.id);
-      }
-      if (variant) {
-        variantLegs = await storage.getOrderedTransportLegsByVariantId(variant.id);
-        variantMetrics = await storage.getVariantMetricsAllByVariantId(variant.id);
-      }
-    }
-
-    // Build a map from transportLegId → primary booking option for badge display
-    const legBookingMap: Record<string, { bookingSource: "platform" | "affiliate"; partnerName: string | null }> = {};
-    if (variantLegs.length > 0) {
-      const legIds = variantLegs.map((l: any) => l.id).filter(Boolean);
-      if (legIds.length > 0) {
-        const bookingOpts = await storage.getBookingOptionsByLegIds(legIds);
-        for (const opt of bookingOpts) {
-          if (!opt.transportLegId) continue;
-          if (legBookingMap[opt.transportLegId]) continue;
-          legBookingMap[opt.transportLegId] = {
-            bookingSource: opt.bookingType === "platform" ? "platform" : "affiliate",
-            partnerName: opt.source !== "traveloure" ? opt.source : null,
-          };
-        }
-      }
-    }
-
-    const changes = await storage.getItineraryChanges(tripId, 20);
-    const commentCounts = await storage.getActivityCommentCounts(tripId);
-
-    const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
-    const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
-
-    let days = dayNumbers.map(dayNum => {
-      const dayItems = items.filter(i => i.dayNumber === dayNum);
-      const dayLegs = variantLegs.filter(l => l.dayNumber === dayNum && l.userSelectedMode !== "dismissed");
-
-      const dayDate = new Date(startDate);
-      dayDate.setDate(dayDate.getDate() + dayNum - 1);
-      const dateLabel = dayDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-
-      const types = dayItems.map(i => i.itemType || "activity");
-      const label = generateDayLabel(types, dayItems);
-
-      return {
-        dayNum,
-        date: dateLabel,
-        label,
-        activities: dayItems.map(item => ({
-          id: item.id,
-          time: item.startTime || "",
-          name: item.title,
-          location: item.locationName || item.locationAddress || "",
-          type: mapItemType(item.itemType),
-          status: mapItemStatus(item.status),
-          cost: parseFloat(item.estimatedCost?.toString() || "0"),
-          // Emitted as lat/lng to match the PlanCardActivity client contract so
-          // pins read coordinates directly (no client-side geocoding).
-          lat: item.latitude ? parseFloat(item.latitude.toString()) : null,
-          lng: item.longitude ? parseFloat(item.longitude.toString()) : null,
-          expertNote: (item as any).notes || null,
-          comments: commentCounts[item.id] || 0,
-          suggestedBy: item.suggestedBy || null,
-          changes: changes
-            .filter(c => c.activityId === item.id)
-            .slice(0, 1)
-            .map(c => ({ who: c.who, what: c.action, when: formatTimeAgo(c.createdAt) })),
-        })),
-        transports: dayLegs.map(leg => ({
-          id: leg.id,
-          from: leg.fromActivityId || "",
-          to: leg.toActivityId || "",
-          fromName: leg.fromName,
-          toName: leg.toName,
-          mode: leg.userSelectedMode || leg.recommendedMode || "walk",
-          duration: leg.estimatedDurationMinutes || 0,
-          cost: leg.estimatedCostUsd || 0,
-          line: null,
-          status: leg.userSelectedMode ? "confirmed" : "suggested",
-          suggestedBy: leg.userSelectedMode ? null : "ai",
-          bookingSource: legBookingMap[leg.id]?.bookingSource ?? null,
-          partnerName: legBookingMap[leg.id]?.partnerName ?? null,
-          // Per-leg mode-selection fields for the activities-view picker
-          legOrder: leg.legOrder,
-          recommendedMode: leg.recommendedMode,
-          userSelectedMode: leg.userSelectedMode ?? null,
-          alternativeModes: leg.alternativeModes ?? [],
-          fromLat: leg.fromLat,
-          fromLng: leg.fromLng,
-          toLat: leg.toLat,
-          toLng: leg.toLng,
-          distanceDisplay: leg.distanceDisplay,
-          estimatedDurationMinutes: leg.estimatedDurationMinutes,
-          estimatedCostUsd: leg.estimatedCostUsd ?? null,
-        })),
-      };
-    });
-
-    function toNum(raw: Record<string, string>, ...keys: string[]): number | undefined {
-      for (const k of keys) {
-        const v = raw[k];
-        if (v != null) {
-          const n = parseFloat(v);
-          if (!isNaN(n)) return n;
-        }
-      }
-      return undefined;
-    }
-
-    const rawMetrics: Record<string, string> = {};
-    for (const m of variantMetrics) {
-      rawMetrics[m.metricKey] = m.metricValue;
-    }
-
-    const metricsMap = {
-      traveloureScore: toNum(rawMetrics, "traveloureScore", "traveloure_score"),
-      optimizationScore: toNum(rawMetrics, "optimizationScore", "optimization_score"),
-      totalCost: toNum(rawMetrics, "totalCost", "total_cost"),
-      perPersonCost: toNum(rawMetrics, "perPersonCost", "per_person_cost"),
-      savings: toNum(rawMetrics, "savings"),
-      savingsPercent: toNum(rawMetrics, "savingsPercent", "savings_percent"),
-      wellnessMinutes: toNum(rawMetrics, "wellnessMinutes", "wellness_minutes"),
-      travelDistanceMinutes: toNum(rawMetrics, "travelDistanceMinutes", "travel_distance_minutes"),
-      starRatingDelta: toNum(rawMetrics, "starRatingDelta", "star_rating_delta"),
-    };
-
-    // If no structured itinerary items, fall back to generated_itineraries full day objects
-    let fallbackActivityCount = items.length;
-    let fallbackDays = days.length;
-    if (items.length === 0) {
-      const genItinerary = await storage.getGeneratedItineraryByTripId(tripId);
-      if (genItinerary?.itineraryData) {
-        const data = genItinerary.itineraryData as { days?: Array<any> };
-        const genDays = data.days ?? [];
-        fallbackDays = genDays.length || fallbackDays;
-        fallbackActivityCount = genDays.reduce((s: number, d: any) => s + (d.activities?.length ?? 0), 0);
-        // Build full day objects from the generated itinerary so PlanCard renders correctly
-        days = genDays.map((d: any, idx: number) => {
-          const dayNum: number = d.day || idx + 1;
-          const dayDate = new Date(startDate);
-          dayDate.setDate(dayDate.getDate() + dayNum - 1);
-          const dateLabel = dayDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-          const acts: any[] = d.activities || [];
-          const types: string[] = acts.map((a: any) => a.category || a.type || "activity");
-          return {
-            dayNum,
-            date: dateLabel,
-            label: generateDayLabel(types, []),
-            activities: acts.map((a: any, ai: number) => ({
-              id: a.id || `gen-${dayNum}-${ai}`,
-              time: a.time || "",
-              name: a.name || a.title || "",
-              location: a.location || a.venue || "",
-              type: a.category || a.type || "activity",
-              status: a.status || "planned",
-              cost: parseFloat(a.estimatedCost?.toString() || a.cost?.toString() || "0"),
-              lat: a.lat ?? a.latitude ?? null,
-              lng: a.lng ?? a.longitude ?? null,
-              expertNote: null,
-              comments: 0,
-              suggestedBy: null,
-              changes: [],
-            })),
-            transports: (d.transportLegs || []).map((l: any, li: number) => ({
-              id: l.id || `tleg-${dayNum}-${li}`,
-              from: l.fromName || l.from || "",
-              to: l.toName || l.to || "",
-              fromName: l.fromName || l.from || "",
-              toName: l.toName || l.to || "",
-              mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
-              duration: l.estimatedDurationMinutes || l.duration || 0,
-              cost: l.estimatedCostUsd || l.cost || 0,
-              line: null,
-              status: "suggested",
-              suggestedBy: "ai",
-              bookingSource: "platform",
-              partnerName: null,
-              // Per-leg mode-selection fields for the activities-view picker
-              legOrder: l.legOrder ?? li,
-              recommendedMode: l.recommendedMode || l.mode || "walk",
-              userSelectedMode: l.userSelectedMode ?? null,
-              alternativeModes: l.alternativeModes ?? [],
-              fromLat: l.fromLat ?? null,
-              fromLng: l.fromLng ?? null,
-              toLat: l.toLat ?? null,
-              toLng: l.toLng ?? null,
-              distanceDisplay: l.distanceDisplay ?? "",
-              estimatedDurationMinutes: l.estimatedDurationMinutes ?? l.duration ?? 0,
-              estimatedCostUsd: l.estimatedCostUsd ?? l.cost ?? null,
-            })),
-          };
-        });
-      }
-    }
-
-    // Build optimizationDelta from AI optimize changelog entry (set by apply-to-trip)
-    const optimizeEntry = changes.find(c => c.role === "ai" && c.changeType === "optimize");
-    const optimizationDelta = optimizeEntry?.metadata
-      ? (optimizeEntry.metadata as any).delta ?? null
-      : null;
-    const lastOptimizedAt = comparison?.optimizedAt ?? null;
+    // ── Thin caller (L3a): the assembly lives in the ONE TripPlan assembler ────────────────
+    // The gate above is authoritative — the assembler does NOT authorize; the redaction level is
+    // the channel contract. This surface renders the full body for an authorized viewer, so it
+    // asks for 'full'.
+    const plan = await assembleTripPlan(tripId, "full", { viewerId: userId, tripRole });
 
     res.json({
-      tripRole: tripRole ?? (trip.userId === userId ? "owner" : "expert"),
-      trip: {
-        id: trip.id,
-        title: trip.title,
-        destination: trip.destination,
-        status: trip.status,
-        eventType: trip.eventType,
-        startDate: trip.startDate,
-        endDate: trip.endDate,
-        travelers: trip.numberOfTravelers || 1,
-        budget: trip.budget ? `$${parseFloat(trip.budget.toString()).toLocaleString()}` : null,
-      },
-      days,
-      changeLog: changes.slice(0, 10).map(c => ({
-        id: c.id,
-        who: c.who,
-        action: c.action,
-        when: formatTimeAgo(c.createdAt),
-        type: c.changeType,
-        role: c.role,
-      })),
-      metrics: metricsMap,
-      optimizationDelta,
-      lastOptimizedAt,
-      stats: {
-        totalDays: fallbackDays || days.length,
-        totalActivities: fallbackActivityCount,
-        totalLegs: variantLegs.filter(l => l.userSelectedMode !== "dismissed").length,
-        totalTransitMinutes: variantLegs.filter(l => l.userSelectedMode !== "dismissed").reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0),
-        confirmedActivities: items.filter(i => i.status === "confirmed" || i.status === "planned").length,
-        pendingExpertChanges: changes.filter(c => c.role === "expert" && c.changeType === "suggest").length,
-      },
+      // Pre-existing plancard response contract — key names and shapes unchanged.
+      tripRole: plan.plancard.tripRole,
+      trip: plan.plancard.trip,
+      days: plan.days,
+      changeLog: plan.plancard.changeLog,
+      metrics: plan.plancard.metrics,
+      optimizationDelta: plan.plancard.optimizationDelta,
+      lastOptimizedAt: plan.plancard.lastOptimizedAt,
+      stats: plan.plancard.stats,
+      // ADDITIVE TripPlan v1 envelope (docs/EXECUTION_MAP.md §3). New consumers read these;
+      // existing consumers ignore them.
+      meta: plan.meta,
+      legs: plan.legs,
+      tripNote: plan.tripNote,
+      budget: plan.budget,
+      changeLogRef: plan.changeLogRef,
+      // Lane 1 W4 (H2): the trip's real bookings. Additive — `days[].activities[].booking` already
+      // rides the unchanged `days` passthrough above; this is the list that also surfaces bookings
+      // no plan item points at. This surface is owner/expert/author/admin-gated above.
+      bookings: plan.bookings,
+      // Slip dispatch §4 (Spec A) — the slip's diary (last 20 item_transition_log rows, newest
+      // first). Additive; this surface is gated above, and the share/teaser channels never
+      // receive the field (owner diary, not public).
+      recentTransitions: plan.recentTransitions,
     });
   } catch (error) {
+    if (error instanceof TripPlanNotFoundError) {
+      return res.status(404).json({ error: "Trip not found" });
+    }
     console.error("Error fetching plancard data:", error);
     res.status(500).json({ error: "Failed to fetch plancard data" });
   }
 });
 
-router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
-  try {
-    const { tripId } = req.query;
-    if (!tripId) {
-      return res.status(400).json({ error: "tripId query parameter required" });
-    }
-    const userId = (req.user as any)?.claims?.sub;
-    const trip = await storage.getTrip(tripId as string);
-    if (!trip || trip.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-    const comments = await storage.getActivityComments(req.params.activityId);
-    res.json(comments);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch comments" });
-  }
-});
-
-router.post("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
-  try {
-    const { activityId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
-    const userName = (req.user as any)?.claims?.name || "User";
-    const { tripId, text, role } = req.body;
-
-    if (!tripId || !text || !role) {
-      return res.status(400).json({ error: "Missing required fields: tripId, text, role" });
-    }
-
-    const trip = await storage.getTrip(tripId);
-    if (!trip || trip.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
-    const parsed = insertActivityCommentSchema.safeParse({
-      activityId,
-      tripId,
-      authorId: userId,
-      authorName: userName,
-      text,
-      role,
-    });
-
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
-    }
-
-    const comment = await storage.createActivityComment(parsed.data);
-
-    await logChange(tripId, userName, `Commented on activity`, "edit", role, activityId);
-
-    res.status(201).json(comment);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to create comment" });
-  }
-});
-
-router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
-  try {
-    const userId = (req.user as any)?.claims?.sub;
-    const comment = await storage.getActivityComment(req.params.id);
-    if (!comment) {
-      return res.status(404).json({ error: "Comment not found" });
-    }
-    if (comment.authorId !== userId) {
-      const trip = await storage.getTrip(comment.tripId);
-      if (!trip || trip.userId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-    }
-    await storage.deleteActivityComment(req.params.id);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to delete comment" });
-  }
-});
+// NOTE (W5-D cleanup, Aug 1, 2026): GET/POST /api/activities/:activityId/comments and
+// DELETE /api/comments/:id were retired here — zero client callers ever existed. The live
+// per-item comment system is GET/POST /api/trips/:tripId/items/:itemId/comments
+// (server/routes/booking-actions.ts, backed by `trip_item_comments`, migration 165).
 
 router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -518,7 +353,7 @@ router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const userName = (req.user as any)?.claims?.name || "User";
 
     const trip = await storage.getTrip(tripId);
@@ -554,7 +389,7 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, res) => {
   try {
     const { legId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const userName = (req.user as any)?.claims?.name || "User";
     const { status, tripId } = req.body;
 
@@ -619,7 +454,7 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
 
 router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -631,55 +466,7 @@ router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (re
   }
 });
 
-function mapItemType(itemType: string | null): string {
-  const map: Record<string, string> = {
-    activity: "attraction",
-    dining: "dining",
-    attraction: "attraction",
-    shopping: "shopping",
-    transport: "transport",
-    accommodation: "accommodation",
-    meal: "dining",
-    sightseeing: "attraction",
-    entertainment: "attraction",
-    spa: "attraction",
-    tour: "attraction",
-  };
-  return map[itemType || "activity"] || "attraction";
-}
-
-function mapItemStatus(status: string | null): string {
-  const map: Record<string, string> = {
-    planned: "confirmed",
-    confirmed: "confirmed",
-    pending: "pending",
-    suggested: "suggested",
-    cancelled: "pending",
-  };
-  return map[status || "planned"] || "pending";
-}
-
-function generateDayLabel(types: string[], items: any[]): string {
-  const uniqueTypes = [...new Set(types)];
-  if (items.length === 0) return "Free Day";
-  const firstItem = items[0]?.title || "";
-  const lastItem = items[items.length - 1]?.title || "";
-  if (items.length <= 2) return firstItem;
-  return `${firstItem} & more`;
-}
-
-function formatTimeAgo(date: Date | null): string {
-  if (!date) return "recently";
-  const now = new Date();
-  const diff = now.getTime() - new Date(date).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return `${Math.floor(days / 7)}w ago`;
-}
+// mapItemType / mapItemStatus / generateDayLabel / formatTimeAgo moved into the ONE TripPlan
+// assembler (server/services/trip-plan.service.ts) with the assembly they belong to (L3a).
 
 export default router;

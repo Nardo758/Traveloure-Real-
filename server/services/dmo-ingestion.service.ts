@@ -28,6 +28,7 @@ import {
   getContentTypePlan,
   GAP_CITY,
 } from "./content-gap.service";
+import { recordGapFill } from "./optimizer-gap-ledger.service";
 
 export interface KyotoIngestStats {
   ready: boolean;
@@ -291,6 +292,8 @@ export async function ingestKyotoContentGaps(
                 // Born-hidden — an admin must approve this raw content into the expert library (intake gate, "B").
                 expertWorkspaceVisible: false,
                 discoverPageVisible: false,
+                // Trailhead T4 (R-T1-e): scraped stubs are external inventory (facts-and-links, never bookable).
+                inventoryClass: "external",
               })
               .onConflictDoNothing({
                 target: [dmoRawContent.sourceUrl, dmoRawContent.sourceId],
@@ -318,6 +321,22 @@ export async function ingestKyotoContentGaps(
     }
 
     base.perGap.push(perGap);
+
+    // WP-B ledger hook: one row per gap category this pass touched, so the "Optimizer gap fills"
+    // admin view sees Tavily gap-fill volume alongside optimizer-runtime fills. Best-effort — a
+    // ledger failure must never fail this ingestion pass (§15b posture).
+    try {
+      await recordGapFill({
+        city: GAP_CITY,
+        category: gap.contentType,
+        itemKind: "content",
+        source: "tavily",
+        tripId: null,
+        details: { created: perGap.created, duplicates: perGap.duplicates, failed: perGap.failed },
+      });
+    } catch (ledgerErr: any) {
+      console.warn("[dmo-gap] gap-fill ledger write failed (non-fatal):", ledgerErr?.message || ledgerErr);
+    }
   }
 
   // Reconcile the gap queue against the new coverage.

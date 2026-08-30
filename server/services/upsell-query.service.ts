@@ -6,6 +6,7 @@
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { isExpertRole } from "@shared/roles";
 import {
   rankCandidates,
   getSlotConfig,
@@ -343,7 +344,7 @@ export async function rankAndLog(
       const lookup = await db.execute(sql`
         SELECT offering_type_key, display_name, tagline
         FROM service_offering_types
-        WHERE offering_type_key = ANY(${ids})
+        WHERE offering_type_key = ANY(${pgTextArray(ids)}::text[])
       `);
       for (const r of (lookup.rows ?? [])) {
         const row = r as any;
@@ -384,7 +385,7 @@ export async function loadEndorsementsForContext(
           ON en.expert_id = e.expert_id
          AND en.neighborhood_id = e.neighborhood_id
         WHERE e.scope = 'neighborhood'
-          AND e.neighborhood_id = ANY(${neighborhoodIds})
+          AND e.neighborhood_id = ANY(${pgTextArray(neighborhoodIds)}::text[])
           AND en.is_lead = true
       `);
       for (const r of (result.rows ?? [])) ids.add(String((r as any).offering_id));
@@ -408,7 +409,9 @@ export async function requireExpertRole(
   }
   const userRow = await db.execute(sql`SELECT role FROM users WHERE id = ${userId} LIMIT 1`);
   const role = (userRow.rows?.[0] as any)?.role;
-  if (role !== "expert" && role !== "local_expert" && role !== "admin") {
+  // Full expert family (shared/roles.ts): the previous pair (expert | local_expert)
+  // silently excluded travel_expert and event_planner from the endorsement surface.
+  if (!isExpertRole(role) && role !== "admin") {
     res.status(403).json({ error: "Expert role required" });
     return null;
   }
@@ -449,7 +452,8 @@ export async function resolveNeighborhoodCity(neighborhoodId: string): Promise<s
       SELECT city, slug FROM city_neighborhoods WHERE id = ${neighborhoodId} LIMIT 1
     `);
     return (nbh.rows?.[0] as any)?.city ?? null;
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-query] Failed to resolve city from neighborhood — returning null:", err);
     return null;
   }
 }
@@ -534,12 +538,13 @@ export async function getExpertEndorsements(
       WHERE expert_id = ${expertId}
         AND (
           (scope = 'trip' AND trip_id = ${tripId}) OR
-          (scope = 'neighborhood' AND neighborhood_id = ANY(${neighborhoodIds ?? []}::TEXT[]))
+          (scope = 'neighborhood' AND neighborhood_id = ANY(${pgTextArray(neighborhoodIds ?? [])}::TEXT[]))
         )
       ORDER BY created_at DESC
     `);
     return result.rows ?? [];
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-query] Failed to load upsell candidates — returning empty list:", err);
     return [];
   }
 }
@@ -631,15 +636,24 @@ export async function insertImpression(
 }
 
 export async function markImpressionClicked(
-  tripId: string,
+  tripId: string | null,
   surface: string,
   offeringId: string,
 ): Promise<void> {
+  // Marks ONLY the single most-recent matching impression (flipping a whole window
+  // would inflate CTR — the exact metric this instruments). A null tripId is the
+  // public/discover case: the impression was written with trip_id NULL, so match
+  // trip_id IS NULL. A non-null tripId scopes to that trip (cart/checkout),
+  // preserving the previous behaviour exactly.
   await db.execute(sql`
     UPDATE upsell_impressions SET clicked = true
     WHERE id = (
       SELECT id FROM upsell_impressions
-      WHERE trip_id = ${tripId} AND surface = ${surface} AND offering_id = ${offeringId}
+      WHERE surface = ${surface} AND offering_id = ${offeringId}
+        AND (
+          (${tripId}::text IS NULL AND trip_id IS NULL)
+          OR trip_id = ${tripId}
+        )
       ORDER BY shown_at DESC
       LIMIT 1
     )
@@ -680,7 +694,8 @@ export async function getFeedCompositionConfig(): Promise<typeof FEED_CONFIG_DEF
       recLabel: kvMap.feed_rec_label ?? FEED_CONFIG_DEFAULTS.recLabel,
       recAffiliateLabel: kvMap.feed_rec_affiliate_label ?? FEED_CONFIG_DEFAULTS.recAffiliateLabel,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-query] Failed to load feed composition config — using defaults:", err);
     return { ...FEED_CONFIG_DEFAULTS };
   }
 }

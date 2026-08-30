@@ -1,0 +1,54 @@
+name: Replit-Pending Label Gate
+
+# WHY THIS GATE EXISTS (Trailhead lane C, guard C2).
+#
+# "merged ≠ verified." Some changes are only fully verified on the Replit side
+# (a deploy-push, a live-bench check) AFTER the code is reviewed. Twice this
+# quarter a PR was merged by momentum while that Replit-side verification was
+# still outstanding. This gate makes the hold self-enforcing: while a PR carries
+# a `⚑ replit-pending` (or plain `replit-pending`) label the required check
+# below FAILS; removing the label once verification is done turns it green.
+#
+# THE LABEL NAME. The predicate matches a label whose name — after stripping a
+# leading ⚑ (U+2691) flag and whitespace and lowercasing — equals exactly
+# `replit-pending`. Both `⚑ replit-pending` and `replit-pending` trip it;
+# `replit`, `replit-pending-review` and unrelated labels do NOT. A repo admin
+# creates the label under Settings → Labels (either spelling) and applies it to
+# a PR whose Replit verification is pending.
+#
+# REQUIRED-CHECK NOTE. To make this actually block merges, add the job's status
+# context — `replit-pending-gate (label hold)` — to branch protection
+# (.github/branch-protection.json + CI_GATES.md). It is PR-only by nature
+# (labels are a PR concept), so it runs on pull_request events only, including
+# `labeled`/`unlabeled` so add/remove re-evaluates immediately.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  replit-pending-gate:
+    name: replit-pending-gate (label hold)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Predicate fixtures FIRST (§18d): prove the matcher flags both label
+      # spellings and passes on absent/unrelated labels before its verdict on a
+      # real PR is trusted. Node built-ins only — no npm ci needed.
+      - name: Label-gate predicate self-test
+        run: node scripts/check-replit-pending-label.cjs --self-test
+      # The PR's current label names arrive as a JSON array via env (no shell
+      # interpolation of the ⚑ emoji into the command line). The event payload
+      # reflects the label add/remove that triggered the run.
+      - name: Fail while the replit-pending label is present
+        env:
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/check-replit-pending-label.cjs

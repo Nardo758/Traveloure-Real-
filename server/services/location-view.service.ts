@@ -18,11 +18,107 @@
  */
 
 import { db } from "../db";
-import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users } from "@shared/schema";
-import { eq, sql, and, ilike, inArray, asc } from "drizzle-orm";
+import { resolveCanonicalCity } from "../utils/canonical-city";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
+import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
+import { toGemTeaser } from "@shared/gem-teaser";
+import type { GemCuratedBy } from "@shared/gem-curated-by";
+import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
+import {
+  DEFAULT_RESOLUTION_CLASS,
+  isValidResolutionSubclass,
+  RESOLUTION_CLASSES,
+  type ResolutionClass,
+  type ResolutionSubclass,
+} from "@shared/trailhead-resolution";
+import { sortByFeaturedAdjusted } from "./featured-sort";
+
+/**
+ * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
+ * CITY SCOPING — prefer the STRUCTURED column, keep the old behavior as the fallback.
+ *
+ * This read used to be a single `ilike(location, '%<city>%')` over a free-text field the console
+ * does not always collect. On one real Kyoto catalog that excluded 7 of 11 listings: two because
+ * the provider typed neighbourhoods ("Arashiyama, Sagano, Kinkaku-ji") instead of the city name,
+ * five because their `location` is the literal column default `'Unknown'`.
+ *
+ * The predicate now reads:
+ *   city = '<city>'                       — the structured, server-derived column (utils/service-city.ts)
+ *   OR (city IS NULL AND location ILIKE …) — grandfathering: rows predating the derivation
+ *
+ * Two properties this shape has and the old one did not:
+ *  - A row whose `city` says OSAKA can no longer be dragged onto the Kyoto page by the word
+ *    "Kyoto" appearing anywhere in its prose. Structured wins where it exists.
+ *  - A row with NO city and NO matching prose stays honestly ABSENT rather than being guessed
+ *    into some city (§13). It becomes visible by its owner naming a neighborhood, not by us
+ *    inferring one.
+ */
+/**
+ * 2026-08-27-neighbourhood-slug-match — gems/services store a free-text
+ * `neighborhood` value; some rows use the seeded slug ("gion"), others the
+ * display name ("Bandra", "Fort / Kala Ghoda"), and slugs themselves mix
+ * hyphens and underscores ("kawaramachi-sanjo" vs "fushimi_inari"). A raw
+ * equality join against `cityNeighborhoods.slug` silently drops any
+ * mismatched row from that neighbourhood's gemCount/serviceCount/gems —
+ * which then drops the neighbourhood out of the client feed entirely (its
+ * section chrome disappears along with the content). Normalize BOTH sides
+ * the same way before comparing so slug-vs-name and hyphen-vs-underscore
+ * differences collapse to one key. This is a matching fix, not a
+ * composition change — these rows were always meant to be members.
+ */
+export function normalizeNeighborhoodKey(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function cityScopePredicate(cityName: string) {
+  return or(
+    eq(providerServices.city, cityName),
+    and(isNull(providerServices.city), ilike(providerServices.location, `%${cityName}%`)),
+  );
+}
+
+/** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null.
+ *  Canonical shape lives in @shared/gem-curated-by; re-exported for server callers. */
+export type { GemCuratedBy };
+
+/**
+ * Gem attribution (2026-08-29 Replit-audit ruling 1): reuse the EXISTING
+ * `travel_pulse_hidden_gems.curated_by_expert_id` column — never fabricate a
+ * byline. A gem gets `curatedBy` ONLY when its curator id resolves to a real
+ * user row (soft FK, so a dangling id yields null, not a guessed name — §13).
+ * One bulk users lookup for the whole gem set; no N+1.
+ */
+export async function attachGemAttribution<T extends { curatedByExpertId?: string | null }>(
+  rows: T[],
+): Promise<Array<T & { curatedBy: GemCuratedBy | null }>> {
+  const curatorIds = Array.from(
+    new Set(rows.map((r) => r.curatedByExpertId).filter((id): id is string => !!id)),
+  );
+  const curatorById = new Map<string, GemCuratedBy>();
+  if (curatorIds.length > 0) {
+    const curatorRows = await db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+      })
+      .from(users)
+      .where(inArray(users.id, curatorIds));
+    for (const row of curatorRows) curatorById.set(row.id, row);
+  }
+  return rows.map((row) => ({
+    ...row,
+    curatedBy: (row.curatedByExpertId && curatorById.get(row.curatedByExpertId)) || null,
+  }));
+}
 
 export interface SectionResult<T> {
   data: T | null;
@@ -71,6 +167,47 @@ export interface LocationViewPayload {
   gems: SectionResult<any[]>;
   /** Active provider services for the city from the DB. */
   services: SectionResult<any[]>;
+  /**
+   * Operation Trailhead T4.3 — PUBLISHED scraped/DMO stubs for this market.
+   * External inventory (facts-and-links, NEVER a bookable platform service): the client
+   * renders these with a DISTINCT card treatment so a traveler can never mistake one for a
+   * bookable listing. `trendContext` is the T4.4 render-time headline (never stored on a row).
+   */
+  externalStubs: SectionResult<ExternalStubsSection>;
+}
+
+/** One published external stub (a DMO guide) + its located child places. */
+export interface ExternalStub {
+  id: string;
+  inventoryClass: InventoryClass;   // 'external' — carried so the client card treatment is honest
+  // Trailhead T3 — the resolution PASS's stored class drives the CTA the card renders (T3.4). Until a
+  // pass runs, every stub is 'external' and the card behaves exactly as under T4 (inert mechanism).
+  //   provider  → internal listing CTA (NO outbound); resolutionRef = provider_services.id
+  //   affiliate → monetized partner CTA via the agent/short-link rail; resolutionRef = program+product ref
+  //   external  → source-link CTA (the T4.3 behavior)
+  resolutionClass: ResolutionClass;
+  resolutionSubclass: ResolutionSubclass | null;
+  resolutionRef: string | null;
+  name: string;
+  city: string;
+  country: string;
+  neighborhood: string | null;
+  contentType: string;              // the stub's category grain
+  shortDescription: string | null;  // facts only — never scraped prose as editorial voice
+  primaryImageUrl: string | null;
+  /** The source link the click-out CTA rides (tracked via the affiliate_clicks rail). */
+  sourceUrl: string;
+  sourcePageTitle: string | null;
+  license: string | null;           // ODbL/attribution obligation travels with the card
+  /** Located child places only (unlocated stay honestly off the map). */
+  places: Array<{ id: string; name: string; position: number; latitude: string | null; longitude: string | null }>;
+  placeCount: number;
+}
+
+export interface ExternalStubsSection {
+  /** Honest ceiling copy: "‹Market› is trending · ‹Event› approaching", or null. Render-time only. */
+  trendContext: string | null;
+  stubs: ExternalStub[];
 }
 
 export interface LocationViewOptions {
@@ -135,8 +272,18 @@ class LocationViewService {
     country: string | null,
     opts: LocationViewOptions = {},
   ): Promise<LocationViewPayload> {
+    // Case-insensitive city match: normalize the incoming name to its canonical
+    // stored casing FIRST, so a mis-cased URL (/kyoto) resolves the same non-empty
+    // feed as /Kyoto. The marketplace reads below use case-sensitive `eq()` against
+    // the title-case canonical ("Kyoto"); without this, `kyoto` returned an HTTP-200
+    // but partially-EMPTY feed (neighborhoods/gems/services all []). An unknown city
+    // is left unchanged ⇒ honestly empty (§13). Done before the cache key so all
+    // casings of one city share a cache entry.
+    cityName = (await resolveCanonicalCity(cityName)) ?? cityName;
+
     // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
-    const cacheKey = `v4|${cityName}:${country ?? ""}`;
+    // v5: payload shape change — adds externalStubs (Trailhead T4.3 published scraped stubs).
+    const cacheKey = `v5|${cityName}:${country ?? ""}`;
     const cached = locationViewCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
@@ -210,34 +357,53 @@ class LocationViewService {
           .where(
             and(
               eq(providerServices.status, "active"),
-              ilike(providerServices.location, `%${cityName}%`),
+              // FP-1 / B4: same structured-first scoping as the services query below.
+              cityScopePredicate(cityName),
             ),
           )
           .groupBy(providerServices.neighborhood),
-        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood
+        // Fetch all gems for this city in one query — used to populate gems[] per neighborhood.
+        // DESC by gemScore (fixed Aug 29 2026): this was ascending, so the per-neighborhood
+        // `.slice(0, 6)` below kept each neighborhood's six WORST gems — every sibling gem
+        // query (travelpulse.service getHiddenGems, /api/cities/gems) sorts DESC.
         db
           .select()
           .from(travelPulseHiddenGems)
           .where(eq(travelPulseHiddenGems.city, cityName))
-          .orderBy(travelPulseHiddenGems.gemScore),
+          .orderBy(desc(travelPulseHiddenGems.gemScore)),
       ]);
 
+      // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
+      // above — so a row's raw neighborhood value can be the slug OR the display
+      // name (and either hyphen or underscore word-separators) and still match.
       const gemCountMap = new Map<string, number>();
       for (const row of gemRows) {
-        if (row.neighborhood) gemCountMap.set(row.neighborhood, row.count);
+        if (row.neighborhood) {
+          const key = normalizeNeighborhoodKey(row.neighborhood);
+          gemCountMap.set(key, (gemCountMap.get(key) ?? 0) + row.count);
+        }
       }
 
       const svcCountMap = new Map<string, number>();
       for (const row of svcRows) {
-        if (row.neighborhood) svcCountMap.set(row.neighborhood, row.count);
+        if (row.neighborhood) {
+          const key = normalizeNeighborhoodKey(row.neighborhood);
+          svcCountMap.set(key, (svcCountMap.get(key) ?? 0) + row.count);
+        }
       }
 
-      // Group gems by neighborhood slug for the gems[] embed
+      // Group gems by normalized neighborhood key for the gems[] embed.
+      // Attribution attached first so nested gems[] carry curatedBy (ruling 1),
+      // then each row is projected to the ruled TEASER set (ruling 3) — the
+      // deep fields (address, mention ratios, mainstream forecast, discovery
+      // status) never leave the server on this surface.
+      const attributedCityGems = (await attachGemAttribution(allCityGems)).map(toGemTeaser);
       const gemsBySlug = new Map<string, any[]>();
-      for (const gem of allCityGems) {
+      for (const gem of attributedCityGems) {
         if (gem.neighborhood) {
-          if (!gemsBySlug.has(gem.neighborhood)) gemsBySlug.set(gem.neighborhood, []);
-          gemsBySlug.get(gem.neighborhood)!.push(gem);
+          const key = normalizeNeighborhoodKey(gem.neighborhood);
+          if (!gemsBySlug.has(key)) gemsBySlug.set(key, []);
+          gemsBySlug.get(key)!.push(gem);
         }
       }
 
@@ -291,12 +457,13 @@ class LocationViewService {
 
       return neighborhoods.map((n) => {
         const expertRow = localExpertByNeighborhood.get(n.id) ?? null;
+        const nKey = normalizeNeighborhoodKey(n.slug);
         return {
           ...n,
-          gemCount: gemCountMap.get(n.slug) ?? 0,
-          serviceCount: svcCountMap.get(n.slug) ?? 0,
+          gemCount: gemCountMap.get(nKey) ?? 0,
+          serviceCount: svcCountMap.get(nKey) ?? 0,
           // bookability is DERIVED (never stored) via the single shared resolver.
-          gems: (gemsBySlug.get(n.slug) ?? [])
+          gems: (gemsBySlug.get(nKey) ?? [])
             .slice(0, 6)
             .map((gem) => ({ ...gem, bookability: resolveBookability(gem) })),
           localExpert: expertRow
@@ -312,12 +479,17 @@ class LocationViewService {
       });
     })();
 
-    // DB hidden gems for the city — all placeTypes, all neighborhoods
+    // DB hidden gems for the city — all placeTypes, all neighborhoods.
+    // DESC by gemScore (fixed Aug 29 2026 — was ascending; see the bulk fetch above).
     const gemsPromise = db
       .select()
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
-      .orderBy(travelPulseHiddenGems.gemScore)
+      .orderBy(desc(travelPulseHiddenGems.gemScore))
+      // Attribution (ruling 1) attached, then the ruled TEASER projection
+      // (ruling 3) — deep fields never leave the server on this surface.
+      .then((rows) => attachGemAttribution(rows))
+      .then((rows) => rows.map(toGemTeaser))
       // bookability is DERIVED (never stored) via the single shared resolver.
       .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
 
@@ -335,6 +507,13 @@ class LocationViewService {
         price: providerServices.price,
         priceType: providerServices.priceType,
         deliveryMethod: providerServices.deliveryMethod,
+        // FP-1 / B4b: `productShape` is what lets the city feed route an accommodation listing
+        // into the STAY spine (a 2-room machiya with 60 published nights used to sit in this very
+        // payload while the Stay tab reported "No stay found in Kyoto"); `city` is the structured
+        // value the scoping above now prefers, exposed so a client can tell derived from
+        // grandfathered.
+        productShape: providerServices.productShape,
+        city: providerServices.city,
         neighborhood: providerServices.neighborhood,
         serviceImage: providerServices.serviceImage,
         location: providerServices.location,
@@ -354,23 +533,205 @@ class LocationViewService {
         categorySlug: serviceCategories.slug,
       })
       .from(providerServices)
-      .leftJoin(serviceProviderForms, eq(serviceProviderForms.userId, providerServices.userId))
+      .leftJoin(
+        serviceProviderForms,
+        and(
+          eq(serviceProviderForms.userId, providerServices.userId),
+          or(
+            isNull(serviceProviderForms.status),
+            notInArray(serviceProviderForms.status, ["rejected", "deleted", "deactivated"]),
+          ),
+        ),
+      )
       .leftJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
       .where(
         and(
           eq(providerServices.status, "active"),
-          ilike(providerServices.location, `%${cityName}%`),
+          // F2 READ-GATE (CLAUDE.md §1 / D1a). GET /api/discover/location/:city is a
+          // PUBLIC, unauthenticated, `Cache-Control: public` route, so it is exactly the
+          // kind of surface the F2 sweep gated: offerings are born `submitted`, and
+          // without this predicate a listing that no admin has approved surfaced on the
+          // public city page. `status='active'` is the OWNER's on/off switch — it is NOT
+          // an approval, and was never a substitute for one.
+          eq(providerServices.approvalStatus, "approved"),
+          // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
+          // fallback for rows that predate the server-side derivation (see cityScopePredicate).
+          cityScopePredicate(cityName),
         ),
       )
-      .orderBy(providerServices.isFeatured);
+      // CURATION ORDER. This replaced `.orderBy(providerServices.isFeatured)`, which was
+      // an INVERTED sort: Postgres orders booleans ASC by default and false < true, so
+      // every admin-featured service sank to the BOTTOM of the city page — the exact
+      // opposite of the intent.
+      //
+      // The fix is not `desc(isFeatured)` either. That is the naive ranking the
+      // featured-sort guardrail exists to prevent ("never bury a better native result"):
+      // it would let a mediocre featured listing outrank a genuinely well-reviewed one.
+      // Instead featuring is a BOUNDED BOOST over a real quality score.
+      //
+      // Quality is honest or absent (§13): it is derived only from real aggregates
+      // (averageRating over reviewCount, both real columns maintained from real reviews),
+      // and a service with NO reviews scores `null` = UNMEASURED, never a stand-in number.
+      // Unmeasured items still take the featured boost — see featuredAdjustedScore, where
+      // the quality FLOOR deliberately does not apply to them.
+      .then((rows) =>
+        sortByFeaturedAdjusted(
+          [...rows],
+          (r) => {
+            const count = Number(r.reviewCount ?? 0);
+            if (count <= 0) return null; // unmeasured — no reviews, so no quality claim
+            const rating = Number(r.averageRating ?? 0);
+            if (!Number.isFinite(rating) || rating <= 0) return null;
+            return (rating / 5) * 100; // 0–5 stars → 0–100, the primitive's scale
+          },
+        ),
+      );
 
-    const [hero, recommendations, events, neighborhoods, gems, services] = await Promise.all([
+    // ── Trailhead T4.3 — PUBLISHED external stubs for this market ──────────────────────────────
+    // The traveler storefront for scraped content. Reads dmo_raw_content gated on the SAME
+    // published + not-rejected predicate the admin flip writes (T4.2), scoped to the city, and
+    // joins its child dmo_extracted_places. The class ('external') travels with each stub so the
+    // client renders a DISTINCT, non-bookable card. T4.4 trend lens is joined at RENDER only
+    // (buildTrendContext) — no trend value is written to any content row.
+    const externalStubsPromise = (async (): Promise<ExternalStubsSection> => {
+      // Gate mirrors shared/discover-stub.ts passesDiscoverFilter: published + not rejected/quarantined.
+      const stubRows = await db
+        .select({
+          id: dmoRawContent.id,
+          inventoryClass: dmoRawContent.inventoryClass,
+          resolutionClass: dmoRawContent.resolutionClass,
+          resolutionSubclass: dmoRawContent.resolutionSubclass,
+          resolutionRef: dmoRawContent.resolutionRef,
+          name: dmoRawContent.name,
+          city: dmoRawContent.city,
+          country: dmoRawContent.country,
+          neighborhood: dmoRawContent.neighborhood,
+          contentType: dmoRawContent.contentType,
+          shortDescription: dmoRawContent.shortDescription,
+          primaryImageUrl: dmoRawContent.primaryImageUrl,
+          sourceUrl: dmoRawContent.sourceUrl,
+          sourcePageTitle: dmoRawContent.sourcePageTitle,
+          license: dmoRawContent.license,
+        })
+        .from(dmoRawContent)
+        .where(
+          and(
+            eq(dmoRawContent.discoverPageVisible, true),
+            ilike(dmoRawContent.city, cityName),
+            sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+          ),
+        )
+        .orderBy(dmoRawContent.contentType, dmoRawContent.name)
+        .limit(24);
+
+      // Child places for the fetched stubs — located ones only reach the map (§13: an unlocated
+      // place is never guessed onto coordinates). We keep all for the count, flag located client-side.
+      const placesByStub = new Map<string, ExternalStub["places"]>();
+      if (stubRows.length > 0) {
+        const placeRows = await db
+          .select({
+            id: dmoExtractedPlaces.id,
+            dmoContentId: dmoExtractedPlaces.dmoContentId,
+            name: dmoExtractedPlaces.name,
+            position: dmoExtractedPlaces.position,
+            latitude: dmoExtractedPlaces.latitude,
+            longitude: dmoExtractedPlaces.longitude,
+          })
+          .from(dmoExtractedPlaces)
+          .where(inArray(dmoExtractedPlaces.dmoContentId, stubRows.map((s) => s.id)))
+          .orderBy(dmoExtractedPlaces.position);
+        for (const p of placeRows) {
+          if (!placesByStub.has(p.dmoContentId)) placesByStub.set(p.dmoContentId, []);
+          placesByStub.get(p.dmoContentId)!.push({ id: p.id, name: p.name, position: p.position, latitude: p.latitude, longitude: p.longitude });
+        }
+      }
+
+      // T4.4 trend lens — computed at render, discarded after. marketTrending = the city cleared
+      // the market-grain resolver's confidence floor (present in getTrendingCities with a positive
+      // trendingScore); imminentEventName = nearest forward calendar event within the window.
+      let trendContext: string | null = null;
+      if (stubRows.length > 0) {
+        try {
+          const now = new Date();
+          const horizon = new Date(now);
+          horizon.setDate(horizon.getDate() + 45);
+          const todayIso = now.toISOString().split("T")[0];
+          const horizonIso = horizon.toISOString().split("T")[0];
+          const [trendingCities, calEvents] = await Promise.all([
+            travelPulseService.getTrendingCities(8).catch(() => []),
+            // Direct DB read (no live-API fallback on the cached render path) — nearest forward event.
+            db
+              .select({ eventName: travelPulseCalendarEvents.eventName, startDate: travelPulseCalendarEvents.startDate })
+              .from(travelPulseCalendarEvents)
+              .where(
+                and(
+                  eq(travelPulseCalendarEvents.city, cityName.toLowerCase()),
+                  gte(travelPulseCalendarEvents.startDate, todayIso),
+                  sql`${travelPulseCalendarEvents.startDate} <= ${horizonIso}`,
+                ),
+              )
+              .orderBy(asc(travelPulseCalendarEvents.startDate))
+              .limit(1)
+              .catch(() => [] as Array<{ eventName: string; startDate: string }>),
+          ]);
+          const marketTrending = (trendingCities ?? []).some(
+            (c: any) => typeof c?.cityName === "string" && c.cityName.toLowerCase() === cityName.toLowerCase() && Number(c?.trendingScore ?? 0) > 0,
+          );
+          const nearest = (calEvents ?? [])[0];
+          trendContext = buildTrendContext({
+            marketTrending,
+            marketName: cityName,
+            imminentEventName: nearest?.eventName ?? null,
+          });
+        } catch {
+          trendContext = null; // trend lens is best-effort; its absence never blanks the stubs
+        }
+      }
+
+      const stubs: ExternalStub[] = stubRows.map((s) => {
+        const places = placesByStub.get(s.id) ?? [];
+        // Normalize the stored resolution class to the closed vocabulary; an unknown value falls back
+        // to the external floor (§13 — never render a partner/internal CTA off an unrecognized class).
+        const resolutionClass: ResolutionClass = (RESOLUTION_CLASSES as readonly string[]).includes(s.resolutionClass)
+          ? (s.resolutionClass as ResolutionClass)
+          : DEFAULT_RESOLUTION_CLASS;
+        const resolutionSubclass: ResolutionSubclass | null = isValidResolutionSubclass(s.resolutionSubclass)
+          ? s.resolutionSubclass
+          : null;
+        return {
+          id: s.id,
+          inventoryClass: normalizeInventoryClass(s.inventoryClass),
+          resolutionClass,
+          resolutionSubclass,
+          // A ref only travels for a real resolution; the external floor keeps null (its source URL is
+          // sourceUrl below). A provider/affiliate ref reaching the client is a pointer, never a URL.
+          resolutionRef: resolutionClass === "external" ? null : s.resolutionRef ?? null,
+          name: s.name,
+          city: s.city,
+          country: s.country,
+          neighborhood: s.neighborhood,
+          contentType: s.contentType,
+          shortDescription: s.shortDescription,
+          primaryImageUrl: s.primaryImageUrl,
+          sourceUrl: s.sourceUrl,
+          sourcePageTitle: s.sourcePageTitle,
+          license: s.license,
+          places,
+          placeCount: places.length,
+        };
+      });
+
+      return { trendContext, stubs };
+    })();
+
+    const [hero, recommendations, events, neighborhoods, gems, services, externalStubs] = await Promise.all([
       settle("hero", heroPromise),
       settle("recommendations", recommendationsPromise),
       settle("events", eventsPromise),
       settle("neighborhoods", neighborhoodsPromise),
       settle("gems", gemsPromise),
       settle("services", servicesPromise),
+      settle("externalStubs", externalStubsPromise),
     ]);
 
     const payload: LocationViewPayload = {
@@ -383,6 +744,7 @@ class LocationViewService {
       neighborhoods,
       gems,
       services,
+      externalStubs,
     };
 
     locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });

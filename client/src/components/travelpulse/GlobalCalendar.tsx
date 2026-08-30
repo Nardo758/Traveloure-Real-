@@ -1110,7 +1110,7 @@ function CityCard({
                     <MapPin className="h-3 w-3 mr-1" />
                     See {city.cityName}{monthName ? ` in ${monthName}` : ""}
                   </Button>
-                  <Link href="/discover?tab=packages">
+                  <Link href="/ready-made">
                     <Button variant="outline" size="sm" data-testid={`button-modal-view-packages-${city.id}`}>
                       <BookOpen className="h-3 w-3 mr-1" />
                       View packages
@@ -1211,9 +1211,11 @@ function CitySection({
     <div>
       <div className="mb-3">
         <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Badge className={`${getRatingColor(rating)} border`}>
-            {getRatingLabel(rating)}
-          </Badge>
+          {rating !== "best" && (
+            <Badge className={`${getRatingColor(rating)} border`}>
+              {getRatingLabel(rating)}
+            </Badge>
+          )}
           {title}
         </h3>
         <p className="text-sm text-muted-foreground">{subtitle}</p>

@@ -1,5 +1,6 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const DC_BASE = "https://api.discovercars.com/api/v1";
 
@@ -16,7 +17,11 @@ async function dcFetch(path: string, params: Record<string, string | number | un
   const res = await fetch(url.toString(), {
     headers: { "Accept": "application/json" },
   });
-  if (!res.ok) throw new Error(`DiscoverCars API error ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`DiscoverCars API error ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -43,8 +48,10 @@ export async function searchDiscoverCars(params: DiscoverCarsSearchParams): Prom
     });
 
     const cars = data?.cars || data?.data || data?.vehicles || [];
+    const items = (Array.isArray(cars) ? cars : []);
+    reportProviderResult("discovercars", items.length > 0 ? "ok" : "empty");
 
-    return (Array.isArray(cars) ? cars : []).slice(0, params.limit || 10).map((c: any): CatalogItem => ({
+    return items.slice(0, params.limit || 10).map((c: any): CatalogItem => ({
       id: `discovercars-${c.id || c.vehicle_id || Math.random().toString(36).slice(2)}`,
       type: "car_rental",
       provider: "discovercars",
@@ -75,6 +82,8 @@ export async function searchDiscoverCars(params: DiscoverCarsSearchParams): Prom
       lastUpdated: new Date(),
     } as CatalogItem));
   } catch (err) {
+    const status = (err as any)?.status;
+    reportProviderResult("discovercars", status ? outcomeFromHttpStatus(status) : "error", err instanceof Error ? err.message : String(err));
     console.warn("[DiscoverCars] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }

@@ -1,0 +1,2757 @@
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
+import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
+import { useLocation, useParams, useSearch } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Sparkles,
+  Check,
+  Clock,
+  DollarSign,
+  Star,
+  ArrowLeft,
+  TrendingDown,
+  TrendingUp,
+  MapPin,
+  Zap,
+  ShoppingCart,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Loader2,
+  Award,
+  Target,
+  RefreshCw,
+  AlertCircle,
+  ExternalLink,
+  Train,
+  Ticket,
+  Users,
+  Maximize2,
+  Scale,
+  Heart,
+  Gauge,
+  Palette,
+  ListOrdered,
+  Coffee,
+  Share2,
+  UserCheck,
+  Copy,
+  Car,
+  Bus,
+  Plus,
+  Gift,
+  ChefHat,
+  Waves,
+  Route,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
+import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { Anchor } from "lucide-react";
+// Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
+// PlanCard family's proposal stage — never a parallel renderer.
+import { PlanCard } from "@/components/plancard/PlanCard";
+import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
+import type { SlipData } from "@/components/plancard/SlipView";
+import {
+  sumLegMinutes,
+  parseTotal,
+  computeProposalPreview,
+  hasHeadlineClaim,
+  formatMinutes,
+  type ProposalPreview,
+} from "@/lib/slip-proposal-preview";
+
+interface VariantItem {
+  id: string;
+  dayNumber: number;
+  timeSlot: string;
+  startTime: string;
+  endTime: string;
+  name: string;
+  description: string;
+  serviceType: string;
+  price: string;
+  rating: string;
+  location: string;
+  duration: number;
+  travelTimeFromPrevious: number;
+  isReplacement: boolean;
+  replacementReason: string | null;
+}
+
+interface TransportAlternative {
+  mode: string;
+  durationMinutes: number;
+  costUsd: number | null;
+  energyCost: number;
+  reason: string;
+}
+
+interface TransportLegData {
+  id: string;
+  legOrder: number;
+  fromName: string;
+  toName: string;
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  distanceDisplay: string;
+  distanceMeters?: number;
+  estimatedDurationMinutes: number;
+  estimatedCostUsd: number | null;
+  energyCost?: number;
+  alternativeModes?: TransportAlternative[];
+  linkedProductUrl?: string | null;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+}
+
+interface VariantDay {
+  dayNumber: number;
+  activities: VariantItem[];
+  transportLegs: TransportLegData[];
+}
+
+interface VariantMetric {
+  id: string;
+  metricKey: string;
+  metricLabel: string;
+  value: string;
+  unit: string;
+  betterIsLower: boolean;
+  comparison: string;
+  improvementPercentage: string;
+  description: string;
+}
+
+interface Variant {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  status: string;
+  totalCost: string;
+  totalTravelTime: number;
+  averageRating: string;
+  freeTimeMinutes: number;
+  optimizationScore: number;
+  aiReasoning: string;
+  sortOrder: number;
+  items: VariantItem[];
+  metrics: VariantMetric[];
+  days?: VariantDay[];
+}
+
+// Mirrors server/services/trip-segmentation.service.ts's SegmentationProposal DTO — display-only
+// on this page (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1, recommendation-only wave).
+interface SegmentProposalDTO {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  itemIds: string[];
+  externalIndexes: number[];
+  unplaced: string[];
+}
+
+interface SegmentationProposalDTO {
+  strategy: "single" | "multi_city" | "split";
+  rationale: string;
+  confidence: "high" | "low";
+  segments: SegmentProposalDTO[];
+  alternatives: SegmentationProposalDTO[];
+}
+
+interface Comparison {
+  id: string;
+  userId: string;
+  tripId?: string | null;
+  title: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  budget: string;
+  travelers: number;
+  status: string;
+  selectedVariantId: string | null;
+  segmentationProposal?: SegmentationProposalDTO | null;
+}
+
+interface UpsellSuggestion {
+  serviceId: string;
+  title: string;
+  description: string | null;
+  price: string | null;
+  imageUrl: string | null;
+  category: string;
+  location: string | null;
+  rating: string | null;
+  matchReason: string;
+}
+
+interface ComparisonData {
+  comparison: Comparison;
+  variants: Variant[];
+  upsellSuggestions?: UpsellSuggestion[];
+}
+
+interface ExpertOption {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  specialization?: string;
+}
+
+interface TransportLegApiResponse {
+  id: string;
+  legOrder: number | null;
+  fromName: string | null;
+  toName: string | null;
+  recommendedMode: string | null;
+  userSelectedMode: string | null;
+  distanceDisplay: string | null;
+  distanceMeters: number | null;
+  estimatedDurationMinutes: number | null;
+  estimatedCostUsd: string | number | null;
+  energyCost: number | null;
+  alternativeModes: TransportAlternative[] | null;
+  linkedProductUrl: string | null;
+  fromLat: number | null;
+  fromLng: number | null;
+  toLat: number | null;
+  toLng: number | null;
+}
+
+/**
+ * The TravelPulse API exposes seasonal highlights from a JSONB column. Older
+ * records may contain a free-text summary, while current records are monthly
+ * objects. Keep the review context optional when the shape is unknown rather
+ * than allowing destination intelligence to crash the entire slip.
+ */
+function seasonalHighlightForTrip(raw: unknown, startDate?: string): string | null {
+  if (typeof raw === "string") {
+    return raw.trim() || null;
+  }
+
+  if (!Array.isArray(raw) || !startDate) {
+    return null;
+  }
+
+  const tripMonth = Number(startDate.slice(5, 7));
+  if (!Number.isInteger(tripMonth) || tripMonth < 1 || tripMonth > 12) {
+    return null;
+  }
+
+  const monthName = new Intl.DateTimeFormat("en", { month: "long" })
+    .format(new Date(Date.UTC(2024, tripMonth - 1, 1)))
+    .toLowerCase();
+  const matchedEntry = raw.find((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const month = (entry as { month?: unknown }).month;
+    return month === tripMonth || (typeof month === "string" && month.toLowerCase() === monthName);
+  }) as { highlight?: unknown } | undefined;
+
+  return typeof matchedEntry?.highlight === "string" ? matchedEntry.highlight.trim() || null : null;
+}
+
+/**
+ * §16: partner-fulfilled plan items (12Go ground transport, Fever events) book through the
+ * in-platform booking-agent rail — never a raw affiliate anchor. The client sends only the
+ * partner key + route context; the server builds the deep link, keeps it server-side, and a
+ * booking agent completes the booking. Own component so the hook isn't called inside a map.
+ */
+function PartnerAgentBookButton({
+  partner,
+  itemName,
+  itemDescription,
+  destination,
+}: {
+  partner: "12go" | "fever";
+  itemName: string;
+  itemDescription?: string | null;
+  destination?: string | null;
+}) {
+  const label = partner === "12go" ? "12Go" : "Fever";
+  const agentBooking = useContentAgentBooking({
+    itemName,
+    itemDescription,
+    partnerName: partner === "12go" ? "12Go Asia" : "Fever",
+    partnerCategory: partner === "12go" ? "ground-transport" : "event",
+    partnerRoute: { partner, destination: destination || undefined },
+  });
+
+  if (agentBooking.requested) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-sm text-green-700 dark:text-green-300"
+        data-testid="text-partner-agent-requested"
+      >
+        <Check className="h-3 w-3" /> Booking request sent
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={agentBooking.book}
+      disabled={agentBooking.isPending}
+      data-testid={`button-partner-agent-book-${partner}`}
+    >
+      <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+      {agentBooking.isPending ? "Sending…" : `Book ${label} via agent`}
+    </Button>
+  );
+}
+
+function VariantTransportLegs({ variantId }: { variantId: string }) {
+  const [open, setOpen] = useState(false);
+
+  const { data: legs, isLoading } = useQuery<TransportLegData[]>({
+    queryKey: ["/api/itinerary-variants", variantId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${variantId}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      const raw: TransportLegApiResponse[] = await res.json();
+      return raw.map((l): TransportLegData => ({
+        id: l.id,
+        legOrder: l.legOrder ?? 0,
+        fromName: l.fromName ?? "",
+        toName: l.toName ?? "",
+        recommendedMode: l.recommendedMode ?? "rideshare",
+        userSelectedMode: l.userSelectedMode ?? null,
+        distanceDisplay: l.distanceDisplay ?? "",
+        distanceMeters: l.distanceMeters ?? undefined,
+        estimatedDurationMinutes: l.estimatedDurationMinutes ?? 0,
+        estimatedCostUsd: l.estimatedCostUsd != null ? parseFloat(String(l.estimatedCostUsd)) : null,
+        energyCost: l.energyCost ?? undefined,
+        alternativeModes: l.alternativeModes ?? [],
+        linkedProductUrl: l.linkedProductUrl ?? null,
+        fromLat: l.fromLat ?? null,
+        fromLng: l.fromLng ?? null,
+        toLat: l.toLat ?? null,
+        toLng: l.toLng ?? null,
+      }));
+    },
+    enabled: open,
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  return (
+    <div className="space-y-2">
+      <button
+        className="flex items-center justify-between w-full text-sm font-medium hover:text-primary transition-colors"
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        data-testid={`button-transport-legs-toggle-${variantId}`}
+      >
+        <div className="flex items-center gap-2">
+          <Car className="h-4 w-4 text-muted-foreground" />
+          <span>Transport Legs</span>
+          {open && legs && legs.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {legs.length}
+            </Badge>
+          )}
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="pt-1">
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : legs && legs.length > 0 ? (
+            <div className="rounded-md border divide-y divide-border">
+              {legs.map(leg => (
+                <TransportLeg
+                  key={leg.id}
+                  leg={leg}
+                  readOnly={false}
+                  className="py-1.5"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 py-3 px-3 text-sm text-muted-foreground rounded-md bg-muted/20 border border-dashed">
+              <Bus className="h-4 w-4 shrink-0 opacity-60" />
+              <span>No transport legs yet. They are calculated when an AI itinerary is generated from the Transportation tab.</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShareVariantButton({ variantId }: { variantId: string }) {
+  const { toast } = useToast();
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+
+  const shareMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/itinerary-variants/${variantId}/share`, { permissions: "view" });
+      return res as { shareToken: string; shareUrl: string; expiresAt: string };
+    },
+    onSuccess: (data) => {
+      setShareUrl(data.shareUrl);
+      navigator.clipboard?.writeText(data.shareUrl).catch(() => {});
+      toast({ title: "Share link copied!", description: "Anyone with this link can view this itinerary." });
+    },
+    onError: () => {
+      toast({ title: "Could not create share link", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="flex w-full">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => { e.stopPropagation(); shareMutation.mutate(); }}
+        disabled={shareMutation.isPending}
+        className="flex-1 gap-2 text-muted-foreground hover:text-foreground"
+        data-testid={`button-share-variant-${variantId}`}
+      >
+        {shareMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+        {shareUrl ? "Copied!" : "Share"}
+      </Button>
+    </div>
+  );
+}
+
+function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destination?: string }) {
+  const { toast } = useToast();
+
+  const openInMaps = () => {
+    // Collect unique locations from items, filtering out empty ones
+    const locations = items
+      .map(item => item.location)
+      .filter((loc): loc is string => !!loc && loc.trim() !== "")
+      .filter((loc, index, self) => self.indexOf(loc) === index); // unique
+
+    if (locations.length === 0) {
+      toast({ 
+        title: "No locations found", 
+        description: "This itinerary doesn't have specific locations to show on the map.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    if (locations.length === 1) {
+      // Single location - simple search
+      const query = encodeURIComponent(locations[0]);
+      if (isIOS) {
+        window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
+      } else {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+      }
+    } else {
+      // Multiple locations — always use Google Maps for waypoint routes.
+      // Apple Maps doesn't support multi-waypoint directions; the canonical
+      // rule lives in openInMaps() in navigate.ts (Apple→Google escape-hatch).
+      const origin = encodeURIComponent(locations[0]);
+      const dest = encodeURIComponent(locations[locations.length - 1]);
+      const waypoints = locations.slice(1, -1).map(loc => encodeURIComponent(loc)).join("|");
+      const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
+      window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
+    }
+    
+    toast({ 
+      title: "Opening Maps", 
+      description: `Showing ${locations.length} location${locations.length > 1 ? 's' : ''}`
+    });
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={(e) => { e.stopPropagation(); openInMaps(); }}
+      className="flex-1 gap-2 text-muted-foreground hover:text-foreground"
+      data-testid="button-open-in-maps"
+    >
+      <MapPin className="h-4 w-4" />
+      Open in Maps
+    </Button>
+  );
+}
+
+/**
+ * One Spec C column = `<PlanCard stage="proposal" />`. This container owns the column's ONE
+ * data fetch (the variant's server-computed transport legs, for the muted count + cost line)
+ * and hands everything to the canonical renderer. Anchored (purchased) items arrive from the
+ * CANONICAL trip rows (the plancard DTO) — the same array for every column, identical by
+ * construction; with_expert items are excluded upstream and never reach any column.
+ */
+function ProposalColumnContainer({
+  variant,
+  comparison,
+  anchoredItems,
+  recommended,
+  applying,
+  onApply,
+  baselineTotalUsd,
+  baselineDriveMinutes,
+  isBaselineColumn,
+  boardId,
+}: {
+  variant: Variant;
+  comparison: Comparison;
+  anchoredItems: ProposalAnchorItem[];
+  recommended: boolean;
+  applying: boolean;
+  onApply: () => void;
+  /** The current plan's server-derived total, for the review-first money delta (null ⇒ omit). */
+  baselineTotalUsd: number | null;
+  /** The current plan's summed located-leg minutes, for the drive-time delta (null ⇒ omit). */
+  baselineDriveMinutes: number | null;
+  /** This column IS the user's current plan — it has no delta against itself, so no strip. */
+  isBaselineColumn: boolean;
+  boardId: string;
+}) {
+  const { data: legs } = useQuery<TransportLegApiResponse[]>({
+    queryKey: ["/api/itinerary-variants", variant.id, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${variant.id}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  // Server-computed leg values only (§4 Spec C): count + the sum of the legs' own
+  // estimatedCostUsd. All-null costs → null (never a guessed figure).
+  let legsSummary: ProposalLegsSummary | null = null;
+  if (legs && legs.length > 0) {
+    const costs = legs
+      .map((l) => (l.estimatedCostUsd != null ? parseFloat(String(l.estimatedCostUsd)) : null))
+      .filter((c): c is number => c != null && !isNaN(c));
+    legsSummary = {
+      count: legs.length,
+      totalCostUsd: costs.length > 0 ? costs.reduce((s, c) => s + c, 0) : null,
+    };
+  }
+
+  // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): what THIS proposal
+  // found vs the current plan — money saved + shorter drive time. Every figure is server-
+  // derived (the optimizer's totals, the routing provider's leg minutes) and honestly omitted
+  // when its baseline is missing (§13). The baseline column has no claim against itself.
+  const preview: ProposalPreview = computeProposalPreview({
+    baselineTotalUsd,
+    variantTotalUsd: parseTotal(variant.totalCost),
+    baselineDriveMinutes,
+    variantDriveMinutes: sumLegMinutes(legs),
+  });
+  const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {showPreview && <ProposalPreviewStrip preview={preview} variantId={boardId} />}
+    <PlanCard
+      stage="proposal"
+      trip={{
+        id: comparison.tripId || comparison.id,
+        destination: comparison.destination || "",
+        numberOfTravelers: comparison.travelers || 1,
+      }}
+      proposal={{
+        variantId: variant.id,
+         testId: boardId,
+        name: variant.name,
+         eyebrow: isBaselineColumn ? "Your current plan" : undefined,
+         displayName: isBaselineColumn ? "As you built it" : undefined,
+         tagline: isBaselineColumn ? "The order you planned, unchanged." : (variant.description || null),
+         isBaseline: isBaselineColumn,
+        recommended,
+         totalCostUsd: parseTotal(variant.totalCost),
+         perPersonTotal: parseTotal(variant.totalCost) != null && comparison.travelers > 1
+           ? `$${Math.round(parseTotal(variant.totalCost)! / comparison.travelers).toLocaleString()}`
+           : null,
+        anchoredItems,
+        items: variant.items.map((it) => ({
+          id: it.id,
+          dayNumber: it.dayNumber,
+          startTime: it.startTime || it.timeSlot || null,
+          name: it.name,
+          price: it.price ?? null,
+        })),
+        legsSummary,
+         applyLabel: isBaselineColumn ? "Keep this plan" : `Apply ${variant.name}`,
+        onApply,
+        applying,
+      }}
+    />
+    </div>
+  );
+}
+
+/**
+ * Review-first preview strip (ledger 2026-08-22-slip-optimize-review-first). One or two honest
+ * chips summarising what a proposal FOUND vs the current plan — money saved (green) or cost
+ * increase (amber), and shorter (green) or longer (amber) drive time. Rendered ONLY when a
+ * real, non-"same" claim exists (`hasHeadlineClaim`); a "same" or absent delta shows nothing,
+ * never a "$0 saved" / "0 min" filler (§13). Distance is deliberately never shown here — §21
+ * L3 bars distance as a headline delta claim to travelers; only transit TIME is claimed.
+ */
+function ProposalPreviewStrip({
+  preview,
+  variantId,
+}: {
+  preview: ProposalPreview;
+  variantId: string;
+}) {
+  const { money, driveTime } = preview;
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 text-xs"
+      data-testid={`proposal-preview-${variantId}`}
+    >
+      {money && money.direction !== "same" && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium",
+            money.direction === "saves"
+              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+          )}
+          data-testid={`proposal-preview-money-${variantId}`}
+        >
+          <DollarSign className="w-3 h-3" />
+          {money.direction === "saves"
+            ? `Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
+            : `Costs $${money.amountUsd.toLocaleString()} more`}
+        </span>
+      )}
+      {driveTime && driveTime.direction !== "same" && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium",
+            driveTime.direction === "saves"
+              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+          )}
+          data-testid={`proposal-preview-drivetime-${variantId}`}
+        >
+          <Clock className="w-3 h-3" />
+          {driveTime.direction === "saves"
+            ? `${formatMinutes(driveTime.minutes)} less travel`
+            : `${formatMinutes(driveTime.minutes)} more travel`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const SEGMENTATION_STRATEGY_LABEL: Record<SegmentationProposalDTO["strategy"], string> = {
+  single: "One trip",
+  multi_city: "One multi-city trip",
+  split: "Split into separate trips",
+};
+
+/**
+ * Read-only recommendation banner (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1 —
+ * RECOMMENDATION-ONLY: display + persist + return, no accept/apply action exists yet). Copy is
+ * the proposal's own `rationale` (shown verbatim, per the engine's contract) plus a strategy
+ * label and a per-segment city/count summary built from the segments the server already computed
+ * — nothing here re-derives or second-guesses the recommendation client-side.
+ */
+function SegmentationRecommendationBanner({ proposal }: { proposal: SegmentationProposalDTO }) {
+  // `unplaced` is duplicated onto every segment by design (module doc, trip-segmentation.service.ts)
+  // — it's the same global list everywhere, so segment 0 alone is the whole thing.
+  const unplacedCount = proposal.segments[0]?.unplaced.length ?? 0;
+
+  return (
+    <Card
+      className="mb-4 border-blue-200/50 bg-gradient-to-r from-blue-50/80 to-cyan-50/80 dark:from-blue-950/10 dark:to-cyan-950/10 dark:border-blue-800/50"
+      data-testid="banner-segmentation-recommendation"
+    >
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start gap-2">
+          <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0 mt-0.5">
+            <Route className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                Trip execution recommendation
+              </span>
+              <Badge variant="outline" className="text-[10px] h-4 border-blue-200 text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                {SEGMENTATION_STRATEGY_LABEL[proposal.strategy]}
+              </Badge>
+              {proposal.confidence === "low" && (
+                <Badge variant="outline" className="text-[10px] h-4 border-amber-200 text-amber-700 dark:border-amber-700 dark:text-amber-300">
+                  Worth a second look
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1" data-testid="text-segmentation-rationale">
+              {proposal.rationale}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1.5" data-testid="text-segmentation-summary">
+              {proposal.segments
+                .map((seg) => {
+                  const count = seg.itemIds.length + seg.externalIndexes.length;
+                  return `${seg.destination || "Unspecified"} (${count} item${count === 1 ? "" : "s"})`;
+                })
+                .join("  ·  ")}
+              {unplacedCount > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {"  ·  "}
+                  {unplacedCount} item{unplacedCount === 1 ? "" : "s"} need{unplacedCount === 1 ? "s" : ""} a home
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground/70 italic mt-1.5" data-testid="text-segmentation-apply-note">
+              Coming soon: apply this recommendation to your trip. For now this is informational only —
+              nothing here changes your plan.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function ItineraryComparisonPage() {
+  const { id } = useParams<{ id: string }>();
+  const { user, isLoading: authLoading } = useAuth();
+  const userId = user?.id || 'guest';
+  const userEmail = user?.email || undefined;
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const searchStr = useSearch();
+  const searchParams = new URLSearchParams(searchStr);
+  const autoApply = searchParams.get("autoApply") === "1";
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [modalVariant, setModalVariant] = useState<Variant | null>(null);
+  const [showExpertDialog, setShowExpertDialog] = useState(false);
+  const [expertNotes, setExpertNotes] = useState("");
+  // Sprint-1 dislike loop: structured "what to fix" chips. They feed the re-run
+  // (strategy-mapped server-side) AND ride the expert request's metadata so a
+  // human sees exactly what was rejected.
+  const [feedbackChips, setFeedbackChips] = useState<string[]>([]);
+  const FEEDBACK_OPTIONS: { id: string; label: string }[] = [
+    { id: "too_expensive", label: "Too expensive" },
+    { id: "too_packed", label: "Too packed" },
+    { id: "wrong_areas", label: "Wrong areas" },
+    { id: "wrong_vibe", label: "Wrong vibe" },
+  ];
+  const toggleFeedbackChip = (chipId: string) =>
+    setFeedbackChips((prev) => prev.includes(chipId) ? prev.filter((c) => c !== chipId) : [...prev, chipId]);
+  // G7: auto-apply state
+  const [autoApplying, setAutoApplying] = useState(false);
+  const [autoApplied, setAutoApplied] = useState(false);
+  const [autoApplyError, setAutoApplyError] = useState<"no_variants" | null>(null);
+
+  const getBookingType = (serviceType: string): "inApp" | "partner" => {
+    const partnerTypes = ["transport", "ground_transport", "train", "bus", "ferry", "event", "entertainment", "concert", "show"];
+    return partnerTypes.some(t => serviceType?.toLowerCase().includes(t)) ? "partner" : "inApp";
+  };
+
+  // §16: this used to build raw partner URLs client-side (the 12Go affiliate id and the
+  // Fever/Impact campaign id were hardcoded here) and render a "Book on Partner Site"
+  // anchor. It now resolves only the PARTNER KEY; the booking-agent rail's `partnerRoute`
+  // reference makes the server build the deep link and an agent complete the booking.
+  const getPartnerKey = (item: VariantItem): "12go" | "fever" | null => {
+    if (getBookingType(item.serviceType) !== "partner") return null;
+    if (["transport", "ground_transport", "train", "bus", "ferry"].some(t => item.serviceType?.toLowerCase().includes(t))) {
+      return "12go";
+    }
+    if (["event", "entertainment", "concert", "show"].some(t => item.serviceType?.toLowerCase().includes(t))) {
+      return "fever";
+    }
+    return null;
+  };
+
+  const expertBookingMutation = useMutation({
+    mutationFn: async (data: { tripId?: string; notes: string; bookingMetadata?: Record<string, unknown> }) => {
+      return apiRequest("POST", "/api/expert-booking-requests", data);
+    },
+    onSuccess: () => {
+      setShowExpertDialog(false);
+      setExpertNotes("");
+      toast({
+        title: "Request Sent",
+        description: "An expert will review your itinerary and handle all bookings.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Request Failed",
+        description: "Unable to submit your request. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleExpertBookingRequest = () => {
+    if (!id) return;
+    // BUG FIX (Sprint 1): this previously sent the COMPARISON id as tripId —
+    // the expert request carried a bogus trip reference. Send the comparison's
+    // real tripId, and attach the comparison + rejected-variant context in
+    // bookingMetadata so the expert sees exactly what the AI produced and what
+    // the traveler disliked.
+    const chipLabels = feedbackChips
+      .map((c) => FEEDBACK_OPTIONS.find((o) => o.id === c)?.label)
+      .filter(Boolean)
+      .join(", ");
+    const notesWithContext = chipLabels
+      ? `${expertNotes ? `${expertNotes}\n\n` : ""}[Traveler feedback on the AI plan: ${chipLabels}]`
+      : expertNotes;
+    expertBookingMutation.mutate({
+      tripId: data?.comparison?.tripId || undefined,
+      notes: notesWithContext,
+      bookingMetadata: {
+        comparisonId: id,
+        selectedVariantId: selectedVariantId || data?.comparison?.selectedVariantId || null,
+        dislikeFeedback: feedbackChips,
+      },
+    });
+  };
+
+  const { data, isLoading, refetch } = useQuery<ComparisonData>({
+    queryKey: ["/api/itinerary-comparisons", id],
+    enabled: !!id && !!user,
+    refetchInterval: (query) => {
+      const data = query.state.data as ComparisonData | undefined;
+      if (data?.comparison?.status === "generating") {
+        return 2000;
+      }
+      return false;
+    },
+  });
+
+  // ── Spec C canonical reads (SLIP_EXPERIENCE_DISPATCH §4) ──────────────────────────────
+  // The slip-backed comparison renders through the plancard family; anchors and exclusion
+  // counts come from the CANONICAL trip rows (the same plancard DTO every slip surface reads),
+  // never from variant copies. A comparison with no trip (guest/cart flow) has no slip — the
+  // legacy rendering below stays for that flow (Lane 5b's cart→trip re-point is gated).
+  const slipTripId = data?.comparison?.tripId || null;
+  const { data: slipPlancard } = useQuery<SlipData>({
+    queryKey: [`/api/trips/${slipTripId}/plancard`],
+    enabled: !!slipTripId && !!user,
+    staleTime: 30000,
+  });
+
+  const canonicalRows = (slipPlancard?.days ?? []).flatMap((d) =>
+    d.activities.map((a) => ({ a, dayNum: d.dayNum })),
+  );
+  const anchoredItems: ProposalAnchorItem[] = canonicalRows
+    .filter(({ a }) => !!a.booking || a.routingStatus === "purchased")
+    .map(({ a, dayNum }) => ({ id: a.id, dayNum, time: a.time || "", name: a.name }));
+  const withExpertRows = canonicalRows.filter(({ a }) => a.routingStatus === "with_expert");
+  const remainingCount = canonicalRows.filter(
+    ({ a }) => a.routingStatus === "in_planning" || a.routingStatus === "ready_for_checkout",
+  ).length;
+  const slipTrackingNumber = slipPlancard?.trip?.trackingNumber ?? null;
+  const slipExpertFirstName = slipPlancard?.meta?.deliveredBy?.name?.split(" ")[0] ?? null;
+
+  // Apply = the EXISTING endpoints: select the variant, then the atomic apply-to-trip, then
+  // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
+  const [applyingVariantId, setApplyingVariantId] = useState<string | null>(null);
+  const [pendingApplyVariant, setPendingApplyVariant] = useState<Variant | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [failedApplyVariant, setFailedApplyVariant] = useState<Variant | null>(null);
+  const applyVariantMutation = useMutation({
+    mutationFn: async (variantId: string) => {
+      await apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-trip`);
+      const result = await res.json();
+      return { tripId: result.tripId as string };
+    },
+    onSuccess: (r) => {
+      setApplyError(null);
+      setFailedApplyVariant(null);
+      toast({ title: "Variant applied", description: "Your slip has been updated in place." });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
+      setLocation(`/plans/${r.tripId}`);
+    },
+    onError: (_error, variantId) => {
+      setFailedApplyVariant(data?.variants.find((variant) => variant.id === variantId) || null);
+      setApplyError("We couldn't apply this proposal. Your plan is unchanged. Try again.");
+      toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
+    },
+    onSettled: () => setApplyingVariantId(null),
+  });
+
+  const destination = data?.comparison?.destination;
+  const isMultiCity = destination?.includes(";") || destination?.includes(",") && destination?.split(",").length > 2;
+  
+  // For multi-city trips, extract just the first city for TravelPulse lookup
+  const primaryCity = isMultiCity 
+    ? destination?.split(";")[0]?.trim()?.split(",")[0]?.trim() 
+    : destination?.split(",")[0]?.trim();
+  
+  const { data: travelPulseData, isLoading: travelPulseLoading, isError: travelPulseError } = useQuery<{
+    city?: {
+      name: string;
+      country: string;
+      pulseScore?: number;
+      trendingScore?: number;
+      crowdLevel?: string;
+      weatherScore?: number;
+      aiSeasonalHighlights?: unknown;
+      aiUpcomingEvents?: string;
+      aiTravelTips?: string;
+      aiLocalInsights?: string;
+      aiBudgetEstimate?: string;
+      aiMustSeeAttractions?: string;
+    };
+  }>({
+    queryKey: ["/api/travelpulse/cities", primaryCity],
+    enabled: !!primaryCity,
+  });
+
+  const { data: trendingData, isLoading: trendingLoading } = useQuery<{
+    experiences?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      trendingScore: number;
+      reason?: string;
+    }>;
+  }>({
+    queryKey: ["/api/travelpulse/trending", primaryCity],
+    enabled: !!primaryCity,
+  });
+
+  const travelPulseIntelligenceLoading = travelPulseLoading || trendingLoading;
+
+  // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): the current plan's own
+  // transport legs, so each proposal column can show an honest drive-time DELTA against it. Keyed
+  // identically to each column's leg fetch, so React Query dedupes — no extra network. `null`
+  // summed minutes (an unlocated current plan) makes every drive-time delta omit (§13).
+  const baselineVariantId = data?.variants?.find((v) => v.source === "user")?.id ?? null;
+  const { data: baselineLegs } = useQuery<TransportLegApiResponse[]>({
+    queryKey: ["/api/itinerary-variants", baselineVariantId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${baselineVariantId}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!baselineVariantId && !!user,
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const stored = sessionStorage.getItem(`comparison_baseline_${id}`);
+      const baselineItems = stored ? JSON.parse(stored) : [];
+      // Sprint-1 dislike loop: the selected chips steer the re-run — the server
+      // maps them onto the variant-strategy matrix with top priority.
+      // Ground-truth note (E2/R-B): this regenerates variants for the EXISTING comparison via
+      // POST /api/itinerary-comparisons/:id/generate — a different endpoint from the
+      // POST /api/itinerary-comparisons CREATE call the client/src/lib/create-comparison.ts
+      // helper centralizes. Not one of the four create-comparison call sites despite an earlier
+      // audit grouping it with them; left as-is.
+      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, {
+        baselineItems,
+        ...(feedbackChips.length > 0 ? { feedback: feedbackChips } : {}),
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Regenerating alternatives",
+        description: feedbackChips.length > 0
+          ? "AI is re-optimizing around your feedback..."
+          : "AI is creating optimized versions...",
+      });
+      refetch();
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to regenerate", description: "Please try again" });
+    },
+  });
+
+  const selectMutation = useMutation({
+    mutationFn: async (variantId: string) => {
+      return apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
+    },
+    onSuccess: () => {
+      toast({ title: "Itinerary selected", description: "Your chosen plan has been saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to select", description: "Please try again" });
+    },
+  });
+
+  const applyToCartMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-cart`);
+      return (await res.json()) as {
+        message?: string;
+        itemsAdded?: number;
+        skippedExternalItems?: number;
+      };
+    },
+    // Lane 1 W5 (H6): items with no bookable platform service are skipped by the writer — that
+    // has always been true, and was always silent. The server now returns the real counts and an
+    // explanatory message; render it instead of the flat "added to cart" claim (§13).
+    onSuccess: (data) => {
+      toast({
+        title: "Cart updated",
+        description:
+          data?.skippedExternalItems && data.skippedExternalItems > 0
+            ? data.message
+            : "Your selected itinerary has been added to cart",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      setLocation("/cart");
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to update cart", description: "Please try again" });
+    },
+  });
+
+  const addUpsellToCartMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      const res = await apiRequest("POST", "/api/cart/items", { serviceId, quantity: 1 });
+      return res.json();
+    },
+    onSuccess: (_data, serviceId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({ title: "Added to cart!", description: "The experience has been added to your cart." });
+      fetch("/api/cross-sell-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          eventType: "click",
+          sourceContentType: "itinerary_comparison",
+          sourceContentId: id || "unknown",
+          targetServiceId: serviceId,
+          city: data?.comparison?.destination?.split(",")[0]?.trim() || undefined,
+        }),
+      }).catch(() => {});
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to add to cart", description: "Please try again." });
+    },
+  });
+
+  useEffect(() => {
+    if (data?.comparison?.selectedVariantId) {
+      setSelectedVariantId(data.comparison.selectedVariantId);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    const suggestions = data?.upsellSuggestions;
+    if (!suggestions || suggestions.length === 0) return;
+    const city = data?.comparison?.destination?.split(",")[0]?.trim();
+    const compId = data?.comparison?.id;
+    if (!compId) return;
+    fetch("/api/cross-sell-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(
+        suggestions.map(s => ({
+          eventType: "impression",
+          sourceContentType: "itinerary_comparison",
+          sourceContentId: compId,
+          targetServiceId: s.serviceId,
+          city: city || undefined,
+        }))
+      ),
+    }).catch(() => {});
+  }, [data?.comparison?.id, data?.upsellSuggestions?.length]);
+
+  // G7: Auto-apply top variant + redirect to PlanCard when autoApply=1 and optimization is done
+  useEffect(() => {
+    if (!autoApply || autoApplying || autoApplied || autoApplyError) return;
+    if (!data?.comparison) return;
+    const status = data.comparison.status;
+
+    // If still waiting on payment, redirect back to cart with an explanation
+    if (status === "pending_payment") {
+      toast({
+        variant: "destructive",
+        title: "Payment required",
+        description: "Please complete payment before your optimized plan can be applied.",
+      });
+      setLocation("/cart");
+      return;
+    }
+
+    if (status !== "generated") return;
+
+    const aiVariants = data.variants?.filter((v: Variant) => v.source === "ai_optimized") ?? [];
+    if (aiVariants.length === 0) {
+      // Generation completed but produced no AI variants — show inline error
+      setAutoApplyError("no_variants");
+      return;
+    }
+
+    setAutoApplying(true);
+    (async () => {
+      try {
+        const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-trip`);
+        const result = await res.json();
+        setAutoApplied(true);
+        toast({
+          title: "Your optimized plan is ready!",
+          description: "Redirecting to your trip…",
+        });
+        setLocation(`/plans/${result.tripId}`);
+      } catch (err: any) {
+        console.error("Auto-apply failed:", err);
+        toast({
+          variant: "destructive",
+          title: "Could not apply optimized plan",
+          description: "You can apply it manually from this page.",
+        });
+      } finally {
+        setAutoApplying(false);
+      }
+    })();
+  }, [autoApply, autoApplying, autoApplied, autoApplyError, data, id, setLocation, toast]);
+
+  if (authLoading) {
+    return (
+      <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
+        <Skeleton className="h-8 w-64 mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-96" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    setLocation("/api/login");
+    return null;
+  }
+
+  const isGenerating = data?.comparison?.status === "generating";
+  const hasFailed = data?.comparison?.status === "failed";
+  const isPendingPayment = data?.comparison?.status === "pending_payment";
+  const hasVariants = data?.variants && data.variants.length > 0;
+  const userVariant = data?.variants?.find((v) => v.source === "user");
+  const aiVariants = data?.variants?.filter((v) => v.source === "ai_optimized") || [];
+
+  // Slip-aware exit (ledger 2026-08-22-slip-review-copy): a trip-backed comparison's escape
+  // hatch goes back to the SLIP (/plans/:tripId) — a slip traveler never came from the cart,
+  // so "Back to Cart" was the wrong door on every error/empty state after the review-first
+  // change made those states traveler-visible. Cart-originated comparisons (no tripId) keep
+  // the cart CTA unchanged.
+  const backExit = slipTripId
+    ? { label: "Back to your plan", to: `/plans/${slipTripId}` }
+    : { label: "Back to Cart", to: "/cart" };
+
+  // Review-mode zero-proposal state (design-assessment gap 1): generation finished but
+  // produced no AI variants. The old banner only armed on the autoApply path, so in review
+  // mode the traveler saw their own plan labeled "1 proposal" with no explanation and no
+  // retry. autoApply keeps its own error banner; this renders only for the review flow.
+  const generationProducedNoProposals =
+    !autoApply &&
+    data?.comparison?.status === "generated" &&
+    hasVariants &&
+    aiVariants.length === 0;
+
+  // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
+  const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
+  const baselineDriveMinutes = sumLegMinutes(baselineLegs);
+
+  // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
+  // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
+  const specColumns: Variant[] = [userVariant, ...aiVariants].filter((v): v is Variant => !!v);
+  const recommendedVariantId = (() => {
+    const scored = aiVariants.filter((v) => v.optimizationScore != null);
+    if (scored.length === 0) return null;
+    const max = Math.max(...scored.map((v) => v.optimizationScore));
+    const top = scored.filter((v) => v.optimizationScore === max);
+    return top.length === 1 ? top[0].id : null;
+  })();
+
+  const getMetricIcon = (key: string) => {
+    switch (key) {
+      case "total_cost":
+        return DollarSign;
+      case "average_rating":
+        return Star;
+      case "travel_time":
+        return Clock;
+      case "free_time":
+        return Calendar;
+      case "optimization_score":
+        return Target;
+      case "balance_score":
+        return Scale;
+      case "wellness_score":
+        return Heart;
+      case "pace_score":
+        return Gauge;
+      case "diversity_score":
+        return Palette;
+      case "sequencing_score":
+        return ListOrdered;
+      case "relaxation_minutes":
+        return Coffee;
+      case "methodology_summary":
+        return Sparkles;
+      default:
+        return Zap;
+    }
+  };
+
+  const getMetricColor = (metric: VariantMetric) => {
+    // Score-based metrics (higher is better)
+    const scoreMetrics = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score", "optimization_score"];
+    if (scoreMetrics.includes(metric.metricKey)) {
+      const value = parseFloat(metric.value) || 0;
+      if (value >= 80) return "text-green-600 dark:text-green-400";
+      if (value >= 60) return "text-yellow-600 dark:text-yellow-400";
+      return "text-orange-600 dark:text-orange-400";
+    }
+    
+    // Comparison-based metrics
+    if (!metric.comparison) return "text-muted-foreground";
+    if (metric.comparison === "saves" || metric.comparison === "better") {
+      return "text-green-600 dark:text-green-400";
+    }
+    if (metric.comparison === "costs more" || metric.comparison === "lower") {
+      return "text-orange-600 dark:text-orange-400";
+    }
+    return "text-muted-foreground";
+  };
+
+  return (
+    <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            {slipTripId && <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary mb-1">Optimization · Review before applying</p>}
+            <h1 className="text-2xl md:text-3xl font-bold" data-testid={slipTripId ? "review-title" : undefined}>
+              {slipTripId ? `Three ways to sharpen your ${primaryCity || data?.comparison?.destination || "trip"} plan` : (data?.comparison?.title || "Itinerary Comparison")}
+            </h1>
+            <p className="text-muted-foreground max-w-2xl" data-testid={slipTripId ? "review-intro" : undefined}>
+              {slipTripId
+                ? "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is."
+                : `${data?.comparison?.destination} - ${data?.comparison?.travelers || 1} traveler(s)`}
+            </p>
+          </div>
+        </div>
+
+        {isGenerating && !hasVariants && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            {/* Your Plan skeleton */}
+            <Card className="border-dashed">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-5 w-20" />
+                </div>
+                <Skeleton className="h-6 w-32 mt-2" />
+                <Skeleton className="h-4 w-48 mt-1" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-6 w-16" />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-center gap-3 py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Building your plan...</span>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-9 w-full" />
+              </CardFooter>
+            </Card>
+
+            {/* AI Optimized skeleton cards */}
+            {[1, 2].map((i) => (
+              <Card key={i} className={cn("border-dashed relative", i === 1 && "border-green-500/30")}>
+                {i === 1 && (
+                  <div className="absolute -top-3 left-4">
+                    <Badge className="bg-green-600/50">
+                      <Award className="h-3 w-3 mr-1" />
+                      Recommended
+                    </Badge>
+                  </div>
+                )}
+                <CardHeader className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="default" className="bg-primary/10 text-primary/50">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      AI Optimized
+                    </Badge>
+                  </div>
+                  <Skeleton className="h-6 w-40 mt-2" />
+                  <Skeleton className="h-4 w-56 mt-1" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-6 w-16" />
+                    </div>
+                    <Separator />
+                    <div className="flex flex-col items-center justify-center gap-3 py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">
+                        {i === 1 ? "Finding best alternatives..." : "Optimizing for savings..."}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Skeleton className="h-9 w-full" />
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {hasFailed && (
+          <Card className="mb-6 border-destructive/50 bg-destructive/5">
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+              <h3 className="text-lg font-semibold mb-2">Generation failed</h3>
+              <p className="text-muted-foreground mb-6">
+                Something went wrong while optimizing your itinerary. Please try again.
+                {slipTripId ? " Your plan is untouched." : ""}
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(backExit.to)}
+                  data-testid="button-back-to-cart"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {backExit.label}
+                </Button>
+                <Button
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Try Again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {autoApplyError === "no_variants" && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-auto-apply-error">
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+              <h3 className="text-lg font-semibold mb-2">No optimized variants were generated</h3>
+              <p className="text-muted-foreground mb-6">
+                The AI optimization completed but didn't produce any alternative itineraries — this can happen if the trip is already well-optimized or if the AI timed out. You can retry generation or browse your original plan below.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(backExit.to)}
+                  data-testid="button-back-to-cart-error"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {backExit.label}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAutoApplyError(null);
+                    retryMutation.mutate();
+                  }}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry-no-variants"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Retry Optimization
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Review-mode zero-proposal notice (ledger 2026-08-22-slip-review-copy): generation
+            finished with no AI proposals — say so and offer the re-run, instead of silently
+            showing the traveler their own plan as "1 proposal". The autoApply flow keeps its
+            own banner above; this one renders only for the review flow. */}
+        {generationProducedNoProposals && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-no-proposals-review">
+            <CardContent className="p-6 text-center">
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-amber-500" />
+              <h3 className="text-lg font-semibold mb-2">The optimizer didn't find any alternatives</h3>
+              <p className="text-muted-foreground mb-5 max-w-xl mx-auto">
+                The run completed but produced no alternative plans — this can happen when the plan
+                is already well-organized or the AI timed out. Your plan is untouched. You can re-run
+                the optimizer{slipTripId ? "" : " or go back to your cart"}.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(backExit.to)}
+                  data-testid="button-back-no-proposals"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {backExit.label}
+                </Button>
+                <Button
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry-no-proposals"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Re-run optimization
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
+          <Card className="mb-6">
+            <CardContent className="p-8 text-center">
+              <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              {isPendingPayment ? (
+                <>
+                  {/* Stale-refresh honesty (ledger 2026-08-22-slip-review-copy): an unpaid
+                      comparison reached in review mode (bookmark/refresh) states its real
+                      status instead of "comparison is empty… go back to your cart". */}
+                  <h3 className="text-lg font-semibold mb-2">This optimization hasn't started yet</h3>
+                  <p className="text-muted-foreground mb-6">
+                    The optimization fee for this run wasn't completed, so no proposals were
+                    generated{slipTripId ? ' — start it again from "Optimize this plan" on your plan'
+                      : " — start it again from your cart"}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold mb-2">No itinerary data found</h3>
+                  <p className="text-muted-foreground mb-6">
+                    It looks like the comparison is empty.
+                    {slipTripId ? " Head back to your plan and try again." : " Please go back to your cart and try again."}
+                  </p>
+                </>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => setLocation(backExit.to)}
+                data-testid="button-back-to-cart"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                {backExit.label}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasVariants && (
+          <>
+            {destination && !slipTripId && (
+              <Card className="mb-4 border-purple-200/50 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/10 dark:to-indigo-950/10 dark:border-purple-800/50">
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shrink-0">
+                      {travelPulseIntelligenceLoading ? (
+                        <Loader2 className="h-3 w-3 text-purple-600 dark:text-purple-400 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                      Destination Intelligence
+                    </span>
+                    <span className="text-xs text-purple-600/70 dark:text-purple-400/70">
+                      {isMultiCity ? `${primaryCity} + more` : destination}
+                    </span>
+                    {isMultiCity && (
+                      <Badge variant="outline" className="text-[10px] h-4 ml-1 border-purple-200 text-purple-600 dark:border-purple-700 dark:text-purple-400">
+                        Multi-city
+                      </Badge>
+                    )}
+                    {travelPulseError && !travelPulseLoading && !travelPulseData?.city && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        {isMultiCity ? "Per-city data varies" : "Intel pending"}
+                      </span>
+                    )}
+                  </div>
+                  {travelPulseIntelligenceLoading && (
+                    <div className="flex gap-3 mt-2 overflow-x-auto">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="bg-white/60 dark:bg-gray-900/40 rounded px-2 py-1 animate-pulse shrink-0">
+                          <div className="h-3 w-12 bg-purple-200/50 dark:bg-purple-800/30 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {travelPulseData?.city && (
+                    <div className="mt-3 pt-3 border-t border-purple-200/50 dark:border-purple-800/50">
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        {travelPulseData.city.pulseScore && (
+                          <div className="flex items-center gap-1">
+                            <Zap className="h-3 w-3 text-amber-500" />
+                            <span className="text-muted-foreground">Pulse:</span>
+                            <span className="font-medium text-purple-700 dark:text-purple-300">{travelPulseData.city.pulseScore}/100</span>
+                          </div>
+                        )}
+                        {travelPulseData.city.trendingScore && (
+                          <div className="flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3 text-green-500" />
+                            <span className="text-muted-foreground">Trending:</span>
+                            <span className="font-medium text-green-600 dark:text-green-400">{travelPulseData.city.trendingScore}/100</span>
+                          </div>
+                        )}
+                        {travelPulseData.city.crowdLevel && (
+                          <div className="flex items-center gap-1">
+                            <Users className="h-3 w-3 text-blue-500" />
+                            <span className="text-muted-foreground">Crowds:</span>
+                            <span className="font-medium capitalize text-blue-600 dark:text-blue-400">{travelPulseData.city.crowdLevel}</span>
+                          </div>
+                        )}
+                        {travelPulseData.city.aiBudgetEstimate && (
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 text-emerald-500" />
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400 truncate max-w-32">
+                              {typeof travelPulseData.city.aiBudgetEstimate === 'string' 
+                                ? travelPulseData.city.aiBudgetEstimate 
+                                : (travelPulseData.city.aiBudgetEstimate as any)?.midRange || 'Budget varies'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {data?.comparison?.segmentationProposal && (
+              <SegmentationRecommendationBanner proposal={data.comparison.segmentationProposal} />
+            )}
+
+            {/* ── Spec C (SLIP_EXPERIENCE_DISPATCH §4): a slip-backed comparison renders through
+                the canonical PlanCard proposal stage — CompareHeader (exclusions stated HERE
+                ONCE, never as grayed rows inside columns) + three equal columns + the verbatim
+                footer sentence. NO routing actions, NO per-item apply, NO save-for-later. ── */}
+            {slipTripId && (
+              <>
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4" data-testid="compare-header">
+                  <p className="font-mono text-sm text-muted-foreground">
+                    {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
+                    {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
+                    {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
+                  </p>
+                  {(anchoredItems.length > 0 || withExpertRows.length > 0) && (
+                    <div className="text-sm text-muted-foreground md:text-right space-y-0.5" data-testid="compare-header-right">
+                      {anchoredItems.length > 0 && (
+                        <p className="flex items-center gap-1.5 md:justify-end">
+                          <Anchor className="w-3.5 h-3.5" />
+                          {anchoredItems.length === 1
+                            ? `${anchoredItems[0].name} pinned in all`
+                            : `${anchoredItems.length} purchased items pinned in all`}
+                        </p>
+                      )}
+                      {withExpertRows.length > 0 && (
+                        <p data-testid="compare-exclusion-note">
+                          {withExpertRows.length === 1
+                            ? `${withExpertRows[0].a.name} excluded`
+                            : `${withExpertRows.length} items excluded`}{" "}
+                          ({slipExpertFirstName ? `with ${slipExpertFirstName}` : "with your expert"})
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Review-first context (ledger 2026-08-22-slip-optimize-review-first): what's
+                    trending now and what's popular around the trip's dates — the real TravelPulse
+                    signal the page already fetched. Each half is OMITTED when absent (§13), and the
+                    whole block disappears when neither exists. Context only — never a per-proposal
+                    delta claim, and no distance figure (§21 L3). */}
+                {(() => {
+                  const trending = (trendingData?.experiences ?? [])
+                    .filter((e) => e?.name)
+                    .slice(0, 3);
+                  const seasonal = seasonalHighlightForTrip(
+                    travelPulseData?.city?.aiSeasonalHighlights,
+                    data?.comparison?.startDate,
+                  );
+                  if (trending.length === 0 && !seasonal) return null;
+                  return (
+                    <div
+                      className="mb-4 rounded-lg border bg-muted/40 p-3 space-y-2"
+                      data-testid="slip-optimize-preview-context"
+                    >
+                      {trending.length > 0 && (
+                        <div className="flex items-start gap-2 text-sm" data-testid="preview-trending-now">
+                          <TrendingUp className="w-4 h-4 mt-0.5 text-green-600 shrink-0" />
+                          <p>
+                            <span className="font-medium">
+                              Trending now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
+                            </span>
+                            {trending.map((e) => e.name).join(" · ")}
+                          </p>
+                        </div>
+                      )}
+                      {seasonal && (
+                        <div className="flex items-start gap-2 text-sm" data-testid="preview-seasonal">
+                          <Calendar className="w-4 h-4 mt-0.5 text-purple-600 shrink-0" />
+                          <p>
+                            <span className="font-medium">Popular around your travel dates: </span>
+                            {seasonal}
+                          </p>
+                        </div>
+                      )}
+                      {/* Provenance qualifier (ledger 2026-08-22-first-run-prefs, §13): these
+                          signals are AI destination intelligence, not measured bookings — say
+                          so rather than implying a measured figure. Swappable to measured
+                          sources later without touching this block's shape. */}
+                      <p
+                        className="text-[11px] text-muted-foreground/80 pl-6"
+                        title="These highlights come from live AI destination intelligence, not measured bookings."
+                        data-testid="preview-provenance"
+                      >
+                        From AI destination intel
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                  {specColumns.slice(0, 4).map((variant, index) => (
+                    <ProposalColumnContainer
+                      key={variant.id}
+                      variant={variant}
+                      comparison={data.comparison}
+                      anchoredItems={anchoredItems}
+                      recommended={variant.id === recommendedVariantId}
+                      applying={applyingVariantId === variant.id}
+                      baselineTotalUsd={baselineTotalUsd}
+                      baselineDriveMinutes={baselineDriveMinutes}
+                      isBaselineColumn={variant.source === "user"}
+                      boardId={variant.source === "user" ? "baseline" : `v${aiVariants.findIndex((v) => v.id === variant.id) + 1}`}
+                      onApply={() => {
+                        setPendingApplyVariant(variant);
+                      }}
+                    />
+                  ))}
+                  {isGenerating &&
+                    Array.from({ length: Math.max(0, 4 - specColumns.length) }).map((_, idx) => (
+                      <Card key={`proposal-skeleton-${idx}`} className="border-dashed opacity-80">
+                        <CardHeader className="pt-6">
+                          <Skeleton className="h-5 w-32" />
+                          <Skeleton className="h-4 w-48 mt-1" />
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center justify-center gap-3 py-10">
+                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">Optimizing…</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+
+                {/* Verbatim, load-bearing copy (§4 Spec C). */}
+                <p className="text-sm text-muted-foreground text-center mb-6" data-testid="compare-footer">
+                  Applying a variant updates the slip in place — the other two are discarded.
+                  Nothing is purchased by applying.
+                </p>
+                {applyError && (
+                  <div
+                    className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"
+                    role="alert"
+                    data-testid="apply-error"
+                  >
+                    <p className="text-sm text-destructive">{applyError}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-apply-retry"
+                      onClick={() => {
+                        setApplyError(null);
+                        if (failedApplyVariant) setPendingApplyVariant(failedApplyVariant);
+                      }}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                <AlertDialog
+                  open={!!pendingApplyVariant}
+                  onOpenChange={(open) => {
+                    if (!open && !applyVariantMutation.isPending) {
+                      setPendingApplyVariant(null);
+                    }
+                  }}
+                >
+                  <AlertDialogContent data-testid="dialog-apply-confirm">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Apply {pendingApplyVariant?.name} to your plan?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will replace the items still in planning with{" "}
+                        <span className="font-medium text-foreground">
+                          {pendingApplyVariant?.name}
+                        </span>
+                        . The other proposals will be discarded. Your purchased items stay
+                        pinned, and nothing is purchased by applying.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        data-testid="button-apply-cancel"
+                        disabled={applyVariantMutation.isPending}
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        data-testid="button-apply-confirm"
+                        disabled={applyVariantMutation.isPending}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (!pendingApplyVariant || applyVariantMutation.isPending) return;
+                          setApplyError(null);
+                          setApplyingVariantId(pendingApplyVariant.id);
+                          applyVariantMutation.mutate(pendingApplyVariant.id, {
+                            onSettled: () => setPendingApplyVariant(null),
+                          });
+                        }}
+                      >
+                        {applyVariantMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Confirm and apply
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
+
+            {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
+                slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
+            {!slipTripId && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+              {/* Skeleton for user variant if still loading */}
+              {isGenerating && !userVariant && (
+                <Card className="border-dashed opacity-80">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-5 w-20" />
+                    </div>
+                    <Skeleton className="h-6 w-32 mt-2" />
+                    <Skeleton className="h-4 w-48 mt-1" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                      <Separator />
+                      <div className="flex items-center justify-center gap-3 py-6">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Building your plan...</span>
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Skeleton className="h-9 w-full" />
+                  </CardFooter>
+                </Card>
+              )}
+
+              {userVariant && (
+                <Card
+                  className={cn(
+                    "cursor-pointer transition-all",
+                    selectedVariantId === userVariant.id && "ring-2 ring-primary"
+                  )}
+                  onClick={() => setSelectedVariantId(userVariant.id)}
+                  data-testid={`card-variant-${userVariant.id}`}
+                >
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary">Your Plan</Badge>
+                      <div className="flex items-center gap-1">
+                        {selectedVariantId === userVariant.id && (
+                          <Check className="h-5 w-5 text-primary" />
+                        )}
+                        <VariantOptionsMenu
+                          variant={userVariant}
+                          comparison={data.comparison}
+                          userId={userId}
+                        />
+                      </div>
+                    </div>
+                    <CardTitle className="text-lg">{userVariant.name}</CardTitle>
+                    <CardDescription>{userVariant.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Total Cost</span>
+                          <span className="text-xl font-bold">
+                            ${parseFloat(userVariant.totalCost || "0").toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {data.comparison.travelers || 1} traveler{(data.comparison.travelers || 1) > 1 ? 's' : ''}
+                          </span>
+                          <span>
+                            ${(parseFloat(userVariant.totalCost || "0") / (data.comparison.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
+                          </span>
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium">Items ({userVariant.items.length})</h4>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalVariant(userVariant);
+                            }}
+                            data-testid={`button-view-plan-${userVariant.id}`}
+                          >
+                            <Maximize2 className="h-3 w-3 mr-1" />
+                            View Full Plan
+                          </Button>
+                        </div>
+                        <ScrollArea className="h-48">
+                          {userVariant.items.slice(0, 6).map((item, idx) => {
+                            const bookingType = getBookingType(item.serviceType);
+                            return (
+                              <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Badge variant="outline" className="text-xs shrink-0">
+                                      Day {item.dayNumber}
+                                    </Badge>
+                                    <span className="truncate max-w-32">
+                                      {item.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {bookingType === "partner" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
+                                        {item.serviceType?.toLowerCase().includes("transport") ? (
+                                          <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                        ) : (
+                                          <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                        )}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
+                                        <Check className="h-2.5 w-2.5 mr-1" />In-App
+                                      </Badge>
+                                    )}
+                                    <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {userVariant.items.length > 6 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                              +{userVariant.items.length - 6} more activities...
+                            </p>
+                          )}
+                        </ScrollArea>
+                      </div>
+
+                      <Separator />
+                      <VariantTransportLegs variantId={userVariant.id} />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-col gap-2">
+                    <BookThisTripButton
+                      variant={userVariant}
+                      comparison={data.comparison}
+                      userId={userId}
+                      userEmail={userEmail}
+                    />
+                    <div className="flex w-full gap-2">
+                      <ShareVariantButton variantId={userVariant.id} />
+                      <OpenInMapsButton items={userVariant.items} destination={data.comparison.destination} />
+                    </div>
+                  </CardFooter>
+                </Card>
+              )}
+
+              {/* Show skeleton placeholders for pending AI variants */}
+              {isGenerating && aiVariants.length < 3 && (
+                <>
+                  {Array.from({ length: 3 - aiVariants.length }).map((_, idx) => (
+                    <Card key={`skeleton-ai-${idx}`} className="border-dashed opacity-80">
+                      <CardHeader className="pt-6">
+                        <div className="flex items-center justify-between">
+                          <Skeleton className="h-5 w-24" />
+                        </div>
+                        <Skeleton className="h-6 w-40 mt-2" />
+                        <Skeleton className="h-4 w-56 mt-1" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <Skeleton className="h-4 w-20" />
+                            <Skeleton className="h-6 w-16" />
+                          </div>
+                          <Separator />
+                          <div className="flex items-center justify-center gap-3 py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">
+                              {idx === 0 ? "Finding best alternatives..." : "Optimizing for savings..."}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-full" />
+                          </div>
+                        </div>
+                      </CardContent>
+                      <CardFooter>
+                        <Skeleton className="h-9 w-full" />
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </>
+              )}
+
+              {aiVariants.map((variant, index) => (
+                <Card
+                  key={variant.id}
+                  className={cn(
+                    "cursor-pointer transition-all relative",
+                    selectedVariantId === variant.id && "ring-2 ring-primary",
+                    index === 0 && "border-green-500/50"
+                  )}
+                  onClick={() => setSelectedVariantId(variant.id)}
+                  data-testid={`card-variant-${variant.id}`}
+                >
+                  {index === 0 && (
+                    <div className="absolute -top-3 left-4">
+                      <Badge className="bg-green-600">
+                        <Award className="h-3 w-3 mr-1" />
+                        Recommended
+                      </Badge>
+                    </div>
+                  )}
+                  <CardHeader className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="default" className="bg-primary/10 text-primary">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        AI Optimized
+                      </Badge>
+                      <div className="flex items-center gap-1">
+                        {selectedVariantId === variant.id && (
+                          <Check className="h-5 w-5 text-primary" />
+                        )}
+                        <VariantOptionsMenu
+                          variant={variant}
+                          comparison={data.comparison}
+                          userId={userId}
+                        />
+                      </div>
+                    </div>
+                    <CardTitle className="text-lg">{variant.name}</CardTitle>
+                    <CardDescription>{variant.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Total Cost</span>
+                          <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                            ${parseFloat(variant.totalCost || "0").toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {data.comparison.travelers || 1} traveler{(data.comparison.travelers || 1) > 1 ? 's' : ''}
+                          </span>
+                          <span>
+                            ${(parseFloat(variant.totalCost || "0") / (data.comparison.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
+                          </span>
+                        </div>
+                      </div>
+
+                      {variant.metrics && variant.metrics.length > 0 && (() => {
+                        // Prioritize showing key comparison metrics
+                        const priorityOrder = ["total_cost", "average_rating", "relaxation_minutes", "travel_time"];
+                        const sequencingScores = ["balance_score", "wellness_score", "pace_score", "sequencing_score"];
+                        
+                        // Get priority metrics first, then fill with others
+                        const sortedMetrics = [...variant.metrics].sort((a, b) => {
+                          const aIdx = priorityOrder.indexOf(a.metricKey);
+                          const bIdx = priorityOrder.indexOf(b.metricKey);
+                          if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                          if (aIdx !== -1) return -1;
+                          if (bIdx !== -1) return 1;
+                          return 0;
+                        });
+                        
+                        // Get sequencing scores for the compact score display
+                        const scores = variant.metrics.filter(m => sequencingScores.includes(m.metricKey));
+                        const avgScore = scores.length > 0 
+                          ? Math.round(scores.reduce((sum, m) => sum + (parseFloat(m.value) || 0), 0) / scores.length)
+                          : null;
+                        
+                        return (
+                          <>
+                            <Separator />
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-medium">Why it's better</h4>
+                                {avgScore !== null && (
+                                  <Badge 
+                                    variant="outline" 
+                                    className={cn(
+                                      "text-xs",
+                                      avgScore >= 80 ? "border-green-500 text-green-600 dark:text-green-400" :
+                                      avgScore >= 60 ? "border-yellow-500 text-yellow-600 dark:text-yellow-400" :
+                                      "border-orange-500 text-orange-600 dark:text-orange-400"
+                                    )}
+                                    data-testid={`badge-traveloure-score-${variant.id}`}
+                                  >
+                                    <Sparkles className="h-3 w-3 mr-1" />
+                                    {avgScore} Traveloure Score
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {sortedMetrics.slice(0, 4).map((metric) => {
+                                  const Icon = getMetricIcon(metric.metricKey);
+                                  return (
+                                    <div key={metric.id} className="flex items-center gap-2" data-testid={`card-metric-${metric.metricKey}`}>
+                                      <Icon className={cn("h-4 w-4", getMetricColor(metric))} />
+                                      <span className="text-xs truncate">{metric.description}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+
+                      {variant.aiReasoning && (
+                        <>
+                          <Separator />
+                          <p className="text-sm text-muted-foreground italic">"{variant.aiReasoning}"</p>
+                        </>
+                      )}
+
+                      <Separator />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium">Items ({variant.items.length})</h4>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalVariant(variant);
+                            }}
+                            data-testid={`button-view-plan-${variant.id}`}
+                          >
+                            <Maximize2 className="h-3 w-3 mr-1" />
+                            View Full Plan
+                          </Button>
+                        </div>
+                        <ScrollArea className="h-48">
+                          {variant.items.slice(0, 6).map((item, idx) => {
+                            const bookingType = getBookingType(item.serviceType);
+                            return (
+                              <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Badge variant="outline" className="text-xs shrink-0">
+                                      Day {item.dayNumber}
+                                    </Badge>
+                                    <span className="truncate max-w-32">
+                                      {item.name}
+                                    </span>
+                                    {item.isReplacement && (
+                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 shrink-0">
+                                        New
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {bookingType === "partner" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
+                                        {item.serviceType?.toLowerCase().includes("transport") ? (
+                                          <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                        ) : (
+                                          <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                        )}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
+                                        <Check className="h-2.5 w-2.5 mr-1" />In-App
+                                      </Badge>
+                                    )}
+                                    <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {variant.items.length > 6 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                              +{variant.items.length - 6} more activities...
+                            </p>
+                          )}
+                        </ScrollArea>
+                      </div>
+
+                      <Separator />
+                      <VariantTransportLegs variantId={variant.id} />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-col gap-2">
+                    <BookThisTripButton
+                      variant={variant}
+                      comparison={data.comparison}
+                      userId={userId}
+                      userEmail={userEmail}
+                    />
+                    <div className="flex w-full gap-2">
+                      <ShareVariantButton variantId={variant.id} />
+                      <OpenInMapsButton items={variant.items} destination={data.comparison.destination} />
+                    </div>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+            )}
+
+            {data?.upsellSuggestions && data.upsellSuggestions.length > 0 && (
+              <div className="mb-6" data-testid="section-upsell-suggestions">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="h-px flex-1 bg-border" />
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                    <Gift className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">
+                      Add to your trip
+                    </span>
+                  </div>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                <p className="text-sm text-muted-foreground text-center mb-4">
+                  Curated extras matched to your travel style
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {data.upsellSuggestions.map((suggestion) => {
+                    const categoryIconMap: Record<string, JSX.Element> = {
+                      romantic_dining: <Heart className="h-4 w-4 text-rose-500" />,
+                      private_chef: <ChefHat className="h-4 w-4 text-amber-500" />,
+                      spa: <Waves className="h-4 w-4 text-blue-500" />,
+                      private_transfer: <Car className="h-4 w-4 text-gray-500" />,
+                      outdoor_addon: <MapPin className="h-4 w-4 text-green-500" />,
+                    };
+                    const categoryIcon = categoryIconMap[suggestion.category] || <Sparkles className="h-4 w-4 text-primary" />;
+
+                    return (
+                      <Card
+                        key={suggestion.serviceId}
+                        className="border-amber-100 dark:border-amber-900/50 bg-gradient-to-br from-amber-50/60 to-orange-50/40 dark:from-amber-950/20 dark:to-orange-950/10 overflow-hidden"
+                        data-testid={`card-upsell-${suggestion.serviceId}`}
+                      >
+                        {suggestion.imageUrl && (
+                          <div className="h-32 overflow-hidden">
+                            <img
+                              src={suggestion.imageUrl}
+                              alt={suggestion.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <CardContent className={suggestion.imageUrl ? "pt-3 pb-4 px-4" : "pt-4 pb-4 px-4"}>
+                          <div className="flex items-start gap-2 mb-2">
+                            {categoryIcon}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-sm leading-tight line-clamp-2">
+                                {suggestion.title}
+                              </h4>
+                            </div>
+                          </div>
+
+                          {suggestion.description && (
+                            <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                              {suggestion.description}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3 flex-wrap">
+                            {suggestion.price && (
+                              <span className="flex items-center gap-0.5 font-medium text-foreground">
+                                <DollarSign className="h-3 w-3" />
+                                {parseFloat(suggestion.price).toLocaleString()}
+                              </span>
+                            )}
+                            {suggestion.rating && parseFloat(suggestion.rating) > 0 && (
+                              <span className="flex items-center gap-0.5">
+                                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                                {parseFloat(suggestion.rating).toFixed(1)}
+                              </span>
+                            )}
+                            {suggestion.location && (
+                              <span className="flex items-center gap-0.5 truncate max-w-24">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                {suggestion.location}
+                              </span>
+                            )}
+                          </div>
+
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 mb-3 block w-fit"
+                          >
+                            {suggestion.matchReason}
+                          </Badge>
+
+                          <Button
+                            size="sm"
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => addUpsellToCartMutation.mutate(suggestion.serviceId)}
+                            disabled={addUpsellToCartMutation.isPending}
+                            data-testid={`button-add-upsell-${suggestion.serviceId}`}
+                          >
+                            {addUpsellToCartMutation.isPending ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Add to trip
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Legacy no-trip flow only — the Spec C branch applies per-column and navigates
+                to the slip; nothing goes to cart from a slip-backed comparison here. */}
+            {!slipTripId && data?.comparison?.selectedVariantId && (
+              <Card className="border-primary bg-primary/5">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Check className="h-8 w-8 text-primary" />
+                      <div>
+                        <h3 className="font-semibold">Plan Selected</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Ready to proceed with your{" "}
+                          {data.variants.find((v) => v.id === data.comparison.selectedVariantId)?.name || "selected"}{" "}
+                          plan
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => applyToCartMutation.mutate()}
+                      disabled={applyToCartMutation.isPending}
+                      data-testid="button-apply-to-cart"
+                    >
+                      {applyToCartMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <ShoppingCart className="mr-2 h-4 w-4" />
+                      )}
+                      Apply to Cart & Checkout
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Sprint-1 dislike loop: the four escape hatches, presented as a set.
+                Chips steer a strategy-mapped re-run (free within 24h of your
+                optimization) and ride the expert request so a human sees what was
+                rejected. Keeping the original is always free — nothing applies to
+                the cart unless explicitly chosen above. */}
+            {!isGenerating && (
+              <Card className="border-dashed" data-testid="dislike-loop-panel">
+                <CardContent className="p-5 space-y-3">
+                  <div>
+                    <h3 className="font-semibold text-sm">Not happy with these plans?</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Tell the optimizer what to fix and re-run it — free within 24 hours of your
+                      optimization — or hand the plan to a human expert. Your original plan stays
+                      untouched unless you apply a variant.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {FEEDBACK_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => toggleFeedbackChip(opt.id)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                          feedbackChips.includes(opt.id)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                        data-testid={`feedback-chip-${opt.id}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => retryMutation.mutate()}
+                      disabled={retryMutation.isPending || feedbackChips.length === 0}
+                      data-testid="button-rerun-with-feedback"
+                    >
+                      {retryMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Re-run with these fixes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowExpertDialog(true)}
+                      data-testid="button-dislike-expert"
+                    >
+                      Send to an expert
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setLocation(backExit.to)}
+                      data-testid="button-keep-original"
+                    >
+                      Keep my original plan
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+          </>
+        )}
+
+        {/* Full-Page Itinerary Modal */}
+        <Dialog open={!!modalVariant} onOpenChange={() => setModalVariant(null)}>
+          <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+            <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <DialogTitle className="text-xl flex items-center gap-2">
+                    {modalVariant?.source === "ai" && (
+                      <Badge variant="default" className="bg-primary/10 text-primary">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        AI Optimized
+                      </Badge>
+                    )}
+                    {modalVariant?.name}
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
+                    {modalVariant?.description}
+                  </DialogDescription>
+                </div>
+                <div className="text-right shrink-0 ml-4">
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    ${parseFloat(modalVariant?.totalCost || "0").toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ${(parseFloat(modalVariant?.totalCost || "0") / (data?.comparison?.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {modalVariant?.items?.length} activities
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+            
+            <ScrollArea className="flex-1 px-6">
+              <div className="py-4 space-y-6">
+                {/* Why it's better - Metrics */}
+                {modalVariant?.metrics && modalVariant.metrics.length > 0 && (() => {
+                  // Separate core metrics from smart sequencing metrics
+                  const coreMetricKeys = ["total_cost", "average_rating", "travel_time", "free_time"];
+                  const sequencingMetricKeys = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score", "relaxation_minutes", "methodology_summary"];
+                  
+                  const coreMetrics = modalVariant.metrics.filter(m => coreMetricKeys.includes(m.metricKey));
+                  const sequencingMetrics = modalVariant.metrics.filter(m => sequencingMetricKeys.includes(m.metricKey));
+                  const otherMetrics = modalVariant.metrics.filter(m => !coreMetricKeys.includes(m.metricKey) && !sequencingMetricKeys.includes(m.metricKey));
+                  
+                  return (
+                    <div className="space-y-4">
+                      {/* Core Metrics */}
+                      {coreMetrics.length > 0 && (
+                        <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-4 space-y-3">
+                          <h4 className="font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4" />
+                            Why it's better
+                          </h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {coreMetrics.map((metric) => {
+                              const Icon = getMetricIcon(metric.metricKey);
+                              return (
+                                <div key={metric.id} className="flex items-center gap-2" data-testid={`metric-${metric.metricKey}`}>
+                                  <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                                  <span className="text-sm">{metric.description}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Smart Sequencing Metrics */}
+                      {sequencingMetrics.length > 0 && (
+                        <div className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-4 space-y-3">
+                          <h4 className="font-medium text-purple-800 dark:text-purple-200 flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            Smart Sequencing
+                          </h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {sequencingMetrics.map((metric) => {
+                              const Icon = getMetricIcon(metric.metricKey);
+                              const scoreValue = parseFloat(metric.value) || 0;
+                              const isScoreMetric = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score"].includes(metric.metricKey);
+                              return (
+                                <div key={metric.id} className="flex items-center gap-2" data-testid={`metric-${metric.metricKey}`}>
+                                  <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                                  <div className="flex-1 min-w-0">
+                                    {isScoreMetric ? (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">{Math.round(scoreValue)}</span>
+                                        <span className="text-xs text-muted-foreground truncate">{metric.description}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm truncate">{metric.description}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Other Metrics */}
+                      {otherMetrics.length > 0 && (
+                        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            {otherMetrics.map((metric) => {
+                              const Icon = getMetricIcon(metric.metricKey);
+                              return (
+                                <div key={metric.id} className="flex items-center gap-2" data-testid={`metric-${metric.metricKey}`}>
+                                  <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                                  <span className="text-sm">{metric.description}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* AI Reasoning */}
+                {modalVariant?.aiReasoning && (
+                  <div className="bg-primary/5 rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground italic">
+                      "{modalVariant.aiReasoning}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Group items by day and show transport legs */}
+                {modalVariant && (() => {
+                  // Use days structure if available (has transport legs), otherwise fallback to items grouping
+                  const days = modalVariant.days || (() => {
+                    const dayGroups = modalVariant.items.reduce((acc, item) => {
+                      const day = item.dayNumber;
+                      if (!acc[day]) acc[day] = { activities: [], transportLegs: [] };
+                      acc[day].activities.push(item);
+                      return acc;
+                    }, {} as Record<number, { activities: VariantItem[]; transportLegs: TransportLegData[] }>);
+
+                    return Object.entries(dayGroups).map(([dayNum, data]) => ({
+                      dayNumber: parseInt(dayNum),
+                      activities: data.activities.sort((a, b) => (a.startTime || a.timeSlot || "").localeCompare(b.startTime || b.timeSlot || "")),
+                      transportLegs: data.transportLegs,
+                    }));
+                  })();
+
+                  const sortedDays = [...days].sort((a, b) => a.dayNumber - b.dayNumber);
+
+                  return sortedDays.map((day) => (
+                    <div key={day.dayNumber} className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-sm font-semibold">
+                          <Calendar className="h-3.5 w-3.5 mr-1" />
+                          Day {day.dayNumber}
+                        </Badge>
+                        <Separator className="flex-1" />
+                      </div>
+
+                      <div className="space-y-3 pl-4">
+                        {day.activities.map((item, idx) => {
+                          const bookingType = getBookingType(item.serviceType);
+                          const partnerKey = getPartnerKey(item);
+                          const legAfter = day.transportLegs?.find(l => l.legOrder === idx + 1);
+
+                          return (
+                            <div key={item.id || idx}>
+                              <div
+                                className="bg-muted/30 rounded-lg p-4 space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-3 flex-wrap">
+                                  <div className="space-y-1 flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="font-medium">{item.name}</h4>
+                                      {item.isReplacement && (
+                                        <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
+                                          New
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {item.description && (
+                                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className="font-semibold">${parseFloat(item.price || "0")}</span>
+                                    {bookingType === "partner" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
+                                        {item.serviceType?.toLowerCase().includes("transport") ? (
+                                          <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                        ) : (
+                                          <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                        )}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
+                                        <Check className="h-2.5 w-2.5 mr-1" />Book on Traveloure
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    {item.startTime} - {item.endTime}
+                                  </span>
+                                  {item.duration > 0 && (
+                                    <span>({item.duration} mins)</span>
+                                  )}
+                                  {item.location && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="h-3.5 w-3.5" />
+                                      {item.location}
+                                    </span>
+                                  )}
+                                  {item.rating && (
+                                    <span className="flex items-center gap-1">
+                                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                                      {item.rating}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {item.replacementReason && (
+                                  <p className="text-sm text-green-600 dark:text-green-400 italic">
+                                    {item.replacementReason}
+                                  </p>
+                                )}
+
+                                {partnerKey && (
+                                  <PartnerAgentBookButton
+                                    partner={partnerKey}
+                                    itemName={item.name}
+                                    itemDescription={item.description || null}
+                                    destination={data?.comparison?.destination}
+                                  />
+                                )}
+                              </div>
+
+                              {/* Render transport leg after activity */}
+                              {legAfter && (
+                                <TransportLeg
+                                  leg={legAfter}
+                                  readOnly={false}
+                                  dayNumber={day.dayNumber}
+                                  className="my-2"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </ScrollArea>
+            
+            <DialogFooter className="px-6 py-4 border-t shrink-0">
+              <Button variant="outline" onClick={() => setModalVariant(null)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-amber-600" />
+                Request Expert Booking Assistance
+              </DialogTitle>
+              <DialogDescription>
+                Let our trip planners handle all bookings for your itinerary. They'll coordinate 
+                both on-site and partner bookings, ensuring everything is confirmed before your trip.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="bg-amber-50 dark:bg-amber-950/20 rounded-lg p-4">
+                <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-2">What's included:</h4>
+                <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />All hotel and accommodation bookings</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Tour and activity reservations</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Ground transportation (trains, buses, ferries via 12Go)</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Event and show tickets (via Fever)</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Restaurant reservations</li>
+                </ul>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Special requests or notes (optional)</label>
+                <Textarea
+                  value={expertNotes}
+                  onChange={(e) => setExpertNotes(e.target.value)}
+                  placeholder="Any specific preferences, dietary requirements, or special requests..."
+                  className="min-h-20"
+                  data-testid="input-expert-notes"
+                />
+              </div>
+              {/* §13: was "An expert will contact you within 24 hours." No such SLA
+                  exists — POST /api/expert-booking-requests notifies experts covering the
+                  destination (or the specific provider) and creates a `pending` row with no
+                  payment intent. Nobody is on a 24-hour clock, so we describe what the
+                  request actually does and what it does not charge. */}
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Your request goes to experts who cover this destination. You're not charged
+                anything now — payment comes later, once an expert has confirmed the details
+                with you.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowExpertDialog(false)}>Cancel</Button>
+              <Button 
+                onClick={handleExpertBookingRequest}
+                disabled={expertBookingMutation.isPending}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                data-testid="button-confirm-expert-booking"
+              >
+                {expertBookingMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
+                ) : (
+                  <><Users className="mr-2 h-4 w-4" />Submit Request</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+    </div>
+  );
+}

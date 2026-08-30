@@ -42,12 +42,33 @@ export interface FeaturedRankableItem {
 /**
  * Returns the effective ranking score for an item given its baseline quality.
  * Featured items get FEATURED_BOOST iff their quality is above the floor.
+ *
+ * `qualityScore` may be **null**, meaning UNMEASURED — the item has no rating,
+ * no reviews, no bookings yet, so no quality judgment exists for it at all.
+ * This is distinct from a measured-but-low score, and the two must not be
+ * conflated:
+ *
+ *   - measured & below floor → the item was rated and rated badly. The floor
+ *     applies: featuring does NOT rescue it. (The original intent — "an item
+ *     featured then later degraded" must not corrupt ranking.)
+ *   - UNMEASURED (null)      → nothing is known. The floor does NOT apply,
+ *     because the guardrail exists to stop featuring from burying a *better
+ *     native result*, and where nothing is measured there is no better result
+ *     to bury. Treating unmeasured as below-floor would silently make editorial
+ *     featuring a no-op on any young marketplace — every item scores 0 and no
+ *     boost ever lands. Unmeasured items rank at 0 + boost, i.e. featured ones
+ *     lead their unmeasured peers but still lose to a genuinely well-rated item.
  */
-export function featuredAdjustedScore(item: FeaturedRankableItem, qualityScore: number): number {
+export function featuredAdjustedScore(
+  item: FeaturedRankableItem,
+  qualityScore: number | null,
+): number {
+  const measured = qualityScore ?? 0;
   const featured = item.isFeatured === true;
-  if (!featured) return qualityScore;
-  if (qualityScore < FEATURED_MIN_QUALITY) return qualityScore;
-  return qualityScore + FEATURED_BOOST;
+  if (!featured) return measured;
+  // Unmeasured → boost applies (nothing to bury). Measured-but-low → floor holds.
+  if (qualityScore !== null && qualityScore < FEATURED_MIN_QUALITY) return measured;
+  return measured + FEATURED_BOOST;
 }
 
 /**
@@ -55,10 +76,13 @@ export function featuredAdjustedScore(item: FeaturedRankableItem, qualityScore: 
  * by their featured-adjusted score (highest first).
  *
  * @param scoreFor extract the baseline quality score for an item — surface-
- *                 specific (e.g. avg rating × 20, or a composite engagement metric)
+ *                 specific (e.g. avg rating × 20, or a composite engagement metric).
+ *                 Return **null** for an item with no quality measurement at all
+ *                 (no reviews/bookings yet) rather than inventing a 0 — see
+ *                 featuredAdjustedScore for why the two differ.
  */
 export function makeFeaturedSorter<T extends FeaturedRankableItem>(
-  scoreFor: (item: T) => number,
+  scoreFor: (item: T) => number | null,
 ): (a: T, b: T) => number {
   return (a, b) => featuredAdjustedScore(b, scoreFor(b)) - featuredAdjustedScore(a, scoreFor(a));
 }
@@ -68,7 +92,7 @@ export function makeFeaturedSorter<T extends FeaturedRankableItem>(
  */
 export function sortByFeaturedAdjusted<T extends FeaturedRankableItem>(
   items: T[],
-  scoreFor: (item: T) => number,
+  scoreFor: (item: T) => number | null,
 ): T[] {
   return items.sort(makeFeaturedSorter(scoreFor));
 }

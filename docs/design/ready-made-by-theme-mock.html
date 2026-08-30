@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ready-Made by Theme</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Archivo:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --page: #FAFAF8;
+    --card: #FFFFFF;
+    --ink: #1A1A18;
+    --mut: #7A7A72;
+    --hair: #E8E8E2;
+    --accent: #E85D55;
+    --accent-soft: rgba(232, 93, 85, 0.09);
+    --teal: #35605A;
+    --teal-soft: rgba(53, 96, 90, 0.10);
+    --note-bg: #FFF9EE;
+    --note-border: #EAD9B0;
+    --note-ink: #6B5620;
+    --shadow: 0 1px 3px rgba(26,26,24,0.07), 0 8px 24px rgba(26,26,24,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #161614;
+      --card: #211F1C;
+      --ink: #F0EEE8;
+      --mut: #9C9A90;
+      --hair: #37342F;
+      --accent: #F07A72;
+      --accent-soft: rgba(240, 122, 114, 0.14);
+      --teal: #7FB5AD;
+      --teal-soft: rgba(127, 181, 173, 0.14);
+      --note-bg: #2A2415;
+      --note-border: #55482A;
+      --note-ink: #D8C48E;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #161614;
+    --card: #211F1C;
+    --ink: #F0EEE8;
+    --mut: #9C9A90;
+    --hair: #37342F;
+    --accent: #F07A72;
+    --accent-soft: rgba(240, 122, 114, 0.14);
+    --teal: #7FB5AD;
+    --teal-soft: rgba(127, 181, 173, 0.14);
+    --note-bg: #2A2415;
+    --note-border: #55482A;
+    --note-ink: #D8C48E;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 40px 20px 80px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .doc-head { margin-bottom: 36px; }
+  .doc-eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 10px;
+  }
+  h1 {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: clamp(30px, 5vw, 44px); font-weight: 600; line-height: 1.1;
+    margin: 0 0 12px; text-wrap: balance;
+  }
+  .doc-sub { color: var(--mut); font-size: 15px; max-width: 62ch; margin: 0; }
+  .doc-sub strong { color: var(--ink); font-weight: 600; }
+
+  .screen-label {
+    display: flex; align-items: baseline; gap: 10px;
+    margin: 44px 0 14px;
+  }
+  .screen-label .num {
+    font-family: "Fraunces", Georgia, serif; font-size: 22px; font-weight: 700; color: var(--accent);
+  }
+  .screen-label h2 { font-size: 16px; font-weight: 700; margin: 0; }
+  .screen-label p { font-size: 13px; color: var(--mut); margin: 0; }
+
+  /* ── the mocked browser screen ── */
+  .screen {
+    background: var(--card); border: 1px solid var(--hair); border-radius: 12px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .chrome {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--hair);
+  }
+  .chrome .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--hair); }
+  .chrome .url {
+    flex: 1; font-size: 11.5px; color: var(--mut); background: var(--page);
+    border: 1px solid var(--hair); border-radius: 6px; padding: 4px 10px;
+    font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .screen-body { padding: 24px 26px 30px; }
+
+  .band-title {
+    font-family: "Fraunces", Georgia, serif; font-size: 26px; font-weight: 600; margin: 0 0 4px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .band-sub { font-size: 13.5px; color: var(--mut); margin: 0 0 18px; max-width: 60ch; }
+
+  /* chip rail */
+  .rail { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 6px; }
+  .chip {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; color: var(--ink);
+    background: var(--card); border: 1px solid var(--hair); border-radius: 999px;
+    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+  }
+  .chip .cnt { font-weight: 500; color: var(--mut); font-size: 11.5px; }
+  .chip.on {
+    background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  }
+  .chip.on .cnt { color: var(--accent); }
+  .rail-note { font-size: 11.5px; color: var(--mut); margin: 0 0 20px; }
+
+  /* theme shelf */
+  .shelf { margin-bottom: 26px; }
+  .shelf-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 3px; }
+  .shelf-head h3 {
+    font-family: "Fraunces", Georgia, serif; font-size: 18px; font-weight: 600; margin: 0;
+  }
+  .shelf-head a { font-size: 12px; color: var(--accent); font-weight: 600; text-decoration: none; margin-left: auto; white-space: nowrap; }
+  .shelf-sub { font-size: 12.5px; color: var(--mut); margin: 0 0 12px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+
+  .trip {
+    background: var(--card); border: 1px solid var(--hair); border-radius: 10px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .hero { height: 92px; position: relative; }
+  .hero .badge {
+    position: absolute; top: 8px; left: 8px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    background: rgba(255,255,255,0.92); color: #1A1A18; border-radius: 4px; padding: 3px 7px;
+  }
+  .trip-body { padding: 11px 13px 13px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  .trip-title { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+  .trip-meta { font-size: 12px; color: var(--mut); }
+  .trip-meta a { color: var(--teal); font-weight: 600; text-decoration: none; }
+  .trip-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 7px; }
+  .price { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .price small { font-size: 10.5px; font-weight: 500; color: var(--mut); }
+  .author-pill {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+    background: var(--teal-soft); color: var(--teal); border-radius: 4px; padding: 3px 7px;
+  }
+
+  /* filtered state extras */
+  .filter-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 9px 14px; margin-bottom: 18px; font-size: 12.5px;
+  }
+  .filter-bar strong { color: var(--accent); }
+  .filter-bar .clear { margin-left: auto; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+  /* annotation callouts */
+  .note {
+    background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 8px;
+    color: var(--note-ink); font-size: 12.5px; padding: 10px 14px; margin-top: 18px; line-height: 1.55;
+  }
+  .note b { font-weight: 700; }
+
+  /* wiring table */
+  .wiring { margin-top: 48px; }
+  .wiring h2 { font-family: "Fraunces", Georgia, serif; font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  .wiring > p { color: var(--mut); font-size: 13.5px; margin: 0 0 18px; max-width: 68ch; }
+  .wire-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .wire {
+    background: var(--card); border: 1px solid var(--hair); border-radius: 10px; padding: 16px 18px;
+  }
+  .wire .tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+    border-radius: 4px; padding: 3px 8px; margin-bottom: 8px;
+  }
+  .tag.exists { background: var(--teal-soft); color: var(--teal); }
+  .tag.new { background: var(--accent-soft); color: var(--accent); }
+  .wire h3 { font-size: 14px; font-weight: 700; margin: 0 0 6px; }
+  .wire p { font-size: 12.5px; color: var(--mut); margin: 0; line-height: 1.55; }
+  .wire code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    background: var(--page); border: 1px solid var(--hair); border-radius: 4px; padding: 1px 5px;
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="doc-head">
+    <div class="doc-eyebrow">Mockup for sign-off · Discover → Trip Packages tab</div>
+    <h1>Ready-Made Trips, centered on the experience</h1>
+    <p class="doc-sub">Today the shelf is organized by <strong>who built the trip</strong> ("Trips by Locals" / "Trips by Trip Planners"). This redesign makes the <strong>theme</strong> the organizing idea — the author becomes a badge on the card. The theme vocabulary already exists in the database (<strong>every listing declares one at submit</strong>); this lane adds the filter and the layout, no new data.</p>
+  </header>
+
+  <!-- ── Screen 1: default view ── -->
+  <div class="screen-label">
+    <span class="num">1</span>
+    <div>
+      <h2>Default view — theme shelves</h2>
+      <p>Chip rail on top; each theme that actually has stock gets its own shelf. No empty aisles.</p>
+    </div>
+  </div>
+  <div class="screen">
+    <div class="chrome">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="url">traveloure.com/discover?tab=packages</span>
+    </div>
+    <div class="screen-body">
+      <h2 class="band-title">🏅 Ready-Made Trips</h2>
+      <p class="band-sub">Buy a complete trip built around an experience — it becomes your own editable plan.</p>
+
+      <div class="rail" aria-label="Browse by experience">
+        <span class="chip on">All experiences</span>
+        <span class="chip">🥾 Hiking <span class="cnt">4</span></span>
+        <span class="chip">💒 Romance &amp; Honeymoon <span class="cnt">3</span></span>
+        <span class="chip">🍜 Food &amp; Culture <span class="cnt">5</span></span>
+        <span class="chip">📷 Photography <span class="cnt">2</span></span>
+        <span class="chip">👨‍👩‍👧 Family <span class="cnt">2</span></span>
+        <span class="chip">🏯 Cultural Heritage <span class="cnt">3</span></span>
+        <span class="chip">🚗 Road Trip <span class="cnt">1</span></span>
+      </div>
+      <p class="rail-note">Chips render only for themes with at least one live listing — counts are real stock, never the full 20-theme vocabulary.</p>
+
+      <div class="shelf">
+        <div class="shelf-head"><h3>Romance &amp; Honeymoon</h3><a href="#">See all 3 →</a></div>
+        <p class="shelf-sub">Complete trips built for two — proposals, honeymoons, anniversaries.</p>
+        <div class="grid">
+          <div class="trip">
+            <div class="hero" style="background: linear-gradient(135deg, #D98A94, #8A4B5E);"><span class="badge">Kyoto</span></div>
+            <div class="trip-body">
+              <span class="eyebrow">Romance &amp; Honeymoon</span>
+              <span class="trip-title">Honeymoon in the Old Capital</span>
+              <span class="trip-meta">Kyoto · 6 days · by <a href="#">@yuki</a></span>
+              <div class="trip-foot"><span class="price">$149.00</span><span class="author-pill">Local Expert</span></div>
+            </div>
+          </div>
+          <div class="trip">
+            <div class="hero" style="background: linear-gradient(135deg, #C97B63, #6E3B44);"><span class="badge">Kyoto</span></div>
+            <div class="trip-body">
+              <span class="eyebrow">Romance &amp; Honeymoon</span>
+              <span class="trip-title">Proposal Weekend, Planned to the Minute</span>
+              <span class="trip-meta">Kyoto · 3 days · by <a href="#">@hana-plans</a></span>
+              <div class="trip-foot"><span class="price">$89.00 <small>/traveler</small></span><span class="author-pill">Trip Planner</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="shelf">
+        <div class="shelf-head"><h3>Food &amp; Culture</h3><a href="#">See all 5 →</a></div>
+        <p class="shelf-sub">Eat and understand a place — markets, kitchens, tea houses.</p>
+        <div class="grid">
+          <div class="trip">
+            <div class="hero" style="background: linear-gradient(135deg, #C99A4B, #7A5B23);"><span class="badge">Kyoto</span></div>
+            <div class="trip-body">
+              <span class="eyebrow">Food &amp; Culture</span>
+              <span class="trip-title">7-Day Kyoto Food Pilgrimage</span>
+              <span class="trip-meta">Kyoto · 7 days · by <a href="#">@yuki</a></span>
+              <div class="trip-foot"><span class="price">$129.00</span><span class="author-pill">Local Expert</span></div>
+            </div>
+          </div>
+          <div class="trip">
+            <div class="hero" style="background: linear-gradient(135deg, #7BA05B, #3F5D33);"><span class="badge">Kyoto</span></div>
+            <div class="trip-body">
+              <span class="eyebrow">Food &amp; Culture</span>
+              <span class="trip-title">Tea, Tofu &amp; Temple Kitchens</span>
+              <span class="trip-meta">Kyoto · 4 days · by <a href="#">@kaiseki-ken</a></span>
+              <div class="trip-foot"><span class="price">$95.00</span><span class="author-pill">Local Expert</span></div>
+            </div>
+          </div>
+          <div class="trip">
+            <div class="hero" style="background: linear-gradient(135deg, #8A6FA8, #4A3A66);"><span class="badge">Kyoto</span></div>
+            <div class="trip-body">
+              <span class="eyebrow">Food &amp; Culture</span>
+              <span class="trip-title">Nishiki Market to Michelin: a Week of Eating</span>
+              <span class="trip-meta">Kyoto · 6 days · by <a href="#">@tastemap</a></span>
+              <div class="trip-foot"><span class="price">$139.00</span><span class="author-pill">Trip Planner</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="shelf">
+        <div class="shelf-head"><h3>Hiking</h3><a href="#">See all 4 →</a></div>
+        <p class="shelf-sub">Trail-first itineraries with real routes and real rest days.</p>
+        <div class="grid">
+          <div class="trip">
+            <div class="hero" style="background: linear-gradient(135deg, #5B8A72, #2E4A3C);"><span class="badge">Kyoto</span></div>
+            <div class="trip-body">
+              <span class="eyebrow">Hiking</span>
+              <span class="trip-title">Kyoto Trails: Kurama to Kibune</span>
+              <span class="trip-meta">Kyoto · 5 days · by <a href="#">@trailhead-jp</a></span>
+              <div class="trip-foot"><span class="price">$79.00</span><span class="author-pill">Local Expert</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note"><b>What moved:</b> the "Trips by Locals" / "Trips by Trip Planners" section headers are gone as the top-level structure — that fact now lives on each card as the small teal badge. The author's name keeps its storefront link when they have a claimed handle (plain text otherwise, never a dead link).</div>
+    </div>
+  </div>
+
+  <!-- ── Screen 2: filtered ── -->
+  <div class="screen-label">
+    <span class="num">2</span>
+    <div>
+      <h2>Filtered view — one theme selected</h2>
+      <p>Tapping a chip filters server-side. The page states what it's showing and how to get back.</p>
+    </div>
+  </div>
+  <div class="screen">
+    <div class="chrome">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="url">traveloure.com/discover?tab=packages&amp;planType=food_culture_itinerary</span>
+    </div>
+    <div class="screen-body">
+      <h2 class="band-title">🏅 Ready-Made Trips</h2>
+      <p class="band-sub">Buy a complete trip built around an experience — it becomes your own editable plan.</p>
+
+      <div class="rail" aria-label="Browse by experience">
+        <span class="chip">All experiences</span>
+        <span class="chip">🥾 Hiking <span class="cnt">4</span></span>
+        <span class="chip">💒 Romance &amp; Honeymoon <span class="cnt">3</span></span>
+        <span class="chip on">🍜 Food &amp; Culture <span class="cnt">5</span></span>
+        <span class="chip">📷 Photography <span class="cnt">2</span></span>
+        <span class="chip">👨‍👩‍👧 Family <span class="cnt">2</span></span>
+        <span class="chip">🏯 Cultural Heritage <span class="cnt">3</span></span>
+        <span class="chip">🚗 Road Trip <span class="cnt">1</span></span>
+      </div>
+
+      <div class="filter-bar">
+        Showing <strong>5 Food &amp; Culture trips</strong> — every one declared by its builder, not guessed from keywords.
+        <span class="clear">Show all experiences</span>
+      </div>
+
+      <div class="grid">
+        <div class="trip">
+          <div class="hero" style="background: linear-gradient(135deg, #C99A4B, #7A5B23);"><span class="badge">Kyoto</span></div>
+          <div class="trip-body">
+            <span class="eyebrow">Food &amp; Culture</span>
+            <span class="trip-title">7-Day Kyoto Food Pilgrimage</span>
+            <span class="trip-meta">Kyoto · 7 days · by <a href="#">@yuki</a></span>
+            <div class="trip-foot"><span class="price">$129.00</span><span class="author-pill">Local Expert</span></div>
+          </div>
+        </div>
+        <div class="trip">
+          <div class="hero" style="background: linear-gradient(135deg, #7BA05B, #3F5D33);"><span class="badge">Kyoto</span></div>
+          <div class="trip-body">
+            <span class="eyebrow">Food &amp; Culture</span>
+            <span class="trip-title">Tea, Tofu &amp; Temple Kitchens</span>
+            <span class="trip-meta">Kyoto · 4 days · by <a href="#">@kaiseki-ken</a></span>
+            <div class="trip-foot"><span class="price">$95.00</span><span class="author-pill">Local Expert</span></div>
+          </div>
+        </div>
+        <div class="trip">
+          <div class="hero" style="background: linear-gradient(135deg, #8A6FA8, #4A3A66);"><span class="badge">Kyoto</span></div>
+          <div class="trip-body">
+            <span class="eyebrow">Food &amp; Culture</span>
+            <span class="trip-title">Nishiki Market to Michelin: a Week of Eating</span>
+            <span class="trip-meta">Kyoto · 6 days · by <a href="#">@tastemap</a></span>
+            <div class="trip-foot"><span class="price">$139.00</span><span class="author-pill">Trip Planner</span></div>
+          </div>
+        </div>
+        <div class="trip">
+          <div class="hero" style="background: linear-gradient(135deg, #B0764A, #5E3A22);"><span class="badge">Kyoto</span></div>
+          <div class="trip-body">
+            <span class="eyebrow">Food &amp; Culture</span>
+            <span class="trip-title">Sake Breweries of Fushimi</span>
+            <span class="trip-meta">Kyoto · 2 days · by <a href="#">@fushimi-taro</a></span>
+            <div class="trip-foot"><span class="price">$59.00</span><span class="author-pill">Local Expert</span></div>
+          </div>
+        </div>
+        <div class="trip">
+          <div class="hero" style="background: linear-gradient(135deg, #6F8FA8, #32485E);"><span class="badge">Kyoto</span></div>
+          <div class="trip-body">
+            <span class="eyebrow">Custom · Ramen Crawl</span>
+            <span class="trip-title">The Late-Night Ramen Atlas</span>
+            <span class="trip-meta">Kyoto · 3 days · by <a href="#">@midnight-eats</a></span>
+            <div class="trip-foot"><span class="price">$45.00</span><span class="author-pill">Local Expert</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note"><b>Custom themes:</b> a builder who picks "Custom…" supplies their own theme label (here "Ramen Crawl") — it renders as the card's eyebrow, but the listing still files under its closed-vocabulary key so filtering stays validated. Free text never enters the filter.</div>
+    </div>
+  </div>
+
+  <!-- ── Wiring notes ── -->
+  <div class="wiring">
+    <h2>What's already real vs. what this lane builds</h2>
+    <p>The theme taxonomy is not new — every ready-made listing has declared one since the store launched, and the submit gate requires it. The gap is purely that nothing filters or groups by it yet.</p>
+    <div class="wire-grid">
+      <div class="wire">
+        <span class="tag exists">Already exists</span>
+        <h3>The theme field &amp; vocabulary</h3>
+        <p><code>ready_made_trips.plan_type</code> — a closed 20-key list (hiking, romance &amp; honeymoon, food &amp; culture, photography, family, wellness, nightlife, cultural heritage, beach &amp; island, festival, shopping, road trip, city, birthday, wedding, proposal, corporate retreat, custom…). Required at submit; changing it on an approved listing re-enters review. 100% of live listings carry one.</p>
+      </div>
+      <div class="wire">
+        <span class="tag new">This lane</span>
+        <h3>Server-side theme filter</h3>
+        <p><code>GET /api/ready-made?planType=…</code> — validated against the closed key list (unknown key → 400, never a silent empty page). The existing approved+active read-gate and ordering are untouched.</p>
+      </div>
+      <div class="wire">
+        <span class="tag new">This lane</span>
+        <h3>Theme-first layout</h3>
+        <p>Chip rail (the Discover quick-category pattern, reused) + theme shelves replace the author-type sections. Author type demotes to a card badge; the author name links to their storefront when a handle exists.</p>
+      </div>
+      <div class="wire">
+        <span class="tag new">This lane</span>
+        <h3>Honest chips</h3>
+        <p>Chips and shelves render only for themes with live stock, with real counts — never the full vocabulary as empty aisles, and never a guessed theme: only what builders declared.</p>
+      </div>
+      <div class="wire">
+        <span class="tag new">This lane</span>
+        <h3>Detail-page fix</h3>
+        <p>The trip detail page still maps themes through a stale 9-entry table, so the 11 newer themes render as a generic label there. It switches to the shared vocabulary so the theme a builder picked is the theme a traveler sees.</p>
+      </div>
+      <div class="wire">
+        <span class="tag exists">Unchanged</span>
+        <h3>Everything downstream</h3>
+        <p>Buy → clone → refund loop, pricing modes, the Itinerary Templates section below the shelf, and the admin review queue are untouched. This is a browse-layer change.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

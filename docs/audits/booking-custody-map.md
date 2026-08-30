@@ -54,7 +54,7 @@ No schema *custody* gap (types are distinguishable). The real architectural find
 The premise that `bookings` is dead is **incorrect**. Evidence (standalone `bookings`, not `service_/booking_requests/*`):
 - **Write (INSERT):** `booking.service.ts:352` via `POST /api/bookings/process-cart` (mounted).
 - **Confirm/UPDATE:** webhook `handlePaymentSucceeded` (`stripe-payment.service.ts:212/222/275/300`), `confirmBookingPayment` (`booking.service.ts:573`), expiry scheduler (`booking-expiry-scheduler.service.ts:128`), webhook dispute/refund (`webhooks.routes.ts:406/464`).
-- **Reads for real decisions:** availability checks (`availability.service.ts:48/89/217`), admin queries (`admin.routes.ts:342/466`), reconciliation (`stripeReconciliation.ts:69`), traveler booking lookups (`storage.ts:4303/4316`).
+- **Reads for real decisions:** availability checks (`availability.service.ts:48/89/217`), admin queries (`admin.routes.ts:342/466`), reconciliation (`stripeReconciliation.ts` `scanLegacyRail()` — **superseded@ba168d0c (ruling 40)**: the legacy-table read is now ONE of two rails; the cart rail reads `service_bookings`), traveler booking lookups (`storage.ts:4303/4316`).
 - It **captures real money** (Traveloure PI, `booking.service.ts:393`) but **mints no earnings** (`// TODO` `booking.service.ts:584`).
 → **Do NOT remove `bookings` or `/api/bookings/refund`** — it's the active cart/`process-cart` rail. A2 was not "gating fictional money." The earnings-reversal aspect of A2 is moot *for this rail only* (it credits no ledger); the wrong-PI bug in `createRefund` remains real.
 

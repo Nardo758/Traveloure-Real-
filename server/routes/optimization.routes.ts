@@ -15,8 +15,10 @@
  */
 
 import { Router } from "express";
+import { coversAction } from "../services/trip-entitlement.service";
+import { getUserId } from "../utils/auth";
 import { db } from "../db";
-import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits } from "@shared/schema";
+import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
@@ -25,13 +27,26 @@ import {
 } from "../services/smart-sequencing.service";
 import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
+import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import Stripe from "stripe";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(getStripeSecretKey() || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
+
+// §15: deterministic per-target-per-day idempotency key, shared by BOTH optimization-fee
+// charge paths below (the saved-card one-click path and the Elements/sheet path) so they
+// can't drift apart (MONEY_MAP F-3). A double-click on either path can't double-charge.
+function buildOptimizationFeeIdempotencyKey(
+  userId: string,
+  target: string | number | undefined | null,
+): string {
+  return `opt-fee-${userId}-${target}-${new Date().toISOString().slice(0, 10)}`;
+}
 
 /**
  * POST /api/optimization-preview
@@ -71,7 +86,7 @@ router.post("/api/optimization-preview", async (req, res) => {
 
     // Check free re-run for authenticated users
     let freeRerun = false;
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = getUserId(req)!;
     if (userId) {
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const [recent] = await db
@@ -128,7 +143,7 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
       });
     }
 
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userId = getUserId(req)!;
     const { eventType: dbEventType, ownerId } = await resolveTargetFromDb(tripId, userExperienceId);
     if (ownerId === undefined) {
       return res.status(404).json({ error: "Target trip or experience not found" });
@@ -185,9 +200,33 @@ async function resolveTargetFromDb(
   return { eventType: undefined, ownerId: undefined };
 }
 
+// ── Fix #971: the SAME pre-flight `routes.ts` runs before `POST /api/itinerary-comparisons`
+// touches the optimizer, mirrored here (not imported — `routes.ts` mounts this router, so an
+// import back into it would be circular) so this endpoint can refuse BEFORE it ever creates a
+// Stripe PaymentIntent. Without this, a signed-in user with an empty trip and a full cart hit
+// "Setting up…" and hung: the client paid first, then the comparisons-create 409 fired only
+// AFTER the PaymentIntent step had already run. `respondIfCartAwaitsConversion` in `routes.ts`
+// is the one-id existence probe this mirrors verbatim — it selects one cart_items id, joins
+// nothing, and never reads a baseline from the cart; it only decides between two error/no-op
+// paths.
+async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<boolean> {
+  const [pending] = await db
+    .select({ id: cartItems.id })
+    .from(cartItems)
+    .where(eq(cartItems.userId, userId))
+    .limit(1);
+  if (!pending) return false;
+  res.status(409).json({
+    error: "trip_empty_convert_cart",
+    message:
+      "There's nothing on this trip to optimize yet, but your cart isn't empty. Add your cart to the trip first, then run the optimization.",
+  });
+  return true;
+}
+
 router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userId = getUserId(req)!;
     const { tripId, userExperienceId, comparisonContext } = req.body;
 
     // Require a concrete optimization target — cannot omit both
@@ -207,14 +246,36 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       return res.status(403).json({ error: "Not authorized to optimize this resource" });
     }
 
+    // Fix #971: refuse BEFORE any Stripe call, same as the comparisons-create pre-flight —
+    // a trip target with nothing optimizable and a non-empty cart means the traveler needs
+    // to convert their cart first, not pay to run an optimizer with no baseline. Scoped to the
+    // `tripId` path only (free-rerun / no-tripId / userExperienceId-only paths unchanged).
+    if (tripId) {
+      const tripInputs = await loadTripOptimizerInputs(tripId);
+      if (tripInputs.baselineItems.length === 0 && (await respondIfCartAwaitsConversion(userId, res))) {
+        return;
+      }
+    }
+
     const tier = complexityTier(dbEventType);
     const { priceCents, currency, isDisabled, creditTowardCoordination } = await getFee(dbEventType, tier);
 
     if (isDisabled) {
       return res.status(400).json({
         error: "ai_concierge_disabled",
-        message: "AI Concierge is currently disabled for this experience type.",
+        message: "Platform Concierge is currently disabled for this experience type.",
       });
+    }
+
+    // Trip Pass (ruling 2026-08-29-trip-pass): a covered trip's optimizer runs are
+    // INCLUDED — no PaymentIntent is ever created. Entitlement checked server-side here
+    // (the client never asserts coverage). The durable record is the active
+    // trip_entitlements row + the absence of a PI, matching the free-rerun precedent
+    // (fee_ledger's amount<>0 CHECK forbids a literal $0 row — suppression is
+    // covered_by:trip_pass in the response/log, never a zero ledger row).
+    if (tripId && (await coversAction(String(tripId), "optimizer_run"))) {
+      console.log(`[trip-pass] optimizer charge suppressed (covered_by:trip_pass) trip=${tripId}`);
+      return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
     }
 
     // 24-hour free re-run check
@@ -234,45 +295,90 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       return res.json({ freeRerun: true, feeCents: 0, comparisonId: recent.id });
     }
 
-    // Look up or create a Stripe customer so cards can be saved for one-tap reuse
-    const [userRow] = await db
-      .select({ email: users.email, firstName: users.firstName, lastName: users.lastName })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    // FP-1: durable Stripe Customer (users.stripe_customer_id, migration 146) — replaces the
+    // per-request customers.list({email}) lookup this endpoint previously carried.
+    const stripeCustomerId = (await stripePaymentService.getOrCreateCustomer(userId)) ?? undefined;
 
-    let stripeCustomerId: string | undefined;
-    if (userRow?.email) {
-      const existing = await stripe.customers.list({ email: userRow.email, limit: 1 });
-      if (existing.data.length > 0) {
-        stripeCustomerId = existing.data[0].id;
-      } else {
-        const created = await stripe.customers.create({
-          email: userRow.email,
-          name: [userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || undefined,
-          metadata: { userId },
+    // FP-1 one-click: when the client asks to use the saved card, charge it OFF-SESSION —
+    // create+confirm in one server call, no payment sheet. The amount is the same server-derived
+    // priceCents (§14 unchanged; useSavedCard is a consent flag, never an amount). On success the
+    // client calls the normal /confirm with this PI id — the confirm contract is unchanged. If
+    // the bank demands 3DS we return the clientSecret and the client falls back to the sheet.
+    if (req.body?.useSavedCard === true) {
+      const oneClick = await stripePaymentService.chargeSavedMethod(userId, {
+        amountCents: priceCents,
+        currency,
+        metadata: {
+          type: "optimization_fee",
+          userId,
+          complexityTier: tier,
+          eventType: dbEventType ?? "",
+          targetTripId: tripId ?? "",
+          targetExperienceId: userExperienceId ?? "",
+          context: JSON.stringify(comparisonContext || {}),
+        },
+        description: `Traveloure AI Optimization (${tier})`,
+        // §15: deterministic per-target-per-day key — a double-click can't double-charge.
+        idempotencyKey: buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId),
+      });
+      if (oneClick.status === "succeeded") {
+        return res.json({
+          freeRerun: false,
+          oneClick: true,
+          status: "succeeded",
+          paymentIntentId: oneClick.paymentIntentId,
+          feeCents: priceCents,
+          currency,
+          complexityTier: tier,
+          creditTowardCoordination,
         });
-        stripeCustomerId = created.id;
       }
+      if (oneClick.status === "requires_action") {
+        return res.json({
+          freeRerun: false,
+          oneClick: false,
+          requiresAction: true,
+          clientSecret: oneClick.clientSecret,
+          paymentIntentId: oneClick.paymentIntentId,
+          feeCents: priceCents,
+          currency,
+          complexityTier: tier,
+          creditTowardCoordination,
+        });
+      }
+      // no_saved_method → fall through to the normal sheet flow below.
     }
 
     // Create Stripe PaymentIntent with saved-card support
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: priceCents,
-      currency: currency.toLowerCase(),
-      ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
-      setup_future_usage: "off_session",
-      metadata: {
-        type: "optimization_fee",
-        userId,
-        complexityTier: tier,
-        eventType: dbEventType ?? "",
-        targetTripId: tripId ?? "",
-        targetExperienceId: userExperienceId ?? "",
-        context: JSON.stringify(comparisonContext || {}),
-      },
-      description: `Traveloure AI Optimization (${tier})`,
-    });
+    // #973: attaching the customer is OPTIONAL (falls back to a customer-less PI), but if the
+    // stored id has gone stale, recover once via the shared #973 helper rather than 500ing.
+    const buildOptimizationPaymentIntent = (customerId?: string) =>
+      stripe.paymentIntents.create(
+        {
+          amount: priceCents,
+          currency: currency.toLowerCase(),
+          ...(customerId ? { customer: customerId } : {}),
+          setup_future_usage: "off_session",
+          metadata: {
+            type: "optimization_fee",
+            userId,
+            complexityTier: tier,
+            eventType: dbEventType ?? "",
+            targetTripId: tripId ?? "",
+            targetExperienceId: userExperienceId ?? "",
+            context: JSON.stringify(comparisonContext || {}),
+          },
+          description: `Traveloure AI Optimization (${tier})`,
+        },
+        // §15 (MONEY_MAP F-3): same deterministic key format as the saved-card path above —
+        // a retried/duplicate Elements-path request can't mint a second uncaptured PI.
+        { idempotencyKey: buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId) },
+      );
+    const paymentIntent = stripeCustomerId
+      ? await stripePaymentService.runWithCustomerRecovery(userId, stripeCustomerId, (cid) =>
+          buildOptimizationPaymentIntent(cid),
+        )
+      : await buildOptimizationPaymentIntent(undefined);
 
     return res.json({
       freeRerun: false,
@@ -295,7 +401,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
  */
 router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userId = getUserId(req)!;
     const { paymentIntentId, comparisonId, feeCents, currency = "USD" } = req.body;
 
     if (!paymentIntentId) {
@@ -312,7 +418,9 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
     if (pi.metadata?.type !== "optimization_fee") {
       return res.status(400).json({ error: "invalid_payment_type", message: "PaymentIntent is not an optimization fee." });
     }
-    if (pi.metadata?.userId && pi.metadata.userId !== userId) {
+    // Fail closed: only an intent explicitly bound to this session user may mutate ledgers.
+    // Legacy/malformed intents with no owner metadata must not be attributed to the caller.
+    if (!pi.metadata?.userId || pi.metadata.userId !== userId) {
       return res.status(403).json({ error: "payment_belongs_to_another_user" });
     }
 
@@ -371,7 +479,7 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
 
     // Paid-signal ledger (§7, migration 125). An Event-branch optimize fee that was ACTUALLY paid
     // is recorded as a coordination_fee_credit, so it can be credited against the traveler's eventual
-    // coordination fee (the "$19.99 credited-toward-coordination" promise, honored only on real payment).
+    // coordination fee (the "$19.99 credited-toward-coordination" promise, honored only on real payment). fee-literal-ok: comment
     // Idempotent: source_payment_intent_id is UNIQUE → onConflictDoNothing makes a duplicate confirm a
     // no-op. amount_cents comes from Stripe (never the client); user_id is the session user (verified
     // above to match the PI). Non-Event optimizers (trip/experience branch) record no credit.

@@ -1,3 +1,5 @@
+import { reportProviderResult, outcomeFromHttpStatus } from "./provider-health.service";
+
 const VIATOR_API_KEY = process.env.VIATOR_API_KEY;
 const VIATOR_BASE_URL = process.env.VIATOR_BASE_URL || 'https://api.sandbox.viator.com/partner';
 
@@ -208,7 +210,9 @@ class ViatorService {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Viator API error (${response.status}):`, errorText);
-      throw new Error(`Viator API error: ${response.status} - ${errorText}`);
+      const err = new Error(`Viator API error: ${response.status} - ${errorText}`) as Error & { status?: number };
+      err.status = response.status;
+      throw err;
     }
 
     return response.json();
@@ -227,11 +231,13 @@ class ViatorService {
       });
 
       const products = response.products?.results || [];
+      reportProviderResult("viator", products.length > 0 ? "ok" : "empty");
       return {
         products,
         totalCount: response.products?.totalCount || products.length,
       };
     } catch (error: any) {
+      reportProviderResult("viator", error?.status ? outcomeFromHttpStatus(error.status) : "error", error?.message);
       console.error('Viator freetext search error:', error);
       return { products: [], totalCount: 0 };
     }
@@ -273,11 +279,13 @@ class ViatorService {
       const response = await this.makeRequest<any>('/products/search', 'POST', requestBody);
       
       const products = response.products || [];
+      reportProviderResult("viator", products.length > 0 ? "ok" : "empty");
       return {
         products,
         totalCount: response.totalCount || products.length,
       };
     } catch (error: any) {
+      reportProviderResult("viator", error?.status ? outcomeFromHttpStatus(error.status) : "error", error?.message);
       console.error('Viator product search error:', error);
       return { products: [], totalCount: 0 };
     }

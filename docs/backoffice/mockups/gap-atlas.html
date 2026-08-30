@@ -1,0 +1,455 @@
+<title>Backoffice Gap Atlas — Today vs Proposed</title>
+<style>
+  :root {
+    --bg: #FAFAF8; --surface: #FFFFFF; --surface2: #F3F3EE;
+    --border: #E8E8E2; --ink: #1A1A18; --mid: #7A7A72;
+    --accent: #E85D55; --accent-ink: #FFFFFF;
+    --good: #2E7D4F; --good-bg: #E8F3EC;
+    --warn: #A16207; --warn-bg: #FBF3E0;
+    --bad: #BE3D2E; --bad-bg: #FBEAE7;
+    --ghost: #9C9C93;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1A1A18; --surface: #222220; --surface2: #2A2A28;
+      --border: #3A3A38; --ink: #F2F2ED; --mid: #A5A59D;
+      --good: #7BC79A; --good-bg: #21322A;
+      --warn: #E0A93E; --warn-bg: #33290F;
+      --bad: #E77B6E; --bad-bg: #3A211D;
+      --ghost: #6E6E66;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1A1A18; --surface: #222220; --surface2: #2A2A28;
+    --border: #3A3A38; --ink: #F2F2ED; --mid: #A5A59D;
+    --good: #7BC79A; --good-bg: #21322A;
+    --warn: #E0A93E; --warn-bg: #33290F;
+    --bad: #E77B6E; --bad-bg: #3A211D;
+    --ghost: #6E6E66;
+  }
+  :root[data-theme="light"] {
+    --bg: #FAFAF8; --surface: #FFFFFF; --surface2: #F3F3EE;
+    --border: #E8E8E2; --ink: #1A1A18; --mid: #7A7A72;
+    --good: #2E7D4F; --good-bg: #E8F3EC;
+    --warn: #A16207; --warn-bg: #FBF3E0;
+    --bad: #BE3D2E; --bad-bg: #FBEAE7;
+    --ghost: #9C9C93;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+    line-height: 1.55; font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.82em; color: var(--mid);
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- header ---------- */
+  header { padding: 56px 0 8px; border-bottom: 3px solid var(--ink); margin-bottom: 8px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 10px; }
+  h1 { font-size: clamp(28px, 4.5vw, 44px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; text-wrap: balance; }
+  .sub { color: var(--mid); max-width: 62ch; margin: 14px 0 28px; }
+  .sub strong { color: var(--ink); }
+
+  /* ---------- legend ---------- */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 16px 0 24px; align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--mid); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 3px; white-space: nowrap; line-height: 1.6;
+  }
+  .c-reuse  { background: var(--good-bg); color: var(--good); }
+  .c-extend { background: var(--warn-bg); color: var(--warn); }
+  .c-new    { background: transparent; color: var(--ghost); border: 1.5px dashed var(--ghost); }
+  .c-bug    { background: var(--bad-bg); color: var(--bad); }
+  .c-dec    { background: var(--accent); color: var(--accent-ink); }
+  .c-live   { background: var(--good); color: #fff; }
+
+  /* ---------- sections ---------- */
+  section { margin-top: 64px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .sec-head h2 { font-size: 21px; font-weight: 800; letter-spacing: -0.01em; }
+  .sec-head .where { font-size: 12px; color: var(--mid); }
+  .sec-intro { color: var(--mid); max-width: 74ch; margin: 10px 0 22px; font-size: 14px; }
+  .sec-intro strong { color: var(--ink); }
+
+  /* ---------- comparison grid ---------- */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 880px) { .compare { grid-template-columns: 1fr; } }
+
+  .frame { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+  .frame-bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .frame-bar .tag { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+  .frame-bar .tag.today { color: var(--mid); }
+  .frame-bar .tag.proposed { color: var(--accent); }
+  .frame-bar .url { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--mid); background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 2px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frame-body { padding: 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+
+  /* wireframe elements */
+  .el {
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+    padding: 9px 12px; font-size: 12.5px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  }
+  .el .lbl { font-weight: 600; }
+  .el .note { flex-basis: 100%; font-size: 11.5px; color: var(--mid); line-height: 1.45; }
+  .el.ghost { border-style: dashed; border-color: var(--ghost); background: transparent; }
+  .el.ghost .lbl { color: var(--ghost); }
+  .el.buggy { border-color: var(--bad); background: var(--bad-bg); }
+  .el.buggy .lbl { color: var(--bad); }
+  .el.solid-good { border-color: var(--good); }
+  .el.img { min-height: 64px; background: repeating-linear-gradient(45deg, var(--surface2), var(--surface2) 8px, var(--surface) 8px, var(--surface) 16px); align-items: flex-end; }
+  .el.img.ghost { background: transparent; }
+  .cite { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; color: var(--mid); }
+
+  .foot { border-top: 1px solid var(--border); padding: 10px 16px; font-size: 12px; color: var(--mid); background: var(--surface2); }
+  .foot strong { color: var(--ink); }
+
+  /* lane cards */
+  .lanes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 880px) { .lanes { grid-template-columns: 1fr; } }
+
+  /* mini table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mid); padding: 8px 12px; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .tbl-wrap { border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; background: var(--surface); }
+
+  /* flow diagram */
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .flow .node { flex: 1; min-width: 150px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px 14px; }
+  .flow .node h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+  .flow .node p { font-size: 11.5px; color: var(--mid); line-height: 1.45; }
+  .flow .link { display: flex; align-items: center; padding: 0 6px; align-self: center; }
+  .flow .link .wire { width: 34px; height: 0; border-top: 2px solid var(--good); position: relative; }
+  .flow .link .wire.cut { border-top: 2px dashed var(--bad); }
+  .flow .link .wire.cut::after { content: "✕"; position: absolute; top: -11px; left: 50%; transform: translateX(-50%); color: var(--bad); font-size: 13px; font-weight: 800; background: var(--bg); padding: 0 2px; }
+  @media (max-width: 700px) { .flow { flex-direction: column; } .flow .link { transform: rotate(90deg); height: 26px; justify-content: center; } }
+
+  /* stream bars */
+  .streams { display: flex; flex-direction: column; gap: 7px; }
+  .stream { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: center; font-size: 12.5px; }
+  .stream .bar { height: 14px; border-radius: 3px; background: var(--good); opacity: 0.85; }
+  .stream .bar.off { background: transparent; border: 1.5px dashed var(--ghost); }
+  .stream .bar.hazard { background: var(--bad); }
+  .stream .amt { font-variant-numeric: tabular-nums; color: var(--mid); font-size: 11.5px; white-space: nowrap; }
+  @media (max-width: 560px) { .stream { grid-template-columns: 110px 1fr auto; } }
+
+  /* scoreboard */
+  .score { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 880px) { .score { grid-template-columns: repeat(2, 1fr); } }
+  .score .cell { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 16px; }
+  .score .n { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .score .cap { font-size: 12px; color: var(--mid); margin-top: 2px; }
+  .score .n.g { color: var(--good); } .score .n.w { color: var(--warn); } .score .n.gh { color: var(--ghost); } .score .n.b { color: var(--bad); }
+
+  /* decisions */
+  .decisions { display: flex; flex-direction: column; gap: 12px; }
+  .decision { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 6px; background: var(--surface); padding: 14px 18px; }
+  .decision h4 { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+  .decision p { font-size: 13px; color: var(--mid); max-width: 90ch; }
+
+  a { color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Traveloure · Backoffice Program · Phase 0</div>
+    <h1>Gap Atlas: what exists today vs. the four mockups</h1>
+    <p class="sub">Every panel below is grounded in the two verified mapping passes (9 agents, file:line-cited).
+      <strong>Solid boxes exist and work. Red boxes exist but are broken or dishonest. Dashed boxes don't exist yet.</strong>
+      This page uses the app's real console palette (<code>#1A1A18 / #7A7A72 / #E8E8E2 / #FAFAF8</code>, coral <code>#E85D55</code>) — the earlier mockups' mauve was not the system.</p>
+    <div class="legend">
+      <span><span class="chip c-reuse">Reuse</span> exists, adopt as-is</span>
+      <span><span class="chip c-extend">Extend</span> exists, needs work</span>
+      <span><span class="chip c-new">New</span> must be built</span>
+      <span><span class="chip c-bug">Bug</span> verified defect, filed</span>
+      <span><span class="chip c-dec">Decision</span> needs the decision-maker</span>
+    </div>
+  </header>
+
+  <!-- ============ 1. STOREFRONT ============ -->
+  <section>
+    <div class="sec-head">
+      <h2>1 · Public storefront — the service page</h2>
+      <span class="where mono">service-detail.tsx · content.routes.ts:1947 · payments.routes.ts:283</span>
+    </div>
+    <p class="sec-intro">The surprise: the money rail already works — "Book on Traveloure" runs the audited cart → checkout → Stripe chain.
+      What's missing is presentation and scheduling. <strong>Photos are stored in the DB and written by ServiceForm, but the page never renders them.</strong></p>
+    <div class="compare">
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Today</span><span class="url">/services/:id</span></div>
+        <div class="frame-body">
+          <div class="el ghost img"><span class="lbl">Photo gallery — never rendered</span><span class="chip c-bug">Bug-shaped</span>
+            <span class="note"><span class="cite">serviceImage + galleryImages exist (schema.ts:594, 607), written by ServiceForm — zero render sites on the page</span></span></div>
+          <div class="el"><span class="lbl">Title · price · location · delivery badge · what's included</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el"><span class="lbl">Verification badges only — no provider/expert name, avatar, or profile link</span><span class="chip c-extend">Extend</span>
+            <span class="note">The identity pattern exists for experts (<span class="cite">GET /api/experts/:id → expert-detail.tsx</span>); no public provider-profile endpoint exists at all</span></div>
+          <div class="el"><span class="lbl">Free-form "preferred date &amp; time" input</span><span class="chip c-extend">Extend</span>
+            <span class="note">Never validated against availability; just a preference string into the cart</span></div>
+          <div class="el"><span class="lbl">Reviews (booking-gated, moderated, honest ratings)</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el"><span class="lbl">"Book on Traveloure" → cart → /api/checkout → Stripe</span><span class="chip c-reuse">Reuse</span>
+            <span class="note">§14/§15-clean: server-derived pricing, required idempotency key. Do not build a second money path</span></div>
+          <div class="el ghost"><span class="lbl">Share button</span><span class="chip c-new">New</span></div>
+          <div class="el ghost"><span class="lbl">Cancellation-policy display</span><span class="chip c-extend">Extend</span>
+            <span class="note">Field is captured by ServiceForm and shown on feed cards — just not here</span></div>
+        </div>
+        <div class="foot">URL is a raw UUID. No <code>/p/…</code> route, no handle on users, no slug on any offering table.</div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><span class="tag proposed">Proposed</span><span class="url">/p/{handle}/{offering-slug}</span></div>
+        <div class="frame-body">
+          <div class="el img"><span class="lbl">Gallery from existing DB fields</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Owner identity block (name · avatar · verification · profile link)</span><span class="chip c-extend">Extend</span></div>
+          <div class="el ghost"><span class="lbl">Availability calendar with greyed booked slots</span><span class="chip c-new">New</span>
+            <span class="note">Substrate exists: <span class="cite">vendor_availability_slots (schema.ts:1611)</span> + a public slots GET with <strong>zero consumers</strong> — build the picker on it</span></div>
+          <div class="el ghost"><span class="lbl">Atomic slot claim at checkout → 409 SLOT_TAKEN</span><span class="chip c-new">New</span>
+            <span class="note">§15 pattern: <span class="cite">UPDATE … WHERE booked_count &lt; capacity RETURNING</span>. The 409 UX contract already exists on the legacy cart path — copy it</span></div>
+          <div class="el"><span class="lbl">Same checkout rail, unchanged</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el"><span class="lbl">Custody + cancellation label (honest, field-driven — no hardcoded promises)</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Server-injected OG tags for WhatsApp/IG link previews</span><span class="chip c-extend">Extend</span>
+            <span class="note">The pattern already runs for one route: <span class="cite">trips.routes.ts:2860 (/itinerary-view/:token)</span> — replicate; <strong>no edge function needed</strong></span></div>
+        </div>
+        <div class="foot"><strong>Schema change:</strong> <code>users.handle</code> + offering <code>slug</code> — the one migration Phase 1 needs. <span class="chip c-dec">Decision</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. EXPERT LANES ============ -->
+  <section>
+    <div class="sec-head">
+      <h2>2 · The expert's three selling lanes</h2>
+      <span class="where mono">expert-template-detail.tsx · ready-made-detail.tsx · ready-made.routes.ts</span>
+    </div>
+    <p class="sec-intro"><strong>Two of three lanes are already complete "one link that books and pays" storefronts.</strong>
+      Both digital lanes need no calendar. What every lane is missing is the same thing: the expert themself.</p>
+    <div class="lanes">
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Lane · Templates</span><span class="url">/expert-templates/:id</span></div>
+        <div class="frame-body">
+          <div class="el solid-good"><span class="lbl">Gated detail · teaser content-gate · honest ratings</span><span class="chip c-live">Live</span></div>
+          <div class="el solid-good"><span class="lbl">2-step Stripe purchase → full itinerary unlock</span><span class="chip c-live">Live</span></div>
+          <div class="el buggy"><span class="lbl">Expert identity: renders nothing — no name, avatar, or link</span><span class="chip c-extend">Extend</span></div>
+          <div class="el ghost"><span class="lbl">Share affordance</span><span class="chip c-new">New</span></div>
+        </div>
+        <div class="foot">No calendar — digital product, instant delivery.</div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Lane · Ready Made Trips</span><span class="url">/ready-made/:id</span></div>
+        <div class="frame-body">
+          <div class="el solid-good"><span class="lbl">Approval-gated detail · Discover shelf · author preview</span><span class="chip c-live">Live</span></div>
+          <div class="el solid-good"><span class="lbl">Idempotent purchase → clone into buyer's trip · D7 refund</span><span class="chip c-live">Live</span></div>
+          <div class="el buggy"><span class="lbl">Author shown as plain text — no id or link in the DTO</span><span class="chip c-extend">Extend</span></div>
+          <div class="el ghost"><span class="lbl">Share affordance</span><span class="chip c-new">New</span></div>
+        </div>
+        <div class="foot">The most complete commerce lane on the platform. Clone is re-dateable — no calendar.</div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Lane · Custom services</span><span class="url">/services/:id (shared)</span></div>
+        <div class="frame-body">
+          <div class="el"><span class="lbl">Same page + same gaps as the provider lane (§1)</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Slot substrate applies identically — expert rows live in provider_services</span><span class="chip c-reuse">Reuse</span>
+            <span class="note">Slot CRUD is already self-scoped; an expert can call it today — there is simply no expert UI</span></div>
+          <div class="el"><span class="lbl">One expert touch exists: "Ready made trips by this expert" cross-sell</span><span class="chip c-reuse">Reuse</span></div>
+        </div>
+        <div class="foot">Human-delivered — this is the one expert lane the calendar work applies to.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. CONSOLE ============ -->
+  <section>
+    <div class="sec-head">
+      <h2>3 · The backoffice console — one dashboard, two role shapes</h2>
+      <span class="where mono">provider-sidebar.tsx · expert-sidebar.tsx · workspace.tsx</span>
+    </div>
+    <p class="sec-intro">Most of the mockup dashboard already exists in two parallel consoles. The structural work is a merge, not a build —
+      and the Workstation (ready-made authoring) is already the archetype the whole backoffice should generalize.</p>
+    <div class="compare">
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Today</span><span class="url">/provider/* + /expert/* (two consoles)</span></div>
+        <div class="frame-body">
+          <div class="el"><span class="lbl">Two sidebars, duplicated markup, same inline hex accents</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Real 4-card stat dashboards, both roles</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el buggy"><span class="lbl">Mock panels beside the real ones</span><span class="chip c-bug">Bug</span>
+            <span class="note">Hardcoded TravelPulse ticker · 65% progress bar · "This Month" label over an all-time sum · fake +12% deltas · fabricated funnel (<span class="cite">profileViews = bookings × 3.5</span>)</span></div>
+          <div class="el buggy"><span class="lbl">Offerings lists hide approval status from the owner</span><span class="chip c-bug">Bug</span>
+            <span class="note">Since F2 listings are born <em>submitted</em> — the owner sees "Active" while the public sees <strong>nothing</strong>, with no explanation. Badge pattern already built for templates &amp; ready-made</span></div>
+          <div class="el"><span class="lbl">Bookings pages: real Accept / Decline both roles</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el"><span class="lbl">Earnings pages: real Request Payout (escrow-backed)</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el"><span class="lbl">Provider calendar page (bookings view real; availability editor is an honest local-only preview)</span><span class="chip c-extend">Extend</span></div>
+        </div>
+        <div class="foot">Expert offering management is split across <strong>three catalogs</strong> — services, templates, store listings — three tables, three lifecycles, no unified endpoint.</div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><span class="tag proposed">Proposed</span><span class="url">/backoffice (role-aware)</span></div>
+        <div class="frame-body">
+          <div class="el"><span class="lbl">One sidebar, role-parameterized (the expert one already is)</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">"My Offerings": merged table, normalized status + approval badges</span><span class="chip c-extend">Extend</span>
+            <span class="note">Client-side aggregation over the three existing feeds; approval badge port is the honest-state fix</span></div>
+          <div class="el"><span class="lbl">"Orders": provider = bookings · expert = 4 types (bookings, assignments, coordination, affiliate requests)</span><span class="chip c-reuse">Reuse</span>
+            <span class="note">All four expert rails are live and consumer-backed — this is aggregation, not backend</span></div>
+          <div class="el ghost"><span class="lbl">Expert calendar (no page exists)</span><span class="chip c-new">New</span>
+            <span class="note">Aggregates 4 date sources; service-booking dates live in jsonb — the one awkward parse</span></div>
+          <div class="el ghost"><span class="lbl">Reviews panel</span><span class="chip c-new">New</span>
+            <span class="note">The respond endpoint already exists owner-gated with <strong>zero consumers</strong> (<span class="cite">routes.ts:4299</span>) — adopt verbatim; the list is a join</span></div>
+          <div class="el ghost"><span class="lbl">Posting Opportunities panel</span><span class="chip c-new">New</span>
+            <span class="note">Composes existing signals: recent reviews, empty slots, market-gap recommender. §13: real data only</span></div>
+          <div class="el"><span class="lbl">Generalize the Workstation pattern (builder + pipeline state + fee-band earnings preview + AI QA)</span><span class="chip c-reuse">Reuse</span></div>
+        </div>
+        <div class="foot">Direction already ratified in-code: templates console is signposted to fold into the ready-made factory.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. SOCIAL ============ -->
+  <section>
+    <div class="sec-head">
+      <h2>4 · Social engine — the headline finding</h2>
+      <span class="where mono">content-studio.tsx · server/routes/instagram.ts · Signup.tsx</span>
+    </div>
+    <p class="sec-intro">The dispatch assumed Tier-2 auto-posting was future work. The repo disagrees:
+      <strong>a complete Instagram Graph API rail is already mounted server-side</strong> — and has never worked, because of a one-line client bug.</p>
+
+    <div class="frame" style="margin-bottom:22px;">
+      <div class="frame-bar"><span class="tag today">Today · the broken wire</span><span class="url">Content Studio → Instagram</span></div>
+      <div class="frame-body">
+        <div class="flow">
+          <div class="node">
+            <h4>Content Studio <span class="chip c-extend">Extend</span></h4>
+            <p>Composer, hashtag generator, 2200-char IG caption, connect flow (works), publish switch. Content library not persisted (<code>mockContent = []</code>).</p>
+          </div>
+          <div class="link"><div class="wire cut"></div></div>
+          <div class="node" style="border-color: var(--bad);">
+            <h4 style="color: var(--bad);">The one-line bug <span class="chip c-bug">Bug</span></h4>
+            <p><code>apiRequest('/api/instagram/publish', {…})</code> — URL passed in the <em>method</em> slot. The request never reaches the server. <span class="cite">content-studio.tsx:308</span></p>
+          </div>
+          <div class="link"><div class="wire"></div></div>
+          <div class="node" style="border-color: var(--good);">
+            <h4 style="color: var(--good);">Instagram Graph rail <span class="chip c-live">Live</span></h4>
+            <p>OAuth → long-lived token per expert · single + carousel publish · rate-limit check · disconnect. <span class="cite">server/routes/instagram.ts (mounted)</span></p>
+          </div>
+        </div>
+        <div class="el" style="margin-top:10px;"><span class="lbl">To activate: fix the call · set Meta env vars · add a ~60-day token-refresh job · host generated assets at a public URL (Graph API pulls image_url)</span><span class="chip c-dec">Decision</span></div>
+      </div>
+      <div class="foot">The dispatch's "Tier 2 deferred" premise predates this finding. Activate for experts, or leave dormant — a product call, not a build.</div>
+    </div>
+
+    <div class="compare">
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Today · attribution</span><span class="url">three purchase rails</span></div>
+        <div class="frame-body">
+          <div class="tbl-wrap"><table>
+            <tr><th>Rail</th><th>Column</th><th>State</th></tr>
+            <tr><td>Service bookings</td><td><code>source</code></td><td><span class="chip c-bug">Write-dead</span> checkout never sets it; cross-sell conversion counts are structurally zero</td></tr>
+            <tr><td>Ready-made purchases</td><td><code>attributionRef</code></td><td><span class="chip c-bug">Write-dead</span> pre-provisioned for share links — no writer, no reader</td></tr>
+            <tr><td>Template purchases</td><td>—</td><td><span class="chip c-new">Absent</span> needs one nullable column</td></tr>
+          </table></div>
+          <div class="el buggy"><span class="lbl">Referral loop: machinery complete, all three links missing</span><span class="chip c-bug">Bug</span>
+            <span class="note">Nothing <strong>generates</strong> a code (endpoint fabricates a non-redeemable <code>REF-…</code> fallback) · nothing <strong>redeems</strong> (<code>?ref=</code> dies in funnel analytics) · nothing <strong>qualifies</strong> (the escrow-correct $50 bonus creator has zero callers)</span></div>
+        </div>
+        <div class="foot">No short-link table or <code>/r/:code</code> route exists anywhere — the earlier audit's claim was fabricated and is corrected.</div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><span class="tag proposed">Proposed</span><span class="url">tvl link → server-stamped source</span></div>
+        <div class="frame-body">
+          <div class="el ghost"><span class="lbl">share_links table + /r/:code 302 handler (mounted router, §9)</span><span class="chip c-new">New</span>
+            <span class="note">Model on the existing share-token infra (<span class="cite">sharedTrips: token + views/bookings counters</span>)</span></div>
+          <div class="el"><span class="lbl">Stamp source server-side at checkout — never from the client (§14)</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Wire the existing attributionRef; add the template column</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Share buttons on all offering pages — lift the working clipboard/wa.me pattern</span><span class="chip c-new">New</span>
+            <span class="note">Pattern exists in VariantActionButtons; caveat filed: its generated links point at a route that doesn't exist</span></div>
+          <div class="el ghost"><span class="lbl">Share-asset generator (no image-generation dependency exists — Satori is net-new)</span><span class="chip c-new">New</span>
+            <span class="note">Card layouts to seed the design already render every needed field per lane</span></div>
+        </div>
+        <div class="foot"><code>users.acquired_via_provider_id</code>: signup already parses <code>?ref=</code> — persistence is the missing half.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. MONEY ============ -->
+  <section>
+    <div class="sec-head">
+      <h2>5 · Earnings — five streams in the ledger, one on the screen</h2>
+      <span class="where mono">expert_earnings.type · routes.ts:3376 · revenue-tracking.service.ts</span>
+    </div>
+    <p class="sec-intro">The escrow ledger already records five expert income streams. The earnings page's activity feed shows exactly one —
+      a multi-stream expert's visible transactions <strong>don't add up to their (correct) totals</strong>.</p>
+    <div class="compare">
+      <div class="frame">
+        <div class="frame-bar"><span class="tag today">Today · what the ledger holds vs what the feed shows</span></div>
+        <div class="frame-body">
+          <div class="streams">
+            <div class="stream"><span>Service bookings</span><div class="bar" style="width:78%"></div><span class="amt">in feed ✓ · type consulting</span></div>
+            <div class="stream"><span>Template sales</span><div class="bar" style="width:46%; opacity:.45;"></div><span class="amt">ledger only — hidden from feed</span></div>
+            <div class="stream"><span>Ready-made sales</span><div class="bar" style="width:38%; opacity:.45;"></div><span class="amt">ledger only — hidden from feed</span></div>
+            <div class="stream"><span>Tips</span><div class="bar hazard" style="width:20%"></div><span class="amt">rail exists · NO Stripe charge</span></div>
+            <div class="stream"><span>Referral bonuses</span><div class="bar" style="width:12%; opacity:.45;"></div><span class="amt">creator exists · zero callers</span></div>
+            <div class="stream"><span>Coordination</span><div class="bar off" style="width:30%"></div><span class="amt">no earning type — $0</span></div>
+          </div>
+          <div class="el buggy" style="margin-top:12px;"><span class="lbl">Tip endpoint credits real held earnings with no payment leg</span><span class="chip c-bug">Bug</span>
+            <span class="note">Client-sent amount → earning + platform revenue, <strong>no Stripe charge anywhere</strong>. Zero UI callers today (latent, not exploitable) — must gain a payment leg or be gated before any tip surface ships. Filed L1</span></div>
+          <div class="el buggy"><span class="lbl">Coordinator pay gap: assigned coordinators placing third-party vendor bookings earn $0</span><span class="chip c-dec">Decision</span>
+            <span class="note">§7 fee is 100%-platform by design; "paid on the bookings they place" only pays a coordinator who is the booked service's own provider. Filed L2</span></div>
+        </div>
+        <div class="foot">Feed reads service bookings with a hardcoded type instead of the ledger. <span class="cite">routes.ts:3376-3386</span></div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><span class="tag proposed">Proposed</span><span class="url">/backoffice/earnings + analytics</span></div>
+        <div class="frame-body">
+          <div class="el"><span class="lbl">Earnings-by-source view over the existing type column</span><span class="chip c-extend">Extend</span>
+            <span class="note">One new server GROUP BY type aggregate (mirror the provider byService pattern) · exclude <code>reversed</code> · match summarizeEscrowEarnings semantics so totals reconcile</span></div>
+          <div class="el"><span class="lbl">Activity feed reads the ledger — all streams visible</span><span class="chip c-extend">Extend</span></div>
+          <div class="el"><span class="lbl">Surface the real held / releasable escrow split (both roles)</span><span class="chip c-extend">Extend</span>
+            <span class="note">The provider page currently shows a client-side approximation of a ledger that already knows the truth</span></div>
+          <div class="el"><span class="lbl">Charts on recharts (installed, used in admin) · CSV export (solved server pattern)</span><span class="chip c-reuse">Reuse</span></div>
+          <div class="el buggy"><span class="lbl">Replace, don't restyle, the fabricated analytics</span><span class="chip c-bug">Bug</span>
+            <span class="note">Funnel ×3.5/×0.85 · CLV ×1.8 · repeatRate 35 · hardcoded seasonal-demand map · projections ×1.15/×1.5 · dead-render sections reading fields no endpoint returns. Full sweep list filed L7</span></div>
+        </div>
+        <div class="foot">Real spine to keep: summary aggregates, revenueByService, templateRevenue, market trending, cross-sell click stats.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6. SCOREBOARD ============ -->
+  <section>
+    <div class="sec-head"><h2>6 · The bottom line</h2></div>
+    <p class="sec-intro">Verdicts across all mapped mockup elements, both passes (provider + expert):</p>
+    <div class="score">
+      <div class="cell"><div class="n g">11</div><div class="cap">Reuse — adopt as-is, incl. both checkout rails and two complete expert lanes</div></div>
+      <div class="cell"><div class="n w">19</div><div class="cap">Extend — exists, needs completion (identity, badges, honest displays, aggregation)</div></div>
+      <div class="cell"><div class="n gh">9</div><div class="cap">New — calendar wiring, handle/slug, short links, image generation, two panels</div></div>
+      <div class="cell"><div class="n b">16</div><div class="cap">Verified defects filed (K1–K8, L1–L8) — none fixed; Phase 0 is read-only</div></div>
+    </div>
+
+    <div style="margin-top:36px;">
+      <div class="sec-head"><h2 style="font-size:17px;">Open decisions before Phase 1</h2></div>
+      <div class="decisions" style="margin-top:14px;">
+        <div class="decision">
+          <h4>Roadmap approval <span class="chip c-dec">Decision</span></h4>
+          <p>Phases 1–5 as corrected: Phase 1 cheaper (OG solved by pattern-copy; expert lanes largely done), Phase 2 bigger (attribution write path is dead, not dormant), Phases 4–5 smaller.</p>
+        </div>
+        <div class="decision">
+          <h4>Instagram Tier-2: activate or stay dormant <span class="chip c-dec">Decision</span></h4>
+          <p>Server rail is built. Activation for experts is a one-line fix + env vars + a token-refresh job. The dispatch deferred Tier 2 on a premise the repo contradicts.</p>
+        </div>
+        <div class="decision">
+          <h4>Coordinator compensation <span class="chip c-dec">Decision</span></h4>
+          <p>Assigned coordinators currently earn $0 on third-party vendor bookings. Deferrable — but then the earnings mockup drops its coordination slice, honestly.</p>
+        </div>
+        <div class="decision">
+          <h4>Tip endpoint <span class="chip c-dec">Decision</span></h4>
+          <p>Live endpoint credits earnings with no charge (latent, zero UI callers). Recommend gating it now; build the payment leg only when a tip surface is actually scoped.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>

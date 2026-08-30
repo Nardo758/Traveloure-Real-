@@ -6,7 +6,7 @@
  */
 
 // Activity categories for sequencing logic
-export type ActivityCategory = 
+export type ActivityCategory =
   | 'adventure' | 'hiking' | 'water_sports' | 'skiing' | 'climbing'
   | 'spa' | 'wellness' | 'massage' | 'yoga' | 'meditation'
   | 'dining_light' | 'dining_heavy' | 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -14,7 +14,12 @@ export type ActivityCategory =
   | 'nightlife' | 'entertainment' | 'show' | 'concert'
   | 'beach' | 'relaxation' | 'pool'
   | 'shopping' | 'market'
-  | 'transport' | 'flight' | 'train' | 'transfer';
+  | 'transport' | 'flight' | 'train' | 'transfer'
+  // FIX 4b (W1c polish): the two `itineraryItemTypeEnum` values that previously matched no rule
+  // below and silently fell to the `sightseeing` default (see optimizer-baseline.service.ts's
+  // documented hole) — honest categories from the SAME existing item-type vocabulary, not new
+  // item types.
+  | 'accommodation' | 'free_time';
 
 // Physical intensity levels (1-10)
 export type IntensityLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
@@ -318,7 +323,12 @@ export const ACTIVITY_INTENSITY: Record<string, IntensityLevel> = {
   'transport': 2,
   'flight': 2,
   'train': 2,
-  'transfer': 2
+  'transfer': 2,
+
+  // FIX 4b: accommodation (rest, matches spa/relaxation intensity) and free time
+  // (unstructured, low-moderate — same tier as show/concert/entertainment).
+  'accommodation': 1,
+  'free_time': 2
 };
 
 // Service type to category mapping
@@ -351,7 +361,15 @@ export function mapServiceTypeToCategory(serviceType: string): ActivityCategory 
   if (type.includes('flight') || type.includes('air')) return 'flight';
   if (type.includes('train') || type.includes('rail')) return 'train';
   if (type.includes('transport') || type.includes('transfer') || type.includes('taxi') || type.includes('bus')) return 'transport';
-  
+  // FIX 4b: these two `itineraryItemTypeEnum`/serviceType values previously matched no rule
+  // above and fell to the `sightseeing` default (an accommodation night or unstructured free
+  // time counted as active sightseeing time) — mapped honestly from the same existing
+  // vocabulary (itinerary_items.itemType 'accommodation'/'free_time'; provider_services
+  // serviceType also uses 'hotel', matching the same substring convention as
+  // affiliate.service.ts's hotel/accommodation/stay check).
+  if (type.includes('accommodation') || type.includes('hotel') || type.includes('lodging')) return 'accommodation';
+  if (type.includes('free_time') || type.includes('free time')) return 'free_time';
+
   return 'sightseeing'; // Default
 }
 
@@ -661,13 +679,21 @@ export function calculateItineraryMetrics(
     // Time allocation
     if (['adventure', 'hiking', 'water_sports', 'skiing', 'climbing', 'walking', 'sightseeing'].includes(category)) {
       activeMinutes += duration;
-    } else if (['spa', 'wellness', 'massage', 'yoga', 'meditation', 'relaxation', 'beach', 'pool'].includes(category)) {
+    } else if (['spa', 'wellness', 'massage', 'yoga', 'meditation', 'relaxation', 'beach', 'pool', 'accommodation'].includes(category)) {
+      // FIX 4b: accommodation (an overnight stay) is downtime, not active sightseeing time —
+      // it belongs in the same bucket as spa/relaxation, not the active bucket it silently fell
+      // into before (via the mapper's old `sightseeing` default).
       relaxationMinutes += duration;
     } else if (['transport', 'flight', 'train', 'transfer'].includes(category)) {
       travelMinutes += duration;
     } else if (['breakfast', 'lunch', 'dinner', 'dining_light', 'dining_heavy', 'snack'].includes(category)) {
       diningMinutes += duration;
     }
+    // FIX 4b: 'free_time' is deliberately excluded from every bucket above (it used to be
+    // miscounted as active/sightseeing time via the mapper's old default). Its duration is
+    // therefore excluded from `totalMinutes` below, so it correctly widens the derived
+    // `freeMinutes` gap instead of shrinking it — honest, and without a redundant explicit
+    // tally that would double-count against that same derived gap.
     
     // Intensity tracking
     totalIntensity += intensity;
@@ -769,6 +795,13 @@ function getCostCategory(activityCategory: ActivityCategory): string {
   }
   if (['transport', 'flight', 'train', 'transfer'].includes(activityCategory)) {
     return 'Transport';
+  }
+  // FIX 4b: an accommodation night was previously lumped into 'Activities' via the mapper's old
+  // `sightseeing` default — a materially misleading cost breakdown for what is usually the
+  // largest line item on a trip. `free_time` items carry no real cost of their own, so they
+  // stay on the 'Activities' default below (nothing to relabel).
+  if (activityCategory === 'accommodation') {
+    return 'Accommodation';
   }
   if (['spa', 'wellness', 'massage', 'yoga', 'meditation', 'relaxation', 'beach', 'pool'].includes(activityCategory)) {
     return 'Wellness';
@@ -934,6 +967,14 @@ export function getSequencingRulesDisplay() {
 // Activity with sequencing metadata
 export interface SequencedActivity {
   id?: string;
+  /** Lane 5a Defect 3: the `provider_services.id` behind this activity, when it has one.
+   *  Carried through reordering/anchoring so the variant-item insert can persist the catalog
+   *  link. Undefined for an AI-invented or external activity (§13 — NULL, never a guess). */
+  providerServiceId?: string;
+  /** Real coordinates already consumed by geographic sequencing. Baseline reconciliation carries
+   * these through for free-text stops that have a traveler-confirmed pin but no catalog service. */
+  latitude?: number;
+  longitude?: number;
   name: string;
   serviceType: string;
   startTime?: string;
@@ -1330,7 +1371,7 @@ export function parseAnchorConstraints(
     bufferBefore: number | null;
     bufferAfter: number | null;
     location?: string | null;
-    isImmovable: boolean | null;
+    isImmovable?: boolean | null;
   }>,
   tripStartDate: string | Date
 ): AnchorConstraint[] {
@@ -1501,6 +1542,283 @@ export function applyAnchorConstraints(
   });
 
   return { activities: allActivities, anchorNotes: notes };
+}
+
+// === Anchor-Aware Prompt Injection (Lane 2a) ===
+//
+// These two exports let the AI *generators* (Claude at /api/trips/:id/generate-itinerary
+// and Grok at /api/ai/generate-itinerary) become anchor-aware WITHOUT running the paid
+// optimizer. buildAnchorPromptBlock() steers generation up front; validateAnchorConflicts()
+// checks the generated plan after the fact (warn, never block). Both are pure.
+
+const ARRIVAL_ANCHOR_TYPES = new Set(["flight_arrival", "hotel_checkin"]);
+const DEPARTURE_ANCHOR_TYPES = new Set(["flight_departure", "hotel_checkout"]);
+
+/**
+ * Build an LLM prompt fragment describing a trip's immovable temporal
+ * commitments (flight/hotel anchors + day boundaries) so a generator schedules
+ * activities AROUND them.
+ *
+ * Pure + CONDITIONAL: returns "" when the trip has no anchors and no boundaries,
+ * so a no-anchor trip's prompt is byte-identical to before (Lane 2a regression gate).
+ */
+export function buildAnchorPromptBlock(
+  anchors: Array<{
+    anchorType: string;
+    anchorDatetime: string | Date;
+    bufferBefore: number | null;
+    bufferAfter: number | null;
+    location?: string | null;
+    isImmovable?: boolean | null;
+  }>,
+  boundaries: Array<{
+    dayNumber: number;
+    latestActivityEnd?: string | null;
+    earliestActivityStart?: string | null;
+    mustReturnToHotel?: boolean | null;
+    endLocation?: string | null;
+    reasonForConstraint?: string | null;
+  }>,
+  tripStartDate: string | Date
+): string {
+  const hasAnchors = Array.isArray(anchors) && anchors.length > 0;
+  const hasBoundaries = Array.isArray(boundaries) && boundaries.length > 0;
+  if (!hasAnchors && !hasBoundaries) return "";
+
+  const lines: string[] = [];
+
+  if (hasAnchors) {
+    const parsed = parseAnchorConstraints(anchors, tripStartDate).sort(
+      (a, b) => a.dayNumber - b.dayNumber || a.startTimeMinutes - b.startTimeMinutes
+    );
+    for (const a of parsed) {
+      const name = formatAnchorName(a.anchorType);
+      const time = minutesToTime(a.startTimeMinutes);
+      const loc = a.location ? ` at ${a.location}` : "";
+      if (ARRIVAL_ANCHOR_TYPES.has(a.anchorType)) {
+        const availableFrom = minutesToTime(a.startTimeMinutes + (a.bufferAfter || 0));
+        lines.push(
+          `- Day ${a.dayNumber}: ${name} at ${time}${loc}. Do NOT schedule any activities on day ${a.dayNumber} before ${availableFrom} (the traveler is arriving/settling in).`
+        );
+      } else if (DEPARTURE_ANCHOR_TYPES.has(a.anchorType)) {
+        const mustFinishBy = minutesToTime(a.startTimeMinutes - (a.bufferBefore || 0));
+        lines.push(
+          `- Day ${a.dayNumber}: ${name} at ${time}${loc}. Do NOT schedule any activities on day ${a.dayNumber} after ${mustFinishBy} (the traveler must leave in time to depart).`
+        );
+      } else {
+        const blockStart = minutesToTime(a.startTimeMinutes - (a.bufferBefore || 0));
+        const blockEnd = minutesToTime(a.startTimeMinutes + (a.bufferAfter || 0));
+        lines.push(
+          `- Day ${a.dayNumber}: ${name} at ${time}${loc} is a fixed commitment. Keep ${blockStart}–${blockEnd} free and plan other activities around it.`
+        );
+      }
+    }
+  }
+
+  if (hasBoundaries) {
+    for (const b of [...boundaries].sort((x, y) => x.dayNumber - y.dayNumber)) {
+      if (b.earliestActivityStart) {
+        const reason = b.reasonForConstraint ? ` (${b.reasonForConstraint})` : "";
+        lines.push(
+          `- Day ${b.dayNumber}: do NOT schedule activities before ${b.earliestActivityStart}${reason}.`
+        );
+      }
+      if (b.latestActivityEnd) {
+        const where = b.mustReturnToHotel
+          ? ` and the traveler must return to ${b.endLocation || "their hotel"}`
+          : b.endLocation
+          ? ` and end near ${b.endLocation}`
+          : "";
+        lines.push(
+          `- Day ${b.dayNumber}: all activities must end by ${b.latestActivityEnd}${where}.`
+        );
+      }
+    }
+  }
+
+  if (lines.length === 0) return "";
+
+  return (
+    `\n\nIMMOVABLE CONSTRAINTS — the traveler has these fixed commitments. You MUST schedule ` +
+    `all activities around them and never place an activity that overlaps or conflicts with one:\n` +
+    lines.join("\n") +
+    `\n`
+  );
+}
+
+/**
+ * Parse a generated-activity time string ("09:00 AM" 12h, "9:00", or "HH:MM" 24h)
+ * into minutes since midnight. Returns null when unparseable.
+ */
+function parseActivityTimeToMinutes(time: string | undefined | null): number | null {
+  if (!time || typeof time !== "string") return null;
+  const t = time.trim();
+  const m = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const mer = m[3]?.toUpperCase();
+  if (mer === "PM" && h < 12) h += 12;
+  if (mer === "AM" && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+export interface AnchorConflictWarning {
+  dayNumber: number;
+  activityTitle: string;
+  activityTime: string;
+  conflictsWith: string;
+  reason: string;
+}
+
+export interface AnchorValidationResult {
+  hasConstraints: boolean;
+  anchorSummary: Array<{ dayNumber: number; anchorType: string; time: string; location?: string }>;
+  conflicts: AnchorConflictWarning[];
+  checkedAt: string;
+}
+
+/**
+ * Post-generation validator: checks whether any generated activity conflicts with an
+ * anchor's blocked window or a day boundary. WARNS ONLY — it never reschedules, never
+ * removes, never blocks the plan (rendering conflicts to the traveler is Lane 4's job).
+ * The caller persists this result onto the plan so the data simply exists.
+ * Pure; safe on empty/absent constraints (returns hasConstraints=false, no conflicts).
+ */
+export function validateAnchorConflicts(
+  days: Array<{ day?: number; activities?: Array<{ title?: string; time?: string; durationMinutes?: number }> }>,
+  anchors: Array<{
+    anchorType: string;
+    anchorDatetime: string | Date;
+    bufferBefore: number | null;
+    bufferAfter: number | null;
+    location?: string | null;
+    isImmovable?: boolean | null;
+  }>,
+  boundaries: Array<{
+    dayNumber: number;
+    latestActivityEnd?: string | null;
+    earliestActivityStart?: string | null;
+  }>,
+  tripStartDate: string | Date,
+  checkedAt: string
+): AnchorValidationResult {
+  const hasAnchors = Array.isArray(anchors) && anchors.length > 0;
+  const hasBoundaries = Array.isArray(boundaries) && boundaries.length > 0;
+
+  if (!hasAnchors && !hasBoundaries) {
+    return { hasConstraints: false, anchorSummary: [], conflicts: [], checkedAt };
+  }
+
+  const parsed = hasAnchors ? parseAnchorConstraints(anchors, tripStartDate) : [];
+  const conflicts: AnchorConflictWarning[] = [];
+
+  // Group anchor blocked ranges + boundary limits by day.
+  const anchorsByDay = new Map<number, AnchorConstraint[]>();
+  for (const a of parsed) {
+    const arr = anchorsByDay.get(a.dayNumber) ?? [];
+    arr.push(a);
+    anchorsByDay.set(a.dayNumber, arr);
+  }
+  const boundaryByDay = new Map<number, { latest?: number | null; earliest?: number | null }>();
+  if (hasBoundaries) {
+    for (const b of boundaries) {
+      boundaryByDay.set(b.dayNumber, {
+        latest: b.latestActivityEnd ? parseActivityTimeToMinutes(b.latestActivityEnd) : null,
+        earliest: b.earliestActivityStart ? parseActivityTimeToMinutes(b.earliestActivityStart) : null,
+      });
+    }
+  }
+
+  for (const day of days || []) {
+    const dayNumber = typeof day.day === "number" ? day.day : NaN;
+    if (Number.isNaN(dayNumber)) continue;
+    const dayAnchors = anchorsByDay.get(dayNumber) ?? [];
+    const bounds = boundaryByDay.get(dayNumber);
+
+    for (const act of day.activities || []) {
+      const startMin = parseActivityTimeToMinutes(act.time);
+      if (startMin == null) continue; // untimed activity — can't judge, skip
+      const endMin = startMin + (typeof act.durationMinutes === "number" ? act.durationMinutes : 60);
+      const title = act.title || "Activity";
+
+      // Anchor conflicts. The forbidden window is TYPE-AWARE so it matches the
+      // directive injected into the prompt (buildAnchorPromptBlock):
+      //  • arrival  → the traveler is unavailable UNTIL arrival+bufferAfter, so
+      //    anything starting before that "available-from" time conflicts.
+      //  • departure→ the traveler must be free FROM departure−bufferBefore, so
+      //    anything ending after that "must-finish-by" time conflicts.
+      //  • other    → point-in-time commitment; overlap of the buffer window.
+      for (const a of dayAnchors) {
+        const name = formatAnchorName(a.anchorType);
+        if (ARRIVAL_ANCHOR_TYPES.has(a.anchorType)) {
+          const availableFrom = a.startTimeMinutes + (a.bufferAfter || 0);
+          if (startMin < availableFrom) {
+            conflicts.push({
+              dayNumber,
+              activityTitle: title,
+              activityTime: act.time || minutesToTime(startMin),
+              conflictsWith: name,
+              reason: `starts before the traveler is available after ${name} (not free until ${minutesToTime(availableFrom)})`,
+            });
+          }
+        } else if (DEPARTURE_ANCHOR_TYPES.has(a.anchorType)) {
+          const mustFinishBy = a.startTimeMinutes - (a.bufferBefore || 0);
+          if (endMin > mustFinishBy) {
+            conflicts.push({
+              dayNumber,
+              activityTitle: title,
+              activityTime: act.time || minutesToTime(startMin),
+              conflictsWith: name,
+              reason: `runs past when the traveler must leave for ${name} (must be free by ${minutesToTime(mustFinishBy)})`,
+            });
+          }
+        } else {
+          const blockStart = a.startTimeMinutes - (a.bufferBefore || 0);
+          const blockEnd = a.startTimeMinutes + (a.bufferAfter || 0);
+          if (startMin < blockEnd && endMin > blockStart) {
+            conflicts.push({
+              dayNumber,
+              activityTitle: title,
+              activityTime: act.time || minutesToTime(startMin),
+              conflictsWith: name,
+              reason: `overlaps the ${name} window (${minutesToTime(blockStart)}–${minutesToTime(blockEnd)})`,
+            });
+          }
+        }
+      }
+
+      // Day boundary breaches
+      if (bounds?.latest != null && endMin > bounds.latest) {
+        conflicts.push({
+          dayNumber,
+          activityTitle: title,
+          activityTime: act.time || minutesToTime(startMin),
+          conflictsWith: "Day boundary",
+          reason: `ends after the day's latest allowed time (${minutesToTime(bounds.latest)})`,
+        });
+      }
+      if (bounds?.earliest != null && startMin < bounds.earliest) {
+        conflicts.push({
+          dayNumber,
+          activityTitle: title,
+          activityTime: act.time || minutesToTime(startMin),
+          conflictsWith: "Day boundary",
+          reason: `starts before the day's earliest allowed time (${minutesToTime(bounds.earliest)})`,
+        });
+      }
+    }
+  }
+
+  const anchorSummary = parsed.map((a) => ({
+    dayNumber: a.dayNumber,
+    anchorType: a.anchorType,
+    time: minutesToTime(a.startTimeMinutes),
+    location: a.location,
+  }));
+
+  return { hasConstraints: true, anchorSummary, conflicts, checkedAt };
 }
 
 /**

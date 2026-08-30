@@ -1,0 +1,27 @@
+-- 181_itinerary_items_origin.sql — D2, ratified Aug 7 2026 (itinerary-item provenance column).
+--
+-- WHAT: additive nullable `itinerary_items.origin` TEXT. App-enforced value set = 'ai' |
+-- 'traveler' | 'expert'. Deliberately NO DB CHECK — the migration-159/166/173 house posture:
+-- a CHECK over a column with legacy rows (all NULL here, since the column is brand-new) is safe
+-- at apply time, but the point of the posture is to never need `preflight-prod-constraints.cjs`
+-- remediation for an app-layer-only vocabulary. NO DEFAULT, NO BACKFILL: every existing row is
+-- legacy and stays NULL (ambiguous by construction — it predates this column and cannot be
+-- honestly reclassified after the fact).
+--
+-- WHY: `TRIP_ADVISOR_ACCESS_STATUSES`/CC-1's `suggestedBy` distinguished "who is claimed to have
+-- suggested this" but could not distinguish a traveler's own manual add from an AI-generated
+-- item — both carried `suggestedBy = NULL`. That gap made the generate-itinerary REGENERATE path
+-- (server/routes.ts, T1-1) unable to spare a traveler's manual additions: it could only spare
+-- `suggestedBy = 'expert'` rows and wiped everything else, silently destroying traveler-added
+-- items alongside the stale AI set. `origin` closes this: every user-facing create route now
+-- stamps 'ai' | 'traveler' | 'expert' server-side (§14 — never client-trusted), and the
+-- regenerate delete predicate spares BOTH `origin = 'traveler'` and `origin = 'expert'` rows,
+-- falling back to the old `suggestedBy`-based heuristic only for legacy `origin IS NULL` rows.
+--
+-- Declared on the `itineraryItems` pgTable in shared/schema.ts in the SAME commit (the
+-- deploy-push durability rule — an undeclared column the code depends on is silently reverted by
+-- the next Replit publish-time drizzle-kit push).
+--
+-- Idempotent-ALTER pattern per the migration-159/161/173 house style.
+
+ALTER TABLE itinerary_items ADD COLUMN IF NOT EXISTS origin VARCHAR(20);

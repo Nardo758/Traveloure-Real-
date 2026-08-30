@@ -18,9 +18,12 @@ export type ContentOrigin = "platform" | "affiliate" | "sourced";
 
 // contentType (contentTypeEnum) → origin. Anything not explicitly affiliate/sourced is platform.
 const AFFILIATE_TYPES = new Set<string>(["affiliate_product"]);
-// No content_registry contentType is 'sourced' today (DMO lives in dmo_raw_content, not the registry);
-// mapping kept for when/if sourced content is registered centrally.
-const SOURCED_TYPES = new Set<string>([]);
+// Machine/DMO-scraped research content, registered centrally as 'dmo_content' (migration 132) so it
+// lives in the ONE content system — but it is EXPERT-WORKSPACE-ONLY and NEVER surfaces to travelers
+// (it is transformed into a platform-origin trip/Ready Made Trip first). The traveler resolver
+// hard-excludes sourced origin (content-query.service.ts) as a belt-and-suspenders guard on top of
+// the surface-map exclusion (no SURFACE_DEFAULT_CONTENT_TYPES lists 'dmo_content').
+const SOURCED_TYPES = new Set<string>(["dmo_content"]);
 
 export function contentOriginFor(contentType: string | null | undefined): ContentOrigin {
   const t = (contentType ?? "").toLowerCase();

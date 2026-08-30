@@ -1,113 +1,286 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  MapPin, History, MessageSquare, Activity,
-  CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map,
+  MapPin, History, Activity,
+  CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map, Phone, BadgeCheck,
+  Users, ShoppingCart, Undo2, type LucideIcon,
 } from "lucide-react";
 import {
   TYPE_COLORS, STATUS_STYLES,
-  type TemplateConfig, type PlanCardDay, type PlanCardActivity,
+  type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus,
 } from "./plancard-types";
+import { ItemComments } from "./ItemComments";
+import { AffiliateBookButton } from "./AffiliateBookButton";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import {
+  type TemporalState, canonicalMode, hasValidCoords, nowHHMM,
+  useLiveNow, useVisitedActivities, getUpNextInfo,
+} from "./plancard-temporal";
+import { BOOKED_TINT, ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
+
+// ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
+// Governing docs: docs/briefs/RECONCILE_PHASE1_SCOPE.md §1 W7, docs/briefs/ROUTING_STATE_CONTRACT.md.
+// The ONLY endpoint this drives is POST /api/trips/:tripId/items/:itemId/route (routing.routes.ts) —
+// read that file's header before changing which edges this component offers; it is THE authority on
+// which actor may write which edge, not this comment.
+
+/**
+ * The badge is READ-ONLY status — every viewer who can see the card sees it (contract §2: expert
+ * workspace, admin, and share surfaces all have READS on every state). It renders nothing for the
+ * default `in_planning` state (no badge noise) and nothing when the item carries no `routingStatus`
+ * key at all (a variant-snapshot / generated-itinerary item is not on the routing state machine —
+ * §13, never guessed as `in_planning`).
+ *
+ * `booking` presence — NOT `routingStatus === 'purchased'` — is the sole signal for the booked/
+ * receipt treatment (ROUTING_STATE_CONTRACT §2: "presence is the booked state, never inferred from
+ * routing_status alone").
+ */
+const PILL_BASE =
+  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0";
+
+/**
+ * EXPORTED (slip dispatch §4 global rules / ruling 8): the SlipView (Spec A/B) renders this
+ * same component, so an item keeps the SAME status pill on every surface. Tint values come
+ * from the ONE token layer (`slip-tokens.ts`) — no hex literals here.
+ *
+ * `showPlanning` (slip surfaces only): the slip's whole point is showing the four coexisting
+ * states, so it renders the neutral outline "Planning" pill for `in_planning`; the PlanCard
+ * full stage keeps its historical no-badge-noise default (nothing for `in_planning`).
+ */
+export function RoutingBadge({
+  activity,
+  showPlanning = false,
+}: {
+  activity: PlanCardActivity;
+  showPlanning?: boolean;
+}) {
+  if (activity.booking) {
+    return (
+      <span
+        className={PILL_BASE}
+        style={tintPillStyle(BOOKED_TINT)}
+        data-testid={`badge-routing-booked-${activity.id}`}
+      >
+        <BadgeCheck className="w-3 h-3" /> {BOOKED_TINT.label}
+      </span>
+    );
+  }
+  const status = activity.routingStatus;
+  if (status == null) return null;
+  if (status === "in_planning") {
+    if (!showPlanning) return null;
+    // Neutral outline pill — theme classes, no tint (token layer's in_planning contract).
+    return (
+      <span
+        className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+        data-testid={`badge-routing-planning-${activity.id}`}
+      >
+        {ROUTING_TINTS.in_planning.label}
+      </span>
+    );
+  }
+  const tint = ROUTING_TINTS[status];
+  const icon =
+    status === "with_expert" ? (
+      <Users className="w-3 h-3" />
+    ) : status === "ready_for_checkout" ? (
+      <ShoppingCart className="w-3 h-3" />
+    ) : (
+      <BadgeCheck className="w-3 h-3" />
+    );
+  const testKey =
+    status === "with_expert" ? "with-expert" : status === "ready_for_checkout" ? "checkout" : "purchased";
+  return (
+    <span
+      className={PILL_BASE}
+      style={tintPillStyle(tint)}
+      data-testid={`badge-routing-${testKey}-${activity.id}`}
+    >
+      {icon} {tint.label}
+    </span>
+  );
+}
+
+function RoutingActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  busy,
+  testId,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  busy: boolean;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border bg-background hover:bg-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      data-testid={testId}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * Offers exactly the edges `routing.routes.ts` grants the ACTOR for the item's CURRENT state
+ * (the endpoint is the authority; this list is not re-derived from the state-machine diagram, it
+ * mirrors the endpoint's owner/expert branches):
+ *   OWNER:
+ *     in_planning        → "Send to expert" (with_expert) · "Add to checkout" (ready_for_checkout)
+ *     with_expert        → "Recall from expert" (in_planning) — the endpoint's owner branch permits
+ *                           this recall (actor=owner is granted for any `to` in TRANSITIONABLE, and
+ *                           `in_planning`'s LEGAL_FROM includes `with_expert`), so it is offered.
+ *     ready_for_checkout → "Remove from checkout" (in_planning) + a "Go to checkout" link to /cart
+ *   EXPERT (the ONE cell the endpoint grants the assigned expert — see routing.routes.ts header):
+ *     with_expert        → "Return to planning" (in_planning). No other edge is offered to the
+ *                           expert actor; every other state renders nothing for them.
+ *   purchased / booked → no actions for either actor (checkout is the sole forward writer, refund
+ *                         the sole reverser)
+ *   no routingStatus   → no actions (nothing real to route — §13, never a button that would 404)
+ *
+ * EXPORTED (slip dispatch §4): the SlipView (Spec A) reuses this exact component for its
+ * per-row routing actions — one implementation of the owner/expert edges, never duplicated.
+ */
+export function RoutingActions({
+  tripId,
+  itemId,
+  routingStatus,
+  hasBooking,
+  actor,
+}: {
+  tripId: string;
+  itemId: string;
+  routingStatus: RoutingStatus | undefined;
+  hasBooking: boolean;
+  actor: "owner" | "expert";
+}) {
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (to: RoutingStatus) =>
+      apiRequest("POST", `/api/trips/${tripId}/items/${itemId}/route`, { to }),
+    onSuccess: () => {
+      // The transition endpoint reconciles the cart projection itself (W2) — this just refreshes
+      // the two client-visible reads of that state: the plan (badge/actions) and the cart page.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't update item",
+        description: err?.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  if (hasBooking || routingStatus == null || routingStatus === "purchased") return null;
+
+  const busy = mutation.isPending;
+
+  // EXPERT: the endpoint grants exactly one edge (with_expert → in_planning, the expert-return
+  // edge). Every other state — including in_planning and ready_for_checkout, which the expert
+  // must never act on — renders nothing.
+  if (actor === "expert") {
+    if (routingStatus === "with_expert") {
+      return (
+        <RoutingActionButton
+          icon={Undo2}
+          label="Return to planning"
+          busy={busy}
+          onClick={() => mutation.mutate("in_planning")}
+          testId={`button-route-return-planning-${itemId}`}
+        />
+      );
+    }
+    return null;
+  }
+
+  if (routingStatus === "with_expert") {
+    return (
+      <RoutingActionButton
+        icon={Undo2}
+        label="Recall from expert"
+        busy={busy}
+        onClick={() => mutation.mutate("in_planning")}
+        testId={`button-route-recall-${itemId}`}
+      />
+    );
+  }
+
+  if (routingStatus === "ready_for_checkout") {
+    return (
+      <>
+        <RoutingActionButton
+          icon={Undo2}
+          label="Remove from checkout"
+          busy={busy}
+          onClick={() => mutation.mutate("in_planning")}
+          testId={`button-route-remove-checkout-${itemId}`}
+        />
+        {/* The projection row this state implies already exists (W2) — a persistent link, not a
+            one-shot toast, so it stays correct across reloads/remounts (§13). */}
+        <Link
+          href="/cart"
+          className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-primary hover:underline"
+          data-testid={`link-go-to-checkout-${itemId}`}
+        >
+          <ShoppingCart className="w-3 h-3" /> Go to checkout
+        </Link>
+      </>
+    );
+  }
+
+  // in_planning — the born/default/returned state.
+  return (
+    <>
+      <RoutingActionButton
+        icon={Users}
+        label="Send to expert"
+        busy={busy}
+        onClick={() => mutation.mutate("with_expert")}
+        testId={`button-route-send-expert-${itemId}`}
+      />
+      <RoutingActionButton
+        icon={ShoppingCart}
+        label="Add to checkout"
+        busy={busy}
+        onClick={() => mutation.mutate("ready_for_checkout")}
+        testId={`button-route-add-checkout-${itemId}`}
+      />
+    </>
+  );
+}
 
 interface ActivitiesSectionProps {
   tripId: string;
   day: PlanCardDay | undefined;
   templateConfig: TemplateConfig;
   legs?: InlineTransportLegData[];
-}
-
-type TemporalState = "past" | "upcoming" | "future";
-
-function padTwo(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function todayIso(d: Date): string {
-  return `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(d.getDate())}`;
-}
-
-function nowHHMM(d: Date): string {
-  return `${padTwo(d.getHours())}:${padTwo(d.getMinutes())}`;
-}
-
-function parseActivityTime(timeStr: string, dateStr: string): Date | null {
-  if (!timeStr || !dateStr) return null;
-  const m = timeStr.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
-  if (!m) return null;
-  let h = parseInt(m[1]);
-  const min = parseInt(m[2]);
-  const ap = m[3]?.toLowerCase();
-  if (ap === "pm" && h !== 12) h += 12;
-  if (ap === "am" && h === 12) h = 0;
-  const parts = dateStr.split("-").map(Number);
-  return new Date(parts[0], parts[1] - 1, parts[2], h, min, 0, 0);
-}
-
-function computeTemporalStates(
-  activities: PlanCardActivity[],
-  dateStr: string,
-  now: Date,
-  visited: Set<string>,
-): Record<string, TemporalState> {
-  const out: Record<string, TemporalState> = {};
-  let foundUpcoming = false;
-  for (const act of activities) {
-    if (visited.has(act.id)) {
-      out[act.id] = "past";
-      continue;
-    }
-    const t = parseActivityTime(act.time, dateStr);
-    const end = t ? new Date(t.getTime() + 90 * 60_000) : null;
-    if (end && now > end) {
-      out[act.id] = "past";
-    } else if (!foundUpcoming) {
-      out[act.id] = "upcoming";
-      foundUpcoming = true;
-    } else {
-      out[act.id] = "future";
-    }
-  }
-  return out;
-}
-
-const MODE_ALIASES: Record<string, TraveloureMode> = {
-  walking: "walk",
-  foot: "walk",
-  pedestrian: "walk",
-  cycling: "bicycle",
-  biking: "bicycle",
-  bike: "bicycle",
-  car: "drive",
-  auto: "drive",
-  automobile: "drive",
-  driving: "drive",
-  bus: "transit",
-  train: "transit",
-  subway: "transit",
-  metro: "transit",
-  cab: "taxi",
-  "ride-share": "rideshare",
-  lyft: "rideshare",
-  uber: "rideshare",
-};
-
-function canonicalMode(raw: string): TraveloureMode {
-  return (MODE_ALIASES[raw.toLowerCase()] as TraveloureMode) ?? (raw as TraveloureMode);
-}
-
-function hasValidCoords(lat?: number, lng?: number): boolean {
-  return (
-    lat != null &&
-    lng != null &&
-    isFinite(lat) &&
-    isFinite(lng) &&
-    !(lat === 0 && lng === 0)
-  );
+  /**
+   * W7: routing actions (send-to-expert / add-to-checkout / etc.) render ONLY for the trip owner —
+   * the contract matrix marks every other viewer (expert, admin, share/collaborator) READ-only on
+   * routing state. The badge itself is NOT gated on this — it renders for every viewer.
+   */
+  isOwner?: boolean;
+  /**
+   * The ONE non-owner actor the routing endpoint grants a write to: the trip's assigned expert,
+   * restricted to the single with_expert → in_planning "Return to planning" edge (routing.routes.ts
+   * header). Never combined with owner actions on the same render — `isOwner` takes precedence.
+   */
+  isExpertViewer?: boolean;
 }
 
 interface ConnectorProps {
@@ -270,56 +443,21 @@ export function ActivitiesSection({
   day,
   templateConfig,
   legs = [],
+  isOwner = false,
+  isExpertViewer = false,
 }: ActivitiesSectionProps) {
-  const [visited, setVisited] = useState<Set<string>>(new Set());
-  const [now, setNow] = useState(() => new Date());
+  const [visited, toggleVisited] = useVisitedActivities(tripId, day);
+  const now = useLiveNow();
   const [legModes, setLegModes] = useState<Record<string, string>>({});
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    if (!day?.dayNum || !day.activities) {
-      setVisited(new Set());
-      return;
-    }
-    const newVisited = new Set<string>();
-    for (const a of day.activities) {
-      const key = `traveloure_visited_${tripId}_${day.dayNum}_${a.id}`;
-      try {
-        if (localStorage.getItem(key) === "1") newVisited.add(a.id);
-      } catch {}
-    }
-    setVisited(newVisited);
-  }, [tripId, day?.dayNum]);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
   if (!day) return null;
 
-  const isLiveDay = day.date === todayIso(now);
+  const { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, lastPastIndex, showNowLine } =
+    getUpNextInfo(day, legs, now, visited);
 
-  const states = isLiveDay
-    ? computeTemporalStates(day.activities, day.date, now, visited)
-    : ({} as Record<string, TemporalState>);
-
-  const upNextIndex = isLiveDay
-    ? day.activities.findIndex((a) => states[a.id] === "upcoming")
-    : -1;
-
-  const lastPastIndex = isLiveDay
-    ? day.activities.reduce((mx, a, i) => (states[a.id] === "past" ? i : mx), -1)
-    : -1;
-
-  const showNowLine = lastPastIndex >= 0 && upNextIndex > lastPastIndex;
-
-  const upNextActivity = upNextIndex >= 0 ? day.activities[upNextIndex] : null;
-  const upNextLeg = upNextIndex > 0 ? legs[upNextIndex - 1] : null;
   const upNextMode: TraveloureMode = canonicalMode(
-    upNextLeg
-      ? (legModes[upNextLeg.id] || upNextLeg.userSelectedMode || upNextLeg.recommendedMode || "walk")
-      : "walk"
+    upNextLeg ? (legModes[upNextLeg.id] || upNextLeg.userSelectedMode || upNextLeg.recommendedMode || "walk") : "walk"
   );
 
   const fabCanShow =
@@ -328,23 +466,6 @@ export function ActivitiesSection({
     // Navigable when we have real coordinates OR a provider-canonical place link.
     // Items with neither resolve to no button (never a broken link).
     (hasValidCoords(upNextActivity.lat, upNextActivity.lng) || !!upNextActivity.mapsUrl);
-
-  const toggleVisited = (actId: string) => {
-    setVisited((prev) => {
-      const next = new Set(prev);
-      const key = `traveloure_visited_${tripId}_${day!.dayNum}_${actId}`;
-      try {
-        if (next.has(actId)) {
-          next.delete(actId);
-          localStorage.removeItem(key);
-        } else {
-          next.add(actId);
-          localStorage.setItem(key, "1");
-        }
-      } catch {}
-      return next;
-    });
-  };
 
   const activities = day.activities || [];
 
@@ -381,6 +502,11 @@ export function ActivitiesSection({
         const isUpcoming = state === "upcoming";
         const isVisited = visited.has(a.id);
         const legAfter = i < activities.length - 1 ? legs[i] : undefined;
+        // Mobile-lens audit #4: same guard/helper as the up-next FAB, attached per-row
+        // instead of only the single live-day FAB target.
+        const canNavigateRow = hasValidCoords(a.lat, a.lng) || !!a.mapsUrl;
+        const navigateRow = () =>
+          openInMaps({ destination: { lat: a.lat, lng: a.lng, name: a.name, mapsUrl: a.mapsUrl } });
 
         return (
           <div key={a.id}>
@@ -409,7 +535,7 @@ export function ActivitiesSection({
                 <div className="flex-1 flex items-center gap-2 min-w-0">
                   <button
                     onClick={() => toggleVisited(a.id)}
-                    className="flex-shrink-0 text-green-500 hover:text-green-600 transition-colors"
+                    className="flex-shrink-0 -m-3.5 p-3.5 text-green-500 hover:text-green-600 transition-colors"
                     title="Mark as not visited"
                     data-testid={`button-visited-${a.id}`}
                   >
@@ -461,7 +587,7 @@ export function ActivitiesSection({
                   <div className="flex items-start gap-2 flex-wrap">
                     <button
                       onClick={() => toggleVisited(a.id)}
-                      className="flex-shrink-0 mt-0.5 transition-colors text-muted-foreground/40 hover:text-muted-foreground"
+                      className="flex-shrink-0 -m-3.5 p-3.5 transition-colors text-muted-foreground/40 hover:text-muted-foreground"
                       title="Mark as visited"
                       data-testid={`button-visited-${a.id}`}
                     >
@@ -499,9 +625,24 @@ export function ActivitiesSection({
                     </span>
                   </div>
 
-                  <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />
-                    <span data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                  <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                    {canNavigateRow ? (
+                      <button
+                        type="button"
+                        onClick={navigateRow}
+                        className="flex items-center gap-1 -my-2 py-2 hover:text-primary transition-colors min-w-0"
+                        title="Open in Maps"
+                        data-testid={`button-navigate-row-${a.id}`}
+                      >
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span className="hover:underline truncate" data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                      </button>
+                    ) : (
+                      <>
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                      </>
+                    )}
                     {a.cost > 0 && (
                       <span
                         className="ml-2 text-green-600 dark:text-green-400 font-semibold"
@@ -510,7 +651,46 @@ export function ActivitiesSection({
                         ${a.cost}
                       </span>
                     )}
+                    <span
+                      className={`ml-2 inline-flex items-center gap-1 font-medium ${
+                        a.durationMinutes == null
+                          ? "text-amber-700 dark:text-amber-400"
+                          : "text-muted-foreground"
+                      }`}
+                      data-testid={`text-activity-duration-${a.id}`}
+                    >
+                      {a.durationMinutes == null
+                        ? "Duration needed"
+                        : `${a.durationMinutes} min activity`}
+                    </span>
                   </div>
+
+                  {/* §5 — vendor phone + confirmation number: real data only, rendered when
+                      present (no placeholders for items with neither). */}
+                  {(a.vendorPhone || a.confirmationNumber) && (
+                    <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+                      {a.vendorPhone && (
+                        <a
+                          href={`tel:${a.vendorPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1 -my-2 py-2 text-blue-600 dark:text-blue-400 hover:underline"
+                          data-testid={`link-call-vendor-${a.id}`}
+                        >
+                          <Phone className="w-3 h-3 flex-shrink-0" />
+                          {a.vendorPhone}
+                        </a>
+                      )}
+                      {a.confirmationNumber && (
+                        <span
+                          className="flex items-center gap-1"
+                          data-testid={`text-confirmation-number-${a.id}`}
+                        >
+                          <BadgeCheck className="w-3 h-3 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          Confirmation: {a.confirmationNumber}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {a.expertNote && (
                     <div
@@ -545,16 +725,39 @@ export function ActivitiesSection({
                     </div>
                   )}
 
+                  {/* W7 — routing badge (every viewer) + owner-only routing actions. Both halves
+                      independently decide whether they have anything to show; the row itself
+                      renders only when at least one of them does (no empty row, §13). */}
+                  {(() => {
+                    const hasBadge =
+                      !!a.booking || a.routingStatus === "with_expert" || a.routingStatus === "ready_for_checkout";
+                    const hasActions =
+                      (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
+                    if (!hasBadge && !hasActions) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
+                        <RoutingBadge activity={a} />
+                        {hasActions && (
+                          <RoutingActions
+                            tripId={tripId}
+                            itemId={a.id}
+                            routingStatus={a.routingStatus}
+                            hasBooking={!!a.booking}
+                            actor={isOwner ? "owner" : "expert"}
+                          />
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Item 2 Phase 2 — "Book via your Traveloure agent" on an affiliate-grounded
+                      item (§16 agent rail, opaque token). Self-guarding: renders nothing unless the
+                      server stamped an agent-bookable affiliate grounding, so it is inert on every
+                      item until the Phase 2b server lane lands. Owner-only (the traveler books their
+                      own trip). */}
+                  {isOwner && <AffiliateBookButton activity={a} testId={`button-affiliate-book-${a.id}`} />}
+
                   <div className="flex gap-2.5 mt-2">
-                    {a.comments > 0 && (
-                      <span
-                        className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer hover:underline"
-                        data-testid={`link-comments-${a.id}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {a.comments} comment
-                        {a.comments > 1 ? "s" : ""}
-                      </span>
-                    )}
                     {(a.changes?.length ?? 0) > 0 && (
                       <span
                         className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1"
@@ -564,6 +767,15 @@ export function ActivitiesSection({
                       </span>
                     )}
                   </div>
+
+                  {/* QA_PUNCH_LIST W3-C item 12 — the real thread the mobile-lens audit #6 note
+                      above (now removed) said didn't exist yet. Owner and the trip's assigned
+                      expert both have server-side access (server/routes/booking-actions.ts); a
+                      share/collaborator/friend viewer is neither, so this renders nothing for
+                      them rather than a component that would just 403. */}
+                  {(isOwner || isExpertViewer) && (
+                    <ItemComments tripId={tripId} itemId={a.id} className="mt-2" />
+                  )}
                 </div>
               </div>
             )}

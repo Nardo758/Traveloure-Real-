@@ -1,7 +1,9 @@
 /**
  * Nightly QA Job
  *
- * Runs all 20 automated QA checks (same set as GET /api/admin/qa/verify),
+ * Runs all automated QA checks — the static registry (S/D/P/L/A/C/T/R IDs) PLUS the H1–H6
+ * runtime health layer (server/services/runtime-health.service.ts, composed into
+ * runQAVerify() itself — see qa-verify.service.ts) — same combined set as GET /api/admin/qa/verify,
  * saves a snapshot to qa_run_snapshots, computes a diff against the
  * previous run, and emails all admin users the results.
  *

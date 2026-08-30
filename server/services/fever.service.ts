@@ -13,6 +13,10 @@
  * - Affiliate tracking for commission via Impact.com
  */
 
+import { db } from "../db";
+import { feverEventCache } from "@shared/schema";
+import { and, eq, lt } from "drizzle-orm";
+
 export interface FeverEvent {
   id: string;
   title: string;
@@ -127,6 +131,12 @@ class FeverService {
   private config: ImpactApiConfig;
   private isConfigured: boolean = false;
   private feverCatalogId: string | null = null;
+  /**
+   * In-flight cache-refresh promises keyed by normalised city name.
+   * Concurrent cache-miss requests for the same city await the same Promise
+   * instead of each triggering a separate live fetch.
+   */
+  private readonly inFlightRefreshes = new Map<string, Promise<number>>();
 
   // Fever operates in these cities (launch markets)
   private static readonly SUPPORTED_CITIES: FeverCity[] = [
@@ -223,10 +233,19 @@ class FeverService {
   }
 
   /**
-   * Check if the service is properly configured
+   * Check if the service is properly configured (credentials present)
    */
   public isReady(): boolean {
     return this.isConfigured;
+  }
+
+  /**
+   * Returns true only when both credentials AND a live Fever catalog ID are
+   * available.  When false, searchEvents falls back to mock data — never call
+   * upsertEventsToCache in that state.
+   */
+  public isCatalogReady(): boolean {
+    return this.isConfigured && this.feverCatalogId !== null;
   }
 
   /**
@@ -244,16 +263,36 @@ class FeverService {
   }
 
   /**
-   * Find city by name or code
+   * Find a supported Fever city by name, IATA code, or a compound string
+   * (e.g. "Paris, France" or "New York, United States").  Matching is tried
+   * in order: exact code, exact name, name-contains, then — for compound
+   * "City, Country" strings — the part before the first comma.
    */
   public findCity(nameOrCode: string): FeverCity | undefined {
     const normalized = nameOrCode.toLowerCase().trim();
-    return FeverService.SUPPORTED_CITIES.find(
-      city => 
+
+    const match = FeverService.SUPPORTED_CITIES.find(
+      city =>
         city.code.toLowerCase() === normalized ||
         city.name.toLowerCase() === normalized ||
-        city.name.toLowerCase().includes(normalized)
+        city.name.toLowerCase().includes(normalized),
     );
+    if (match) return match;
+
+    // "City, Country" / "City, State, Country" format — try the part before
+    // the first comma so "Paris, France" resolves to "Paris".
+    const commaIdx = normalized.indexOf(',');
+    if (commaIdx > 0) {
+      const cityPart = normalized.slice(0, commaIdx).trim();
+      return FeverService.SUPPORTED_CITIES.find(
+        city =>
+          city.code.toLowerCase() === cityPart ||
+          city.name.toLowerCase() === cityPart ||
+          city.name.toLowerCase().includes(cityPart),
+      );
+    }
+
+    return undefined;
   }
 
   /**
@@ -406,6 +445,36 @@ class FeverService {
   }
 
   /**
+   * Fetch live events for a city directly from the Impact.com catalog API —
+   * NO mock fallback. Returns null when:
+   *   - credentials or catalog ID are unavailable, OR
+   *   - the HTTP request fails for any reason.
+   * Callers must treat null as "upstream unavailable — do not cache anything".
+   */
+  private async fetchLiveEventsForCity(
+    cityNameOrCode: string,
+  ): Promise<{ city: FeverCity; events: FeverEvent[] } | null> {
+    if (!this.isCatalogReady()) return null;
+
+    const city = this.findCity(cityNameOrCode);
+    if (!city) {
+      console.warn(`[Fever] fetchLiveEventsForCity: city not found for "${cityNameOrCode}"`);
+      return null;
+    }
+
+    // getCatalogItems returns null on any HTTP/parse error (already logs the error).
+    const items = await this.getCatalogItems(this.feverCatalogId!, {
+      keyword: city.name,
+      pageSize: 30,
+    });
+
+    if (!items) return null; // upstream failure — caller must not cache
+
+    const events = items.map(item => this.transformCatalogItemToEvent(item, city));
+    return { city, events };
+  }
+
+  /**
    * Search events by city and optional filters
    */
   public async searchEvents(params: FeverSearchParams): Promise<FeverSearchResponse | null> {
@@ -499,6 +568,179 @@ class FeverService {
     });
 
     return result?.events || [];
+  }
+
+  /**
+   * Fetch live events for a city from the Fever API and upsert them into the
+   * fever_event_cache table.  Returns the number of rows written.
+   *
+   * Safety guarantees:
+   *  1. Bails immediately when the Fever catalog has not been discovered (i.e.
+   *     credentials are missing or the Impact.com catalog lookup failed).  This
+   *     prevents mock/fallback data from being persisted to the cache.
+   *  2. Per-city in-flight coalescing: concurrent cache-miss requests for the
+   *     same destination await the same Promise — only one live fetch is made.
+   *  3. Race-safe upsert via ON CONFLICT (event_id) DO UPDATE (backed by
+   *     migration 221's unique index), so concurrent inserts for the same
+   *     event_id resolve cleanly at the database level.
+   */
+  public async upsertEventsToCache(cityNameOrCode: string): Promise<number> {
+    // Guard 1: never write mock data — only run when a real Fever catalog is ready.
+    if (!this.isCatalogReady()) {
+      console.warn('[Fever] upsertEventsToCache skipped — catalog not ready (credentials or catalog ID missing)');
+      return 0;
+    }
+
+    // Resolve to canonical city first so "Paris, France" and "Paris" share the same lock key.
+    const city = this.findCity(cityNameOrCode);
+    if (!city) {
+      console.warn(`[Fever] upsertEventsToCache: no supported city found for "${cityNameOrCode}"`);
+      return 0;
+    }
+    const lockKey = city.code.toLowerCase();
+
+    // Guard 2: coalesce concurrent refreshes — return the in-flight Promise directly
+    // so every waiter receives the same result without triggering a second fetch.
+    const existing = this.inFlightRefreshes.get(lockKey);
+    if (existing) {
+      console.log(`[Fever] Coalescing concurrent refresh for: ${city.name}`);
+      return existing;
+    }
+
+    const refreshPromise = this._doUpsertCity(city);
+    this.inFlightRefreshes.set(lockKey, refreshPromise);
+    try {
+      return await refreshPromise;
+    } finally {
+      this.inFlightRefreshes.delete(lockKey);
+    }
+  }
+
+  /** Internal: performs the actual live fetch + cache write for a resolved city. */
+  private async _doUpsertCity(city: FeverCity): Promise<number> {
+    // Use the live-only fetch path — never falls back to mock data.
+    // Returns null when credentials/catalog are missing or the HTTP call fails.
+    const result = await this.fetchLiveEventsForCity(city.name);
+    if (!result || result.events.length === 0) return 0;
+
+    {
+      const { events } = result;
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      let upserted = 0;
+
+      for (const event of events) {
+        try {
+          const values = {
+            eventId: event.id,
+            title: event.title,
+            slug: event.slug,
+            description: event.description ?? null,
+            shortDescription: event.shortDescription ?? null,
+            imageUrl: event.imageUrl ?? null,
+            thumbnailUrl: event.thumbnailUrl ?? null,
+            category: event.category,
+            subcategory: event.subcategory ?? null,
+            city: city.name,
+            cityCode: city.code,
+            country: city.country,
+            countryCode: city.countryCode,
+            venueName: event.venue?.name ?? null,
+            venueAddress: event.venue?.address ?? null,
+            latitude: event.venue?.coordinates?.lat?.toString() ?? null,
+            longitude: event.venue?.coordinates?.lng?.toString() ?? null,
+            startDate: event.dates.startDate ? new Date(event.dates.startDate) : null,
+            endDate: event.dates.endDate ? new Date(event.dates.endDate) : null,
+            sessions: event.dates.sessions ?? [],
+            currency: event.pricing.currency,
+            minPrice: event.pricing.minPrice?.toString() ?? null,
+            maxPrice: event.pricing.maxPrice?.toString() ?? null,
+            priceRange: event.pricing.priceRange ?? null,
+            isFree: event.isFree,
+            isSoldOut: event.isSoldOut,
+            rating: event.rating?.toString() ?? null,
+            reviewCount: event.reviewCount ?? 0,
+            bookingUrl: event.bookingUrl,
+            affiliateUrl: event.affiliateUrl ?? null,
+            tags: event.tags ?? [],
+            highlights: event.highlights ?? [],
+            provider: "fever" as const,
+            rawData: {},
+            expiresAt,
+            lastUpdated: new Date(),
+          };
+
+          // Guard 3: conflict-safe upsert — resolves cleanly even if two
+          // concurrent requests race past the in-flight lock before the index exists.
+          await db
+            .insert(feverEventCache)
+            .values(values)
+            .onConflictDoUpdate({
+              target: feverEventCache.eventId,
+              set: {
+                title: values.title,
+                slug: values.slug,
+                description: values.description,
+                shortDescription: values.shortDescription,
+                imageUrl: values.imageUrl,
+                thumbnailUrl: values.thumbnailUrl,
+                category: values.category,
+                subcategory: values.subcategory,
+                city: values.city,
+                cityCode: values.cityCode,
+                country: values.country,
+                countryCode: values.countryCode,
+                venueName: values.venueName,
+                venueAddress: values.venueAddress,
+                latitude: values.latitude,
+                longitude: values.longitude,
+                startDate: values.startDate,
+                endDate: values.endDate,
+                sessions: values.sessions,
+                currency: values.currency,
+                minPrice: values.minPrice,
+                maxPrice: values.maxPrice,
+                priceRange: values.priceRange,
+                isFree: values.isFree,
+                isSoldOut: values.isSoldOut,
+                rating: values.rating,
+                reviewCount: values.reviewCount,
+                bookingUrl: values.bookingUrl,
+                affiliateUrl: values.affiliateUrl,
+                tags: values.tags,
+                highlights: values.highlights,
+                expiresAt: values.expiresAt,
+                lastUpdated: values.lastUpdated,
+              },
+            });
+          upserted++;
+        } catch (err: any) {
+          console.error(`[Fever] Upsert error for event ${event.id}:`, err?.message);
+        }
+      }
+
+      // Retire stale rows for this city that were not refreshed (events no longer
+      // returned by the live API).  Rows whose event_id was in the live response
+      // now have an updated expiresAt; any remaining expired rows for the same
+      // cityCode are no longer active and would otherwise linger until the cache
+      // cleanup job (task #1190) removes them.
+      if (upserted > 0) {
+        try {
+          await db
+            .delete(feverEventCache)
+            .where(
+              and(
+                eq(feverEventCache.cityCode, city.code),
+                lt(feverEventCache.expiresAt, new Date()),
+              )
+            );
+        } catch (err: any) {
+          console.warn(`[Fever] Stale-row cleanup failed for ${city.name}:`, err?.message);
+        }
+      }
+
+      console.log(`[Fever] Upserted ${upserted} events for city: ${city.name}`);
+      return upserted;
+    }
   }
 
   /**

@@ -1,5 +1,6 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const GT_BASE = "https://api.gettransfer.com/api";
 
@@ -8,7 +9,7 @@ async function gtFetch(path: string, params: Record<string, string | number | un
   if (!token) throw new Error("TRAVELPAYOUTS_TOKEN not configured");
 
   const url = new URL(path, GT_BASE);
-  url.searchParams.set("marker", token);
+  url.searchParams.set("marker", getTravelpayoutsMarker());
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) url.searchParams.set(k, String(v));
   }
@@ -16,7 +17,11 @@ async function gtFetch(path: string, params: Record<string, string | number | un
   const res = await fetch(url.toString(), {
     headers: { "Accept": "application/json" },
   });
-  if (!res.ok) throw new Error(`GetTransfer API error ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`GetTransfer API error ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -32,7 +37,7 @@ export async function searchGetTransferOptions(params: GetTransferSearchParams):
   if (!getTravelpayoutsToken()) return [];
 
   try {
-    const token = getTravelpayoutsToken();
+    const marker = getTravelpayoutsMarker();
     const data = await gtFetch("/transfers/search", {
       from_address: params.from,
       to_address: params.to,
@@ -42,8 +47,10 @@ export async function searchGetTransferOptions(params: GetTransferSearchParams):
     });
 
     const offers = data?.offers || data?.transfers || data?.data || [];
+    const items = Array.isArray(offers) ? offers : [];
+    reportProviderResult("gettransfer", items.length > 0 ? "ok" : "empty");
 
-    return (Array.isArray(offers) ? offers : []).map((o: any): CatalogItem => ({
+    return items.map((o: any): CatalogItem => ({
       id: `gettransfer-${o.id || Math.random().toString(36).slice(2)}`,
       type: "transfer",
       provider: "gettransfer",
@@ -60,12 +67,14 @@ export async function searchGetTransferOptions(params: GetTransferSearchParams):
       duration: o.duration ? `${Math.round(o.duration / 60)} min` : null,
       categories: ["transfer", "airport-transfer"],
       tags: [o.vehicle?.class || "private", "door-to-door"],
-      bookingUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${token}`,
-      affiliateUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${token}`,
+      bookingUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${marker}`,
+      affiliateUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${marker}`,
       source: "travelpayouts/gettransfer",
       lastUpdated: new Date(),
     } as CatalogItem));
   } catch (err) {
+    const status = (err as any)?.status;
+    reportProviderResult("gettransfer", status ? outcomeFromHttpStatus(status) : "error", err instanceof Error ? err.message : String(err));
     console.warn("[GetTransfer] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Partner Demand — visual target (Calendar ghost-slots · Catalog funnel row)</title>
+<style>
+/* ============================================================================
+   VISUAL TARGET — Phase 3.1 (Calendar) + 3.2/3.4 (Catalog)
+   Grounded in real console anatomy @ main 8d7b581:
+   - Calendar: pages/provider/calendar.tsx month grid (Sunday-first, kind-driven chips)
+   - Catalog:  pages/provider/services.tsx `.listing` row (74×56 thumb / lname / lmeta / lright)
+   RULE (standing): this file is a LAYOUT + BEHAVIOR reference ONLY.
+   Implementation takes colors/fonts from brand tokens in code, never from here.
+   ============================================================================ */
+:root{
+  --navy:#1E3A5F; --teal:#2E8B8B; --gold:#E8B339; --ink:#0D2137;
+  --green:#5DCAA5; --red:#E85D55;
+  --mut:#5C6B7A; --hair:#E3E8ED; --bg:#F7F9FA; --card:#FFFFFF;
+  --ghost-bg:rgba(232,179,57,.10); --ghost-border:rgba(232,179,57,.55);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:28px 20px 60px;max-width:960px;margin:0 auto}
+h1,h2{font-family:Fraunces,Georgia,serif}
+h1{font-size:22px;margin-bottom:4px}
+.sub{font-size:13px;color:var(--mut);margin-bottom:26px;line-height:1.55}
+.spec{font-size:11.5px;color:var(--mut);background:#EEF3F6;border:1px dashed var(--hair);border-radius:6px;padding:10px 12px;margin:14px 0 30px;line-height:1.6}
+.spec b{color:var(--ink)}
+section{margin-bottom:44px}
+h2{font-size:16px;margin-bottom:10px}
+
+/* ── Surface 1: Calendar ─────────────────────────────────────────────────── */
+.cal-card{background:var(--card);border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+.cal-head{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--hair)}
+.cal-month{font-size:15px;font-weight:700;flex:1}
+.cal-ro{font-size:12px;color:var(--mut)}
+/* header stat — the monthly aggregate, above the grid */
+.dnm-stat{display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--hair);background:linear-gradient(0deg,rgba(232,179,57,.05),rgba(232,179,57,.05))}
+.dnm-stat .fig{font-family:Fraunces,Georgia,serif;font-size:24px;font-weight:700;color:var(--navy)}
+.dnm-stat .lbl{font-size:12.5px;color:var(--mut);line-height:1.45;max-width:430px}
+.dnm-stat .lbl b{color:var(--ink)}
+.dnm-n{font-size:11px;color:var(--mut);margin-left:auto;align-self:center;text-align:right}
+.grid{display:grid;grid-template-columns:repeat(7,1fr)}
+.dow{font-size:10.5px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;padding:8px 0 6px;text-align:center;border-bottom:1px solid var(--hair)}
+.day{min-height:86px;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:5px 5px 6px;position:relative}
+.day:nth-child(7n){border-right:none}
+.dnum{font-size:11px;color:var(--mut);margin-bottom:4px}
+.day.today .dnum{color:var(--navy);font-weight:700}
+.chip{display:block;font-size:10.5px;line-height:1.3;border-radius:4px;padding:3px 6px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border:1px solid transparent}
+.chip.open{background:rgba(46,139,139,.12);color:var(--teal);border-color:rgba(46,139,139,.25)}
+.chip.booked{background:rgba(30,58,95,.10);color:var(--navy);border-color:rgba(30,58,95,.2)}
+.chip.blackout{background:#F1F3F5;color:var(--mut);text-decoration:line-through}
+/* THE SIGNATURE: ghost slot — requested-but-uncovered window, rendered where the
+   fix happens. Dashed border + gold wash + $ figure. Tap → availability editor,
+   window preselected. */
+.chip.ghost{background:var(--ghost-bg);border:1.5px dashed var(--ghost-border);color:#8A6A15;font-weight:600}
+.chip.ghost .amt{color:var(--navy);font-weight:700}
+.chip.ghost:hover{background:rgba(232,179,57,.18)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 18px;border-top:1px solid var(--hair);font-size:11px;color:var(--mut)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* ── Surface 2: Catalog listing rows ─────────────────────────────────────── */
+.cat-card{background:var(--card);border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+.listing{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--hair)}
+.listing:last-child{border-bottom:none}
+.thumb{width:74px;height:56px;border-radius:6px;background:linear-gradient(135deg,#DCE6EC,#C4D4DE);flex-shrink:0}
+.lmain{flex:1;min-width:0}
+.lname{font-size:13.5px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:8px}
+.pill{font-size:10px;font-weight:600;border-radius:99px;padding:2px 8px}
+.pill.live{background:rgba(93,202,165,.15);color:#2E7D5E}
+.lmeta{font-size:11.5px;color:var(--mut);margin-bottom:7px}
+/* THE FUNNEL BAR: four segments, ~24px tall block incl. labels. Width ∝ count,
+   min-width so zero-adjacent stages stay visible. Stall segment (largest drop) = red. */
+.funnel{display:flex;align-items:center;gap:0;height:14px;border-radius:4px;overflow:hidden;max-width:340px}
+.fseg{height:100%;position:relative;min-width:22px}
+.fseg.s1{background:rgba(46,139,139,.85)}
+.fseg.s2{background:rgba(46,139,139,.55)}
+.fseg.s3{background:rgba(46,139,139,.30)}
+.fseg.s4{background:var(--green)}
+.fseg.stall{background:rgba(232,93,85,.75)}
+.flabels{display:flex;max-width:340px;margin-top:3px}
+.flabel{font-size:9.5px;color:var(--mut);white-space:nowrap}
+.flabel b{color:var(--ink)}
+.lright{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+/* removal badge — count + stage on tap (tooltip here) */
+.rm-badge{font-size:10.5px;background:rgba(232,93,85,.10);color:var(--red);border:1px solid rgba(232,93,85,.25);border-radius:99px;padding:2px 9px;cursor:pointer;position:relative}
+.rm-badge .tip{display:none;position:absolute;right:0;top:120%;background:var(--ink);color:#fff;font-size:10.5px;border-radius:6px;padding:8px 10px;white-space:nowrap;z-index:5;line-height:1.6}
+.rm-badge:hover .tip{display:block}
+.act{font-size:11px;color:var(--teal);font-weight:600;cursor:pointer}
+.nline{font-size:9.5px;color:var(--mut)}
+/* honest empty state (shared component voice) */
+.listing.nodata .funnel-empty{font-size:11px;color:var(--mut);background:#F4F6F8;border:1px dashed var(--hair);border-radius:4px;padding:5px 10px;max-width:340px}
+
+/* mobile: grid → week strip; funnel bar survives as-is */
+@media (max-width:560px){
+  .grid{grid-template-columns:repeat(7,1fr)}
+  .day{min-height:64px}
+  .chip{font-size:9.5px;padding:2px 4px}
+  .dnm-stat{flex-wrap:wrap}
+  .dnm-n{margin-left:0;text-align:left;width:100%}
+  .listing{flex-wrap:wrap}
+  .lright{flex-direction:row;width:100%;justify-content:space-between}
+}
+</style>
+</head>
+<body>
+
+<h1>Partner Demand — visual target</h1>
+<p class="sub">Two surfaces for the Phase 2.5 → Phase 3 dispatch: the Calendar ghost-slot grid (3.1) and the Catalog inline funnel row (3.2 + 3.4). Layout and behavior reference only — implementation derives every color and font from brand tokens in code.</p>
+
+<div class="spec"><b>Binding behaviors encoded below:</b> ghost slot tap → availability editor with the window preselected · every dollar figure carries its trip count ("based on N planned trips") · below-floor cells render the honest empty state, never a softened number · funnel stall segment = largest stage-to-stage drop · removal badge tooltip shows stage breakdown · nothing on either surface renders a verdict word ("good"/"poor") — figures and actions only.</div>
+
+<!-- ══════════════════ SURFACE 1 · CALENDAR ══════════════════ -->
+<section>
+<h2>1 · Calendar — demand-not-met ghost slots</h2>
+<div class="cal-card">
+  <div class="cal-head"><span class="cal-month">March 2027</span><span class="cal-ro">Every chip opens the listing's availability editor</span></div>
+
+  <div class="dnm-stat">
+    <span class="fig">$2,340</span>
+    <span class="lbl"><b>requested this month with no bookable slot.</b> Ghost slots below show each uncovered window — tap one to open availability for that time.</span>
+    <span class="dnm-n">based on 14 planned trips<br>updated daily</span>
+  </div>
+
+  <div class="grid">
+    <div class="dow">Sun</div><div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div>
+
+    <div class="day"><span class="dnum">1</span><span class="chip open">09:00 Tea ceremony · 4 left</span></div>
+    <div class="day"><span class="dnum">2</span><span class="chip booked">10:00 Market walk · booked</span></div>
+    <div class="day"><span class="dnum">3</span><span class="chip ghost">10:00–13:00 · <span class="amt">~$840</span> requested</span><span class="chip open">15:00 Tea ceremony · 2 left</span></div>
+    <div class="day"><span class="dnum">4</span></div>
+    <div class="day"><span class="dnum">5</span><span class="chip booked">09:00 Market walk · booked</span></div>
+    <div class="day"><span class="dnum">6</span><span class="chip ghost">18:00–21:00 · <span class="amt">~$620</span> requested</span></div>
+    <div class="day"><span class="dnum">7</span><span class="chip open">10:00 Market walk · 6 left</span></div>
+
+    <div class="day"><span class="dnum">8</span></div>
+    <div class="day today"><span class="dnum">9</span><span class="chip open">09:00 Tea ceremony · 4 left</span></div>
+    <div class="day"><span class="dnum">10</span><span class="chip ghost">10:00–13:00 · <span class="amt">~$560</span> requested</span></div>
+    <div class="day"><span class="dnum">11</span><span class="chip blackout">Blackout</span></div>
+    <div class="day"><span class="dnum">12</span><span class="chip blackout">Blackout</span></div>
+    <div class="day"><span class="dnum">13</span><span class="chip open">15:00 Tea ceremony · 3 left</span></div>
+    <div class="day"><span class="dnum">14</span><span class="chip ghost">07:00–09:00 · <span class="amt">~$320</span> requested</span><span class="chip open">10:00 Market walk · 6 left</span></div>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:rgba(46,139,139,.4)"></i>Open slot</span>
+    <span><i style="background:rgba(30,58,95,.35)"></i>Booked</span>
+    <span><i style="background:var(--ghost-bg);border:1.5px dashed var(--ghost-border)"></i>Requested, no slot (tap to open availability)</span>
+    <span><i style="background:#F1F3F5"></i>Blackout</span>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════ SURFACE 2 · CATALOG ══════════════════ -->
+<section>
+<h2>2 · Catalog — inline slip funnel + removal badge, on the listing row</h2>
+<div class="cat-card">
+
+  <!-- Row A: healthy listing, stall at checkout -->
+  <div class="listing">
+    <div class="thumb"></div>
+    <div class="lmain">
+      <div class="lname">Nishiki Market food walk <span class="pill live">Live</span></div>
+      <div class="lmeta">Food &amp; culinary · ¥8,500 · 2 hrs</div>
+      <div class="funnel">
+        <div class="fseg s1" style="width:44%" title="In planning: 22"></div>
+        <div class="fseg s2" style="width:28%" title="With expert: 14"></div>
+        <div class="fseg stall" style="width:18%" title="Ready for checkout: 9 — largest drop is AFTER this stage"></div>
+        <div class="fseg s4" style="width:10%" title="Purchased: 3"></div>
+      </div>
+      <div class="flabels">
+        <span class="flabel" style="width:44%">Planned <b>22</b></span>
+        <span class="flabel" style="width:28%">Expert <b>14</b></span>
+        <span class="flabel" style="width:18%">Ready <b>9</b></span>
+        <span class="flabel">Bought <b>3</b></span>
+      </div>
+    </div>
+    <div class="lright">
+      <span class="rm-badge">7 removed
+        <span class="tip">4 removed in planning<br>3 removed at checkout<br>— price shown at removal: ¥8,500</span>
+      </span>
+      <span class="act">Review pricing →</span>
+      <span class="nline">last 90 days · 22 trips</span>
+    </div>
+  </div>
+
+  <!-- Row B: below-floor listing — the honest empty state -->
+  <div class="listing nodata">
+    <div class="thumb"></div>
+    <div class="lmain">
+      <div class="lname">Dawn temple photography <span class="pill live">Live</span></div>
+      <div class="lmeta">Photography · ¥14,000 · 3 hrs</div>
+      <div class="funnel-empty">Not enough trips yet to show a funnel — appears in 3 planned trips (shows at 5).</div>
+    </div>
+    <div class="lright">
+      <span class="act">Promote this →</span>
+      <span class="nline">last 90 days</span>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<!-- ══════════════════ SURFACE 3 · MAP ══════════════════ -->
+<section>
+<h2>3 · Map — demand layers on the existing market-insights overlay</h2>
+<p class="sub" style="margin-bottom:12px"><b>Home: Performance → Demand tab</b> (stations act, Performance reviews — the map is a study surface, and it sits beside the Business Advisor's grain-labeled narration). Renders via the shared map component with the lane-B2 layer pattern (ruling 84) — NOT a new map, and NOT mounted on the Catalog map, whose B2 overlay stays as shipped. One home for the $ layer. All B2 honesty rules inherit: neighborhood-centroid buckets only (never per-lat/lng heat), server-side counts, below-threshold ⇒ "not enough signal yet", ODbL attribution. The canvas below is a stylized stand-in for the real tile layer.</p>
+
+<div class="cal-card">
+  <!-- layer toggles -->
+  <div class="cal-head" style="gap:8px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:600">Layers:</span>
+    <span class="pill" style="background:rgba(232,179,57,.18);color:#8A6A15;cursor:pointer">● Unmet demand ($)</span>
+    <span class="pill" style="background:rgba(46,139,139,.14);color:var(--teal);cursor:pointer">● My listings</span>
+    <span class="pill" style="background:rgba(232,93,85,.12);color:var(--red);cursor:pointer">● Coverage gaps</span>
+    <span class="pill" style="background:#F1F3F5;color:var(--mut);cursor:pointer">○ Requested services</span>
+    <span class="cal-ro" style="margin-left:auto">Kyoto · last 90 days</span>
+  </div>
+
+  <!-- stylized map canvas -->
+  <div style="position:relative;height:340px;background:linear-gradient(160deg,#EAF0F3,#DEE8ED);overflow:hidden">
+    <!-- faint street texture suggestion -->
+    <div style="position:absolute;inset:0;opacity:.35;background:
+      repeating-linear-gradient(90deg,transparent 0 70px,#CBD8E0 70px 71px),
+      repeating-linear-gradient(0deg,transparent 0 90px,#CBD8E0 90px 91px)"></div>
+
+    <!-- UNMET DEMAND: gold circles at NEIGHBORHOOD CENTROIDS, radius ∝ $ value, dashed ring
+         (same visual family as the calendar ghost slot — one vocabulary for "requested, uncovered") -->
+    <div style="position:absolute;left:24%;top:30%;width:96px;height:96px;border-radius:50%;background:var(--ghost-bg);border:2px dashed var(--ghost-border);transform:translate(-50%,-50%)"></div>
+    <div style="position:absolute;left:24%;top:30%;transform:translate(-50%,-50%);text-align:center;font-size:10.5px;line-height:1.35">
+      <b style="color:#8A6A15">Gion</b><br><span style="font-family:Fraunces,Georgia,serif;font-weight:700;color:var(--navy)">~$1,240</span><br><span style="color:var(--mut);font-size:9.5px">6 windows · 9 trips</span>
+    </div>
+    <div style="position:absolute;left:62%;top:58%;width:64px;height:64px;border-radius:50%;background:var(--ghost-bg);border:2px dashed var(--ghost-border);transform:translate(-50%,-50%)"></div>
+    <div style="position:absolute;left:62%;top:58%;transform:translate(-50%,-50%);text-align:center;font-size:10px;line-height:1.35">
+      <b style="color:#8A6A15">Arashiyama</b><br><span style="font-family:Fraunces,Georgia,serif;font-weight:700;color:var(--navy)">~$680</span><br><span style="color:var(--mut);font-size:9.5px">3 windows · 5 trips</span>
+    </div>
+
+    <!-- PAST/EXPIRED circle: solid muted — a settled loss, fewer actions -->
+    <div style="position:absolute;left:82%;top:66%;width:52px;height:52px;border-radius:50%;background:rgba(107,122,135,.14);border:2px solid rgba(107,122,135,.4);transform:translate(-50%,-50%)"></div>
+    <div style="position:absolute;left:82%;top:66%;transform:translate(-50%,-50%);text-align:center;font-size:9.5px;line-height:1.3"><b style="color:#6B7A87">Station area</b><br><span style="font-weight:700;color:#6B7A87">$540 missed</span></div>
+    <!-- STAY-GAP circle: navy ring, night-shaped -->
+    <div style="position:absolute;left:40%;top:22%;width:58px;height:58px;border-radius:50%;background:rgba(30,58,95,.08);border:2px dashed rgba(30,58,95,.45);transform:translate(-50%,-50%)"></div>
+    <div style="position:absolute;left:40%;top:22%;transform:translate(-50%,-50%);text-align:center;font-size:9.5px;line-height:1.3"><b style="color:var(--navy)">Central</b><br><span style="color:var(--navy);font-weight:700">18 nights</span><br><span style="color:var(--mut);font-size:9px">no stay · 6 trips</span></div>
+
+    <!-- MY LISTINGS: teal pins (existing layer, unchanged) -->
+    <div style="position:absolute;left:30%;top:44%;width:12px;height:12px;border-radius:50%;background:var(--teal);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
+    <div style="position:absolute;left:47%;top:36%;width:12px;height:12px;border-radius:50%;background:var(--teal);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
+
+    <!-- COVERAGE GAP: existing B2 marker (target vs have), red outline -->
+    <div style="position:absolute;left:78%;top:26%;transform:translate(-50%,-50%);background:#fff;border:1.5px solid rgba(232,93,85,.5);border-radius:6px;padding:4px 8px;font-size:10px;box-shadow:0 1px 4px rgba(0,0,0,.12)">
+      <b style="color:var(--red)">Higashiyama</b> · photography<br><span style="color:var(--mut)">target 3 · have 1</span>
+    </div>
+
+    <!-- below-threshold neighborhood: honest empty, no invented circle -->
+    <div style="position:absolute;left:44%;top:74%;transform:translate(-50%,-50%);font-size:9.5px;color:var(--mut);background:rgba(255,255,255,.75);border:1px dashed var(--hair);border-radius:4px;padding:2px 7px">Fushimi — not enough signal yet</div>
+
+    <div style="position:absolute;right:8px;bottom:6px;font-size:9px;color:var(--mut)">© OpenStreetMap contributors</div>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:var(--ghost-bg);border:1.5px dashed var(--ghost-border);border-radius:50%"></i>Unmet demand — circle ∝ $ requested, at neighborhood centroid · tap → windows list → availability editor</span>
+    <span><i style="background:var(--teal);border-radius:50%"></i>Your listings</span>
+    <span><i style="background:#fff;border:1.5px solid rgba(232,93,85,.5)"></i>Coverage gap (target vs have)</span>
+  </div>
+</div>
+
+<p class="spec" style="margin-top:14px"><b>Map layer rules:</b> unmet-demand circles bucket to <b>neighborhood centroids</b> (city_neighborhoods), never raster heat and never traveler coordinates — the B2 aggregation posture verbatim, now carrying a $ value instead of a search count. Tap on a circle opens that neighborhood's requested-windows list; each window deep-links to the availability editor — same closing action as the calendar ghost slot, so map (Performance) and calendar (station) are two views of ONE metric (one rollup read, L6). The Catalog map's B2 overlay is untouched and does not gain the $ layer — one home per figure. The "Requested services" toggle (off above) lights up when Q5b confirms <code>service_requests</code> liveness — explicit asks pinned at their requested neighborhood where stated, city-bucket otherwise. Expert side: the same demand layer mounts as a 4th toggleable layer on the PlanCard map stack (pins / transport / expert notes / <b>demand</b>, expert role only) so experts see uncovered demand while building — feeding the AI advisor the same grain-labeled facts. Admin: the cross-market view in <code>markets.tsx</code> reuses the layer at city zoom, all markets, with per-market floor status.</p>
+
+<p class="spec"><b>Implementation notes for the dispatch:</b> Calendar extends the existing kind-driven chip system in <code>calendar.tsx</code> — ghost is a new <code>kind</code>, not a parallel renderer. Catalog rows extend the existing <code>.listing</code> anatomy in <code>services.tsx</code> (funnel block mounts under <code>.lmeta</code>; removal badge joins <code>.lright</code>). Floors enforced server-side; the empty state above is what a suppressed cell looks like — the client never decides suppression. Mobile: calendar collapses to a week strip; the funnel bar and labels survive unchanged.</p>
+
+<!-- ══════════════════ SURFACE 4 · WORKSPACE CHOOSER ══════════════════ -->
+<section>
+<h2>4 · Workspace chooser — the creation area's entry</h2>
+<p class="sub" style="margin-bottom:12px">Entry surface of the creation area (Work/Catalog side of the shell). Today remains the mandatory console landing — this is NOT a landing. Expert variant swaps labels: <i>Create an Offering · Author a Ready-Made Trip · Conduct Market Research</i>.</p>
+<div style="display:flex;gap:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:180px;background:var(--card);border:1px solid var(--hair);border-radius:8px;padding:22px 18px;cursor:pointer">
+    <div style="font-family:Fraunces,Georgia,serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">Create a Service</div>
+    <div style="font-size:12px;color:var(--mut)">Tours, classes, transport, custom work — the 6-step wizard.</div>
+  </div>
+  <div style="flex:1;min-width:180px;background:var(--card);border:1px solid var(--hair);border-radius:8px;padding:22px 18px;cursor:pointer">
+    <div style="font-family:Fraunces,Georgia,serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">Add a Property</div>
+    <div style="font-size:12px;color:var(--mut)">Stays and venues travelers can book around.</div>
+  </div>
+  <div style="flex:1;min-width:180px;background:linear-gradient(0deg,rgba(232,179,57,.07),rgba(232,179,57,.07)),var(--card);border:1.5px dashed var(--ghost-border);border-radius:8px;padding:22px 18px;cursor:pointer">
+    <div style="font-family:Fraunces,Georgia,serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">Conduct Market Research</div>
+    <div style="font-size:12px;color:var(--mut)">See what travelers are asking for — then build it from there. <b style="color:#8A6A15">$2,340 unmet in Kyoto</b></div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════ SURFACE 5 · MARKET RESEARCH PAGE ══════════════════ -->
+<section>
+<h2>5 · Market Research page — the map's one home, with build verbs</h2>
+<p class="sub" style="margin-bottom:12px">Full-page destination from the chooser. Composition top-to-bottom: market switcher + hero figure → layered map (Surface 3) → Requested-Windows list (the calendar↔map bridge, per approved brief §2c) → build verbs with context prefill.</p>
+<div class="cal-card">
+  <div class="cal-head"><span class="cal-month">Market Research — Kyoto ▾</span><span class="cal-ro">based on 29 planned trips (strict) · updated daily</span></div>
+  <div class="dnm-stat"><span class="fig">$2,340</span><span class="lbl"><b>unmet demand this season.</b> The map shows where; the list below shows the exact windows.</span></div>
+
+  <!-- ±90 TIME SCRUBBER -->
+  <div style="padding:10px 18px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:10px;font-size:10.5px;color:var(--mut)">
+    <span>−90d</span>
+    <div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#C9D3DA 0 50%,var(--ghost-bg) 50% 100%);position:relative">
+      <div style="position:absolute;left:50%;top:-4px;width:2px;height:16px;background:var(--navy)"></div>
+      <div style="position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:9px;color:var(--navy);font-weight:700">today</div>
+    </div>
+    <span>+90d</span>
+    <span style="margin-left:8px">past = <b style="color:#6B7A87">missed</b> · forward = <b style="color:#8A6A15">requested</b> — never summed</span>
+  </div>
+  <!-- FORWARD PRESSURE STRIP (trend resolver, decomposed — calendar pressure only) -->
+  <div style="padding:8px 18px;border-bottom:1px solid var(--hair);font-size:10.5px;color:var(--mut)">
+    Pressure next 90d: <span class="pill" style="background:rgba(232,179,57,.15);color:#8A6A15">Gion Matsuri · Jul 17–24</span> <span class="pill" style="background:rgba(46,139,139,.12);color:var(--teal)">peak season → Nov</span> <span style="font-size:9.5px">· updated daily · from trend engine (calendar pressure, never the composite score)</span>
+  </div>
+
+  <div style="height:120px;background:linear-gradient(160deg,#EAF0F3,#DEE8ED);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--mut);border-bottom:1px solid var(--hair)">[ layered map — Surface 3 renders here, layer toggles + circles ]</div>
+  <div style="padding:12px 16px;border-bottom:1px solid var(--hair)">
+    <div style="font-size:12px;font-weight:700;margin-bottom:8px">Requested windows <span style="font-weight:400;color:var(--mut)">(unmet demand · updated daily)</span></div>
+    <div style="font-size:11.5px;line-height:2.0;font-family:ui-monospace,monospace">
+      Kyoto · Fri Aug 21 &nbsp;&nbsp;<b style="color:var(--navy)">$1,240</b> unmet · 14 trips &nbsp;<span class="act">[calendar↗]</span> <span class="act">[map↗]</span> <span class="act" style="color:#8A6A15">[add window to Nishiki food walk →]</span><br>
+      Kyoto · Sat Aug 22 &nbsp;&nbsp;<b style="color:var(--navy)">$980</b> unmet · 11 trips &nbsp;<span class="act">[calendar↗]</span> <span class="act">[map↗]</span> <span class="act" style="color:#8A6A15">[create a service here →]</span><br>
+      Kyoto · Oct 12–15 &nbsp;&nbsp;<b style="color:var(--navy)">3 nights</b> · 4 travelers, no stay · 6 trips &nbsp;<span class="act" style="color:#8A6A15">[add a property here →]</span> <span style="color:var(--mut);font-size:10px">← stay-shaped row (count-only)</span><br>
+      <span style="color:var(--mut)">Kyoto · (no priced items) &nbsp;— · 12 trips — count-only, ranks below priced</span><br>
+      <span style="color:#6B7A87">Past 90d: <b>$3,100 missed</b> across 9 expired windows · pattern: Fri mornings ×3 &nbsp;<span class="act">[open recurring availability →]</span></span><br>
+      <span style="color:var(--mut)">Fewer than 10 planned trips in other markets — not shown yet (floor: 10).</span>
+    </div>
+  </div>
+  <div style="padding:10px 16px;font-size:11px;color:var(--mut)">"Create a service here" opens the wizard with market, category, and the requested window <b>prefilled from the tapped signal</b>; the created listing is stamped <code>created_via: market_research</code>.</div>
+</div>
+</section>
+
+<!-- ══════════════════ SURFACE 6 · TODAY CARD ══════════════════ -->
+<section>
+<h2>6 · Today — exactly one demand card</h2>
+<div class="cal-card" style="max-width:520px">
+  <div style="padding:14px 16px;display:flex;gap:12px;align-items:center">
+    <div style="width:8px;height:44px;border-radius:4px;background:var(--gold)"></div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600">$1,240 requested for Fri Aug 21 — you have no slot open</div>
+      <div style="font-size:11px;color:var(--mut)">14 planned trips · your category · tap to open availability</div>
+    </div>
+    <span class="act">Open Calendar →</span>
+  </div>
+</div>
+<p class="sub" style="margin-top:8px">Ranked by dollars across all signals; ONE card, never a feed. Deep-links to the station where the action closes.</p>
+</section>
+
+<!-- ══════════════════ SURFACE 7 · PERFORMANCE → DEMAND TAB ══════════════════ -->
+<section>
+<h2>7 · Performance → Demand — the sit-down review</h2>
+<div class="cal-card">
+  <div class="cal-head"><span style="font-size:12px;color:var(--mut)">Overview · Analytics · Reviews · <b style="color:var(--navy)">Demand</b></span></div>
+  <div style="padding:12px 16px;font-size:11.5px;line-height:1.8">
+    <b>This month:</b> $2,340 unmet (29 trips) · funnel: 22 planned → 14 expert → 9 ready → 3 bought · 7 removed <span style="color:var(--mut)">(removal data since Aug 17)</span><br>
+    <span style="color:var(--mut)">Existing demand-signals list + Business Advisor narration render here, grain-labeled per R5.</span><br>
+    <span class="act">Open Market Research for the map and windows →</span>
+  </div>
+</div>
+<p class="sub" style="margin-top:8px">Extends the existing DemandTab — trends and advisor here; the interactive map lives ONLY on Market Research (one home per figure).</p>
+</section>
+
+<!-- ══════════════════ SURFACE 8 · ADMIN STRIP ══════════════════ -->
+<section>
+<h2>8 · Admin — four extensions, no new pages</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;font-size:11px">
+  <div class="cal-card" style="padding:12px"><b>markets.tsx</b> — cross-market demand incl. <code>__unmapped__</code> (90 real trips — largest pool; Lisbon/SF/Paris clusters) + per-market floor status ("Kyoto: clears · Porto: 0/10")</div>
+  <div class="cal-card" style="padding:12px"><b>data.tsx</b> — rollup health: last nightly run, rows/market, source-row counts, ledger-vs-rollup drift check</div>
+  <div class="cal-card" style="padding:12px"><b>beside fee-bands.tsx</b> — floors 5/10/25 displayed, Leon-only, changes audit-logged</div>
+  <div class="cal-card" style="padding:12px"><b>one-pager control</b> — generate/preview per qualifying market; houses the Phase 4 non-delegable review gate</div>
+</div>
+</section>
+
+</body>
+</html>

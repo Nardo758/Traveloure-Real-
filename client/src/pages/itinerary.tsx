@@ -25,6 +25,7 @@ import {
   CalendarDays,
   Star,
   ChevronRight,
+  Ticket,
 } from "lucide-react";
 import {
   Dialog,
@@ -51,6 +52,7 @@ import { BookingFeeBreakdown } from "@/components/itinerary/BookingFeeBreakdown"
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
+type TransportAlternative = NonNullable<InlineTransportLegData["alternativeModes"]>[number];
 
 function getBookingType(actType: string): BookingType {
   const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
@@ -64,16 +66,9 @@ function getPartnerName(actType: string): string | undefined {
   return undefined;
 }
 
-function getPartnerUrl(partnerName: string | undefined, destination?: string): string {
-  if (partnerName === '12Go') {
-    const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
-    return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
-  }
-  if (partnerName === 'Fever') {
-    return 'https://feverup.com/';
-  }
-  return '#';
-}
+// §16: the client-side partner-URL builder that used to live here (hardcoded 12Go affiliate
+// id) is deleted — it had no callers, and partner booking runs through the booking-agent rail
+// (PlanCard's primary action / TransportBookingCard), where the server builds the deep link.
 
 
 function ESimSidebarWidget({ destination }: { destination: string }) {
@@ -99,33 +94,9 @@ function ESimSidebarWidget({ destination }: { destination: string }) {
 }
 
 function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
-  if (!activities || activities.length < 2) return [];
-  const legs: InlineTransportLegData[] = [];
-  for (let i = 0; i < activities.length - 1; i++) {
-    const from = activities[i];
-    const to = activities[i + 1];
-    legs.push({
-      id: `synth-leg-${from.id}-${to.id}`,
-      legOrder: i + 1,
-      fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
-      toName: to.location || to.title || to.name || `Stop ${i + 2}`,
-      recommendedMode: "walk",
-      userSelectedMode: null,
-      distanceDisplay: "~1 km",
-      estimatedDurationMinutes: 15,
-      estimatedCostUsd: null,
-      alternativeModes: [
-        { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
-        { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
-        { mode: "rideshare", durationMinutes: 7, costUsd: 6, energyCost: 25, reason: "Convenient pickup" },
-      ],
-      fromLat: from.lat || null,
-      fromLng: from.lng || null,
-      toLat: to.lat || null,
-      toLng: to.lng || null,
-    });
-  }
-  return legs;
+  // No fabricated route geometry or travel time. The caller keeps the section empty until a real
+  // routed leg is available from the server.
+  return [];
 }
 
 
@@ -289,7 +260,9 @@ export default function ItineraryPage() {
           location: act.location || act.venue || "",
           lat: act.lat ?? null,
           lng: act.lng ?? null,
-          duration: act.duration || "1h",
+          duration:
+            act.duration ??
+            (typeof act.durationMinutes === "number" ? `${act.durationMinutes} min` : "Duration needed"),
           notes: act.description || act.notes || "",
           booked: act.bookingRequired === false || act.booked || false,
           bookingType: act.bookingType || getBookingType(actType),
@@ -331,15 +304,29 @@ export default function ItineraryPage() {
     staleTime: 30000,
   });
 
-  const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
+  const { data: feePreview, isLoading: feePreviewLoading, error: feePreviewError } = useQuery<{
     subtotal: number;
     platformFeeTotal: number;
+    conciergeFeeTotal: number;
     total: number;
     itemCount: number;
+    // Trip-Pass display-honesty fix: mirrors the SAME resolveTripPassFeeWaiver record the
+    // real charge path stamps onto a booking row (server/routes/payments.routes.ts), summed
+    // across the cart. null when this page has no real tripId yet, or the trip has no active
+    // pass — never a guessed waiver.
+    tripPassFeeWaiver?: { waived: boolean; basis: string; itemCount: number; wouldHaveBeenAmountTotal: number } | null;
   }>({
-    queryKey: ["/api/cart/fee-preview"],
+    // `params?.id` (not the "1" fallback below) — an optional, ownership-checked tripId so the
+    // preview can ask the SAME question the real checkout asks. Omitted entirely when this page
+    // has no real route match, matching the endpoint's pre-existing behavior byte-for-byte.
+    queryKey: params?.id ? ["/api/cart/fee-preview", { tripId: params.id }] : ["/api/cart/fee-preview"],
     staleTime: 30 * 1000,
   });
+  // Task 1108: the server now answers 503 `concierge_fee_unconfigured` when the cart holds a
+  // Booking Concierge item but the fee band is misconfigured — surface that as an actionable
+  // banner instead of a misleadingly low total (checkout would hard-fail on the same config).
+  const conciergeFeeUnavailable =
+    feePreviewError != null && String((feePreviewError as Error).message ?? "").includes("concierge_fee_unconfigured");
 
   if (isLoading) {
     return (
@@ -712,12 +699,16 @@ export default function ItineraryPage() {
                     // matches the same cart snapshot the fee calculation uses.
                     const pendingTotal = feePreview != null ? feePreview.subtotal : inAppTotal + partnerTotal;
                     // Per-item fee preview: exact same resolution logic as POST /api/checkout.
-                    // Hide fee row while loading or when cart is empty / unauthenticated.
-                    const feeAmount = !feePreviewLoading && feePreview != null && feePreview.platformFeeTotal > 0
-                      ? feePreview.platformFeeTotal
+                    // Hide fee rows while loading or when cart is empty / unauthenticated.
+                    const hasPreview = !feePreviewLoading && feePreview != null;
+                    const feeAmount = hasPreview && feePreview!.platformFeeTotal > 0
+                      ? feePreview!.platformFeeTotal
                       : null;
-                    const totalWithFees = !feePreviewLoading && feePreview != null && feePreview.total > 0
-                      ? feePreview.total
+                    const conciergeFeeAmount = hasPreview && feePreview!.conciergeFeeTotal > 0
+                      ? feePreview!.conciergeFeeTotal
+                      : null;
+                    const totalWithFees = hasPreview && feePreview!.total > 0
+                      ? feePreview!.total
                       : null;
                     return (
                       <>
@@ -745,12 +736,42 @@ export default function ItineraryPage() {
                           <span className="text-sm text-muted-foreground">Subtotal</span>
                           <span className="text-sm font-semibold text-foreground" data-testid="text-total-pending">${pendingTotal}</span>
                         </div>
+                        {feePreview?.tripPassFeeWaiver?.waived && (
+                          <div
+                            className="flex items-center gap-1.5 p-2 rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                            data-testid="fee-preview-trip-pass-waiver"
+                          >
+                            <Ticket className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="text-xs font-medium">Included in your Trip Pass — service fee waived</span>
+                          </div>
+                        )}
+                        {conciergeFeeUnavailable && (
+                          <div
+                            className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"
+                            data-testid="banner-concierge-fee-unavailable"
+                          >
+                            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                              The Destination Concierge booking fee can't be calculated right now, so we can't show an
+                              accurate total. Please try again shortly or contact support before checking out.
+                            </p>
+                          </div>
+                        )}
                         {pendingTotal > 0 && feeAmount !== null && totalWithFees !== null && (
                           <>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Fees</span>
+                              <span className="text-sm text-muted-foreground">Platform fee</span>
                               <span className="text-sm font-semibold text-foreground" data-testid="text-booking-fees">${feeAmount.toFixed(2)}</span>
                             </div>
+                            {conciergeFeeAmount !== null && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">
+                                  Destination Concierge booking fee
+                                  <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                                </span>
+                                <span className="text-sm font-semibold text-foreground" data-testid="text-concierge-fee">${conciergeFeeAmount.toFixed(2)}</span>
+                              </div>
+                            )}
                             <div className="border-t pt-2 mt-1 flex items-center justify-between">
                               <span className="text-sm font-semibold text-foreground">Total</span>
                               <span className="text-base font-bold text-foreground" data-testid="text-booking-total">${totalWithFees.toFixed(2)}</span>
@@ -892,8 +913,14 @@ export default function ItineraryPage() {
             </div>
             <div className="flex items-start gap-2 p-3 bg-muted rounded-lg">
               <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              {/* §13: was "within 24 hours" — see the sibling note in
+                  itinerary-comparison.tsx. The request notifies matching experts; no SLA
+                  and no assignment exist behind it. The no-charge-now half IS true (the
+                  booking row is created `pending` with no payment intent), so it stays. */}
               <p className="text-sm text-muted-foreground">
-                An expert will contact you within 24 hours to confirm your itinerary and payment details. You'll only be charged once all bookings are confirmed.
+                Your request goes to experts who cover this destination. You're not charged
+                anything now — an expert will confirm your itinerary and payment details with
+                you first.
               </p>
             </div>
           </div>

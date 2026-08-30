@@ -1,8 +1,18 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
-const TIQETS_BASE = "https://api.tiqets.com/v1";
+/**
+ * Tiqets — live probe evidence (2026-08-02, production-adjacent Replit environment): every call to
+ * `https://api.tiqets.com/v1/products` returns upstream `404`. Unlike Kiwi/Tequila this is NOT a closed
+ * partner program — Tiqets is a live Travelpayouts network — so the most likely cause is a moved/renamed
+ * feed path, not a dead integration. NOT retired: base URL is env-overridable
+ * (`TIQETS_BASE_URL`, defaults to the same `https://api.tiqets.com/v1` this always used) so a corrected
+ * path can be dropped in via config without a code change once the real endpoint is confirmed. Degrades
+ * honestly either way — see the try/catch below and searchTiqetsProducts' log-once-per-call warning.
+ */
+const TIQETS_BASE = process.env.TIQETS_BASE_URL || "https://api.tiqets.com/v1";
 const BRAND = "tiqets";
 
 async function tiqetsFetch(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
@@ -21,7 +31,9 @@ async function tiqetsFetch(path: string, params: Record<string, string | number 
     },
   });
   if (!res.ok) {
-    throw new Error(`Tiqets API error ${res.status}`);
+    const err = new Error(`Tiqets API error ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -32,6 +44,11 @@ export interface TiqetsSearchParams {
   limit?: number;
   currency?: string;
 }
+
+// Log-once guard — the base URL/path being wrong means every call fails identically; avoid spamming
+// the log with the same warning per request while the registry (provider-health.service.ts) still
+// records every attempt for the admin panel.
+let hasLoggedTiqetsFailure = false;
 
 export async function searchTiqetsProducts(params: TiqetsSearchParams): Promise<CatalogItem[]> {
   if (!getTravelpayoutsToken()) return [];
@@ -58,9 +75,19 @@ export async function searchTiqetsProducts(params: TiqetsSearchParams): Promise<
     await setCachedFeed(BRAND, cacheKey, items);
 
     const token = getTravelpayoutsToken();
-    return mapTiqetsProducts(items, params, token);
+    const mapped = mapTiqetsProducts(items, params, token);
+    reportProviderResult("tiqets", mapped.length > 0 ? "ok" : "empty");
+    return mapped;
   } catch (err) {
-    console.warn("[Tiqets] Search failed:", err instanceof Error ? err.message : err);
+    const status = (err as any)?.status;
+    reportProviderResult("tiqets", status ? outcomeFromHttpStatus(status) : "error", err instanceof Error ? err.message : String(err));
+    if (!hasLoggedTiqetsFailure) {
+      hasLoggedTiqetsFailure = true;
+      console.warn(
+        `[Tiqets] Search failed (further failures logged only to /api/admin/provider-health, not the console):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
     return [];
   }
 }

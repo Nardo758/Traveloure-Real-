@@ -290,10 +290,10 @@ export default function BookingFlowModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="flex min-h-0 max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-2xl">
+        <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b border-gray-200 bg-white px-6 py-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               {currentStep === 'visa_intake' && <><Globe className="w-6 h-6 text-blue-600" />Visa Details</>}
@@ -313,7 +313,9 @@ export default function BookingFlowModal({
         </div>
 
         {/* Content */}
-        <div className="px-6 py-6">
+        <div className={`min-h-0 flex-1 px-6 py-6 ${
+          currentStep === 'payment' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
+        }`}>
 
           {/* ── Visa Intake Step ── */}
           {currentStep === 'visa_intake' && (
@@ -479,7 +481,10 @@ export default function BookingFlowModal({
                   </div>
                   {conciergeFee > 0 && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Booking Concierge fee</span>
+                      <span>
+                        Destination Concierge booking fee
+                        <span className="block text-[11px] text-muted-foreground">powered by local experts</span>
+                      </span>
                       <span>${conciergeFee.toFixed(2)}</span>
                     </div>
                   )}

@@ -6,7 +6,7 @@ import {
   travelPulseLiveActivity,
   travelPulseHappeningNow,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike } from "drizzle-orm";
 import { logger } from "./infrastructure";
 
 // Import JSON data directly so it gets bundled with the code
@@ -209,9 +209,17 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
 
     const cities = citiesData as CityData[];
     for (const city of cities) {
-      const existing = await db.select().from(travelPulseCities).where(eq(travelPulseCities.id, city.id));
+      // Check by (city_name, country) — not just ID — so a row previously
+      // created by the seedTrendingCities() path (different UUID) is still
+      // recognised as a duplicate and not inserted again.
+      const existing = await db.select({ id: travelPulseCities.id }).from(travelPulseCities).where(
+        and(
+          ilike(travelPulseCities.cityName, city.city_name),
+          ilike(travelPulseCities.country, city.country)
+        )
+      ).limit(1);
       if (existing.length === 0) {
-        await db.insert(travelPulseCities).values({
+        const inserted = await db.insert(travelPulseCities).values({
           id: city.id,
           cityName: city.city_name,
           country: city.country,
@@ -237,8 +245,8 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
           totalAlerts: city.total_alerts,
           imageUrl: city.image_url,
           thumbnailUrl: city.thumbnail_url,
-        });
-        created++;
+        }).onConflictDoNothing();
+        if (inserted.rowCount) created++;
       }
     }
 

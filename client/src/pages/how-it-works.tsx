@@ -13,6 +13,7 @@ import {
   Check
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { usePlanning } from "@/contexts/PlanningContext";
 
 const steps = [
   {
@@ -82,6 +83,7 @@ const planningOptions = [
 
 export default function HowItWorksPage() {
   const { openSignInModal } = useSignInModal();
+  const { open: openPlanning } = usePlanning();
   
   return (
     <div className="min-h-screen bg-background">
@@ -216,10 +218,10 @@ export default function HowItWorksPage() {
               Ready to Start Planning?
             </h2>
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
-              Join thousands of travelers who have discovered the joy of effortless trip planning.
+              Create your first trip and see how much of the planning we can take off your hands.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-create-trip-cta">
+              <Button size="lg" variant="secondary" onClick={() => openPlanning()} data-testid="button-create-trip-cta">
                 Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Link href="/experts">

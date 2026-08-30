@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { loginAsTestAccount } from "./helpers/auth";
+import { requireBaseUrl } from "../fixtures/base-url";
 
 test.describe("Journey 5 — Admin Fee Propagation & Trust", () => {
   test("Admin changes fee in fee-bands editor → next checkout reflects new fee", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as admin ───────────────────────────────────────
     await loginAsTestAccount(page, "admin");
@@ -38,7 +39,7 @@ test.describe("Journey 5 — Admin Fee Propagation & Trust", () => {
   });
 
   test("Admin triggers payout → expert receives funds via Stripe Connect", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as admin ───────────────────────────────────────
     await loginAsTestAccount(page, "admin");
@@ -79,7 +80,7 @@ test.describe("Journey 5 — Admin Fee Propagation & Trust", () => {
   // workflow (npm run test:upsell-contract).
 
   test("Upsell click attribution tracked", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as traveler ───────────────────────────────────
     await loginAsTestAccount(page, "traveler");

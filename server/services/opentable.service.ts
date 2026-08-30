@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { restaurantCache } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { reportProviderResult, outcomeFromHttpStatus } from "./provider-health.service";
 
 export interface OpenTableRestaurant {
   id: number;
@@ -69,13 +70,16 @@ class OpenTableService {
 
       if (!response.ok) {
         console.error(`[OpenTable] API error: ${response.status} ${response.statusText}`);
+        reportProviderResult("opentable", outcomeFromHttpStatus(response.status), `HTTP ${response.status}`);
         return [];
       }
 
       const data = await response.json() as any;
       const restaurants: OpenTableRestaurant[] = data.restaurants || data.items || (Array.isArray(data) ? data : []);
+      reportProviderResult("opentable", restaurants.length > 0 ? "ok" : "empty");
       return restaurants;
     } catch (error: any) {
+      reportProviderResult("opentable", "error", error?.message);
       console.error("[OpenTable] Search error:", error.message);
       return [];
     }

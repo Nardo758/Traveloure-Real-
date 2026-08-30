@@ -1,0 +1,969 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Traveloure Design System - from wireframes v2.0 */
+  
+  /* Primary: #FF385C (Traveloure Red/Pink) */
+  --primary: 350 100% 61%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 350 81% 54%; /* #E23350 */
+
+  /* Secondary: Gray palette */
+  --secondary: 220 9% 46%; /* #6B7280 */
+  --secondary-foreground: 0 0% 100%;
+
+  /* Accent: Green for success */
+  --accent: 160 84% 39%; /* #10B981 */
+  --accent-foreground: 0 0% 100%;
+
+  /* Neutrals - exact wireframe colors */
+  --background: 210 20% 98%; /* #F9FAFB */
+  --foreground: 221 39% 11%; /* #111827 - Text Dark */
+  
+  --muted: 220 14% 96%; /* #F3F4F6 - Secondary Light */
+  --muted-foreground: 220 9% 46%; /* #6B7280 - Text Mid */
+  
+  --card: 0 0% 100%; /* #FFFFFF - Surface */
+  --card-foreground: 221 39% 11%; /* #111827 */
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 221 39% 11%;
+  
+  --border: 220 13% 91%; /* #E5E7EB */
+  --input: 220 13% 91%;
+  
+  --destructive: 0 84% 60%; /* #EF4444 */
+  --destructive-foreground: 0 0% 98%;
+
+  --ring: 350 100% 61%;
+  --radius: 0.5rem;
+
+  /* Text colors */
+  --text-dark: 221 39% 11%; /* #111827 */
+  --text-mid: 220 9% 46%; /* #6B7280 */
+  --text-light: 218 11% 65%; /* #9CA3AF */
+
+  /* Status colors */
+  --success: 160 84% 39%; /* #10B981 */
+  --warning: 38 92% 50%; /* #F59E0B */
+  --error: 0 84% 60%; /* #EF4444 */
+  --info: 217 91% 60%; /* #3B82F6 */
+
+  /* Sidebar */
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 221 39% 11%;
+  --sidebar-primary: 350 100% 61%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 14% 96%;
+  --sidebar-accent-foreground: 221 39% 11%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 350 100% 61%;
+
+  /* Fonts - Inter with system fallbacks */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: 'Architects Daughter', sans-serif;
+
+  /* ── Ways-to-Earn palette — Discover/Experts redesign (themeable, light values) ── */
+  --earn-ground: #FAFAF8;
+  --earn-card: #FFFFFF;
+  --earn-border: #E7E4DD;
+  --earn-border-dash: #D5D0C8;
+  --earn-teal: #2E8B8B;
+  --earn-teal-ink: #226B6B;
+  --earn-teal-wash: rgba(46, 139, 139, 0.10);
+  --earn-gold: #E8B339;
+  --earn-gold-ink: #8A6414;
+  --earn-gold-wash: rgba(232, 179, 57, 0.15);
+  --earn-green: #5DCAA5;
+  --earn-green-ink: #2F7D63;
+  --earn-coral-bg: #FFF4F4;
+  --earn-coral-border: #FCCACA;
+  --earn-coral-ink: #E85D55;
+  --earn-navy: #1E3A5F;
+  --earn-ink: #1F2733;
+  --earn-muted: #6A7480;
+  --earn-faint: #B0AAA0;
+  --earn-chip: #F6F5F1;
+
+  /* ── Public traveler system ─────────────────────────────────────────────
+     Shared by Marketplace, location detail, /earn, and other public shells.
+     These aliases intentionally sit above route-specific styling: commerce
+     can remain editorial and travel-intelligence can remain data-led while
+     their surfaces, controls, type hierarchy, and states still feel related.
+     Keep this scope separate from .console-scope. */
+  --public-ground: var(--earn-ground);
+  --public-surface: var(--earn-card);
+  --public-surface-subtle: var(--earn-chip);
+  --public-border: var(--earn-border);
+  --public-ink: var(--earn-navy);
+  --public-body: var(--earn-ink);
+  --public-muted: var(--earn-muted);
+  --public-brand: #FF4D70;
+  --public-brand-wash: #FFF0F3;
+  --public-accent: var(--earn-teal);
+  --public-accent-ink: var(--earn-teal-ink);
+  --public-accent-wash: var(--earn-teal-wash);
+  --public-accent-contrast: #FFFFFF;
+  --public-gold: var(--earn-gold);
+  --public-gold-ink: var(--earn-gold-ink);
+  --public-gold-wash: var(--earn-gold-wash);
+  --public-danger: var(--earn-coral-ink);
+  --public-danger-wash: var(--earn-coral-bg);
+  --public-danger-border: var(--earn-coral-border);
+  --public-active-bg: var(--public-ink);
+  --public-active-fg: #FFFFFF;
+  --public-radius-sm: 0.625rem;
+  --public-radius: 1rem;
+  --public-radius-lg: 1.25rem;
+  --public-shadow: 0 8px 28px rgba(30, 58, 95, 0.055);
+  --public-shadow-hover: 0 14px 36px rgba(30, 58, 95, 0.11);
+  --public-display: 'DM Serif Display', Georgia, serif;
+}
+
+/* ── Earner back-office console scope (decision-maker ratified Jul 27, 2026) ──
+   TWO PALETTES BY DESIGN: the Traveler surface keeps the global brand above
+   (--primary #FF385C, cool greys); the earner back office (expert + provider
+   consoles) is a different product with the warm console palette (#E85D55 +
+   #1A1A18/#7A7A72/#E8E8E2/#FAFAF8). Scoped via this class on BackofficeShell's
+   root — every bg-primary / text-foreground / border inside the console resolves
+   to the console palette with ZERO traveler blast radius. Design-audit fixes
+   1+2: collapses the two-reds-on-one-screen split and makes the ~50 cards using
+   shadcn semantics (`border`, `text-muted-foreground`) console-conformant
+   without touching page files. Do not restyle console pages with raw hex —
+   use tokens; this scope makes them correct. */
+.console-scope {
+  --primary: 3 76% 62%; /* #E85D55 */
+  --primary-hover: 3 66% 52%; /* darkened coral */
+  --ring: 3 76% 62%;
+  --sidebar-primary: 3 76% 62%;
+  --sidebar-ring: 3 76% 62%;
+  --background: 60 17% 98%; /* #FAFAF8 */
+  --foreground: 60 4% 10%; /* #1A1A18 */
+  --card-foreground: 60 4% 10%;
+  --muted: 60 10% 95%; /* #F3F3EE */
+  --muted-foreground: 60 3% 46%; /* #7A7A72 */
+  --border: 60 12% 90%; /* #E8E8E2 */
+  --input: 60 12% 90%;
+  --text-dark: 60 4% 10%;
+  --text-mid: 60 3% 46%;
+
+  /* ── Raw console color tokens (W-2, mockup-unified-workspace v9 palette) ──
+     For inline styles inside console pages: consume var(--console-*) — never a
+     raw hex literal in a console page file (§17 "use tokens"). ok/warn/danger
+     are the semantic state trio; *-soft are their wash backgrounds. */
+  --console-ink: #1A1A18;
+  --console-mid: #7A7A72;
+  --console-faint: #A8A8A0;
+  --console-line: #E8E8E2;
+  --console-ground: #FAFAF8;
+  --console-card: #FFFFFF;
+  --console-brand: #E85D55;
+  --console-brand-soft: #FDEFEE;
+  --console-ok: #2E7D5B;
+  --console-ok-soft: #EAF4EF;
+  --console-warn: #B45309;
+  --console-warn-soft: #FCF3E7;
+  --console-danger: #B3261E;
+  --console-danger-soft: #F9E7E6;
+  /* info — the Channel Calendar's store-lifecycle lane (mockup-console-pages §1 legend). */
+  --console-info: #3B6EA5;
+  --console-info-soft: #EAF1F8;
+}
+
+/* Dark counterparts (mockup v9 dark theme — warm-neutral, not a naive invert). */
+.dark .console-scope {
+  --console-ink: #F0EFEA;
+  --console-mid: #9C9B92;
+  --console-faint: #6E6D66;
+  --console-line: #33332F;
+  --console-ground: #191917;
+  --console-card: #211F1D;
+  --console-brand: #F07068;
+  --console-brand-soft: #3A2523;
+  --console-ok: #5CBF94;
+  --console-ok-soft: #1F3229;
+  --console-warn: #E0A050;
+  --console-warn-soft: #362A18;
+  --console-danger: #F28B82;
+  --console-danger-soft: #3A2422;
+  /* info — the Channel Calendar's store-lifecycle lane (mockup-console-pages §1 legend). */
+  --console-info: #86ACD8;
+  --console-info-soft: #1E2A38;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  
+  --card: 222 47% 13%;
+  --card-foreground: 210 40% 98%;
+  
+  --popover: 222 47% 13%;
+  --popover-foreground: 210 40% 98%;
+  
+  --primary: 350 100% 65%;
+  --primary-foreground: 222 47% 11%;
+  
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  
+  --accent: 145 63% 50%;
+  --accent-foreground: 220 47% 11%;
+  
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 210 40% 98%;
+  
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  
+  --ring: 350 100% 65%;
+
+  /* Sidebar Dark */
+  --sidebar-background: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 350 100% 65%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217 33% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217 33% 20%;
+  --sidebar-ring: 350 100% 65%;
+
+  /* ── Ways-to-Earn palette — dark counterpart (warm-neutral, not a naive invert) ── */
+  --earn-ground: #17181A;
+  --earn-card: #202225;
+  --earn-border: #34363B;
+  --earn-border-dash: #3E4045;
+  --earn-teal: #43A5A5;
+  --earn-teal-ink: #83D6D6;
+  --earn-teal-wash: rgba(67, 165, 165, 0.16);
+  --earn-gold: #E8B339;
+  --earn-gold-ink: #E2BB60;
+  --earn-gold-wash: rgba(232, 179, 57, 0.16);
+  --earn-green: #5DCAA5;
+  --earn-green-ink: #82DBBB;
+  --earn-coral-bg: rgba(232, 93, 85, 0.13);
+  --earn-coral-border: rgba(232, 93, 85, 0.36);
+  --earn-coral-ink: #F0908A;
+  --earn-navy: #E9ECF1;
+  --earn-ink: #E6E8EB;
+  --earn-muted: #9BA3AD;
+  --earn-faint: #71747A;
+  --earn-chip: #2A2C30;
+  --public-brand: #FF6B86;
+  --public-brand-wash: rgba(255, 107, 134, 0.15);
+  --public-accent-contrast: #10243D;
+  --public-active-bg: var(--public-brand);
+  --public-active-fg: #FFFFFF;
+  --public-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  --public-shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.32);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body {
+    /* `clip` (not `hidden`): overflow-x hidden on html/body creates a scroll
+       container, which silently breaks the navbar's position: sticky. */
+    overflow-x: clip;
+  }
+  body {
+    @apply bg-background text-foreground antialiased font-body;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold text-gray-900 dark:text-gray-50;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glass-panel {
+    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+  .glass-panel-dark {
+    @apply bg-black/60 backdrop-blur-md border border-white/10 shadow-xl;
+  }
+}
+
+/* Elevation utilities */
+@layer utilities {
+  .hover-elevate {
+    @apply transition-all duration-200;
+  }
+  .hover-elevate:hover {
+    @apply brightness-95 dark:brightness-110;
+  }
+  .active-elevate-2 {
+    @apply transition-all duration-100;
+  }
+  .active-elevate-2:active {
+    @apply brightness-90 dark:brightness-125 scale-[0.98];
+  }
+  .toggle-elevate {
+    @apply transition-all duration-200;
+  }
+  .toggle-elevated {
+    @apply bg-primary/10 dark:bg-primary/20;
+  }
+  .no-default-hover-elevate:hover {
+    @apply brightness-100;
+  }
+  .no-default-active-elevate:active {
+    @apply brightness-100 scale-100;
+  }
+}
+
+/* Travel-themed component styles */
+@layer components {
+  /* Shared public-page foundations. Add `.public-page` only to traveler and
+     partner acquisition surfaces; authenticated consoles remain untouched. */
+  .public-page {
+    min-height: 100%;
+    background: var(--public-ground);
+    color: var(--public-body);
+  }
+
+  .public-container {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  .public-container--narrow {
+    max-width: 64rem;
+  }
+
+  .public-masthead {
+    background: var(--public-surface);
+    border-bottom: 1px solid var(--public-border);
+  }
+
+  .public-page-title {
+    margin: 0;
+    color: var(--public-ink);
+    font-family: var(--public-display);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 400;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  .public-section-title {
+    color: var(--public-ink);
+    font-family: var(--public-display);
+    font-size: 1.5rem;
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+  }
+
+  .public-lede {
+    color: var(--public-muted);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  .public-link {
+    color: var(--public-accent-ink);
+    font-weight: 600;
+    text-underline-offset: 0.2em;
+  }
+
+  .public-link:hover {
+    text-decoration: underline;
+  }
+
+  .public-card {
+    border: 1px solid var(--public-border);
+    border-radius: var(--public-radius);
+    background: var(--public-surface);
+    box-shadow: var(--public-shadow);
+  }
+
+  .public-card-interactive {
+    transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  }
+
+  .public-card-interactive:hover {
+    border-color: color-mix(in srgb, var(--public-accent) 55%, var(--public-border));
+    box-shadow: var(--public-shadow-hover);
+  }
+
+  .public-card-interactive:focus-visible,
+  .public-control:focus-visible,
+  .public-back-link:focus-visible,
+  .public-filter-chip:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--public-brand) 38%, transparent);
+    outline-offset: 2px;
+  }
+
+  .public-band {
+    background: var(--public-surface);
+    border-bottom: 1px solid var(--public-border);
+  }
+
+  .public-back-link {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--public-border);
+    border-radius: 999px;
+    background: var(--public-surface);
+    padding: 0.5rem 0.875rem;
+    color: var(--public-muted);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(30, 58, 95, 0.04);
+    transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .public-back-link:hover {
+    color: var(--public-ink);
+    border-color: color-mix(in srgb, var(--public-accent) 45%, var(--public-border));
+    box-shadow: var(--public-shadow);
+  }
+
+  .public-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px dashed var(--public-border);
+    border-radius: var(--public-radius);
+    background: var(--public-surface);
+    padding: 2rem 1.25rem;
+    text-align: center;
+    color: var(--public-muted);
+  }
+
+  .public-state--error {
+    border-style: solid;
+    border-color: var(--public-danger-border);
+    background: var(--public-danger-wash);
+    color: var(--public-danger);
+  }
+
+  .public-track-pill,
+  .public-earning-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    white-space: nowrap;
+    font-weight: 700;
+  }
+
+  .public-track-pill {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.02em;
+  }
+
+  .public-track-pill--in-person {
+    background: color-mix(in srgb, var(--earn-green) 16%, transparent);
+    color: var(--earn-green-ink);
+  }
+
+  .public-track-pill--remote {
+    background: var(--public-accent-wash);
+    color: var(--public-accent-ink);
+  }
+
+  .public-earning-badge {
+    padding: 0.25rem 0.65rem;
+    background: var(--public-gold-wash);
+    color: var(--public-gold-ink);
+    font-size: 0.75rem;
+  }
+
+  .public-role-card {
+    min-height: 10.5rem;
+    padding: 1rem;
+    text-align: left;
+  }
+
+  .public-role-card[aria-pressed="true"] {
+    border-color: var(--public-accent);
+    box-shadow: 0 0 0 1px var(--public-accent), var(--public-shadow);
+  }
+
+  .public-offering-row {
+    display: flex;
+    width: 100%;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    text-align: left;
+  }
+
+  .public-location-hero {
+    position: relative;
+    min-height: 14rem;
+    overflow: hidden;
+    border-radius: var(--public-radius-lg);
+    border: 1px solid color-mix(in srgb, var(--public-border) 70%, transparent);
+    padding: clamp(1.25rem, 4vw, 2rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background-position: center;
+    background-size: cover;
+    box-shadow: var(--public-shadow);
+    isolation: isolate;
+  }
+
+  .public-location-hero--date {
+    min-height: 8.5rem;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .public-location-hero--fallback {
+    background:
+      radial-gradient(circle at 88% 10%, rgba(93, 202, 165, 0.24), transparent 32%),
+      linear-gradient(135deg, #184f55 0%, #163d50 54%, #1e3a5f 100%);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback {
+    background: var(--public-accent-wash);
+    color: var(--public-accent-ink);
+  }
+
+  .public-location-hero-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(to top, rgba(14, 33, 49, 0.88) 0%, rgba(14, 33, 49, 0.38) 58%, rgba(14, 33, 49, 0.12) 100%);
+  }
+
+  .public-location-hero--date .public-location-hero-overlay {
+    background: linear-gradient(135deg, rgba(20, 68, 67, 0.92), rgba(30, 58, 95, 0.68));
+  }
+
+  .public-location-title {
+    margin: 0;
+    color: white;
+    font-family: var(--public-display);
+    font-size: clamp(2.25rem, 7vw, 3.75rem);
+    font-weight: 400;
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.24);
+  }
+
+  .public-location-hero--date .public-location-title {
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-location-title {
+    color: var(--public-ink);
+    text-shadow: none;
+  }
+
+  .public-location-highlight {
+    margin-top: 0.5rem;
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-location-highlight {
+    color: var(--public-accent-ink);
+  }
+
+  .public-pulse-badge {
+    flex: 0 0 auto;
+    min-width: 4rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 0.875rem;
+    background: rgba(13, 29, 42, 0.5);
+    padding: 0.625rem 0.75rem;
+    text-align: center;
+    color: #9ce2ca;
+    backdrop-filter: blur(8px);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-pulse-badge {
+    border-color: color-mix(in srgb, var(--public-accent) 30%, transparent);
+    background: var(--public-surface);
+    color: var(--public-accent-ink);
+  }
+
+  .public-date-pill {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.17);
+    padding: 0.25rem 0.75rem;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 0.75rem;
+    backdrop-filter: blur(8px);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-date-pill {
+    background: var(--public-surface);
+    color: var(--public-accent-ink);
+  }
+
+  .public-stat {
+    border: 1px solid var(--public-border);
+    border-radius: 999px;
+    background: var(--public-surface);
+    padding: 0.55rem 0.85rem;
+    color: var(--public-muted);
+    font-size: 0.75rem;
+    box-shadow: 0 2px 10px rgba(30, 58, 95, 0.035);
+  }
+
+  .public-filter-dock {
+    position: sticky;
+    top: 4rem;
+    z-index: 30;
+    margin-inline: -0.5rem;
+    border-bottom: 1px solid var(--public-border);
+    padding: 0.65rem 0.5rem;
+    background: color-mix(in srgb, var(--public-ground) 92%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .public-filter-chip {
+    min-height: 2.5rem;
+    flex: 0 0 auto;
+    border: 1px solid var(--public-border);
+    border-radius: 999px;
+    background: var(--public-surface);
+    padding: 0.5rem 0.9rem;
+    color: var(--public-muted);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  }
+
+  .public-filter-chip:hover {
+    border-color: color-mix(in srgb, var(--public-accent) 45%, var(--public-border));
+    color: var(--public-ink);
+  }
+
+  .public-filter-chip.is-active {
+    border-color: var(--public-accent);
+    background: var(--public-accent);
+    color: var(--public-accent-contrast);
+  }
+
+  .public-filter-dock > div {
+    scrollbar-width: none;
+  }
+
+  .public-filter-dock > div::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dark .public-site-header img[alt="Traveloure"] {
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
+  }
+
+  .public-location-page [data-testid^="feed-card-"],
+  .public-location-page [data-testid^="section-lead-expert"],
+  .public-location-page [data-testid^="addon-"] {
+    border-radius: var(--public-radius);
+    border-color: var(--public-border);
+    box-shadow: var(--public-shadow);
+  }
+
+  @media (min-width: 640px) {
+    .public-container {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  @media (max-width: 639px) {
+    .public-location-hero {
+      min-height: 12rem;
+      padding: 1.25rem;
+    }
+
+    .public-location-hero--date {
+      min-height: 8rem;
+    }
+
+    .public-role-card {
+      min-height: 0;
+    }
+  }
+
+  /* Glassmorphism effects - auto dark mode */
+  .glass {
+    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-white/10;
+  }
+  
+  .glass-dark {
+    @apply bg-black/40 backdrop-blur-xl border border-white/10;
+  }
+  
+  /* Gradient backgrounds - works in both light/dark mode */
+  .gradient-ocean {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #0369a1 100%);
+  }
+  .dark .gradient-ocean {
+    background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 50%, #0284c7 100%);
+  }
+  
+  .gradient-sunset {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%);
+  }
+  .dark .gradient-sunset {
+    background: linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%);
+  }
+  
+  .gradient-nature {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%);
+  }
+  .dark .gradient-nature {
+    background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  }
+  
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(350, 100%, 61%) 0%, hsl(350, 81%, 54%) 100%);
+  }
+  .dark .gradient-primary {
+    background: linear-gradient(135deg, hsl(350, 100%, 65%) 0%, hsl(350, 100%, 61%) 100%);
+  }
+  
+  .gradient-hero {
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.4) 100%);
+  }
+  
+  .gradient-hero-dark {
+    background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%);
+  }
+  
+  /* Dark mode muted gradients */
+  .gradient-muted {
+    background: linear-gradient(135deg, hsl(220, 14%, 96%) 0%, hsl(210, 20%, 98%) 100%);
+  }
+  .dark .gradient-muted {
+    background: linear-gradient(135deg, hsl(217, 33%, 17%) 0%, hsl(222, 47%, 11%) 100%);
+  }
+  
+  /* Card hover effects - shadow only, no layout changes */
+  .card-lift {
+    @apply transition-shadow duration-300 ease-smooth;
+  }
+  
+  .card-lift:hover {
+    @apply shadow-card-hover;
+  }
+  
+  /* Text gradients - work in both light and dark mode */
+  .text-gradient-ocean {
+    @apply bg-gradient-to-r from-ocean-400 to-ocean-600 dark:from-ocean-300 dark:to-ocean-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-sunset {
+    @apply bg-gradient-to-r from-sunset-400 to-sunset-600 dark:from-sunset-300 dark:to-sunset-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent;
+    background: linear-gradient(135deg, hsl(350, 100%, 61%) 0%, hsl(350, 81%, 54%) 100%);
+  }
+  .dark .text-gradient-primary {
+    background: linear-gradient(135deg, hsl(350, 100%, 70%) 0%, hsl(350, 100%, 61%) 100%);
+  }
+  
+  /* Section spacing */
+  .section-padding {
+    @apply py-16 md:py-24 lg:py-32;
+  }
+  
+  .container-padding {
+    @apply px-4 sm:px-6 lg:px-8 xl:px-12;
+  }
+  
+  /* Skeleton loading */
+  .skeleton {
+    @apply bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 bg-[length:200%_100%] animate-shimmer rounded;
+  }
+  
+  /* Focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+  }
+  
+  /* Scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-gray-800 rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors;
+  }
+}
+
+/*
+ * Optimized plan review dark surface.
+ *
+ * This page is also reached from a share/bookmark flow where the app theme
+ * class may not have been initialized yet. Keep the browser-preference rule
+ * alongside the .dark rule so both theme mechanisms produce the same
+ * readable, warm-neutral review surface as the approved mock.
+ */
+.itinerary-comparison-page {
+  color-scheme: light;
+}
+
+.dark .itinerary-comparison-page {
+  color-scheme: dark;
+  --background: 60 17% 7%; /* #14140F */
+  --foreground: 60 11% 91%; /* #EDECE4 */
+  --card: 60 10% 11%; /* #1D1D18 */
+  --card-foreground: 60 11% 91%;
+  --popover: 60 10% 11%;
+  --popover-foreground: 60 11% 91%;
+  --muted: 60 10% 14%; /* #24241E */
+  --muted-foreground: 60 5% 58%; /* #9A9A8F */
+  --border: 60 8% 18%; /* #2E2E27 */
+  --input: 60 8% 18%;
+  --primary: 258 33% 78%; /* #B7A9E6 */
+  --primary-foreground: 60 17% 7%;
+  --ring: 258 33% 78%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .itinerary-comparison-page {
+    color-scheme: dark;
+    --background: 60 17% 7%; /* #14140F */
+    --foreground: 60 11% 91%; /* #EDECE4 */
+    --card: 60 10% 11%; /* #1D1D18 */
+    --card-foreground: 60 11% 91%;
+    --popover: 60 10% 11%;
+    --popover-foreground: 60 11% 91%;
+    --muted: 60 10% 14%; /* #24241E */
+    --muted-foreground: 60 5% 58%; /* #9A9A8F */
+    --border: 60 8% 18%; /* #2E2E27 */
+    --input: 60 8% 18%;
+    --primary: 258 33% 78%; /* #B7A9E6 */
+    --primary-foreground: 60 17% 7%;
+    --ring: 258 33% 78%;
+  }
+
+  body:has(.itinerary-comparison-page) {
+    background-color: #14140f;
+    color: #edece4;
+  }
+}
+
+/* Browser-preference mode has no Tailwind `dark:` class, so translate the
+   page's remaining literal light utility colors explicitly. These selectors
+   are scoped to this review page and do not alter other traveler surfaces. */
+@media (prefers-color-scheme: dark) {
+  .itinerary-comparison-page .bg-green-100,
+  .itinerary-comparison-page .bg-green-50 {
+    background-color: #16281f !important;
+  }
+  .itinerary-comparison-page .text-green-700,
+  .itinerary-comparison-page .text-green-800,
+  .itinerary-comparison-page .text-green-600 {
+    color: #6fd79e !important;
+  }
+  .itinerary-comparison-page .bg-blue-100 {
+    background-color: #1e2a38 !important;
+  }
+  .itinerary-comparison-page .text-blue-700,
+  .itinerary-comparison-page .text-blue-800,
+  .itinerary-comparison-page .text-blue-600 {
+    color: #86acd8 !important;
+  }
+  .itinerary-comparison-page .bg-amber-50,
+  .itinerary-comparison-page .bg-amber-100 {
+    background-color: #2a2314 !important;
+  }
+  .itinerary-comparison-page .text-amber-700,
+  .itinerary-comparison-page .text-amber-800,
+  .itinerary-comparison-page .text-amber-600 {
+    color: #e7b85e !important;
+  }
+  .itinerary-comparison-page .bg-purple-50 {
+    background-color: #221e33 !important;
+  }
+  .itinerary-comparison-page .text-purple-800,
+  .itinerary-comparison-page .text-purple-700,
+  .itinerary-comparison-page .text-purple-600 {
+    color: #b7a9e6 !important;
+  }
+  .itinerary-comparison-page .border-green-500\/50 {
+    border-color: #244a36 !important;
+  }
+  .itinerary-comparison-page .border-amber-200,
+  .itinerary-comparison-page .border-amber-100,
+  .itinerary-comparison-page .border-purple-200\/50,
+  .itinerary-comparison-page .border-blue-200\/50 {
+    border-color: #3a3a31 !important;
+  }
+  .itinerary-comparison-page .bg-white\/60 {
+    background-color: #24241e !important;
+  }
+}
+
+/* Scroll-triggered animations */
+@layer utilities {
+  .animate-on-scroll {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  
+  .animate-on-scroll.visible {
+    animation: fade-in-up 0.6s ease-out forwards;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Image hover brightness - no layout changes */
+  .img-hover-bright {
+    @apply overflow-hidden;
+  }
+  
+  .img-hover-bright img {
+    @apply transition-[filter] duration-300;
+  }
+  
+  .img-hover-bright:hover img {
+    filter: brightness(1.05);
+  }
+}

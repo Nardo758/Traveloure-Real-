@@ -14,6 +14,13 @@ import {
 } from './schema';
 import { users } from './models/auth';
 
+export type TripListItem = typeof trips.$inferSelect & {
+  occasion: {
+    label: string;
+    date: string;
+  } | null;
+};
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -36,7 +43,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/trips',
       responses: {
-        200: z.array(z.custom<typeof trips.$inferSelect>()),
+        200: z.array(z.custom<TripListItem>()),
         401: errorSchemas.unauthorized,
       },
     },

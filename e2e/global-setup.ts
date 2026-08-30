@@ -10,8 +10,17 @@ import { ROLES, ACCOUNTS, PASSWORD } from './fixtures/accounts';
 const AUTH_DIR = path.join(process.cwd(), 'e2e', 'auth');
 
 export default async function globalSetup(config: FullConfig) {
-  const baseURL = config.projects[0]?.use?.baseURL ?? process.env.E2E_BASE_URL;
-  if (!baseURL) throw new Error('E2E_BASE_URL not set and no baseURL in config');
+  // Target resolution mirrors playwright.e2e.config.ts: STAGING first. This
+  // setup logs in seeded @traveloure.test accounts, which exist ONLY on a deploy
+  // provisioned with ALLOW_TEST_ACCOUNTS=1 (production purges them on boot — the
+  // PR #319 P0 fix). See docs/STAGING.md.
+  const baseURL =
+    config.projects[0]?.use?.baseURL ?? process.env.E2E_STAGING_BASE_URL ?? process.env.E2E_BASE_URL;
+  if (!baseURL) {
+    throw new Error(
+      'No base URL: set E2E_STAGING_BASE_URL (staging, auth-dependent runs) or E2E_BASE_URL — see docs/STAGING.md',
+    );
+  }
   // The session cookie is Secure — over http it is dropped, so login would 200
   // but /api/auth/user would 401, misreading as bad credentials. Catch the real
   // cause up front.
@@ -67,7 +76,10 @@ export default async function globalSetup(config: FullConfig) {
       throw new Error(
         `login failed for ${role} (${ACCOUNTS[role].email}): ${login.status()} ${login.statusText()} ` +
           `${(await login.text().catch(() => '')).slice(0, 200)}\n` +
-          `Check: E2E_BASE_URL reachable · E2E_TEST_PASSWORD matches seed · account exists & has a password.`,
+          `Check: target reachable · E2E_TEST_PASSWORD matches the seed · account exists & has a password.\n` +
+          `A 401 here against a target WITHOUT ALLOW_TEST_ACCOUNTS=1 is expected, not a bug: production ` +
+          `purges @traveloure.test accounts on boot. Auth-dependent runs must target STAGING ` +
+          `(E2E_STAGING_BASE_URL) — see docs/STAGING.md.`,
       );
     }
     // Authed-confirmation: the session cookie must now resolve a user.

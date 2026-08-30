@@ -1,10 +1,20 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
+import { authorizeTripLogistics, authorizeTripOwnerTier } from '../utils/trip-logistics-auth';
+import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { withQueryTimer } from '../utils/queryTimer';
 import path from "path";
 import fs from "fs";
+import { transformDevHtml } from "../vite-dev-html";
 import crypto from "crypto";
 import { Router } from "express";
 import { storage } from "../storage";
+import { db } from "../db";
+// W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
+// NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
+// inline routes.ts copy wins the path). It is re-pointed anyway so no live-or-dead file retains a
+// direct cart write. Passthrough; behavior identical.
+import * as cartProjection from "../services/cart-projection.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -47,15 +57,22 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// L3b′: the itinerary-share / OG family renders from the ONE TripPlan service's VARIANT producer
+// (docs/EXECUTION_MAP.md §3, CLAUDE.md §18) instead of its own hand-rolled variant shape.
+import {
+  assembleTripPlanFromVariant,
+  TripPlanVariantNotFoundError,
+} from "../services/trip-plan.service";
+import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
+// §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
+import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
+// Phase 1c — "build around a location": rank anchor candidates for the Optimize popup (the read
+// rail). The pinned-anchor WRITE is resolved on the live POST /generate handler in server/routes.ts.
+import { loadRankedAnchors, type NamedStop } from "../services/anchor-candidates";
+import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
-import Stripe from "stripe";
-
-const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia" as any,
-});
-import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -94,12 +111,14 @@ import {
   tripExpertAdvisors,
 } from "@shared/schema";
 import {
-  EXPERT_SHARE_RATE,
-  PLATFORM_FEE_RATE,
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
-import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
+import { isTripAuthor } from "../utils/trip-authorship";
+// Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
+// the same module for the full rationale. Advisor-only gate — never owner, never author.
+import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
@@ -107,6 +126,87 @@ const router = Router();
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// Session-shape-safe user id read. Email/password sessions carry
+// { claims: { sub: userId } } with no top-level req.user.id — a bare
+// `(req as any).user?.id` read is always undefined for those sessions
+// (the ea.routes.ts getEaUserId fallback pattern, applied here for the
+// same bug class on the itinerary-share/expert-review surface).
+function getReqUserId(req: any): string | undefined {
+  return getUserId(req)!;
+}
+
+function optimizerItemsToNamedStops(
+  baselineItems: Array<{
+    id?: unknown;
+    name?: unknown;
+    title?: unknown;
+    latitude?: unknown;
+    longitude?: unknown;
+  }>,
+): NamedStop[] {
+  return baselineItems.map((item) => {
+    const latitude = item.latitude != null ? Number(item.latitude) : NaN;
+    const longitude = item.longitude != null ? Number(item.longitude) : NaN;
+    return {
+      id: String(item.id),
+      name:
+        typeof item.name === "string"
+          ? item.name
+          : typeof item.title === "string"
+            ? item.title
+            : "Stop",
+      lat: Number.isFinite(latitude) ? latitude : null,
+      lng: Number.isFinite(longitude) ? longitude : null,
+    };
+  });
+}
+
+interface TripAnchorCandidatesDependencies {
+  getTrip: typeof storage.getTrip;
+  loadTripInputs: typeof loadTripOptimizerInputs;
+  rankAnchors: typeof loadRankedAnchors;
+}
+
+export function createTripAnchorCandidatesHandler(
+  dependencies: TripAnchorCandidatesDependencies = {
+    getTrip: storage.getTrip.bind(storage),
+    loadTripInputs: loadTripOptimizerInputs,
+    rankAnchors: loadRankedAnchors,
+  },
+) {
+  return async (req: any, res: any) => {
+    try {
+      const userId = getReqUserId(req);
+      const trip = await dependencies.getTrip(req.params.id);
+      if (!trip || trip.userId !== userId) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const inputs = await dependencies.loadTripInputs(trip.id);
+      const stops = optimizerItemsToNamedStops(inputs.baselineItems);
+      const ranked = await dependencies.rankAnchors(trip.destination, stops, { limit: 8 });
+      return res.json(ranked);
+    } catch (error) {
+      console.error("Error loading trip anchor candidates:", error);
+      return res.status(500).json({ message: "Failed to load anchor candidates" });
+    }
+  };
+}
+
+// SECURITY (§13 trip-data IDOR class): POST /api/trips/:tripId/vendors/bulk-email is an
+// OUTBOUND-MAIL primitive — it fans caller-authored subject/body out to real vendor
+// addresses under the platform's sending identity. Authorization alone does not bound
+// abuse (a legitimate owner can still be used to blast their own vendor list), so the
+// endpoint is throttled per acting user, mirroring the service-requests limiter pattern
+// (server/routes/service-requests.routes.ts) rather than inventing a new mechanism.
+// Keyed by the session user (isAuthenticated runs first), IP as fallback. Deliberately NO
+// loopback skip: the throttle is part of the endpoint's contract and must be provable.
+const vendorBulkEmailLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyGenerator: (req: any) => `vendor-bulk-email:${getReqUserId(req) ?? req.ip ?? "unknown"}`,
 });
 
 function sanitizeInput(input: string): string {
@@ -167,7 +267,7 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 
 router.get(api.trips.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const trips = await withQueryTimer(
       "trips-dashboard-list",
@@ -186,11 +286,19 @@ router.get(api.trips.get.path, async (req, res) => {
     // Check access: owner, assigned expert, managing EA, or guest with shareToken.
     // requireOwnership middleware cannot be used here because unauthenticated guests
     // may access via shareToken — so ownership is enforced inline with IDOR logging.
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    const userId = getUserId(req)!;
     const shareToken = req.query.token as string | undefined;
+
+    // Block fully-anonymous requests with neither a session nor a share token.
+    const hasSession = typeof (req as any).isAuthenticated === "function" && (req as any).isAuthenticated();
+    const hasToken = typeof shareToken === "string" && shareToken.length > 0;
+    if (!hasSession && !hasToken) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = (trip as any).expertId === userId;
-    const isManagingEa = (trip as any).managedByEaId === userId;
+    const isExpert = userId != null && (trip as any).expertId === userId;
+    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
     if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
       if (userId) {
@@ -201,7 +309,36 @@ router.get(api.trips.get.path, async (req, res) => {
       }
       return res.status(403).json({ message: "Access denied" });
     }
-    res.json(trip);
+
+    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
+    // persistent signal on the trip itself — only a one-shot notification the traveler could
+    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
+    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
+    // null when no expert is currently assigned.
+    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
+      .from(tripExpertAdvisors)
+      .where(and(
+        eq(tripExpertAdvisors.tripId, trip.id),
+        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
+      ))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    // §21 (ratified Aug 9 2026): `trips.expertNotes` is the Workstation's PRIVATE build-note
+    // field (PATCH /api/trips/:tripId/expert-notes, booking-actions.ts) — it must never be
+    // delivered to the traveler. This handler's viewer set includes the trip OWNER (the
+    // traveler themselves) and a plain-shareToken guest, neither of which is a builder-side
+    // principal; only the trip-column expert / managing EA is. Redact it here rather than trust
+    // every future consumer of the `...trip` spread to know not to render it — the same posture
+    // `/api/itinerary-share/:token` below already takes for its own (unrelated)
+    // `shared_itineraries.expertNotes` column. `expertTravelerNote` (§21's traveler-facing
+    // counterpart) is NOT redacted — it is meant for exactly this audience.
+    const canSeePrivateExpertNotes = isExpert || isManagingEa;
+    res.json({
+      ...trip,
+      expertNotes: canSeePrivateExpertNotes ? trip.expertNotes : null,
+      expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null,
+    });
   });
 
 
@@ -224,7 +361,7 @@ router.post(api.trips.create.path, async (req, res) => {
         return res.status(400).json({ message: "Budget must be a positive number" });
       }
       
-      const userId = (req.user as any)?.claims?.sub ?? null;
+      const userId = getUserId(req)!;
       const trip = await storage.createTrip({ ...sanitizedInput, userId });
 
       // If guest, ensure they have a shareToken for access
@@ -253,7 +390,7 @@ router.patch(api.trips.update.path, async (req, res) => {
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
-      const userId = (req.user as any)?.claims?.sub ?? null;
+      const userId = getUserId(req)!;
       const shareToken = req.query.token as string | undefined;
       const isOwner = trip.userId && trip.userId === userId;
       const isManagingEa = (trip as any).managedByEaId === userId;
@@ -290,7 +427,7 @@ router.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
         return res.status(409).json({ message: "Trip already claimed" });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const updated = await storage.claimTrip(req.params.id, userId);
       res.json(updated);
     } catch (err) {
@@ -304,7 +441,7 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
     const trip = await storage.getTrip(req.params.id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
 
     await storage.deleteTrip(req.params.id);
@@ -312,33 +449,26 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/trips/generate-itinerary", isAuthenticated, async (req, res) => {
-    const { tripId } = req.body;
-    if (!tripId) {
-      return res.status(400).json({ message: "tripId is required in the request body" });
-    }
-    const trip = await storage.getTrip(tripId);
-    if (!trip) return res.status(404).json({ message: "Trip not found" });
-    const itinerary = await storage.createGeneratedItinerary({
-      tripId: trip.id,
-      itineraryData: {
-        days: [
-          { day: 1, activities: [
-            { time: "10:00 AM", title: "Visit City Center", description: "Explore the main square." },
-            { time: "2:00 PM", title: "Lunch at Local Cafe", description: "Try the famous pastry." }
-          ]},
-          { day: 2, activities: [
-            { time: "09:00 AM", title: "Museum Tour", description: "Learn about local history." },
-            { time: "4:00 PM", title: "Sunset View", description: "Best view in the city." }
-          ]}
-        ]
-      },
-      status: "generated"
-    });
-    res.status(201).json(itinerary);
-  });
+// REMOVED (Lane 2a): duplicate of the hardcoded 2-day stub (see routes.ts). Zero
+// producers; real generation is the Claude/Grok AI paths. Deleted with its inline twin.
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:id/generate-itinerary in routes.ts — see registerRoutes' tripsRoutes
+// mount comment). Kept in sync for safety only.
+//
+// NOT widened to match the live copy's gate (deliberate, per this lane's brief). The live
+// copy now authorizes via a composite predicate — `authorizeTripLogistics` (owner ‖
+// trip_expert_advisors-assigned expert ‖ trip author ‖ audit-logged admin) OR the two trip
+// columns `trip.expertId`/`trip.managedByEaId` — while THIS handler still only checks
+// `trip.userId === callerUserId || admin`. That is an UNDER-grant relative to the live
+// copy (it would 403 an assigned advisor, a `trips.expertId`-linked expert, or a managing
+// EA), not a hole — the narrower check never admits anyone the live copy would deny. Do
+// NOT copy the live composite predicate over here mechanically: which principals
+// `authorizeTripLogistics` itself should admit is the trip-role lane's call (see CLAUDE.md
+// §13 "Trip-access model divergence + owner under-grant (L10)"), and the reconciliation
+// sweep (§9) must resolve this pair's auth model deliberately, not have it inherited
+// silently from a dead-twin sync pass.
 router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     try {
       const trip = await storage.getTrip(req.params.id);
@@ -347,7 +477,7 @@ router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) 
       // IDOR guard — only the trip owner (or admin) may generate an itinerary.
       // Without this, any authenticated user could burn AI credits and overwrite
       // another user's itinerary_items by guessing a trip UUID.
-      const callerUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const callerUserId = getUserId(req)!;
       const callerRole = (req.user as any)?.claims?.role ?? (req.user as any)?.role;
       if (trip.userId && String(trip.userId) !== String(callerUserId) && callerRole !== "admin") {
         console.warn(
@@ -443,6 +573,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             locationName: activity.locationName || destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
+            // §12 origin stamp (ledger 2026-08-22-provenance-defects): this rebuild is the AI
+            // generator's output — without the stamp a whole AI-built plan landed origin-NULL,
+            // which the schema defines as permanently ambiguous. Server-derived, never from a body.
+            origin: "ai",
           });
         }
       }
@@ -468,7 +602,7 @@ router.get(api.touristPlaces.search.path, async (req, res) => {
   // SECURITY: User data is sanitized and contact info in messages is redacted
 
 router.get(api.chats.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
     
@@ -543,205 +677,16 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 
   // AI Blueprint Generation API
 
-router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
-
-      // ── Optimization authorization gate ──────────────────────────────────────
-      // Comparison records are ALWAYS created (never blocked).
-      // The AI optimizer only runs when payment is verified OR a 24h free rerun applies.
-      let canRunOptimizer = false;
-
-      // Check free 24h rerun eligibility first (no Stripe call needed)
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const recentRun = await storage.getRecentOptimizationRun(userId, cutoff);
-
-      if (recentRun) {
-        canRunOptimizer = true;
-      } else if (optimizationPaymentId) {
-        // Paid run path — verify payment before allowing optimizer
-        // Reject reuse: check if this PI is already tied to any existing comparison
-        const alreadyUsed = await storage.getComparisonByOptimizationPaymentId(optimizationPaymentId);
-        if (alreadyUsed) {
-          return res.status(409).json({
-            error: "payment_already_used",
-            message: "This optimization payment has already been used. Please start a new optimization.",
-          });
-        }
-
-        // Require a concrete target when using a payment
-        if (!tripId && !userExperienceId) {
-          return res.status(400).json({
-            error: "target_required",
-            message: "Provide tripId or userExperienceId for paid optimization.",
-          });
-        }
-
-        // Verify with Stripe
-        try {
-          const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
-          if (pi.status !== "succeeded") {
-            return res.status(402).json({ error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." });
-          }
-          if (pi.metadata?.userId && pi.metadata.userId !== userId) {
-            return res.status(403).json({ error: "payment_belongs_to_another_user" });
-          }
-          if (pi.metadata?.type !== "optimization_fee") {
-            return res.status(402).json({ error: "invalid_payment_type" });
-          }
-          // Strict PI-to-target binding: PI metadata target must match the request target
-          const piTargetTrip = pi.metadata?.targetTripId || undefined;
-          const piTargetExp = pi.metadata?.targetExperienceId || undefined;
-          if (piTargetTrip && piTargetTrip !== tripId) {
-            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different trip." });
-          }
-          if (piTargetExp && piTargetExp !== userExperienceId) {
-            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different experience." });
-          }
-          // Re-derive expected fee from the actual comparison resource (not PI metadata).
-          // CON-A.P2 (FEE-A): resolve through the single fee resolver so admin event-type
-          // overrides (e.g. wedding $49.99) pass validation. Anti-tampering by server-side // fee-literal-ok: comment example, fee resolves from config
-          // recompute — no hardcoded allow-list of amounts.
-          let actualEventType: string | undefined;
-          if (tripId) {
-            actualEventType = (await storage.getTripEventType(tripId)) ?? undefined;
-          } else {
-            actualEventType = (await storage.getExperienceTypeSlugByExperienceId(userExperienceId!)) ?? undefined;
-          }
-          const actualTier = complexityTier(actualEventType);
-          const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
-          if (feeDisabled) {
-            return res.status(402).json({
-              error: "ai_concierge_disabled",
-              message: "AI Concierge is currently disabled for this experience type.",
-            });
-          }
-          if (pi.amount !== requiredCents) {
-            return res.status(402).json({
-              error: "payment_amount_mismatch",
-              message: `Payment amount does not match the required fee for this resource.`,
-            });
-          }
-          canRunOptimizer = true;
-        } catch (stripeErr: any) {
-          if ((stripeErr as any).statusCode || (stripeErr as any).type === "StripeInvalidRequestError") {
-            return res.status(402).json({ error: "payment_verification_failed", message: stripeErr.message });
-          }
-          throw stripeErr;
-        }
-      }
-      // ── End authorization gate ──────────────────────────────────────────────
-      // canRunOptimizer=false → comparison created with status "pending_payment"
-      // canRunOptimizer=true  → comparison created with status "generating" + optimizer triggered
-
-      const comparison = await storage.createItineraryComparison({
-          userId,
-          userExperienceId,
-          tripId,
-          title: title || "My Itinerary Comparison",
-          destination,
-          startDate,
-          endDate,
-          budget: budget?.toString(),
-          travelers: travelers || 1,
-          experienceTypeSlug: experienceTypeSlug || null,
-          status: canRunOptimizer ? "generating" : "pending_payment",
-          ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
-        });
-
-      // Auto-generate AI alternatives immediately
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: item.category || "service",
-          price: parseFloat(item.price || "0"),
-          // §13: no fabricated fallback rating — unknown stays unknown.
-          rating: typeof item.rating === "number" ? item.rating : undefined,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else {
-        // Fall back to cart items
-        const cartItemsData = await storage.getCartItemsWithServices(userId);
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
-          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-          category: item.service?.serviceType || "service",
-          provider: "Provider"
-        }));
-      }
-
-      // Trigger AI optimization in background only when authorized (payment verified or free rerun)
-      if (canRunOptimizer && baselineItems.length > 0) {
-        const availableServices = await storage.getActiveProviderServices(100);
-
-        // Ensure dates are in YYYY-MM-DD format
-        const formatDate = (d: string | undefined | null) => {
-          if (!d) return new Date().toISOString().split('T')[0];
-          if (d.includes('T')) return d.split('T')[0];
-          return d;
-        };
-
-        // Build trip preferences for adaptive variant strategy
-        let tripPreferences: TripPreferences | undefined;
-        if (tripId) {
-          const tripRow = await storage.getTrip(tripId);
-          if (tripRow) {
-            const prefs = (tripRow.preferences as Record<string, any>) || {};
-            tripPreferences = {
-              eventType: tripRow.eventType,
-              budget: tripRow.budget ? parseFloat(tripRow.budget) : null,
-              travelStyles: Array.isArray(prefs.travelStyles) ? prefs.travelStyles : [],
-            };
-          }
-        }
-
-        generateOptimizedItineraries(
-          comparison.id,
-          userId,
-          baselineItems,
-          availableServices,
-          destination || "Unknown",
-          formatDate(startDate),
-          formatDate(endDate),
-          budget ? parseFloat(budget) : undefined,
-          travelers || 1,
-          tripId,
-          undefined,
-          tripPreferences
-        ).catch((err) => console.error("Background optimization error:", err));
-      }
-
-      res.status(201).json(comparison);
-    } catch (error) {
-      console.error("Error creating comparison:", error);
-      res.status(500).json({ message: "Failed to create comparison" });
-    }
-  });
+// §9 Lane 5a (Defect 1): the `POST /api/itinerary-comparisons` handler that lived here was a
+// mount-order-dead twin of the inline copy in routes.ts (this router mounts LAST, so its copy
+// always lost the path race). It carried the ONLY paid-optimization gate; that gate is now
+// harvested into the live routes.ts copy and this born-dead duplicate is DELETED — the §9 rule
+// is "harvest the superior delta into the live copy, leave no stale twin behind".
 
 
 router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const comparisons = await withQueryTimer(
         "itinerary-comparisons-fetch",
         () => storage.getComparisonsByUserId(userId),
@@ -757,7 +702,7 @@ router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
 router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const result = await getComparisonWithVariants(req.params.id);
 
       if (!result) {
@@ -776,132 +721,62 @@ router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) =
   });
 
 
-router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
+// Phase 1c: the located stops an anchor is scored against. Prefer the trip-backed loader (real
+// item/catalog coordinates) when the comparison has a trip; otherwise there is no coordinate source
+// on this path and anchors are scored against nothing — honest, not fabricated (§13). Never throws.
+async function buildAnchorStops(
+  comparison: { tripId?: string | null },
+): Promise<NamedStop[]> {
+  if (!comparison.tripId) return [];
+  try {
+    const inputs = await loadTripOptimizerInputs(comparison.tripId);
+    return optimizerItemsToNamedStops(inputs.baselineItems);
+  } catch (err) {
+    console.warn("[anchor-stops] trip load failed (non-critical):", (err as Error).message);
+    return [];
+  }
+}
+
+// Phase 3: pre-create candidate read for the Slip popup. Owner-gated by the trip itself and scored
+// against the exact optimizer baseline the create handler will use. Read-only: no comparison row,
+// payment, or generation is started here.
+router.get(
+  "/api/trips/:id/anchor-candidates",
+  isAuthenticated,
+  createTripAnchorCandidatesHandler(),
+);
+
+// Phase 1c: rank real anchor candidates (hotel / neighborhood / activity) for the Optimize popup.
+router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
-
-      // Sprint-1 dislike loop: whitelisted "what to fix" chips from a re-run.
-      // They flow into TripPreferences.feedback, where selectVariantStrategy
-      // gives them top priority over inferred preferences.
-      const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
-      const dislikeFeedback: string[] = Array.isArray(rawFeedback)
-        ? rawFeedback.filter((f: unknown): f is string => typeof f === "string" && FEEDBACK_CHIPS.has(f)).slice(0, 4)
-        : [];
-
-      const comparison = await storage.getItineraryComparison(comparisonId);
-
+      const userId = getUserId(req)!;
+      const comparison = await storage.getItineraryComparison(req.params.id);
       if (!comparison) {
         return res.status(404).json({ message: "Comparison not found" });
       }
-
       if (comparison.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: "external",
-          price: parseFloat(item.price || "0"),
-          // §13: no fabricated fallback rating — unknown stays unknown.
-          rating: typeof item.rating === "number" ? item.rating : undefined,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else if (comparison.userExperienceId) {
-        const items = await storage.getUserExperienceItems(comparison.userExperienceId);
-
-        baselineItems = items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          serviceType: item.providerServiceId ? "provider" : "external",
-          price: parseFloat(item.price || "0"),
-          // §13: user-experience items have no rating source — omit, don't invent.
-          location: item.location,
-          duration: 120,
-          dayNumber: 1,
-          timeSlot: item.scheduledTime || "morning",
-        }));
-      } else {
-        const cartItemsData = await storage.getCartItemsWithServices(userId);
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
-          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-        }));
-      }
-
-      if (baselineItems.length === 0) {
-        return res.status(400).json({ message: "No items to optimize. Add services to your cart or experience first." });
-      }
-
-      const availableServices = await storage.getActiveProviderServices(100);
-
-      res.json({ message: "Optimization started", status: "generating" });
-
-      // Build trip preferences for adaptive variant strategy. Dislike feedback
-      // applies even without a trip row (it's an explicit instruction, not an
-      // inferred preference).
-      let tripPreferencesForGen: TripPreferences | undefined =
-        dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : undefined;
+      // Defensive: only load trip inputs for a trip the same user owns (loadTripOptimizerInputs
+      // authorizes nothing itself).
       if (comparison.tripId) {
-        const tripRowForGen = await storage.getTrip(comparison.tripId);
-        if (tripRowForGen) {
-          const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
-          tripPreferencesForGen = {
-            eventType: tripRowForGen.eventType,
-            budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
-            travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
-            ...(dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : {}),
-          };
+        const trip = await storage.getTrip(comparison.tripId);
+        if (trip && trip.userId !== userId) {
+          return res.status(401).json({ message: "Unauthorized" });
         }
       }
-
-      generateOptimizedItineraries(
-        comparisonId,
-        userId,
-        baselineItems,
-        availableServices,
-        comparison.destination || "Unknown",
-        comparison.startDate || new Date().toISOString(),
-        comparison.endDate || new Date().toISOString(),
-        comparison.budget ? parseFloat(comparison.budget) : undefined,
-        comparison.travelers || 1,
-        comparison.tripId || undefined,
-        undefined,
-        tripPreferencesForGen
-      ).catch((err) => console.error("Background optimization error:", err));
-
+      const stops = await buildAnchorStops(comparison);
+      const ranked = await loadRankedAnchors(comparison.destination, stops, { limit: 8 });
+      res.json(ranked);
     } catch (error) {
-      console.error("Error starting optimization:", error);
-      res.status(500).json({ message: "Failed to start optimization" });
+      console.error("Error loading anchor candidates:", error);
+      res.status(500).json({ message: "Failed to load anchor candidates" });
     }
   });
 
-
 router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { variantId } = req.body;
 
       const comparison = await storage.getItineraryComparison(req.params.id);
@@ -930,7 +805,7 @@ router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req
 
 router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const comparisonId = req.params.id;
 
       const comparison = await storage.getItineraryComparison(comparisonId);
@@ -944,7 +819,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
       }
 
       const variantItems = await storage.getItineraryVariantItemsByVariantId(comparison.selectedVariantId);
-      await storage.replaceUserCartWithVariantItems(userId, variantItems);
+      await cartProjection.replaceUserCartWithVariantItems(userId, variantItems);
       res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
     } catch (error) {
       console.error("Error applying to cart:", error);
@@ -975,7 +850,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
@@ -997,7 +872,9 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-            name: g.name,
+            // travel_pulse_hidden_gems has no `name` column — the field is placeName
+            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
+            name: g.placeName,
             description: g.description,
             gemScore: g.gemScore,
           })),
@@ -1072,7 +949,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
 
 
 router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1082,7 +959,7 @@ router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(asyn
 
 
 router.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1092,7 +969,7 @@ router.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandle
 
 
 router.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1102,7 +979,7 @@ router.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asy
 
 
 router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -1113,7 +990,7 @@ router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHand
 
 router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1132,6 +1009,18 @@ router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res)
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/participants/bulk-invite in routes.ts). ESCALATED, not fixed:
+// the live copy gates on `authorizeTripOwnerTier` (owner ‖ trip author ‖ audit-logged
+// admin — deliberately WITHOUT the assigned-expert branch, "L20 tier 4 — participant PII
+// is OWNER-only, never an assigned expert" per the live copy's comment). That helper is a
+// private, unexported function local to routes.ts (a hard-excluded file for this lane) —
+// it is not reachable from here, and `authorizeTripLogistics` is NOT an equivalent
+// substitute (it WOULD admit the assigned expert, reopening exactly the disclosure the
+// live gate exists to prevent). Left unauthorized rather than mis-gated; the fix belongs
+// to whoever owns routes.ts / the reconciliation sweep — either export/hoist
+// `authorizeTripOwnerTier` into the shared trip-logistics-auth module, or apply it here
+// once it is reachable.
 router.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
     try {
       const { emails } = req.body;
@@ -1185,6 +1074,17 @@ router.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, 
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/contracts in routes.ts). ESCALATED, not fixed: the live copy
+// gates vendor-CONTRACT CREATION on `authorizeTripOwnerTier` (owner ‖ author ‖
+// audit-logged admin, no assigned-expert branch — "creating a financial/legal artifact on
+// the traveler's trip is owner-only", per the live copy's block comment), while contract
+// READS there use the broader `authorizeTripLogistics`. That owner-tier helper is a
+// private, unexported function local to routes.ts (hard-excluded for this lane) and is not
+// reachable here; substituting `authorizeTripLogistics` would wrongly admit the assigned
+// expert into creating financial/legal artifacts, which the live gate exists to prevent.
+// Left unauthorized rather than mis-gated — see the participants/bulk-invite twin above
+// for the same reasoning; fix belongs to routes.ts's owner / the reconciliation sweep.
 router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
       const contract = await vendorManagementService.createContract({
@@ -1197,18 +1097,52 @@ router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) =>
     }
   });
 
-// Document upload for vendor contracts
+// Document upload for vendor contracts.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster, "class E" — the path only LOOKED trip-scoped):
+// this handler previously ran on `isAuthenticated` alone and used ONLY
+// `req.params.contractId`; `:tripId` was never validated and never even read, so any
+// authenticated user could attach an arbitrary base64 file to ANY vendor contract on ANY
+// trip by naming their own tripId (or a garbage one) in the path. Two independent checks
+// are required and both are applied here, in this order:
+//   1. AUTHORIZE THE TRIP IN THE PATH — L20 tier: vendor-contract WRITES are OWNER-only
+//      (creating/altering a financial/legal artifact on the traveler's trip is not the
+//      assigned expert's job), so this uses `authorizeTripOwnerTier` (owner ‖ trip author ‖
+//      audit-logged admin), NOT the broader `authorizeTripLogistics`. Matches the live
+//      `POST /api/trips/:tripId/contracts` create gate in routes.ts.
+//   2. TIE THE CONTRACT TO THAT TRIP — authorization on `:tripId` is worthless if
+//      `:contractId` may belong to a different trip. The contract is resolved and its
+//      `tripId` compared to the authorized path trip.
+// Order matters: the trip gate runs BEFORE the contract is resolved, so an unauthorized
+// caller learns nothing about which contract ids exist (no existence oracle), and a
+// foreign contract is reported with the same 404 as a non-existent one.
 router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticated, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const { tripId, contractId } = req.params;
+
+      const denied = await authorizeTripOwnerTier(
+        tripId, userId, "POST /api/trips/:tripId/contracts/:contractId/documents",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
+      const contract = await vendorManagementService.getContract(contractId);
+      if (!contract || contract.tripId !== tripId) {
+        return res.status(404).json({ message: "Contract not found on this trip" });
+      }
+
       const { documentType, fileName, fileBase64, mimeType } = req.body;
 
       if (!fileBase64 || !fileName || !documentType) {
         return res.status(400).json({ message: "Missing required fields: fileBase64, fileName, documentType" });
       }
+      if (!["contract", "signed", "attachment"].includes(documentType)) {
+        return res.status(400).json({ message: "documentType must be contract, signed, or attachment" });
+      }
 
       const fileBuffer = Buffer.from(fileBase64, "base64");
       const result = await vendorManagementService.uploadContractDocument(
-        req.params.contractId,
+        contractId,
         documentType,
         fileName,
         fileBuffer,
@@ -1221,17 +1155,63 @@ router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticate
     }
   });
 
-// Bulk email to vendors
-router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req, res) => {
+// Bulk email to vendors.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster, "class E" + outbound mail): this handler
+// previously ran on `isAuthenticated` alone, so any authenticated user could aim
+// attacker-authored `subject`/`body` at another traveler's vendor list, sent under the
+// platform's own sending identity ("Traveloure Coordination"). Three controls:
+//   1. TRIP AUTHORIZATION — L20 tier: vendor COORDINATION is the assigned expert's job, so
+//      the tier is owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
+//      `authorizeTripLogistics`. The canonical advisor predicate landed today, so a
+//      *rejected* advisor is denied here.
+//   2. EVERY `contractId` MUST BELONG TO THIS TRIP — `contractIds` is caller-supplied and
+//      was an independent second IDOR. The service layer already dropped foreign contracts
+//      (`c.tripId === tripId` in sendBulkVendorEmail), but it did so SILENTLY — a caller
+//      could not tell a foreign id from a vendor with no email on file. The route now
+//      resolves the trip's own contract ids and REJECTS the request (400) if any requested
+//      id is not among them, so the trip-scoping is explicit and honest rather than an
+//      accident of a downstream filter.
+//   3. RATE LIMIT — `vendorBulkEmailLimiter` (5 / 10 min per acting user), because
+//      authorization alone does not bound an outbound-mail primitive.
+router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulkEmailLimiter, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/trips/:tripId/vendors/bulk-email",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const { contractIds, subject, body, includeCalendarInvite, eventDate } = req.body;
 
       if (!contractIds || !Array.isArray(contractIds) || contractIds.length === 0) {
         return res.status(400).json({ message: "contractIds must be a non-empty array" });
       }
+      // Bound the fan-out (an unbounded array is a mail-amplification lever even for the owner).
+      if (contractIds.length > 100) {
+        return res.status(400).json({ message: "contractIds may not exceed 100 entries" });
+      }
+      if (!contractIds.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "contractIds must be non-empty strings" });
+      }
 
       if (!subject || !body) {
         return res.status(400).json({ message: "subject and body are required" });
+      }
+      if (typeof subject !== "string" || typeof body !== "string") {
+        return res.status(400).json({ message: "subject and body must be strings" });
+      }
+
+      // Second IDOR: tie every requested contract to the authorized trip.
+      const tripContractIds = new Set(
+        (await vendorManagementService.getContracts(req.params.tripId)).map((c) => c.id),
+      );
+      const foreign = (contractIds as string[]).filter((id) => !tripContractIds.has(id));
+      if (foreign.length > 0) {
+        return res.status(400).json({
+          message: "One or more contractIds do not belong to this trip",
+          count: foreign.length,
+        });
       }
 
       const result = await vendorManagementService.sendBulkVendorEmail(
@@ -1251,9 +1231,22 @@ router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req
     }
   });
 
-// Generate vendor contact sheet
+// Generate vendor contact sheet.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster): this handler previously ran on
+// `isAuthenticated` alone and returned every vendor's name, email, phone, postal address,
+// contact person and private notes for ANY trip id — bulk third-party PII egress in JSON,
+// CSV or PDF to any logged-in account. L20 tier: vendor coordination is the assigned
+// expert's job, so reads are owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
+// `authorizeTripLogistics`; a *rejected* advisor is denied by the canonical predicate.
 router.get("/api/trips/:tripId/vendors/contact-sheet", isAuthenticated, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/vendors/contact-sheet",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const format = (req.query.format as string) || "json";
 
       if (!["json", "csv", "pdf"].includes(format)) {
@@ -1319,6 +1312,18 @@ router.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, r
   });
 
 
+// §9 mount-order-dead twins (this handler and the two below always lose to their
+// identically-routed POST /api/trips/:tripId/transactions[/split] and
+// /budget/calculate-split in routes.ts). ESCALATED, not fixed: the live block ("L20 tier
+// 1 — money-between-people is OWNER-only (+ author/admin)") gates EVERY handler in this
+// budget/transactions block — reads included — on `authorizeTripOwnerTier`, explicitly
+// NOT `authorizeTripLogistics`, because "an assigned expert has their own commission view
+// and never needs it" per the live copy's comment. That owner-tier helper is a private,
+// unexported function local to routes.ts (hard-excluded for this lane); substituting
+// `authorizeTripLogistics` here would wrongly admit the assigned expert into another
+// party's money-between-people ledger. Left unauthorized rather than mis-gated — same
+// reasoning as the participants/bulk-invite and contracts twins above; fix belongs to
+// routes.ts's owner / the reconciliation sweep.
 router.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
       const transaction = await budgetService.createTransaction({
@@ -1363,7 +1368,7 @@ router.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async 
 
 router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
@@ -1420,7 +1425,7 @@ router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, asyn
 
 router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
@@ -1429,7 +1434,12 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
       }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const item = await storage.createItineraryItem(parsed.data as any);
+      // §12: itinerary_items.origin is stamped server-side from the ACTOR's role, never trusted
+      // from req.body (the insert schema omits it; the PATCH path already strips it). An owner's
+      // manual add is 'traveler'; an assigned advisor/expert's is 'expert'. This is the provenance
+      // a cloned ready-made trip's buyer-added items were previously missing (audit finding).
+      const origin = tripRole === "expert" ? "expert" : "traveler";
+      const item = await storage.createItineraryItem({ ...parsed.data, origin } as any);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
       res.status(201).json(item);
     } catch (error) {
@@ -1438,31 +1448,17 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
   });
 
 
-router.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
-      }
-      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
-      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
-      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", tripRole!, req.params.id);
-      res.json(item);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update itinerary item" });
-    }
-  });
+// RETIRED (V4 rail-unification, Aug 7 2026): this was already a §9 mount-order-dead twin of
+// `PATCH /api/itinerary-items/:id` in routes.ts (routes.ts registers first and always won —
+// this copy never served traffic). The LIVE copy in routes.ts is now retired too (zero live
+// callers; see its comment there for the full rationale) in favor of the canonical
+// `PATCH /api/trips/:tripId/itinerary-items/:itemId` below. Removed here rather than left as a
+// dead duplicate of retired code.
 
 
 router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -1482,7 +1478,7 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
 
 router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
@@ -1499,8 +1495,24 @@ router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req,
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/itinerary/optimize-order in routes.ts — see registerRoutes'
+// tripsRoutes mount comment). Kept in sync for safety only.
+// SECURITY (P0-b IDOR, kept safe for the reconciliation sweep): this endpoint carried
+// `isAuthenticated` ONLY — no trip authorization at all — despite reordering the trip's own
+// itinerary. Its sibling `reorder` handler above uses `getTripRole`/`canMutateTrip`; that
+// model is left untouched here (not this lane's call to unify) and `authorizeTripLogistics`
+// is used instead, matching the fix the live copy already carries.
 router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req)!;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/itinerary/optimize-order",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });
@@ -1527,7 +1539,7 @@ router.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) 
 router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       const trip = await storage.getTrip(tripId);
       if (!trip || trip.userId !== userId) return res.status(404).json({ error: "Trip not found" });
@@ -1558,7 +1570,7 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
         });
       }
 
-      const data: any = genItinerary.itineraryData;
+      const data: any = (genItinerary as any).itineraryData;
       const daysData: any[] = data?.days || data?.dailyItinerary || [];
 
       const activities: import("../services/transport-leg-calculator").ActivityLocation[] = [];
@@ -1615,25 +1627,9 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
   });
 
 
-router.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
-      }
-      await itineraryIntelligenceService.deleteItem(req.params.id);
-      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", tripRole!, req.params.id);
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete itinerary item" });
-    }
-  });
+// RETIRED (V4 rail-unification, Aug 7 2026): §9 mount-order-dead twin of
+// `DELETE /api/itinerary-items/:id` in routes.ts, which is itself now retired — see the PATCH
+// removal note above and routes.ts's comment for the full rationale.
 
   // --- Emergency Routes ---
 
@@ -1657,6 +1653,16 @@ router.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, asy
   });
 
 
+// §9 mount-order-dead twins (this handler and the one below always lose to their
+// identically-routed POST /api/trips/:tripId/emergency-contacts and /emergency/initialize
+// in routes.ts). ESCALATED, not fixed: the live copies gate on `authorizeTripOwnerTier`
+// (owner-only, no assigned-expert branch — note the GET reads in this same block DO use
+// the broader `authorizeTripLogistics`, so this is a deliberate read/write split, not an
+// oversight). That owner-tier helper is a private, unexported function local to routes.ts
+// (hard-excluded for this lane); substituting `authorizeTripLogistics` would wrongly admit
+// the assigned expert into owner-only writes. Left unauthorized rather than mis-gated —
+// same reasoning as the other owner-tier twins above; fix belongs to routes.ts's owner /
+// the reconciliation sweep.
 router.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
       const contact = await emergencyService.createContact({
@@ -1701,8 +1707,24 @@ router.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/alerts in routes.ts — see registerRoutes' tripsRoutes mount
+// comment). Kept in sync for safety only.
+// SECURITY (found during the L21 sweep, kept safe for the reconciliation sweep): this
+// endpoint carried `isAuthenticated` ONLY — no trip authorization — despite writing a
+// safety alert onto the trip. The live copy gates on `authorizeTripLogistics` (owner ‖
+// assigned expert ‖ author ‖ audit-logged admin — the ONE tier-3 write an assigned expert
+// may perform, per the live copy's comment), so that is mirrored here.
 router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req)!;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/alerts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const alert = await emergencyService.createAlert({
         ...req.body,
         tripId: req.params.tripId,
@@ -1716,15 +1738,12 @@ router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       res.json(anchors);
@@ -1734,17 +1753,29 @@ router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
   });
 
 
+// Route-boundary coercion for anchor datetimes. JSON cannot carry a JS Date, so
+// the shared Drizzle `anchorDatetime` contract (a strict z.date()) is unsatisfiable
+// over HTTP — every client would 400. We coerce HERE (not in the shared schema, which
+// stays untouched) so any caller — this UI, the expert workspace, future callers — can
+// send an ISO string. z.coerce.date() still REJECTS non-dates (Invalid Date → 400).
+const anchorCreateInput = insertTemporalAnchorSchema.extend({
+  anchorDatetime: z.coerce.date(),
+});
+// Update: all fields optional; tripId omitted so an anchor can't be reassigned to
+// another trip (mass-assign guard). Same coercion on anchorDatetime.
+const anchorUpdateInput = insertTemporalAnchorSchema
+  .omit({ tripId: true })
+  .partial()
+  .extend({ anchorDatetime: z.coerce.date().optional() });
+
 router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const body = { ...req.body, tripId: req.params.tripId };
 
@@ -1760,7 +1791,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
         delete body.suggestedTime;
       }
 
-      const input = insertTemporalAnchorSchema.parse(body);
+      const input = anchorCreateInput.parse(body);
       const anchor = await storage.createTemporalAnchor(input);
       res.status(201).json(anchor);
     } catch (err) {
@@ -1774,14 +1805,26 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
 
 router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
+      // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
+      // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
+      // unknown (404) and forbidden (403) differ, anchor-id existence is enumerable by an
+      // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
+      const existing = await storage.getTemporalAnchorById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Anchor not found" });
+      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      // Validate-then-mutate: coerce the datetime + reject tripId reassignment
+      // (was: raw req.body passed straight to the update — an unvalidated contract gap).
+      const updates = anchorUpdateInput.parse(req.body);
+      const updated = await storage.updateTemporalAnchor(req.params.id, updates);
       if (!updated) return res.status(404).json({ message: "Anchor not found" });
       res.json(updated);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
       res.status(500).json({ message: "Failed to update anchor", error: error.message });
     }
   });
@@ -1789,10 +1832,16 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
+      // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
+      // unknown (404) and forbidden (403) differ, anchor-id existence is enumerable by an
+      // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
+      const existing = await storage.getTemporalAnchorById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Anchor not found" });
+      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       await storage.deleteTemporalAnchor(req.params.id);
       res.status(204).send();
     } catch (error: any) {
@@ -1805,15 +1854,12 @@ router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
       res.json(boundaries);
@@ -1825,15 +1871,12 @@ router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res
 
 router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const input = insertDayBoundarySchema.parse({ ...req.body, tripId: req.params.tripId });
       const boundary = await storage.createDayBoundary(input);
@@ -1851,15 +1894,12 @@ router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, re
 
 router.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
@@ -1927,15 +1967,12 @@ router.get("/api/logistics/presets/:templateSlug", async (req, res) => {
 
 router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { detectAnchorImpacts } = await import('../services/logistics-presets.service');
       const impacts = await detectAnchorImpacts(req.params.tripId, req.params.anchorId);
@@ -1950,15 +1987,12 @@ router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, asy
 
 router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { templateSlug } = req.body;
       const startDate = trip.startDate?.toString() || new Date().toISOString().split('T')[0];
@@ -1985,15 +2019,12 @@ router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req
 
 router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { analyzeAnchorOptimization } = await import('../services/anchor-suggestion.service');
       const tips = await analyzeAnchorOptimization(req.params.tripId);
@@ -2013,7 +2044,7 @@ router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req
 router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
       const { sharedWithUserId, permissions = "view", transportPreferences } = req.body;
 
       const variant = await storage.getItineraryVariantById(variantId);
@@ -2066,7 +2097,7 @@ router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (
 
 router.get("/api/trips/:id/share-info", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
+      const userId = getUserId(req)!;
       const tripId = req.params.id;
 
       const comparisons = await storage.getComparisonsByTripAndUser(tripId, userId);
@@ -2107,86 +2138,122 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
 
       await storage.incrementSharedItineraryViewCount(shared.id, shared.viewCount);
 
-      const [variant, items, legs, exportCache, sharer] = await Promise.all([
-        storage.getItineraryVariantById(shared.variantId),
-        storage.getItineraryVariantItemsByVariantId(shared.variantId),
-        storage.getTransportLegsByVariantId(shared.variantId),
+      // ── Thin caller (L3b′): the plan assembly lives in the ONE TripPlan service, VARIANT
+      // producer. The share token is keyed on `variantId`, so the plan is assembled from the
+      // variant's own snapshot rows and NEVER from the live trip — a share link keeps rendering
+      // exactly what was shared. The token gate above is authoritative; the assembler authorizes
+      // nothing (redaction level = channel contract). This surface has always rendered the full
+      // body to a token holder, so it asks for 'full' — and then emits ONLY the pre-existing
+      // response keys below, so nothing the envelope newly carries (vendorPhone,
+      // confirmationNumber, meetingPoint, expertNote, booked/bookVia, …) leaks onto this surface.
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
+
+      const [exportCache, sharer] = await Promise.all([
         storage.getMapsExportCacheByVariantId(shared.variantId),
         storage.getUserPublicProfile(shared.sharedByUserId),
       ]);
 
-      if (!variant) return res.status(404).json({ error: "Variant not found" });
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
+      // §16 (L11): the `linkedProductUrl` key + the raw-leg read that fed it are REMOVED —
+      // this was the one deliberate response-key deletion for this lane. TripPlan already never
+      // carries an affiliate/deep-link URL (the URL stays server-side, §16); the client no longer
+      // has any use for it either — the shared-itinerary view now offers its own booking-agent-rail
+      // affordance per leg (LegBookingPanel, itinerary-view.tsx), which fetches booking options
+      // live via the existing authenticated GET /api/transport-legs/:legId/options instead of
+      // reading a raw URL out of this payload. A signed-out token holder gets no booking
+      // affordance at all (the rail requires auth) rather than a broken one (§13).
+      const days = plan.days.map(day => ({
+        dayNumber: day.dayNumber,
+        // `dateIso` is the machine YYYY-MM-DD the envelope carries; "" when the snapshot has no
+        // start date (the pre-existing behaviour — never a guessed date).
+        date: day.dateIso ?? "",
+        activities: day.activities.map(a => ({
+          id: a.id,
+          name: a.name,
+          startTime: a.startTime,
+          endTime: a.endTime,
+          lat: a.lat,
+          lng: a.lng,
+          category: a.category ?? null,
+          cost: a.cost,
+          description: a.description ?? null,
+          location: a.location,
+          duration: a.durationMinutes ?? null,
+        })),
+        transportLegs: day.transports.map(leg => ({
+          id: leg.id,
+          legOrder: leg.legOrder,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          distanceDisplay: leg.distanceDisplay,
+          distanceMeters: leg.distanceMeters ?? null,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          energyCost: leg.energyCost ?? null,
+          alternativeModes: leg.alternativeModes,
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+        })),
+      }));
 
-      const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-      const days = dayNumbers.map(dayNum => {
-        const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-        const dayLegs = legs.filter(l => l.dayNumber === dayNum).sort((a, b) => a.legOrder - b.legOrder);
+      // Totals run over the plan's FULL leg list (`plan.legs`), which — like the read this
+      // replaced — includes legs whose day carries no items.
+      const totalTransportCost = plan.legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
+      const totalTransportMinutes = plan.legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
 
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-        let dateStr = "";
-        if (startDate) {
-          const d = new Date(startDate);
-          d.setDate(d.getDate() + dayNum - 1);
-          dateStr = d.toISOString().split("T")[0];
-        }
+      // This endpoint is PUBLIC (no auth required) — any token holder can reach it, including
+      // an anonymous "view"-only link passed to a friend/family member. expertNotes/expertDiff
+      // carry the expert's PRIVATE per-activity review commentary and must never leave the
+      // server for a non-owner/anonymous request (client-side gating alone is not a gate — see
+      // itinerary-view.tsx's isOwnerView-conditioned rendering, which this closes the server hole for).
+      const requesterId = getReqUserId(req);
+      const isOwner = !!(shared.sharedByUserId && requesterId === shared.sharedByUserId);
+      // The expert-review flow (a "suggest"/"edit" permission link) is the one non-owner
+      // holder allowed to see the expert's notes/diff — that's the reviewing expert's own
+      // content. A plain "view" link (the everyday friend/family share) never sees it.
+      const canSeeExpertContent = isOwner || shared.permissions === "suggest" || shared.permissions === "edit";
 
-        return {
-          dayNumber: dayNum,
-          date: dateStr,
-          activities: dayItems.map(item => ({
-            id: item.id,
-            name: item.name,
-            startTime: item.startTime,
-            endTime: item.endTime,
-            lat: item.latitude ? parseFloat(item.latitude as any) : null,
-            lng: item.longitude ? parseFloat(item.longitude as any) : null,
-            category: item.serviceType,
-            cost: item.price ? parseFloat(item.price as any) : 0,
-            description: item.description,
-            location: item.location,
-            duration: item.duration,
-          })),
-          transportLegs: dayLegs.map(leg => ({
-            id: leg.id,
-            legOrder: leg.legOrder,
-            fromName: leg.fromName,
-            toName: leg.toName,
-            recommendedMode: leg.recommendedMode,
-            userSelectedMode: leg.userSelectedMode,
-            distanceDisplay: leg.distanceDisplay,
-            distanceMeters: leg.distanceMeters,
-            estimatedDurationMinutes: leg.estimatedDurationMinutes,
-            estimatedCostUsd: leg.estimatedCostUsd,
-            energyCost: leg.energyCost,
-            alternativeModes: leg.alternativeModes,
-            linkedProductUrl: leg.linkedProductUrl,
-            fromLat: leg.fromLat,
-            fromLng: leg.fromLng,
-            toLat: leg.toLat,
-            toLng: leg.toLng,
-          })),
-        };
-      });
-
-      const totalTransportCost = legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
-      const totalTransportMinutes = legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
+      // §21 (ratified Aug 9 2026): the TRAVELER-FACING trip-level delivery note. This is a
+      // DIFFERENT column (`trips.expertTravelerNote`) from the `expertNotes`/`expertDiff` above
+      // (`shared_itineraries`' own private per-share-review commentary) — never confuse the two.
+      // Unlike those, this field is meant for EVERY viewer of a delivered plan (no
+      // `canSeeExpertContent` gate) — a "view"-only friend/family link is exactly the audience
+      // §21 wrote this note for. Best-effort: `plan.meta.tripId` is nullable for a variant
+      // produced off a trip-less optimizer comparison (shared/trip-plan.ts), in which case there
+      // is no `trips` row to read the note from and it stays null (§13 — never guessed).
+      let expertTravelerNote: string | null = null;
+      if (plan.meta.tripId) {
+        const linkedTrip = await storage.getTrip(plan.meta.tripId);
+        expertTravelerNote = linkedTrip?.expertTravelerNote ?? null;
+      }
 
       res.json({
         variant: {
-          id: variant.id,
-          name: variant.name,
-          description: variant.description,
-          destination: comparison?.destination,
+          id: plan.meta.sourceRef.id,
+          name: plan.meta.title,
+          description: plan.meta.description,
+          destination: plan.meta.destination,
           dateRange: {
-            start: comparison?.startDate,
-            end: comparison?.endDate,
+            start: plan.meta.dates.start,
+            end: plan.meta.dates.end,
           },
-          totalCost: variant.totalCost,
-          optimizationScore: variant.optimizationScore,
+          // RAW producer figures (decimal string / int) — see TripPlanSourceFigures.
+          totalCost: plan.sourceFigures?.totalCost ?? null,
+          optimizationScore: plan.sourceFigures?.optimizationScore ?? null,
           days,
           transportSummary: {
-            totalLegs: legs.length,
+            totalLegs: plan.legs.length,
             totalMinutes: totalTransportMinutes,
             totalCostUsd: Math.round(totalTransportCost * 100) / 100,
           },
@@ -2202,16 +2269,21 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
           ? {
               name: [sharer.firstName, sharer.lastName].filter(Boolean).join(" ") || "A traveler",
               avatarUrl: sharer.profileImageUrl,
-              userId: sharer.id,
+              // Owner's raw internal userId is redacted from anonymous/non-owner responses —
+              // nothing off-owner needs it, and it's needless PII exposure on a public token endpoint.
+              userId: isOwner ? sharer.id : null,
             }
           : { name: "A traveler", avatarUrl: null, userId: null },
         permissions: shared.permissions,
         expertStatus: shared.expertStatus,
-        expertNotes: shared.expertNotes || null,
-        expertDiff: shared.expertDiff || null,
+        // Private expert review content — never sent to a non-owner "view"-only link holder.
+        expertNotes: canSeeExpertContent ? (shared.expertNotes || null) : null,
+        expertDiff: canSeeExpertContent ? (shared.expertDiff || null) : null,
+        // §21: traveler-facing trip-level note — every viewer gets it, see comment above.
+        expertTravelerNote,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
-        isOwner: !!(shared.sharedByUserId && (req as any).user?.id === shared.sharedByUserId),
+        isOwner,
       });
     } catch (err: any) {
       console.error("Get shared itinerary error:", err);
@@ -2220,27 +2292,55 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
   });
 
   // GET /api/trips/:tripId/transport-legs
-  // Returns transport legs for the most recent selected variant associated with a trip
+  // Returns the trip's transport legs: the most recent selected VARIANT's legs (the original
+  // behavior, unchanged for its live consumer client/src/pages/itinerary.tsx) PLUS the trip's own
+  // trip-scoped legs (§18 L4 / migration 154).
+  //
+  // §9 NO-SHADOW NOTE: L4a needed exactly this path for its Workstation read
+  // (`?includeProposed=1`). This handler is the LIVE copy of the path, so it was EXTENDED here
+  // rather than re-registered in the new (earlier-mounted) transport-legs.routes.ts — a second
+  // registration would have silently shadowed this one and changed what /itinerary receives.
+  //
+  // Trip-scoped visibility: CONFIRMED only by default (a traveler-safe read — a machine `proposed`
+  // leg is never returned without the explicit editor flag). `?includeProposed=1` adds proposals
+  // for the Workstation editor, whose caller is authorized identically.
 
 router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
 
+      // Owner keeps the original fast path; the assigned expert / author / (audit-logged) admin
+      // branch is ADDITIVE — the canonical trip-logistics model, which the Workstation editor
+      // needs (an assigned expert does not own the trip). Nobody who passed before is refused now.
       const tripOwned = await verifyTripOwnership(tripId, userId);
       if (!tripOwned) {
-        return res.status(404).json({ error: "Trip not found" });
+        const denied = await authorizeTripLogistics(
+          tripId,
+          userId,
+          "GET /api/trips/:tripId/transport-legs",
+        );
+        // 404 preserved (not 403) — the original response for a caller with no access to the trip.
+        if (denied) return res.status(404).json({ error: "Trip not found" });
       }
+
+      const includeProposed = req.query.includeProposed === "1" || req.query.includeProposed === "true";
+      const tripScopedLegs = await getTripTransportLegs(tripId, { includeProposed });
 
       const selectedVariant = await storage.getSelectedVariantByTrip(tripId);
       if (!selectedVariant?.selectedVariantId) {
-        return res.json({ legs: [], variantId: null });
+        // Expert-built trips have no comparison at all — variantId stays null, exactly as before,
+        // and the trip's own legs (if any) are what this trip has.
+        return res.json({ legs: tripScopedLegs, variantId: null });
       }
 
-      const legs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
+      const variantLegs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
         .sort((a: any, b: any) => a.legOrder - b.legOrder);
 
-      res.json({ legs, variantId: selectedVariant.selectedVariantId });
+      res.json({
+        legs: [...variantLegs, ...tripScopedLegs],
+        variantId: selectedVariant.selectedVariantId,
+      });
     } catch (err: any) {
       console.error("Get trip transport legs error:", err);
       res.status(500).json({ error: "Failed to load transport legs" });
@@ -2254,7 +2354,7 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
     try {
       const { legId } = req.params;
       const { selectedMode, shareToken } = req.body;
-      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+      const userId = getUserId(req)!;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
       if (!userId && !shareToken) return res.status(401).json({ error: "Authentication or share token required" });
@@ -2262,8 +2362,24 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       const leg = await storage.getTransportLegById(legId);
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
 
+      // §18 L4 (migration 154): a TRIP-scoped leg has no variant, so the variant→comparison→owner
+      // lookup below cannot authorize it — and a missing `variantOwner` used to skip the ownership
+      // block entirely. Trip-scoped legs are therefore authorized on the TRIP (owner ‖ assigned
+      // expert ‖ author ‖ audit-logged admin); the share-token branch does not apply (share tokens
+      // are variant-scoped), so a token-only caller is refused.
+      if (isTripScopedLeg(leg)) {
+        const denied = await authorizeTripLogistics(
+          leg.tripId,
+          userId,
+          "PATCH /api/transport-legs/:legId/mode (trip-scoped)",
+        );
+        if (denied) return res.status(denied.status).json({ error: denied.message });
+      }
+
       // Ownership check: verify via the variant's comparison owner OR valid suggest share token
-      const variantOwner = await storage.getVariantWithComparisonOwner(leg.variantId);
+      const variantOwner = leg.variantId
+        ? await storage.getVariantWithComparisonOwner(leg.variantId)
+        : null;
       if (variantOwner) {
         const isOwner = userId && variantOwner.userId === userId;
 
@@ -2306,12 +2422,16 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
         energyCost: newEnergy ?? 0,
       });
 
-      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
+      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache).
+      // `maps_export_cache` is keyed on variant_id (NOT NULL), so a trip-scoped leg has no cache row
+      // to regenerate — skipped rather than attempted-and-swallowed.
       let updatedMapsUrls: { googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> } | null = null;
-      try {
-        updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
-      } catch (mapsErr) {
-        console.error("Maps URL regeneration error (non-critical):", mapsErr);
+      if (leg.variantId) {
+        try {
+          updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
+        } catch (mapsErr) {
+          console.error("Maps URL regeneration error (non-critical):", mapsErr);
+        }
       }
 
       let downstreamMessage = "";
@@ -2351,6 +2471,76 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
     }
   });
 
+  // ── L12: KML/GPX export, built from the ONE variant producer (assembleTripPlanFromVariant),
+  // not bespoke raw-DB reads. Ratified calls implemented below (see the two helpers + the
+  // version marker just above the handlers):
+  //   ① legs ordered deterministically by (dayNumber, legOrder) — the producer's
+  //      `getOrderedTransportLegsByVariantId` already does this at the SQL level, and
+  //      `buildExportDays` re-asserts it locally so the export's own ordering is not merely
+  //      inherited-and-hoped-for.
+  //   ② a placemark/waypoint whose coordinates are not real (null/NaN/out-of-range/(0,0)) is
+  //      skipped entirely — `isRealCoordinate` — never emitted at lat 0 (§13, null island).
+  //   ③ the cache is versioned so a stale pre-migration (old-shape) cached export can never be
+  //      served post-deploy — see EXPORT_FORMAT_MARKER below.
+
+  /** RATIFIED CALL ②: never a fabricated/impossible point. */
+  function isRealCoordinate(lat: number | null | undefined, lng: number | null | undefined): lat is number {
+    if (lat == null || lng == null) return false;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (lat === 0 && lng === 0) return false; // null island — never a real trip location
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+    return true;
+  }
+
+  function buildExportDays(plan: VariantFullTripPlan) {
+    return [...plan.days]
+      .sort((a, b) => a.dayNumber - b.dayNumber)
+      .map(day => ({
+        dayNumber: day.dayNumber,
+        date: day.dateIso ?? "",
+        activities: day.activities
+          .filter(a => isRealCoordinate(a.lat, a.lng))
+          .map(a => ({
+            lat: a.lat as number,
+            lng: a.lng as number,
+            name: a.name,
+            scheduledTime: a.startTime || "",
+          })),
+        // RATIFIED CALL ①: re-sorted here (not just inherited from the producer) so the
+        // export's own ordering contract holds independently of upstream assumptions.
+        transportLegs: [...day.transports]
+          .sort((a, b) => a.legOrder - b.legOrder)
+          .map(l => ({
+            legOrder: l.legOrder,
+            fromName: l.fromName,
+            toName: l.toName,
+            recommendedMode: l.recommendedMode,
+            estimatedDurationMinutes: l.estimatedDurationMinutes,
+            estimatedCostUsd: l.estimatedCostUsd,
+            distanceDisplay: l.distanceDisplay,
+          })),
+      }));
+  }
+
+  // RATIFIED CALL ③: `maps_export_cache` is keyed only on `variant_id` (FK'd to
+  // `itineraryVariants`, so a suffixed/fake key would violate the FK — no schema change is in
+  // scope here anyway). Least-invasive fix: version the CONTENT itself with a marker comment.
+  // A cached blob missing or mismatching the marker (i.e. anything written before this change)
+  // is treated as a miss — regenerated and overwritten — so the old raw-DB-order /
+  // null-island-emitting shape can never be served again post-deploy, with no migration.
+  const EXPORT_FORMAT_MARKER = "<!-- traveloure-export-format:v2-variant-producer -->";
+
+  function withExportVersionMarker(xml: string): string {
+    const declEnd = xml.indexOf("?>");
+    if (declEnd === -1) return `${EXPORT_FORMAT_MARKER}\n${xml}`;
+    const insertAt = declEnd + 2;
+    return `${xml.slice(0, insertAt)}\n${EXPORT_FORMAT_MARKER}${xml.slice(insertAt)}`;
+  }
+
+  function isCurrentExport(content: string | null | undefined): content is string {
+    return !!content && content.includes(EXPORT_FORMAT_MARKER);
+  }
+
   // GET /api/itinerary-share/:token/export/kml
 
 router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
@@ -2360,53 +2550,26 @@ router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
-      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
-      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
-      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
 
-      let kmlContent = cached?.kmlContent;
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      const cachedKml: string | undefined = cached?.kmlContent;
+      let kmlContent: string | null = isCurrentExport(cachedKml) ? cachedKml : null;
 
       if (!kmlContent) {
-        const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-
-        const days = dayNumbers.map(dayNum => {
-          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
-          let dateStr = "";
-          if (startDate) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + dayNum - 1);
-            dateStr = d.toISOString().split("T")[0];
-          }
-          return {
-            dayNumber: dayNum,
-            date: dateStr,
-            activities: dayItems.map(item => ({
-              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
-              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
-              name: item.name,
-              scheduledTime: item.startTime || "",
-            })),
-            transportLegs: dayLegs.map(l => ({
-              legOrder: l.legOrder,
-              fromName: l.fromName,
-              toName: l.toName,
-              recommendedMode: l.recommendedMode,
-              estimatedDurationMinutes: l.estimatedDurationMinutes,
-              estimatedCostUsd: l.estimatedCostUsd,
-              distanceDisplay: l.distanceDisplay,
-            })),
-          };
-        });
-
-        kmlContent = generateKml({
-          tripName: variant.name,
-          destination: comparison?.destination || "Trip",
-          days,
-        });
+        kmlContent = withExportVersionMarker(generateKml({
+          tripName: plan.meta.title ?? "Trip",
+          destination: plan.meta.destination ?? "Trip",
+          days: buildExportDays(plan),
+        }));
 
         await storage.updateMapsExportCache(shared.variantId, { kmlContent });
       }
@@ -2429,53 +2592,26 @@ router.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
-      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
-      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
-      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
 
-      let gpxContent = cached?.gpxContent;
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      const cachedGpx: string | undefined = cached?.gpxContent;
+      let gpxContent: string | null = isCurrentExport(cachedGpx) ? cachedGpx : null;
 
       if (!gpxContent) {
-        const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-
-        const days = dayNumbers.map(dayNum => {
-          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
-          let dateStr = "";
-          if (startDate) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + dayNum - 1);
-            dateStr = d.toISOString().split("T")[0];
-          }
-          return {
-            dayNumber: dayNum,
-            date: dateStr,
-            activities: dayItems.map(item => ({
-              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
-              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
-              name: item.name,
-              scheduledTime: item.startTime || "",
-            })),
-            transportLegs: dayLegs.map(l => ({
-              legOrder: l.legOrder,
-              fromName: l.fromName,
-              toName: l.toName,
-              recommendedMode: l.recommendedMode,
-              estimatedDurationMinutes: l.estimatedDurationMinutes,
-              estimatedCostUsd: l.estimatedCostUsd,
-              distanceDisplay: l.distanceDisplay,
-            })),
-          };
-        });
-
-        gpxContent = generateGpx({
-          tripName: variant.name,
-          destination: comparison?.destination || "Trip",
-          days,
-        });
+        gpxContent = withExportVersionMarker(generateGpx({
+          tripName: plan.meta.title ?? "Trip",
+          destination: plan.meta.destination ?? "Trip",
+          days: buildExportDays(plan),
+        }));
 
         await storage.updateMapsExportCache(shared.variantId, { gpxContent });
       }
@@ -2525,7 +2661,7 @@ router.get("/api/itinerary-share/:token/navigate/:dayNumber/:legOrder", async (r
 
 router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const userLegs = await storage.getUserTransportLegsWithJoin(userId);
@@ -2541,7 +2677,7 @@ router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
 router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       // Verify ownership: the variant must belong to a comparison owned by the requesting user
       const variantOwner = await storage.getVariantWithComparisonOwner(variantId);
@@ -2561,7 +2697,7 @@ router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated,
 router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
       const { userPrefs } = req.body;
 
       const variant = await storage.getItineraryVariantById(variantId);
@@ -2607,7 +2743,7 @@ router.post("/api/itinerary-share/:token/suggest", async (req, res) => {
     try {
       const { token } = req.params;
       const { notes, activityDiffs, transportDiffs } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!userId) return res.status(401).json({ error: "Authentication required to submit suggestions" });
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
@@ -2664,7 +2800,7 @@ router.patch("/api/itinerary-share/:token/acknowledge", async (req, res) => {
     try {
       const { token } = req.params;
       const { action } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!action || !["accept", "reject"].includes(action)) {
         return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
@@ -2697,7 +2833,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
     try {
       const { shareToken } = req.params;
       const { notes, activityDiffs, transportDiffs } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
       if (!userId) return res.status(401).json({ error: "Authentication required to submit expert edits" });
@@ -2734,6 +2870,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
           base.setHours(h, m, 0, 0);
           return base.toISOString();
         } catch {
+          // Malformed date/time input — keep the original ISO string unchanged.
           return originalISO;
         }
       };
@@ -2798,6 +2935,14 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
         const diffSummary = hasDiffs
           ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
           : "";
+        // GAP 4 fix (expert-loop object-flow audit, Jul 30 2026): this notification previously
+        // carried no `data` at all, so the notifications-page renderer (which only shows an
+        // action button when `n.data?.tripId` is truthy — client/src/pages/notifications.tsx)
+        // fell through to nothing clickable. The real review/accept UI lives at the token-scoped
+        // `/itinerary-view/:token` route (NOT `/trip/:id` — this is a variant/share-token flow,
+        // not always trip-backed), so `workspacePath` points there; `tripId` is set to the real
+        // trip id when the comparison has one, else the variant id (still a truthy identifier —
+        // the renderer only gates visibility on it, the actual link comes from `workspacePath`).
         await storage.createNotification({
           userId: comparison.userId,
           type: "expert_suggestion",
@@ -2805,7 +2950,11 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
           message: `An expert reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and sent suggestions${diffSummary}: ${notes.substring(0, 150)}${notes.length > 150 ? "..." : ""}`,
           relatedId: shared.variantId,
           relatedType: "itinerary_variant",
-        });
+          data: {
+            tripId: comparison.tripId || shared.variantId,
+            workspacePath: `/itinerary-view/${shareToken}`,
+          },
+        } as any);
       }
 
       res.json({ success: true, message: "Edits submitted and traveler notified" });
@@ -2821,7 +2970,7 @@ router.patch("/api/expert-review/:shareToken/acknowledge", async (req, res) => {
     try {
       const { shareToken } = req.params;
       const { action, acceptedDiffIds, rejectedDiffIds } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!action || !["accept", "reject"].includes(action)) {
         return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
@@ -2877,11 +3026,20 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return next(); // Let SPA handle 404
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = variant ? await storage.getItineraryComparison(variant.comparisonId) : null;
+      // ── Thin caller (L3b′): 'preview' is the OG/link-card channel — meta ONLY, no itinerary body
+      // of any kind is loaded or rendered (§3). Assembled from the VARIANT snapshot the token is
+      // keyed on, so an existing link's card text never changes because the trip moved on.
+      let preview: PreviewTripPlan | null = null;
+      try {
+        preview = await assembleTripPlanFromVariant(shared.variantId, "preview");
+      } catch (e) {
+        // A share row whose variant is gone: fall through to the same generic copy this route has
+        // always used rather than 404 the SPA route.
+        if (!(e instanceof TripPlanVariantNotFoundError)) throw e;
+      }
 
-      const destination = comparison?.destination || "an amazing destination";
-      const variantName = variant?.name || "Travel Itinerary";
+      const destination = preview?.meta.destination || "an amazing destination";
+      const variantName = preview?.meta.title || "Travel Itinerary";
       const title = `${variantName} – ${destination} | Traveloure`;
       const description = `Explore this AI-powered itinerary for ${destination}. View day-by-day activities, transport options, and more — shared via Traveloure.`;
       const shareUrl = `${req.protocol}://${req.get("host")}/itinerary-view/${token}`;
@@ -2905,16 +3063,29 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
         `<meta name="twitter:image" content="${ogImage}" />`,
       ].join("\n    ");
 
-      // Read index.html and inject tags into <head>
+      // Read index.html and inject tags into <head>. ESM-safe resolution (no __dirname in the
+      // dev runtime — the ReferenceError silently killed injection via catch/next()); prod
+      // serves the BUILT template (hashed assets) whenever it exists.
       let template: string;
       const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
-      const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
-      const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+      const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+      const templatePath =
+        process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+          ? clientTemplateProd
+          : clientTemplateDev;
 
       if (!fs.existsSync(templatePath)) return next();
 
       template = fs.readFileSync(templatePath, "utf-8");
+      // Strip the template's own static og:title/og:description before injecting ours —
+      // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
+      // duplicates are sloppy). Only sites that inject their own tags run this.
+      template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
       template = template.replace("<head>", `<head>\n    ${ogTags}`);
+      // Dev-only: run the raw index.html through Vite's transform so the React-refresh
+      // preamble/client injections are present (prod never registers a transformer, so this
+      // is a no-op pass-through there).
+      template = await transformDevHtml(req.originalUrl, template);
 
       res.status(200).set({ "Content-Type": "text/html" }).end(template);
     } catch (err) {
@@ -2977,7 +3148,7 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
 
 router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const tripId = req.params.tripId;
       
       // Verify ownership
@@ -2998,16 +3169,36 @@ router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, r
 
 router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
-      if (!canMutateTrip(tripRole)) {
+      // D1 (ruling, Aug 7 2026 — "a PENDING advisor may not write"): this is a trip-item
+      // MUTATION path, so it resolves the advisor branch through the WRITE allow-list
+      // (`getTripWriteRole` — accepted/assigned, NOT pending) instead of `getTripRole`.
+      const tripRole = await getTripWriteRole(tripId, userId);
+      // Authoring mode (ready-made brief §2/§4): PARALLEL named author branch beside getTripRole —
+      // the helper is deliberately untouched (known pre-launch bypass, separate fix).
+      const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayMutate) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
+      }
+      // FABLE-REVIEW: the mode-flip gate. `tripRole === "expert"` is the advisor-only branch of
+      // canMutateTrip (never owner — see trip-role.ts; never the authored-build author, which
+      // takes the separate authorMayMutate branch above and never reaches "expert" here).
+      if (tripRole === "expert" && await isPlanApprovedForExpert(tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
-      // Strip immutable/ownership fields to prevent mass-assignment
-      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, ...safeBody } = req.body as any;
+      // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
+      // 2026) is provenance stamped only at CREATE time — a PATCH must never let a client
+      // retroactively rewrite it.
+      // `expertNote` is DELIBERATELY left in `safeBody` and reaches the DB write below — it is the
+      // TRAVELER-FACING per-item note (§21, migration 152) PlanCard already renders, distinct from
+      // the trip-level PRIVATE `trips.expertNotes` (Workstation build notes) and the trip-level
+      // traveler-facing `trips.expertTravelerNote` (PATCH /api/trips/:tripId/expert-traveler-note,
+      // below). This write path already carried it — the §21 audit's "Workstation write path" gap
+      // was the client never sending the field, not a missing server allow-list entry.
+      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, origin: _origin, ...safeBody } = req.body as any;
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);
@@ -3020,19 +3211,76 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
 
 router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
-      if (!canMutateTrip(tripRole)) {
+      // D1 (ruling, Aug 7 2026): trip-item MUTATION path — WRITE-gated role (see PATCH above).
+      const tripRole = await getTripWriteRole(tripId, userId);
+      // Authoring mode (ready-made brief §2/§4): parallel named author branch (see PATCH above).
+      const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayMutate) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
+      }
+      // FABLE-REVIEW: the mode-flip gate — see the PATCH handler above for the full rationale.
+      if (tripRole === "expert" && await isPlanApprovedForExpert(tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
-      await storage.deleteItineraryItem(itemId);
+      // R15 (ledger 2026-08-17-partner-demand-r15-transition-log): record WHO removed the item on
+      // the same-transaction `item_removed` diary row. The actor is derived from the trip
+      // authorization above (never req.body): an assigned expert acting on the plan ⇒ "expert",
+      // otherwise the owner/author ⇒ "traveler".
+      await storage.deleteItineraryItem(itemId, {
+        actorType: tripRole === "expert" ? "expert" : "traveler",
+        actorId: userId,
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("[ItineraryItems] DELETE error:", err);
       res.status(500).json({ message: "Failed to delete itinerary item" });
+    }
+  });
+
+
+// PATCH /api/trips/:tripId/expert-traveler-note — §21 (ratified Aug 9 2026, migration 187):
+// TRAVELER-FACING trip-level delivery note ("Note from your expert", rendered atop the delivered
+// plan — client/src/components/plancard/PlanCard.tsx). DISTINCT from the PRIVATE
+// PATCH /api/trips/:tripId/expert-notes (server/routes/booking-actions.ts), which is the
+// Workstation's own build-notes rail and must NEVER be delivered to the traveler — never merge
+// the two write rails, never let one endpoint write the other's column.
+//
+// Write-gated through the canonical `authorizeTripLogistics` posture (owner ‖ accepted/assigned
+// advisor ‖ trip author ‖ audit-logged admin) with `requireWriteAccess: true` — the same §12
+// posture ("a PENDING advisor may not write") the itinerary-item mutation routes above use — since
+// this endpoint mutates trip-visible content exactly like they do. This is a deliberately BROADER
+// gate than the private-notes PATCH it mirrors in shape (that one is advisor-only; since Aug 29
+// 2026 its advisor branch resolves against the same §12 WRITE allow-list — the earlier
+// assignment-existence-only check let a pending/rejected advisor write private build notes).
+router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { tripId } = req.params;
+      const denied = await authorizeTripLogistics(
+        tripId, userId, "PATCH /api/trips/:tripId/expert-traveler-note", { requireWriteAccess: true },
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
+      const raw = (req.body as any)?.expertTravelerNote;
+      if (raw !== null && raw !== undefined && typeof raw !== "string") {
+        return res.status(400).json({ message: "expertTravelerNote must be a string or null" });
+      }
+      const trimmed = typeof raw === "string" ? raw.trim() : null;
+      if (trimmed && trimmed.length > 2000) {
+        return res.status(400).json({ message: "expertTravelerNote must be 2000 characters or fewer" });
+      }
+      // Empty string → null (the "no note" value), matching the private rail's own convention.
+      const expertTravelerNote = trimmed ? trimmed : null;
+
+      await storage.updateTrip(tripId, { expertTravelerNote });
+      res.json({ ok: true, expertTravelerNote });
+    } catch (err) {
+      console.error("[Advisor] saveExpertTravelerNote error:", err);
+      res.status(500).json({ message: "Failed to save expert traveler note" });
     }
   });
 

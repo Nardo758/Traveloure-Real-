@@ -1,3 +1,8 @@
+// NOTE: `passport` is an intentional runtime dependency. It is the live auth
+// system for this app — Replit OIDC login (this file), email/password login
+// (emailAuth.ts uses req.login / passport.session), and Facebook/Instagram
+// influencer auth (facebookAuth.ts) all depend on it. Do not remove it from
+// package.json unless every one of those flows is migrated off Passport first.
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
@@ -8,6 +13,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 const getOidcConfig = memoize(
   async () => {
@@ -35,6 +41,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
+      sameSite: "lax" as const,
       // `secure` cookies are only sent back over HTTPS. Production runs behind
       // TLS so this is correct there. But the auth-route smoke gate runs the
       // production build over plain-http localhost (NODE_ENV=production), where
@@ -60,7 +67,9 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(claims: any): Promise<void> {
+// Exported for tests — the registration-flag gate is verified without a live
+// OIDC handshake.
+export async function upsertUser(claims: any): Promise<void> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
@@ -83,6 +92,13 @@ async function upsertUser(claims: any): Promise<void> {
       if (merged.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
       return;
     }
+  }
+
+  // Admin-controlled registration kill switch (/admin/system): block first-time
+  // account creation only — existing accounts (any provider) still log in.
+  if (!existing) {
+    const registrationEnabled = await getPlatformFlag(FLAG_REGISTRATION_ENABLED, true);
+    if (!registrationEnabled) throw new Error("REGISTRATION_DISABLED");
   }
 
   const user = await authStorage.upsertUser({
@@ -135,6 +151,9 @@ export async function setupAuth(app: Express) {
       if (err?.message === "ACCOUNT_SUSPENDED") {
         return verified(null, false, { message: "Your account has been suspended. Please contact support." } as any);
       }
+      if (err?.message === "REGISTRATION_DISABLED") {
+        return verified(null, false, { message: "New user registration is temporarily disabled. Please try again later." } as any);
+      }
       return verified(err as Error);
     }
     verified(null, user);
@@ -147,12 +166,20 @@ export async function setupAuth(app: Express) {
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
+      // Local dev access (127.0.0.1 / localhost) serves plain HTTP on $PORT;
+      // an https, port-less callback would point at nothing and break login.
+      const isLocalDev =
+        process.env.NODE_ENV !== "production" &&
+        (domain === "127.0.0.1" || domain === "localhost");
+      const callbackURL = isLocalDev
+        ? `http://${domain}:${process.env.PORT || "5000"}/api/callback`
+        : `https://${domain}/api/callback`;
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
           scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL,
         },
         verify
       );
@@ -206,7 +233,11 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         req.logout(() => {});
         return res.status(403).json({ message: "This account has been deleted" });
       }
-      if (dbUser?.isSuspended) {
+      if (!dbUser) {
+        req.logout(() => {});
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      if (dbUser.isSuspended) {
         req.logout(() => {});
         return res.status(403).json({
           message: "Your account has been suspended. Please contact support.",
@@ -214,7 +245,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         });
       }
     } catch (err) {
-      console.warn("[isAuthenticated] account-status DB check failed (fail-open):", (err as any)?.message);
+      console.error("[isAuthenticated] account-status DB check failed (fail-closed):", (err as any)?.message);
+      return res.status(503).json({ message: "Authentication service temporarily unavailable" });
     }
   }
 

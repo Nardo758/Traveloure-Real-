@@ -1,14 +1,19 @@
+import { useTranslation } from "react-i18next";
+import { LanguagePreferenceCard } from "@/components/settings/language-preference-card";
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
+import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Bell, 
-  CreditCard, 
-  Shield, 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  CreditCard,
+  Shield,
   Clock,
   User,
   Building,
@@ -17,25 +22,34 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  CheckCircle,
-  LinkIcon,
   Loader2,
   FileText,
+  Plane,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Textarea } from "@/components/ui/textarea";
+import { useState, useEffect, lazy, Suspense } from "react";
+import { useSearch } from "wouter";
+
+// Console IA C9 (§17 17→9 collapse): Profile retired as a standalone page and hosted as
+// this page's FIRST tab (the expert C8 pattern — a mount, not an extraction; profile.tsx
+// stays intact as a component, lazy-loaded here so its bundle only loads when the tab
+// opens). Settings keeps DEFAULTING to its own content (the actionable verification +
+// preferences surface); Profile is first in ORDER only. Deep-link: ?tab=profile
+// (/provider/profile redirects there).
+const ProviderProfile = lazy(() => import("@/pages/provider/profile"));
+
+const SETTINGS_TABS = ["profile", "settings"] as const;
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+// Ledger 90 (FP-5, S1): only the fields this page still RENDERS are typed here. The other six
+// columns on `provider_settings` are untouched on disk and still accepted by the PATCH allow-list
+// — they simply have no control any more, because nothing on the platform reads them. See the
+// removal block below the Verification section for the list and the evidence.
 interface ProviderSettingsData {
-  instantBooking: boolean;
-  autoResponse: boolean;
-  minimumLeadTimeDays: number;
-  targetResponseTimeHours: number;
-  payoutFrequency: string;
   minimumPayoutAmount: string;
-  notificationsJson: Record<string, boolean>;
 }
 
 function VerificationPayoutsSection() {
@@ -43,9 +57,6 @@ function VerificationPayoutsSection() {
 
   const { data: idStatus, isLoading: idLoading } = useQuery<any>({
     queryKey: ["/api/provider/application-status"],
-  });
-  const { data: stripeStatus, isLoading: stripeLoading } = useQuery<any>({
-    queryKey: ["/api/stripe/connect/status"],
   });
   const { data: bgVerification, isLoading: bgLoading } = useQuery<{ providerVerificationStatus: string; backgroundCheckConfirmed: boolean }>({
     queryKey: ["/api/provider/verification-status"],
@@ -78,17 +89,6 @@ function VerificationPayoutsSection() {
     onError: () => toast({ title: "Verification unavailable", description: "Please try again later.", variant: "destructive" }),
   });
 
-  const onboardMutation = useMutation({
-    mutationFn: async () => { const res = await apiRequest("POST", "/api/stripe/connect/onboard"); return res.json(); },
-    onSuccess: (data: any) => { if (data.url) window.open(data.url, "_blank"); },
-    onError: () => toast({ title: "Error", description: "Could not start Stripe setup.", variant: "destructive" }),
-  });
-
-  const dashboardMutation = useMutation({
-    mutationFn: async () => { const res = await fetch("/api/stripe/connect/dashboard", { credentials: "include" }); if (!res.ok) throw new Error(); return res.json(); },
-    onSuccess: (data: any) => { if (data.url) window.open(data.url, "_blank"); },
-  });
-
   const idVerifStatus = idStatus?.identityVerificationStatus ?? "pending";
   const bizVerifStatus = idStatus?.businessVerificationStatus ?? "pending";
 
@@ -98,15 +98,6 @@ function VerificationPayoutsSection() {
     if (s === "failed") return <Badge className="bg-red-100 text-red-700"><AlertCircle className="w-3 h-3 mr-1" />Failed</Badge>;
     return <Badge variant="secondary">Not started</Badge>;
   };
-
-  const stripeStatusKey = stripeStatus?.status ?? "not_connected";
-  const stripeBadge = stripeStatusKey === "active"
-    ? <Badge className="bg-green-100 text-green-700"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>
-    : stripeStatusKey === "onboarding_incomplete"
-    ? <Badge className="bg-orange-100 text-orange-700"><AlertCircle className="w-3 h-3 mr-1" />Incomplete</Badge>
-    : stripeStatusKey === "under_review"
-    ? <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Under Review</Badge>
-    : <Badge variant="secondary">Not connected</Badge>;
 
   return (
     <div className="space-y-4">
@@ -246,295 +237,377 @@ function VerificationPayoutsSection() {
         );
       })()}
 
-      {/* Stripe Connect */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-console-dark" />
-              Payout Account (Stripe Connect)
-            </div>
-            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : stripeBadge}
-          </CardTitle>
-          <CardDescription>Connect your Stripe account to receive payouts directly when clients book your services.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!stripeStatus?.connected ? (
-            <div className="space-y-3">
-              <p className="text-sm text-console-dark">You'll be guided through a quick Stripe setup — about 5 minutes. Stripe securely collects your bank details.</p>
-              <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="w-full" data-testid="button-connect-stripe">
-                {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
-                Connect Stripe Account
-              </Button>
-            </div>
-          ) : stripeStatusKey === "onboarding_incomplete" ? (
-            <div className="space-y-3">
-              <p className="text-sm text-orange-600">Your Stripe setup is incomplete. Finish to start receiving payouts.</p>
-              <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} variant="outline" className="w-full border-orange-200 text-orange-700 hover:bg-orange-50" data-testid="button-continue-stripe">
-                {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                Continue Setup
-              </Button>
-            </div>
-          ) : stripeStatusKey === "under_review" ? (
-            <p className="text-sm text-amber-700">Your account is under review by Stripe. Payouts will be enabled once approved.</p>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-green-700 p-3 bg-green-50 rounded-lg border border-green-200">
-                <CheckCircle className="w-4 h-4" />Your account is active and ready to receive payouts.
-              </div>
-              <Button onClick={() => dashboardMutation.mutate()} disabled={dashboardMutation.isPending} variant="outline" className="w-full" data-testid="button-stripe-dashboard">
-                {dashboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                View Stripe Dashboard
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Stripe Connect — the shared card (also used by the Money page). This section
+          previously hand-rolled the same status query + onboard/dashboard mutations; deduped
+          in the Aug 10 2026 provider-console fix wave so the two surfaces can't drift. */}
+      <StripeConnectCard />
     </div>
   );
 }
 
-export default function ProviderSettings() {
+// Vacation mode (mockup §06b, provider back-office wave, decision-maker ratified Aug 9 2026).
+// Business-level flag ONLY — GET/PATCH /api/me/vacation touches users.vacationUntil/
+// vacationMessage; nothing here ever reads or writes provider_services. Server derives `active`
+// (vacationUntil non-null AND in the future) so the chip below reads the same truth the
+// storefront/advisor/checkout enforcement points use, never re-derived client-side.
+interface VacationStatus {
+  vacationUntil: string | null;
+  vacationMessage: string | null;
+  active: boolean;
+}
+
+function VacationModeSection() {
   const { toast } = useToast();
+  const { data, isLoading } = useQuery<VacationStatus>({
+    queryKey: ["/api/me/vacation"],
+  });
+
+  const [enabled, setEnabled] = useState(false);
+  const [returnDate, setReturnDate] = useState(""); // yyyy-mm-dd, <input type="date"> shape
+  const [message, setMessage] = useState("");
+  const [dateError, setDateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.active);
+    setReturnDate(data.vacationUntil ? data.vacationUntil.slice(0, 10) : "");
+    setMessage(data.vacationMessage ?? "");
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (body: { vacationUntil: string | null; vacationMessage?: string | null }) => {
+      const res = await apiRequest("PATCH", "/api/me/vacation", body);
+      return res.json() as Promise<VacationStatus>;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(["/api/me/vacation"], result);
+      toast({
+        title: result.active ? "Vacation mode on" : "Vacation mode off",
+        description: result.active
+          ? `New bookings are paused until ${new Date(result.vacationUntil!).toLocaleDateString()}.`
+          : "You're accepting new bookings again.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't save vacation settings",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    if (!enabled) {
+      setDateError(null);
+      saveMutation.mutate({ vacationUntil: null });
+      return;
+    }
+    if (!returnDate) {
+      setDateError("Choose a return date to turn vacation mode on.");
+      return;
+    }
+    // End-of-day local time on the chosen date, so "today" picks that are still hours away
+    // aren't rejected by the server's future-only check.
+    const until = new Date(`${returnDate}T23:59:59`);
+    if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+      setDateError("Return date must be in the future.");
+      return;
+    }
+    setDateError(null);
+    saveMutation.mutate({
+      vacationUntil: until.toISOString(),
+      vacationMessage: message.trim() ? message.trim() : null,
+    });
+  };
+
+  const chipLabel = data?.active && data.vacationUntil
+    ? `ON until ${new Date(data.vacationUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+    : "OFF";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Plane className="w-5 h-5 text-console-mid" />
+            Vacation Mode
+          </div>
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-console-mid" />
+          ) : (
+            <Badge
+              variant={data?.active ? "default" : "secondary"}
+              data-testid="badge-vacation-status"
+            >
+              {chipLabel}
+            </Badge>
+          )}
+        </CardTitle>
+        <CardDescription>
+          Pause new bookings while you're away, without touching your listings.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label className="text-base">Away</Label>
+            <p className="text-sm text-console-mid">
+              New bookings will be blocked while you're away. Your listings stay visible but
+              can't be booked. Confirmed bookings are not affected.
+            </p>
+          </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(checked) => {
+              setEnabled(checked);
+              setDateError(null);
+            }}
+            data-testid="switch-vacation-mode"
+          />
+        </div>
+
+        {enabled && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div className="space-y-2">
+              <Label htmlFor="vacation-return-date">Return date</Label>
+              <Input
+                id="vacation-return-date"
+                type="date"
+                value={returnDate}
+                onChange={(e) => {
+                  setReturnDate(e.target.value);
+                  setDateError(null);
+                }}
+                data-testid="input-vacation-return-date"
+              />
+              {dateError && <p className="text-sm text-red-600">{dateError}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vacation-message">Message to travelers (optional)</Label>
+              <Textarea
+                id="vacation-message"
+                value={message}
+                onChange={(e) => setMessage(e.target.value.slice(0, 200))}
+                placeholder="e.g. Back from a family trip on the 24th!"
+                maxLength={200}
+                rows={2}
+                data-testid="input-vacation-message"
+              />
+              <p className="text-xs text-console-mid text-right">{message.length}/200</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+            data-testid="button-save-vacation"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Save
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function ProviderSettings() {
+  const { t } = useTranslation(["settings", "common"]);
+  const { toast } = useToast();
+
+  // C9: ?tab= deep-linking (the expert settings C8 convention). Unknown/absent ?tab= falls
+  // back to the settings content — the kept default.
+  const search = useSearch();
+  const requestedTab = new URLSearchParams(search).get("tab");
+  const tabParam = (SETTINGS_TABS as readonly string[]).includes(requestedTab ?? "")
+    ? (requestedTab as (typeof SETTINGS_TABS)[number])
+    : "settings";
 
   const { data: serverSettings } = useQuery<ProviderSettingsData>({
     queryKey: ["/api/provider/settings"],
   });
 
-  const [notifications, setNotifications] = useState({
-    newBookings: true,
-    bookingUpdates: true,
-    messages: true,
-    reviews: true,
-    payouts: true,
-    marketing: false,
-  });
-  const [autoResponse, setAutoResponse] = useState(true);
-  const [instantBooking, setInstantBooking] = useState(false);
-  const [leadTime, setLeadTime] = useState("7");
-  const [responseTime, setResponseTime] = useState("2");
-  const [payoutFrequency, setPayoutFrequency] = useState("monthly");
-  const [minPayout, setMinPayout] = useState("100");
+  // Ledger 90 (FP-5, S2): the ONE surviving preference on this card. The GET supplies the
+  // server's own default (the platform payout floor) when no row exists, so the field never shows
+  // a number the server would not honour.
+  const [minPayout, setMinPayout] = useState("");
 
   useEffect(() => {
     if (serverSettings) {
-      setInstantBooking(serverSettings.instantBooking ?? false);
-      setAutoResponse(serverSettings.autoResponse ?? true);
-      setLeadTime(String(serverSettings.minimumLeadTimeDays ?? 7));
-      setResponseTime(String(serverSettings.targetResponseTimeHours ?? 2));
-      setPayoutFrequency(serverSettings.payoutFrequency ?? "monthly");
-      setMinPayout(String(serverSettings.minimumPayoutAmount ?? "100"));
-      if (serverSettings.notificationsJson) {
-        setNotifications(serverSettings.notificationsJson as typeof notifications);
-      }
+      setMinPayout(String(serverSettings.minimumPayoutAmount ?? ""));
     }
   }, [serverSettings]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: () =>
       apiRequest("PATCH", "/api/provider/settings", {
-        instantBooking,
-        autoResponse,
-        minimumLeadTimeDays: parseInt(leadTime, 10),
-        targetResponseTimeHours: parseInt(responseTime, 10),
-        payoutFrequency,
         minimumPayoutAmount: minPayout,
-        notificationsJson: notifications,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/settings"] });
-      toast({ title: "Settings saved", description: "Your preferences have been updated." });
+      // The Money page's payout gate reads the effective threshold off the earnings summary —
+      // invalidate it so the button and its copy reflect a change made here immediately (S2).
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/earnings/summary"] });
+      toast({ title: t("settings:save.successTitle"), description: t("settings:save.successBody") });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+      toast({
+        title: t("settings:save.errorTitle"),
+        description: t("settings:save.errorBody"),
+        variant: "destructive",
+      });
     },
   });
 
   return (
     <ProviderLayout title="Settings">
-      <div className="p-6 space-y-6 max-w-4xl">
+      {/* FP-4: normalized onto ProviderLayout's shared content container. The old
+          `max-w-4xl` carried no `mx-auto`, so this form-heavy page hugged the left edge
+          with a lopsided gutter on any wide screen; the shared container centers it. */}
+      <div className="p-6 space-y-6">
+        <HandleClaimCard />
+
+        <Tabs defaultValue={tabParam} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            {/* C9: Profile is the FIRST tab in order; the settings content stays the default. */}
+            <TabsTrigger value="profile" className="flex items-center gap-2" data-testid="tab-profile">
+              <Building className="w-4 h-4" /> {t("settings:tabs.profile")}
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-2" data-testid="tab-settings">
+              <User className="w-4 h-4" /> {t("settings:tabs.settings")}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Profile Tab — C9: the profile page rendered embedded (no second ProviderLayout;
+              the profile.tsx seam drops its own p-6 since this container already provides
+              it). Lazy + Suspense mirrors the expert C8 mount. */}
+          <TabsContent value="profile" className="mt-6">
+            <Suspense
+              fallback={
+                <div className="space-y-4">
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              }
+            >
+              <ProviderProfile embedded />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="settings" className="mt-6 space-y-6">
+
+        {/* Ruling 60 Phase A — the Settings → Preferences card (mockup §06 frame A), selector
+            entry point (a). Writes users.preferences.settings.language through the existing
+            allow-listed PATCH /api/me/preferences. */}
+        <LanguagePreferenceCard />
+
         {/* Verification & Payouts */}
         <div>
           <h2 className="text-lg font-semibold text-console-darkest mb-4 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-blue-600" />
-            Verification & Payouts
+            {t("settings:verification.title")}
           </h2>
           <VerificationPayoutsSection />
         </div>
 
-        {/* Account Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-console-mid" />
-              Account Settings
-            </CardTitle>
-            <CardDescription>Manage your account credentials and security</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Button variant="outline" data-testid="button-change-password">
-                <Shield className="w-4 h-4 mr-2" /> Change Password
-              </Button>
-              <Button variant="outline" data-testid="button-two-factor">
-                Enable Two-Factor Auth
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Account Settings — REMOVED (Punchlist Phase 3, §13 honesty): the "Change Password"
+            and "Enable Two-Factor Auth" buttons had nothing behind them. Checked
+            server/routes.ts, every server/routes/*.ts, and
+            server/replit_integrations/auth/emailAuth.ts — there is no self-service
+            change-password endpoint for a logged-in user (only the token-based
+            POST /api/auth/forgot-password + POST /api/auth/reset-password email-round-trip
+            flow, already reachable from the sign-in page's "Forgot password" link) and no 2FA
+            mechanism anywhere in the schema or server. Rather than leave two buttons that do
+            nothing, the whole card is removed; re-add it alongside a real change-password
+            endpoint and/or a real 2FA rail. (client/src/pages/expert/settings.tsx keeps an
+            equivalent card but disables its inputs with the same finding as an inline note —
+            an equally honest treatment; this page opts for removal per the same audit's
+            explicit call.) */}
 
-        {/* Business Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building className="w-5 h-5 text-console-mid" />
-              Business Preferences
-            </CardTitle>
-            <CardDescription>Configure how you receive and manage bookings</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-base">Instant Booking</Label>
-                <p className="text-sm text-console-mid">
-                  Allow clients to book without prior approval
-                </p>
-              </div>
-              <Switch
-                checked={instantBooking}
-                onCheckedChange={setInstantBooking}
-                data-testid="switch-instant-booking"
-              />
-            </div>
+        {/* ═══ Ledger 90 (FP-5, S1) — ELEVEN CONTROLS REMOVED, not disabled ═══════════════════
+            Evidence: docs/testing/CONSOLE_TABS_EXERCISE.md finding S1 (as-of `f747d0a`). The
+            `provider_settings` table is a CLOSED LOOP: it is touched only by
+            `getProviderSettings`/`upsertProviderSettings` in `server/storage.ts`, called only by
+            the GET/PATCH in `server/routes/provider.routes.ts`, called only by this file. Nothing
+            anywhere on the platform reads the values back. Two of them were confirmed EMPIRICALLY
+            during the exercise, not just by grep: with `autoResponse: true` saved, a real traveler
+            inquiry produced NO auto-response (`user_and_expert_chats` held exactly one row, the
+            traveler's), and with `notificationsJson.messages: true` saved, no notification of any
+            kind was produced.
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-base">Auto-Response</Label>
-                <p className="text-sm text-console-mid">
-                  Send automatic responses to new inquiries
-                </p>
-              </div>
-              <Switch
-                checked={autoResponse}
-                onCheckedChange={setAutoResponse}
-                data-testid="switch-auto-response"
-              />
-            </div>
+            REMOVED (each persisted perfectly and was read by nothing):
+              Business Preferences —
+                1. Instant Booking          — worse than unread: a real consumer exists at
+                                              routes.ts, but it reads a DIFFERENT column
+                                              (`service_provider_forms.instant_booking`), so this
+                                              switch wrote the twin nobody looks at.
+                2. Auto-Response            — empirically proven inert (above).
+                3. Minimum Lead Time (days) — no consumer.
+                4. Target Response Time (h) — no consumer.
+              Notification Preferences (the whole `notificationsJson` card) —
+                5. New bookings   6. Booking updates   7. Messages
+                8. Reviews        9. Payouts          10. Marketing
+                                              — all six inert; #7 empirically proven (above).
+              Payment Settings —
+               11. Payout Frequency         — no consumer; payouts are admin-processed on request,
+                                              not on a schedule, so the control also describes a
+                                              mechanism that does not exist.
 
-            <div className="space-y-2">
-              <Label htmlFor="lead-time">Minimum Lead Time</Label>
-              <div className="flex items-center gap-2">
-                <Input 
-                  id="lead-time" 
-                  type="number" 
-                  value={leadTime}
-                  onChange={(e) => setLeadTime(e.target.value)}
-                  className="w-24"
-                  data-testid="input-lead-time"
-                />
-                <span className="text-console-dark">days before event</span>
-              </div>
-            </div>
+            KEPT AND WIRED: "Minimum Payout Amount" (below) — it was the one control in this set
+            with a real consumer waiting, and FP-5's S2 connected it: the payout-request check now
+            enforces max(platform floor, this value). See server/config/payout.config.ts.
 
-            <div className="space-y-2">
-              <Label htmlFor="response-time">
-                <Clock className="w-4 h-4 inline mr-1" />
-                Target Response Time
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input 
-                  id="response-time" 
-                  type="number" 
-                  value={responseTime}
-                  onChange={(e) => setResponseTime(e.target.value)}
-                  className="w-24"
-                  data-testid="input-response-time"
-                />
-                <span className="text-console-dark">hours</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            KEPT, UNAFFECTED: Vacation Mode (writes `/api/me/vacation`, genuinely enforced
+            server-side) and the Language preference card.
 
-        {/* Notification Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-console-mid" />
-              Notification Preferences
-            </CardTitle>
-            <CardDescription>Choose how you want to be notified</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {Object.entries(notifications).map(([key, value]) => {
-              const labels: Record<string, { title: string; desc: string }> = {
-                newBookings: { title: "New Booking Requests", desc: "Get notified when you receive a new booking request" },
-                bookingUpdates: { title: "Booking Updates", desc: "Updates on confirmed bookings and changes" },
-                messages: { title: "Messages", desc: "New messages from clients and experts" },
-                reviews: { title: "Reviews", desc: "When clients leave reviews" },
-                payouts: { title: "Payout Notifications", desc: "Payout processing and completion" },
-                marketing: { title: "Marketing & Tips", desc: "Tips to improve your listing and promotions" },
-              };
-              
-              return (
-                <div key={key} className="flex items-center justify-between py-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-base">{labels[key]?.title ?? key}</Label>
-                    <p className="text-sm text-console-mid">{labels[key]?.desc ?? ""}</p>
-                  </div>
-                  <Switch
-                    checked={value}
-                    onCheckedChange={(checked) => 
-                      setNotifications(prev => ({ ...prev, [key]: checked }))
-                    }
-                    data-testid={`switch-notification-${key}`}
-                  />
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
+            THE COLUMNS AND THE STORAGE ARE UNTOUCHED — no migration, no schema change, and the
+            PATCH allow-list still accepts all seven fields. This lane removes the LIE (a switch
+            that silently does nothing), not the data; the redesign decides which of these features
+            get built, and a control comes back with its consumer, never before it. This is the
+            same call this page already made when it deleted its Change-Password/2FA card because
+            "the buttons had nothing behind them" — twelve controls with nothing behind them had
+            survived that audit. */}
+
+        {/* Vacation Mode — mockup §06b */}
+        <VacationModeSection />
 
         {/* Payment Settings */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-console-mid" />
-              Payment Settings
+              {t("settings:payment.title")}
             </CardTitle>
-            <CardDescription>Manage your payout methods and preferences</CardDescription>
+            <CardDescription>{t("settings:payment.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Payout Frequency</Label>
-              <div className="flex gap-2">
-                {(["weekly", "biweekly", "monthly"] as const).map((freq) => (
-                  <Button
-                    key={freq}
-                    variant={payoutFrequency === freq ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setPayoutFrequency(freq)}
-                    data-testid={`button-payout-${freq}`}
-                  >
-                    {freq.charAt(0).toUpperCase() + freq.slice(1).replace("biweekly", "Bi-weekly")}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Minimum Payout Amount</Label>
+              <Label>{t("settings:payment.minPayout")}</Label>
               <div className="flex items-center gap-2">
                 <span className="text-console-dark">$</span>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   value={minPayout}
                   onChange={(e) => setMinPayout(e.target.value)}
                   className="w-32"
                   data-testid="input-min-payout"
                 />
               </div>
+              {/* Ledger 90 (FP-5, S2): state the rule where the number is set, so the Money page's
+                  disabled payout button is never a mystery. No literal here — the platform floor
+                  is a server constant and is quoted by the server, on the surface that enforces it. */}
+              <p className="text-sm text-console-mid">
+                Payouts are held until your available balance reaches this amount. The platform has
+                its own floor below which a payout can't be sent; whichever is higher applies, and
+                your Money page shows the figure in force.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -547,9 +620,12 @@ export default function ProviderSettings() {
             data-testid="button-save-settings"
           >
             <Save className="w-4 h-4 mr-2" />
-            {saveSettingsMutation.isPending ? "Saving..." : "Save All Settings"}
+            {saveSettingsMutation.isPending ? t("settings:save.saving") : t("settings:save.all")}
           </Button>
         </div>
+
+          </TabsContent>
+        </Tabs>
       </div>
     </ProviderLayout>
   );

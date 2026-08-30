@@ -1,7 +1,19 @@
 import {
   Calendar, Star, TrainFront, Clock,
 } from "lucide-react";
+import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import type { RoutingStatus } from "@shared/schema";
+import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
+import type { AffiliateBookingInfo } from "./affiliate-booking";
+import { parseCalendarDate } from "@/lib/calendar-date";
+
+// Re-exported so plancard consumers can name the affiliate-booking contract without a second import.
+export type { AffiliateBookingInfo };
+
+// Re-exported so plancard consumers can name the routing-status union without a second import.
+export type { RoutingStatus };
 
 // Re-exported for back-compat; the single source is @/lib/transport-modes.
 export { MODE_COLORS, MODE_ICON_MAP };
@@ -177,6 +189,34 @@ export interface PlanCardActivity {
   expertNote?: string;
   /** Provider-canonical Maps link (from googlePlaceId); preferred for nav. */
   mapsUrl?: string;
+  /** vendor_contracts.vendor_phone via itinerary_items.vendorContractId — null when the item has no vendor contract. */
+  vendorPhone?: string | null;
+  /** itinerary_items.confirmationNumber (falls back to bookingReference) — null until a real booking exists. */
+  confirmationNumber?: string | null;
+  /** Explicit sourced/authored activity time. Null means the schedule still needs a duration. */
+  durationMinutes?: number | null;
+  /**
+   * Trip-Canon Lane 1 Phase 1d (W7) — `itinerary_items.routing_status`, present only on the trip
+   * producer (a variant snapshot/generated-itinerary fallback item is not on the routing state
+   * machine, so it carries no key — never guessed as `in_planning`, §13). Drives the per-item badge
+   * and which routing actions the owner is offered.
+   */
+  routingStatus?: RoutingStatus;
+  /**
+   * The real `service_bookings` row this item was bought through — present only when the item is
+   * really booked (§13; ROUTING_STATE_CONTRACT §2 "presence is the booked state"). Same object as
+   * `TripPlanBooking` (shared/trip-plan.ts); duplicated here rather than re-exported wholesale so
+   * PlanCardActivity stays a self-contained client contract.
+   */
+  booking?: TripPlanBooking;
+  /**
+   * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): present ONLY when the build-time slip
+   * resolver grounded this item to an affiliate product bookable via the agent rail (§16). Carries
+   * an opaque server-minted `bookingToken` — never the affiliate URL. Presence-guarded like the
+   * transport `book_ride` branch: the "Book via your Traveloure agent" CTA stays inert until the
+   * server lane (Phase 2b) stamps this. Absent on every non-affiliate item.
+   */
+  affiliateBooking?: AffiliateBookingInfo | null;
 }
 
 export interface PlanCardTransport {
@@ -212,6 +252,43 @@ export interface PlanCardTransport {
   estimatedDurationMinutes?: number;
   estimatedCostUsd?: number | null;
   mapsUrl?: string | null;
+  /**
+   * Mode-aware primary action (CLAUDE.md §18) — a chauffeured leg's real booking detail.
+   * KNOWN GAP: `plancard.routes.ts` does not populate these fields today (no such data path
+   * exists yet) — they are forward-compat / presence-guarded so the pickup-card CTA lights
+   * up automatically once a real transport-booking data source is wired server-side. Never
+   * fabricate a value here; render nothing until the field is genuinely populated.
+   */
+  pickupPoint?: string | null;
+  pickupTime?: string | null;
+  driverPhone?: string | null;
+  rideDetails?: string | null;
+  /**
+   * §16-safe: an OPAQUE server-minted vault token (never a URL — §16 closure: partner URLs
+   * no longer exist client-side at all) used to gate the "Book this ride" CTA's presence.
+   * When present, the CTA routes through the booking-agent rail
+   * (POST /api/affiliate-booking-requests), which resolves the token back to the URL
+   * server-side. KNOWN GAP: not populated today (see pickupPoint above).
+   */
+  bookingToken?: string | null;
+}
+
+/**
+ * Superset of InlineTransportLegData carrying the mode-aware primary action's (CLAUDE.md
+ * §18, item 5) forward-compat booking fields alongside the fields ActivitiesSection's
+ * TransportConnector already reads. Structurally assignable wherever InlineTransportLegData
+ * is expected (it's a strict superset) — PlanCard's `dayLegs` mapping is typed as this so
+ * the pickup/booking data survives the day.transports → dayLegs conversion instead of being
+ * silently dropped.
+ */
+export interface PlanCardLegData extends InlineTransportLegData {
+  /** Raw server-computed mode (PlanCardTransport.mode) — last-resort fallback. */
+  mode?: string;
+  pickupPoint?: string | null;
+  pickupTime?: string | null;
+  driverPhone?: string | null;
+  rideDetails?: string | null;
+  bookingToken?: string | null;
 }
 
 export interface PlanCardDay {
@@ -221,6 +298,27 @@ export interface PlanCardDay {
   energyProfile?: string;
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
+}
+
+/**
+ * Single source of truth for "how many days is this trip" across every PlanCard
+ * surface (PlanCardSummary, HeroSection, StatsRow). Prefers the real day list;
+ * only falls back to a date-range computation for a cold (zero-item) trip.
+ * Inclusive count (Oct 1 - Oct 5 = 5 days) — the mathematically correct reading,
+ * matching how a traveler counts nights/days on a trip. Floors at 1 day so a
+ * same-day or malformed range never reads as 0.
+ */
+export function computeDayCount(
+  days: Pick<PlanCardDay, "dayNum">[] | null | undefined,
+  startDate?: string | null,
+  endDate?: string | null,
+): number {
+  if (days && days.length > 0) return days.length;
+  if (!startDate || !endDate) return 0;
+  const start = parseCalendarDate(startDate);
+  const end = parseCalendarDate(endDate);
+  if (!start || !end) return 0;
+  return Math.max(1, differenceInDays(end, start) + 1);
 }
 
 export interface PlanCardChange {
@@ -268,6 +366,34 @@ export interface PlanCardData {
   stats: PlanCardStats;
   optimizationDelta?: OptimizationDelta | null;
   lastOptimizedAt?: string | null;
+  /**
+   * Trip-Canon Lane 1 W4/H2 — EVERY real booking on this trip, including ones no plan item points at
+   * (see `TripPlanBooking` / the plancard route's `bookings` key). Used by W7's "Purchases" section to
+   * surface a booking that isn't rendered inline on any activity row.
+   */
+  bookings?: TripPlanBooking[];
+  /**
+   * TripPlan v1 envelope passthrough (the plancard route's `meta` key). Only the delivery-handshake
+   * field is consumed client-side today (PlanApprovalBanner) — narrowed to that rather than the
+   * full TripPlanMeta shape so this stays a thin, additive read.
+   */
+  meta?: { planApproval?: TripPlanPlanApproval | null };
+  /**
+   * QA_PUNCH_LIST item 13 (the final-dress flip) — the plancard route's `trip.finalizedAt`
+   * passthrough (migration 173 / R-F), narrowed to the one field PlanCard's dress logic needs
+   * rather than the full SlipTrip shape (SlipView.tsx already reads the wider shape for its own
+   * surface). Feeds `shared/trip-primary-surface.ts` alongside the page-supplied trip's own
+   * startDate/endDate so the "polished final" dress also fires once R-F's finalized-primacy rule
+   * fires — same rule the Slip's "Your Trip Card is ready" banner uses. Absent/undefined on older
+   * responses → `tripCardIsPrimary` degrades to its date-only arms, never throws.
+   *
+   * CLAUDE.md §21 (ratified Aug 9, 2026) — `expertTravelerNote` passthrough (migration 187's
+   * `trips.expert_traveler_note`, distinct from the PRIVATE `trips.expert_notes` build-notes
+   * field). This is the ONLY traveler-facing trip-level expert note; absent/undefined on a
+   * pre-migration response or before the server route is wired → renders nothing (§13), never a
+   * placeholder.
+   */
+  trip?: { finalizedAt?: string | null; expertTravelerNote?: string | null };
 }
 
 export interface PlanCardTrip {
@@ -282,7 +408,71 @@ export interface PlanCardTrip {
 }
 
 export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
-export type PlanCardStage = "summary" | "full";
+/** `proposal` — Spec C variant-comparison column (SLIP_EXPERIENCE_DISPATCH §4): a compact,
+ *  day-ordered, read-only rendering of ONE optimizer variant, with the trip's purchased items
+ *  rendered from CANONICAL trip rows (identical across columns by construction). */
+export type PlanCardStage = "summary" | "full" | "proposal";
+
+// ── stage="proposal" data (Spec C) ─────────────────────────────────────────────
+
+/** An anchored (purchased) item — sourced from the CANONICAL trip rows (the plancard DTO),
+ *  never from variant copies, so every column renders it identically by construction. */
+export interface ProposalAnchorItem {
+  id: string;
+  dayNum: number;
+  time: string;
+  name: string;
+}
+
+/** An optimizable item from the VARIANT's own rows — day/time as proposed. */
+export interface ProposalVariantItem {
+  id: string;
+  dayNumber: number;
+  startTime?: string | null;
+  name: string;
+  price?: string | null;
+  /** Server-provided replacement marker; styled as new without adding an adopt action. */
+  isNew?: boolean;
+}
+
+/** Muted transport summary — count + cost from SERVER-computed leg values only. */
+export interface ProposalLegsSummary {
+  count: number;
+  totalCostUsd: number | null;
+}
+
+export interface PlanCardProposalData {
+  variantId: string;
+  /** Stable review-board selector (baseline, v1, v2, v3); falls back to variantId. */
+  testId?: string;
+  /** Variant name ("Variant A" / "Your Plan"). */
+  name: string;
+  /** Strategy tagline (variant.description). Null → renders nothing (§13). */
+  tagline?: string | null;
+  /** Exactly one or zero recommended per comparison — derived from optimizer output. */
+  recommended?: boolean;
+  /** Styles the original itinerary as the review board's current-plan baseline. */
+  isBaseline?: boolean;
+  /** Optional current-plan label/name overrides for review-first presentation. */
+  eyebrow?: string;
+  displayName?: string;
+  /** Honest server-derived anchor readout; null/undefined renders no anchor line. */
+  anchorLine?: string | null;
+  perPersonTotal?: string | null;
+  /** Server-derived total used by the review board; omitted when unavailable. */
+  totalCostUsd?: number | null;
+  /** Canonical-trip purchased rows (see ProposalAnchorItem). */
+  anchoredItems: ProposalAnchorItem[];
+  /** The variant's own proposed items. */
+  items: ProposalVariantItem[];
+  /** Null/undefined while legs are loading or when the variant has none. */
+  legsSummary?: ProposalLegsSummary | null;
+  /** Existing-coordinate coverage. Partial coverage qualifies and suppresses travel headlines. */
+  locationCoverage?: { locatedStops: number; totalStops: number };
+  applyLabel: string;
+  onApply: () => void;
+  applying?: boolean;
+}
 
 export interface PlanCardProps {
   trip: PlanCardTrip;
@@ -291,6 +481,28 @@ export interface PlanCardProps {
   role?: PlanCardRole;
   stage?: PlanCardStage;
   days?: PlanCardDay[];
+  /**
+   * Zero-based day index to open the card on (e.g. the page's own "today" detection).
+   * Seeds the card's internal `selectedDay` state once on mount; the card still owns
+   * day-switching after that. Omitted/out-of-range → falls back to day 0 (unchanged
+   * default behavior).
+   */
+  initialSelectedDay?: number;
+  /**
+   * stage="proposal" only (Spec C): the variant column's data + apply wiring. Ignored on
+   * the summary/full stages; stage="proposal" renders nothing without it (§13 — no column
+   * is invented from a trip alone).
+   */
+  proposal?: PlanCardProposalData;
+  /**
+   * True when the card renders INSIDE the expert Workstation builder (decision-maker,
+   * Jul 27 2026): suppresses the traveler-facing chrome that duplicates or contradicts
+   * the builder's own controls — ConciergeModule and EscalationCTA (hire-an-expert CTAs
+   * shown TO the expert), both upsell slots, the optimizer metrics strip, and the
+   * card/map view toggle (the Workstation has its own Map tab embedding MapControlCenter).
+   * Itinerary content (day selector, sections, activities, transport) still renders.
+   */
+  embedded?: boolean;
 }
 
 export interface PlanCardScore {

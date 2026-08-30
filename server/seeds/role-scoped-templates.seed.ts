@@ -57,7 +57,7 @@ const ROLE_TEMPLATES: RoleTemplate[] = [
     targetRoles: ["local_expert"],
   },
 
-  // ─── Travel Advisor (travel_expert) ───────────────────────────────────────
+  // ─── Trip Planner (travel_expert) ─────────────────────────────────────────
   {
     name: "Full Trip Planning Package",
     description:

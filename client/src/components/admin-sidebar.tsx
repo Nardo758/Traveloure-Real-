@@ -14,6 +14,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   LayoutDashboard,
   Users,
@@ -46,8 +47,18 @@ import {
   CalendarDays,
   Inbox,
   Sparkles,
+  Wrench,
+  RefreshCw,
 } from "lucide-react";
 
+// D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
+//  - "Reconciliation" (hosts the Chargebacks & Disputes queue) moved SYSTEM → MONEY and
+//    relabeled "Reconciliation & Disputes" — disputes are a money queue, but had no nav
+//    entry of their own and were buried under a SYSTEM label an admin wouldn't think to
+//    check for a money problem.
+//  - "QA Checklist" (a raw dev tool) moved out of SYSTEM's business queues into its own
+//    "Developer" group at the bottom, so it no longer sits beside Reconciliation/Platform
+//    APIs/Data as if it were another operational queue.
 const menuGroups = [
   {
     label: "Overview",
@@ -79,9 +90,15 @@ const menuGroups = [
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       // Content: registry + placement map are tabs on this page.
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
+      // Content Ops (mockup §09, Aug 10 2026): YouTube ingestion trigger, extraction/enrichment
+      // status, requested offering types, and the static market-launch checklist in one seat.
+      { title: "Content Ops", href: "/admin/content-ops", icon: RefreshCw },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
+      { title: "Message Reports", href: "/admin/message-moderation", icon: ShieldAlert },
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
+      // Nugget → gem review + scoring queue (2026-08-29-replit-gem-audit ruling 4).
+      { title: "Gem Candidates", href: "/admin/gem-candidates", icon: Sparkles },
       { title: "Service Requests", href: "/admin/service-requests", icon: Inbox },
     ],
   },
@@ -93,15 +110,17 @@ const menuGroups = [
       // Fees points at the LIVE fee-bands editor; Category Fees is a tab there.
       { title: "Fees", href: "/admin/fee-bands", icon: Percent },
       { title: "Event Packages", href: "/admin/event-packages", icon: Crown },
+      // D4: moved from System — this page's own headline queue is Chargebacks & Disputes,
+      // a money problem, not a system-health one. Relabeled so "Disputes" is discoverable
+      // directly in the nav instead of only after opening the page.
+      { title: "Reconciliation & Disputes", href: "/admin/reconciliation", icon: ShieldAlert },
     ],
   },
   {
     label: "System",
     items: [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
-      { title: "Reconciliation", href: "/admin/reconciliation", icon: ShieldAlert },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
-      { title: "QA Checklist", href: "/admin/qa-checklist", icon: ClipboardList },
       // Data hub links the one-off backfill tools (neighborhoods, gem photos).
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Neighborhood Backfill", href: "/admin/neighborhood-backfill", icon: MapPin },
@@ -110,11 +129,20 @@ const menuGroups = [
       { title: "Settings", href: "/admin/system", icon: Settings },
     ],
   },
+  {
+    // D4: QA Checklist is a raw internal dev tool, not a business queue — pulled out of
+    // System into its own clearly-labeled group instead of sitting beside Reconciliation/
+    // Platform APIs/Data as if it were another operational surface.
+    label: "Developer",
+    items: [
+      { title: "QA Checklist", href: "/admin/qa-checklist", icon: Wrench },
+    ],
+  },
 ];
 
 export function AdminSidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const { data: unreadNotifications = [] } = useQuery<any[]>({
     queryKey: ["admin-notifications"],
@@ -128,11 +156,13 @@ export function AdminSidebar() {
     refetchInterval: 30_000,
   });
 
-  const unreadCount = unreadNotifications.filter((n) => !n.isRead).length;
+  const { data: stripeIncompleteData } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/providers/stripe-incomplete-count"],
+    refetchInterval: 60_000,
+  });
 
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
-  };
+  const unreadCount = unreadNotifications.filter((n) => !n.isRead).length;
+  const stripeIncompleteCount = stripeIncompleteData?.count ?? 0;
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "A"
@@ -148,23 +178,19 @@ export function AdminSidebar() {
         className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3"
         style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
       >
-        <Link href="/" className="flex items-center gap-2.5" data-testid="link-admin-logo">
-          <div
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-            style={{ background: "#E85D55" }}
-          >
-            <span className="text-white text-[16px] font-bold">T</span>
-          </div>
-          <span
-            className="text-[16px] font-semibold group-data-[collapsible=icon]:hidden"
-            style={{ color: "#1A1A18", letterSpacing: -0.3 }}
-          >
-            Traveloure
-          </span>
+        <Link href="/" className="flex items-center" data-testid="link-admin-logo">
+          <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-2.5 py-3 group-data-[collapsible=icon]:px-1">
+      {/* D4 (UX audit Jul 29): "long sidebar with no below-fold cue" — the content list scrolls
+          (SidebarContent is already overflow-auto) but gave no visual hint that there was more
+          below the fold. A soft bottom fade-mask signals "keep scrolling" without changing any
+          layout/routing. */}
+      <SidebarContent
+        className="px-2.5 py-3 group-data-[collapsible=icon]:px-1"
+        style={{ WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)", maskImage: "linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)" }}
+      >
         {menuGroups.map((group) => (
           <SidebarGroup key={group.label} className="mb-3 p-0">
             <SidebarGroupLabel
@@ -180,7 +206,9 @@ export function AdminSidebar() {
                     location === item.href ||
                     (item.href !== "/admin/dashboard" && location.startsWith(item.href));
                   const isNotifications = item.href === "/admin/notifications";
-                  const showBadge = isNotifications && unreadCount > 0;
+                  const isProviders = item.href === "/admin/providers";
+                  const badgeCount = isNotifications ? (unreadCount > 0 ? unreadCount : 0) : isProviders ? stripeIncompleteCount : 0;
+                  const showBadge = badgeCount > 0;
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -196,13 +224,13 @@ export function AdminSidebar() {
                       >
                         <Link
                           href={item.href}
-                          data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                          data-testid={`nav-${item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`}
                         >
                           <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
                           <span className="text-[13px] flex-1">{item.title}</span>
                           {showBadge && (
                             <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none group-data-[collapsible=icon]:hidden">
-                              {unreadCount}
+                              {badgeCount}
                             </span>
                           )}
                         </Link>
@@ -241,7 +269,7 @@ export function AdminSidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-          onClick={handleLogout}
+          onClick={() => logout()}
           data-testid="button-admin-logout"
         >
           <LogOut className="w-4 h-4 mr-2 group-data-[collapsible=icon]:mr-0" />

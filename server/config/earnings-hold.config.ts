@@ -23,9 +23,18 @@ const EARNINGS_HOLD_WINDOWS: Record<string, number> = {
   service_booking:      DEFAULT_WINDOW_DAYS,
   consulting:           DEFAULT_WINDOW_DAYS,
   optimization_fee:     envDays('EARNINGS_HOLD_DAYS_OPTIMIZATION', DEFAULT_WINDOW_DAYS),
+  // Expert-request review/booking/full-concierge split (R6/R7, ratified Jul 30 2026): explicitly
+  // pinned to the standard 7-day window — the decision-maker tied this to the 7-day refund/dispute
+  // window on purpose (a held earning must not clear before the refund window closes). Previously
+  // this surface had no explicit row and rode the bookings DEFAULT_WINDOW_DAYS fallback (same 7d
+  // value, but undocumented as intentional); now a named, independently env-overridable key.
+  expert_review_fee:    envDays('EARNINGS_HOLD_DAYS_EXPERT_REVIEW', DEFAULT_WINDOW_DAYS),
   template_sale:        envDays('EARNINGS_HOLD_DAYS_TEMPLATE', 14),   // digital good — longer chargeback tail
   template_commission:  envDays('EARNINGS_HOLD_DAYS_TEMPLATE', 14),
   affiliate_commission: envDays('EARNINGS_HOLD_DAYS_AFFILIATE', DEFAULT_WINDOW_DAYS),
+  // D7 (ready-made, ratified 2026-07-25): 7-day escrow window; the admin stale-content refund is
+  // grantable only while the earning is still in escrow — after release, no refund.
+  ready_made_sale:      envDays('EARNINGS_HOLD_DAYS_READY_MADE', 7),
   tip:                  envDays('EARNINGS_HOLD_DAYS_TIP', 0),         // clears immediately
   referral_bonus:       envDays('EARNINGS_HOLD_DAYS_REFERRAL', 0),    // platform-funded bonus — no chargeback risk
 };

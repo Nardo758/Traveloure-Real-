@@ -158,9 +158,26 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
 
   // For experts/providers: remove payment details but keep operational info
   const sanitized = { ...booking };
-  
-  // Remove sensitive payment/billing info
-  const sensitiveFields = ['paymentDetails', 'cardInfo', 'billingAddress', 'paymentIntentId', 'stripeSessionId'];
+
+  // Remove sensitive payment/billing info.
+  // QA-1 fix: the real `service_bookings` payment-identity columns are camelCase
+  // `stripePaymentIntentId` / `stripeDepositIntentId` / `stripeBalanceIntentId` (shared/schema.ts —
+  // §19a: written ONLY by the shared promotion / balance-authorization paths, never client-settable,
+  // and per that same posture must never round-trip to a non-full-access role either). The original
+  // list here named `paymentIntentId` (no `service_bookings` column of that name — the closest match,
+  // `reconciliationExceptions.paymentIntentId`, belongs to an unrelated admin table this function
+  // never touches) and `stripeSessionId` (no such column anywhere in shared/schema.ts). Both were
+  // dead strips: no live leak today only because `envelopeFromProviderService`/enrichment nulls the
+  // real field first, per the lane brief — but the list itself was wrong. `paymentDetails` /
+  // `cardInfo` / `billingAddress` are likewise not real `service_bookings` columns (the schema sweep
+  // found `billingAddress` only on the unrelated `ea_client_relationships` table); kept here as
+  // harmless belt-and-braces in case a future caller's shape ever grows one of those names.
+  const sensitiveFields = [
+    'paymentDetails', 'cardInfo', 'billingAddress',       // legacy/speculative — no live column, kept harmless
+    'paymentIntentId', 'stripeSessionId',                 // wrong-cased/nonexistent — kept harmless
+    'stripePaymentIntentId', 'stripeDepositIntentId', 'stripeBalanceIntentId', // the REAL columns (§19a)
+    'idempotencyKey',                                     // §19a payment-identity sibling: the Stripe idempotency key must not round-trip to an earner role either
+  ];
   for (const field of sensitiveFields) {
     if (field in sanitized) {
       delete (sanitized as any)[field];
@@ -267,3 +284,71 @@ export function canSeeFullUserData(role: string): boolean {
   const permissions = ROLE_PERMISSIONS[role as UserRole];
   return permissions?.canSeeFull || false;
 }
+
+/**
+ * Generic allowlist projector — returns a new object containing ONLY the
+ * listed keys that are present on the source object. An allowlist rather
+ * than a denylist so a NEW privileged column added to the source table
+ * later is excluded by default (the same pick-over-omit posture ruling 46
+ * / §19 requires for request-body schemas, applied here to a response
+ * body — CC-8).
+ */
+export function pickPublicFields<T extends Record<string, any>, K extends keyof T>(
+  source: T,
+  fields: readonly K[],
+): Pick<T, K> {
+  const result = {} as Pick<T, K>;
+  for (const field of fields) {
+    if (field in source) {
+      result[field] = source[field];
+    }
+  }
+  return result;
+}
+
+/**
+ * Denylist projector — returns a shallow copy of the source with the listed keys removed.
+ * Deliberately narrower than `pickPublicFields`: use this ONLY when a single, specifically-
+ * verified field is the leak (e.g. CC-8's `provider_services.revenueShareRate` on
+ * POST /api/provider/services) and the source table is large/actively read by many
+ * unaudited consumers, where reconstructing a full allowlist risks dropping a field some
+ * other caller depends on. Prefer `pickPublicFields` when the full consumer set is known.
+ */
+export function omitFields<T extends Record<string, any>, K extends keyof T>(
+  source: T,
+  fields: readonly K[],
+): Omit<T, K> {
+  const result = { ...source };
+  for (const field of fields) {
+    delete result[field];
+  }
+  return result;
+}
+
+/**
+ * CC-8: POST /api/expert-application (and its /api/expert-forms alias) echoed the
+ * full local_expert_forms row back — including admin/financial/verification
+ * internals (totalEarnings, pendingPayout, feeSettings, stripeAccountId,
+ * stripeAccountStatus, identityVerificationStatus, knowledgeScore, bookingFee*,
+ * payoutSchedule, canReceivePayments, stripeConnectStatus, identityVerification*,
+ * verifiedInfluencer/influencerTier/referralCode, handoff/PA-access internals...).
+ * Verified no client reads any of this: travel-experts.tsx's submitMutation.onSuccess
+ * takes no response argument at all (it only invalidates queries + navigates), and the
+ * expert console's status surfaces (expert-status.tsx, expert/settings.tsx) read the
+ * separate /api/expert/application-status endpoint, never this row. This allowlist
+ * keeps the fields an applicant plausibly wants echoed back — their own submitted
+ * profile plus the row's lifecycle state — and excludes every admin/payment/
+ * verification-internal field by construction.
+ */
+export const EXPERT_APPLICATION_PUBLIC_FIELDS = [
+  "id", "userId", "expertType",
+  "firstName", "lastName", "email", "phone", "country", "city",
+  "destinations", "specialties", "languages", "experienceTypes",
+  "specializations", "selectedServices",
+  "neighborhoods", "localityProof", "knowledgeProofAnswers", "localSpecialties",
+  "yearsOfExperience", "bio", "portfolio", "certifications",
+  "availability", "responseTime", "hourlyRate",
+  "offeringTypeKey",
+  "isInfluencer", "instagramLink", "tiktokLink", "youtubeLink", "socialFollowers",
+  "status", "rejectionMessage", "createdAt",
+] as const;

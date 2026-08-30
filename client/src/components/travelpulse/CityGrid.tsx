@@ -28,7 +28,6 @@ import {
   Bell,
   Activity,
   Calendar,
-  Plane,
   Plus,
   Check,
   Wand2,
@@ -71,6 +70,10 @@ interface TravelPulseCity {
 interface CityGridProps {
   onCitySelect?: (city: TravelPulseCity) => void;
   selectedCityName?: string;
+  // When the caller already renders a page header for this grid (the /destinations
+  // Marketplace surface masthead), suppress the internal "Trending Cities" header so
+  // the two don't stack as a duplicate header.
+  hideHeader?: boolean;
 }
 
 const vibeTagColors: Record<string, string> = {
@@ -182,6 +185,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
         primaryLabel="Take me Here"
         onPrimary={() => setDialogOpen(true)}
         onCardClick={onClick}
+        primaryTestId={`button-plan-now-${citySlug}`}
         testId={`card-city-${citySlug}`}
       />
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -327,7 +331,7 @@ function CityGridSkeleton() {
   );
 }
 
-export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
+export function CityGrid({ onCitySelect, selectedCityName, hideHeader = false }: CityGridProps) {
   const [, navigate] = useLocation();
 
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
@@ -366,7 +370,8 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   const cities = data?.cities || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="city-grid">
+      {!hideHeader && (
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -374,14 +379,15 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
             Trending Cities
           </h2>
           <p className="text-muted-foreground mt-1">
-            Real-time intelligence from {cities.reduce((acc, c) => acc + c.activeTravelers, 0).toLocaleString()} travelers worldwide
+            Destination intelligence across {cities.length} trending cities
           </p>
         </div>
         <Badge variant="outline" className="text-sm">
           <Calendar className="h-3 w-3 mr-1" />
-          Live Updates
+          Daily Updates
         </Badge>
       </div>
+      )}
 
       {cities.length === 0 ? (
         <Card className="p-8 text-center">

@@ -4,9 +4,12 @@ name: Build Smoke
 # the logic gate tests an isolated module and the e2e never had a green run, so
 # nothing actually built or booted the app. This runs the real production build
 # (vite client + esbuild server bundle via `npm run build`), which FAILS on
-# syntax / bundling errors but does NOT type-check — so it tolerates the ~191
+# syntax / bundling errors but does NOT type-check — so it tolerates the
 # pre-existing baseline type errors (a `tsc --noEmit`-clean gate is impossible
 # against that baseline). Catches the dropped-sort-block class of bug.
+#
+# The type-error BASELINE is gated separately below (`tsc-baseline`): 197 as of
+# 2026-08-05 @ ea0bbc05, and the number only ever moves DOWN.
 
 on:
   pull_request:
@@ -32,6 +35,49 @@ jobs:
       - name: Production build (syntax/bundle gate — does NOT run tsc)
         run: npm run build
 
+      # ── tsc baseline ratchet ──────────────────────────────────────────────────
+      # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER
+      # ONLY EVER MOVES DOWN: a lane that removes errors lowers TSC_BASELINE in the
+      # same PR so the improvement is locked in and cannot be spent as headroom by
+      # the next lane. Coming in UNDER the ceiling therefore fails too — with the
+      # instruction to lower it here.
+      #
+      # 194 measured on 2026-08-07 (fix waves 1-2 removed three errors; was 197
+      # @ ea0bbc05, 199 before PR #430). Before this step existed the discipline
+      # had no machine enforcement at all — every "baseline" in the repo was a
+      # stale prose number (191/209/254/~137, none of them current).
+      # 183 measured 2026-08-10 on PR #451 (down from 190) — the ratchet fired
+      # exactly as designed: this lane's work removed 7 errors and the gate
+      # refused to let the headroom survive. Locked in here, same PR.
+      # 170 measured 2026-08-12 — POST-RECONCILIATION baseline (ledger 80): merging
+      # the replit line into main net-removed 13 errors (their storage/routes/schema
+      # edits replaced error-bearing code); the scheduler-unification / merge changes
+      # introduced ZERO new type errors (none in any touched file). Locked in here.
+      # 164 measured 2026-08-17 on lane/partner-demand-data (2A.3 party-size de-masking):
+      # dropping the fabricated numberOfTravelers/adults defaults net-removed 4 errors
+      # (the default-related type narrowings on the trip-creation path); ZERO new type
+      # errors in any touched file. Ratchet fired as designed — locked in here, same PR.
+      # 157 measured 2026-08-21 after the Distribution parity pass; ZERO new type
+      # errors in the touched server/client paths. Locked in here, same PR.
+      # 156 measured 2026-08-25 while landing the Ready-Made completeness gate.
+      # The ratchet detected the reduction and requires it to be locked in.
+      - name: tsc baseline ratchet (down-only)
+        env:
+          TSC_BASELINE: '143'
+        run: |
+          count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
+          echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
+          if [ "$count" -gt "$TSC_BASELINE" ]; then
+            echo "::error::tsc errors went UP: $count > baseline $TSC_BASELINE. Fix the net-new type errors in this change."
+            npx tsc --noEmit 2>&1 | grep "error TS" | head -40
+            exit 1
+          fi
+          if [ "$count" -lt "$TSC_BASELINE" ]; then
+            echo "::error::tsc errors went DOWN to $count (baseline $TSC_BASELINE) — good! Now LOCK IT IN: set TSC_BASELINE to $count in .github/workflows/build.yml in this same PR. The baseline only ever moves down; leftover headroom is how it creeps back up."
+            exit 1
+          fi
+          echo "tsc baseline holds at $count ✅"
+
   money-endpoint-guard:
     name: money-endpoint-guard (CLAUDE.md §14)
     runs-on: ubuntu-latest
@@ -42,8 +88,46 @@ jobs:
           node-version: '20'
       # Operation-scoped guard: fails if a money-operation handler (or a money-named file) sources
       # amount/price/userId from req.body. Node built-ins only — no npm ci needed. See §14.
-      - name: Client-trusted amount/identity guard
+      # Predicate fixtures FIRST (ruling 42/43): a guard with a wrong predicate passes truthfully,
+      # so the predicate itself is proven before its verdict is trusted.
+      - name: Money-guard predicate self-test
+        run: node scripts/check-money-endpoints.cjs --self-test
+      - name: Client-trusted amount/identity/rate guard
         run: node scripts/check-money-endpoints.cjs
+
+  item-removed-logging-guard:
+    name: item-removed-logging-guard (R15 removal-signal coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if an itinerary_items hard-delete path lacks an item-removed:<kind> annotation, or a
+      # `logged` site has no same-transaction `item_removed` write. Node built-ins only — no npm ci
+      # needed. See ledger 2026-08-17-partner-demand-r15-transition-log. Predicate fixtures FIRST
+      # (§18d): a guard with a wrong predicate passes truthfully.
+      - name: Item-removed guard predicate self-test
+        run: node scripts/check-item-removed-logging.cjs --self-test
+      - name: Item-removed logging coverage guard
+        run: node scripts/check-item-removed-logging.cjs
+
+  claims-only-lookup-guard:
+    name: claims-only-lookup-guard (session-user extraction)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a server/ file reads a session user id via claims.sub without an `.id`
+      # fallback (or the shared getUserId helper). Email-login sessions only carry
+      # claims.sub; OAuth sessions may only carry .id — a claims-only read causes false
+      # 403s (~120 routes were fixed for this once). Node built-ins only — no npm ci needed.
+      - name: Guard self-tests (fixture cases)
+        run: node scripts/check-claims-only-user-lookups.cjs --self-test
+      - name: Claims-only session-user lookup guard
+        run: node scripts/check-claims-only-user-lookups.cjs
 
   unmounted-router-guard:
     name: unmounted-router-guard (CLAUDE.md §9)
@@ -57,3 +141,253 @@ jobs:
       # (dead → 200-HTML). Node built-ins only — no npm ci needed. See §9.
       - name: Unmounted-router guard
         run: node scripts/check-unmounted-routers.cjs
+
+  trip-mint-owner-guard:
+    name: trip-mint-owner-guard (CLAUDE.md §13 L10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a trips-INSERT site doesn't mint the owner's trip_collaborators row (or carry a
+      # trip-mint-owner-ok annotation for deliberate NULL-owner authoring builds). getTripRole
+      # resolves access by assignment only, so an owner-less mint locks the owner out of their own
+      # trip. Node built-ins only — no npm ci needed. See §13 L10.
+      - name: Trip-mint owner-access guard
+        run: node scripts/check-trip-mint-owner-access.cjs
+
+  fee-literal-guard:
+    name: fee-literal-guard (phase2-fee-gate — DECISIONS.md ruling 27)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Grep gate: no optimize/coordination fee literals in LOGIC code (fee_bands seed /
+      # migrations / config rows excluded; `// fee-literal-ok: <reason>` exempts a line).
+      # Predicate fixtures FIRST (ruling 42/43) — this gate was blind to every SCREAMING_SNAKE fee
+      # constant for its whole life while reporting PASS.
+      - name: Fee-gate predicate self-test
+        run: bash scripts/phase2-fee-gate.sh --self-test
+      - name: Fee-literal grep (scripts/phase2-fee-gate.sh)
+        run: bash scripts/phase2-fee-gate.sh
+
+  migration-chain-integrity:
+    name: migration-chain-integrity (DECISIONS.md rulings 19, 27)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Ruling 19: migration numbering re-verified at merge — the chain-integrity test is arbiter.
+      - name: chain-integrity test
+        run: npx tsx --test server/migrations/__tests__/chain-integrity.test.ts
+
+  walkthrough-pins:
+    name: walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Pure-unit pins from docs/testing/EXPERT_UX_WALKTHROUGH.md — no DB, no browser.
+      # EX-1: no client file may navigate to the Replit-only GET /api/logout (session survived
+      # the click off-Replit); the shared logout must POST /api/auth/logout.
+      - name: EX-1 logout endpoint pin
+        run: npx tsx --test client/src/lib/__tests__/logout-endpoint-pin.test.ts
+      # EX-2: insertProviderServiceSchema rejects negative/non-numeric prices on the create AND
+      # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
+      - name: EX-2 service price-floor pin
+        run: npx tsx --test server/__tests__/service-price-floor.test.ts
+      # Ready-Made listings must pass the same completeness gate at submit and approval.
+      - name: Ready-Made completeness gate
+        run: npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts
+      # Thin gem detail (2026-08-29-replit-gem-audit ruling 3): the discover teaser
+      # ships EXACTLY the ruled key set — address / popularity ratios / mainstream
+      # forecast / discovery status stay removed, attribution ships only resolved.
+      - name: Gem teaser projection gate
+        run: npx tsx --test server/services/__tests__/gem-teaser.test.ts
+
+  decision-guards-lint:
+    name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Every [guarded: name] ruling in docs/DECISIONS.md must name a guard that runs in CI
+      # (script-only = MISSING, ruling 27). deferred:<lane> tags warn until their lane merges.
+      - name: Ledger lint self-test
+        run: node scripts/check-decision-guards.cjs --self-test
+      - name: Ledger lint
+        run: node scripts/check-decision-guards.cjs
+
+  ledger-union-merge:
+    name: ledger-union-merge (.gitattributes union driver — Trailhead C1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # docs/DECISIONS.md must carry `merge=union` in .gitattributes so parallel
+      # ledger appends auto-union instead of conflicting; the dup-slug lint in
+      # decision-guards-lint (above) is the safety net for the one bad merge that
+      # can produce (a duplicate id). Node built-ins + git. Predicate fixtures
+      # FIRST (§18d): the self-test exercises a real git union merge and the
+      # dup-slug lint before the config assertion is trusted.
+      - name: Ledger union-merge self-test
+        run: node scripts/check-ledger-union-merge.cjs --self-test
+      - name: Ledger union-merge config guard
+        run: node scripts/check-ledger-union-merge.cjs
+
+  matrix-lint:
+    name: matrix-lint (coverage matrix — DECISIONS.md ruling 21/27)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Every claim cell in docs/testing/coverage-matrix.md must name a test id (or a
+      # deferred:/n-a: marker); non-deferred ids must carry a `matrix-id:` annotation in a
+      # test file; merged deferred lanes may no longer tag a cell (ruling 21). Node built-ins
+      # only — no npm ci needed.
+      - name: Matrix lint self-test
+        run: node scripts/check-coverage-matrix.cjs --self-test
+      - name: Matrix lint
+        run: node scripts/check-coverage-matrix.cjs && echo "matrix-lint OK"
+
+  env-allowlist-guard:
+    name: env-allowlist-guard (dev/CI-only test accounts — DECISIONS.md ruling 27/33)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Asserts the prod-strict Stripe source + the P0 seed/purge gate posture still hold and
+      # that no deploy-targeting workflow seeds test accounts via ALLOW_TEST_ACCOUNTS=1. Node
+      # built-ins only — no npm ci needed.
+      - name: Env-allowlist guard self-test
+        run: node scripts/check-env-allowlist.cjs --self-test
+      - name: Env-allowlist guard
+        run: node scripts/check-env-allowlist.cjs
+
+  omit-schema-ratchet:
+    name: omit-schema-ratchet (PS18 — §19 allowlist conversion)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Ratchet guard (ruling 46 / CLAUDE.md §19): the number of .omit()-based (denylist)
+      # createInsertSchema(...) call sites across the two drizzle-kit schema entry points
+      # (shared/schema.ts, shared/guest-invites-schema.ts) only ever moves DOWN as the
+      # #PS18 omit→pick allowlist conversion proceeds. Mirrors the tsc-baseline ratchet
+      # above: over OR under the recorded OMIT_BASELINE both fail. Node built-ins only —
+      # no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Omit-schema-ratchet predicate self-test
+        run: node scripts/check-omit-schema-ratchet.cjs --self-test
+      - name: Omit-schema-ratchet guard
+        run: node scripts/check-omit-schema-ratchet.cjs
+
+  demand-rollup-guard:
+    name: demand-rollup-guard (Partner Demand 2B / ledger 2026-08-18-partner-demand-2b)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Partner Demand 2B discipline gate over the demand-rollup MODULE (compute/service/job/config):
+      # no `providerServices.totalRevenue` read (Locked Decision 3), demand MATH confined to the L6
+      # compute home, and floor thresholds only in demand-floors.config.ts (never a bare literal).
+      # Node built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Demand-rollup gate predicate self-test
+        run: node scripts/check-demand-rollup.cjs --self-test
+      - name: Demand-rollup discipline gate
+        run: node scripts/check-demand-rollup.cjs
+      # R26 coords cheap-fix regression pin (ledger 2026-08-18-partner-demand-coords-fix): the three
+      # producer-side copy-fixes stay intact. Node built-ins only. Predicate fixtures FIRST (§18d).
+      - name: Coords-preservation predicate self-test
+        run: node scripts/check-coords-preservation.cjs --self-test
+      - name: Coords-preservation guard
+        run: node scripts/check-coords-preservation.cjs
+
+  linkage-preservation-guard:
+    name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if an itinerary-item write site (createItineraryItem / db.insert(itineraryItems) /
+      # bulkInsertItineraryItems) references a service-bearing source (cartItem, providerServiceId,
+      # variantItems, …) without writing providerServiceId onto the item — the H1/H5 class. Node
+      # built-ins only — no npm ci needed. See docs/E2E_ITEM_LIFECYCLE.md §3.
+      - name: Linkage-preservation guard
+        run: node scripts/check-linkage-preservation.cjs
+
+  artifact-deploy-guard:
+    name: artifact-deploy-guard (root Autoscale is the sole deploy target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Production is built from the committed tree. A tracked .replit-artifact/
+      # directory can activate Replit's artifact static deployment override.
+      - name: Artifact deploy guard predicate self-test
+        run: node scripts/check-artifact-deploy-guard.cjs --self-test
+      - name: Artifact deploy override guard
+        run: node scripts/check-artifact-deploy-guard.cjs
+
+  duplicate-migration-prefix-guard:
+    name: duplicate-migration-prefix-guard (ledger 2026-08-16-ledger-ids — three-way collision history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if two server/migrations/*.sql filenames (or MIGRATION_FILES registry entries)
+      # share the exact same leading numeric prefix — migration numbers have collided three
+      # times because nothing checked for it. A letter-suffixed prefix (025b) is distinct from
+      # its bare form (025). Three pre-existing collisions (079/098/099) are grandfathered by
+      # an explicit allowlist in the script. Node built-ins only — no npm ci needed. Predicate
+      # fixtures FIRST (§18d).
+      - name: Duplicate-migration-prefix guard predicate self-test
+        run: node scripts/check-duplicate-migration-prefixes.cjs --self-test
+      - name: Duplicate-migration-prefix guard
+        run: node scripts/check-duplicate-migration-prefixes.cjs
+
+  privileged-field-completeness-guard:
+    name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # §14 caught a client-set amount, §18 the rate, §19 verification — three privileged column
+      # families found ONE AT A TIME. This guard enumerates all six NAMED families up front
+      # (role/privilege, status/approval, fee/payout/rate, verification, payment-identity,
+      # plan/entitlement) against every insert schema that is actually reachable from a request
+      # body (not all 186 createInsertSchema(...) calls — most are internal-only), so the next
+      # family doesn't need its own incident before it gets a check. Intentional exposures are
+      # named in an explicit GRANDFATHERED_COLUMNS allowlist with a one-line reason each. Node
+      # built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Privileged-field completeness guard predicate self-test
+        run: node scripts/check-privileged-field-completeness.cjs --self-test
+      - name: Privileged-field completeness guard
+        run: node scripts/check-privileged-field-completeness.cjs

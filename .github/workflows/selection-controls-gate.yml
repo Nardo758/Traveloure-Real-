@@ -148,11 +148,6 @@ jobs:
           # Stripe key stub — stripe.service.ts throws at import if this is unset.
           # No real Stripe API calls are made during selection-controls tests.
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          # Amadeus stub — new Amadeus({clientId}) runs at module load time and throws
-          # ArgumentError if clientId is undefined. Providing a stub prevents the
-          # server crash on import; no real Amadeus API calls are made in CI.
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           # Build identity — exposed via GET /api/version so tests can assert
           # they are talking to this PR's artifact, not a stale deployment.
           GIT_COMMIT: ${{ github.sha }}
@@ -266,8 +261,6 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           # Keyless AI: stub grokService.generateAutonomousItinerary so journey-2A's

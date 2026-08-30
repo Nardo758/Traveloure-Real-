@@ -1,0 +1,444 @@
+/**
+ * PROVIDER OFFICE / PLACE-OF-BUSINESS LOCATION — behavioural proof of ruling 85
+ * (CLAUDE.md §13 / publish-trap; §14/§18/§19 do NOT apply — provider CONFIG, not money/identity).
+ *
+ * RATIFIED FEATURE: an account-level `service_provider_forms.office_location` jsonb {address,lat,lng},
+ * captured via the SAME confirm-gated LocationPointPicker the per-listing meeting pin uses (address
+ * typed OR pin dropped; geocoded through the ONE server path POST /api/geocode; persisted ONLY on
+ * explicit Confirm). PURPOSE: pre-fill a NEW listing's meeting pin so the provider doesn't re-place
+ * it every time (overridable/removable per listing). Owner-gated write; NULL = "not set" — the honest
+ * §13 default, never a fabricated coordinate.
+ *
+ * NEGATIVES FIRST:
+ *   N1  unauthenticated PATCH /api/provider-application ⇒ 401 (never writes).
+ *   N2  §13/validation — an out-of-range lat/lng is REJECTED (400), never silently stored.
+ *   N3  a malformed body (non-object, or the key omitted) ⇒ 400.
+ *   P1  a provider SETS officeLocation {address,lat,lng} on their OWN row ⇒ 200, persists (GET + DB).
+ *   P2  clear-to-null works ⇒ 200, row officeLocation NULL; GET reads back null (§13 — NULL stays
+ *       NULL, no invented coordinate); a provider with no office location reads back null.
+ *   P3  OWNER SCOPING — a second provider's write touches ONLY their own row; provider A's row is
+ *       unchanged (route resolves the row by session userId; storage scopes by userId, never a body id).
+ *   P4  PRE-FILL HONESTY (owner-read seed source) — with officeLocation SET, the owner read
+ *       (GET /api/provider-application) exposes the exact office coords that ServiceForm seeds a NEW
+ *       listing's pin from; with officeLocation NULL, the read exposes null ⇒ no seed (unchanged
+ *       behavior). The coords are finite + in range (a valid LocationPointPicker seed).
+ *   P5  RULING 86 — the seed never reaches a NON-place-anchored listing. See the STATED BOUNDS note
+ *       on the test itself: the client is what decides which payload shape is sent per delivery
+ *       method; this proves the server half of the contract, both shapes, with the office SET.
+ *   G1  the money-endpoints guard stays green — officeLocation is not a money/identity/rate field.
+ *
+ * Runs against the ALREADY-RUNNING dev server on http://127.0.0.1:5000 (the service-display-options /
+ * booking-eligibility posture). DISPOSABLE DB ONLY — rows created here are cleaned in after().
+ * Serialize: npx tsx --test --test-concurrency=1 server/__tests__/provider-office-location.db.test.ts
+ */
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { sql } from "drizzle-orm";
+import { db } from "../db";
+import { storage } from "../storage";
+import { resolvePublishVerification } from "../services/publish-verification.service";
+
+const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
+const PASSWORD = "TestPass123!";
+const CI_PROVIDER_EMAIL = "ci-provider@traveloure.test";
+const CI_PROVIDER_PASSWORD = "CITestProvider!99";
+const RUN = crypto.randomUUID().slice(0, 8);
+const createdEmails: string[] = [];
+const createdFormUserIds: string[] = []; // forms I created (provider B) — cleaned in after()
+const createdServiceIds: string[] = []; // listings created by P5 — cleaned in after()
+
+// A confirmed office pin (Kyoto) and a second distinct point (Osaka) for owner-scoping.
+const KYOTO = { address: "Kiyomizu-dera, Kyoto", lat: 35.0116, lng: 135.7681 };
+const OSAKA = { address: "Osaka Castle, Osaka", lat: 34.6873, lng: 135.5259 };
+
+const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
+async function assertDisposableDb(): Promise<void> {
+  if (process.env.JOURNEY_DB_WRITES_OK === "1") return;
+  let host: string | null = null;
+  try { host = new URL(process.env.DATABASE_URL ?? "").hostname.toLowerCase(); } catch { host = null; }
+  let serverAddr: string | null = null;
+  try {
+    const r = await db.execute(sql`SELECT host(inet_server_addr()) AS addr`);
+    serverAddr = ((r.rows[0] as any)?.addr as string) ?? null;
+  } catch { /* local socket ⇒ disposable */ }
+  const ok =
+    (host !== null && DISPOSABLE_HOSTS.has(host)) ||
+    (host === null && (serverAddr === null || DISPOSABLE_HOSTS.has(serverAddr)));
+  if (!ok) throw new Error(`[office-location] REFUSING to write: '${host ?? "<none>"}' not disposable. Opt in with JOURNEY_DB_WRITES_OK=1.`);
+}
+
+interface Actor { id: string; email: string; cookie: string; }
+async function registerProvider(label: string): Promise<Actor> {
+  const email = `office-${RUN}-${label}@t.test`;
+  const res = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: PASSWORD, firstName: "OF", lastName: label }),
+  });
+  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
+  const setCookie = res.headers.get("set-cookie");
+  assert.ok(setCookie, "register must set a session cookie");
+  const body = (await res.json()) as any;
+  createdEmails.push(email);
+  await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${body.user.id}`);
+  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+}
+async function loginCookie(email: string, password: string): Promise<string> {
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  assert.equal(res.status, 200, `login(${email}) failed (${res.status}): ${await res.text()}`);
+  const setCookie = res.headers.get("set-cookie");
+  assert.ok(setCookie, "login must set a session cookie");
+  return setCookie!.split(";")[0];
+}
+function api(pathname: string, cookie: string | undefined, method = "GET", body?: unknown) {
+  return fetch(`${BASE_URL}${pathname}`, {
+    method,
+    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+}
+async function readOnce(res: Response): Promise<{ status: number; body: any; text: string }> {
+  const text = await res.text();
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+  return { status: res.status, body, text };
+}
+
+/** Ensure the given user owns a minimal service_provider_forms row (NOT-NULL columns satisfied). */
+async function ensureProviderForm(userId: string, email: string): Promise<void> {
+  const r = await db.execute(sql`SELECT id FROM service_provider_forms WHERE user_id = ${userId} LIMIT 1`);
+  if ((r.rows as any[]).length > 0) return;
+  const id = crypto.randomUUID();
+  await db.execute(sql`
+    INSERT INTO service_provider_forms
+      (id, user_id, business_name, name, email, mobile, country, address, business_type)
+    VALUES
+      (${id}, ${userId}, ${'Office Test Biz'}, ${'Office Test'}, ${email}, ${'+10000000000'},
+       ${'Japan'}, ${'1 Test Street, Kyoto'}, ${'tour_operator'})
+  `);
+  createdFormUserIds.push(userId);
+}
+
+/** Read the stored office_location jsonb straight from the row (bypasses the API). */
+async function dbOfficeLocation(userId: string): Promise<any> {
+  const r = await db.execute(sql`SELECT office_location FROM service_provider_forms WHERE user_id = ${userId} LIMIT 1`);
+  return (r.rows[0] as any)?.office_location ?? null;
+}
+
+let providerA: Actor;      // ci-provider (the login fixture)
+let providerB: Actor;      // a fresh second provider — for owner scoping
+let ciProviderId = "";
+
+before(async () => {
+  const health = await fetch(`${BASE_URL}/api/health`).catch(() => null);
+  assert.ok(health && health.ok, `dev server must be running on ${BASE_URL}`);
+  await assertDisposableDb();
+
+  // Provider A = the ci-provider password fixture (proves login too).
+  const cookieA = await loginCookie(CI_PROVIDER_EMAIL, CI_PROVIDER_PASSWORD);
+  const r = await db.execute(sql`SELECT id FROM users WHERE email = ${CI_PROVIDER_EMAIL}`);
+  ciProviderId = (r.rows[0] as any)?.id;
+  assert.ok(ciProviderId, "ci-provider must be seeded");
+  await ensureProviderForm(ciProviderId, CI_PROVIDER_EMAIL);
+  providerA = { id: ciProviderId, email: CI_PROVIDER_EMAIL, cookie: cookieA };
+
+  // Provider B = a fresh second provider with its own form.
+  providerB = await registerProvider("b");
+  await ensureProviderForm(providerB.id, providerB.email);
+
+  // Start both from a clean, honest NULL office (no fabricated coordinate).
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
+  await storage.updateServiceProviderFormOfficeLocation(providerB.id, null);
+});
+
+after(async () => {
+  try {
+    await assertDisposableDb();
+    // Leave the shared ci-provider fixture's form in place; just reset its office to NULL.
+    await storage.updateServiceProviderFormOfficeLocation(ciProviderId, null).catch(() => {});
+    for (const id of createdServiceIds) {
+      await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
+    }
+    for (const userId of createdFormUserIds) {
+      await db.execute(sql`DELETE FROM service_provider_forms WHERE user_id = ${userId}`).catch(() => {});
+    }
+    for (const email of createdEmails) {
+      await db.execute(sql`DELETE FROM service_provider_forms WHERE user_id = (SELECT id FROM users WHERE email = ${email})`).catch(() => {});
+      await db.execute(sql`DELETE FROM users WHERE email = ${email}`).catch(() => {});
+    }
+  } finally { /* shared pool — leave open */ }
+});
+
+// ═══ NEGATIVES FIRST ════════════════════════════════════════════════════════════════════════════
+
+test("N1: unauthenticated PATCH /api/provider-application ⇒ 401, never writes", async () => {
+  const before = await dbOfficeLocation(providerA.id);
+  const res = await readOnce(await api("/api/provider-application", undefined, "PATCH", { officeLocation: KYOTO }));
+  assert.equal(res.status, 401, `expected 401, got ${res.status}: ${res.text}`);
+  assert.deepEqual(await dbOfficeLocation(providerA.id), before, "unauth PATCH must not change the row");
+});
+
+test("N2: §13/validation — an out-of-range lat/lng is REJECTED (400), never silently stored", async () => {
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
+  // lat 999 out of [-90,90]
+  const bad1 = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: { address: "x", lat: 999, lng: 0 } }));
+  assert.equal(bad1.status, 400, `out-of-range lat must be 400, got ${bad1.status}: ${bad1.text}`);
+  // lng 200 out of [-180,180]
+  const bad2 = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: { address: "x", lat: 35, lng: 200 } }));
+  assert.equal(bad2.status, 400, `out-of-range lng must be 400, got ${bad2.status}: ${bad2.text}`);
+  // NaN / non-numeric
+  const bad3 = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: { address: "x", lat: "abc", lng: "def" } }));
+  assert.equal(bad3.status, 400, `non-numeric coords must be 400, got ${bad3.status}: ${bad3.text}`);
+  assert.equal(await dbOfficeLocation(providerA.id), null, "§13: a rejected coordinate must NOT be stored — NULL stays NULL");
+});
+
+test("N3: a malformed body (non-object, or the officeLocation key omitted) ⇒ 400", async () => {
+  const notObj = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: "not-an-object" }));
+  assert.equal(notObj.status, 400, `non-object must be 400, got ${notObj.status}: ${notObj.text}`);
+  const arr = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: [35, 135] }));
+  assert.equal(arr.status, 400, `array must be 400, got ${arr.status}: ${arr.text}`);
+  const missing = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { somethingElse: true }));
+  assert.equal(missing.status, 400, `omitted key must be 400, got ${missing.status}: ${missing.text}`);
+});
+
+// ═══ POSITIVES ══════════════════════════════════════════════════════════════════════════════════
+
+test("P1: a provider SETS officeLocation on their OWN row ⇒ 200, persists (GET + DB)", async () => {
+  const res = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: KYOTO }));
+  assert.equal(res.status, 200, `set must be 200, got ${res.status}: ${res.text}`);
+  // Persisted in the row exactly (address + coords).
+  const stored = await dbOfficeLocation(providerA.id);
+  assert.ok(stored, "office_location present in the row after set");
+  assert.equal(Number(stored.lat), KYOTO.lat);
+  assert.equal(Number(stored.lng), KYOTO.lng);
+  assert.equal(stored.address, KYOTO.address);
+  // Reads back through the owner GET.
+  const got = await readOnce(await api("/api/provider-application", providerA.cookie));
+  assert.equal(got.status, 200);
+  assert.equal(Number(got.body.officeLocation.lat), KYOTO.lat, "GET returns the saved lat");
+  assert.equal(Number(got.body.officeLocation.lng), KYOTO.lng, "GET returns the saved lng");
+});
+
+test("P2: clear-to-null works ⇒ 200, row NULL; GET reads back null (§13 — NULL stays NULL)", async () => {
+  // Precondition: a value is set (from P1 or set it here).
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, { address: KYOTO.address, lat: KYOTO.lat, lng: KYOTO.lng });
+  const res = await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: null }));
+  assert.equal(res.status, 200, `clear must be 200, got ${res.status}: ${res.text}`);
+  assert.equal(await dbOfficeLocation(providerA.id), null, "office_location is NULL after clear — no fabricated coordinate");
+  const got = await readOnce(await api("/api/provider-application", providerA.cookie));
+  assert.equal(got.body.officeLocation ?? null, null, "GET reads back null — a provider with no office location sees null");
+});
+
+test("P3: OWNER SCOPING — a second provider's write touches ONLY their own row", async () => {
+  // A has Kyoto set; B sets Osaka. Neither may overwrite the other (route resolves the row by
+  // session userId, storage scopes by userId — never a body id).
+  await readOnce(await api("/api/provider-application", providerA.cookie, "PATCH", { officeLocation: KYOTO }));
+  const bRes = await readOnce(await api("/api/provider-application", providerB.cookie, "PATCH", { officeLocation: OSAKA }));
+  assert.equal(bRes.status, 200, `B set must be 200, got ${bRes.status}: ${bRes.text}`);
+
+  const aStored = await dbOfficeLocation(providerA.id);
+  const bStored = await dbOfficeLocation(providerB.id);
+  assert.equal(Number(aStored.lat), KYOTO.lat, "A's row unchanged by B's write");
+  assert.equal(Number(aStored.lng), KYOTO.lng, "A's row unchanged by B's write");
+  assert.equal(Number(bStored.lat), OSAKA.lat, "B's row carries B's value");
+  assert.equal(Number(bStored.lng), OSAKA.lng, "B's row carries B's value");
+
+  // Storage layer scopes by userId directly: writing A's office does not touch B's row.
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, { address: "A2", lat: 35.0, lng: 135.0 });
+  const bAfter = await dbOfficeLocation(providerB.id);
+  assert.equal(Number(bAfter.lat), OSAKA.lat, "storage write scoped to A leaves B untouched");
+});
+
+test("P4: PRE-FILL HONESTY — the owner read exposes the office coords the NEW-listing seed uses; NULL ⇒ no seed", async () => {
+  // WITH office set: the exact coords ServiceForm seeds a new listing's pin from are on the owner read,
+  // finite and in range (a valid LocationPointPicker seed).
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, { address: KYOTO.address, lat: KYOTO.lat, lng: KYOTO.lng });
+  const withSet = await readOnce(await api("/api/provider-application", providerA.cookie));
+  const loc = withSet.body.officeLocation;
+  assert.ok(loc, "office location present as the seed source");
+  const lat = Number(loc.lat), lng = Number(loc.lng);
+  assert.ok(Number.isFinite(lat) && lat >= -90 && lat <= 90, "seed lat finite + in range");
+  assert.ok(Number.isFinite(lng) && lng >= -180 && lng <= 180, "seed lng finite + in range");
+  assert.equal(lat, KYOTO.lat);
+  assert.equal(lng, KYOTO.lng);
+
+  // WITHOUT office (NULL): the owner read exposes null ⇒ the ServiceForm seed effect no-ops
+  // (behaves exactly as before — no pre-fill). §13.
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
+  const withNull = await readOnce(await api("/api/provider-application", providerA.cookie));
+  assert.equal(withNull.body.officeLocation ?? null, null, "NULL office ⇒ no seed source ⇒ no pre-fill");
+});
+
+// ═══ RULING 86 — THE SEED MUST NOT REACH A NON-PLACE-ANCHORED LISTING ═══════════════════════════
+
+/** Create a listing as the ci-provider and return its id (draft ⇒ ungated create). */
+async function createListing(cookie: string, extra: Record<string, unknown>): Promise<string> {
+  const res = await readOnce(
+    await api("/api/provider/services", cookie, "POST", {
+      serviceName: `Office prefill ${RUN}-${crypto.randomUUID().slice(0, 6)}`,
+      description: "ruling-86 office-prefill fixture",
+      price: "75.00",
+      status: "draft",
+      ...extra,
+    }),
+  );
+  assert.equal(res.status, 201, `create failed (${res.status}): ${res.text}`);
+  const id = res.body?.id as string;
+  assert.ok(id, "create must return an id");
+  createdServiceIds.push(id);
+  return id;
+}
+
+/** Read the migration-129 coordinate columns straight from the row. */
+async function dbServiceCoords(id: string): Promise<{ lat: any; lng: any; precision: any }> {
+  const r = await db.execute(
+    sql`SELECT latitude, longitude, location_precision FROM provider_services WHERE id = ${id} LIMIT 1`,
+  );
+  const row = r.rows[0] as any;
+  assert.ok(row, `provider_services row ${id} must exist`);
+  return { lat: row.latitude ?? null, lng: row.longitude ?? null, precision: row.location_precision ?? null };
+}
+
+test("P5: ruling 86 — a non-place-anchored create lands with NULL coords; an in-person create keeps the seed", async () => {
+  // STATED BOUNDS (§18d honesty). The silent-office-stamp defect lived in the CLIENT
+  // (client/src/components/ServiceForm.tsx): ruling 85's seed effect marked the office pin
+  // "touched" with NO delivery-method condition, so the create payload carried `locationPoint`
+  // for EVERY delivery method — including pdf/call/async, whose Meeting Location card (the only
+  // surface that renders a pin or the "Pre-filled from your office location" note) never mounts.
+  // The fix gates the SEND on `isInPerson` (=== `needsMeetingPoint`), so the field is OMITTED for
+  // a non-place-anchored listing. This test proves the SERVER half of that contract — that each
+  // of the two payload shapes produces the right row — by simulating BOTH shapes directly. It
+  // does NOT execute the React component, so it cannot itself prove which shape the client picks;
+  // the client gate is what guarantees that, and this suite is its server-side counterpart.
+  // (`extractServiceLocation`, server/utils/service-location.ts: absent key ⇒ NO coordinate
+  // columns touched — which is why OMITTING is the never-clobber shape and `null` is not.)
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, {
+    address: KYOTO.address, lat: KYOTO.lat, lng: KYOTO.lng,
+  });
+
+  // (a) The shape the FIXED client sends for a pdf listing: no `locationPoint` key at all —
+  //     even though this provider HAS a saved office location. §13: no silent office stamp.
+  const pdfId = await createListing(providerA.cookie, { deliveryMethod: "pdf" });
+  const pdf = await dbServiceCoords(pdfId);
+  assert.equal(pdf.lat, null, "pdf listing must land with NULL latitude — no silent office stamp");
+  assert.equal(pdf.lng, null, "pdf listing must land with NULL longitude — no silent office stamp");
+  assert.equal(pdf.precision, null, "no coordinates ⇒ no location_precision claim (§13)");
+
+  // (b) The shape the client still sends for an in-person listing: the ratified ruling-85
+  //     pre-fill, unchanged — the office pin is seeded, shown with its note, and SAVED.
+  const inPersonId = await createListing(providerA.cookie, {
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    locationPoint: { lat: KYOTO.lat, lng: KYOTO.lng },
+  });
+  const inPerson = await dbServiceCoords(inPersonId);
+  assert.equal(Number(inPerson.lat), KYOTO.lat, "in-person listing keeps the pre-filled office lat");
+  assert.equal(Number(inPerson.lng), KYOTO.lng, "in-person listing keeps the pre-filled office lng");
+  assert.equal(inPerson.precision, "exact", "a confirmed point is server-derived 'exact' (never client-asserted)");
+
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
+});
+
+test("G2: current applications are unique, while rejected review history remains and can be resubmitted", async () => {
+  const historyProvider = await registerProvider("history");
+  const rejectedId = crypto.randomUUID();
+  await db.execute(sql`
+    INSERT INTO service_provider_forms
+      (id, user_id, business_name, name, email, mobile, country, address, business_type,
+       status, rejection_message, identity_verification_status, business_verification_status)
+    VALUES
+      (${rejectedId}, ${historyProvider.id}, ${"Rejected History Biz"}, ${"History Provider"},
+       ${historyProvider.email}, ${"+10000000001"}, ${"Japan"}, ${"2 History Street, Kyoto"},
+       ${"tour_operator"}, ${"rejected"}, ${"Please provide a current business license."},
+       ${"verified"}, ${"verified"})
+  `);
+
+  const application = {
+    businessName: "Resubmitted Biz",
+    name: "History Provider",
+    email: historyProvider.email,
+    mobile: "+10000000002",
+    country: "Japan",
+    address: "3 Current Street, Kyoto",
+    businessType: "tour_operator",
+  };
+  const submitted = await readOnce(await api("/api/provider-application", historyProvider.cookie, "POST", application));
+  assert.equal(submitted.status, 201, `a rejected application may be resubmitted: ${submitted.text}`);
+
+  const rows = await db.execute(sql`
+    SELECT id, business_name, status, rejection_message
+    FROM service_provider_forms
+    WHERE user_id = ${historyProvider.id}
+    ORDER BY created_at ASC NULLS FIRST, id ASC
+  `);
+  assert.equal((rows.rows as any[]).length, 2, "resubmission keeps the rejected review row");
+  const historyRow = (rows.rows as any[]).find((row) => row.id === rejectedId);
+  assert.equal(historyRow?.status, "rejected");
+  assert.equal(historyRow?.rejection_message, "Please provide a current business license.");
+  assert.equal((await storage.getServiceProviderForm(historyProvider.id))?.businessName, "Resubmitted Biz",
+    "canonical reads select the current row over rejected history");
+  const status = await readOnce(await api("/api/provider/application-status", historyProvider.cookie));
+  assert.equal(status.status, 200);
+  assert.equal(status.body.overallStatus, "pending",
+    "application status reads the current resubmission, not the rejected history row");
+  assert.equal(status.body.identityVerificationStatus, "pending");
+  assert.equal(status.body.businessVerificationStatus, "pending");
+  const publishVerification = await resolvePublishVerification(historyProvider.id);
+  assert.equal(publishVerification.ok, false,
+    "a rejected history row must not satisfy the publish gate over a pending current row");
+
+  await assert.rejects(
+    db.execute(sql`
+      INSERT INTO service_provider_forms
+        (id, user_id, business_name, name, email, mobile, country, address, business_type)
+      VALUES
+        (${crypto.randomUUID()}, ${historyProvider.id}, ${"Concurrent Duplicate"}, ${"History Provider"},
+         ${historyProvider.email}, ${"+10000000003"}, ${"Japan"}, ${"4 Duplicate Street, Kyoto"},
+         ${"tour_operator"})
+    `),
+    (error: any) => error?.code === "23505" || error?.cause?.code === "23505",
+    "the database must reject a second current application",
+  );
+
+  const raceProvider = await registerProvider("race");
+  const raceApplication = {
+    businessName: "Race Biz",
+    name: "Race Provider",
+    email: raceProvider.email,
+    mobile: "+10000000004",
+    country: "Japan",
+    address: "5 Race Street, Kyoto",
+    businessType: "tour_operator",
+  };
+  const raceResults = await Promise.all([
+    api("/api/provider-application", raceProvider.cookie, "POST", raceApplication).then(readOnce),
+    api("/api/provider-forms", raceProvider.cookie, "POST", raceApplication).then(readOnce),
+  ]);
+  assert.deepEqual(
+    raceResults.map((result) => result.status).sort((a, b) => a - b),
+    [201, 400],
+    "concurrent submissions through both provider application aliases have one winner",
+  );
+  const raceRows = await db.execute(sql`
+    SELECT count(*)::int AS count
+    FROM service_provider_forms
+    WHERE user_id = ${raceProvider.id}
+      AND (status IS NULL OR status NOT IN ('rejected', 'deleted', 'deactivated'))
+  `);
+  assert.equal(Number((raceRows.rows[0] as any)?.count), 1, "the race leaves one current application row");
+});
+
+// ═══ GUARD ══════════════════════════════════════════════════════════════════════════════════════
+
+test("G1: the money-endpoints guard stays green — officeLocation is not a money/identity/rate field", () => {
+  const script = path.resolve(process.cwd(), "scripts/check-money-endpoints.cjs");
+  const r = spawnSync("node", [script], { encoding: "utf8" });
+  assert.equal(r.status, 0, `check-money-endpoints.cjs must exit 0:\n${r.stdout}\n${r.stderr}`);
+});

@@ -1,8 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { requireBaseUrl } from "../fixtures/base-url";
 
 test.describe("Stage 7 — Orphan Cleanup & Redirects", () => {
   test("Dev-only routes are not accessible in production", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     const devRoutes = ["/landing-mockups", "/architecture", "/booking-demo", "/layout-mock"];
 
@@ -15,7 +16,7 @@ test.describe("Stage 7 — Orphan Cleanup & Redirects", () => {
   });
 
   test("Footer links are reachable from every page", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     const pagesToCheck = ["/", "/discover", "/experts", "/pricing", "/about"];
     const footerLinks = [
@@ -45,7 +46,7 @@ test.describe("Stage 7 — Orphan Cleanup & Redirects", () => {
   });
 
   test("All redirects resolve to target without 404", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     const redirects: Record<string, string> = {
       "/optimize": "/concierge",
@@ -94,12 +95,12 @@ test.describe("Stage 7 — Orphan Cleanup & Redirects", () => {
   test("SerpInquiryDialog is reachable if needed", async ({ page }) => {
     // SerpInquiryDialog is server-side referenced; if it has a client-side
     // trigger, it should be tested. For now, we verify it doesn't cause 404s.
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
     // No-op: SerpInquiryDialog is server-side only
   });
 
   test("AddCustomVenueModal opens correctly", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // Navigate to expert workspace where AddCustomVenueModal is used
     await page.goto(`${BASE}/expert/workspace`);

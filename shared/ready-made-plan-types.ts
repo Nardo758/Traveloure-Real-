@@ -1,0 +1,74 @@
+/**
+ * ready-made-plan-types.ts — the "Type of Plan" vocabulary for Ready Made Trips store stock.
+ *
+ * Decision-maker model (2026-07-25): "template" is not a product — it is the QUALITY STRUCTURE
+ * every store itinerary ships in: a branded page header (logo), a declared plan type, then the
+ * structured content. The plan type is the headline of that structure, so it is (a) required at
+ * submit, (b) validated against this closed vocabulary rather than free text, and (c) a material
+ * field — changing it on an approved listing re-enters review (§10 A3).
+ *
+ * Seeded from the decision-maker's named examples (Hiking Itinerary, Road Trip Itinerary,
+ * Birthday Plan) plus the platform's existing experience-type taxonomy (wedding / proposal /
+ * corporate — the coordination-engine event branches). Editorial vocabulary, not fee config —
+ * extend it here, in one place; client picker and server validation both read this list.
+ */
+export const READY_MADE_PLAN_TYPES = [
+  { key: "hiking_itinerary", label: "Hiking Itinerary" },
+  { key: "road_trip_itinerary", label: "Road Trip Itinerary" },
+  { key: "city_itinerary", label: "City Itinerary" },
+  { key: "food_culture_itinerary", label: "Food & Culture Itinerary" },
+  { key: "birthday_plan", label: "Birthday Plan" },
+  { key: "wedding_plan", label: "Wedding Plan" },
+  { key: "proposal_plan", label: "Proposal Plan" },
+  { key: "corporate_retreat_plan", label: "Corporate Retreat Plan" },
+  // Expansion (decision-maker directive, Aug 9 2026): align the vocabulary with the
+  // platform's experience-side categories so a listing's theme can match how travelers
+  // browse. Still a CLOSED list — the one exception is `custom`, which requires a
+  // separate free-text theme label (`plan_type_custom` column) so free text never
+  // enters this validated column and the taxonomy cannot sprawl.
+  { key: "adventure_outdoors", label: "Adventure & Outdoors" },
+  { key: "romance_honeymoon", label: "Romance & Honeymoon" },
+  { key: "family_trip", label: "Family Trip" },
+  { key: "wellness_retreat", label: "Wellness Retreat" },
+  { key: "photography_tour", label: "Photography Tour" },
+  { key: "nightlife_entertainment", label: "Nightlife & Entertainment" },
+  { key: "cultural_heritage", label: "Cultural Heritage" },
+  { key: "beach_island", label: "Beach & Island" },
+  { key: "festival_seasonal", label: "Festival & Seasonal" },
+  { key: "shopping_style", label: "Shopping & Style" },
+  // Expert-minted themes (ledger 2026-08-22-expert-minted-themes, decision-maker directed):
+  // this key is the creativity escape — the expert's own free-text label (plan_type_custom)
+  // IS a first-class browsable category on the store shelf (own chip, shelf, and filter).
+  // The closed list above is the curated starter set + validation backbone; a minted theme
+  // that recurs across experts gets PROMOTED into it here, in one place.
+  { key: "custom", label: "Create your own…" },
+] as const;
+
+/** True when this key requires the separate free-text theme label. */
+export function isCustomPlanType(key: string | null | undefined): boolean {
+  return key === "custom";
+}
+
+export type ReadyMadePlanTypeKey = (typeof READY_MADE_PLAN_TYPES)[number]["key"];
+
+export const READY_MADE_PLAN_TYPE_KEYS = READY_MADE_PLAN_TYPES.map((t) => t.key) as ReadyMadePlanTypeKey[];
+
+export function planTypeLabel(key: string | null | undefined): string | null {
+  return READY_MADE_PLAN_TYPES.find((t) => t.key === key)?.label ?? null;
+}
+
+/**
+ * The theme text a traveler sees for a listing: the closed vocabulary's label, or — for the one
+ * escape from it — the author's own free-text theme (`plan_type_custom`). ONE implementation for
+ * every surface that headlines a listing's theme (store shelf, detail page), so the theme a
+ * builder picked is always the theme a traveler sees (L6).
+ */
+export function planTypeDisplay(
+  planType: string | null | undefined,
+  planTypeCustom: string | null | undefined,
+): string {
+  if (isCustomPlanType(planType)) {
+    return planTypeCustom?.trim() || "Trip plan";
+  }
+  return planTypeLabel(planType) ?? "Trip plan";
+}

@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { guardedDeleteProviderService } from "./service-delete-guard";
 import {
   users, contactSubmissions, notifications, accessAuditLogs,
   serviceBookings, providerServices, serviceReviews, reviewModerationLogs,
@@ -12,6 +13,10 @@ import {
 import {
   eq, and, or, like, sql, desc, count, inArray, isNotNull, asc,
 } from "drizzle-orm";
+import {
+  moderateReviewWithAggregate,
+  recalculateServiceRatingAtomic,
+} from "./review-mutation.service";
 
 // ─── Admin Auth Helpers ───────────────────────────────────────────────────────
 
@@ -24,6 +29,107 @@ export async function getFullAdminUser(userId: string) {
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
+
+export async function getRoleChangeAuditLogs(opts: {
+  targetUserId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  const { targetUserId, dateFrom, dateTo, limit = 50, offset = 0 } = opts;
+
+  // Fetch role-change events joined with actor and target user details.
+  const rows = await db.execute(sql`
+    SELECT
+      aal.id,
+      aal.created_at,
+      aal.actor_id,
+      aal.actor_role,
+      aal.target_user_id,
+      aal.metadata,
+      aal.ip_address,
+      actor.first_name  AS actor_first_name,
+      actor.last_name   AS actor_last_name,
+      actor.email       AS actor_email,
+      target.first_name AS target_first_name,
+      target.last_name  AS target_last_name,
+      target.email      AS target_email
+    FROM access_audit_logs aal
+    LEFT JOIN users actor  ON actor.id  = aal.actor_id
+    LEFT JOIN users target ON target.id = aal.target_user_id
+    WHERE aal.action = 'role_change'
+      ${targetUserId ? sql`AND aal.target_user_id = ${targetUserId}` : sql``}
+      ${dateFrom ? sql`AND aal.created_at >= ${dateFrom}` : sql``}
+      ${dateTo   ? sql`AND aal.created_at <= ${dateTo}`   : sql``}
+    ORDER BY aal.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const countResult = await db.execute(sql`
+    SELECT count(*)::int AS total
+    FROM access_audit_logs aal
+    WHERE aal.action = 'role_change'
+      ${targetUserId ? sql`AND aal.target_user_id = ${targetUserId}` : sql``}
+      ${dateFrom ? sql`AND aal.created_at >= ${dateFrom}` : sql``}
+      ${dateTo   ? sql`AND aal.created_at <= ${dateTo}`   : sql``}
+  `);
+
+  return {
+    logs: rows.rows as any[],
+    total: (countResult.rows[0] as any)?.total ?? 0,
+  };
+}
+
+/**
+ * Provenance spine move 5 (ledger 2026-08-23-provenance-audit-read): read the audit trail for ONE
+ * resource. The audit log was "write-only in practice" — every approve/reject/edit-review/refund/
+ * dispute row the platform writes (via insertAccessAuditLog) was reachable only by direct SQL; the
+ * sole read endpoint filtered to role-changes. This is the general per-resource timeline: "who did
+ * what to this service / this ready-made listing / this dispute, and when." Admin-gated at the route.
+ */
+export async function getAuditLogsForResource(opts: {
+  resourceType: string;
+  resourceId: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const { resourceType, resourceId, limit = 50, offset = 0 } = opts;
+
+  const rows = await db.execute(sql`
+    SELECT
+      aal.id,
+      aal.created_at,
+      aal.action,
+      aal.actor_id,
+      aal.actor_role,
+      aal.resource_type,
+      aal.resource_id,
+      aal.target_user_id,
+      aal.metadata,
+      actor.first_name AS actor_first_name,
+      actor.last_name  AS actor_last_name,
+      actor.email      AS actor_email
+    FROM access_audit_logs aal
+    LEFT JOIN users actor ON actor.id = aal.actor_id
+    WHERE aal.resource_type = ${resourceType}
+      AND aal.resource_id = ${resourceId}
+    ORDER BY aal.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const countResult = await db.execute(sql`
+    SELECT count(*)::int AS total
+    FROM access_audit_logs aal
+    WHERE aal.resource_type = ${resourceType}
+      AND aal.resource_id = ${resourceId}
+  `);
+
+  return {
+    logs: rows.rows as any[],
+    total: (countResult.rows[0] as any)?.total ?? 0,
+  };
+}
 
 export async function insertAccessAuditLog(values: {
   actorId: string;
@@ -64,8 +170,35 @@ export async function getUserCommissionOverrides(userIds: string[]) {
     .from(users).where(inArray(users.id, userIds));
 }
 
-export async function updateUserRole(userId: string, role: string) {
-  return db.update(users).set({ role }).where(eq(users.id, userId));
+export async function updateUserRole(
+  userId: string,
+  role: string,
+  actor: { actorId: string; actorRole: string; reason?: string },
+) {
+  // ATOMIC: role update and audit insert commit or roll back together.
+  // A role change without an audit record must never be possible — if the
+  // audit insert fails, the transaction aborts and the role stays unchanged.
+  await db.transaction(async (tx) => {
+    // Capture the old role before overwriting so the audit record is complete.
+    const [current] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    const oldRole = current?.role ?? null;
+
+    await tx.update(users).set({ role }).where(eq(users.id, userId));
+
+    await tx.insert(accessAuditLogs).values({
+      actorId: actor.actorId,
+      actorRole: actor.actorRole,
+      action: "role_change",
+      resourceType: "user",
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: {
+        oldRole,
+        newRole: role,
+        reason: actor.reason ?? null,
+      },
+    } as any);
+  });
 }
 
 export async function getUserVerificationStatus(userId: string) {
@@ -120,6 +253,9 @@ export async function getProviderUserInfo(userId: string) {
     profileImageUrl: users.profileImageUrl,
     providerVerificationStatus: users.providerVerificationStatus,
     backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+    stripeAccountId: users.stripeAccountId,
+    stripeAccountStatus: users.stripeAccountStatus,
+    canReceivePayments: users.canReceivePayments,
   }).from(users).where(eq(users.id, userId)).then(r => r[0] ?? null);
 }
 
@@ -168,7 +304,9 @@ export async function updateProviderServiceAffinityTags(id: string, tags: string
 export async function checkAndDeleteProviderService(id: string) {
   const [row] = await db.select().from(providerServices).where(eq(providerServices.id, id)).limit(1);
   if (!row) return null;
-  await db.delete(providerServices).where(eq(providerServices.id, id));
+  // Financial-history guard: suspend instead of delete when bookings reference the row
+  // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
+  await guardedDeleteProviderService(id);
   return row;
 }
 
@@ -505,7 +643,11 @@ export async function getTourismSummaryMetrics() {
       revenue: sql<number>`sum(COALESCE(total_amount::numeric, 0))::numeric`,
     }).from(serviceBookings).where(eq(serviceBookings.status, "completed")),
     db.select({
-      avgDays: sql<number>`avg(EXTRACT(DAY FROM (end_date - start_date)))::numeric`,
+      // T4-1: start_date/end_date are DB type `date`, so `date - date` is already an
+      // integer day count in Postgres — wrapping it in EXTRACT(DAY FROM ...) fails with
+      // "function pg_catalog.extract(unknown, integer) does not exist" (no such overload).
+      // avg(<integer>)::numeric is the corrected day-count expression.
+      avgDays: sql<number>`avg(end_date - start_date)::numeric`,
     }).from(trips).where(sql`start_date IS NOT NULL AND end_date IS NOT NULL`),
   ]);
   return { totalBookings: totalBookings[0]?.count ?? 0, completedBookings: completedBookings[0], avgTripDuration: avgTripDuration[0] };
@@ -562,7 +704,9 @@ export async function getServiceReviewsList(status?: string) {
   if (status) {
     return db.select().from(serviceReviews).where(eq(serviceReviews.status, status)).orderBy(desc(serviceReviews.createdAt));
   }
-  return db.select().from(serviceReviews).where(sql`status IN ('pending', 'flagged')`).orderBy(desc(serviceReviews.createdAt));
+  return db.select().from(serviceReviews)
+    .where(sql`status IN ('pending', 'flagged') OR flag_reason IS NOT NULL`)
+    .orderBy(desc(serviceReviews.createdAt));
 }
 
 export async function getReviewModerationLogs(reviewId: string) {
@@ -767,7 +911,7 @@ export async function getRoutingQueueItems() {
     FROM expert_requests er
     LEFT JOIN users u ON u.id = er.user_id
     LEFT JOIN users eu ON eu.id = er.assigned_expert_id
-    LEFT JOIN lead_routing_logs lrl ON lrl.trip_id = er.trip_id
+    LEFT JOIN lead_routing_logs lrl ON lrl.trip_id::text = er.trip_id
       AND lrl.assigned_expert_id = er.assigned_expert_id
     WHERE er.assigned_expert_id IS NOT NULL
       AND er.status NOT IN ('confirmed', 'completed', 'cancelled')
@@ -1122,6 +1266,67 @@ export async function updateNeighborhoodAdjacencyTx(
   });
 }
 
+// L4 fix (docs/audits/ux-walkthrough-5-roles-jul29.md): the admin Neighborhood Backfill
+// page (client/src/pages/admin/neighborhood-backfill.tsx) called GET
+// /api/admin/neighborhoods/untagged + POST /api/admin/neighborhoods/backfill — neither
+// route existed server-side. /untagged fell through to the GET /:id route (id="untagged")
+// and 404'd on "Neighborhood not found"; the client silently rendered the 404 as the
+// honest-looking empty state "All services have neighborhoods assigned". These two
+// functions back the now-real routes.
+//
+// Untagged services have no lat/lng of their own (migration 129 only backfills
+// latitude/longitude/city FROM a resolved neighborhood's centroid — circular for a row
+// that has no neighborhood yet), so true Haversine nearest-centroid matching isn't
+// possible here. Matching is by city name instead: the free-text `location` column
+// (e.g. "Kyoto", "Rome, Italy") against `city_neighborhoods.city`. Ambiguity (a city
+// with several neighborhoods) is broken by preferring the featured neighborhood, else
+// alphabetical by name — deterministic, never fabricated (§13): no match, no write.
+export async function getUntaggedProviderServices() {
+  const result = await db.execute(sql`
+    SELECT
+      ps.id, ps.service_name, ps.location, ps.city,
+      u.first_name AS provider_first_name, u.last_name AS provider_last_name, u.email AS provider_email
+    FROM provider_services ps
+    LEFT JOIN users u ON u.id = ps.user_id
+    WHERE ps.neighborhood IS NULL OR ps.neighborhood = ''
+    ORDER BY ps.service_name
+  `);
+  return result.rows ?? [];
+}
+
+async function matchNeighborhoodSlugForLocation(location: string | null): Promise<string | null> {
+  if (!location || location.trim() === "" || location.trim().toLowerCase() === "unknown") return null;
+  const result = await db.execute(sql`
+    SELECT slug FROM city_neighborhoods
+    WHERE ${location} ILIKE '%' || city || '%'
+    ORDER BY is_featured DESC, name ASC
+    LIMIT 1
+  `);
+  return (result.rows?.[0] as any)?.slug ?? null;
+}
+
+export async function backfillProviderServiceNeighborhoods(serviceId?: string) {
+  const targets = await db.execute(sql`
+    SELECT id, location FROM provider_services
+    WHERE (neighborhood IS NULL OR neighborhood = '')
+    ${serviceId ? sql`AND id = ${serviceId}` : sql``}
+  `);
+  const rows = (targets.rows ?? []) as { id: string; location: string | null }[];
+
+  let updated = 0;
+  let unmatched = 0;
+  for (const row of rows) {
+    const slug = await matchNeighborhoodSlugForLocation(row.location);
+    if (!slug) {
+      unmatched++;
+      continue;
+    }
+    await db.update(providerServices).set({ neighborhood: slug }).where(eq(providerServices.id, row.id));
+    updated++;
+  }
+  return { updated, unmatched, total: rows.length };
+}
+
 // ─── Trip Analytics ───────────────────────────────────────────────────────────
 
 export async function getItineraryForTrip(tripId: string) {
@@ -1146,9 +1351,11 @@ export async function upsertTripAnalyticsEnhanced(tripId: string, values: Record
 // ─── Location Summary ─────────────────────────────────────────────────────────
 
 export async function getLocationSummary() {
-  const { feverEventCache, hotelCache, activityCache, flightCache } = await import("@shared/schema");
+  const { feverEventCache, hotelCache, activityCache } = await import("@shared/schema");
 
-  const [eventData, hotelData, activityData, flightData] = await Promise.all([
+  // flight_cache summary RETIRED (migration 176): the table was writerless since the
+  // Amadeus drop (ruling 34) and only ever counted a permanently-empty table here.
+  const [eventData, hotelData, activityData] = await Promise.all([
     db.select({
       cityCode: feverEventCache.cityCode,
       city: feverEventCache.city,
@@ -1169,16 +1376,9 @@ export async function getLocationSummary() {
       count: sql<number>`count(*)::int`,
       lastUpdated: sql<string>`max(${activityCache.lastUpdated})`,
     }).from(activityCache).groupBy(activityCache.destination, activityCache.city),
-
-    db.select({
-      origin: flightCache.originCode,
-      destination: flightCache.destinationCode,
-      count: sql<number>`count(*)::int`,
-      lastUpdated: sql<string>`max(${flightCache.lastUpdated})`,
-    }).from(flightCache).groupBy(flightCache.originCode, flightCache.destinationCode),
   ]);
 
-  return { eventData, hotelData, activityData, flightData };
+  return { eventData, hotelData, activityData };
 }
 
 // ─── Report Queries ───────────────────────────────────────────────────────────
@@ -1422,29 +1622,114 @@ export async function getLocationSummaryData() { return getLocationSummary(); }
 export async function getUserServiceBookings(userId: string) { return getUserBookingSpend(userId); }
 
 export async function moderateReview(reviewId: string, status: string, actorId: string, reason?: string | null) {
-  return updateServiceReviewStatus(reviewId, { status, moderatedBy: actorId, moderationReason: reason ?? null, moderatedAt: new Date() });
+  return moderateReviewWithAggregate({
+    reviewId,
+    status: status as "approved" | "flagged" | "removed" | "pending",
+    actorId,
+    reason,
+  });
 }
 
 export async function recalcServiceRating(serviceId: string) {
-  const reviews = await getServiceReviewsForServiceRating(serviceId);
-  const approved = reviews.filter(r => r.status === "approved");
-  const reviewCount = approved.length;
-  const avgRating = reviewCount > 0
-    ? (approved.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount).toFixed(1)
-    : "0";
-  await updateProviderServiceRating(serviceId, avgRating, reviewCount);
+  await recalculateServiceRatingAtomic(serviceId);
 }
 
-export async function getAdminUsersPage(whereClause: any, limit: number, offset: number) {
-  const [allUsers, totalResult] = await Promise.all([
+/**
+ * Returns true only for IANA timezone names the JS runtime recognizes
+ * (e.g. "America/New_York"). Prevents passing arbitrary strings into SQL
+ * AT TIME ZONE, which would raise a Postgres error on unknown zones.
+ */
+export function isValidTimezone(tz: string): boolean {
+  if (!tz || typeof tz !== "string" || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getAdminUsersPage(whereClause: any, limit: number, offset: number, timezone?: string) {
+  // "New Today" uses the *admin's* local day boundary, not the server's UTC
+  // CURRENT_DATE, so the count matches what the admin sees on their own clock.
+  // Falls back to UTC when no (valid) timezone is supplied.
+  const tz = timezone && isValidTimezone(timezone) ? timezone : "UTC";
+  const [allUsers, totalResult, statsResult] = await Promise.all([
     db.select().from(users).where(whereClause).limit(limit).offset(offset).orderBy(desc(users.createdAt)),
     db.select({ count: count() }).from(users).where(whereClause).then(r => r[0] ?? { count: 0 }),
+    // Aggregates over the WHOLE filtered set (not just the current page) so the
+    // admin stat cards stay stable while paging (task: page-local counts were misleading).
+    db.select({
+      active: sql<number>`COUNT(*) FILTER (WHERE ${users.isSuspended} IS NOT TRUE)`,
+      suspended: sql<number>`COUNT(*) FILTER (WHERE ${users.isSuspended} IS TRUE)`,
+            // created_at is timestamp WITHOUT time zone stored as UTC, so first tag it
+      // as UTC, then convert to the admin's zone before taking the date.
+      newToday: sql<number>`COUNT(*) FILTER (WHERE ((${users.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = (now() AT TIME ZONE ${tz})::date)`,
+    }).from(users).where(whereClause).then(r => r[0] ?? { active: 0, suspended: 0, newToday: 0 }),
   ]);
-  return { allUsers, totalResult };
+  return {
+    allUsers,
+    totalResult,
+    stats: {
+      active: Number(statsResult.active) || 0,
+      suspended: Number(statsResult.suspended) || 0,
+      newToday: Number(statsResult.newToday) || 0,
+    },
+  };
 }
 
 export async function getAdminTrips(whereClause?: any) {
   return db.select().from(trips).where(whereClause).orderBy(desc(trips.createdAt)).limit(200);
+}
+
+/**
+ * Paged admin trips list. Search + date-derived phase (§13 — trips.status is dead) are pushed
+ * into SQL, phase counts come from one aggregate query, and only the requested page is returned,
+ * so the route enriches a bounded set of rows.
+ */
+export async function getAdminTripsPage(opts: {
+  search?: string;
+  phase?: "upcoming" | "active" | "past";
+  limit: number;
+  offset: number;
+}) {
+  const searchWhere = opts.search
+    ? or(like(trips.title, `%${opts.search}%`), like(trips.destination, `%${opts.search}%`))
+    : undefined;
+
+  const upcomingCond = sql`${trips.startDate}::timestamp > now()`;
+  const activeCond = sql`${trips.startDate}::timestamp <= now() and ${trips.endDate}::timestamp >= now()`;
+  const pastCond = sql`${trips.endDate}::timestamp < now()`;
+
+  const [stats] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      upcoming: sql<number>`count(*) filter (where ${upcomingCond})::int`,
+      active: sql<number>`count(*) filter (where ${activeCond})::int`,
+      past: sql<number>`count(*) filter (where ${pastCond})::int`,
+    })
+    .from(trips)
+    .where(searchWhere);
+
+  const phaseCond =
+    opts.phase === "upcoming" ? upcomingCond
+    : opts.phase === "active" ? activeCond
+    : opts.phase === "past" ? pastCond
+    : undefined;
+  const pageWhere = phaseCond ? (searchWhere ? and(searchWhere, phaseCond) : phaseCond) : searchWhere;
+
+  const rows = await db
+    .select()
+    .from(trips)
+    .where(pageWhere)
+    .orderBy(desc(trips.createdAt))
+    .limit(opts.limit)
+    .offset(opts.offset);
+
+  const statsRow = stats ?? { total: 0, upcoming: 0, active: 0, past: 0 };
+  const filteredTotal = opts.phase ? Number(statsRow[opts.phase] ?? 0) : Number(statsRow.total ?? 0);
+
+  return { rows, stats: statsRow, filteredTotal };
 }
 
 export async function getAnalyticsByCountry() {
@@ -1524,5 +1809,7 @@ export async function getProviderServiceById(id: string) {
 }
 
 export async function deleteProviderService(id: string) {
-  return db.delete(providerServices).where(eq(providerServices.id, id));
+  // Financial-history guard: suspend instead of delete when bookings reference the row
+  // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
+  return guardedDeleteProviderService(id);
 }

@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { IntakePanel } from "@/components/intake-panel";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -18,6 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function formatOccasionDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return format(new Date(year, month - 1, day), "MMM d");
+}
 
 const eventTypeIcons: Record<string, any> = {
   vacation: Plane,
@@ -51,6 +59,10 @@ export default function MyTrips() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [, setLocation] = useLocation();
+  // R-C: both "+ New plan" CTAs on this page open the intake panel instead of navigating
+  // to /experiences (CONSOLE_REALIGN_BRIEF.md).
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -67,7 +79,7 @@ export default function MyTrips() {
       <DashboardLayout>
         <div className="container mx-auto px-4 py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your plans. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
@@ -95,27 +107,33 @@ export default function MyTrips() {
     return true;
   });
 
-  const activeTrips = filteredTrips.filter(t => {
+  // Three mutually exclusive, date-derived buckets — a trip appears in EXACTLY ONE.
+  // trips.status is a documented-dead field (CLAUDE.md §13, Lane 3 Option B: never read
+  // it; phase derives from dates). The old `t.status === "planning"` read here made a
+  // future-dated trip render under both "Active Plans" and "Upcoming Events".
+  const travelingNow = filteredTrips.filter(t => {
     const start = new Date(t.startDate);
     const end = new Date(t.endDate);
-    return (start <= now && end >= now) || (start > now && t.status === "planning");
+    return start <= now && now <= end;
   });
-  
-  const upcomingTrips = filteredTrips.filter(t => new Date(t.startDate) > now);
-  const completedTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
+  const inPlanning = filteredTrips.filter(t => new Date(t.startDate) > now);
+  const pastTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
 
-  const getProgressValue = (trip: any) => {
+  // §13 honest-or-absent: progress is the trip's REAL elapsed-time fraction, and only once the
+  // trip has started. An upcoming trip has no measurable progress → null → no bar (this line
+  // used to be `Math.random() * 60 + 20`, rendered unrounded — a fabricated, per-render-changing
+  // number on the "My plans" list). A planning-completeness metric (confirmed/total items, the
+  // routing-status counts the slip already shows) is a separate design decision — do not invent
+  // one here.
+  const getProgressValue = (trip: any): number | null => {
     const start = new Date(trip.startDate);
     const end = new Date(trip.endDate);
     const total = differenceInDays(end, start);
-    if (total <= 0) return 100;
     const elapsed = differenceInDays(now, start);
-    if (elapsed < 0) return Math.min(Math.random() * 60 + 20, 95);
-    if (elapsed > total) return 100;
+    if (elapsed < 0) return null;
+    if (total <= 0 || elapsed > total) return 100;
     return Math.round((elapsed / total) * 100);
   };
-
-  const [, setLocation] = useLocation();
 
   const TripCard = ({ trip }: { trip: any }) => {
     const Icon = eventTypeIcons[trip.eventType || "vacation"] || Plane;
@@ -130,7 +148,7 @@ export default function MyTrips() {
       <Card
         className="border border-border hover:shadow-md transition-shadow cursor-pointer"
         data-testid={`trip-card-${trip.id}`}
-        onClick={() => setLocation(`/trip/${trip.id}`)}
+        onClick={() => setLocation(`/plans/${trip.id}`)}
       >
         <CardContent className={viewMode === "list" ? "p-5" : "p-4"}>
           <div className={viewMode === "list" ? "flex items-start gap-4" : "space-y-4"}>
@@ -138,34 +156,60 @@ export default function MyTrips() {
               <Icon className={`${viewMode === "list" ? "w-8 h-8" : "w-12 h-12"} text-primary`} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div>
-                  <h3 className="font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
-                    {trip.title}
-                  </h3>
+              <div className="flex flex-wrap items-start gap-2 mb-2">
+                <div className="min-w-0 flex-[1_1_14rem]">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <h3 className="min-w-0 max-w-full font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
+                      {trip.title}
+                    </h3>
+                    {/* Slip identity — render ONLY when the trips-list response carries a
+                        tracking number (§13: never invent; omit when absent). */}
+                    {trip.trackingNumber && (
+                      <span
+                        className="flex-shrink-0 rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                        data-testid={`chip-tracking-${trip.id}`}
+                      >
+                        {trip.trackingNumber}
+                      </span>
+                    )}
+                    {trip.occasion && (
+                      <span
+                        className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          background: "var(--earn-gold-wash)",
+                          color: "var(--earn-gold-ink)",
+                          fontFamily: EARN_MONO,
+                        }}
+                        data-testid={`chip-occasion-${trip.id}`}
+                      >
+                        {trip.occasion.label} · {formatOccasionDate(trip.occasion.date)}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {format(start, "MMM d")} - {format(end, "MMM d, yyyy")} • {trip.destination}
                   </p>
                 </div>
+                {/* Phase chip — same date-derived logic as the section buckets (§13 honest-or-absent). */}
                 {isCompleted ? (
-                  <Badge variant="secondary" className="flex-shrink-0">
+                  <Badge variant="secondary" className="ml-auto flex-shrink-0">
                     <Star className="w-3 h-3 mr-1" /> Completed
                   </Badge>
-                ) : isUpcoming && daysAway <= 30 ? (
-                  <Badge className="flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
+                ) : isUpcoming ? (
+                  <Badge className="ml-auto flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
                     {daysAway} days away
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="flex-shrink-0">
-                    Planning
+                  <Badge variant="outline" className="ml-auto flex-shrink-0">
+                    Underway
                   </Badge>
                 )}
               </div>
               
-              {!isCompleted && (
+              {!isCompleted && progress !== null && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Progress</span>
+                    <span className="text-muted-foreground">Plan progress</span>
                     <span className="font-medium text-foreground dark:text-white">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
@@ -173,12 +217,13 @@ export default function MyTrips() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
+                {/* R-E: "View" lands on the slip (/plans/:tripId) — the merged former "Open slip" action. */}
+                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="outline" data-testid={`button-view-${trip.id}`}>
                     View
                   </Button>
                 </Link>
-                <Link href="/chat" onClick={(e) => e.stopPropagation()}>
+                <Link href={`/chat?tripId=${encodeURIComponent(trip.id)}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-chat-${trip.id}`}>
                     Chat
                   </Button>
@@ -186,7 +231,7 @@ export default function MyTrips() {
                 {!isCompleted && (
                   <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-edit-${trip.id}`}>
-                      Edit
+                      Trip Card
                     </Button>
                   </Link>
                 )}
@@ -204,14 +249,16 @@ export default function MyTrips() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-            My Plans & Events
+            My Plans
           </h1>
-          <Link href="/experiences">
-            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-new">
-              <Plus className="w-4 h-4 mr-2" />
-              Create New
-            </Button>
-          </Link>
+          <Button
+            className="bg-primary hover:bg-primary/90 text-white"
+            data-testid="button-create-new"
+            onClick={() => setIntakeOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create New
+          </Button>
         </div>
 
         {/* Filters */}
@@ -274,14 +321,14 @@ export default function MyTrips() {
           </div>
         </div>
 
-        {/* Active Plans */}
-        {activeTrips.length > 0 && (
+        {/* Traveling now — first when non-empty */}
+        {travelingNow.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold text-foreground dark:text-white mb-4 flex items-center gap-2">
-              Active Plans ({activeTrips.length})
+              Traveling now ({travelingNow.length})
             </h2>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {activeTrips.map((trip, i) => (
+              {travelingNow.map((trip, i) => (
                 <motion.div
                   key={trip.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -295,14 +342,14 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Upcoming Events */}
-        {upcomingTrips.length > 0 && (
+        {/* In planning (events live on My events — ratified; no "Upcoming Events" here) */}
+        {inPlanning.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold text-foreground dark:text-white mb-4 flex items-center gap-2">
-              Upcoming Events ({upcomingTrips.length})
+              In planning ({inPlanning.length})
             </h2>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {upcomingTrips.map((trip, i) => (
+              {inPlanning.map((trip, i) => (
                 <motion.div
                   key={trip.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -316,19 +363,19 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Completed */}
-        {completedTrips.length > 0 && (
+        {/* Past plans */}
+        {pastTrips.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground dark:text-white flex items-center gap-2">
-                Completed ({completedTrips.length})
+                Past plans ({pastTrips.length})
               </h2>
               <Button variant="ghost" className="text-primary" data-testid="button-show-all-completed">
                 Show All <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {completedTrips.slice(0, 3).map((trip, i) => (
+              {pastTrips.slice(0, 3).map((trip, i) => (
                 <motion.div
                   key={trip.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -357,20 +404,24 @@ export default function MyTrips() {
               <p className="text-muted-foreground mb-4">
                 {searchQuery || typeFilter !== "all" || statusFilter !== "all"
                   ? "Try adjusting your filters"
-                  : "Start planning your next adventure!"}
+                  : "Start one, or let an occasion bring you one."}
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
-                <Link href="/experiences">
-                  <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-first">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Your First Plan
-                  </Button>
-                </Link>
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  data-testid="button-create-first"
+                  onClick={() => setIntakeOpen(true)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Plan
+                </Button>
               )}
             </CardContent>
           </Card>
         )}
       </div>
+
+      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
   );
 }

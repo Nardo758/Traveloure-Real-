@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { EASidebar } from "./ea-sidebar";
-import { Bell, Bot, X, AlertCircle } from "lucide-react";
+import { Bell, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
@@ -195,22 +195,21 @@ export function EALayout({ children, title }: EALayoutProps) {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div
-                className="hidden sm:flex items-center gap-1.5 h-[28px] px-2.5 rounded-full"
-                style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}
-                data-testid="badge-ai-status"
-              >
-                <Bot className="w-3.5 h-3.5" style={{ color: "#16A34A" }} />
-                <span className="text-[11px] font-medium" style={{ color: "#15803D" }}>
-                  AI: Active
-                </span>
-              </div>
-              <Link href="/notifications">
+              {/*
+               * The EA console has no notifications/updates page of its own
+               * (ground-truthed against client/src/pages/ea/* — communications.tsx
+               * is a message-composer, not a notifications feed). "/notifications"
+               * resolves to the traveler-shell Inbox and would wrong-sidebar an EA
+               * session, so the bell points at the EA dashboard instead until a
+               * real EA notifications surface exists.
+               */}
+              <Link href="/ea/dashboard">
                 <Button
                   variant="ghost"
                   size="icon"
                   className="relative h-[34px] w-[34px] rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
                   style={{ border: "1px solid #E8E8E2" }}
+                  aria-label="Notifications"
                   data-testid="button-ea-notifications"
                 >
                   <Bell className="w-4 h-4" />

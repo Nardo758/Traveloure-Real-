@@ -1,7 +1,6 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 
-const TP_MARKER = "405110";
 const TP_AID = "304142";
 
 export interface BookingSearchParams {
@@ -17,7 +16,7 @@ function buildBookingUrl(city: string, checkIn: string, checkOut: string, guests
   const params = new URLSearchParams({
     ss: city,
     aid: TP_AID,
-    label: `traveloure-${TP_MARKER}`,
+    label: `traveloure-${getTravelpayoutsMarker()}`,
     checkin: checkIn,
     checkout: checkOut,
     group_adults: String(guests),
@@ -28,7 +27,7 @@ function buildBookingUrl(city: string, checkIn: string, checkOut: string, guests
 }
 
 function buildTpUrl(city: string, stars?: number): string {
-  const base = `https://www.travelpayouts.com/hotels/booking?marker=${TP_MARKER}&currency=USD&city=${encodeURIComponent(city)}`;
+  const base = `https://www.travelpayouts.com/hotels/booking?marker=${getTravelpayoutsMarker()}&currency=USD&city=${encodeURIComponent(city)}`;
   return stars ? `${base}&stars=${stars}` : base;
 }
 

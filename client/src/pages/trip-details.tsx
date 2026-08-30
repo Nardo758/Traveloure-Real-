@@ -6,9 +6,14 @@ import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSu
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays, isValid } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,12 +22,15 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
-import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
-import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
+import { GuestInviteManager } from "@/components/GuestInviteManager";
+import type { UserExperience } from "@shared/schema";
+import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
 
 type Section = "activities" | "transport";
 
@@ -32,6 +40,29 @@ function getBookingType(actType: string): BookingType {
   const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
   if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
   return 'inApp';
+}
+
+/**
+ * Mobile-lens audit #1 fix (found in behavioral verification): the pre-existing
+ * `selectedDay` state below is set via a `useEffect` that fires AFTER first render —
+ * so when it fed `initialSelectedDay` directly, PlanCard (whose `useState` initializer
+ * only reads its prop once, on mount) could mount before the effect ran and get stuck
+ * on the stale value. This is a pure, synchronous version of that exact same "day N of
+ * the trip is today" math (not new date logic — mirrors the effect below verbatim) that
+ * the itinerary render computes directly at render time from `trip`, which is already
+ * guaranteed loaded by the point PlanCard mounts (the page bails out above if !trip) —
+ * so there is no effect/state round-trip to race against.
+ */
+function computeLiveDayNumber(startDate: string | undefined, endDate: string | undefined): number | null {
+  if (!startDate || !endDate) return null;
+  const now = new Date();
+  const start = parseCalendarDate(startDate);
+  const end = parseCalendarDate(endDate);
+  if (!start || !end) return null;
+  if (now < start || now > end) return null;
+  const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.min(Math.max(daysInto, 1), totalDays);
 }
 
 function getActivityIcon(type: string) {
@@ -105,19 +136,44 @@ export default function TripDetails() {
   const initialTab = searchParams.get("tab") || "itinerary";
   const deepSection = searchParams.get("section");
   const justOptimized = searchParams.get("optimized") === "1";
-  const { data: trip, isLoading, isError: tripError } = useTrip(id || "");
+  const { data: trip, isLoading, isError: tripError, refetch: refetchTrip } = useTrip(id || "");
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
   const generatePlan = useGenerateItinerary();
-  const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
+  const { data: generatedItinerary } = useGeneratedItinerary(id || "");
+  const {
+    data: plancardData,
+    isLoading: itineraryLoading,
+    isError: itineraryError,
+    refetch: refetchItinerary,
+  } = useQuery<PlanCardData>({
+    queryKey: [`/api/trips/${id}/plancard`],
+    enabled: !!id,
+  });
+  // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
+  // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
+  // `as any`: itineraryData is a free-shape jsonb column typed `{}` at the ORM layer (see the
+  // pre-existing identical casts a few hundred lines below, e.g. `itinerary.days.map(...)`) —
+  // matching the file's existing convention rather than introducing a new typing approach.
+  const hasExistingItineraryItems = !!plancardData?.days?.some(
+    (day) => (day.activities?.length ?? 0) > 0,
+  );
+  const handleRegenerateClick = () => {
+    if (hasExistingItineraryItems) {
+      setShowRegenerateConfirm(true);
+    } else {
+      generatePlan.mutate(trip!.id);
+    }
+  };
   const { toast } = useToast();
   const { user } = useAuth();
+  const { open: openPlanning } = usePlanning();
   const [activeTab, setActiveTab] = useState(initialTab);
   const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
   const [section, setSection] = useState<Section>(initialSection);
-  const [selectedDay, setSelectedDay] = useState(1);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
+  const [showAnchorCapture, setShowAnchorCapture] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -128,7 +184,10 @@ export default function TripDetails() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
-  const [showPlanningModal, setShowPlanningModal] = useState(false);
+  // T1-1: confirm before "Regenerate Plan" destructively rebuilds the itinerary. Only shown
+  // when there's an existing plan to lose (see `hasExistingItineraryItems` below) — first-time
+  // generation has nothing to warn about.
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
   // G7: "Plan ready" banner
   const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
@@ -143,17 +202,13 @@ export default function TripDetails() {
     }
   }, [initialTab, deepSection]);
 
-  // Auto‑select today's day when trip is live (same logic as itinerary.tsx)
-  useEffect(() => {
-    if (!trip) return;
-    const now = new Date();
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate);
-    if (now >= start && now <= end) {
-      const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      setSelectedDay(Math.min(Math.max(daysInto, 1), Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1));
-    }
-  }, [trip]);
+  // Mobile-lens audit #1: this effect used to compute "today's day" into a page-level
+  // `selectedDay` state that nothing read (the original audit finding) — then, once wired
+  // to PlanCard, turned out to race PlanCard's mount (effects run after first paint, but
+  // PlanCard's day-index `useState` initializer only reads its prop once, on mount).
+  // Replaced by the synchronous `computeLiveDayNumber` helper above, called directly where
+  // `initialSelectedDay` is computed for `<PlanCard>` below — same math, no effect/state
+  // round-trip to race.
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -179,15 +234,7 @@ export default function TripDetails() {
     });
   };
 
-  // G7: Fetch plancard data for optimizationDelta
-  const { data: plancardData } = useQuery<{
-    optimizationDelta: { savings: number | null; savingsPercent: number | null; starRatingDelta: number | null } | null;
-    lastOptimizedAt: string | null;
-  }>({
-    queryKey: [`/api/trips/${id}/plancard`],
-    enabled: !!id && justOptimized,
-    staleTime: 10000,
-  });
+  // G7: Reuse the canonical plan-card query above for optimization metadata.
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
 
   const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
@@ -198,6 +245,31 @@ export default function TripDetails() {
   const { data: advisorData, isLoading: advisorLoading } = useQuery<{ advisor: ExpertAdvisor | null }>({
     queryKey: [`/api/trips/${id}/expert-advisor`],
     enabled: !!id,
+  });
+
+  // Guest-invite surface (A1): a trip born from an event experience template (wedding/
+  // proposal/birthday…) has a user_experiences row linked via tripId — that link is the
+  // Event-class signal. When present, the Guests tab surfaces the organizer's invite
+  // manager. Rides the live session-scoped GET /api/user-experiences (owner-only data).
+  const { data: allUserExperiences } = useQuery<UserExperience[]>({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!user && !!id,
+    staleTime: 30_000,
+  });
+  const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
+
+  const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
+  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
+
+  const createGuestListMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/user-experiences", {
+      tripId: id,
+      title: trip?.title || trip?.destination || "My Event",
+      location: trip?.destination || "",
+      eventDate: trip?.startDate || new Date().toISOString(),
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] }),
+    onError: () => toast({ title: "Could not set up guest list", variant: "destructive" }),
   });
 
   const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
@@ -253,6 +325,10 @@ export default function TripDetails() {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/suggestions`] });
       if (data?.suggestion?.status === "approved") {
         queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", id] });
+        // W3-A: approval now also materializes a real itinerary_items row (booking-actions.ts) —
+        // refresh the canonical reads so the item shows up without a manual reload.
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/plancard`] });
       }
       toast({ title: "Suggestion reviewed", description: "Your response has been saved." });
     },
@@ -331,7 +407,26 @@ export default function TripDetails() {
     );
   }
 
-  if (tripError || !trip) {
+  // Mobile-lens audit #6: useTrip resolves a real 404 as `data: null` (no error) — only a
+  // genuine fetch/network/server failure sets isError. So this branch is reached ONLY on a
+  // failed request, and stays inside this page (never the app's auth-gate fall-through to
+  // the marketing homepage + "Sign in to continue" modal the audit reproduced). "Trip not
+  // found" below is unchanged for the real 404 case.
+  if (tripError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center" data-testid="trip-network-error">
+        <h2 className="text-2xl font-bold">Can't reach Traveloure</h2>
+        <p className="text-muted-foreground max-w-sm">
+          We couldn't load this trip. Check your connection and try again.
+        </p>
+        <Button onClick={() => refetchTrip()} data-testid="button-retry-trip-fetch">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!trip) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <h2 className="text-2xl font-bold mb-4">Trip not found</h2>
@@ -342,9 +437,9 @@ export default function TripDetails() {
     );
   }
 
-  const startDate = new Date(trip.startDate);
-  const endDate = new Date(trip.endDate);
-  const duration = differenceInDays(endDate, startDate) + 1;
+  const startDate = parseCalendarDate(trip.startDate);
+  const endDate = parseCalendarDate(trip.endDate);
+  const duration = startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0;
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -391,12 +486,34 @@ export default function TripDetails() {
               <Badge className="bg-accent/80 backdrop-blur-md text-white border-0">
                 {trip.status}
               </Badge>
+              {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
+                  field a sibling change adds to GET /api/trips/:id (nullable — coded
+                  defensively in case this lands before that field does). Honest: renders
+                  nothing when there's no assigned expert / no workspace activity yet. */}
+              {(() => {
+                const status = (trip as any).expertWorkspaceStatus as string | null | undefined;
+                if (status === "draft" || status === "in_review") {
+                  return (
+                    <Badge className="bg-amber-500/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Expert draft in progress
+                    </Badge>
+                  );
+                }
+                if (status === "delivered") {
+                  return (
+                    <Badge className="bg-emerald-600/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Delivered by your expert
+                    </Badge>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">{trip.title}</h1>
             <div className="flex flex-wrap gap-6 text-white/90">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
-                {isValid(startDate) && isValid(endDate)
+                {startDate && endDate
                   ? `${format(startDate, "MMMM d")} – ${format(endDate, "MMMM d, yyyy")}`
                   : "Dates not set"}
               </div>
@@ -465,14 +582,22 @@ export default function TripDetails() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className="border-b border-border px-6 pt-4">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                  {/* Mobile-lens audit #7: min-h-11 keeps each trigger's touch target at the
+                      ~44px guideline via padding growth only — labels/icons unchanged. */}
                   <TabsList className="bg-muted/50">
-                    <TabsTrigger value="itinerary" data-testid="tab-itinerary">Itinerary</TabsTrigger>
-                    <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
-                    <TabsTrigger value="expert" data-testid="tab-expert">Ask an Expert</TabsTrigger>
-                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1">
+                    <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
+                    <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
+                    <TabsTrigger value="expert" data-testid="tab-expert" className="min-h-11">Ask an Expert</TabsTrigger>
+                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
+                    {isEventTrip && (
+                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1 min-h-11">
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Guests
+                      </TabsTrigger>
+                    )}
                   </TabsList>
 
                   <div className="hidden md:flex gap-2">
@@ -497,8 +622,8 @@ export default function TripDetails() {
                       )}
                       Share with friends
                     </Button>
-                    <Button 
-                      onClick={() => generatePlan.mutate(trip.id)}
+                    <Button
+                      onClick={handleRegenerateClick}
                       disabled={generatePlan.isPending}
                       data-testid="button-regenerate"
                     >
@@ -515,6 +640,36 @@ export default function TripDetails() {
 
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
+                  {/* Flight & hotel time capture — surfaced in the primary trip view
+                      (was only reachable in the buried Logistics tab). Reuses the
+                      canonical TemporalAnchorManager filtered to the 4 flight/hotel
+                      anchor types. Optional; never blocks. */}
+                  {id && (
+                    <Collapsible open={showAnchorCapture} onOpenChange={setShowAnchorCapture}>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-between"
+                          data-testid="button-toggle-anchor-capture"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Plane className="w-4 h-4 text-blue-600" />
+                            Add flight &amp; hotel times (optional)
+                          </span>
+                          <ChevronRight className={`w-4 h-4 transition-transform ${showAnchorCapture ? "rotate-90" : ""}`} />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-3">
+                        <TemporalAnchorManager
+                          tripId={id}
+                          allowedTypes={["flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout"]}
+                          title="Flight & hotel times"
+                          description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+
                   {/* Itinerary Timeline */}
                   {(itineraryLoading || generatePlan.isPending) ? (
                     <div className="space-y-6">
@@ -535,7 +690,21 @@ export default function TripDetails() {
                         </div>
                       ))}
                     </div>
-                  ) : !generatedItinerary ? (
+                  ) : itineraryError ? (
+                    /* Mobile-lens audit #6: a failed itinerary fetch previously fell into the
+                       "No Itinerary Yet" branch below, wrongly inviting the traveler to
+                       generate a fresh (destructive) plan during a network blip. Distinct
+                       honest error + retry instead. */
+                    <div className="text-center py-16" data-testid="itinerary-network-error">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Can't reach Traveloure</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        We couldn't load your itinerary. Check your connection and try again.
+                      </p>
+                      <Button onClick={() => refetchItinerary()} data-testid="button-retry-itinerary-fetch">
+                        Retry
+                      </Button>
+                    </div>
+                  ) : !hasExistingItineraryItems ? (
                     <div className="text-center py-16">
                       <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
                         <Sparkles className="w-8 h-8 text-primary" />
@@ -555,7 +724,7 @@ export default function TripDetails() {
                         </Button>
                         <Button
                           variant="outline"
-                          onClick={() => setShowPlanningModal(true)}
+                          onClick={() => openPlanning({ branch: "ai", destination: trip?.destination, tripId: trip?.id })}
                           data-testid="button-plan-with-preferences"
                         >
                           <MapPin className="w-4 h-4 mr-2" />
@@ -564,89 +733,35 @@ export default function TripDetails() {
                       </div>
                     </div>
                   ) : (
-                    <>
-                      {/* PlanCard components merged from itinerary.tsx */}
-                      {(() => {
-                        const itinerary = generatedItinerary.itineraryData;
-                        if (!itinerary) return null;
+                    (() => {
+                      const planCardTrip: PlanCardTrip = {
+                        id: trip.id,
+                        destination: trip.destination ?? "",
+                        title: trip.title ?? undefined,
+                        startDate: (() => {
+                          return calendarDateToIso(trip.startDate);
+                        })(),
+                        endDate: (() => {
+                          return calendarDateToIso(trip.endDate);
+                        })(),
+                        numberOfTravelers: trip.numberOfTravelers ?? 1,
+                        budget: trip.budget ?? undefined,
+                        eventType: trip.eventType ?? undefined,
+                      };
+                      const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
+                      const initialDayIndex = liveDayNumber == null
+                        ? -1
+                        : (plancardData?.days ?? []).findIndex((day) => day.dayNum === liveDayNumber);
 
-                        // Real transport legs map (if available)
-                        const realLegsMap: Record<number, any[]> = {};
-                        // TODO: fetch real legs data if needed
-
-                        const templateConfig = getTemplateConfig(trip?.eventType);
-
-                        const planCardTrip: PlanCardTrip = {
-                          id: String(itinerary.id),
-                          destination: itinerary.destination,
-                          title: itinerary.title,
-                          startDate: (() => { const d = new Date(itinerary.startDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
-                          endDate: (() => { const d = new Date(itinerary.endDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
-                          numberOfTravelers: itinerary.travelers,
-                          budget: itinerary.budget,
-                        };
-
-                        const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
-                          dayNum: d.day,
-                          date: (() => { const p = d.date instanceof Date ? d.date : new Date(d.date); return isValid(p) ? format(p, "yyyy-MM-dd") : ""; })(),
-                          label: (() => {
-                            const parsed = d.date instanceof Date ? d.date : new Date(d.date);
-                            return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);
-                          })(),
-                          activities: (d.activities || []).map((a: any): PlanCardActivity => ({
-                            id: a.id,
-                            name: a.title || a.name || "Activity",
-                            time: a.time || "09:00",
-                            type: a.type || "activity",
-                            location: a.location || "",
-                            lat: a.lat ?? undefined,
-                            lng: a.lng ?? undefined,
-                            status: a.booked ? "confirmed" : "pending",
-                            cost: a.price || 0,
-                            comments: 0,
-                            expertNote: a.notes || a.description || undefined,
-                          })),
-                          transports: (() => {
-                            const dayNum = d.day;
-                            const real = realLegsMap[dayNum];
-                            // Only real (routed) or persisted transport legs reach the PlanCard.
-                            // Do NOT synthesize fabricated walking legs / fake $8/$2/$6 alternatives
-                            // here — they were feeding the headline transit stats + "Book on
-                            // Traveloure" badge as if real (§13). No data → no transport shown.
-                            const legs = real?.length ? real : (d.transportLegs || []);
-                            return legs.map((l: any): PlanCardTransport => ({
-                              id: l.id,
-                              from: l.fromName || l.from || "",
-                              to: l.toName || l.to || "",
-                              mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
-                              duration: l.estimatedDurationMinutes || l.duration || 0,
-                              cost: l.estimatedCostUsd || l.cost || 0,
-                              status: "active",
-                              bookingSource: undefined,
-                              partnerName: undefined,
-                            }));
-                          })(),
-                        }));
-
-                        // Compute extra stats
-                        const totalDays = itinerary.days.length;
-                        const totalActivities = planCardDays.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
-                        const totalLegs = planCardDays.reduce((sum, d) => sum + (d.transports?.length || 0), 0);
-                        const totalTransitMinutes = planCardDays.reduce((sum, d) => sum + (d.transports?.reduce((t, tr) => t + (tr.duration || 0), 0) || 0), 0);
-                        const totalBooked = planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.status === "confirmed").length || 0), 0);
-                        const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
-                        const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
-
-                        return (
-                          <PlanCard
-                            role="owner"
-                            stage="full"
-                            trip={planCardTrip}
-                            days={planCardDays}
-                          />
-                        );
-                      })()}
-                    </>
+                      return (
+                        <PlanCard
+                          role="owner"
+                          stage="full"
+                          trip={planCardTrip}
+                          initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
+                        />
+                      );
+                    })()
                   )}
                 </TabsContent>
 
@@ -1072,6 +1187,43 @@ export default function TripDetails() {
                     </>
                   )}
                 </TabsContent>
+
+                {isEventTrip && (
+                  <TabsContent value="guests" className="mt-0">
+                    {linkedExperience ? (
+                      <GuestInviteManager
+                        experienceId={linkedExperience.id}
+                        eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
+                        eventDestination={linkedExperience.location || trip?.destination || ""}
+                        eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
+                      />
+                    ) : (
+                      <div className="py-14 flex flex-col items-center gap-4 text-center">
+                        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                          <UserPlus className="w-7 h-7 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground mb-1">Set up your guest list</p>
+                          <p className="text-sm text-muted-foreground max-w-xs">
+                            Track RSVPs, send invites, and manage attendees for{" "}
+                            {trip?.title || trip?.destination || "this event"}.
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => createGuestListMutation.mutate()}
+                          disabled={createGuestListMutation.isPending}
+                          data-testid="button-setup-guest-list"
+                        >
+                          {createGuestListMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Setting up…</>
+                          ) : (
+                            <><UserPlus className="w-4 h-4 mr-2" />Set up guest list</>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </TabsContent>
+                )}
               </div>
             </Tabs>
           </CardContent>
@@ -1334,24 +1486,38 @@ export default function TripDetails() {
         </DialogContent>
       </Dialog>
 
-      {/* Enhanced Planning Modal — Stage 3.1 wiring */}
-      <EnhancedPlanningModal
-        isOpen={showPlanningModal}
-        onClose={() => setShowPlanningModal(false)}
-        initialDestination={(() => {
-          if (!trip?.destination) return null;
-          const parts = trip.destination.split(',').map((s) => s.trim());
-          const city = parts[0] || trip.destination;
-          const country = parts[1] || '';
-          return {
-            city,
-            country,
-            cityId: `${city.toLowerCase().replace(/\s+/g, '-')}-${country.toLowerCase().substring(0, 2)}`,
-          };
-        })()}
-        mode="single"
-        userId={user?.id || ''}
-      />
+      {/* Stage 3.1 re-plan now rides the global planning entry (ruling
+          2026-08-28-single-planning-entry): the button above deep-opens the AI
+          branch with this trip's destination — same modal, one mount, in
+          PlanningProvider. */}
+
+      {/* T1-1: confirm before Regenerate destructively rebuilds the plan. Only reachable via
+          handleRegenerateClick, which itself only opens this when hasExistingItineraryItems —
+          first-time generation never shows it. */}
+      <AlertDialog open={showRegenerateConfirm} onOpenChange={setShowRegenerateConfirm}>
+        <AlertDialogContent data-testid="dialog-regenerate-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerate this plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This replaces the current AI-generated activities with a freshly generated plan.
+              Any items an expert has added to your trip are kept. Manually-added items may be
+              replaced along with the rest of the plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-regenerate-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowRegenerateConfirm(false);
+                generatePlan.mutate(trip.id);
+              }}
+              data-testid="button-regenerate-confirm"
+            >
+              Regenerate Plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

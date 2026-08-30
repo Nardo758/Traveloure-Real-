@@ -1,29 +1,44 @@
 // e2e/specs/smoke.spec.ts
-// Proves the harness is wired: public page renders, and each saved session is authenticated.
+// AUTH-DEPENDENT harness smoke — proves each saved session is authenticated.
+//
+// TARGET: STAGING ONLY (E2E_STAGING_BASE_URL, a deploy provisioned with
+// ALLOW_TEST_ACCOUNTS=1 so the seeded @traveloure.test accounts exist). This
+// file consumes the storageState written by e2e/global-setup.ts, so it cannot
+// run against production, which purges those accounts on boot (PR #319 P0 fix).
+//
+// The unauthenticated half of the old "harness smoke" — public landing renders,
+// health endpoints answer — moved to e2e/specs/public-smoke.spec.ts, which is
+// what production smoke runs. See docs/STAGING.md.
 
 import { test, expect, authFile } from '../fixtures/roles';
 
-test.describe('harness smoke', () => {
-  test('public landing renders without console errors', async ({ page, consoleErrors }) => {
-    // domcontentloaded prevents the goto from blocking on Google Fonts (external CDN).
-    // link-logo is a React-rendered element; Vite dev server in Replit needs up to
-    // 90 s to compile and serve the JS bundle on first request after a cold start.
-    // global-setup warms up Vite before tests run; 120 s here is a safety margin.
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
+test.describe('harness smoke (authed — staging only)', () => {
+  test.describe('authed landing', () => {
+    // Same landing check as the public smoke, but with a traveler session
+    // attached — catches JS errors that only appear on the authed nav/menu.
+    test.use({ storageState: authFile('traveler') });
 
-    const jsErrors = consoleErrors.filter(
-      (e) =>
-        !e.includes('Failed to load resource') &&
-        !e.includes('favicon') &&
-        !e.includes('[vite]') &&
-        !e.includes('ERR_') &&
-        !e.includes('net::') &&
-        !e.includes('Warning:') &&
-        !e.includes('ResizeObserver') &&
-        !e.includes('Non-Error'),
-    );
-    expect(jsErrors, 'no JS errors on landing').toHaveLength(0);
+    test('authenticated landing renders without console errors', async ({ page, consoleErrors }) => {
+      // domcontentloaded prevents the goto from blocking on Google Fonts (external CDN).
+      // link-logo is a React-rendered element; Vite dev server in Replit needs up to
+      // 90 s to compile and serve the JS bundle on first request after a cold start.
+      // global-setup warms up Vite before tests run; 120 s here is a safety margin.
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
+
+      const jsErrors = consoleErrors.filter(
+        (e) =>
+          !e.includes('Failed to load resource') &&
+          !e.includes('favicon') &&
+          !e.includes('[vite]') &&
+          !e.includes('ERR_') &&
+          !e.includes('net::') &&
+          !e.includes('Warning:') &&
+          !e.includes('ResizeObserver') &&
+          !e.includes('Non-Error'),
+      );
+      expect(jsErrors, 'no JS errors on landing').toHaveLength(0);
+    });
   });
 
   test.describe('authed as traveler', () => {

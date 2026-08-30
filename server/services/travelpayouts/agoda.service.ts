@@ -1,4 +1,4 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 
 export interface AgodaSearchParams {
@@ -20,7 +20,7 @@ export async function searchAgoda(params: AgodaSearchParams): Promise<CatalogIte
 
   const baseUrl = `https://www.agoda.com/search?city=${encodeURIComponent(city)}&checkIn=${checkIn}&checkOut=${checkOut}&rooms=1&adults=${guests}`;
 
-  const affiliateBase = `https://www.travelpayouts.com/hotels/agoda?marker=405110&currency=USD&city=${encodeURIComponent(city)}`;
+  const affiliateBase = `https://www.travelpayouts.com/hotels/agoda?marker=${getTravelpayoutsMarker()}&currency=USD&city=${encodeURIComponent(city)}`;
 
   const tiers = [
     { stars: 5, label: "Luxury 5★", priceFrom: 150, priceLabel: "from $150/night" },

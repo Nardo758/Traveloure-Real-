@@ -6,8 +6,9 @@ import {
   type InsertTripTransaction,
   type TripParticipant 
 } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { createChildLogger, databaseQueryDuration } from "../infrastructure";
+import { storage } from "../storage";
 
 export interface BudgetSummary {
   totalBudget: number;
@@ -32,6 +33,17 @@ export interface SplitCalculation {
   balance: number;
 }
 
+/**
+ * Caller-input validation failure (L20 hardening). Distinct from an internal failure so a route
+ * can answer 400 instead of masking a bad request as a 500.
+ */
+export class BudgetValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BudgetValidationError";
+  }
+}
+
 export interface CurrencyConversion {
   amount: number;
   fromCurrency: string;
@@ -40,20 +52,31 @@ export interface CurrencyConversion {
   exchangeRate: number;
 }
 
-const EXCHANGE_RATES: Record<string, number> = {
-  "USD": 1.0,
-  "EUR": 0.92,
-  "GBP": 0.79,
-  "JPY": 149.5,
-  "CAD": 1.36,
-  "AUD": 1.53,
-  "CHF": 0.88,
-  "CNY": 7.24,
-  "INR": 83.12,
-  "MXN": 17.15,
-  "BRL": 4.97,
-  "THB": 35.5,
-};
+/**
+ * In-memory FX rate cache — refreshed at most every 5 minutes so that repeated
+ * convertCurrency calls within a request burst do not hammer the database while
+ * still picking up the daily fx_rates refresh promptly.
+ */
+const FX_CACHE_TTL_MS = 5 * 60 * 1000;
+let fxCacheRates: Record<string, number> | null = null;
+let fxCacheExpiresAt = 0;
+
+/**
+ * Fetch the latest FX rates (units-per-USD) from the DB-backed fx_rates table,
+ * with a short in-memory cache. USD itself is always 1.0.
+ * Throws if the DB returns no rows (table not yet seeded).
+ */
+async function getDbFxRates(): Promise<Record<string, number>> {
+  if (fxCacheRates && Date.now() < fxCacheExpiresAt) return fxCacheRates;
+  const result = await storage.getLatestFxRates();
+  if (!result || Object.keys(result.rates).length === 0) {
+    throw new Error("FX rate table is empty — cannot perform currency conversion");
+  }
+  const rates: Record<string, number> = { USD: 1.0, ...result.rates };
+  fxCacheRates = rates;
+  fxCacheExpiresAt = Date.now() + FX_CACHE_TTL_MS;
+  return rates;
+}
 
 const TIP_PERCENTAGES: Record<string, { restaurant: number; taxi: number; hotel: number }> = {
   "US": { restaurant: 18, taxi: 15, hotel: 5 },
@@ -167,12 +190,27 @@ export class BudgetService {
     method: "equal" | "percentage" | "custom" = "equal",
     customSplits?: { participantId: string; amount?: number; percentage?: number }[]
   ): Promise<SplitCalculation[]> {
+    // L20 hardening: a missing / non-numeric `totalAmount` used to propagate NaN through every
+    // computed amount (serialized as `null` money numbers in the response). Reject the input
+    // instead of emitting dishonest figures.
+    if (typeof totalAmount !== "number" || !Number.isFinite(totalAmount)) {
+      throw new BudgetValidationError("`totalAmount` must be a finite number");
+    }
+
     const participants = await db.select().from(tripParticipants)
       .where(eq(tripParticipants.tripId, tripId));
 
     const results: SplitCalculation[] = [];
 
     if (method === "equal") {
+      // L20 hardening: an equal split over ZERO participants used to divide by 0 and emit
+      // NaN/Infinity amounts (the common case — most trips have no participant rows). Fail
+      // honestly instead of returning nonsense money numbers.
+      if (participants.length === 0) {
+        throw new BudgetValidationError(
+          "Cannot calculate an equal split: this trip has no participants",
+        );
+      }
       const perPerson = totalAmount / participants.length;
       for (const p of participants) {
         results.push({
@@ -220,17 +258,33 @@ export class BudgetService {
     fromCurrency: string, 
     toCurrency: string
   ): Promise<CurrencyConversion> {
-    const fromRate = EXCHANGE_RATES[fromCurrency.toUpperCase()] || 1;
-    const toRate = EXCHANGE_RATES[toCurrency.toUpperCase()] || 1;
-    
+    const from = fromCurrency.toUpperCase();
+    const to = toCurrency.toUpperCase();
+
+    const rates = await getDbFxRates();
+
+    if (!(from in rates)) {
+      throw new BudgetValidationError(
+        `Unsupported currency "${from}" — no FX rate found in the database`,
+      );
+    }
+    if (!(to in rates)) {
+      throw new BudgetValidationError(
+        `Unsupported currency "${to}" — no FX rate found in the database`,
+      );
+    }
+
+    const fromRate = rates[from]; // units of `from` per 1 USD
+    const toRate = rates[to];     // units of `to` per 1 USD
+
     const usdAmount = amount / fromRate;
     const convertedAmount = usdAmount * toRate;
     const exchangeRate = toRate / fromRate;
 
     return {
       amount,
-      fromCurrency: fromCurrency.toUpperCase(),
-      toCurrency: toCurrency.toUpperCase(),
+      fromCurrency: from,
+      toCurrency: to,
       convertedAmount: Math.round(convertedAmount * 100) / 100,
       exchangeRate: Math.round(exchangeRate * 10000) / 10000,
     };
@@ -252,6 +306,38 @@ export class BudgetService {
     };
   }
 
+  /**
+   * L20 hardening: verify every supplied participant id is a real `trip_participants` row on
+   * THIS trip. Throws BudgetValidationError (→ 400) on the first id that isn't.
+   * Blank/undefined ids are ignored (the column is nullable and optional).
+   */
+  private async assertParticipantsBelongToTrip(
+    tripId: string,
+    participantIds: (string | null | undefined)[],
+  ): Promise<void> {
+    const ids = Array.from(
+      new Set(
+        participantIds.filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0,
+        ),
+      ),
+    );
+    if (ids.length === 0) return;
+
+    const rows = await db
+      .select({ id: tripParticipants.id })
+      .from(tripParticipants)
+      .where(and(eq(tripParticipants.tripId, tripId), inArray(tripParticipants.id, ids)));
+
+    const owned = new Set(rows.map((r) => r.id));
+    const foreign = ids.filter((id) => !owned.has(id));
+    if (foreign.length > 0) {
+      throw new BudgetValidationError(
+        `Participant(s) do not belong to this trip: ${foreign.join(", ")}`,
+      );
+    }
+  }
+
   async createSplitTransaction(
     tripId: string,
     totalAmount: number,
@@ -261,6 +347,19 @@ export class BudgetService {
     splits: { participantId: string; amount: number }[]
   ): Promise<TripTransaction[]> {
     const results: TripTransaction[] = [];
+
+    // L20 hardening (IDOR-shaped): `paidByParticipantId` and every `splits[].participantId`
+    // become `paid_by_participant_id` / `assigned_to_participant_id` on rows scoped to THIS
+    // trip. Unvalidated, a caller could point this trip's ledger at a participant row belonging
+    // to someone else's trip (cross-trip reference, and a participant-id oracle). Owner-gating
+    // the endpoint does not close that — the ids themselves must be verified against the trip.
+    if (!Array.isArray(splits)) {
+      throw new BudgetValidationError("`splits` must be an array");
+    }
+    await this.assertParticipantsBelongToTrip(tripId, [
+      paidByParticipantId,
+      ...splits.map((s) => s?.participantId),
+    ]);
 
     const mainTransaction = await this.createTransaction({
       tripId,

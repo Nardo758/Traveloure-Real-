@@ -1,0 +1,64 @@
+name: Spec-Arming Gate
+
+# WHY THIS GATE EXISTS (Trailhead lane C, guard C3).
+#
+# Closes the confabulated-spec class named by ledger 2026-08-17-create-service-spec-doa:
+# `create-service-layout.spec.ts` was WIRED into `spec-coverage-gate.yml` in one
+# commit and merged, but it was BORN RED and had never passed — so the Spec
+# Coverage Gate was decorative on main for the whole window. "Wired" was
+# mistaken for "verified". Ruling 121's class named exactly this gap (wiring ≠
+# verifying) and this is the meta-guard that ruling filed for the next CI-touch.
+#
+# THE RULE. If a PR ARMS a spec — adds a new `*.spec.ts` reference to any
+# `.github/workflows/*.yml` — the PR BODY must link a GREEN RUN of that spec.
+# Missing evidence ⇒ this required check FAILS. A pure relocation (same spec
+# removed and re-added within the diff) is not arming and needs no evidence.
+#
+# ACCEPTED EVIDENCE (either, line-scoped — see the script header):
+#   spec-green: <spec-file> <url>
+#   …or a body line naming <spec-file> alongside a .../actions/runs/<id> URL.
+#
+# REQUIRED-CHECK NOTE. To block merges, add the status context
+# `spec-arming-gate (green-run evidence)` to branch protection
+# (.github/branch-protection.json + CI_GATES.md). PR-only by nature (it reads
+# the PR body and diff).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  spec-arming-gate:
+    name: spec-arming-gate (green-run evidence)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the PR base commit is present for the diff below.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Predicate fixtures FIRST (§18d): prove arm-without-evidence FAILS and
+      # both evidence forms + non-arming diffs PASS before trusting the verdict.
+      # Node built-ins only — no npm ci needed.
+      - name: Spec-arming predicate self-test
+        run: node scripts/check-spec-arming.cjs --self-test
+      - name: Compute workflow diff (PR base → head)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git diff "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/ > /tmp/workflow.diff || true
+          echo "--- workflow diff (first 200 lines) ---"
+          head -n 200 /tmp/workflow.diff || true
+      - name: Require green-run evidence for any newly-armed spec
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-spec-arming.cjs --diff /tmp/workflow.diff

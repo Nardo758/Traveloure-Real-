@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useUnreadMessageCount } from "@/hooks/use-message-read";
 import {
   Sidebar,
   SidebarContent,
@@ -13,30 +15,36 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Home,
   Calendar,
   Bot,
-  MessageSquare,
   Users,
-  CreditCard,
   User,
-  Bell,
   LogOut,
   Compass,
   ShoppingCart,
   Package,
   Crown,
-  Sparkles,
+  Inbox,
 } from "lucide-react";
 
+// R-G (CONSOLE_REALIGN_BRIEF.md sidebar 13→10): "Plan new" is retired — the intake panel
+// (client/src/components/intake-panel.tsx) opens from CTAs elsewhere (dashboard "New
+// experience", my-trips "+ New plan"), not from a sidebar destination. "Messages" and
+// "Notifications" are retired — Messages folds into the Inbox module's Messages tab (/chat
+// itself stays routed as the thread page, just no longer has its own sidebar entry) and
+// Notifications' unique functions rehome into Inbox's Updates tab + the bell popover (E4).
+// "Experts" is repointed from /chat (an unexamined first-commit artifact) to /experts. Final
+// traveler sidebar (10 entries): Home, My plans, AI planner, Discover, Experts, Bookings,
+// My events, Trip Cart, Inbox, Profile.
 const menuGroups = [
   {
     label: "Plan",
     items: [
       { title: "Home", href: "/dashboard", icon: Home },
-      { title: "My plans", href: "/my-trips", icon: Calendar },
-      { title: "Plan new", href: "/experiences", icon: Sparkles },
+      { title: "My Plans", href: "/my-trips", icon: Calendar },
       { title: "AI planner", href: "/ai-assistant", icon: Bot },
     ],
   },
@@ -44,18 +52,25 @@ const menuGroups = [
     label: "Marketplace",
     items: [
       { title: "Discover", href: "/discover", icon: Users },
-      { title: "Experts", href: "/chat", icon: Compass },
+      { title: "Experts", href: "/experts", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
       { title: "My events", href: "/my-events", icon: Crown },
-      { title: "Trip plan", href: "/cart", icon: ShoppingCart },
+      { title: "Trip Cart", href: "/cart", icon: ShoppingCart },
+    ],
+  },
+  {
+    label: "Inbox",
+    items: [
+      // W5-E: unified Messages + Updates. Badge is the SUM of two real, independently-fetched
+      // counts — unread notifications (GET /api/notifications/unread-count, the same source the
+      // bell reads) and unread received messages (GET /api/messages/unread/count, the real
+      // read-tracking API wired up in this lane) — never a fabricated number.
+      { title: "Inbox", href: "/inbox", icon: Inbox },
     ],
   },
   {
     label: "Account",
     items: [
-      { title: "Messages", href: "/chat", icon: MessageSquare, badge: true },
-      { title: "Notifications", href: "/notifications", icon: Bell, badge: true },
-      { title: "Credits", href: "/credits", icon: CreditCard },
       { title: "Profile", href: "/profile", icon: User },
     ],
   },
@@ -67,19 +82,23 @@ export function DashboardSidebar() {
 
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "U";
 
+  // W5-E: the SAME real unread-notification count the bell (notification-bell.tsx) reads,
+  // summed with the real unread-message count (GET /api/messages/unread/count) — two real
+  // sources, never a fabricated total.
+  const { data: unreadNotifications } = useQuery<{ count: number }>({
+    queryKey: ["/api/notifications/unread-count"],
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 30000,
+  });
+  const { data: unreadMessages } = useUnreadMessageCount(!!user);
+  const inboxUnreadCount = (unreadNotifications?.count ?? 0) + (unreadMessages?.count ?? 0);
+
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
       <SidebarHeader className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3" style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}>
-        <Link href="/" className="flex items-center gap-2.5" data-testid="link-sidebar-logo">
-          <div
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-            style={{ background: "#E85D55" }}
-          >
-            <span className="text-white text-[16px] font-bold">T</span>
-          </div>
-          <span className="text-[16px] font-semibold group-data-[collapsible=icon]:hidden" style={{ color: "#1A1A18", letterSpacing: -0.3 }}>
-            Traveloure
-          </span>
+        <Link href="/" className="flex items-center" data-testid="link-sidebar-logo">
+          <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
 
@@ -100,7 +119,8 @@ export function DashboardSidebar() {
                     (item.href === "/my-trips" && (
                       location.startsWith("/my-trips") ||
                       location.startsWith("/itinerary") ||
-                      location.startsWith("/my-itinerary")
+                      location.startsWith("/my-itinerary") ||
+                      location.startsWith("/plans")
                     )) ||
                     (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
 
@@ -118,7 +138,16 @@ export function DashboardSidebar() {
                       >
                         <Link href={item.href} data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
                           <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
-                          <span className="text-[13px]">{item.title}</span>
+                          <span className="text-[13px] flex-1">{item.title}</span>
+                          {item.href === "/inbox" && inboxUnreadCount > 0 && (
+                            <span
+                              className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center flex-shrink-0"
+                              style={{ background: "#E85D55" }}
+                              data-testid="badge-sidebar-inbox-unread"
+                            >
+                              {inboxUnreadCount > 9 ? "9+" : inboxUnreadCount}
+                            </span>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

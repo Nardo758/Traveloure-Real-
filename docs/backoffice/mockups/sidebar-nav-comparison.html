@@ -1,0 +1,370 @@
+<title>Sidebar Nav — Two Consoles Today vs Unified Backoffice</title>
+<style>
+  :root {
+    --bg: #FAFAF8; --surface: #FFFFFF; --surface2: #F3F3EE;
+    --border: #E8E8E2; --ink: #1A1A18; --mid: #7A7A72; --faint: #AEAEA6;
+    --accent: #E85D55; --accent-soft: rgba(232,93,85,0.08);
+    --good: #2E7D4F; --good-bg: #E8F3EC;
+    --warn: #A16207; --warn-bg: #FBF3E0;
+    --bad: #BE3D2E; --bad-bg: #FBEAE7;
+    --ghost: #9C9C93;
+    --navy: #1E3A5F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1A1A18; --surface: #222220; --surface2: #2A2A28;
+      --border: #3A3A38; --ink: #F2F2ED; --mid: #A5A59D; --faint: #6E6E66;
+      --accent-soft: rgba(232,93,85,0.14);
+      --good: #7BC79A; --good-bg: #21322A;
+      --warn: #E0A93E; --warn-bg: #33290F;
+      --bad: #E77B6E; --bad-bg: #3A211D;
+      --ghost: #6E6E66;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1A1A18; --surface: #222220; --surface2: #2A2A28;
+    --border: #3A3A38; --ink: #F2F2ED; --mid: #A5A59D; --faint: #6E6E66;
+    --accent-soft: rgba(232,93,85,0.14);
+    --good: #7BC79A; --good-bg: #21322A;
+    --warn: #E0A93E; --warn-bg: #33290F;
+    --bad: #E77B6E; --bad-bg: #3A211D;
+    --ghost: #6E6E66;
+  }
+  :root[data-theme="light"] {
+    --bg: #FAFAF8; --surface: #FFFFFF; --surface2: #F3F3EE;
+    --border: #E8E8E2; --ink: #1A1A18; --mid: #7A7A72; --faint: #AEAEA6;
+    --accent-soft: rgba(232,93,85,0.08);
+    --good: #2E7D4F; --good-bg: #E8F3EC;
+    --warn: #A16207; --warn-bg: #FBF3E0;
+    --bad: #BE3D2E; --bad-bg: #FBEAE7;
+    --ghost: #9C9C93;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.5; font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.82em; color: var(--mid); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 96px; }
+
+  header { padding: 52px 0 18px; border-bottom: 3px solid var(--ink); margin-bottom: 6px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 10px; }
+  h1 { font-size: clamp(26px, 4vw, 40px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.08; text-wrap: balance; }
+  .sub { color: var(--mid); max-width: 68ch; margin-top: 12px; font-size: 14px; }
+  .sub strong { color: var(--ink); }
+
+  section { margin-top: 52px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+  .sec-head h2 { font-size: 20px; font-weight: 800; }
+  .sec-head .where { font-size: 12px; color: var(--mid); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+  @media (max-width: 860px) { .row { grid-template-columns: 1fr; } }
+
+  .panel { display: flex; flex-direction: column; gap: 12px; }
+  .panel-cap { font-size: 12px; color: var(--mid); line-height: 1.55; }
+  .panel-cap strong { color: var(--ink); }
+
+  /* ---------- the sidebar replica ---------- */
+  .sb {
+    width: 100%; max-width: 300px; margin: 0 auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .sb-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); min-height: 56px; }
+  .sb-logo { width: 32px; height: 32px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 800; font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-brand { font-size: 16px; font-weight: 600; letter-spacing: -0.3px; }
+  .sb-role-tag { margin-left: auto; font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mid); border: 1px solid var(--border); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+
+  .sb-body { padding: 12px 10px; }
+  .sb-group { margin-bottom: 14px; }
+  .sb-group:last-child { margin-bottom: 4px; }
+  .sb-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: var(--faint); padding: 0 10px; margin-bottom: 5px; }
+
+  .sb-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--mid);
+    position: relative; flex-wrap: wrap;
+  }
+  .sb-item .ico { width: 16px; height: 16px; border: 1.5px solid currentColor; opacity: 0.55; border-radius: 4px; flex-shrink: 0; }
+  .sb-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .sb-item.active .ico { opacity: 1; }
+  .sb-item .t { flex: 1; min-width: 0; }
+  .sb-item.is-new { border: 1.5px dashed var(--ghost); color: var(--ghost); margin: 2px 0; }
+  .sb-item .sup { font-size: 10px; color: var(--faint); font-weight: 500; }
+
+  .sb-sub { margin: 1px 0 3px 20px; border-left: 2px solid var(--border); padding-left: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .sb-sub .si { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--mid); padding: 2px 0; flex-wrap: wrap; }
+  .sb-sub .si.ghosted { color: var(--ghost); }
+  .sb-sub .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); flex-shrink: 0; }
+  .sb-sub .si.ghosted .dot { background: transparent; border: 1.2px dashed var(--ghost); }
+
+  .chip {
+    display: inline-flex; align-items: center;
+    font-size: 9px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 3px; white-space: nowrap; line-height: 1.7; flex-shrink: 0;
+  }
+  .c-merge { background: var(--warn-bg); color: var(--warn); }
+  .c-new { background: transparent; color: var(--ghost); border: 1.2px dashed var(--ghost); }
+  .c-var { background: var(--surface2); color: var(--mid); border: 1px solid var(--border); }
+  .c-note { background: var(--bad-bg); color: var(--bad); }
+  .c-keep { background: var(--good-bg); color: var(--good); }
+
+  .sb-foot { border-top: 1px solid var(--border); padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+  .sb-ava { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #E85D55, #1E3A5F); color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-foot .nm { font-size: 13px; font-weight: 500; line-height: 1.3; }
+  .sb-foot .em { font-size: 11px; color: var(--mid); }
+  .sb-foot .em.coral { color: var(--accent); }
+  .sb-foot .out { margin-left: auto; font-size: 11.5px; color: var(--mid); }
+
+  /* footnotes under each sidebar */
+  .fn { font-size: 12px; color: var(--mid); display: flex; flex-direction: column; gap: 7px; max-width: 340px; margin: 0 auto; }
+  .fn div { padding-left: 14px; position: relative; line-height: 1.5; }
+  .fn div::before { content: ""; position: absolute; left: 0; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+  .fn div.warn::before { background: var(--warn); }
+  .fn div.bad::before { background: var(--bad); }
+  .fn div.new::before { background: transparent; border: 1.5px dashed var(--ghost); width: 5px; height: 5px; }
+  .fn strong { color: var(--ink); }
+
+  /* mapping strip */
+  .maps { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mid); padding: 9px 14px; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 20px; padding: 14px 0 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--mid); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Traveloure · Backoffice Program · Nav Design</div>
+    <h1>Sidebar navigation: the two consoles today, and the unified backoffice per role</h1>
+    <p class="sub">The two "today" panels are rendered <strong>verbatim from the shipped components</strong> — same groups, labels,
+      role variants, active treatment (coral on <code>rgba(232,93,85,0.08)</code>), and footers. Icons are shown as neutral chips;
+      labels and grouping are exact. The two "proposed" panels apply the verified findings: dashed = a nav entry that doesn't exist
+      today, amber = a merge of existing surfaces.</p>
+    <div class="legend">
+      <span><span class="chip c-keep">Keep</span> unchanged entry</span>
+      <span><span class="chip c-merge">Merge</span> existing surfaces combined</span>
+      <span><span class="chip c-new">New</span> entry with no page behind it today</span>
+      <span><span class="chip c-var">Role label</span> varies by expert type</span>
+      <span><span class="chip c-note">Quirk</span> verified oddity</span>
+    </div>
+  </header>
+
+  <!-- ================= TODAY ================= -->
+  <section>
+    <div class="sec-head">
+      <h2>Today — two parallel consoles</h2>
+      <span class="where">provider-sidebar.tsx:29 · expert-sidebar.tsx:35</span>
+    </div>
+    <div class="row">
+      <!-- PROVIDER TODAY -->
+      <div class="panel">
+        <div class="sb">
+          <div class="sb-head"><div class="sb-logo">T</div><span class="sb-brand">Traveloure</span><span class="sb-role-tag">Provider</span></div>
+          <div class="sb-body">
+            <div class="sb-group">
+              <div class="sb-label">Work</div>
+              <div class="sb-item active"><span class="ico"></span><span class="t">Dashboard</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Calendar</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Bookings</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Messages</span><span class="chip c-note">→ /chat</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Business</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Services</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Earnings</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Analytics</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Account</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Profile</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Settings</span></div>
+            </div>
+          </div>
+          <div class="sb-foot"><div class="sb-ava">YK</div><div><div class="nm">Yuki's Kyoto Studio</div><div class="em">yuki@example.com</div></div><span class="out">Logout</span></div>
+        </div>
+        <div class="fn">
+          <div><strong>9 entries, 3 groups.</strong> Static array — no role variants.</div>
+          <div class="warn"><strong>Orphan pages:</strong> <code>/provider/performance</code> and <code>/provider/resources</code> are routed in App.tsx but have no nav entry — Performance duplicates Analytics (finding: consolidate, don't add a third).</div>
+          <div class="warn"><strong>Calendar</strong> exists but its availability editor is a local-only preview (in-code comment: "nothing here persists").</div>
+          <div class="bad"><strong>Services</strong> list hides <code>approvalStatus</code> from the owner — born-submitted listings look "Active" while publicly invisible.</div>
+        </div>
+      </div>
+
+      <!-- EXPERT TODAY -->
+      <div class="panel">
+        <div class="sb">
+          <div class="sb-head"><div class="sb-logo">T</div><span class="sb-brand">Traveloure</span><span class="sb-role-tag">Expert</span></div>
+          <div class="sb-body">
+            <div class="sb-group">
+              <div class="sb-label">Work</div>
+              <div class="sb-item active"><span class="ico"></span><span class="t">Dashboard</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Bookings</span><span class="chip c-var">"Events" for event planners</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Assigned Trips</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Workspace</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Messages</span><span class="chip c-note">→ /chat</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Business</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Services</span><span class="chip c-var">"Packages" / "Local Packages"</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Itinerary Templates</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Store Listings</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Content Studio</span><span class="chip c-var">"Promo Content" / "Local Guides"</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">DMO Library</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Analytics</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Earnings</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Account</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">AI Assistant</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Profile</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Settings</span><span class="sup">absorbed Verification &amp; Payouts</span></div>
+            </div>
+          </div>
+          <div class="sb-foot"><div class="sb-ava">HT</div><div><div class="nm">Haruko Tanaka</div><div class="em coral">Local Expert</div></div><span class="out">Logout</span></div>
+        </div>
+        <div class="fn">
+          <div><strong>15 entries, 3 groups</strong> — built by <code>buildMenuGroups(expertType)</code>, already role-parameterized (travel_expert / local_expert / event_planner labels).</div>
+          <div class="new"><strong>No Calendar entry</strong> — and no expert calendar page exists at all.</div>
+          <div class="warn"><strong>Three selling catalogs, three nav entries:</strong> Services (provider_services) · Itinerary Templates (expert_templates) · Store Listings (ready_made_trips). In-code comment already signposts folding Templates into the Store/Workstation factory.</div>
+          <div class="warn"><strong>Fulfillment is split</strong> across Bookings + Assigned Trips + Workspace (coordination engagements render inside Assigned Trips).</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MAPPING ================= -->
+  <section>
+    <div class="sec-head"><h2>How today's entries map into the unified nav</h2></div>
+    <div class="maps">
+      <table>
+        <tr><th>Unified entry</th><th>Provider — comes from</th><th>Expert — comes from</th></tr>
+        <tr><td><strong>Dashboard</strong></td><td>Dashboard (as-is; strip mock panels)</td><td>Dashboard (as-is; strip mock panels)</td></tr>
+        <tr><td><strong>Orders</strong></td><td>Bookings (rename only)</td><td>Bookings + Assigned Trips + coordination engagements + affiliate requests — <em>4 live rails, aggregated</em></td></tr>
+        <tr><td><strong>Calendar</strong></td><td>Calendar (page exists)</td><td><em>New page</em> — aggregates 4 date sources</td></tr>
+        <tr><td><strong>Workspace</strong> <em>(the make surface)</em></td><td><em>New provider mode</em> of the existing shell — hosts the canonical ServiceForm (§5 one-builder rule: wrap, never fork) + availability/slots + share-asset creation</td><td>Existing dual-mode workspace, now the declared hub: trip/listing builder + <strong>DMO Library folds in</strong> (research + picker — already wired via dmo-picker-modal) + <strong>Content Studio creation folds in</strong> (nugget composer; content library had no backend to move)</td></tr>
+        <tr><td><strong>My Offerings</strong></td><td>Services (+ approval badges)</td><td>Services + Itinerary Templates + Store Listings — merged, normalized status</td></tr>
+        <tr><td><strong>Share &amp; Promote</strong> <em>(the distribute surface)</em></td><td><em>New</em> — prompts, captions, links, assets</td><td><em>New</em> — takes Content Studio's <em>distribution</em> half (captions, hashtags, IG publish — pending the Tier-2 decision). Event-driven prompts fire here, not in the Workspace</td></tr>
+        <tr><td><strong>Reviews</strong></td><td><em>New page</em> (list = join; respond endpoint exists unused)</td><td>Same</td></tr>
+        <tr><td><strong>Earnings</strong></td><td>Earnings (+ real held/releasable split)</td><td>Earnings (+ all 5 streams in the feed)</td></tr>
+        <tr><td><strong>Analytics</strong></td><td>Analytics (absorbs orphan Performance page)</td><td>Analytics (fabricated content replaced)</td></tr>
+        <tr><td><strong>Expert-only</strong></td><td>—</td><td>AI Assistant stays</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= PROPOSED ================= -->
+  <section>
+    <div class="sec-head">
+      <h2>Proposed — one nav config, rendered per role</h2>
+      <span class="where">extends the expert sidebar's existing buildMenuGroups(role) pattern</span>
+    </div>
+    <div class="row">
+      <!-- PROVIDER PROPOSED -->
+      <div class="panel">
+        <div class="sb">
+          <div class="sb-head"><div class="sb-logo">T</div><span class="sb-brand">Traveloure</span><span class="sb-role-tag" style="color: var(--accent); border-color: var(--accent);">Provider view</span></div>
+          <div class="sb-body">
+            <div class="sb-group">
+              <div class="sb-label">Work</div>
+              <div class="sb-item active"><span class="ico"></span><span class="t">Dashboard</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Orders</span><span class="chip c-keep">Keep</span><span class="sup">= Bookings, renamed</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Calendar</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item is-new"><span class="ico"></span><span class="t">Workspace</span><span class="chip c-new">New</span><span class="sup">provider mode of the existing shell</span></div>
+              <div class="sb-sub">
+                <div class="si"><span class="dot"></span>ServiceForm — the canonical builder, wrapped (§5: never forked)</div>
+                <div class="si ghosted"><span class="dot"></span>Availability &amp; slots editor</div>
+                <div class="si ghosted"><span class="dot"></span>Share-asset creation → feeds Share &amp; Promote</div>
+              </div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Messages</span><span class="chip c-keep">Keep</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Storefront</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">My Offerings</span><span class="chip c-merge">Merge</span><span class="sup">Services + approval badges</span></div>
+              <div class="sb-item is-new"><span class="ico"></span><span class="t">Share &amp; Promote</span><span class="chip c-new">New</span><span class="sup">distribute: prompts · captions · links</span></div>
+              <div class="sb-item is-new"><span class="ico"></span><span class="t">Reviews</span><span class="chip c-new">New</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Earnings</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Analytics</span><span class="chip c-merge">Merge</span><span class="sup">absorbs Performance</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Account</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Profile</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Settings</span><span class="chip c-keep">Keep</span></div>
+            </div>
+          </div>
+          <div class="sb-foot"><div class="sb-ava">YK</div><div><div class="nm">Yuki's Kyoto Studio</div><div class="em">Handle: <span style="color: var(--accent);">@yuki-kyoto</span></div></div></div>
+        </div>
+        <div class="fn">
+          <div><strong>11 entries — same structure as the expert view.</strong> Net new pages: Workspace (provider mode), Share &amp; Promote, Reviews. One rename, one consolidation; everything else is the existing page behind the existing label.</div>
+          <div class="warn"><strong>Constraint (§5, locked):</strong> ServiceForm stays the single offering builder for both roles — the provider Workspace is a shell around it (plus availability + assets), never a second creation path.</div>
+        </div>
+      </div>
+
+      <!-- EXPERT PROPOSED -->
+      <div class="panel">
+        <div class="sb">
+          <div class="sb-head"><div class="sb-logo">T</div><span class="sb-brand">Traveloure</span><span class="sb-role-tag" style="color: var(--accent); border-color: var(--accent);">Expert view</span></div>
+          <div class="sb-body">
+            <div class="sb-group">
+              <div class="sb-label">Work</div>
+              <div class="sb-item active"><span class="ico"></span><span class="t">Dashboard</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Orders</span><span class="chip c-merge">Merge</span><span class="sup">Bookings · Assigned Trips · coordination · affiliate</span></div>
+              <div class="sb-item is-new"><span class="ico"></span><span class="t">Calendar</span><span class="chip c-new">New</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Workspace</span><span class="chip c-merge">Merge</span><span class="sup">the make surface — absorbs the tools below</span></div>
+              <div class="sb-sub">
+                <div class="si"><span class="dot"></span>Trip / listing builder (existing dual-mode shell)</div>
+                <div class="si"><span class="dot"></span>DMO Library — research + refine + picker <span class="chip c-merge">Fold</span></div>
+                <div class="si"><span class="dot"></span>Creation tools — nugget composer, share assets <span class="chip c-merge">Fold</span><span class="sup">was Content Studio's create half</span></div>
+              </div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Messages</span><span class="chip c-keep">Keep</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Storefront</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">My Offerings</span><span class="chip c-merge">Merge</span><span class="sup">Services + Templates + Store Listings, normalized status</span></div>
+              <div class="sb-item is-new"><span class="ico"></span><span class="t">Share &amp; Promote</span><span class="chip c-new">New</span><span class="sup">distribute: prompts · captions · links · IG publish (Tier-2 decision)</span></div>
+              <div class="sb-item is-new"><span class="ico"></span><span class="t">Reviews</span><span class="chip c-new">New</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Earnings</span><span class="chip c-keep">Keep</span><span class="sup">feed gains all 5 streams</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Analytics</span><span class="chip c-keep">Keep</span><span class="sup">fabricated content replaced</span></div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-label">Account</div>
+              <div class="sb-item"><span class="ico"></span><span class="t">AI Assistant</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Profile</span><span class="chip c-keep">Keep</span></div>
+              <div class="sb-item"><span class="ico"></span><span class="t">Settings</span><span class="chip c-keep">Keep</span></div>
+            </div>
+          </div>
+          <div class="sb-foot"><div class="sb-ava">HT</div><div><div class="nm">Haruko Tanaka</div><div class="em coral">Local Expert · <span style="color: var(--accent);">@haruko-kyoto</span></div></div></div>
+        </div>
+        <div class="fn">
+          <div><strong>12 entries (from 15) — same structure as the provider view.</strong> Three selling catalogs → My Offerings; two fulfillment entries → Orders; DMO Library and Content Studio's creation half fold into the Workspace (where their consumers already live: the DMO picker is wired into the trip builder, and the Studio's content library had no backend to relocate). Role-variant labels ride the same mechanism they use today.</div>
+          <div class="warn"><strong>The make/distribute split (design principle):</strong> creation lives in the Workspace; distribution lives in Share &amp; Promote — because event-driven prompts ("new 5★ review — share it") fire from dashboard state, not from inside an authoring session. The no-trip Workspace launchpad keeps standalone DMO research reachable without an active trip.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Why this shape is cheap</h2></div>
+    <p class="sub" style="max-width: 78ch;">
+      The expert sidebar already does the hard part — <code>buildMenuGroups(expertType)</code> is a role-parameterized nav config.
+      The unified sidebar extends that one function to cover the provider role and deletes the duplicate provider component; both
+      files currently repeat identical chrome (logo tile, group labels, active state, footer) with the same inline hex values.
+      One config, one component, two role renderings — and the merge is the natural moment to tokenize the inline coral/gradient
+      values the mapping pass flagged as duplicated.
+    </p>
+    <p class="sub" style="max-width: 78ch; margin-top: 14px;">
+      <strong>The Workspace-as-hub tweak (ratified direction, this iteration):</strong> both role navs now share one structure —
+      Dashboard · Orders · Calendar · Workspace · Messages / My Offerings · Share &amp; Promote · Reviews · Earnings · Analytics.
+      The Workspace is the <strong>make</strong> surface (builder + ingredients: DMO Library, creation tools; provider mode wraps the
+      canonical ServiceForm per §5); Share &amp; Promote is the <strong>distribute</strong> surface (event-driven prompts, captions,
+      links, the Instagram rail pending the Tier-2 decision). The folds land on existing seams: the DMO picker is already wired
+      into the trip builder, the workspace shell is already server-resolved dual-mode (a provider mode is a third case, not a new
+      system), and Content Studio's unpersisted content library means the fold moves UI, not backend.
+    </p>
+  </section>
+</div>

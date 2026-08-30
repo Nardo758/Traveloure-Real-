@@ -117,6 +117,25 @@ function assertParamRouteRedirect(
   ).toBe(true);
 }
 
+function assertRouteDoesNotRedirect(src: string, routePath: string, note = "") {
+  const escapedPath = routePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const routePattern = new RegExp(`path="${escapedPath}"[\\s\\S]{0,600}?</Route>`, "m");
+  const match = src.match(routePattern);
+
+  expect(
+    match !== null,
+    `[STATIC] App.tsx has no <Route path="${routePath}">.` + (note ? ` (${note})` : "")
+  ).toBe(true);
+
+  if (!match) return;
+
+  expect(
+    match[0],
+    `[STATIC] ${routePath} is canonical and must render its page rather than redirect.` +
+      (note ? ` (${note})` : "")
+  ).not.toContain("<Redirect");
+}
+
 // ---------------------------------------------------------------------------
 // Static analysis: each deprecated redirect must be bound to its route block
 // ---------------------------------------------------------------------------
@@ -129,18 +148,23 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /optimize → /concierge?tier=ai");
   });
 
-  test("/service-providers → /discover?tab=services", () => {
-    assertRouteRedirect(readApp(), "/service-providers", "/discover?tab=services");
-    console.log("[deprecated-route-redirects] PASS /service-providers → /discover?tab=services");
+  test("/service-providers → /services", () => {
+    assertRouteRedirect(readApp(), "/service-providers", "/services");
+    console.log("[deprecated-route-redirects] PASS /service-providers → /services");
   });
 
   test("/city/:slug → /discover/location/:slug (parameterised)", () => {
+    const app = readApp();
     assertParamRouteRedirect(
-      readApp(),
+      app,
       "/city/:slug",
       "/discover/location/",
       "legacy city deep-link"
     );
+    expect(
+      app.match(/<Route\s+path="\/city\/:[^"]+"/g) ?? [],
+      "App.tsx must declare exactly one canonical /city/:parameter route"
+    ).toHaveLength(1);
     console.log("[deprecated-route-redirects] PASS /city/:slug → /discover/location/:slug");
   });
 
@@ -149,14 +173,14 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /partner-with-us → /earn");
   });
 
-  test("/discover-experiences → /discover", () => {
-    assertRouteRedirect(readApp(), "/discover-experiences", "/discover");
-    console.log("[deprecated-route-redirects] PASS /discover-experiences → /discover");
+  test("/discover-experiences → /destinations", () => {
+    assertRouteRedirect(readApp(), "/discover-experiences", "/destinations");
+    console.log("[deprecated-route-redirects] PASS /discover-experiences → /destinations");
   });
 
-  test("/spontaneous → /discover", () => {
-    assertRouteRedirect(readApp(), "/spontaneous", "/discover");
-    console.log("[deprecated-route-redirects] PASS /spontaneous → /discover");
+  test("/spontaneous → /destinations", () => {
+    assertRouteRedirect(readApp(), "/spontaneous", "/destinations");
+    console.log("[deprecated-route-redirects] PASS /spontaneous → /destinations");
   });
 
   test("/itinerary/:id → /trip/:id?tab=itinerary (parameterised)", () => {
@@ -217,25 +241,38 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /expert/service-wizard → /expert/services/new");
   });
 
-  test("/expert/performance → /expert/analytics?tab=performance", () => {
-    assertRouteRedirect(readApp(), "/expert/performance", "/expert/analytics?tab=performance");
-    console.log("[deprecated-route-redirects] PASS /expert/performance → /expert/analytics?tab=performance");
+  test("/expert/performance is the canonical performance page", () => {
+    assertRouteDoesNotRedirect(
+      readApp(),
+      "/expert/performance",
+      "analytics now redirects into this page"
+    );
+    console.log("[deprecated-route-redirects] PASS /expert/performance is canonical");
   });
 
-  test("/expert/revenue-optimization → /expert/analytics?tab=revenue-optimization", () => {
+  test("/expert/revenue-optimization → /expert/performance?tab=analytics&sub=revenue-optimization", () => {
     assertRouteRedirect(
       readApp(),
       "/expert/revenue-optimization",
-      "/expert/analytics?tab=revenue-optimization"
+      "/expert/performance?tab=analytics&sub=revenue-optimization"
     );
     console.log(
-      "[deprecated-route-redirects] PASS /expert/revenue-optimization → /expert/analytics?tab=revenue-optimization"
+      "[deprecated-route-redirects] PASS /expert/revenue-optimization → /expert/performance?tab=analytics&sub=revenue-optimization"
     );
   });
 
-  test("/expert/leaderboard → /expert/analytics?tab=leaderboard", () => {
-    assertRouteRedirect(readApp(), "/expert/leaderboard", "/expert/analytics?tab=leaderboard");
-    console.log("[deprecated-route-redirects] PASS /expert/leaderboard → /expert/analytics?tab=leaderboard");
+  test("/expert/leaderboard → /expert/performance?tab=analytics&sub=leaderboard", () => {
+    assertRouteRedirect(
+      readApp(),
+      "/expert/leaderboard",
+      "/expert/performance?tab=analytics&sub=leaderboard"
+    );
+    console.log("[deprecated-route-redirects] PASS /expert/leaderboard → /expert/performance?tab=analytics&sub=leaderboard");
+  });
+
+  test("/expert/analytics → /expert/performance?tab=analytics", () => {
+    assertRouteRedirect(readApp(), "/expert/analytics", "/expert/performance?tab=analytics");
+    console.log("[deprecated-route-redirects] PASS /expert/analytics → /expert/performance?tab=analytics");
   });
 
   // ── Provider redirects ───────────────────────────────────────────────────
@@ -274,19 +311,19 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /create-trip → /experiences");
   });
 
-  test("/help-me-decide → /discover", () => {
-    assertRouteRedirect(readApp(), "/help-me-decide", "/discover");
-    console.log("[deprecated-route-redirects] PASS /help-me-decide → /discover");
+  test("/help-me-decide → /destinations", () => {
+    assertRouteRedirect(readApp(), "/help-me-decide", "/destinations");
+    console.log("[deprecated-route-redirects] PASS /help-me-decide → /destinations");
   });
 
-  test("/explore → /discover", () => {
-    assertRouteRedirect(readApp(), "/explore", "/discover");
-    console.log("[deprecated-route-redirects] PASS /explore → /discover");
+  test("/explore → /destinations", () => {
+    assertRouteRedirect(readApp(), "/explore", "/destinations");
+    console.log("[deprecated-route-redirects] PASS /explore → /destinations");
   });
 
-  test("/browse → /discover", () => {
-    assertRouteRedirect(readApp(), "/browse", "/discover");
-    console.log("[deprecated-route-redirects] PASS /browse → /discover");
+  test("/browse → /destinations", () => {
+    assertRouteRedirect(readApp(), "/browse", "/destinations");
+    console.log("[deprecated-route-redirects] PASS /browse → /destinations");
   });
 
   test("/travel-experts → /become-expert", () => {
@@ -299,9 +336,9 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /services-provider → /become-provider");
   });
 
-  test("/credits-billing → /credits", () => {
-    assertRouteRedirect(readApp(), "/credits-billing", "/credits");
-    console.log("[deprecated-route-redirects] PASS /credits-billing → /credits");
+  test("/credits-billing → /dashboard", () => {
+    assertRouteRedirect(readApp(), "/credits-billing", "/dashboard");
+    console.log("[deprecated-route-redirects] PASS /credits-billing → /dashboard");
   });
 
   test("/checkout → /cart", () => {
@@ -399,36 +436,36 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
     await assertRedirectsTo(page, "/optimize", "/concierge", "tier=ai");
   });
 
-  test("/service-providers → /discover (with ?tab=services)", async ({ page }) => {
-    await assertRedirectsTo(page, "/service-providers", "/discover", "tab=services");
+  test("/service-providers → /services", async ({ page }) => {
+    await assertRedirectsTo(page, "/service-providers", "/services");
   });
 
   test("/partner-with-us → /earn", async ({ page }) => {
     await assertRedirectsTo(page, "/partner-with-us", "/earn");
   });
 
-  test("/discover-experiences → /discover", async ({ page }) => {
-    await assertRedirectsTo(page, "/discover-experiences", "/discover");
+  test("/discover-experiences → /destinations", async ({ page }) => {
+    await assertRedirectsTo(page, "/discover-experiences", "/destinations");
   });
 
-  test("/spontaneous → /discover", async ({ page }) => {
-    await assertRedirectsTo(page, "/spontaneous", "/discover");
+  test("/spontaneous → /destinations", async ({ page }) => {
+    await assertRedirectsTo(page, "/spontaneous", "/destinations");
   });
 
   test("/create-trip → /experiences", async ({ page }) => {
     await assertRedirectsTo(page, "/create-trip", "/experiences");
   });
 
-  test("/help-me-decide → /discover", async ({ page }) => {
-    await assertRedirectsTo(page, "/help-me-decide", "/discover");
+  test("/help-me-decide → /destinations", async ({ page }) => {
+    await assertRedirectsTo(page, "/help-me-decide", "/destinations");
   });
 
-  test("/explore → /discover", async ({ page }) => {
-    await assertRedirectsTo(page, "/explore", "/discover");
+  test("/explore → /destinations", async ({ page }) => {
+    await assertRedirectsTo(page, "/explore", "/destinations");
   });
 
-  test("/browse → /discover", async ({ page }) => {
-    await assertRedirectsTo(page, "/browse", "/discover");
+  test("/browse → /destinations", async ({ page }) => {
+    await assertRedirectsTo(page, "/browse", "/destinations");
   });
 
   test("/travel-experts → /become-expert", async ({ page }) => {
@@ -441,6 +478,10 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
 
   test("/checkout → /cart", async ({ page }) => {
     await assertRedirectsTo(page, "/checkout", "/cart");
+  });
+
+  test("/credits-billing → /dashboard", async ({ page }) => {
+    await assertRedirectsTo(page, "/credits-billing", "/dashboard");
   });
 
   test("/city/tokyo → /discover/location/tokyo (parameterised)", async ({ page }) => {

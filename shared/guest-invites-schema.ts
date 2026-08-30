@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, jsonb, decimal, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, jsonb, decimal, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -108,7 +108,13 @@ export const guestTravelPlans = pgTable("guest_travel_plans", {
   // Metadata
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 001. Declared per the CLAUDE.md deploy-push rule: the publish-time drizzle push is
+  // authoritative over objects absent from the schema files and DROPS an index that exists only in
+  // migration SQL — and 001 is bootstrap-stamped (001-050), so it can never recreate it. One travel
+  // plan per invite; no WHERE in the migration, and invite_id is NOT NULL, so the index is full.
+  inviteUnique: uniqueIndex("idx_guest_travel_plans_invite_unique").on(table.inviteId),
+}));
 
 /**
  * Invite Template Messages

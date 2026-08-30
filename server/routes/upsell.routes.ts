@@ -956,16 +956,23 @@ router.post("/api/upsell/impression", async (req, res) => {
  * Marks ONLY the single most-recent matching impression — flipping every row in a
  * window would inflate click-through, the exact metric this instruments.
  */
+// tripId is OPTIONAL — the same posture as the impression sibling above. The
+// discover feed is public and tripless, so it POSTs { surface, offeringId } with
+// no tripId; requiring it here made EVERY discover Book-now click 400
+// (validation_failed) and record nothing, so discover click-through was
+// structurally zero. No auth for the same reason: the impression that this marks
+// clicked is itself written anonymously, so the click that closes the attribution
+// must be reachable anonymously too (it only flips an analytics boolean).
 const clickBodySchema = z.object({
-  tripId: z.string(),
+  tripId: z.string().optional(),
   surface: z.string(),
   offeringId: z.string(),
 });
 
-router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
+router.post("/api/upsell/click", async (req, res) => {
   try {
     const { tripId, surface, offeringId } = clickBodySchema.parse(req.body);
-    await markImpressionClicked(tripId, surface, offeringId);
+    await markImpressionClicked(tripId ?? null, surface, offeringId);
     res.json({ ok: true });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -992,6 +999,7 @@ router.get("/api/feed-composition-config", async (_req, res) => {
     const config = await getFeedCompositionConfig();
     res.json(config);
   } catch {
+    // Best-effort config load — serve safe defaults so the feed always renders.
     res.json(FEED_CONFIG_DEFAULTS);
   }
 });

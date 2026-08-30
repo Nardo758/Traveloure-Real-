@@ -19,6 +19,7 @@
  */
 
 import { Resend } from "resend";
+import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 
 let cachedClient: Resend | null = null;
 function getClient(): Resend | null {
@@ -99,6 +100,18 @@ export interface SendEmailResult {
  * it never throws into the caller.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  // Admin-controlled kill switch (/admin/system → "Email Notifications").
+  // Gates all system notification emails sent through this generic sender.
+  // Auth-critical emails (password reset, email verification) call Resend
+  // directly and are intentionally NOT gated by this flag.
+  const notificationsEnabled = await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
+  if (!notificationsEnabled) {
+    console.log(
+      `[email] sendEmail skipped — email_notifications_enabled=false (subject="${params.subject}")`
+    );
+    return { ok: false, error: "Email notifications are disabled by platform settings" };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
   const defaultReplyTo = process.env.EMAIL_REPLY_TO;
@@ -147,7 +160,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   }
 }
 
-interface BookingConfirmationParams {
+export interface BookingConfirmationParams {
   toEmail: string;
   userName: string;
   bookingId: string;
@@ -156,16 +169,16 @@ interface BookingConfirmationParams {
   confirmationCode: string;
 }
 
-export async function sendBookingConfirmationEmail(params: BookingConfirmationParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log(
-      "[email] RESEND_API_KEY not set — skipping booking confirmation email for booking",
-      params.bookingId
-    );
-    return;
-  }
-
+/**
+ * Build the subject/html/text payload for a booking confirmation email without
+ * sending it. Exported so email-outbox.service.ts can enqueue the payload
+ * without a circular dependency back into this module.
+ */
+export function buildBookingConfirmationEmailPayload(params: BookingConfirmationParams): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const greeting = params.userName ? `Hi ${escHtml(params.userName)},` : "Hi,";
   const myBookingsUrl = `${getAppBaseUrl()}/my-bookings`;
   const dateLine = params.bookingDate
@@ -220,17 +233,117 @@ export async function sendBookingConfirmationEmail(params: BookingConfirmationPa
     `View your bookings: ${myBookingsUrl}`,
   ].filter(line => line !== "").join("\n");
 
-  await client.emails.send({
-    from: getFromAddress(),
-    to: params.toEmail,
+  return {
     subject: `Your booking is confirmed — ${stripCrLf(params.bookingTitle)}`,
-    text,
     html,
-  });
+    text,
+  };
+}
 
-  console.log(
-    `[email] Booking confirmation sent to ${params.toEmail} for booking ${params.bookingId} (code: ${params.confirmationCode})`
-  );
+// ─── Occasion reminder (Plus scheduled draft) ────────────────────────────────
+// Ledger 2026-08-27-plus-is-delivery. One email per generated occasion draft, deep-linking to the
+// slip. The occasion_drafts ledger (notified_at) guards against a second send — this builder just
+// shapes the message. Go through enqueueEmail so the platform kill switch is honored and the send
+// is persisted/retried (there is no per-user email-preference table in this codebase today).
+export interface OccasionReminderParams {
+  firstName?: string | null;
+  occasionLabel: string;
+  homeCity: string;
+  tripId: string;
+  daysUntil: number;
+}
+
+export function buildOccasionReminderEmailPayload(params: OccasionReminderParams): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const tripUrl = `${getAppBaseUrl()}/trip/${encodeURIComponent(params.tripId)}?tab=itinerary`;
+  const label = escHtml(params.occasionLabel);
+  const city = escHtml(params.homeCity);
+  const when =
+    params.daysUntil <= 0
+      ? "is today"
+      : params.daysUntil === 1
+        ? "is tomorrow"
+        : `is in ${params.daysUntil} days`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">${label} ${when}</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        <strong>${label}</strong> ${when} — and a plan built for <strong>${city}</strong> is ready in your account.
+        We drafted it from your city so you can make the day yours with a few taps.
+      </p>
+      <a href="${tripUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View your plan
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're a Traveloure Plus member and added this occasion to your calendar.<br>
+        Open your plan at <a href="${tripUrl}" style="color: #FF385C;">${tripUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `${params.occasionLabel} ${when}`,
+    ``,
+    greeting,
+    ``,
+    `${params.occasionLabel} ${when} — and a plan built for ${params.homeCity} is ready in your account.`,
+    `We drafted it from your city so you can make the day yours.`,
+    ``,
+    `View your plan: ${tripUrl}`,
+  ].filter((line) => line !== "").join("\n");
+
+  return {
+    subject: `${stripCrLf(params.occasionLabel)} ${when} — a plan for ${stripCrLf(params.homeCity)} is ready`,
+    html,
+    text,
+  };
+}
+
+/**
+ * @deprecated Callers should use enqueueBookingConfirmationEmail from
+ * email-outbox.service.ts so failed sends are retried automatically.
+ * This function is retained for backward compatibility and direct use in
+ * contexts where the outbox is not appropriate (e.g. tests).
+ */
+export async function sendBookingConfirmationEmail(params: BookingConfirmationParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log(
+      "[email] RESEND_API_KEY not set — skipping booking confirmation email for booking",
+      params.bookingId
+    );
+    return;
+  }
+
+  const { subject, html, text } = buildBookingConfirmationEmailPayload(params);
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject,
+      text,
+      html,
+    });
+    console.log(
+      `[email] Booking confirmation sent to ${params.toEmail} for booking ${params.bookingId} (code: ${params.confirmationCode})`
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[email] sendBookingConfirmationEmail threw:", {
+      to: params.toEmail,
+      bookingId: params.bookingId,
+      error: message,
+    });
+  }
 }
 
 interface BookingAlertParams {
@@ -252,7 +365,8 @@ export async function sendBookingAlertEmail(params: BookingAlertParams): Promise
     return;
   }
 
-  const bookingsUrl = `${getAppBaseUrl()}/expert/bookings`;
+  // C5: /expert/bookings retired — new booking requests land on Inbox's Queue tab.
+  const bookingsUrl = `${getAppBaseUrl()}/expert/inbox`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -450,6 +564,240 @@ export async function sendEmailVerificationEmail(params: EmailVerificationParams
   console.log(`[email] Verification link sent to ${params.toEmail}`);
 }
 
+// ─── Booking Decline ────────────────────────────────────────────────────────
+
+export interface BookingDeclineEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  bookingTrackingNumber?: string | null;
+  /** Human-readable service/product title for the declined booking. */
+  serviceName?: string | null;
+  /** Decline reason provided by the expert/provider, or null if none given. */
+  declineReason?: string | null;
+}
+
+/**
+ * Sends a decline notification email to the traveler when an expert or provider
+ * rejects their booking request. The email surfaces the decline reason so the
+ * traveler does not have to check the in-app notification.
+ *
+ * Uses `sendEmail` so it respects the platform email-notifications kill switch.
+ */
+export async function sendBookingDeclineEmail(
+  params: BookingDeclineEmailParams
+): Promise<void> {
+  const greeting = params.travelerName
+    ? `Hi ${escHtml(params.travelerName)},`
+    : "Hi,";
+  const bookingLabel = params.bookingTrackingNumber
+    ? `booking ${escHtml(params.bookingTrackingNumber)}`
+    : "your booking";
+  const serviceLabel = params.serviceName ? escHtml(params.serviceName) : null;
+  const myBookingsUrl = `${getAppBaseUrl()}/bookings`;
+
+  const reasonBlock = params.declineReason
+    ? `<tr style="background: #FEF2F2;">
+         <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Reason</td>
+         <td style="padding: 12px 16px; color: #111827;">${escHtml(params.declineReason)}</td>
+       </tr>`
+    : "";
+  const reasonPlain = params.declineReason
+    ? `Reason:   ${params.declineReason}\n`
+    : "";
+
+  const serviceRow = serviceLabel
+    ? `<tr style="background: #F3F4F6;">
+         <td style="padding: 12px 16px; color: #6B7280;">Service</td>
+         <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${serviceLabel}</td>
+       </tr>`
+    : "";
+  const servicePlain = params.serviceName
+    ? `Service:  ${params.serviceName}\n`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Booking Declined</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Unfortunately, the provider was unable to accept ${bookingLabel}. No charge has been made.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+        ${serviceRow}
+        ${reasonBlock}
+      </table>
+      <p style="color: #374151;">
+        You can browse other services or contact our support team if you have questions.
+      </p>
+      <a href="${myBookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View My Bookings
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you made a booking request on Traveloure.<br>
+        View your bookings at <a href="${myBookingsUrl}" style="color: #FF385C;">${myBookingsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Booking Declined`,
+    ``,
+    greeting,
+    ``,
+    `Unfortunately, the provider was unable to accept ${
+      params.bookingTrackingNumber ? `booking ${params.bookingTrackingNumber}` : "your booking"
+    }. No charge has been made.`,
+    ``,
+    servicePlain.trimEnd(),
+    reasonPlain.trimEnd(),
+    `View your bookings: ${myBookingsUrl}`,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+
+  const subject = params.serviceName
+    ? `Your booking request for ${stripCrLf(params.serviceName)} was declined`
+    : "Your booking request was declined";
+
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+  });
+
+  if (!result.ok) {
+    console.warn(
+      `[email] sendBookingDeclineEmail failed for ${params.toEmail}:`,
+      result.error
+    );
+  }
+}
+
+// ─── Booking Cancellation with Refund ─────────────────────────────────────
+
+export interface BookingCancellationWithRefundEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  bookingTrackingNumber?: string | null;
+  serviceName?: string | null;
+  /** Refund amount in dollars (already paid booking, provider-initiated cancel). */
+  refundAmount: number;
+  /** Cancellation reason provided by the provider, or null if none given. */
+  cancellationReason?: string | null;
+}
+
+/**
+ * Sends a cancellation + full-refund notification email to the traveler when a
+ * provider cancels an already-paid booking. Unlike the decline email, this
+ * explicitly states that a full refund has been issued and names the amount.
+ *
+ * Uses `sendEmail` so it respects the platform email-notifications kill switch.
+ */
+export async function sendBookingCancellationWithRefundEmail(
+  params: BookingCancellationWithRefundEmailParams
+): Promise<void> {
+  const greeting = params.travelerName
+    ? `Hi ${escHtml(params.travelerName)},`
+    : "Hi,";
+  const bookingLabel = params.bookingTrackingNumber
+    ? `booking ${escHtml(params.bookingTrackingNumber)}`
+    : "your booking";
+  const serviceLabel = params.serviceName ? escHtml(params.serviceName) : null;
+  const myBookingsUrl = `${getAppBaseUrl()}/bookings`;
+  const refundStr = params.refundAmount.toFixed(2);
+
+  const reasonBlock = params.cancellationReason
+    ? `<tr style="background: #FEF2F2;">
+         <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Reason</td>
+         <td style="padding: 12px 16px; color: #111827;">${escHtml(params.cancellationReason)}</td>
+       </tr>`
+    : "";
+  const reasonPlain = params.cancellationReason
+    ? `Reason:   ${params.cancellationReason}\n`
+    : "";
+
+  const serviceRow = serviceLabel
+    ? `<tr style="background: #F3F4F6;">
+         <td style="padding: 12px 16px; color: #6B7280;">Service</td>
+         <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${serviceLabel}</td>
+       </tr>`
+    : "";
+  const servicePlain = params.serviceName
+    ? `Service:  ${params.serviceName}\n`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Booking Cancelled — Full Refund Issued</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        The provider has cancelled ${bookingLabel}. A full refund of
+        <strong>$${escHtml(refundStr)}</strong> has been issued to your original payment method.
+        Refunds typically appear within 5–10 business days depending on your bank.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+        ${serviceRow}
+        <tr>
+          <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Refund amount</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">$${escHtml(refundStr)}</td>
+        </tr>
+        ${reasonBlock}
+      </table>
+      <p style="color: #374151;">
+        You can browse other services or contact our support team if you have questions.
+      </p>
+      <a href="${myBookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View My Bookings
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you made a booking on Traveloure.<br>
+        View your bookings at <a href="${myBookingsUrl}" style="color: #FF385C;">${myBookingsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Booking Cancelled — Full Refund Issued`,
+    ``,
+    greeting,
+    ``,
+    `The provider has cancelled ${
+      params.bookingTrackingNumber ? `booking ${params.bookingTrackingNumber}` : "your booking"
+    }. A full refund of $${refundStr} has been issued to your original payment method.`,
+    ``,
+    servicePlain.trimEnd(),
+    `Refund amount: $${refundStr}`,
+    reasonPlain.trimEnd(),
+    ``,
+    `View your bookings: ${myBookingsUrl}`,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+
+  const subject = params.serviceName
+    ? `Your booking for ${stripCrLf(params.serviceName)} was cancelled — full refund issued`
+    : "Your booking was cancelled — full refund issued";
+
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+  });
+
+  if (!result.ok) {
+    console.warn(
+      `[email] sendBookingCancellationWithRefundEmail failed for ${params.toEmail}:`,
+      result.error
+    );
+  }
+}
+
 // ─── Admin Daily Digest ────────────────────────────────────────────────────
 
 interface DigestNotification {
@@ -472,12 +820,32 @@ interface MissedWebhook {
 }
 
 export interface ReconciliationMismatch {
-  type: "stripe_charge_no_booking" | "booking_no_stripe_charge";
+  /** One of shared/schema.ts `RECONCILIATION_EXCEPTION_KINDS` (ruling 40 widened this from the
+   *  two legacy-rail kinds to nine, seven of which are cart-rail classifications). Kept as a
+   *  plain string because this value is READ BACK OUT of an `admin_notifications.reason` JSON
+   *  blob — a union here would only pretend the parse was validated. */
+  type: string;
+  rail?: string;
   chargeId?: string;
   bookingId?: string;
   paymentIntentId?: string;
   amount?: number;
 }
+
+/** Plain-language digest labels for the drift vocabulary. Mirrors KIND_LABELS on the admin page.
+ *  An unknown kind falls back to the raw key rather than being mislabelled as a known one. */
+const RECONCILIATION_LABELS: Record<string, string> = {
+  pi_succeeded_no_booking: "Payment succeeded — NO booking exists",
+  pi_succeeded_claim_provisional: "Payment succeeded — booking still an unpromoted claim",
+  pi_succeeded_booking_voided: "Payment succeeded — booking is voided/terminal",
+  booking_confirmed_no_pi: "Booking says paid — no PaymentIntent at all",
+  booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
+  amount_mismatch: "Charged amount ≠ server-derived total",
+  refund_not_reversed: "Stripe refund with no reversal in the database",
+  payment_provenance_unverified: "PaymentIntent id the checkout never wrote — provenance unverifiable",
+  stripe_charge_no_booking: "Stripe charge — no booking (legacy rail)",
+  booking_no_stripe_charge: "Booking confirmed — no charge (legacy rail)",
+};
 
 interface AdminDigestParams {
   toEmail: string;
@@ -534,14 +902,16 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
 
   const reconRows = (params.reconciliationMismatches ?? [])
     .map((m) => {
-      const label =
-        m.type === "stripe_charge_no_booking"
-          ? "Stripe charge — no booking"
-          : "Booking confirmed — no charge";
+      // Ruling 40: the drift job now emits NINE classifications, not two. The old two-branch
+      // ternary labelled every unrecognised kind "Booking confirmed — no charge", which would
+      // have described an amount mismatch or an unreversed refund as something it is not — a
+      // detector whose ops surface mislabels the finding is worse than one that says nothing.
+      const label = RECONCILIATION_LABELS[m.type] ?? m.type;
       const ref =
-        m.type === "stripe_charge_no_booking"
-          ? `Charge: ${escHtml(m.chargeId) || "—"} · $${escHtml(String(m.amount ?? "?"))}`
-          : `Booking: ${escHtml(m.bookingId) || "—"} · PI: ${escHtml(m.paymentIntentId) || "—"}`;
+        m.chargeId && !m.bookingId
+          ? `Charge: ${escHtml(m.chargeId)} · $${escHtml(String(m.amount ?? "?"))}`
+          : `Booking: ${escHtml(m.bookingId) || "—"} · PI: ${escHtml(m.paymentIntentId) || "—"}` +
+            (m.amount != null ? ` · $${escHtml(String(m.amount))}` : "");
       return `<tr style="background:#FFF7ED">
         <td style="padding:8px 12px;color:#92400E;font-size:13px;font-weight:600">${label}</td>
         <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${ref}</td>
@@ -916,5 +1286,614 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
     console.log(`[email] Verification-decision (${params.decision}) email sent to ${params.toEmail}`);
   } catch (err) {
     console.error("[email] Verification-decision email failed (non-fatal):", err);
+  }
+}
+
+// ─── Expert application rejection email ───────────────────────────────────────
+
+interface ExpertApplicationApprovalParams {
+  toEmail: string;
+  firstName?: string | null;
+}
+
+/**
+ * Fire-and-forget email to an expert applicant when their application is
+ * approved. Congratulates them, explains the Stripe Connect next step, and
+ * links directly to /expert/money (the C8-renamed Earnings module). Never throws.
+ */
+export async function sendExpertApplicationApprovalEmail(
+  params: ExpertApplicationApprovalParams
+): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping expert approval email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const earningsUrl = `${getAppBaseUrl()}/expert/money`; // C8: Earnings → Money; old route redirects
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">You're approved as a Traveloure Expert! 🎉</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Congratulations — your application to join Traveloure as a local expert has been approved!
+        You can now create services, accept bookings, and earn money sharing your local knowledge.
+      </p>
+      <h3 style="color: #111827; margin-bottom: 8px;">Next step: set up payouts</h3>
+      <p style="color: #374151;">
+        To receive payments, you'll need to connect your Stripe account. It only takes a few
+        minutes — head to your earnings page to get started.
+      </p>
+      <a href="${earningsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Set Up Payouts
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your expert application on Traveloure was approved.<br>
+        Manage your earnings at <a href="${earningsUrl}" style="color: #FF385C;">${earningsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "You're approved as a Traveloure Expert! 🎉",
+    ``,
+    greeting,
+    ``,
+    "Congratulations — your application to join Traveloure as a local expert has been approved!",
+    "You can now create services, accept bookings, and earn money sharing your local knowledge.",
+    ``,
+    "Next step: set up payouts",
+    ``,
+    "To receive payments, connect your Stripe account — it only takes a few minutes:",
+    ``,
+    `Set up payouts: ${earningsUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure expert application has been approved!",
+      html,
+      text,
+    });
+    console.log(`[email] Expert application approval email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Expert application approval email failed (non-fatal):", err);
+  }
+}
+
+interface ExpertApplicationRejectionParams {
+  toEmail: string;
+  firstName?: string | null;
+  /** Optional rejection reason provided by the admin. */
+  rejectionMessage?: string | null;
+}
+
+/**
+ * Fire-and-forget email to an expert applicant when their application is
+ * rejected. Includes the admin's rejection reason (if any) and a link back
+ * to /expert/apply so they can revise and resubmit. Never throws.
+ */
+export async function sendExpertApplicationRejectionEmail(
+  params: ExpertApplicationRejectionParams
+): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping expert rejection email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const applyUrl = `${getAppBaseUrl()}/expert/apply`;
+  const reasonBlock =
+    params.rejectionMessage
+      ? `<p style="color:#374151;"><strong>Reviewer note:</strong> ${escHtml(params.rejectionMessage)}</p>`
+      : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Application not approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thank you for applying to join Traveloure as a local expert. After reviewing your
+        application, we're unable to approve it at this time.
+      </p>
+      ${reasonBlock}
+      <p style="color: #374151;">
+        You're welcome to update your details and reapply. Click the button below to return
+        to the application form.
+      </p>
+      <a href="${applyUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Reapply as an Expert
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you submitted an expert application on Traveloure.<br>
+        Apply again at <a href="${applyUrl}" style="color: #FF385C;">${applyUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "Application not approved",
+    ``,
+    greeting,
+    ``,
+    "Thank you for applying to join Traveloure as a local expert. After reviewing your application, we're unable to approve it at this time.",
+    params.rejectionMessage ? `\nReviewer note: ${params.rejectionMessage}` : "",
+    ``,
+    "You're welcome to update your details and reapply.",
+    ``,
+    `Reapply at: ${applyUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure expert application",
+      html,
+      text,
+    });
+    console.log(`[email] Expert application rejection email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Expert application rejection email failed (non-fatal):", err);
+  }
+}
+
+// ─── Provider application rejection email ─────────────────────────────────────
+
+interface ProviderApplicationRejectionParams {
+  toEmail: string;
+  firstName?: string | null;
+  rejectionMessage?: string | null;
+}
+
+/**
+ * Test-only seam. When a key is set here the corresponding function delegates
+ * to it instead of sending real email. Empty by default — no production impact.
+ */
+export const _emailTestHooks: {
+  sendProviderApplicationRejectionEmail?: (
+    params: ProviderApplicationRejectionParams
+  ) => Promise<void>;
+  sendProviderApplicationApprovalEmail?: (
+    params: ProviderApplicationApprovalParams
+  ) => Promise<void>;
+} = {};
+
+/**
+ * Fire-and-forget email to a provider applicant when their application is
+ * rejected. Includes the admin's rejection reason (if any) and a link back
+ * to /provider/apply so they can revise and resubmit. Never throws.
+ */
+export async function sendProviderApplicationRejectionEmail(
+  params: ProviderApplicationRejectionParams
+): Promise<void> {
+  if (_emailTestHooks.sendProviderApplicationRejectionEmail) {
+    return _emailTestHooks.sendProviderApplicationRejectionEmail(params);
+  }
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping provider rejection email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const applyUrl = `${getAppBaseUrl()}/provider/apply`;
+  const reasonBlock =
+    params.rejectionMessage
+      ? `<p style="color:#374151;"><strong>Reviewer note:</strong> ${escHtml(params.rejectionMessage)}</p>`
+      : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Application not approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thank you for applying to join Traveloure as a service provider. After reviewing your
+        application, we're unable to approve it at this time.
+      </p>
+      ${reasonBlock}
+      <p style="color: #374151;">
+        You're welcome to update your details and reapply. Click the button below to return
+        to the application form.
+      </p>
+      <a href="${applyUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Reapply as a Provider
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you submitted a provider application on Traveloure.<br>
+        Apply again at <a href="${applyUrl}" style="color: #FF385C;">${applyUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "Application not approved",
+    ``,
+    greeting,
+    ``,
+    "Thank you for applying to join Traveloure as a service provider. After reviewing your application, we're unable to approve it at this time.",
+    params.rejectionMessage ? `\nReviewer note: ${params.rejectionMessage}` : "",
+    ``,
+    "You're welcome to update your details and reapply.",
+    ``,
+    `Reapply at: ${applyUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure provider application",
+      html,
+      text,
+    });
+    console.log(`[email] Provider application rejection email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Provider application rejection email failed (non-fatal):", err);
+  }
+}
+
+// ─── Provider application approval email ──────────────────────────────────────
+
+interface ProviderApplicationApprovalParams {
+  toEmail: string;
+  firstName?: string | null;
+}
+
+/**
+ * Fire-and-forget email to a provider applicant when their application is
+ * approved. Congratulates them, explains the Stripe Connect next step, and
+ * links directly to /provider/money (C9: the Earnings module renamed Money;
+ * /provider/earnings redirects there). Never throws.
+ */
+export async function sendProviderApplicationApprovalEmail(
+  params: ProviderApplicationApprovalParams
+): Promise<void> {
+  if (_emailTestHooks.sendProviderApplicationApprovalEmail) {
+    return _emailTestHooks.sendProviderApplicationApprovalEmail(params);
+  }
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping provider approval email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const earningsUrl = `${getAppBaseUrl()}/provider/money`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">You're approved as a Traveloure Provider! 🎉</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Congratulations — your application to join Traveloure as a service provider has been approved!
+        You can now list services, accept bookings, and start earning on the platform.
+      </p>
+      <h3 style="color: #111827; margin-bottom: 8px;">Next step: set up payouts</h3>
+      <p style="color: #374151;">
+        To receive payments, you'll need to connect your Stripe account. It only takes a few
+        minutes — head to your earnings page to get started.
+      </p>
+      <a href="${earningsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Set Up Payouts
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your provider application on Traveloure was approved.<br>
+        Manage your earnings at <a href="${earningsUrl}" style="color: #FF385C;">${earningsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "You're approved as a Traveloure Provider! 🎉",
+    ``,
+    greeting,
+    ``,
+    "Congratulations — your application to join Traveloure as a service provider has been approved!",
+    "You can now list services, accept bookings, and start earning on the platform.",
+    ``,
+    "Next step: set up payouts",
+    ``,
+    "To receive payments, connect your Stripe account — it only takes a few minutes:",
+    ``,
+    `Set up payouts: ${earningsUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure provider application has been approved!",
+      html,
+      text,
+    });
+    console.log(`[email] Provider application approval email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Provider application approval email failed (non-fatal):", err);
+  }
+}
+
+// ─── Trip lifecycle emails (QA_PUNCH_LIST item 14 / Build map W3-B) ──────────────────────────
+//
+// A logged-out customer previously learned about a delivered plan / approval / suggestion ONLY
+// via the in-app bell notification — these four functions are the email channel for the same
+// four ratified events. Same transport/from-address/reply-to/honest-failure posture as every
+// function above: no RESEND_API_KEY -> silent skip (never a crash, never a fake "sent"); a send
+// failure is caught and logged, never thrown, so it can never fail the state transition it rides
+// beside. Deep links do NOT literally match the bell: email links point at `/trip/:id` (the raw
+// `data.workspacePath`), while the bell's link goes through `resolveNotificationLink` (client/src/
+// lib/notification-icons.tsx, ruling R-E), which rewrites every `/trip/`-prefixed workspacePath to
+// `/plans/:tripId` (SlipView) — so email lands on the Trip Card and the bell lands on the Slip.
+// CC-11 fix: PlanApprovalBanner now renders on both surfaces (PlanCard.tsx and SlipView.tsx), so
+// the delivery handshake (Approve / Request changes) is reachable from either deep link.
+//
+// Subject/body/deep-link are computed BEFORE the RESEND_API_KEY check (unlike the earlier
+// functions in this file, which build content only once a client exists) so that the no-key skip
+// log line still carries the rendered subject and link — this is what makes the deep-link content
+// provable in an environment with no key configured (see docs/planning/QA_PUNCH_LIST.md item 14).
+
+interface PlanDeliveredEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+}
+
+/**
+ * W3-B ①: plan DELIVERED -> customer email. Fired once, beside the existing bell-notification
+ * insert, only on the workspace-status `-> delivered` transition (never `in_review`).
+ */
+export async function sendPlanDeliveredEmail(params: PlanDeliveredEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const tripUrl = `${getAppBaseUrl()}/trip/${params.tripId}?tab=itinerary`;
+  const subject = "Your itinerary has been delivered";
+
+  console.log(`[email] sendPlanDeliveredEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping plan-delivered email for", params.toEmail);
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">Your itinerary has been delivered</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your expert marked your itinerary as complete. Take a look and let them know if it's
+        everything you wanted, or if you'd like any changes.
+      </p>
+      <a href="${tripUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View Your Itinerary
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your Traveloure trip plan was delivered by your expert.<br>
+        View it at <a href="${tripUrl}" style="color: #FF385C;">${tripUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your expert marked your itinerary as complete. Take a look and let them know if it's everything you wanted, or if you'd like any changes.`,
+    ``,
+    `View your itinerary: ${tripUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] Plan-delivered email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] Plan-delivered email failed (non-fatal):", err);
+  }
+}
+
+interface PlanApprovedEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+}
+
+/**
+ * W3-B ④: plan APPROVED -> expert email. Symmetric with sendPlanChangesRequestedEmail below —
+ * both ride the same /trips/:id/plan-review decision endpoint, just the opposite branch.
+ */
+export async function sendPlanApprovedEmail(params: PlanApprovedEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${params.tripId}`;
+  const subject = "Your delivered plan was approved";
+
+  console.log(`[email] sendPlanApprovedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping plan-approved email for", params.toEmail);
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">Your delivered plan was approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your client approved the plan you delivered for their trip. No further action is needed
+        unless they reach out with new requests.
+      </p>
+      <a href="${workspaceUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open Workspace
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're an expert on Traveloure.<br>
+        Open the trip workspace at <a href="${workspaceUrl}" style="color: #FF385C;">${workspaceUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your client approved the plan you delivered for their trip. No further action is needed unless they reach out with new requests.`,
+    ``,
+    `Open workspace: ${workspaceUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] Plan-approved email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] Plan-approved email failed (non-fatal):", err);
+  }
+}
+
+interface PlanChangesRequestedEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+  note?: string | null;
+}
+
+/**
+ * W3-B ②: CHANGES REQUESTED -> expert email.
+ */
+export async function sendPlanChangesRequestedEmail(params: PlanChangesRequestedEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${params.tripId}`;
+  const subject = "Changes requested on your delivered plan";
+  const note = params.note?.trim() || null;
+
+  console.log(`[email] sendPlanChangesRequestedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping plan-changes-requested email for", params.toEmail);
+    return;
+  }
+
+  const noteBlock = note
+    ? `<p style="color:#374151;"><strong>Client note:</strong> ${escHtml(note)}</p>`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Changes requested on your delivered plan</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your client sent your delivered plan back for changes.
+      </p>
+      ${noteBlock}
+      <a href="${workspaceUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open Workspace
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're an expert on Traveloure.<br>
+        Open the trip workspace at <a href="${workspaceUrl}" style="color: #FF385C;">${workspaceUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your client sent your delivered plan back for changes.`,
+    note ? `\nClient note: ${note}` : "",
+    ``,
+    `Open workspace: ${workspaceUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] Plan-changes-requested email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] Plan-changes-requested email failed (non-fatal):", err);
+  }
+}
+
+interface NewSuggestionEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+  suggestionTitle: string;
+}
+
+/**
+ * W3-B ③: POST-APPROVAL suggestion created -> customer email. The caller is responsible for
+ * only invoking this when the advisor row's `planApprovalStatus === 'approved'` — an
+ * in-planning (pre-approval) suggestion stays bell-only, deliberately (see the call site in
+ * server/routes/booking-actions.ts). This function itself does not re-check that gate.
+ */
+export async function sendNewSuggestionEmail(params: NewSuggestionEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const tripUrl = `${getAppBaseUrl()}/trip/${params.tripId}?tab=itinerary`;
+  const subject = "New suggestion from your expert";
+
+  console.log(`[email] sendNewSuggestionEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping new-suggestion email for", params.toEmail);
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">New suggestion from your expert</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your expert suggested "${escHtml(params.suggestionTitle)}" for your trip.
+      </p>
+      <a href="${tripUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View Suggestion
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your Traveloure trip has an approved plan and your expert
+        added a new suggestion.<br>
+        View it at <a href="${tripUrl}" style="color: #FF385C;">${tripUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your expert suggested "${params.suggestionTitle}" for your trip.`,
+    ``,
+    `View it: ${tripUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] New-suggestion email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] New-suggestion email failed (non-fatal):", err);
   }
 }

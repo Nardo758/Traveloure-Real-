@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +16,7 @@ import {
   Bot,
   Map,
   CreditCard,
-  HeadphonesIcon,
+  Share2,
   ArrowRight,
   CheckCircle,
   Zap,
@@ -47,8 +48,8 @@ const mainFeatures = [
       "Connect with verified local experts who know their destinations inside out. Get insider tips and authentic experiences you won't find in guidebooks.",
     icon: Users,
     highlights: [
-      "500+ verified experts",
-      "50+ countries covered",
+      "Reviewed before they can list",
+      "Vetted for deep local knowledge",
       "Direct messaging",
       "Custom recommendations",
     ],
@@ -59,10 +60,10 @@ const mainFeatures = [
       "Book activities, accommodations, and services all in one place. No more juggling multiple tabs and apps.",
     icon: Calendar,
     highlights: [
-      "One-click booking",
-      "Secure payments",
-      "Instant confirmation",
-      "Easy modifications",
+      "Everything in one basket",
+      "Secure card payments",
+      "Booking status you can track",
+      "Cancellation policy on every listing",
     ],
   },
 ];
@@ -74,23 +75,23 @@ const additionalFeatures = [
     icon: MessageSquare,
   },
   {
-    title: "Global Coverage",
-    description: "Access experts and experiences in 50+ countries worldwide",
+    title: "Browse by Destination",
+    description: "Find experts and experiences in the destinations we cover",
     icon: Globe,
   },
   {
     title: "Verified Providers",
-    description: "All experts and providers undergo thorough verification",
+    description: "Every expert and provider is reviewed before they can list",
     icon: Shield,
   },
   {
-    title: "24/7 Support",
-    description: "Our support team is available around the clock",
-    icon: HeadphonesIcon,
+    title: "Shareable Trips",
+    description: "Send your itinerary to your travel group with a single link",
+    icon: Share2,
   },
   {
-    title: "Flexible Payments",
-    description: "Pay with credit card, PayPal, or Apple Pay",
+    title: "Secure Payments",
+    description: "Card payments handled by Stripe — we never store your card",
     icon: CreditCard,
   },
   {
@@ -101,6 +102,7 @@ const additionalFeatures = [
 ];
 
 export default function FeaturesPage() {
+  const { open: openPlanning } = usePlanning();
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
   }>({ queryKey: ["/api/platform/stats"] });
@@ -136,15 +138,14 @@ export default function FeaturesPage() {
               gives you all the tools to create unforgettable travel experiences.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/discover">
-                <Button
-                  size="lg"
-                  className="bg-primary hover:bg-primary/90 text-white px-8"
-                  data-testid="button-start-planning"
-                >
-                  Start Planning <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
+              <Button
+                size="lg"
+                className="bg-primary hover:bg-primary/90 text-white px-8"
+                onClick={() => openPlanning()}
+                data-testid="button-start-planning"
+              >
+                Start Planning <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
               <Link href="/experts">
                 <Button
                   size="lg"

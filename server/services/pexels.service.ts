@@ -1,5 +1,6 @@
 // Pexels API Service for fetching destination photos and videos
 // API Docs: https://www.pexels.com/api/documentation/
+import { reportProviderResult, outcomeFromHttpStatus } from "./provider-health.service";
 
 interface PexelsPhoto {
   id: number;
@@ -125,7 +126,9 @@ class PexelsService {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Pexels API error: ${response.status} - ${error}`);
+      const err = new Error(`Pexels API error: ${response.status} - ${error}`) as Error & { status?: number };
+      err.status = response.status;
+      throw err;
     }
 
     return response.json();
@@ -151,8 +154,11 @@ class PexelsService {
         size,
       });
 
+      reportProviderResult("pexels", response.photos.length > 0 ? "ok" : "empty");
       return response.photos.map((photo) => this.transformPhoto(photo));
     } catch (error) {
+      const status = (error as any)?.status;
+      reportProviderResult("pexels", status ? outcomeFromHttpStatus(status) : "error", error instanceof Error ? error.message : String(error));
       console.error(`Pexels photo search error for "${query}":`, error);
       return [];
     }

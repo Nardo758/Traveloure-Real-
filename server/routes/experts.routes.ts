@@ -1,4 +1,7 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
+import { isProviderRole } from "@shared/roles";
+import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
@@ -7,6 +10,10 @@ import { db } from "../db";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { createRateLimiter } from "../infrastructure/rate-limiter";
+// Ledger 90 (FP-5, S2): the effective payout threshold is resolved by ONE helper, shared with
+// POST /api/payouts/request — so the Money page's copy and the server's refusal cannot diverge.
+import { MIN_PAYOUT_CENTS, effectivePayoutMinimumCents } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import {
   getLocalExpertFormByUserId, getServiceProviderFormByUserId, getProviderVerificationStatus,
@@ -22,7 +29,7 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
-  aiBlueprints, vendors, insertVendorSchema,
+  aiBlueprints, vendors, insertVendorSchema, expertVendorCoordination,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
@@ -48,7 +55,6 @@ import {
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
-import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -84,10 +90,11 @@ import {
   insertProviderAvailabilityScheduleSchema,
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
+  // Read-only, for the audit-logged admin override on the booking-request respond gate
+  // (resolving the row's REAL owner so the storage-layer owner predicate still applies).
+  providerBookingRequests,
 } from "@shared/schema";
 import {
-  EXPERT_SHARE_RATE,
-  PLATFORM_FEE_RATE,
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
@@ -168,147 +175,30 @@ function resolveSlug(slug: string): string {
   return slugAliases[slug] || slug;
 }
 
-router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+/**
+ * Resolves an `expert_vendor_coordination` row to the trip it belongs to, so the
+ * `:vendorId`-scoped handlers (PUT/DELETE) can run the SAME per-trip authorization as their
+ * `:tripId`-scoped siblings. `expert_vendor_coordination.trip_id` is NOT NULL with an
+ * `ON DELETE CASCADE` FK to `trips` (shared/schema.ts), so every vendor row has exactly one
+ * authoritative trip — no linkage had to be invented.
+ *
+ * Returns null when no such vendor row exists; callers must NOT treat that as authorized.
+ */
+async function getVendorCoordinationTripId(vendorId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ tripId: expertVendorCoordination.tripId })
+    .from(expertVendorCoordination)
+    .where(eq(expertVendorCoordination.id, vendorId))
+    .limit(1);
+  return row?.tripId ?? null;
+}
 
-      // Verify caller is an approved expert — non-experts cannot self-promote
-      const form = await storage.getLocalExpertForm(userId);
-      if (!form) {
-        return res.status(403).json({ message: "No expert application found" });
-      }
-      if (form.status !== "approved") {
-        return res.status(403).json({ message: "Only approved experts can change their role" });
-      }
 
-      const { expertType } = req.body;
-      const validTypes = ["travel_expert", "local_expert", "event_planner", "executive_assistant"];
-      if (!expertType || !validTypes.includes(expertType)) {
-        return res.status(400).json({ message: "Invalid expert type" });
-      }
 
-      // Local Expert requires specific vetting — only allow if already a local_expert
-      const currentType = form.expertType;
-      if (expertType === "local_expert" && currentType !== "local_expert") {
-        return res.status(403).json({
-          message: "Switching to Local Expert requires admin review. Please contact support to have your application re-evaluated.",
-          requiresReview: true,
-        });
-      }
-
-      await storage.updateLocalExpertFormType(userId, expertType);
-      res.json({ success: true, expertType });
-    } catch (err) {
-      console.error("Error updating expert role:", err);
-      res.status(500).json({ message: "Failed to update role" });
-    }
-  });
-
-  // PATCH /api/expert/profile-notes — Save expert's notes style description
-
-router.get("/api/expert/service-templates", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-
-      // Resolve the expert's role from their application form
-      const formRow = await db
-        .select({ expertType: localExpertForms.expertType })
-        .from(localExpertForms)
-        .where(eq(localExpertForms.userId, userId))
-        .then((r) => r[0]);
-
-      const expertRole = formRow?.expertType ?? null; // null = no form submitted yet
-
-      // expertId and isActive columns dropped in migration 013; all ESO rows are platform templates.
-      // Filter by targetRoles only.
-      const rows = await db
-        .select()
-        .from(expertServiceOfferings)
-        .where(
-          or(
-            isNull(expertServiceOfferings.targetRoles),
-            expertRole
-              ? sql`${expertRole} = ANY(${expertServiceOfferings.targetRoles})`
-              : sql`false`
-          )
-        )
-        .orderBy(expertServiceOfferings.sortOrder);
-
-      const ROLE_LABELS: Record<string, string> = {
-        local_expert:  "Local Expert",
-        travel_expert: "Travel Advisor",
-        event_planner: "Event Planner",
-        executive_assistant: "Executive Assistant",
-      };
-
-      const templates = rows.map((o) => {
-        const isRoleSpecific =
-          Array.isArray(o.targetRoles) && o.targetRoles.length > 0;
-        return {
-          id: o.id,
-          title: o.name,
-          description: o.description,
-          categoryId: null,
-          serviceType: null,
-          deliveryMethod: null,
-          deliveryTimeframe: null,
-          suggestedPrice: o.price,
-          requirements: null,
-          whatIncluded: null,
-          isActive: o.isDefault ?? true,
-          sortOrder: o.sortOrder,
-          createdAt: o.createdAt,
-          targetRoles: o.targetRoles ?? [],
-          roleBadge: isRoleSpecific && expertRole
-            ? ROLE_LABELS[expertRole] ?? expertRole
-            : null,
-        };
-      });
-
-      res.json(templates);
-    } catch (err) {
-      console.error("Error fetching expert service templates:", err);
-      res.status(500).json({ message: "Failed to fetch service templates" });
-    }
-  });
-
-  // GET /api/expert/role — returns the expert's role type and a human-readable label
-  // Used by the UI to show the role callout even when no role-specific templates exist yet.
-
-router.get("/api/expert/role", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-
-      const formRow = await db
-        .select({ expertType: localExpertForms.expertType })
-        .from(localExpertForms)
-        .where(eq(localExpertForms.userId, userId))
-        .then((r) => r[0]);
-
-      const expertRole = formRow?.expertType ?? null;
-
-      const ROLE_LABELS: Record<string, string> = {
-        local_expert:        "Local Expert",
-        travel_expert:       "Travel Advisor",
-        event_planner:       "Event Planner",
-        executive_assistant: "Executive Assistant",
-      };
-
-      res.json({
-        role:      expertRole,
-        roleLabel: expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
-      });
-    } catch (err) {
-      console.error("Error fetching expert role:", err);
-      res.status(500).json({ message: "Failed to fetch expert role" });
-    }
-  });
-
-  // Create service from template
 
 router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
@@ -320,8 +210,15 @@ router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const summary = await storage.getProviderEarningsSummary(userId);
+      // Ledger 90 (FP-5, S2): the EFFECTIVE payout threshold, server-derived, so the Money page
+      // can state one number instead of printing a hardcoded "$10.00" the server may not be the
+      // one enforcing. `effective` = max(platform floor, the earner's own Settings minimum) —
+      // computed by the same helper `POST /api/payouts/request` gates on, so the button's copy and
+      // the server's refusal can never disagree. §14: read from the session user's own row only.
+      const settingsRow = await storage.getProviderSettings(userId); // money-derive-ok: own settings row
+      const effectiveMinimumCents = effectivePayoutMinimumCents(settingsRow?.minimumPayoutAmount);
       // Return both legacy field names and the names the payouts UI expects
       res.json({
         ...summary,
@@ -329,6 +226,11 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
         availableForPayout: summary.available,
         pendingPayout: summary.pending,
         commissionRate: summary.total > 0 ? (summary.paidOut / summary.total) : 0,
+        payoutMinimum: {
+          platformFloorCents: MIN_PAYOUT_CENTS,
+          effectiveCents: effectiveMinimumCents,
+          source: effectiveMinimumCents > MIN_PAYOUT_CENTS ? "provider_setting" : "platform_floor",
+        },
       });
     } catch (error: any) {
       console.error("Provider earnings summary error:", error);
@@ -339,7 +241,7 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
 
 router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
@@ -354,7 +256,7 @@ router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) =
 
 router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
@@ -369,12 +271,19 @@ router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => 
 
 router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): the platform-role check above is NOT authorization —
+      // it only proves the caller is *an* expert, not an expert on THIS trip. Without the canonical
+      // per-trip gate any expert account could read any traveler's anchors/energy/vendor set.
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/expert/trips/:tripId/constraints",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
@@ -418,12 +327,17 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
 
 router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): per-trip authorization, not just "is an expert".
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/expert/trips/:tripId/vendors",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendors = await storage.getVendorCoordination(req.params.tripId);
       const confirmed = vendors.filter(v => v.status === 'confirmed' || v.status === 'contract_signed');
       const pending = vendors.filter(v => v.status === 'pending' || v.status === 'contacted');
@@ -436,12 +350,18 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
 
 router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): per-trip authorization BEFORE the write, so an
+      // unassigned expert cannot plant vendor records on another traveler's trip.
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/expert/trips/:tripId/vendors",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorInput = z.object({
         vendorName: z.string().min(1).max(255),
         serviceType: z.string().min(1).max(100),
@@ -469,12 +389,21 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
 
 router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): there is no :tripId in this path, so resolve the
+      // vendor row to its OWNING trip and authorize THAT trip. A vendor id that does not exist is
+      // never authorized (404 below, matching this handler's existing not-found convention).
+      const vendorTripId = await getVendorCoordinationTripId(req.params.vendorId);
+      if (!vendorTripId) return res.status(404).json({ message: "Vendor not found" });
+      const authError = await authorizeTripLogistics(
+        vendorTripId, userId, "PUT /api/expert/vendors/:vendorId",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorUpdateInput = z.object({
         vendorName: z.string().min(1).max(255).optional(),
         serviceType: z.string().min(1).max(100).optional(),
@@ -498,13 +427,24 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
 
 router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
-      await storage.deleteVendorCoordination(req.params.vendorId);
+      // SECURITY (§13 trip-data IDOR class): resolve the vendor row to its OWNING trip and
+      // authorize THAT trip before the destructive delete. An unknown vendor id keeps this
+      // handler's existing idempotent-delete response (200 {success:true}) — nothing is deleted
+      // and no existence oracle is introduced — but it is NEVER treated as authorization.
+      const vendorTripId = await getVendorCoordinationTripId(req.params.vendorId);
+      if (vendorTripId) {
+        const authError = await authorizeTripLogistics(
+          vendorTripId, userId, "DELETE /api/expert/vendors/:vendorId",
+        );
+        if (authError) return res.status(authError.status).json({ message: authError.message });
+        await storage.deleteVendorCoordination(req.params.vendorId);
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete vendor", error: error.message });
@@ -523,10 +463,10 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
 
 router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const blackoutInput = z.object({
@@ -550,13 +490,34 @@ router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) =>
 
 router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
-      await storage.deleteProviderBlackoutDate(req.params.id);
+      // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
+      // ROLE STRING only and then call `storage.deleteProviderBlackoutDate(id)`, which filtered
+      // on the id alone — so ANY provider could delete ANY other provider's blackout row
+      // (proven: provider-2 deleted provider-1's row). The owner predicate now lives in the
+      // storage WHERE clause; here we only decide WHICH owner scope the caller may act in.
+      //
+      // Non-admin: the scope is the session user, full stop — a provider can only ever delete
+      // their own row. Admin: preserved as an explicit, audit-logged override that resolves the
+      // row's REAL owner and passes it through (so the data-layer predicate still applies rather
+      // than being bypassed). A row that does not exist and a row the caller does not own return
+      // the SAME 404 — no cross-provider existence oracle.
+      let ownerScope = userId as string;
+      if (user.role === "admin") {
+        const row = await storage.getProviderBlackoutDateById(req.params.id);
+        if (!row) return res.status(404).json({ message: "Blackout date not found" });
+        ownerScope = row.providerId;
+        console.log(
+          `[audit] admin cross-provider blackout delete actor=${userId} providerId=${ownerScope} blackoutId=${req.params.id}`,
+        );
+      }
+      const deleted = await storage.deleteProviderBlackoutDate(req.params.id, ownerScope);
+      if (!deleted) return res.status(404).json({ message: "Blackout date not found" });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete blackout date", error: error.message });
@@ -568,10 +529,10 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
 
 router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const requests = await storage.getBookingRequests(userId);
@@ -584,10 +545,10 @@ router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) =
 
 router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const responseInput = z.object({
@@ -595,7 +556,32 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
         counterOffer: z.string().optional().nullable(),
         providerResponse: z.string().max(2000).optional(),
       }).parse(req.body);
-      const updated = await storage.updateBookingRequest(req.params.requestId, {
+      // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
+      // ROLE STRING only and then call `storage.updateBookingRequest(id, …)`, which filtered on
+      // the id alone — so provider-2 could ACCEPT provider-1's booking request, taking a real
+      // business decision on another merchant's behalf (proven). The owner predicate now lives
+      // in the storage WHERE clause; here we only decide WHICH owner scope the caller may act in.
+      //
+      // Non-admin: the scope is the session user, full stop — so the live consumer
+      // (client/src/components/logistics/provider-booking-context.tsx on /provider/dashboard)
+      // keeps working unchanged for the row's real owner. Admin: preserved as an explicit,
+      // audit-logged override that resolves the row's REAL owner and passes it through, so the
+      // data-layer predicate still applies rather than being bypassed. A request that does not
+      // exist and one the caller does not own both return the SAME 404 — no existence oracle.
+      let ownerScope = userId as string;
+      if (user.role === "admin") {
+        const [row] = await db
+          .select({ providerId: providerBookingRequests.providerId })
+          .from(providerBookingRequests)
+          .where(eq(providerBookingRequests.id, req.params.requestId))
+          .limit(1);
+        if (!row) return res.status(404).json({ message: "Request not found" });
+        ownerScope = row.providerId;
+        console.log(
+          `[audit] admin cross-provider booking-request respond actor=${userId} providerId=${ownerScope} requestId=${req.params.requestId}`,
+        );
+      }
+      const updated = await storage.updateBookingRequest(req.params.requestId, ownerScope, {
         status: responseInput.status,
         counterOffer: responseInput.counterOffer || null,
         providerResponse: responseInput.providerResponse,
@@ -632,7 +618,7 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
 
 router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const rows = await db
         .select({
           trip_id: tripExpertAdvisors.tripId,
@@ -676,83 +662,32 @@ router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
   // === Trip Commission ===
 
 
-  // ============================================================
-  // LOCAL EXPERT KNOWLEDGE NUGGETS
-  // ============================================================
+  // Knowledge-nugget CRUD ported to the MOUNTED server/routes/expert-console.routes.ts
+  // (sidebar-audit repair, 2026-07-25) — do not re-add handlers here (§9: no stale twins).
 
-  // GET /api/expert/knowledge-nuggets — list own nuggets
-
-router.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
-    try {
-      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
-      res.json(await getLocalKnowledgeNuggets(expertId));
-    } catch (err) {
-      console.error("[Knowledge Nuggets] list error:", err);
-      res.status(500).json({ message: "Failed to fetch knowledge nuggets" });
-    }
-  });
-
-  // POST /api/expert/knowledge-nuggets — create nugget
-
-router.post("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
-    try {
-      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
-      const parsed = insertLocalKnowledgeNuggetSchema.safeParse({ ...req.body, expertUserId: expertId });
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
-      }
-      res.status(201).json(await createLocalKnowledgeNugget(parsed.data));
-    } catch (err) {
-      console.error("[Knowledge Nuggets] create error:", err);
-      res.status(500).json({ message: "Failed to create knowledge nugget" });
-    }
-  });
-
-  // PATCH /api/expert/knowledge-nuggets/:id — update own nugget
-
-router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
-    try {
-      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
-      const { id } = req.params;
-      const existing = await getLocalKnowledgeNuggetById(id, expertId);
-      if (!existing) return res.status(404).json({ message: "Nugget not found" });
-      const allowed = ["nuggetType", "city", "linkedPoi", "linkedNeighbourhood", "insight", "targetAudience", "notFor", "seasonality"] as const;
-      const updates: Record<string, any> = {};
-      for (const key of allowed) {
-        if (key in req.body) updates[key] = req.body[key];
-      }
-      updates.updatedAt = new Date();
-      res.json(await updateLocalKnowledgeNugget(id, updates));
-    } catch (err) {
-      console.error("[Knowledge Nuggets] update error:", err);
-      res.status(500).json({ message: "Failed to update knowledge nugget" });
-    }
-  });
-
-  // DELETE /api/expert/knowledge-nuggets/:id — delete own nugget
-
-router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
-    try {
-      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
-      const { id } = req.params;
-      const existing = await getLocalKnowledgeNuggetById(id, expertId);
-      if (!existing) return res.status(404).json({ message: "Nugget not found" });
-      await deleteLocalKnowledgeNugget(id);
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[Knowledge Nuggets] delete error:", err);
-      res.status(500).json({ message: "Failed to delete knowledge nugget" });
-    }
-  });
 
   // GET /api/admin/local-experts/nugget-counts — nugget count per local expert
 
-router.post("/api/visa/requirements", async (req, res) => {
+// Rate limit for the visa lookup below. This replaces a reference to an undefined
+// `visaRateLimit(ip)` — the name existed nowhere in the codebase, so every call to this
+// PUBLIC, UNAUTHENTICATED endpoint threw a ReferenceError before it did anything (the same
+// shape as the undefined `requireProviderRole` §9 records). The throttle was clearly
+// intended — the handler falls through to a cache-miss AI/external lookup, i.e. real spend
+// on an unauthenticated route — so it is implemented with the real primitive rather than
+// deleted. Middleware, because that is what createRateLimiter returns; the hand-rolled
+// `if (limiter(ip))` shape it was written against does not exist.
+const visaRequirementsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  keyGenerator: (req) =>
+    `visa-requirements:${(req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown"}`,
+  handler: (_req, res) => {
+    res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
+  },
+});
+
+router.post("/api/visa/requirements", visaRequirementsLimiter, async (req, res) => {
     try {
-      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
-      if (visaRateLimit(ip)) {
-        return res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
-      }
       const { passportCountry, destinationCountry } = req.body;
       if (!passportCountry || !destinationCountry) {
         return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
@@ -875,9 +810,14 @@ router.get("/api/visa/experts", async (req, res) => {
 
 router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {
-      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      // SECURITY (migration 157): `expertId` was computed here and then never passed, so this
+      // returned the 20 most recent contracts PLATFORM-WIDE — other earners' service names,
+      // client destinations and amounts — to any authenticated caller. It is now the required
+      // first argument, so the scope is visible at the call site and the compiler enforces it.
+      const expertId = getUserId(req)!;
+      if (!expertId) return res.status(401).json({ message: "Not authenticated" });
       const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
-      res.json(await getRecentExpertContracts(limit));
+      res.json(await getRecentExpertContracts(expertId, limit));
     } catch (err) {
       console.error("[Expert] getContracts error:", err);
       res.status(500).json({ message: "Failed to fetch contracts" });
@@ -889,7 +829,7 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
   // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
   const requireAdminLocal = async (req: any, res: any, next: any) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-    const role = await getUserRole(req.user?.claims?.sub);
+    const role = await getUserRole(getUserId(req)!);
     if (role !== "admin") return res.status(403).json({ message: "Admin access required" });
     next();
   };

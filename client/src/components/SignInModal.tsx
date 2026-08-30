@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import { LogIn, Mail, Lock, User, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRoleHomePath } from "@/lib/role-utils";
+import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
 interface SignInModalProps {
   open: boolean;
@@ -26,15 +28,24 @@ interface SignInModalProps {
 export function SignInModal({
   open,
   onOpenChange,
-  title = "Sign in to continue",
-  description = "Create an account or sign in to access this feature and personalize your travel experience.",
+  title: titleProp,
+  description: descriptionProp,
   returnTo,
 }: SignInModalProps) {
+  const { t } = useTranslation("auth");
+  // Ruling 60 Phase A: the sign-in title/description are OVERRIDABLE by the caller (a
+  // context-specific prompt like "Sign in to save this trip"). Only the DEFAULTS are chrome and
+  // therefore translated — a caller-supplied string is passed through untouched, because the
+  // platform cannot translate copy it did not author.
+  const title = titleProp ?? t("modal.titleSignInDefault");
+  const description = descriptionProp ?? t("modal.descSignInDefault");
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
+  const [authError, setAuthError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -43,6 +54,9 @@ export function SignInModal({
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Clear inline error whenever the user switches sign-in mode
+  useEffect(() => { setAuthError(null); }, [mode]);
 
   const migrateGuestCart = async () => {
     try {
@@ -133,13 +147,16 @@ export function SignInModal({
       if (sessionReturnTo) sessionStorage.removeItem("traveloure_return_to");
 
       const role = data.user?.role ?? "user";
-      window.location.href = returnTo ?? sessionReturnTo ?? getRoleHomePath(role);
+      // Sanitize at redirect time so a crafted returnTo (e.g. "/\evil.com")
+      // can never navigate off-site, regardless of where the value came from.
+      const safeDest =
+        sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(sessionReturnTo);
+      window.location.href = safeDest ?? getRoleHomePath(role);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Something went wrong",
-        variant: "destructive",
-      });
+      const msg = error.message || "Something went wrong";
+      // TEST 10 — set in-DOM error for aria-live announcement; also toast for visual users
+      setAuthError(msg);
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -178,10 +195,10 @@ export function SignInModal({
             <LogIn className="h-6 w-6 text-primary" />
           </div>
           <DialogTitle className="text-xl" data-testid="text-sign-in-title">
-            {mode === "reset" ? "Reset your password" : mode === "signin" ? title : "Create your account"}
+            {mode === "reset" ? t("modal.titleReset") : mode === "signin" ? title : t("modal.titleSignup")}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {mode === "reset" ? "Enter your email and we'll send you a reset link." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
+            {mode === "reset" ? t("modal.descReset") : mode === "signin" ? description : t("modal.descSignup")}
           </DialogDescription>
         </DialogHeader>
 
@@ -190,30 +207,44 @@ export function SignInModal({
             <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
               <Mail className="h-6 w-6 text-green-600" />
             </div>
-            <p className="font-medium text-gray-900">Check your inbox</p>
-            <p className="text-sm text-muted-foreground">
-              If that email is registered, we've sent a reset link. It expires in 60 minutes.
-            </p>
+            <p className="font-medium text-gray-900">{t("modal.resetSentTitle")}</p>
+            <p className="text-sm text-muted-foreground">{t("modal.resetSentBody")}</p>
             <button
               type="button"
               className="text-sm text-primary hover:underline"
               onClick={() => { setResetSent(false); setMode("signin"); }}
               data-testid="link-back-signin-sent"
             >
-              Back to Sign In
+              {t("modal.backToSignIn")}
             </button>
           </div>
         ) : (
-          <form onSubmit={mode === "reset" ? handleForgotPassword : handleSubmit} className="space-y-4 py-4">
+          <form
+            onSubmit={mode === "reset" ? handleForgotPassword : handleSubmit}
+            className="space-y-4 py-4"
+            onChange={() => setAuthError(null)}
+          >
+            {/* TEST 10 — aria-live="assertive" announces auth errors to screen readers immediately */}
+            {authError && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2"
+                data-testid="text-auth-error"
+              >
+                {authError}
+              </div>
+            )}
+
             {mode === "signup" && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
+                  <Label htmlFor="firstName">{t("fields.firstName")}</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="firstName"
-                      placeholder="John"
+                      placeholder={t("fields.firstNamePlaceholder")}
                       className="pl-9"
                       value={formData.firstName}
                       onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
@@ -223,12 +254,12 @@ export function SignInModal({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label htmlFor="lastName">{t("fields.lastName")}</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="lastName"
-                      placeholder="Doe"
+                      placeholder={t("fields.lastNamePlaceholder")}
                       className="pl-9"
                       value={formData.lastName}
                       onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
@@ -241,13 +272,13 @@ export function SignInModal({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("fields.email")}</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder={t("fields.emailPlaceholder")}
                   className="pl-9"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -259,13 +290,13 @@ export function SignInModal({
 
             {mode !== "reset" && (
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("fields.password")}</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
                     type="password"
-                    placeholder={mode === "signup" ? "Min 8 characters" : "••••••••"}
+                    placeholder={mode === "signup" ? t("fields.passwordPlaceholderSignup") : t("fields.passwordPlaceholderSignin")}
                     className="pl-9"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -281,7 +312,7 @@ export function SignInModal({
                     onClick={() => setMode("reset")}
                     data-testid="link-forgot-password"
                   >
-                    Forgot password?
+                    {t("fields.forgotPassword")}
                   </button>
                 )}
               </div>
@@ -297,9 +328,9 @@ export function SignInModal({
                     data-testid="checkbox-signup-terms"
                   />
                   <label htmlFor="signup-terms" className="text-xs leading-snug cursor-pointer">
-                    I have read and agree to the{" "}
+                    {t("consent.agreePrefix")}{" "}
                     <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
-                      Terms of Service
+                      {t("consent.terms")}
                     </a>
                   </label>
                 </div>
@@ -311,9 +342,9 @@ export function SignInModal({
                     data-testid="checkbox-signup-privacy"
                   />
                   <label htmlFor="signup-privacy" className="text-xs leading-snug cursor-pointer">
-                    I have read and agree to the{" "}
+                    {t("consent.agreePrefix")}{" "}
                     <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
-                      Privacy Policy
+                      {t("consent.privacy")}
                     </a>
                   </label>
                 </div>
@@ -330,12 +361,12 @@ export function SignInModal({
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {mode === "reset" ? "Sending link..." : mode === "signin" ? "Signing in..." : "Creating account..."}
+                  {mode === "reset" ? t("submit.sendingLink") : mode === "signin" ? t("submit.signingIn") : t("submit.creatingAccount")}
                 </>
               ) : (
                 <>
                   <LogIn className="mr-2 h-4 w-4" />
-                  {mode === "reset" ? "Send reset link" : mode === "signin" ? "Sign In" : "Create Account"}
+                  {mode === "reset" ? t("submit.sendResetLink") : mode === "signin" ? t("submit.signIn") : t("submit.createAccount")}
                 </>
               )}
             </Button>
@@ -345,7 +376,7 @@ export function SignInModal({
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">Or</span>
+                <span className="bg-background px-2 text-muted-foreground">{t("modal.or")}</span>
               </div>
             </div>
 
@@ -356,44 +387,44 @@ export function SignInModal({
               onClick={handleReplitSignIn}
               data-testid="button-social-login"
             >
-              Continue with Social Login
+              {t("modal.socialLogin")}
             </Button>
 
             <p className="text-sm text-center text-muted-foreground">
               {mode === "reset" ? (
                 <>
-                  Remember your password?{" "}
+                  {t("modal.rememberPassword")}{" "}
                   <button
                     type="button"
                     className="text-primary hover:underline font-medium"
                     onClick={() => setMode("signin")}
                     data-testid="link-back-signin"
                   >
-                    Back to Sign In
+                    {t("modal.backToSignIn")}
                   </button>
                 </>
               ) : mode === "signin" ? (
                 <>
-                  Don't have an account?{" "}
+                  {t("modal.noAccount")}{" "}
                   <button
                     type="button"
                     className="text-primary hover:underline font-medium"
                     onClick={() => setMode("signup")}
                     data-testid="link-switch-signup"
                   >
-                    Sign up
+                    {t("modal.switchToSignUp")}
                   </button>
                 </>
               ) : (
                 <>
-                  Already have an account?{" "}
+                  {t("modal.haveAccount")}{" "}
                   <button
                     type="button"
                     className="text-primary hover:underline font-medium"
                     onClick={() => setMode("signin")}
                     data-testid="link-switch-signin"
                   >
-                    Sign in
+                    {t("modal.switchToSignIn")}
                   </button>
                 </>
               )}
