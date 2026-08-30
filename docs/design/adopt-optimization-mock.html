@@ -365,7 +365,7 @@
 
   <p class="eyebrow">Optimization · Review before applying</p>
   <h1>Three ways to sharpen your Kyoto plan</h1>
-  <p class="sub">Each version is a <b>complete plan rebuilt around one location</b> — a hotel, a neighborhood, or a keystone activity. That anchor is the trip’s common denominator, so the days radiate from it. Your plan stays untouched: every version is saved as its own trip, and you can adopt one outright or pull single stops across with the <b>+</b> ticks.</p>
+  <p class="sub">Each version is a <b>complete plan rebuilt around one location</b> — a hotel, a neighborhood, or a keystone activity. That anchor is the trip’s common denominator, so the days radiate from it. Your plan stays untouched until you confirm: adopt an entire proposal, or choose one or several stops with the <b>+</b> ticks.</p>
 
   <!-- STEP 1: the slip's own action row — where the journey starts -->
   <div class="slip-panel">
@@ -729,6 +729,23 @@
   </div>
 </div>
 
+<!-- ===== LIVE POPUP: confirms either a whole proposal or selected stops ===== -->
+<div class="scrim adopt-scrim" style="display:none" data-testid="adopt-selection-scrim">
+  <div class="modal pop" role="dialog" aria-modal="true" aria-label="Confirm adoption" data-testid="adopt-selection-modal">
+    <div class="modal-head">
+      <h3 data-testid="adopt-selection-title">Bring these into your plan?</h3>
+      <button class="modal-x" aria-label="Close">✕</button>
+    </div>
+    <p class="modal-sub" data-testid="adopt-selection-copy">Only the selected stops change. Everything else in your current plan stays as it is.</p>
+    <div class="selected-preview" data-testid="adopt-selection-items"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-testid="adopt-selection-back">Back</button>
+      <button class="btn primary" data-testid="adopt-selection-confirm">Adopt selected stops</button>
+    </div>
+    <p class="modal-note">Adoption changes only your still-in-planning items. Purchased, in-checkout, and with-expert items stay put; nothing is purchased here.</p>
+  </div>
+</div>
+
 <style>
   .scrim { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start; justify-content:center;
     padding:6vh 18px 40px; background:rgba(20,20,15,.5); backdrop-filter:blur(2px); overflow:auto; }
@@ -1000,7 +1017,7 @@
   function open(mode,plan){
     if(!scrim) return;
     var names=mode==='whole'
-      ? ticks.filter(function(t){return t.getAttribute('data-plan')===plan;}).map(function(t){return t.getAttribute('data-stop');})
+      ? [plan+' · all still-in-planning stops']
       : selected.map(function(item){return item.name;});
     var count=names.length;
     if(modalTitle) modalTitle.textContent=mode==='whole' ? 'Adopt '+plan+'?' : 'Bring these into your plan?';
@@ -1047,7 +1064,7 @@
 </script>
 
 <style>
-  .modal-showcase { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .modal-showcase { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; align-items:start; }
   @media (max-width:1100px){ .modal-showcase { grid-template-columns:repeat(2,1fr); } }
   @media (max-width:700px){ .modal-showcase { grid-template-columns:1fr; } }
   .modal-showcase .modal-demo { margin:0; }

@@ -1,6 +1,6 @@
 # Adopt the Optimization — SPEC
 
-**Status:** ratified design (mock signed off 2026-08-23); Phases 0 · 1 · 1b · 1c shipped; this spec scopes the remainder · **Visual of record:** `docs/design/adopt-optimization-mock.html` · `audited@9d3f8ab`
+**Status:** ratified design (mock signed off 2026-08-23; adoption choices clarified 2026-08-30); Phases 0 · 1 · 1b · 1c shipped; this spec scopes the remainder · **Visual of record:** `docs/design/adopt-optimization-mock.html` · `audited@9d3f8ab`
 
 This is the transcription contract for the mock. The HTML wins on appearance; this file wins on scope and behavior. Nothing here invents data the server doesn't already return.
 
@@ -19,7 +19,7 @@ This is the transcription contract for the mock. The HTML wins on appearance; th
 | Slip model erratum (`SLIP_EXPERIENCE_DISPATCH.md` §0) | **The slip is stationary.** The only legitimate copies are optimizer variant proposals (ephemeral) and the TripPlan render model. Nothing "sends," "moves," or "delivers" a trip by copying. |
 | `2026-08-25-marketplace-earn-grammar` | `--earn-*` tokens, Fraunces headings, Geist Mono labels/numbers, coral = the one primary CTA per panel. |
 
-New rulings this spec proposes (§4) go to the ledger only after Leon rules.
+The 2026-08-30 mock clarification establishes the intended user choice—keep the current plan, adopt an entire proposal, or adopt one/many selected stops—but does not claim that the partial-adoption server rail is shipped.
 
 ---
 
@@ -32,10 +32,10 @@ New rulings this spec proposes (§4) go to the ledger only after Leon rules.
 | Generate (paid) | `POST /api/itinerary-comparisons/:id/generate` — **`server/routes.ts:8777`** (live handler) | body: `{ optimizationPaymentId, feedback?, baselineItems?, pinnedAnchor? }` |
 | `pinnedAnchor` input | `anchor-candidates-map.ts:44 parsePinnedAnchorInput` | `{ type: 'hotel'\|'neighborhood'\|'activity', id?: string, name?: string, lat?: number, lng?: number }` — `id` resolves a ranked candidate (activity `id` = one of the trip's own stop ids); `name+lat+lng` with no `id` = custom location |
 | Comparison read | `GET /api/itinerary-comparisons/:id` — `server/routes.ts:8753` | variants are full `itinerary_variants` rows via `db.select()` (`storage.ts:7318`), so `anchorType / anchorName / anchorLat / anchorLng / anchorMedianMeters` are already on the wire (`shared/schema.ts:1652-1656`) |
-| Apply whole variant | `POST …/apply-to-trip` (`plancard.routes.ts:45`), `POST …/apply-to-cart` (`trips.routes.ts:744`) | unchanged |
+| Apply whole variant | `POST …/apply-to-trip` (`plancard.routes.ts:45`), `POST …/apply-to-cart` (`trips.routes.ts:744`) | unchanged; powers the currently shipped whole-plan path |
 | Deltas | `client/src/lib/slip-proposal-preview.ts` (21 tests) | money saved / drive-time — omitted when baseline absent |
 
-**Not built (no rail):** per-stop pull, variants-as-trips, finalize handoff. See §3.
+**Not built (no rail):** partial adoption for one/many selected stops, variants-as-trips, finalize handoff. The mock now shows partial adoption as the intended target; see §3.
 
 ---
 
@@ -45,7 +45,7 @@ Write targets: `client/src/pages/itinerary-comparison.tsx`, `client/src/componen
 
 ### 2.1 V3 column (mock: "Three ways to sharpen your plan")
 - Render every AI variant returned, in order, up to three. Two returned → three columns (baseline + 2), no placeholder. Zero → existing `banner-no-proposals-review`.
-- Column chrome per variant: delta chips (existing lib), `Recommended` on the top-ranked only, name + one-line rationale from the variant, day groups, `Select this plan` (existing `applyVariantMutation`).
+- Column chrome per variant: delta chips (existing lib), `Recommended` on the top-ranked only, name + one-line rationale from the variant, day groups, `Adopt entire plan` in the mock. The current live button may still read `Select this plan` and use the existing `applyVariantMutation`.
 - Baseline column keeps `Keep this plan` as the landing column and the verbatim footer "Nothing is purchased by applying."
 
 ### 2.2 Anchor line on each version card
@@ -87,24 +87,32 @@ Unchanged (`2026-08-22-first-run-prefs` provenance line stays).
 - `Optimize this plan` disabled reasons unchanged; no `/generate` call without Confirm (network log).
 - Testid counts reported per file; tsc 0 new; `TripStrip` and `layout.tsx` untouched.
 
+### 2.6 Adoption choices shown by the mock
+- **Keep this plan** leaves the baseline unchanged.
+- **Adopt entire plan** chooses one complete optimized proposal.
+- Per-stop **`+`** controls allow one item, several items, or a portion of a proposal to be accumulated in the baseline adopt tray.
+- The tray names the selected stops and enables **Adopt N selected stops** only when the set is non-empty.
+- Whole-plan and selected-stop paths use a shared confirmation pattern that states what changes and what remains.
+- This section defines the mock target only. It does not widen the client/server implementation scope in this documentation pass.
+
 ---
 
 ## 3. Server scope — Claude Code lane, **after rulings in §4**
 
 | Mock element | Needs | Ruling first |
 |---|---|---|
-| `+` ticks: pull one stop from a version into your plan, one confirm; desktop drag onto the baseline card | New endpoint (e.g. `POST …/variants/:vid/items/:iid/adopt`) writing one item into the baseline trip; idempotent; owner-gated; no charge | R-A |
-| "Every version is saved as its own trip" | Either promote a variant to a trip **on adopt only** (ephemeral until then), or keep variants ephemeral and change the copy | R-B |
+| `+` ticks: select one/many stops from proposals and adopt the batch into the current plan with one confirm | New batch-capable endpoint writing selected variant items into the baseline trip; idempotent; owner-gated; no charge; conflict semantics required | R-A implementation contract |
+| Versions remain proposals | Already resolved by R-B: the mock and footer keep variants as revisitable proposals, never separate trips | None |
 | Finalize popup: "Book it myself / Booking agent / Travel expert / Concierge — hands them a copy" | Handoff mechanism; the existing concierge rail grants **access** (`trip_expert_advisors`), it does not copy | R-C |
 
 None of these are in the Replit lane.
 
 ---
 
-## 4. Open rulings for Leon
+## 4. Remaining implementation contracts
 
-- **R-A · per-stop adopt.** Adopting a single stop writes it into the baseline trip (the slip) with `routing_status: in_planning`, day/time from the variant, `provider_service_id` carried when the variant item is grounded; the variant is untouched. One confirm per batch of ticks. — *Recommend: yes; it's a partial apply, same rail family as `apply-to-trip`.*
-- **R-B · versions as trips.** The mock says every version is saved as its own trip. The slip model says variants are the one permitted ephemeral copy. — *Recommend: variants stay ephemeral; "Select this plan" applies to the slip; drop the "saved as its own trip" copy from the mock. If you want "keep this version for later," that's a bookmark on the variant, not a trip.*
+- **R-A · partial adopt.** Product intent is now explicit in the mock: owners may adopt one item, several items, or a portion of a proposal. A live implementation still needs a batch contract covering destination day/time, grounded `provider_service_id`, idempotency, duplicate/conflict behavior, and preservation of purchased/in-checkout/with-expert items. The variant remains untouched. One confirmation applies the selected batch.
+- **R-B · versions as proposals (resolved).** Variants stay ephemeral proposals. Whole-plan adoption applies one proposal to the slip; partial adoption pulls only the selected items. Neither path creates a separate trip.
 - **R-C · finalize handoff.** "Hands them a copy" contradicts the stationary slip. — *Recommend: reword to "gives them access to your plan"; mechanism = the existing advisor-access grant; Booking agent = Booking Concierge rail (Model B), Travel expert = expert engagement, Concierge = full done-for-you. Nothing charged until a booking is confirmed (mock copy already says so).*
 
 ---
