@@ -20,7 +20,7 @@
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
-import { eq, sql, and, or, isNull, ilike, inArray, asc, desc, gte } from "drizzle-orm";
+import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
@@ -533,7 +533,16 @@ class LocationViewService {
         categorySlug: serviceCategories.slug,
       })
       .from(providerServices)
-      .leftJoin(serviceProviderForms, eq(serviceProviderForms.userId, providerServices.userId))
+      .leftJoin(
+        serviceProviderForms,
+        and(
+          eq(serviceProviderForms.userId, providerServices.userId),
+          or(
+            isNull(serviceProviderForms.status),
+            notInArray(serviceProviderForms.status, ["rejected", "deleted", "deactivated"]),
+          ),
+        ),
+      )
       .leftJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
       .where(
         and(
