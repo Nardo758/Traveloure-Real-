@@ -41,6 +41,15 @@ test("an unclassified bookingType never renders the agent CTA (§13)", () => {
   );
 });
 
+test("informational affiliate content never renders the agent CTA", () => {
+  assert.equal(
+    resolveAffiliateBooking({
+      affiliateBooking: { productId: "p-info", bookingToken: "tok_info", bookingType: "informational" },
+    }),
+    null,
+  );
+});
+
 test("a token-less affiliate_bookable row is not bookable (§16 — no token, no button)", () => {
   assert.equal(
     resolveAffiliateBooking({ affiliateBooking: { productId: "p4", bookingToken: "", bookingType: "affiliate_bookable" } }),

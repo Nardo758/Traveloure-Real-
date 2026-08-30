@@ -19,7 +19,11 @@
 import { loadOptimizerCatalog } from "./optimizer-baseline.service";
 import { getExtractedPlacesForMarket } from "./dmo-extracted-places.service";
 import { getAffiliateProductsForMarket, reconcileAffiliateMarket } from "./affiliate-grounding.service";
-import { similarity, MATCH_THRESHOLD } from "./slip-grounding-match";
+import {
+  findBestEligibleAffiliateProduct,
+  similarity,
+  MATCH_THRESHOLD,
+} from "./slip-grounding-match";
 
 // The pure matcher lives in slip-grounding-match.ts (no DB import — unit-testable). Re-exported here
 // so existing importers of this service keep working.
@@ -113,18 +117,17 @@ export async function groundAiItems(
     // (rung 01) already missed, so a confident affiliate match is the next-strongest outcome.
     // The item stores only the product id; the booking CTA (and whether one shows at all — Q3's
     // bookingType split) is server-derived at plancard-assembly time, never here.
-    let bestAff: { id: string; lat: string | null; lng: string | null; score: number } | null = null;
-    for (const p of affiliates) {
-      const score = similarity(name, p.name ?? "");
-      if (score >= MATCH_THRESHOLD && (!bestAff || score > bestAff.score)) {
-        bestAff = { id: p.id, lat: p.latitude ?? null, lng: p.longitude ?? null, score };
-      }
-    }
+    const bestAff = findBestEligibleAffiliateProduct(name, affiliates);
     if (bestAff) {
       item.affiliateProductId = bestAff.id;
-      if (bestAff.lat != null && bestAff.lng != null && item.latitude == null && item.longitude == null) {
-        item.latitude = bestAff.lat;
-        item.longitude = bestAff.lng;
+      if (
+        bestAff.latitude != null &&
+        bestAff.longitude != null &&
+        item.latitude == null &&
+        item.longitude == null
+      ) {
+        item.latitude = bestAff.latitude;
+        item.longitude = bestAff.longitude;
       }
       groundedToAffiliate++;
       continue; // the three rungs are mutually exclusive.
