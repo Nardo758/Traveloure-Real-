@@ -2898,6 +2898,28 @@ export const locationCache = pgTable("location_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+// Optimizer activity geocoding cache (migration 267). Additive and declared here with the
+// migration's exact unique-index name per the publish-trap rule. `status` is app-enforced
+// (`success` | `miss`) with deliberately no DB CHECK.
+export const optimizerGeocodeCache = pgTable("optimizer_geocode_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: varchar("provider", { length: 32 }).notNull().default("google"),
+  queryHash: varchar("query_hash", { length: 64 }).notNull(),
+  normalizedQuery: text("normalized_query").notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  formattedAddress: text("formatted_address"),
+  locationType: varchar("location_type", { length: 40 }),
+  resultTypes: jsonb("result_types").notNull().default([]),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("optimizer_geocode_cache_provider_query_hash_uniq")
+    .on(table.provider, table.queryHash),
+]);
+
 // ============ FEVER EVENT CACHE TABLE ============
 // Caches Fever events from Impact.com to reduce API calls and improve performance
 
