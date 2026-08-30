@@ -438,6 +438,17 @@ per the same directive):** fold the parallel `/api/catalog/*` Travelpayouts feed
 
 ---
 
+
+### §20 — Publish-time SQL is declined by default (the deploy diff is not a schema authority)
+
+Schema changes reach production ONLY via `runMigrations` on boot, from committed migration files in `server/migrations/`. Any Replit publish/redeploy prompt that offers to run its own SQL — especially `DROP` or `ALTER` — is DECLINED by default; no variant is approved. Such a prompt means the workspace checkout and the deployment database disagree (a stale or drifted checkout schema being diffed against prod), NOT that production needs the SQL. Fix by syncing the checkout, never by approving the diff:
+
+- `git checkout main && git fetch origin && git reset --hard origin/main`
+- Restart the dev app once; confirm boot shows migrations current (no new applies, no schema complaints).
+- Republish; the confirmation screen must show a normal build with no database-migration step.
+- If destructive SQL still appears, decline and STOP, then escalate — it means something else.
+
+(ops-hardening, 2026-08-29)
 ## Service Model: Canonical Table
 
 ### Decision: `provider_services` is the canonical service source (NOT `expert_service_offerings`)

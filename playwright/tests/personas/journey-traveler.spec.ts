@@ -536,17 +536,18 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
     });
 
     // ── Checkout: traveler service-fee waiver recorded on the booking row ────────────────
-    // FINDING: `GET /api/cart/fee-preview` does NOT consider trip_entitlements at all (no
-    // tripId param, no coversAction call) — so "the checkout preview shows the fee zeroed"
-    // is not something the product currently renders anywhere; asserting it would be
-    // fabricated. The REAL waiver mechanism is server/routes/payments.routes.ts:1269's
-    // resolveTripPassFeeWaiver pre-pass, which snapshots onto the CREATED booking row's
-    // booking_details.tripPassFeeWaiver (basis:'trip_pass', waived:true) at checkout —
-    // asserted directly against that row instead, gated the same Stripe-test-mode way as
-    // the free-traveler checkout above. Note also (from the resolver's own doc comment):
-    // billedOnDirectPathToday=false — the traveler service fee is not actually billed on
-    // the direct checkout path today regardless of Trip Pass, so this waiver is a
-    // counterfactual record, not a suppression of a real charge.
+    // display-honesty fix (this dispatch): `GET /api/cart/fee-preview` NOW considers
+    // trip_entitlements via an optional ownership-checked `?tripId=` param, calling the SAME
+    // coversAction/resolveTripPassFeeWaiver functions the real charge path uses (§18 rule 1) —
+    // so the preview response's `tripPassFeeWaiver` is asserted directly below, Stripe-independent
+    // (a pure read, no PaymentIntent involved). The REAL charge-side waiver mechanism remains
+    // server/routes/payments.routes.ts:1269's resolveTripPassFeeWaiver pre-pass, which snapshots
+    // onto the CREATED booking row's booking_details.tripPassFeeWaiver (basis:'trip_pass',
+    // waived:true) at checkout — asserted directly against that row below, gated the same
+    // Stripe-test-mode way as the free-traveler checkout above. Note also (from the resolver's
+    // own doc comment): billedOnDirectPathToday=false — the traveler service fee is not actually
+    // billed on the direct checkout path today regardless of Trip Pass, so BOTH waiver records are
+    // counterfactual, not a suppression of a real charge.
     const svcRow = await scalar<string>(
       `SELECT id FROM provider_services WHERE service_name = $1 AND approval_status = 'approved' AND status = 'active' LIMIT 1`,
       [PROVIDER_SERVICE_NAME],
@@ -566,6 +567,22 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
       );
       const itemId = await createCatalogItem(request, coveredTripId, { id: svc.id, price: svc.price, name: svc.service_name });
       await routeItem(request, coveredTripId, itemId, "ready_for_checkout");
+
+      // ── Fee-preview waiver parity (display-honesty fix) — a pure read, Stripe-independent,
+      // asserted while the item is still in the cart (checkout below clears it). ────────────
+      const previewRes = await request.get(`${BASE_URL}/api/cart/fee-preview?tripId=${coveredTripId}`);
+      const previewBody = previewRes.ok() ? await previewRes.json().catch(() => ({})) : {};
+      report.record({
+        action: "fee-preview with ?tripId= on the covered trip carries the SAME waiver shape the charge path stamps onto a booking row",
+        ui: `GET /api/cart/fee-preview?tripId=${coveredTripId} status ${previewRes.status()}, tripPassFeeWaiver=${JSON.stringify(previewBody.tripPassFeeWaiver)}`,
+        db: "n/a — pure read, no booking/PaymentIntent involved",
+        verdict:
+          previewRes.status() === 200 &&
+          previewBody.tripPassFeeWaiver?.waived === true &&
+          previewBody.tripPassFeeWaiver?.basis === "trip_pass"
+            ? "PASS"
+            : "FAIL",
+      });
 
       const idempotencyKey = crypto.randomUUID();
       const checkoutRes = await request.post(`${BASE_URL}/api/checkout`, { data: { tripId: coveredTripId, idempotencyKey } });
