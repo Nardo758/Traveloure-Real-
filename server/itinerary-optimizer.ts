@@ -1185,7 +1185,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           name: item.name || `Stop ${idx + 1}`,
           lat: parseFloat(item.latitude as unknown as string),
           lng: parseFloat(item.longitude as unknown as string),
-          scheduledTime: item.startTime || "09:00",
+          scheduledTime: item.startTime || "",
+          durationMinutes: item.duration,
           dayNumber: item.dayNumber,
           order: item.sortOrder ?? idx,
         }));
@@ -1217,7 +1218,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     ).join('\n');
 
     const compactBaseline = baselineItems.map(item =>
-      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
+      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration != null ? `${item.duration}min` : "duration needed"}, ${item.location || 'TBD'})`
     ).join('\n');
 
     // ── Marquee / signature item detection ────────────────────────────────────
@@ -1353,7 +1354,7 @@ Respond with valid JSON in this exact format:
           "rating": 4.5,
           "location": "Paris, France",
           "duration": 180,
-          "travelTimeFromPrevious": 15,
+          "travelTimeFromPrevious": null,
           "isReplacement": true,
           "replacementReason": "Similar experience at 30% lower cost",
           "originalServiceId": "service-id-if-applicable"
@@ -1445,7 +1446,9 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         dayNumber: item.dayNumber,
         timeSlot: item.timeSlot,
         description: item.description,
-        travelTimeFromPrevious: item.travelTimeFromPrevious,
+        // Google Routes overwrites this after persistence. Model-supplied travel times are never
+        // treated as schedule facts.
+        travelTimeFromPrevious: undefined,
         isReplacement: item.isReplacement,
         replacementReason: item.replacementReason
       }));
@@ -1622,7 +1625,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
               rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
               location: item.location,
               duration: item.duration,
-              travelTimeFromPrevious: item.travelTimeFromPrevious,
+              travelTimeFromPrevious: null,
               isReplacement: item.isReplacement,
               replacementReason: item.replacementReason,
               metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
@@ -1818,7 +1821,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             name: item.name || `Stop ${idx + 1}`,
             lat: parseFloat(item.latitude as unknown as string),
             lng: parseFloat(item.longitude as unknown as string),
-            scheduledTime: item.startTime || "09:00",
+            scheduledTime: item.startTime || "",
+            durationMinutes: item.duration,
             dayNumber: item.dayNumber,
             order: item.sortOrder ?? idx,
           }));

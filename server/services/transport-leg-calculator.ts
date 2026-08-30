@@ -1,5 +1,6 @@
 import { db } from "../db";
-import { transportLegs, mapsExportCache } from "../../shared/schema";
+import { transportLegs, mapsExportCache, itineraryVariantItems } from "../../shared/schema";
+import { propagateActivitySchedule } from "./activity-schedule.service";
 import { getDestinationProfile, type DestinationTransportProfile, type TransportModeConfig } from "../data/transport-profiles";
 import { populateBookingOptionsForVariant } from "./transport-booking-options.service";
 import {
@@ -162,6 +163,7 @@ export async function calculateTransportLegs(
   }
 
   await persistTransportLegs(variantId, allLegs, destination);
+  await persistRoutedVariantSchedule(variantId, allLegs);
   await generateAndCacheMapsUrls(variantId, activities, allLegs);
 
   // Populate booking options for all persisted legs (fire and complete)
@@ -172,6 +174,58 @@ export async function calculateTransportLegs(
   }
 
   return allLegs;
+}
+
+async function persistRoutedVariantSchedule(
+  variantId: string,
+  legs: TransportLegResult[],
+): Promise<void> {
+  const items = await db
+    .select()
+    .from(itineraryVariantItems)
+    .where(eq(itineraryVariantItems.variantId, variantId))
+    .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+  const { updates, unresolved } = propagateActivitySchedule(
+    items.map((item, index) => ({
+      id: item.id,
+      dayNumber: item.dayNumber,
+      order: item.sortOrder ?? index,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      durationMinutes: item.duration,
+    })),
+    legs,
+  );
+  const unresolvedByActivity = new Map(
+    unresolved.map((entry) => [entry.activityId, entry.reason]),
+  );
+
+  await Promise.all(
+    updates.map((update) => {
+      const item = items.find((candidate) => candidate.id === update.id);
+      const existingMetadata =
+        item?.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+          ? item.metadata as Record<string, unknown>
+          : {};
+      const unresolvedReason = unresolvedByActivity.get(update.id);
+      return db
+        .update(itineraryVariantItems)
+        .set({
+          startTime: update.startTime,
+          endTime: update.endTime,
+          // Google route output is authoritative. Model-supplied travelTimeFromPrevious is
+          // overwritten with the routed value, or NULL when no honest route exists.
+          travelTimeFromPrevious: update.travelTimeFromPrevious,
+          metadata: {
+            ...existingMetadata,
+            logisticsSchedule: unresolvedReason
+              ? { status: "unresolved", reason: unresolvedReason }
+              : { status: "resolved" },
+          },
+        })
+        .where(eq(itineraryVariantItems.id, update.id));
+    }),
+  );
 }
 
 /**
