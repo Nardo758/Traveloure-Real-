@@ -59,3 +59,4 @@
 - [Post-login Playwright handoff](post-login-playwright-handoff.md) — URL-based login helpers can resolve before the destination document is ready; live-data tests must wait for document readiness.
 - [Expert search field contract](expert-search-field-contract.md) — destination URLs hydrate Where only; What stays independent free text filtering within the scoped results.
 - [Background scheduler resilience](background-scheduler-resilience.md) — claim timers before first runs, cap aggregate concurrency, retry transient DB failures only, and never leak health clients.
+- [Proposal map provider policy](proposal-map-provider-policy.md) — Google is primary in-app; Leaflet/OSM is only the keyless or share/export fallback, with no invented locations or routes.
