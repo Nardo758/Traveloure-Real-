@@ -24,6 +24,32 @@ function memoryCache() {
   };
 }
 
+test("an activity's own coordinates win without a Google lookup", async () => {
+  const items = [{
+    name: "Pinned Activity",
+    location: "Kyoto",
+    latitude: 35.0123,
+    longitude: 135.7654,
+  }];
+  let calls = 0;
+  await resolveOptimizerActivityCoordinates(
+    items,
+    [],
+    new Map(),
+    "Kyoto, Japan",
+    createOptimizerGeocodeBudget(),
+    {
+      cache: memoryCache().adapter,
+      geocode: async () => { calls += 1; return null; },
+    },
+  );
+  assert.equal(calls, 0);
+  assert.deepEqual(
+    { latitude: items[0].latitude, longitude: items[0].longitude },
+    { latitude: 35.0123, longitude: 135.7654 },
+  );
+});
+
 test("catalog coordinates win without a Google lookup", async () => {
   const items = [{ name: "Catalog Tour", providerServiceId: "svc-1", location: "Kyoto" }];
   let calls = 0;
@@ -59,7 +85,7 @@ test("matching baseline coordinates hydrate an echoed AI activity", async () => 
   assert.equal(items[0].longitude, 135.7788);
 });
 
-test("specific Google results are cached and reused", async () => {
+test("linked activities can still use specific Google results and reuse the cache", async () => {
   const cache = memoryCache();
   let calls = 0;
   const geocode = async () => {
@@ -72,15 +98,16 @@ test("specific Google results are cached and reused", async () => {
       types: ["point_of_interest"],
     };
   };
-  const first = [{ name: "Gion Night Walk", location: "Gion" }];
-  const second = [{ name: "Gion Night Walk", location: "Gion" }];
+  const first = [{ name: "Gion Night Walk", providerServiceId: "svc-1", location: "Gion" }];
+  const second = [{ name: "Gion Night Walk", providerServiceId: "svc-1", location: "Gion" }];
   const budget = createOptimizerGeocodeBudget();
 
-  await resolveOptimizerActivityCoordinates(first, [], new Map(), "Kyoto, Japan", budget, {
+  const catalog = new Map([["svc-1", { latitude: null, longitude: null }]]);
+  await resolveOptimizerActivityCoordinates(first, [], catalog, "Kyoto, Japan", budget, {
     cache: cache.adapter,
     geocode,
   });
-  await resolveOptimizerActivityCoordinates(second, [], new Map(), "Kyoto, Japan", budget, {
+  await resolveOptimizerActivityCoordinates(second, [], catalog, "Kyoto, Japan", budget, {
     cache: cache.adapter,
     geocode,
   });
@@ -90,7 +117,7 @@ test("specific Google results are cached and reused", async () => {
   assert.equal(second[0].longitude, 135.7788);
 });
 
-test("generic results and exhausted budgets leave coordinates honest", async () => {
+test("unlinked AI inventions never call Google or receive coordinates", async () => {
   const cache = memoryCache();
   const items = [
     { name: "Luxury Morning California", location: "California" },
@@ -102,7 +129,7 @@ test("generic results and exhausted budgets leave coordinates honest", async () 
     [],
     new Map(),
     "California",
-    createOptimizerGeocodeBudget(1),
+    createOptimizerGeocodeBudget(),
     {
       cache: cache.adapter,
       geocode: async () => {
@@ -111,14 +138,14 @@ test("generic results and exhausted budgets leave coordinates honest", async () 
           lat: 36.778261,
           lng: -119.4179324,
           formattedAddress: "California, USA",
-          locationType: "APPROXIMATE",
-          types: ["administrative_area_level_1", "political"],
+          types: ["point_of_interest"],
         };
       },
     },
   );
 
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
+  assert.equal(cache.rows.size, 0);
   assert.equal(items[0].latitude, undefined);
   assert.equal(items[0].longitude, undefined);
   assert.equal(items[1].latitude, undefined);
@@ -139,15 +166,16 @@ test("parallel variants share one in-flight Google request", async () => {
     };
   };
   const budget = createOptimizerGeocodeBudget(12);
-  const first = [{ name: "Gion Night Walk", location: "Gion" }];
-  const second = [{ name: "Gion Night Walk", location: "Gion" }];
+  const first = [{ name: "Gion Night Walk", providerServiceId: "svc-1", location: "Gion" }];
+  const second = [{ name: "Gion Night Walk", providerServiceId: "svc-1", location: "Gion" }];
+  const catalog = new Map([["svc-1", { latitude: null, longitude: null }]]);
 
   await Promise.all([
-    resolveOptimizerActivityCoordinates(first, [], new Map(), "Kyoto, Japan", budget, {
+    resolveOptimizerActivityCoordinates(first, [], catalog, "Kyoto, Japan", budget, {
       cache: cache.adapter,
       geocode,
     }),
-    resolveOptimizerActivityCoordinates(second, [], new Map(), "Kyoto, Japan", budget, {
+    resolveOptimizerActivityCoordinates(second, [], catalog, "Kyoto, Japan", budget, {
       cache: cache.adapter,
       geocode,
     }),

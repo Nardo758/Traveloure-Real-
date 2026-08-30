@@ -1510,9 +1510,9 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       }
 
       // Resolve honest coordinates before persistence and transport-leg calculation. Catalog and
-      // canonical baseline coordinates win; only still-unlocated, specifically named activities
-      // may call the bounded, cached Google geocoder. Misses remain NULL and never become guessed
-      // city-centre pins (§13/§22c).
+      // canonical baseline coordinates win. Only a validated catalog-linked activity may use the
+      // bounded, cached Google fallback; an unlinked AI invention remains NULL/NULL and never
+      // becomes a guessed city-centre pin (§13/§22c).
       await resolveOptimizerActivityCoordinates(
         reorderedItems,
         baselineItems,
