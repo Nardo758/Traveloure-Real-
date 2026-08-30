@@ -31,6 +31,10 @@ interface MapControlCenterProps {
    * closed by reading the correct field from this prop instead.
    */
   expertTravelerNote?: string | null;
+  /** Compact read-only canvas for proposal comparison; hides PlanCard-specific controls. */
+  compact?: boolean;
+  /** Proposal maps connect located stops in emitted order without claiming a routed journey. */
+  connectorMode?: "transport" | "sequence";
 }
 
 interface GeocodedActivity extends PlanCardActivity {
@@ -48,6 +52,7 @@ function MapContent({
   selectedPinId,
   onSelectPin,
   tripId,
+  connectorMode,
 }: {
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
@@ -56,6 +61,7 @@ function MapContent({
   selectedPinId: string | null;
   onSelectPin: (id: string | null) => void;
   tripId: string;
+  connectorMode: "transport" | "sequence";
 }) {
   const map = useMap();
   // Pins read coordinates directly from the server response. Coordinates are
@@ -97,6 +103,23 @@ function MapContent({
 
   return (
     <>
+      {connectorMode === "sequence" && layers.activities && geocodedActivities.length > 1 &&
+        geocodedActivities.slice(0, -1).map((activity, index) => {
+          const nextActivity = geocodedActivities[index + 1];
+          return (
+            <Polyline
+              key={`sequence-${activity.id}-${nextActivity.id}`}
+              path={[
+                { lat: activity.resolvedLat, lng: activity.resolvedLng },
+                { lat: nextActivity.resolvedLat, lng: nextActivity.resolvedLng },
+              ]}
+              strokeColor="#64748B"
+              strokeOpacity={0.55}
+              strokeWeight={2}
+            />
+          );
+        })}
+
       {layers.transport && geocodedActivities.length > 1 && transports.map((tr, i) => {
         const fromActivity = geocodedActivities.find((a) => a.location === tr.from || a.name === tr.fromName) || geocodedActivities[i];
         const toActivity = geocodedActivities.find((a) => a.location === tr.to || a.name === tr.toName) || geocodedActivities[i + 1];
@@ -277,6 +300,8 @@ export function MapControlCenter({
   selectedDay,
   onSelectDay,
   expertTravelerNote,
+  compact = false,
+  connectorMode = "transport",
 }: MapControlCenterProps) {
   const [layers, setLayers] = useState({ activities: true, transport: true, expertNotes: true });
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
@@ -320,10 +345,13 @@ export function MapControlCenter({
   return (
     <div data-testid={`map-control-center-${tripId}`}>
       {hasApiKey ? (
-        <div className="relative h-[420px] overflow-hidden" data-testid={`map-area-${tripId}`}>
+        <div
+          className={`relative overflow-hidden ${compact ? "h-[360px] rounded-xl" : "h-[420px]"}`}
+          data-testid={`map-area-${tripId}`}
+        >
           <MapErrorBoundary
             fallback={
-              <div className="h-[420px] bg-muted flex items-center justify-center">
+              <div className="h-full bg-muted flex items-center justify-center">
                 <p className="text-muted-foreground text-sm">Map unavailable</p>
               </div>
             }
@@ -349,12 +377,13 @@ export function MapControlCenter({
                   selectedPinId={selectedPinId}
                   onSelectPin={setSelectedPinId}
                   tripId={tripId}
+                  connectorMode={connectorMode}
                 />
               </Map>
             </APIProvider>
           </MapErrorBoundary>
 
-          <div className="absolute top-4 left-4 flex gap-1 z-10" data-testid={`map-day-selector-${tripId}`}>
+          {!compact && <div className="absolute top-4 left-4 flex gap-1 z-10" data-testid={`map-day-selector-${tripId}`}>
             {days.map((d, i) => (
               <button
                 key={i}
@@ -369,15 +398,15 @@ export function MapControlCenter({
                 Day {d.dayNum}
               </button>
             ))}
-          </div>
+          </div>}
 
-          <div className="absolute top-4 right-4 bg-card/90 backdrop-blur-sm rounded-xl px-4 py-2.5 z-10 shadow-lg" data-testid={`map-day-info-${tripId}`}>
+          {!compact && <div className="absolute top-4 right-4 bg-card/90 backdrop-blur-sm rounded-xl px-4 py-2.5 z-10 shadow-lg" data-testid={`map-day-info-${tripId}`}>
             <div className="text-sm font-bold text-foreground" data-testid={`map-day-date-${tripId}`}>{day.date}</div>
             <div className="text-xs text-muted-foreground" data-testid={`map-day-label-${tripId}`}>{day.label}</div>
-          </div>
+          </div>}
         </div>
       ) : (
-        <div className="h-[420px] bg-muted/50 flex flex-col items-center justify-center gap-3" data-testid={`map-placeholder-${tripId}`}>
+        <div className={`${compact ? "h-[360px]" : "h-[420px]"} bg-muted/50 flex flex-col items-center justify-center gap-3`} data-testid={`map-placeholder-${tripId}`}>
           <MapPin className="w-12 h-12 text-muted-foreground/30" />
           <p className="text-muted-foreground text-sm">Map unavailable — add VITE_GOOGLE_MAPS_API_KEY</p>
           <div className="flex gap-1 z-10">
@@ -399,7 +428,7 @@ export function MapControlCenter({
         </div>
       )}
 
-      <div className="bg-muted/30 px-5 py-4 border-t border-border" data-testid={`layer-controls-${tripId}`}>
+      {!compact && <div className="bg-muted/30 px-5 py-4 border-t border-border" data-testid={`layer-controls-${tripId}`}>
         <div className="flex justify-between items-center mb-3.5 flex-wrap gap-2">
           <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wider">
             <Layers className="w-4 h-4" /> Map Layers
@@ -556,7 +585,7 @@ export function MapControlCenter({
             </p>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -76,6 +76,7 @@ import { Anchor } from "lucide-react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
 import type { SlipData } from "@/components/plancard/SlipView";
+import { ProposalComparisonMap } from "@/components/plancard/ProposalComparisonMap";
 import {
   sumLegMinutes,
   parseTotal,
@@ -98,6 +99,8 @@ interface VariantItem {
   price: string;
   rating: string;
   location: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   duration: number;
   travelTimeFromPrevious: number;
   isReplacement: boolean;
@@ -1784,6 +1787,14 @@ export default function ItineraryComparisonPage() {
                     </div>
                   );
                 })()}
+
+                <ProposalComparisonMap
+                  proposals={aiVariants.map((variant, index) => ({
+                    id: variant.id,
+                    name: variant.name || `Proposal ${index + 1}`,
+                    items: variant.items,
+                  }))}
+                />
 
                 <div
                   className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-4 mb-4"
