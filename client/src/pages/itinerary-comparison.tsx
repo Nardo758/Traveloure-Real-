@@ -532,6 +532,8 @@ function ProposalColumnContainer({
   recommended,
   applying,
   onApply,
+  onAdoptStop,
+  adoptingStopId,
   baselineTotalUsd,
   baselineDriveMinutes,
   isBaselineColumn,
@@ -543,6 +545,10 @@ function ProposalColumnContainer({
   recommended: boolean;
   applying: boolean;
   onApply: () => void;
+  /** Pull a SINGLE stop from this variant into the plan (the mock's "+" ticks). */
+  onAdoptStop?: (variantItemId: string) => void;
+  /** The variant-item id currently being adopted, for the per-row spinner. */
+  adoptingStopId?: string | null;
   /** The current plan's server-derived total, for the review-first money delta (null ⇒ omit). */
   baselineTotalUsd: number | null;
   /** The current plan's summed located-leg minutes, for the drive-time delta (null ⇒ omit). */
@@ -641,6 +647,9 @@ function ProposalColumnContainer({
           applyLabel: isBaselineColumn ? "Keep this plan" : "Select this plan",
         onApply,
         applying,
+        // Per-stop "+" ticks — only on AI proposals, never the baseline (it IS your plan).
+        onAdoptStop: isBaselineColumn ? undefined : onAdoptStop,
+        adoptingStopId: isBaselineColumn ? null : adoptingStopId,
       }}
     />
     </div>
@@ -980,6 +989,28 @@ export default function ItineraryComparisonPage() {
       toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
     },
     onSettled: () => setApplyingVariantId(null),
+  });
+
+  // Per-stop adopt (ratified mock "Adopt the Optimization": the "+" ticks pull a SINGLE stop
+  // into your plan). Appends ONE server-read item to the trip via /adopt-stop — the whole plan
+  // is never touched and you stay on the board (unlike whole-variant apply). Nothing purchased.
+  const [adoptingStopId, setAdoptingStopId] = useState<string | null>(null);
+  const adoptStopMutation = useMutation({
+    mutationFn: async (variantItemId: string) => {
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/adopt-stop`, { variantItemId });
+      return (await res.json()) as { adopted: boolean; reason?: string };
+    },
+    onSuccess: (r) => {
+      const tripId = data?.comparison?.tripId;
+      if (tripId) queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast(
+        r.adopted
+          ? { title: "Added to your plan", description: "That stop is now in your plan. Your original is preserved; nothing is purchased." }
+          : { title: "Already in your plan", description: "That stop is already on your plan." },
+      );
+    },
+    onError: () => toast({ variant: "destructive", title: "Couldn't add that stop", description: "Please try again" }),
+    onSettled: () => setAdoptingStopId(null),
   });
 
   const destination = data?.comparison?.destination;
@@ -1821,6 +1852,11 @@ export default function ItineraryComparisonPage() {
                       onApply={() => {
                         setPendingApplyVariant(variant);
                       }}
+                      onAdoptStop={(variantItemId) => {
+                        setAdoptingStopId(variantItemId);
+                        adoptStopMutation.mutate(variantItemId);
+                      }}
+                      adoptingStopId={adoptingStopId}
                     />
                   ))}
                   {isGenerating &&

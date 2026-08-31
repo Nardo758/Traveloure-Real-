@@ -1242,6 +1242,7 @@ export interface IStorage {
   getFirstVariantByComparisonId(comparisonId: string): Promise<any | null>;
 
   getOrderedVariantItemsByVariantId(variantId: string): Promise<any[]>;
+  getVariantItemById(id: string): Promise<any | null>;
 
   getOrderedTransportLegsByVariantId(variantId: string): Promise<any[]>;
 
@@ -7780,6 +7781,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(itineraryVariantItems)
       .where(eq(itineraryVariantItems.variantId, variantId))
       .orderBy(asc(itineraryVariantItems.dayNumber), asc(itineraryVariantItems.sortOrder));
+  }
+
+  async getVariantItemById(id: string): Promise<any | null> {
+    const [row] = await db.select().from(itineraryVariantItems)
+      .where(eq(itineraryVariantItems.id, id)).limit(1);
+    return row ?? null;
   }
 
   async getOrderedTransportLegsByVariantId(variantId: string): Promise<any[]> {
