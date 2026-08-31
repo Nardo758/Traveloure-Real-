@@ -473,22 +473,42 @@ function useFinalizeMutation(tripId: string) {
   return useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/trips/${tripId}/finalize`);
-      return (await res.json()) as { alreadyFinalized: boolean; finalizedAt: string | null; stagedCount?: number };
+      // finalVersion / finalCreated are the Phase 2 additions (ledger
+      // 2026-08-31-trip-card-snapshot-render): which version this finalize resolved to, and whether
+      // it wrote a NEW one. Optional so an older server response still typechecks.
+      return (await res.json()) as {
+        alreadyFinalized: boolean;
+        finalizedAt: string | null;
+        stagedCount?: number;
+        finalVersion?: number | null;
+        finalCreated?: boolean;
+      };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      if (data.alreadyFinalized) return;
+      // Phase 3 rider 2 (ledger 2026-08-31-trip-card-snapshot-render): a re-finalize that wrote NO
+      // new version says so with the version, instead of a generic success — the traveler learns
+      // there was nothing to capture, not that "something happened".
+      if (data.finalCreated === false) {
+        toast({
+          title: "Plan unchanged",
+          description: `No changes since v${data.finalVersion ?? "?"} — nothing new to finalize.`,
+        });
+        return;
+      }
       // Warn, never block (R-F): finalize has already committed by the time we know the staged
-      // count, so this is an informational note, not a gate.
+      // count, so this is an informational note, not a gate. (The pre-finalize gate lives on the
+      // Adopt button — Phase 3 rider 1.)
+      const v = data.finalVersion != null ? ` (v${data.finalVersion})` : "";
       if (data.stagedCount && data.stagedCount > 0) {
         toast({
-          title: "Trip Card is ready",
+          title: `Trip Card is ready${v}`,
           description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
             data.stagedCount > 1 ? "aren't" : "isn't"
           } booked yet. You can adopt this optimization now and book them later.`,
         });
       } else {
-        toast({ title: "Trip Card is ready", description: "Your optimization is adopted." });
+        toast({ title: `Trip Card is ready${v}`, description: "Your optimization is adopted." });
       }
     },
     onError: (err: any) => {
@@ -583,6 +603,21 @@ function SlipActions({
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
+  // Phase 3 rider 1 (finalize gate, ledger 2026-08-31-trip-card-snapshot-render): a traveler must
+  // not finalize with unpaid cart items dangling unknowingly. Items in `ready_for_checkout` are
+  // staged-but-unbooked; if any exist, Adopt opens an explicit "finalize without booking them?"
+  // confirmation instead of finalizing silently. A plan with none proceeds straight through.
+  const [confirmFinalizeOpen, setConfirmFinalizeOpen] = useState(false);
+  const stagedUnbookedCount = activities.filter((a) => a.routingStatus === "ready_for_checkout").length;
+  const runFinalize = () => {
+    finalizeMutation.mutate(undefined, {
+      // Open the "how do you want to book it?" chooser only when a NEW version was actually
+      // captured (a fresh adopt or a changed re-final) — never on an unchanged re-final.
+      onSuccess: (data) => {
+        if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true);
+      },
+    });
+  };
   // Display-honesty fix (ledger 2026-08-29-persona-coverage-complete's filed finding):
   // startOptimization used to treat `covered_by_pass` identically to the ordinary
   // `free_rerun` — same silent proceed, no label distinguishing "this is free because you
@@ -842,21 +877,43 @@ function SlipActions({
       {isOwner && !trip.finalizedAt && (
         <Button
           size="sm"
-          onClick={() =>
-            finalizeMutation.mutate(undefined, {
-              // Open the Finalize "how do you want to book it?" chooser on a fresh adopt only —
-              // never on an already-finalized re-click (the hook's own onSuccess handles toasts).
-              onSuccess: (data) => {
-                if (!data.alreadyFinalized) setFinalizeModalOpen(true);
-              },
-            })
-          }
+          onClick={() => {
+            // Rider 1 gate: staged-but-unbooked items ⇒ confirm before finalizing; otherwise go.
+            if (stagedUnbookedCount > 0) setConfirmFinalizeOpen(true);
+            else runFinalize();
+          }}
           disabled={finalizeMutation.isPending}
           data-testid="slip-action-adopt-optimization"
         >
           <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Adopt Optimization
         </Button>
       )}
+      {/* Phase 3 rider 1: finalize-with-unbooked confirmation (ledger 2026-08-31-trip-card-snapshot-render). */}
+      <Dialog open={confirmFinalizeOpen} onOpenChange={setConfirmFinalizeOpen}>
+        <DialogContent data-testid="confirm-finalize-unbooked">
+          <DialogHeader>
+            <DialogTitle>Finalize without booking?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {stagedUnbookedCount} item{stagedUnbookedCount > 1 ? "s are" : " is"} in checkout but not
+            booked yet. You can finalize now and book {stagedUnbookedCount > 1 ? "them" : "it"} later —
+            or go back and book first.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmFinalizeOpen(false)} data-testid="confirm-finalize-cancel">
+              Go back
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => { setConfirmFinalizeOpen(false); runFinalize(); }}
+              disabled={finalizeMutation.isPending}
+              data-testid="confirm-finalize-proceed"
+            >
+              Finalize without booking
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <FinalizeBookingModal
         open={finalizeModalOpen}
         onOpenChange={setFinalizeModalOpen}
