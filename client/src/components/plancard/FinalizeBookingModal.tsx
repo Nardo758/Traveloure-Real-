@@ -13,10 +13,14 @@
  *   • Travel expert    → POST /api/expert-requests (routes the trip to an expert to refine + book).
  *   • Concierge        → hand off to the concierge surface (/concierge), which owns the quote.
  *
- * Guarantees drawn in the mock and enforced here: choosing a person creates a request against
- * the plan (a COPY — the plan is never edited out from under the traveler), NOTHING is charged
- * until a booking is confirmed, and NO price is ever sent from the client (§14 — every amount is
- * server-derived). No figure is invented (§13): counts shown come from the plan's own items.
+ * Guarantees drawn in the mock and enforced here: choosing a person gives them ACCESS to the
+ * finalized plan (R-C / the stationary-slip erratum — the slip never moves and nothing is copied;
+ * the expert lane's request → assignment pipeline IS the advisor-access grant,
+ * `confirmLeadAssignmentTx` → `trip_expert_advisors`), NOTHING is charged until a booking is
+ * confirmed, and NO price is ever sent from the client (§14 — every amount is server-derived).
+ * No figure is invented (§13): counts shown come from the plan's own items. The former
+ * "Finalize without booking?" pre-gate is folded in here (adopt-finalize-conform row 13): when
+ * staged-but-unbooked items exist, this chooser says so inline — finalize stays one press.
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -59,6 +63,10 @@ export function FinalizeBookingModal({
   const bookableStops = affiliateStops(activities);
   const agentAvailable = bookableStops.length > 0;
   const checkoutCount = selectBulkCheckoutItems(activities).length;
+  // Folded pre-gate (adopt-finalize-conform row 13): the old separate "Finalize without booking?"
+  // dialog's fact, stated inline here instead. Same predicate SlipView's gate used — items staged
+  // to checkout but not yet booked. §13: rendered only when the count is real and non-zero.
+  const stagedUnbookedCount = activities.filter((a) => a.routingStatus === "ready_for_checkout").length;
 
   async function handleContinue() {
     if (submitting) return;
@@ -217,9 +225,15 @@ export function FinalizeBookingModal({
           })}
         </div>
 
+        {stagedUnbookedCount > 0 && (
+          <p className="text-[12px] text-muted-foreground" data-testid="finalize-staged-unbooked-note">
+            {stagedUnbookedCount} stop{stagedUnbookedCount === 1 ? " is" : "s are"} in checkout but not booked yet —
+            finalizing doesn't book {stagedUnbookedCount === 1 ? "it" : "them"}; you can book any time.
+          </p>
+        )}
         <p className="text-[12px] text-muted-foreground">
-          Choosing a person hands them a copy — your plan is never edited out from under you, and nothing is charged
-          until you or they confirm a booking.
+          Choosing a person gives them access to your finalized plan to book on your behalf — you keep ownership,
+          and nothing is charged until you or they confirm a booking.
         </p>
 
         <div className="flex justify-end gap-2">

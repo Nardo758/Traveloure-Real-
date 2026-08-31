@@ -97,6 +97,10 @@ export interface SlipTrip {
   planVersion?: number;
   /** R-F: set once by POST .../finalize, cleared by POST .../reopen. NULL = never finalized. */
   finalizedAt?: string | null;
+  /** Latest trip_finals version (server-emitted, Phase 2). NULL/absent = no final yet. The ready-
+   *  banner renders it so the Finalize Plan button's disappearance reads as COMPLETED, not missing
+   *  (adopt-finalize-conform D-2). */
+  finalVersion?: number | null;
   /** §21 traveler-facing trip-level note — same DTO field PlanCard passes to the map's notes layer. */
   expertTravelerNote?: string | null;
 }
@@ -464,7 +468,7 @@ function TransitionLogFooter({
   );
 }
 
-// ── Adopt Optimization / Reopen (ruling R-F) ─────────────────────────────────────────────
+// ── Finalize Plan / Reopen (ruling R-F; adopt-finalize-conform: finalize = lock) ─────────
 
 /** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
  *  uses, so client and scheduler agree on when Trip Card becomes primary. */
@@ -557,6 +561,17 @@ function TripCardPrimaryBanner({ trip, isOwner }: { trip: SlipTrip; isOwner: boo
         <div className="flex items-center gap-2 min-w-0">
           <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
           <p className="text-sm font-medium text-foreground">Your Trip Card is ready</p>
+          {/* Version chip (adopt-finalize-conform D-2): with it, the Finalize Plan button's
+              absence reads as COMPLETED — the confusion that opened this lane. §13: render only
+              a real server-emitted version, never an invented one. */}
+          {trip.finalVersion != null && (
+            <span
+              className="flex-shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-primary"
+              data-testid="slip-final-version-chip"
+            >
+              v{trip.finalVersion}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <Link href={`/trip/${trip.id}`}>
@@ -602,21 +617,17 @@ function SlipActions({
   // cart is required here.
   const [optimizing, setOptimizing] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
-  // After adopting the optimization, the Finalize chooser asks "how do you want to book it?"
-  // (ratified mock "Adopt the Optimization" → Finalize modal). Opened only on a fresh finalize.
+  // Finalize Plan → the chooser asks "how do you want to book it?" (mock popup 3). Opened only on
+  // a fresh finalize. The staged-but-unbooked warning (Phase 3 rider 1, ledger
+  // 2026-08-31-trip-card-snapshot-render) now lives INSIDE the chooser (adopt-finalize-conform
+  // row 13) — one press, one dialog, no separate pre-gate.
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
-  // Phase 3 rider 1 (finalize gate, ledger 2026-08-31-trip-card-snapshot-render): a traveler must
-  // not finalize with unpaid cart items dangling unknowingly. Items in `ready_for_checkout` are
-  // staged-but-unbooked; if any exist, Adopt opens an explicit "finalize without booking them?"
-  // confirmation instead of finalizing silently. A plan with none proceeds straight through.
-  const [confirmFinalizeOpen, setConfirmFinalizeOpen] = useState(false);
-  const stagedUnbookedCount = activities.filter((a) => a.routingStatus === "ready_for_checkout").length;
   const runFinalize = () => {
     finalizeMutation.mutate(undefined, {
       // Open the "how do you want to book it?" chooser only when a NEW version was actually
-      // captured (a fresh adopt or a changed re-final) — never on an unchanged re-final.
+      // captured (a fresh finalize or a changed re-final) — never on an unchanged re-final.
       onSuccess: (data) => {
         if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true);
       },
@@ -875,49 +886,23 @@ function SlipActions({
           )}
         </DialogContent>
       </Dialog>
-      {/* Adopt Optimization is owner-gated server-side (verifyTripOwnership) — never render it for a
-          non-owner viewer. Once adopted, the primary banner (above) owns the finalize/reopen
-          affordance — no duplicate control here. */}
+      {/* Finalize Plan — the mock's lock press (adopt-finalize-conform D-2: adopt = merge on the
+          comparison surfaces; THIS control is finalize = lock, and it says so). Owner-gated
+          server-side (verifyTripOwnership) — never render it for a non-owner viewer. Once final,
+          the primary banner (above) owns the finalized state ("Your Trip Card is ready · v{N}"
+          + reopen where dates permit) — no duplicate control here. The former "Finalize without
+          booking?" pre-gate is FOLDED into the chooser (D-13/row 13): FinalizeBookingModal itself
+          carries the staged-but-unbooked note, so finalize is one press → one dialog. */}
       {isOwner && !trip.finalizedAt && (
         <Button
           size="sm"
-          onClick={() => {
-            // Rider 1 gate: staged-but-unbooked items ⇒ confirm before finalizing; otherwise go.
-            if (stagedUnbookedCount > 0) setConfirmFinalizeOpen(true);
-            else runFinalize();
-          }}
+          onClick={runFinalize}
           disabled={finalizeMutation.isPending}
-          data-testid="slip-action-adopt-optimization"
+          data-testid="slip-action-finalize-plan"
         >
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Adopt Optimization
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Finalize Plan
         </Button>
       )}
-      {/* Phase 3 rider 1: finalize-with-unbooked confirmation (ledger 2026-08-31-trip-card-snapshot-render). */}
-      <Dialog open={confirmFinalizeOpen} onOpenChange={setConfirmFinalizeOpen}>
-        <DialogContent data-testid="confirm-finalize-unbooked">
-          <DialogHeader>
-            <DialogTitle>Finalize without booking?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {stagedUnbookedCount} item{stagedUnbookedCount > 1 ? "s are" : " is"} in checkout but not
-            booked yet. You can finalize now and book {stagedUnbookedCount > 1 ? "them" : "it"} later —
-            or go back and book first.
-          </p>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => setConfirmFinalizeOpen(false)} data-testid="confirm-finalize-cancel">
-              Go back
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => { setConfirmFinalizeOpen(false); runFinalize(); }}
-              disabled={finalizeMutation.isPending}
-              data-testid="confirm-finalize-proceed"
-            >
-              Finalize without booking
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
       <FinalizeBookingModal
         open={finalizeModalOpen}
         onOpenChange={setFinalizeModalOpen}
