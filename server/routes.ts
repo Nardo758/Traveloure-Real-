@@ -1515,13 +1515,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // existed) and keep the pre-existing replaced behavior — the same
       // `suggestedBy <> 'expert'` fallback as before, now reached only when `origin` itself
       // gives no answer.
-      // item-removed:replace — AI itinerary regeneration (delete the prior AI/traveler set,
-      // insert the freshly-generated one below). A plan rebuild, not a removal: no `item_removed`
-      // signal (§13, R15) — the traveler removed nothing, the generator replaced the set.
       // D-1 money-safety (ledger 2026-08-31-two-surfaces-one-handoff): the origin clause below spares
       // expert/traveler rows, but an `origin='ai'` stop the traveler routed to checkout or purchased
       // was still deletable — a regenerate could drop a paid row and sever its `booking_id`. The shared
       // rebuild guard restricts this delete to rows with no protected status and no booking reference.
+      // item-removed:replace — AI itinerary regeneration (delete the prior AI/traveler set,
+      // insert the freshly-generated one below). A plan rebuild, not a removal: no `item_removed`
+      // signal (§13, R15) — the traveler removed nothing, the generator replaced the set.
       await db.delete(itineraryItems).where(
         and(
           eq(itineraryItems.tripId, trip.id),
