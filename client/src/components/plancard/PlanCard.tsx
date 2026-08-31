@@ -22,6 +22,7 @@ import { SectionTabs } from "./SectionTabs";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
 import { EscalationCTA } from "./EscalationCTA";
+import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { ConciergeModule } from "./ConciergeModule";
@@ -1219,6 +1220,17 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     totalCost: totalCostDisplay,
                   }}
                 />
+              </div>
+            )}
+
+            {/* Row 11 (Trip Card rebuild Phase 3b): expert-suggestion accept/decline on the
+                finalized Trip Card. Accepting here materializes the item AND — because the trip is
+                finalized — auto-creates a new final version server-side (reFinalizeIfCurrentlyFinal).
+                Same component the slip mounts pre-final; renders nothing when there are no
+                suggestions. */}
+            {!isViewer && !embedded && stage === "full" && (
+              <div className="px-3 sm:px-5 pt-2">
+                <ExpertSuggestionsPanel tripId={trip.id} />
               </div>
             )}
           </>
