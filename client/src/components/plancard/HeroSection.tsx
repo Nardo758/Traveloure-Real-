@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, format, isValid } from "date-fns";
-import { Users, Share2, Download, MapPin, Calendar, Zap, CheckCircle2 } from "lucide-react";
+import { Users, Share2, Download, MapPin, Calendar, Zap, CheckCircle2, RefreshCw } from "lucide-react";
 // Badge is still used for the travelers pill below
 import { Link } from "wouter";
 import { getDestinationPhoto, computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
@@ -29,6 +29,19 @@ interface HeroSectionProps {
    * regardless of approval state. Defaults to false (unchanged "in planning" chrome).
    */
   finalDress?: boolean;
+  /**
+   * Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff): the trip_finals version this card renders,
+   * or null when the trip has no final (the not-final state). When present and finalized the chip
+   * reads "Final · v{N}" instead of the bare "Final".
+   */
+  finalVersion?: number | null;
+  /**
+   * Phase 2: the trip has a final but was reopened for revision on the slip (finalized_at cleared).
+   * The card still renders the latest final version; this shows a quiet "Plan being revised on the
+   * slip" chip in place of the "Final" chip so the traveler is never left without their command
+   * center mid-revision.
+   */
+  revising?: boolean;
 }
 
 export function HeroSection({
@@ -44,6 +57,8 @@ export function HeroSection({
   totalMinutes,
   statsLabels,
   finalDress = false,
+  finalVersion = null,
+  revising = false,
 }: HeroSectionProps) {
   const { toast } = useToast();
   // Real photo when sourced; null today → the brand gradient below carries the hero.
@@ -114,15 +129,28 @@ export function HeroSection({
           <Zap className="w-3 h-3" />
           {statusLabel}
         </span>
-        {finalDress && (
+        {/* Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff): the version/revision chip. When the
+            trip is being revised on the slip (a final exists but finalized_at was cleared) the card
+            still renders the latest final and shows a quiet "being revised" chip; otherwise the
+            existing Final chip reads "Final · v{N}" once there is a real snapshot version. */}
+        {revising ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            data-testid={`badge-revising-${trip.id}`}
+            title="Plan being revised on the slip"
+          >
+            <RefreshCw className="w-3 h-3" style={{ color: "#F5C97B" }} />
+            Being revised
+          </span>
+        ) : finalDress ? (
           <span
             className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
             data-testid={`badge-final-dress-${trip.id}`}
           >
             <CheckCircle2 className="w-3 h-3" style={{ color: "#5DCAA5" }} />
-            Final
+            {finalVersion != null ? `Final · v${finalVersion}` : "Final"}
           </span>
-        )}
+        ) : null}
         {trip.numberOfTravelers && trip.numberOfTravelers > 1 && (
           <Badge className="bg-background/50 text-foreground border-0 text-[11px] backdrop-blur-sm gap-1 px-2.5 py-1" data-testid={`badge-travelers-${trip.id}`}>
             <Users className="w-3 h-3" />

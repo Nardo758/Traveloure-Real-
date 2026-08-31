@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
+import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
@@ -24,7 +24,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
@@ -33,14 +32,6 @@ import type { UserExperience } from "@shared/schema";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
 
 type Section = "activities" | "transport";
-
-type BookingType = "inApp" | "partner";
-
-function getBookingType(actType: string): BookingType {
-  const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
-  if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
-  return 'inApp';
-}
 
 /**
  * Mobile-lens audit #1 fix (found in behavioral verification): the pre-existing
@@ -141,7 +132,6 @@ export default function TripDetails() {
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
   const generatePlan = useGenerateItinerary();
-  const { data: generatedItinerary } = useGeneratedItinerary(id || "");
   const {
     data: plancardData,
     isLoading: itineraryLoading,
@@ -767,56 +757,11 @@ export default function TripDetails() {
 
                 <TabsContent value="bookings" className="mt-0">
                   <div className="space-y-6">
-                    {/* Booking Summary card from itinerary.tsx */}
-                    {generatedItinerary?.itineraryData && (
-                      <Card className="bg-card border-border" data-testid="booking-summary-card">
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <CreditCard className="w-4 h-4 text-primary" />
-                            Booking Summary
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-0 space-y-2">
-                          {(() => {
-                            const itinerary = generatedItinerary.itineraryData;
-                            const allActivities = itinerary.days.flatMap((d: any) => d.activities);
-                            const inAppBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'inApp' && !a.booked);
-                            const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
-                            const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                            const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                            return (
-                              <>
-                                <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
-                                  <div className="flex items-center gap-1.5">
-                                    <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                                    <span className="text-xs font-medium">Book on Traveloure</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-xs text-muted-foreground" data-testid="text-inapp-count">{inAppBookings.length} items</p>
-                                    <p className="text-sm font-semibold text-primary" data-testid="text-inapp-total">${inAppTotal}</p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center justify-between p-2.5 bg-muted/50 rounded-lg">
-                                  <div className="flex items-center gap-1.5">
-                                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                    <span className="text-xs font-medium">Book via Partners</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-xs text-muted-foreground" data-testid="text-partner-count">{partnerBookings.length} items</p>
-                                    <p className="text-sm font-semibold text-foreground" data-testid="text-partner-total">${partnerTotal}</p>
-                                  </div>
-                                </div>
-                                <div className="border-t pt-2 mt-1 flex items-center justify-between">
-                                  <span className="text-sm font-semibold text-foreground">Total Pending</span>
-                                  <span className="text-base font-bold text-primary" data-testid="text-total-pending">${inAppTotal + partnerTotal}</span>
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </CardContent>
-                      </Card>
-                    )}
-
+                    {/* Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff, drift-audit §C row 6):
+                        the stale "Booking Summary / Total Pending" card that summed a
+                        `generatedItinerary` jsonb blob is REMOVED. The Trip Card renders live
+                        booking status from the finalized snapshot joined to real service_bookings
+                        rows — a stale blob must never be the money source of truth. */}
                     <div className="text-center py-16">
                       <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
                         <Plane className="w-8 h-8 text-muted-foreground" />

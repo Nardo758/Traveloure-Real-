@@ -17,6 +17,7 @@ import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
+import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
@@ -349,6 +350,18 @@ router.post("/api/itinerary-comparisons/:id/adopt-stop", isAuthenticated, async 
       }).returning();
       return { adopted: true, item: row };
     });
+
+    // Phase 2 auto-v+1 (ledger 2026-08-31-two-surfaces-one-handoff): adopting a stop is accepting an
+    // optimizer suggestion. If the trip is CURRENTLY finalized, capture it as a new final version so
+    // the snapshot-rendered Trip Card shows the adopted stop immediately. Best-effort — the adopt
+    // already committed; a re-final failure must not turn a successful adopt into a 500.
+    if (result.adopted) {
+      try {
+        await reFinalizeIfCurrentlyFinal(tripId, userId);
+      } catch (err) {
+        console.error("[adopt-stop] auto re-finalize failed (non-fatal):", (err as any)?.message);
+      }
+    }
 
     res.json(result);
   } catch (error) {
