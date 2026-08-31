@@ -348,6 +348,14 @@ function PlanCardSummary({
   const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
   const numDays = computeDayCount(days, trip.startDate, trip.endDate);
 
+  // Two-surfaces routing (Trip Card rebuild Phase 4, ledger 2026-08-31-stage-a-dashboard):
+  // the summary card's view links land on the Trip Card (/trip/:id) once a final exists, else on
+  // the slip (/plans/:id) where a pre-final plan still lives. Phase 3b dismantled the `?tab=…`
+  // tabbed shell, so no tab/section params survive; expert affordances route to the slip, which
+  // owns expert handoff after Phase 3b. finalVersion rides on the plancard DTO (shared/trip-plan.ts).
+  const planHref = plancardData?.trip?.finalVersion != null ? `/trip/${trip.id}` : `/plans/${trip.id}`;
+  const slipHref = `/plans/${trip.id}`;
+
   const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
   const hasActivities = totalActivities > 0;
 
@@ -452,7 +460,7 @@ function PlanCardSummary({
         className="rounded-[14px] overflow-hidden cursor-pointer"
         style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF" }}
         data-testid={`dashboard-plan-card-${trip.id}`}
-        onClick={() => navigate(`/trip/${trip.id}?tab=itinerary`)}
+        onClick={() => navigate(planHref)}
       >
         {/* Shared header (summary↔full continuity) — redesign */}
         <PlanCardHeader
@@ -507,7 +515,7 @@ function PlanCardSummary({
             {serviceBookingsCount > 0 && (
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=bookings`); }}
+                onClick={(e) => { e.stopPropagation(); navigate(planHref); }}
                 className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ background: "#E6F1FB", color: "#0C447C" }}
                 data-testid={`pill-services-${trip.id}`}
@@ -518,7 +526,7 @@ function PlanCardSummary({
             {totalLegs > 0 && (
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=itinerary&section=transport`); }}
+                onClick={(e) => { e.stopPropagation(); navigate(planHref); }}
                 className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ background: "#E1F5EE", color: "#085041" }}
                 data-testid={`pill-transport-${trip.id}`}
@@ -529,7 +537,7 @@ function PlanCardSummary({
             {advisor && (
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=expert`); }}
+                onClick={(e) => { e.stopPropagation(); navigate(slipHref); }}
                 className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ background: "#EEEDFE", color: "#3C3489" }}
                 data-testid={`pill-expert-${trip.id}`}
@@ -554,7 +562,7 @@ function PlanCardSummary({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); navigate(`/trip/${trip.id}?tab=itinerary`); }}
+                      onClick={(e) => { e.stopPropagation(); navigate(planHref); }}
                       className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                       style={
                         isStale
@@ -598,7 +606,7 @@ function PlanCardSummary({
 
         {/* Advisor strip */}
         {advisor && (
-          <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`} onClick={(e) => e.stopPropagation()}>
+          <Link href={slipHref} onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center gap-2.5 cursor-pointer hover:bg-[#F3F3EE] transition-colors"
               style={{ padding: "9px 14px", borderTop: "0.5px solid #E8E8E2" }}
@@ -674,7 +682,7 @@ function PlanCardSummary({
             📍 Maps
           </button>
           <Link
-            href={`/trip/${trip.id}?tab=itinerary`}
+            href={planHref}
             onClick={(e) => e.stopPropagation()}
             className="flex-1 flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium text-white transition-opacity hover:opacity-90"
             style={{ background: "#E85D55" }}

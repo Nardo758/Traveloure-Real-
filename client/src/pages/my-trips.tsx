@@ -1,7 +1,7 @@
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Search, Grid, List, Filter, Plane, Heart, PartyPopper, Briefcase, Star, ChevronRight } from "lucide-react";
+import { Plus, Loader2, Search, Grid, List, Filter, Plane, Heart, PartyPopper, Briefcase, Star, ChevronRight, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -144,11 +144,20 @@ export default function MyTrips() {
     const isCompleted = end < now;
     const daysAway = differenceInDays(start, now);
 
+    // Final-aware tile (Trip Card rebuild Phase 4, ledger 2026-08-31-stage-a-dashboard): a trip
+    // with a `trip_finals` version has a real Trip Card at /trip/:id (the frozen snapshot). The
+    // tile stays the same compact row — no per-row plancard query, no layout rework — but flips
+    // its chip + primary action on that one fact. Pre-final, the plan lives on the slip, so the
+    // primary lands there. `finalVersion` rides on the trips-list response (TripListItem).
+    const finalVersion: number | null = trip.finalVersion ?? null;
+    const hasFinal = finalVersion != null;
+    const primaryHref = hasFinal ? `/trip/${trip.id}` : `/plans/${trip.id}`;
+
     return (
       <Card
         className="border border-border hover:shadow-md transition-shadow cursor-pointer"
         data-testid={`trip-card-${trip.id}`}
-        onClick={() => setLocation(`/plans/${trip.id}`)}
+        onClick={() => setLocation(primaryHref)}
       >
         <CardContent className={viewMode === "list" ? "p-5" : "p-4"}>
           <div className={viewMode === "list" ? "flex items-start gap-4" : "space-y-4"}>
@@ -185,6 +194,18 @@ export default function MyTrips() {
                         {trip.occasion.label} · {formatOccasionDate(trip.occasion.date)}
                       </span>
                     )}
+                    {/* Final · v{N} — a trip with a frozen snapshot has a Trip Card at /trip/:id.
+                        Same green treatment as the card's own Final chip (ledger 2026-08-31-stage-a-dashboard). */}
+                    {hasFinal && (
+                      <span
+                        className="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+                        data-testid={`chip-final-${trip.id}`}
+                        title="This plan is finalized — open its Trip Card"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        Final · v{finalVersion}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {format(start, "MMM d")} - {format(end, "MMM d, yyyy")} • {trip.destination}
@@ -217,24 +238,29 @@ export default function MyTrips() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                {/* R-E: "View" lands on the slip (/plans/:tripId) — the merged former "Open slip" action. */}
-                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
-                  <Button size="sm" variant="outline" data-testid={`button-view-${trip.id}`}>
-                    View
-                  </Button>
-                </Link>
+                {/* Final-aware primary (ledger 2026-08-31-stage-a-dashboard): post-final the plan is
+                    frozen and has a Trip Card at /trip/:id, so the primary is "View Trip Card"; pre-final
+                    the plan lives on the slip, so the primary is "Open slip" (/plans/:tripId). One action,
+                    one destination — no separate always-on Trip Card button that pre-final would only
+                    land on the "not final yet" notice. */}
+                {hasFinal ? (
+                  <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
+                    <Button size="sm" variant="outline" data-testid={`button-view-trip-card-${trip.id}`}>
+                      View Trip Card
+                    </Button>
+                  </Link>
+                ) : (
+                  <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
+                    <Button size="sm" variant="outline" data-testid={`button-open-slip-${trip.id}`}>
+                      Open slip
+                    </Button>
+                  </Link>
+                )}
                 <Link href={`/chat?tripId=${encodeURIComponent(trip.id)}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-chat-${trip.id}`}>
                     Chat
                   </Button>
                 </Link>
-                {!isCompleted && (
-                  <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-edit-${trip.id}`}>
-                      Trip Card
-                    </Button>
-                  </Link>
-                )}
               </div>
             </div>
           </div>
