@@ -137,6 +137,7 @@ import type {
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition, type TransitionActorType } from "./services/item-transition-log.service";
+import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
@@ -7430,10 +7431,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async replaceItineraryItems(tripId: string, items: any[]): Promise<void> {
+    // D-1 money-safety (ledger 2026-08-31-rebuild-delete-money-guard): a rebuild delete never destroys
+    // a checked-out/purchased/booked row. This method's ONLY caller (trips.routes.ts generate handler)
+    // is currently SHADOWED by the guarded inline handler in routes.ts, so the guard is behavior-neutral
+    // today — but the shared predicate makes the method safe-by-construction for any future caller.
     // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE logical
     // regeneration, not a removal). Emitting `item_removed` here would be a false removal signal
     // (§13, R15): the traveler removed nothing, the plan was regenerated. No `item_removed` write.
-    await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    await db.delete(itineraryItems).where(and(
+      eq(itineraryItems.tripId, tripId),
+      itineraryItemRebuildDeletable(),
+    ));
     if (items.length > 0) {
       await db.insert(itineraryItems).values(items);
     }
@@ -7855,6 +7863,8 @@ export class DatabaseStorage implements IStorage {
     // item-removed:dead — no live caller (grep-verified Aug 17 2026); kept for its total-wipe
     // semantics should a future caller need it. If it is ever wired to a live removal path, it
     // must move to the `deleteItineraryItem` transactional+`item_removed` shape (R15).
+    // rebuild-guard-exempt: dead — no live caller; a future caller wiring this to a rebuild path must
+    // re-classify (AND itineraryItemRebuildDeletable() or a fresh exemption), not inherit this one.
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
   }
 
@@ -7868,6 +7878,8 @@ export class DatabaseStorage implements IStorage {
     // item-removed:replace — the routing-aware apply-to-trip replace (in_planning rows the
     // optimizer is about to re-insert). Its live sibling (plancard.routes.ts apply) already logs a
     // trip-scoped `variant_applied` event; this is a plan rebuild, not a removal (§13, R15).
+    // rebuild-guard-exempt: in_planning-only — the WHERE deletes only in_planning rows, so a
+    // ready_for_checkout/purchased/booked row is preserved by construction (the guard's own invariant).
     const deleted = await db
       .delete(itineraryItems)
       .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")))

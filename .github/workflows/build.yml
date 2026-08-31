@@ -112,6 +112,23 @@ jobs:
       - name: Item-removed logging coverage guard
         run: node scripts/check-item-removed-logging.cjs
 
+  itinerary-rebuild-guard:
+    name: itinerary-rebuild-guard (D-1 rebuild-delete money-safety coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a trip-scoped itinerary_items rebuild-delete lacks `itineraryItemRebuildDeletable()`
+      # and no `// rebuild-guard-exempt:<reason>`. Closes the D-1 class (origin is never a money guard;
+      # a rebuild delete keys on routing_status + booking presence). Node built-ins only — no npm ci.
+      # See ledger 2026-08-31-rebuild-delete-money-guard. Predicate fixtures FIRST (§18d).
+      - name: Rebuild-guard predicate self-test
+        run: node scripts/check-itinerary-rebuild-guard.cjs --self-test
+      - name: Itinerary rebuild-delete coverage guard
+        run: node scripts/check-itinerary-rebuild-guard.cjs
+
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest
