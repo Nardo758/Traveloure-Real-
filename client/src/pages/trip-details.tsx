@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { useTrip } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, XCircle } from "lucide-react";
-import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, XCircle } from "lucide-react";
+import { TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays, isValid } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -20,8 +19,6 @@ import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
-import { GuestInviteManager } from "@/components/GuestInviteManager";
-import type { UserExperience } from "@shared/schema";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
 
 type Section = "activities" | "transport";
@@ -118,7 +115,7 @@ export default function TripDetails() {
   const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
   const [section, setSection] = useState<Section>(initialSection);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
-  const [showAnchorCapture, setShowAnchorCapture] = useState(false);
+  // Phase 3b: showAnchorCapture removed with the flight/hotel capture (moved to the slip, row 13).
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -167,30 +164,9 @@ export default function TripDetails() {
     enabled: !!trip?.destination,
   });
 
-  // Guest-invite surface (A1): a trip born from an event experience template (wedding/
-  // proposal/birthday…) has a user_experiences row linked via tripId — that link is the
-  // Event-class signal. When present, the Guests tab surfaces the organizer's invite
-  // manager. Rides the live session-scoped GET /api/user-experiences (owner-only data).
-  const { data: allUserExperiences } = useQuery<UserExperience[]>({
-    queryKey: ["/api/user-experiences"],
-    enabled: !!user && !!id,
-    staleTime: 30_000,
-  });
-  const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
-
-  const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
-  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
-
-  const createGuestListMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/user-experiences", {
-      tripId: id,
-      title: trip?.title || trip?.destination || "My Event",
-      location: trip?.destination || "",
-      eventDate: trip?.startDate || new Date().toISOString(),
-    }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] }),
-    onError: () => toast({ title: "Could not set up guest list", variant: "destructive" }),
-  });
+  // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the guest-invite data layer
+  // (user-experiences query, linkedExperience, isEventTrip, createGuestListMutation) moved to
+  // the slip family with the Guests surface (SlipLogisticsSection owns it now — row 14).
 
   // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the expert-assign picker and the
   // expert-suggestion review data layer (trip-experts / offering-types / suggestions queries,
@@ -465,12 +441,7 @@ export default function TripDetails() {
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
-                    {isEventTrip && (
-                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1 min-h-11">
-                        <UserPlus className="w-3.5 h-3.5" />
-                        Guests
-                      </TabsTrigger>
-                    )}
+                    {/* Phase 3b (row 14): the Guests tab moved to the slip (SlipLogisticsSection). */}
                   </TabsList>
 
                   <div className="hidden md:flex gap-2">
@@ -505,35 +476,9 @@ export default function TripDetails() {
 
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
-                  {/* Flight & hotel time capture — surfaced in the primary trip view
-                      (was only reachable in the buried Logistics tab). Reuses the
-                      canonical TemporalAnchorManager filtered to the 4 flight/hotel
-                      anchor types. Optional; never blocks. */}
-                  {id && (
-                    <Collapsible open={showAnchorCapture} onOpenChange={setShowAnchorCapture}>
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-between"
-                          data-testid="button-toggle-anchor-capture"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Plane className="w-4 h-4 text-blue-600" />
-                            Add flight &amp; hotel times (optional)
-                          </span>
-                          <ChevronRight className={`w-4 h-4 transition-transform ${showAnchorCapture ? "rotate-90" : ""}`} />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-3">
-                        <TemporalAnchorManager
-                          tripId={id}
-                          allowedTypes={["flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout"]}
-                          title="Flight & hotel times"
-                          description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
-                        />
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
+                  {/* Phase 3b (row 13): the flight/hotel-time capture moved to the slip
+                      (SlipLogisticsSection) — anchors are planning input, so they live where
+                      planning happens, not on the finalized Trip Card. */}
 
                   {/* Itinerary Timeline */}
                   {itineraryLoading ? (
@@ -748,66 +693,22 @@ export default function TripDetails() {
 
                 <TabsContent value="logistics" className="mt-0 space-y-6">
                   {id && (
-                    <>
-                      <TripLogisticsDashboard
-                        tripId={id}
-                        tripName={trip?.title || trip?.destination || "Trip"}
-                        budget={typeof trip?.budget === 'number' ? trip.budget : 0}
-                        destination={trip?.destination || "destination"}
-                      />
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <TemporalAnchorManager tripId={id} />
-                        <ScheduleValidator tripId={id} />
-                      </div>
-                      <EnergyBudgetDisplay tripId={id} />
-                      <AnchorSuggestionsPanel tripId={id} />
-                      {trip?.eventType === "wedding" && (
-                        <WeddingAnchorPresets
-                          tripId={id}
-                          templateSlug="wedding"
-                          eventDate={trip.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : ""}
-                        />
-                      )}
-                    </>
+                    <TripLogisticsDashboard
+                      tripId={id}
+                      tripName={trip?.title || trip?.destination || "Trip"}
+                      budget={typeof trip?.budget === 'number' ? trip.budget : 0}
+                      destination={trip?.destination || "destination"}
+                    />
                   )}
+                  {/* Phase 3b (row 13): the temporal-anchor cluster (TemporalAnchorManager,
+                      ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel,
+                      WeddingAnchorPresets) moved to the slip (SlipLogisticsSection) — anchors are
+                      optimizer constraints, i.e. planning input. TripLogisticsDashboard stays. */}
                 </TabsContent>
 
-                {isEventTrip && (
-                  <TabsContent value="guests" className="mt-0">
-                    {linkedExperience ? (
-                      <GuestInviteManager
-                        experienceId={linkedExperience.id}
-                        eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
-                        eventDestination={linkedExperience.location || trip?.destination || ""}
-                        eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
-                      />
-                    ) : (
-                      <div className="py-14 flex flex-col items-center gap-4 text-center">
-                        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                          <UserPlus className="w-7 h-7 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground mb-1">Set up your guest list</p>
-                          <p className="text-sm text-muted-foreground max-w-xs">
-                            Track RSVPs, send invites, and manage attendees for{" "}
-                            {trip?.title || trip?.destination || "this event"}.
-                          </p>
-                        </div>
-                        <Button
-                          onClick={() => createGuestListMutation.mutate()}
-                          disabled={createGuestListMutation.isPending}
-                          data-testid="button-setup-guest-list"
-                        >
-                          {createGuestListMutation.isPending ? (
-                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Setting up…</>
-                          ) : (
-                            <><UserPlus className="w-4 h-4 mr-2" />Set up guest list</>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </TabsContent>
-                )}
+                {/* Phase 3b (row 14): the Guests tab (GuestInviteManager / "Set up guest list")
+                    moved to the slip (SlipLogisticsSection). Share (B3) covers the post-final
+                    companion case. */}
               </div>
             </Tabs>
           </CardContent>

@@ -69,6 +69,7 @@ import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { AssignExpertSlot } from "./AssignExpertDialog";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
+import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { BuildAroundDialog } from "./BuildAroundDialog";
@@ -1116,6 +1117,10 @@ export function SlipView({
           here; the same component mounts on the finalized Trip Card (PlanCard full) where accepting
           auto-creates a new final version. Renders nothing when there are no suggestions. */}
       <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" />
+
+      {/* Rows 13/14 (relocated from the trip-details itinerary/logistics/guests tabs): temporal
+          anchors + guest invites are planning inputs, so their home is the slip. Owner-only. */}
+      {isOwner && <SlipLogisticsSection tripId={tripId} />}
 
       <TransitionLogFooter
         transitions={transitions}
