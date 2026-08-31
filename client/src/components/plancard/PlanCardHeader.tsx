@@ -66,8 +66,10 @@ export function PlanCardHeader({
         />
       )}
 
-      {/* Dark scrim — heavier at bottom so text stays readable */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
+      {/* Dark scrim — the mockup's `.phead` is solid dark, so the photo reads as a subtle
+          texture, never a bright field the white title can wash out against (Phase 2b: the title
+          now sits at the TOP of the header, over what used to be the lightest part of the scrim). */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/70 to-black/60" />
 
       {/* Content sits above the scrim */}
       <div className="relative z-10">
@@ -82,7 +84,7 @@ export function PlanCardHeader({
         </div>
 
         <h2
-          className="mt-2 font-['DM_Serif_Display',serif] text-[20px] font-bold leading-tight tracking-[-0.01em] pr-2"
+          className="mt-2 font-['DM_Serif_Display',serif] text-[20px] font-bold leading-tight tracking-[-0.01em] pr-2 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]"
           data-testid={testId ? `${testId}-title` : undefined}
         >
           {title}
