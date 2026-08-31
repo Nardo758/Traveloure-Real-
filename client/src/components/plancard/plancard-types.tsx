@@ -393,7 +393,7 @@ export interface PlanCardData {
    * pre-migration response or before the server route is wired → renders nothing (§13), never a
    * placeholder.
    */
-  trip?: { finalizedAt?: string | null; expertTravelerNote?: string | null };
+  trip?: { finalizedAt?: string | null; finalVersion?: number | null; expertTravelerNote?: string | null };
 }
 
 export interface PlanCardTrip {

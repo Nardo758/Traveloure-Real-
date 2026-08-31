@@ -15,6 +15,7 @@ import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
 import { isTripAdvisor, isTripAdvisorWithWriteAccess, TRIP_ADVISOR_ACCESS_STATUSES, tripAdvisorStatusGrantsAccess } from '../utils/trip-advisor';
 import { logItemTransition } from '../services/item-transition-log.service';
+import { reFinalizeIfCurrentlyFinal } from '../services/trip-finalize.service';
 import { getUserId } from '../utils/auth';
 import { sanitizeInput } from '../utils/sanitize';
 import { storage } from '../storage';
@@ -1039,6 +1040,18 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
         origin: 'expert',
       } as any);
       createdItemId = created.id;
+    }
+
+    // Phase 2 auto-v+1 (ledger 2026-08-31-two-surfaces-one-handoff): if this trip is CURRENTLY
+    // finalized, capture the just-approved suggestion as a new final version so the snapshot-rendered
+    // Trip Card shows it immediately. Best-effort — the approval already committed; a re-final failure
+    // must never turn a successful approval into a 500 (the change is captured on the next finalize).
+    if (createdItemId) {
+      try {
+        await reFinalizeIfCurrentlyFinal(id, userId);
+      } catch (err) {
+        console.error('[suggestion-approve] auto re-finalize failed (non-fatal):', (err as any)?.message);
+      }
     }
 
     res.json({ success: true, suggestion: { id: suggestionId, status }, itemId: createdItemId });

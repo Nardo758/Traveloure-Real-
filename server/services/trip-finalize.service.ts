@@ -93,6 +93,40 @@ export class TripNotFoundError extends Error {
   }
 }
 
+/** The latest final for a trip (highest version), or null if it has never been finalized. Read by
+ *  the Trip Card assembler (Phase 2 snapshot-only render) and by the auto-refinalize helper. */
+export async function getLatestTripFinal(tripId: string): Promise<TripFinal | null> {
+  const [row] = await db
+    .select()
+    .from(tripFinals)
+    .where(eq(tripFinals.tripId, tripId))
+    .orderBy(desc(tripFinals.version))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Auto-capture a just-accepted change as a NEW final version — but ONLY when the trip is CURRENTLY
+ * finalized (`finalized_at` set). The snapshot-rendered Trip Card shows the latest final, so a
+ * suggestion accepted on a finalized trip must advance the version or it would stay invisible until
+ * the next manual finalize (ledger 2026-08-31-two-surfaces-one-handoff). A REOPENED trip
+ * (`finalized_at` NULL, a final exists) is deliberately left alone: its edits are the revision the
+ * traveler is making on the slip, captured when they re-finalize. finalizeTrip is idempotent, so if
+ * the accept did not actually change the plan fingerprint no new version is written. Best-effort by
+ * contract — the caller treats a failure here as non-fatal (the accept already committed); returns
+ * the new version when one was written, else null.
+ */
+export async function reFinalizeIfCurrentlyFinal(tripId: string, actorId: string): Promise<number | null> {
+  const [trip] = await db
+    .select({ finalizedAt: trips.finalizedAt })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (!trip || !trip.finalizedAt) return null;
+  const result = await finalizeTrip(tripId, actorId);
+  return result.finalCreated ? result.version : null;
+}
+
 /**
  * Finalize `tripId` on behalf of `actorId` (the session user; ownership is enforced by the caller).
  * Idempotent by plan fingerprint. Throws {@link TripNotFoundError} if the trip does not exist.

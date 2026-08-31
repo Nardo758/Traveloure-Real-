@@ -69,6 +69,34 @@ import {
 import { geocodeAddress } from "../utils/geocode";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
 import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
+import { getLatestTripFinal } from "./trip-finalize.service";
+
+/**
+ * Phase 2 snapshot-only render (ledger 2026-08-31-two-surfaces-one-handoff): overlay the LIVE
+ * booking status of each snapshot item onto the FROZEN plan. The final freezes WHAT the plan is
+ * (which stops, in what order, with what content); it must NEVER freeze booking status — a stop
+ * bought after Finalize must read as booked. So the render items are the snapshot's, but each one's
+ * live booking fields (`routingStatus` / `bookingId` / `bookingStatus` / confirmation / reference)
+ * are taken from the CURRENT `itinerary_items` row of the same id when it still exists. A snapshot
+ * item whose live row was deleted since Finalize keeps its frozen fields (it has no live booking to
+ * show). The plan-defining fields (title, day, time, location, cost, notes) always stay frozen.
+ */
+function overlayLiveBookingStatus(snapshotItems: any[], liveItems: any[]): any[] {
+  const liveById = new Map<string, any>(liveItems.map((i) => [i.id, i]));
+  return snapshotItems.map((si) => {
+    const live = liveById.get(si.id);
+    if (!live) return si;
+    return {
+      ...si,
+      routingStatus: live.routingStatus,
+      bookingId: live.bookingId ?? null,
+      bookingStatus: live.bookingStatus ?? si.bookingStatus ?? null,
+      confirmationNumber: live.confirmationNumber ?? si.confirmationNumber ?? null,
+      bookingReference: live.bookingReference ?? si.bookingReference ?? null,
+      status: live.status ?? si.status,
+    };
+  });
+}
 
 /** Raised when a level is requested that v1 cannot honestly produce (`social`). */
 export class TripPlanLevelUnsupportedError extends Error {
@@ -572,7 +600,7 @@ export async function assembleTripPlan(
     return { redactionLevel: "preview", meta: baseMeta(dayCount) };
   }
 
-  const items = await storage.getItineraryItems(tripId);
+  let items = await storage.getItineraryItems(tripId);
 
   // ── teaser: day + title ONLY (the §10 redactTemplateContent posture). ─────────────────────
   // Items are read solely to derive the day list + day headline; NO activity is emitted.
@@ -599,9 +627,32 @@ export async function assembleTripPlan(
 
   // ── full ──────────────────────────────────────────────────────────────────────────────────
 
+  // ── Phase 2 snapshot-only render (ledger 2026-08-31-two-surfaces-one-handoff) ──────────────
+  // When the trip has a latest final, the Trip Card renders that FROZEN plan (the final's items) —
+  // whether the trip is currently finalized OR reopened — with LIVE booking status overlaid per
+  // item (overlayLiveBookingStatus). `finalizedAt` drives only the client chip (Final · vN vs
+  // "being revised"), never which version renders. `finalVersion` is emitted on the plancard below.
+  //
+  // NOT-FINAL is INTERIM behavior (decision-maker correction, 2026-08-31): a trip with NO final
+  // still renders its live plan here today, but the ruled end state is that the Trip Card does NOT
+  // exist before Make final — `/trip/:id` with no final must render the honest notice ("Not final
+  // yet — your plan is on the slip" + one action to /plans/:tripId), NOT a live planning render.
+  // That flip lands in PHASE 3 with the trip-details bolt-on deletion pass (stripping the planning
+  // tools first, then leaving the notice-only page) — it is deliberately NOT done here to avoid a
+  // half-stripped page. Do not treat this live-render branch as final behavior.
+  const latestFinal = await getLatestTripFinal(tripId);
+  const renderingSnapshot = latestFinal != null;
+  if (latestFinal) {
+    items = overlayLiveBookingStatus(((latestFinal.snapshot as any)?.items ?? []) as any[], items);
+  }
+
   // Resolve-on-write: fill + persist any missing pin coordinates via the single server geocode
-  // path, so the client never geocodes.
-  await resolveMissingItemCoordinates(items as any, trip.destination);
+  // path, so the client never geocodes. Skipped when rendering a snapshot — the frozen items
+  // already carry the coordinates resolved at Finalize, and a snapshot render must not write live
+  // rows.
+  if (!renderingSnapshot) {
+    await resolveMissingItemCoordinates(items as any, trip.destination);
+  }
 
   const comparison = await storage.getItineraryComparisonByTripId(tripId);
 
@@ -1024,6 +1075,13 @@ export async function assembleTripPlan(
         // client derives Trip Card primacy from this + startDate/endDate via
         // shared/trip-primary-surface.ts, never from `status`.
         finalizedAt: (trip as any).finalizedAt ? String((trip as any).finalizedAt) : null,
+        // Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff): the version of the trip_finals
+        // snapshot this card is rendering — null when the trip has no final (the not-final state).
+        // The client shows "Final · vN" when finalizedAt is set, and "Plan being revised on the
+        // slip" when a final exists (finalVersion != null) but finalizedAt is null (reopened) — it
+        // never loses the card mid-revision. Which version renders is finalVersion; whether the
+        // card is dressed final is finalizedAt (§: two independent signals).
+        finalVersion: latestFinal?.version ?? null,
         // §21 (migration 187): the traveler-facing trip-level Expert Note. PlanCard renders it as
         // "From your expert". The PRIVATE trips.expertNotes must never appear on this object.
         expertTravelerNote: (trip as any).expertTravelerNote ?? null,

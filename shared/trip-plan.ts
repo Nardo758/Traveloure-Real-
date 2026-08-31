@@ -517,6 +517,16 @@ export interface TripPlanPlancardExtras {
      *  never finalized (the born state — no backfill). Feeds `tripCardIsPrimary`
      *  (shared/trip-primary-surface.ts) alongside the date-derived arms; never a status field. */
     finalizedAt?: string | null;
+    /** Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff): the trip_finals version this card is
+     *  rendering — NULL when the trip has no final (the not-final state). `finalizedAt` says whether
+     *  the card is dressed final; `finalVersion` says which frozen version it renders. When a final
+     *  exists but `finalizedAt` is NULL the trip is being revised on the slip and the card still
+     *  renders this version. */
+    finalVersion?: number | null;
+    /** §21 (migration 187): the traveler-facing trip-level Expert Note, emitted by the assembler
+     *  and rendered by PlanCard as "From your expert". The PRIVATE trips.expertNotes never appears
+     *  here. Absent/undefined on a pre-migration response → renders nothing (§13). */
+    expertTravelerNote?: string | null;
   };
   changeLog: TripPlanChange[];
   metrics: TripPlanMetrics;

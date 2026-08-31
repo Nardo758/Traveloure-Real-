@@ -907,6 +907,15 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   });
   const finalDress = !embedded && !!plancardData && (planApproved || finalizedPrimary);
 
+  // Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff): the version this card renders, and whether
+  // the trip is being revised on the slip. A final EXISTS when finalVersion != null; the trip is
+  // FINALIZED when finalizedAt is set. When a final exists but finalizedAt is null, the traveler
+  // reopened it to revise on the slip — the card keeps rendering this version with a quiet
+  // "being revised" chip until they re-finalize (it never loses its command center mid-revision).
+  const finalVersion = plancardData?.trip?.finalVersion ?? null;
+  const isFinalized = !!plancardData?.trip?.finalizedAt;
+  const revising = !embedded && finalVersion != null && !isFinalized;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -956,6 +965,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           totalMinutes={totalMinutes}
           statsLabels={templateConfig.statsLabels}
           finalDress={finalDress}
+          finalVersion={finalVersion}
+          revising={revising}
         />
 
         {lastOptimizedAt && (
