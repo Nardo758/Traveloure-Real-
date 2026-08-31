@@ -508,22 +508,6 @@
   color: var(--earn-ground);
 }
 
-.itinerary-comparison-page.review-board .review-legend-dot--save {
-  background: var(--earn-green);
-}
-
-.itinerary-comparison-page.review-board .review-legend-dot--caution {
-  background: var(--earn-gold);
-}
-
-.itinerary-comparison-page.review-board .review-legend-dot--recommended {
-  background: var(--earn-teal);
-}
-
-.itinerary-comparison-page.review-board .review-legend-dot--omit {
-  background: var(--earn-faint);
-}
-
 .itinerary-comparison-page.review-board .review-footer {
   border-top: 1px solid var(--earn-border);
   color: var(--earn-muted);

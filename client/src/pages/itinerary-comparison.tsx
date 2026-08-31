@@ -715,43 +715,6 @@ function ProposalPreviewStrip({
   );
 }
 
-function ReviewHonestyLegend() {
-  const rules = [
-    ["save", "Money saved", "Baseline vs proposal total; shown only with a real positive baseline."],
-    ["caution", "Costs more, said plainly", "A pricier proposal shows “Costs $40 more” beside its time saving."],
-    ["save", "Shorter drive time", "Sum of located transport-leg minutes; time only — distance is never a headline."],
-    ["omit", "Omitted when unknown", "A stop not located ⇒ no drive-time chip; baseline shows no chips."],
-    ["recommended", "Trending & in season", "Live signals; each line disappears when empty."],
-    ["recommended", "You confirm — nothing auto-applies", "One deliberate click via apply-to-trip; original preserved, nothing charged."],
-  ] as const;
-
-  return (
-    <section
-      className="mb-6 rounded-xl border p-4 review-panel"
-      data-testid="compare-honesty-legend"
-      aria-labelledby="compare-honesty-heading"
-    >
-      <h2 id="compare-honesty-heading" className="mb-3 font-semibold">
-        How the preview stays honest
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {rules.map(([tone, title, copy]) => (
-          <div key={title} className="flex items-start gap-2 text-xs text-muted-foreground">
-            <span
-              className={`review-legend-dot--${tone} mt-1.5 h-2 w-2 shrink-0 rounded-full`}
-              aria-hidden="true"
-            />
-            <p>
-              <strong className="font-medium text-foreground">{title}</strong>
-              <span className="block mt-0.5">{copy}</span>
-            </p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 const SEGMENTATION_STRATEGY_LABEL: Record<SegmentationProposalDTO["strategy"], string> = {
   single: "One trip",
   multi_city: "One multi-city trip",
@@ -1880,7 +1843,6 @@ export default function ItineraryComparisonPage() {
                 <p className="review-footer mb-6 pt-4 text-center text-sm" data-testid="compare-footer">
                   Each version works best taken whole; your original is preserved; nothing is purchased by applying.
                 </p>
-                <ReviewHonestyLegend />
                 {applyError && (
                   <div
                     className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"
