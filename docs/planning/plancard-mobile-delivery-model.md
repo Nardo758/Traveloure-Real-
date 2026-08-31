@@ -19,14 +19,14 @@ The on-trip loop has four steps. Three exist; one doesn't:
 | 3. Acts in-app | Accept suggestion · Explore upsell · Book a leg (Stripe) · Ask the Concierge | ✅ (book = gated on strand) |
 | 4. Hands to native maps | Turn-by-turn in Google/Apple via deep-link | ✅ live `[grounded]` |
 
-**Important distinction.** Plan *content* already "pushes to the PlanCard" on optimize (the G7 post-optimize push) — but that's **data delivery**, and it's **pull**: the user only sees it if they open `/trip/:id`. The notification events also exist (`GET /api/notifications`, action-items on the summary) `[grounded]` — but they too are **pull**. What's missing is a **delivery channel** that surfaces those events on the phone proactively. The events are built; the reach is not.
+**Important distinction.** Plan *content* already "pushes to the PlanCard" on optimize (the G7 post-optimize push) — but that's **data delivery**, and it's **pull**: the user only sees it if they open their card. (Trip Card rebuild, Sep 2026: the on-trip card is the **post-final Trip Card** at `/trip/:id` — the frozen `trip_finals` snapshot joined to live bookings; a pre-final trip's planning surface is the **slip** `/plans/:tripId`, and `/trip/:id` renders a "Not final yet → slip" notice until Make final.) The notification events also exist (`GET /api/notifications`, action-items on the summary) `[grounded]` — but they too are **pull**. What's missing is a **delivery channel** that surfaces those events on the phone proactively. The events are built; the reach is not.
 
 ---
 
 ## 1. The delivery tiers (in order of effort)
 
 ### Tier 0 — Mobile web (today)
-Responsive React app; user navigates to `/trip/:id` in a browser.
+Responsive React app; user navigates to their card in a browser (`/trip/:id` post-final, else the slip `/plans/:tripId`).
 - **Unlocks:** nothing proactive. User must remember to open it.
 - **Verdict:** insufficient for an on-trip companion. This is the current state and it's why the on-trip features are effectively inert.
 

@@ -2,6 +2,20 @@
 
 `audited@a1acea2fa` (origin/main HEAD) · **no code changed** · **HARD STOP — Leon rules on the move-to-slip rows**
 
+> **⟢ LANDED — this audit is the Phase-0 record; the rebuild it scoped has since shipped (Sep 2026).**
+> Kept verbatim as the audit-of-record (line numbers below are pre-deletion). What changed since:
+> the D-1 destructive-Regenerate hole is CLOSED (ledger `2026-08-31-rebuild-delete-money-guard`); the
+> `trip-details.tsx` deletion pass + move-to-slip dispositions LANDED (ledger
+> `2026-08-31-manifest-is-the-boundary` — `/trip/:id` is now the post-final Trip Card only, pre-final
+> renders the "Not final yet → slip" notice; expert handoff, temporal anchors, guest invites moved to
+> the slip); "Make final" writes a versioned `trip_finals` snapshot and the card renders it joined to
+> live bookings (`2026-08-31-two-surfaces-one-handoff`, `-trip-card-snapshot-render`); the Stage-A
+> summary card is now mounted on `/dashboard` and My Plans went final-aware
+> (`2026-08-31-stage-a-dashboard`); mid-trip purchase auto-forks a version
+> (`2026-08-31-mid-trip-purchase-versions`). The HARD STOP questions below were ruled by the
+> decision-maker and are no longer open. Current truth lives in `docs/planning/plancard-surface-manifest.md`
+> and the cited ledger rows.
+
 > Dispatch: audit four docs + the mock against live code, produce the deletion inventory for the current Trip
 > Card row by row, and run the D-1 money-safety exposure check. Rulings `2026-08-31-two-surfaces-one-handoff`
 > and `2026-08-31-manifest-is-the-boundary` land in Phase 1. Money-adjacent → `[guarded]`.
