@@ -644,7 +644,10 @@ function ProposalColumnContainer({
         })),
         legsSummary,
          locationCoverage: coordinateCoverage(variant.items),
-          applyLabel: isBaselineColumn ? "Keep this plan" : "Select this plan",
+          // Adopt vocabulary lives on the comparison surfaces (adopt-finalize-conform D-4/row 4):
+          // adopting merges a proposal into the slip and purchases nothing; "Finalize Plan" is the
+          // slip's own, separate press. Baseline keeps the mock's "Keep this plan".
+          applyLabel: isBaselineColumn ? "Keep this plan" : "Adopt entire plan",
         onApply,
         applying,
         // Per-stop "+" ticks — only on AI proposals, never the baseline (it IS your plan).
@@ -941,7 +944,7 @@ export default function ItineraryComparisonPage() {
     onSuccess: (r) => {
       setApplyError(null);
       setFailedApplyVariant(null);
-      toast({ title: "Variant applied", description: "Your slip has been updated in place." });
+      toast({ title: "Proposal adopted", description: "Your slip has been updated in place. Nothing was purchased." });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
       setLocation(`/plans/${r.tripId}`);
@@ -1874,15 +1877,18 @@ export default function ItineraryComparisonPage() {
                   <AlertDialogContent data-testid="dialog-apply-confirm">
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        Apply {pendingApplyVariant?.name} to your plan?
+                        Adopt {pendingApplyVariant?.name}?
                       </AlertDialogTitle>
+                      {/* Mock popup 2a verbatim, with the "other proposals will be discarded"
+                          sentence REMOVED (adopt-finalize-conform D-4: R-B wins — proposals stay
+                          revisitable; the server no longer deletes losing variants on apply). */}
                       <AlertDialogDescription>
-                        This will replace the items still in planning with{" "}
+                        This replaces the still-in-planning portion of your current plan with{" "}
                         <span className="font-medium text-foreground">
                           {pendingApplyVariant?.name}
                         </span>
-                        . The other proposals will be discarded. Your purchased items stay
-                        pinned, and nothing is purchased by applying.
+                        . Purchased, in-checkout, and with-expert items stay put; nothing is
+                        purchased here — and the other proposals stay available to revisit.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -1908,7 +1914,7 @@ export default function ItineraryComparisonPage() {
                         {applyVariantMutation.isPending ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : null}
-                        Confirm and apply
+                        Adopt entire plan
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
