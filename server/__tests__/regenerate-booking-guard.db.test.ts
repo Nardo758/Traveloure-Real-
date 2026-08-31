@@ -25,6 +25,7 @@ import { db } from "../db";
 import { trips, users, itineraryItems, serviceBookings, itineraryComparisons, aiGeneratedItineraries } from "@shared/schema";
 import { saveGeneratedItinerarySnapshot } from "../services/content-query.service";
 import { itineraryItemRebuildDeletable } from "../services/itinerary-rebuild-guard";
+import { storage } from "../storage";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 
@@ -47,6 +48,7 @@ async function assertDisposableDb(): Promise<void> {
 let userId: string;
 let tripA: string; // for G1 (real snapshot re-apply)
 let tripB: string; // for G2 (regenerate delete shape)
+let tripC: string; // for G3 (storage.replaceItineraryItems — the shadowed rebuild method)
 let bookingId: string;
 
 async function seedTrip(): Promise<string> {
@@ -84,18 +86,19 @@ before(async () => {
   userId = u.id;
   tripA = await seedTrip();
   tripB = await seedTrip();
+  tripC = await seedTrip();
   const [b] = await db.insert(serviceBookings).values({ travelerId: userId, tripId: tripB, totalAmount: "42.00", status: "confirmed" } as any).returning();
   bookingId = b.id;
 });
 
 after(async () => {
-  for (const t of [tripA, tripB]) {
+  for (const t of [tripA, tripB, tripC]) {
     await db.delete(aiGeneratedItineraries).where(eq(aiGeneratedItineraries.tripId, t)).catch(() => {});
     await db.delete(itineraryComparisons).where(eq(itineraryComparisons.tripId, t)).catch(() => {});
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, t)).catch(() => {});
   }
   await db.delete(serviceBookings).where(eq(serviceBookings.id, bookingId)).catch(() => {});
-  await db.execute(sql`DELETE FROM trips WHERE id = ANY(${[tripA, tripB]})`).catch(() => {});
+  await db.execute(sql`DELETE FROM trips WHERE id = ANY(${[tripA, tripB, tripC]})`).catch(() => {});
   await db.delete(users).where(eq(users.id, userId)).catch(() => {});
 });
 
@@ -151,4 +154,21 @@ test("G2 regenerate delete shape spares purchased/booked/traveler, deletes only 
   assert.ok(titles.has(E), "booked in_planning stop survives (booking_id clause — drift protection)");
   assert.ok(titles.has(G), "traveler-origin stop survives (origin clause)");
   assert.ok(!titles.has(F), "plain in_planning AI stop is deleted");
+});
+
+test("G3 storage.replaceItineraryItems (the shadowed rebuild method) spares purchased, replaces in_planning", async () => {
+  const PURCHASED = `replace-keep-purchased ${RUN}`;
+  const PLANNING = `replace-drop-planning ${RUN}`;
+  await addItem(tripC, { title: PURCHASED, origin: "ai", routingStatus: "purchased" });
+  await addItem(tripC, { title: PLANNING, origin: "ai", routingStatus: "in_planning" });
+
+  const NEW = `replace-new-stop ${RUN}`;
+  await storage.replaceItineraryItems(tripC, [
+    { tripId: tripC, title: NEW, dayNumber: 1, itemType: "activity", status: "planned", origin: "ai" } as any,
+  ]);
+
+  const titles = await titlesOn(tripC);
+  assert.ok(titles.has(PURCHASED), "purchased AI stop survives replaceItineraryItems (D-1 guard)");
+  assert.ok(!titles.has(PLANNING), "in_planning AI stop is replaced");
+  assert.ok(titles.has(NEW), "the rebuilt stop is inserted");
 });
