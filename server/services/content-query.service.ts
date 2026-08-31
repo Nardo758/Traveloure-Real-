@@ -24,6 +24,7 @@ import { storage } from "../storage";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
 import { flagReviewSignal } from "./review-mutation.service";
+import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -411,7 +412,14 @@ export async function saveGeneratedItinerarySnapshot(
     } as any).returning();
 
     // item-removed:replace — one complete AI regeneration, not individual removals.
-    await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    // D-1 money-safety (ledger 2026-08-31-two-surfaces-one-handoff): this snapshot re-apply row-locks
+    // and replaces an EXISTING trip's items when `input.tripId` is set (Grok generate + Plus occasion
+    // drafts), so an unguarded wipe here would destroy a checked-out or purchased row on that trip.
+    // Same shared rebuild guard as the AI Regenerate delete — spare protected/booked rows.
+    await tx.delete(itineraryItems).where(and(
+      eq(itineraryItems.tripId, tripId),
+      itineraryItemRebuildDeletable(),
+    ));
     const insertedRows = input.canonicalItems.length === 0
       ? []
       : await tx.insert(itineraryItems).values(
