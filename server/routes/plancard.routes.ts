@@ -5,11 +5,9 @@ import {
   insertItineraryChangeSchema,
   itineraryItems,
   itineraryComparisons,
-  itineraryVariants,
-  sharedItineraries,
 } from "@shared/schema";
 import { db } from "../db";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
@@ -199,44 +197,35 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
         .set({ optimizedAt: new Date(), selectedVariantId: variant.id } as any)
         .where(eq(itineraryComparisons.id, comparisonId));
 
-      // ── Lane 6 residue R3 (ruling 14): discard UNSHARED LOSING variants ────────────────────
-      // The applied/selected variant + its metrics are KEPT — the plancard, dashboard
-      // trip-scores, and Spec B's move-rationale all read them after apply (it is the sanctioned
-      // §0 copy: it equals the slip by construction while this transaction stays atomic). A
-      // losing variant referenced by `shared_itineraries` is also kept (a share is
-      // correspondence; `variantId` is ON DELETE CASCADE, so deleting it would destroy the live
-      // share link — the "outdated proposal" treatment for those is a named follow-up). Everything
-      // else — losing AI variants and the baseline copy — is discarded; `itinerary_variant_items`,
-      // `itinerary_variant_metrics`, and variant-scoped `transport_legs` follow by CASCADE.
-      const comparisonVariants = await tx
-        .select({ id: itineraryVariants.id })
-        .from(itineraryVariants)
-        .where(eq(itineraryVariants.comparisonId, comparisonId));
-      const losingIds = comparisonVariants.map((v) => v.id).filter((vid) => vid !== variant.id);
-      let discardedVariants = 0;
-      if (losingIds.length > 0) {
-        const sharedRows = await tx
-          .select({ id: sharedItineraries.variantId })
-          .from(sharedItineraries)
-          .where(inArray(sharedItineraries.variantId, losingIds));
-        const sharedSet = new Set(sharedRows.map((r) => r.id));
-        const deletable = losingIds.filter((vid) => !sharedSet.has(vid));
-        if (deletable.length > 0) {
-          const deleted = await tx
-            .delete(itineraryVariants)
-            .where(inArray(itineraryVariants.id, deletable))
-            .returning({ id: itineraryVariants.id });
-          discardedVariants = deleted.length;
-        }
-      }
+      // ── Adopt = merge; proposals stay REVISITABLE (adopt-finalize-conform D-4, supersedes
+      // ruling 14's R3 losing-variant discard) ──────────────────────────────────────────────
+      // The mock's board promise — "your plan is the landing spot… pick stops from any
+      // proposal" — is incompatible with destroying the losing variants on first adopt, so the
+      // R3 discard that used to run here is REMOVED: all variants (winners, losers, baseline)
+      // survive the apply and the review board can be revisited until Finalize Plan. The
+      // comparison stamp above (optimizedAt + selectedVariantId) is kept — bookkeeping, not
+      // destruction. Nothing else changed in this transaction.
 
       // WP-B: items actually inserted with no providerServiceId are the optimizer's EXTERNAL FILL
       // case (no platform match) — captured here, ledgered after the transaction commits (§15b:
       // a ledger write must never be able to roll back a real apply, nor fail one).
       const unmatchedItems = applicableVariantItems.filter((item: any) => !item.providerServiceId);
 
-      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants, unmatchedItems };
+      return { preservedRoutedItems, dedupedAgainstRoutedItems, unmatchedItems };
     });
+
+    // Auto-v+1 (adopt-finalize-conform D-1a, same posture as adopt-stop below): adopting a whole
+    // proposal is accepting the optimizer's plan. Adopt never LOCKS — this call no-ops unless the
+    // trip is CURRENTLY finalized — but on an already-final trip it captures a new final version so
+    // the snapshot-rendered Trip Card shows the adopted plan immediately (ratified
+    // 2026-08-31-trip-card-snapshot-render; this handler previously lacked the call adopt-stop
+    // already had — the inconsistency was the bug). Best-effort: the apply has committed; a
+    // re-final failure must not turn a successful apply into a 500.
+    try {
+      await reFinalizeIfCurrentlyFinal(tripId, userId);
+    } catch (err) {
+      console.error("[apply-to-trip] auto re-finalize failed (non-fatal):", (err as any)?.message);
+    }
 
     // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
     // place, how many proposed items were dropped because the plan already held them, and how
