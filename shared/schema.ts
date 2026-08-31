@@ -7557,6 +7557,36 @@ export const tripEntitlements = pgTable("trip_entitlements", {
 ]);
 export type TripEntitlement = typeof tripEntitlements.$inferSelect;
 
+// ─── Trip finals — the versioned, immutable plan snapshot ("Make final") ─────
+// Trip Card rebuild Phase 1 (ledger 2026-08-31-two-surfaces-one-handoff, migration 269). One row
+// per FINAL cut of a trip's plan: `version` monotonically increases per trip, `snapshot` freezes
+// the plan (trip-level fields + the ordered itinerary items) as it stood at Finalize, and
+// `content_hash` is the plan FINGERPRINT that drives the idempotent re-final rule — re-finalizing an
+// unchanged plan writes NO new version (the loser is a no-op), a changed plan writes version N+1.
+// The fingerprint deliberately EXCLUDES live booking status (routing_status / booking_id /
+// booking_status / actual_cost / confirmation / references), so buying a stop after Finalize is not
+// a plan edit and never forks a spurious version — the card renders the frozen snapshot joined to
+// LIVE booking rows (Phase 2), never a stale money blob (drift-audit row 6). Additive, no DB CHECK
+// (publish-trap posture); server-authored ONLY — there is deliberately NO createInsertSchema on this
+// table (§19: nothing client-reachable), the `finalizeTrip` service is its sole writer. `snapshot`
+// is append-only history and is never mutated after insert. ON DELETE CASCADE with the trip;
+// `finalized_by` is ON DELETE SET NULL so a deleted actor never destroys the historical final.
+// UNIQUE (trip_id, version) is DECLARED here (not only in the migration) so the deploy push keeps it
+// — the concurrency guard for version numbering under a race (§15).
+export const tripFinals = pgTable("trip_finals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  contentHash: varchar("content_hash", { length: 64 }).notNull(),
+  finalizedBy: varchar("finalized_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("trip_finals_trip_version_uniq").on(table.tripId, table.version),
+  index("trip_finals_trip_idx").on(table.tripId),
+]);
+export type TripFinal = typeof tripFinals.$inferSelect;
+
 // ─── Plus occasions (the member's recurring/one-off personal dates) ──────────
 // Ledger 2026-08-27-plus-is-delivery, migration 260. For each ACTIVE occasion whose date is
 // within the 14-day lead window, the occasion-drafts scheduler builds ONE AI-Concierge draft

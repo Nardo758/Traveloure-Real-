@@ -1335,4 +1335,9 @@ export const MIGRATION_FILES = [
   // review/account history; only duplicate current rows are removed before the partial unique
   // index is installed. The index is also declared in shared/schema.ts for publish durability.
   "268_provider_application_current_unique.sql",
+  // 269: trip_finals — the versioned, immutable plan snapshot written at "Make final" (Trip Card
+  // rebuild Phase 1, ledger 2026-08-31-two-surfaces-one-handoff). Additive table + UNIQUE
+  // (trip_id, version), both declared in shared/schema.ts for publish durability; no CHECK. The
+  // finalizeTrip service is the sole writer; snapshots are append-only history.
+  "269_trip_finals.sql",
 ] as const;

@@ -77,6 +77,7 @@ import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
 import { logItemTransition } from "../services/item-transition-log.service";
+import { finalizeTrip, TripNotFoundError } from "../services/trip-finalize.service";
 import { logger } from "../infrastructure/logger";
 
 const router = Router();
@@ -307,30 +308,31 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
       return res.status(403).json({ message: "Only the trip owner can finalize this plan" });
     }
 
-    const updated = await db.transaction(async (tx) => {
-      const rows = await tx
-        .update(trips)
-        .set({ finalizedAt: new Date() })
-        .where(and(eq(trips.id, tripId), isNull(trips.finalizedAt)))
-        .returning({ id: trips.id, finalizedAt: trips.finalizedAt });
-
-      if (rows.length > 0) {
-        await logItemTransition(tx, {
-          tripId,
-          itemId: null,
-          eventType: "plan_finalized",
-          actorType: "traveler",
-          actorId: userId,
-        });
+    // ONE finalize author (§18 rule 1): the versioned trip_finals snapshot + the finalized_at flip
+    // + the plan_finalized diary row all live in finalizeTrip's single transaction (Trip Card
+    // rebuild Phase 1, ledger 2026-08-31-two-surfaces-one-handoff). The route keeps ownership, the
+    // best-effort notification, and the staged-items warning.
+    let result;
+    try {
+      result = await finalizeTrip(tripId, userId);
+    } catch (err) {
+      if (err instanceof TripNotFoundError) {
+        return res.status(404).json({ message: "Trip not found" });
       }
-      return rows;
-    });
+      throw err;
+    }
 
-    if (updated.length === 0) {
-      // Already finalized — double-click / retry. Idempotent, not an error (R-F).
+    // `flipped` (finalized_at NULL→now on this call) preserves the route's previous
+    // `updated.length > 0` semantics exactly — the notification and the diary row fire ONLY on the
+    // flip, never on an idempotent re-final.
+    if (!result.flipped) {
+      // Already finalized — double-click / retry, or a re-final that wrote a new version without
+      // re-flipping the render signal. Idempotent, not an error (R-F).
       return res.json({
         alreadyFinalized: true,
-        finalizedAt: trip.finalizedAt ? String(trip.finalizedAt as any) : null,
+        finalizedAt: String(result.finalizedAt),
+        finalVersion: result.version,
+        finalCreated: result.finalCreated,
       });
     }
 
@@ -383,8 +385,10 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
 
     return res.json({
       alreadyFinalized: false,
-      finalizedAt: String(updated[0].finalizedAt),
+      finalizedAt: String(result.finalizedAt),
       stagedCount: Number(stagedRow?.n ?? 0),
+      finalVersion: result.version,
+      finalCreated: result.finalCreated,
     });
   } catch (err) {
     logger.error({ err }, "trip finalize failed");
