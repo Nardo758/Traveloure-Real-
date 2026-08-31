@@ -630,10 +630,16 @@ export async function assembleTripPlan(
   // ── Phase 2 snapshot-only render (ledger 2026-08-31-two-surfaces-one-handoff) ──────────────
   // When the trip has a latest final, the Trip Card renders that FROZEN plan (the final's items) —
   // whether the trip is currently finalized OR reopened — with LIVE booking status overlaid per
-  // item (overlayLiveBookingStatus). A trip with no final renders its live plan (the not-final
-  // state), byte-identical to before this phase. `finalizedAt` drives only the client chip
-  // (Final · vN vs "being revised"), never which version renders. `finalVersion` is emitted on the
-  // plancard object below.
+  // item (overlayLiveBookingStatus). `finalizedAt` drives only the client chip (Final · vN vs
+  // "being revised"), never which version renders. `finalVersion` is emitted on the plancard below.
+  //
+  // NOT-FINAL is INTERIM behavior (decision-maker correction, 2026-08-31): a trip with NO final
+  // still renders its live plan here today, but the ruled end state is that the Trip Card does NOT
+  // exist before Make final — `/trip/:id` with no final must render the honest notice ("Not final
+  // yet — your plan is on the slip" + one action to /plans/:tripId), NOT a live planning render.
+  // That flip lands in PHASE 3 with the trip-details bolt-on deletion pass (stripping the planning
+  // tools first, then leaving the notice-only page) — it is deliberately NOT done here to avoid a
+  // half-stripped page. Do not treat this live-render branch as final behavior.
   const latestFinal = await getLatestTripFinal(tripId);
   const renderingSnapshot = latestFinal != null;
   if (latestFinal) {
