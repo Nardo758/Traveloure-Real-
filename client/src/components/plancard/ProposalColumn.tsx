@@ -9,13 +9,15 @@
  *  - optimizable items come from the VARIANT's own rows, day/time as proposed;
  *  - transport legs are a muted count + cost line (server-computed values only);
  *  - "Recommended" chip only when the comparison marked exactly one column;
- *  - ApplyButton is the ONLY action. NO routing actions, NO per-item apply,
- *    NO save-for-later (§4 Spec C interaction rules).
+ *  - the whole-variant Apply button is the primary action; a per-stop "+" tick
+ *    (ratified mock "Adopt the Optimization") pulls ONE variant stop into the plan
+ *    when `proposal.onAdoptStop` is provided — appends via /adopt-stop, never routes
+ *    or purchases. No routing actions, no save-for-later (§4 Spec C interaction rules).
  *
  * with_expert items appear in NO column — their exclusion is stated ONCE in the
  * CompareHeader (the page's concern), never as grayed rows here (ruling 8).
  */
-import { Anchor, Award, Car, Loader2 } from "lucide-react";
+import { Anchor, Award, Car, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -152,12 +154,31 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
                       —
                     </span>
                   ) : (
-                    row.price != null &&
-                    Number.isFinite(parseFloat(row.price)) && (
-                      <span className="review-mono shrink-0 text-xs text-muted-foreground">
-                        ${parseFloat(row.price).toLocaleString()}
-                      </span>
-                    )
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {row.price != null && Number.isFinite(parseFloat(row.price)) && (
+                        <span className="review-mono text-xs text-muted-foreground">
+                          ${parseFloat(row.price).toLocaleString()}
+                        </span>
+                      )}
+                      {/* Per-stop "+" tick — pull JUST this stop into your plan (mock). */}
+                      {proposal.onAdoptStop && (
+                        <button
+                          type="button"
+                          title="Pull just this stop into your plan"
+                          aria-label="Pull just this stop into your plan"
+                          disabled={proposal.adoptingStopId === row.id}
+                          onClick={() => proposal.onAdoptStop!(row.id)}
+                          data-testid={`button-adopt-stop-${row.id}`}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[var(--earn-border)] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                        >
+                          {proposal.adoptingStopId === row.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
+                    </span>
                   )}
                 </div>
               ))}

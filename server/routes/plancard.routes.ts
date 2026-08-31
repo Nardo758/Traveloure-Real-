@@ -263,6 +263,98 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
   }
 });
 
+// Per-stop adopt (ratified mock "Adopt the Optimization": the "+" ticks pull a SINGLE stop
+// into the plan). Distinct from apply-to-trip's whole-variant REPLACE: this APPENDS exactly
+// one item and never touches the rest of the plan. Same auth spine as apply-to-trip.
+router.post("/api/itinerary-comparisons/:id/adopt-stop", isAuthenticated, async (req, res) => {
+  try {
+    const { id: comparisonId } = req.params;
+    const userId = getUserId(req)!;
+
+    const parsed = z.object({ variantItemId: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "variantItemId is required" });
+    const { variantItemId } = parsed.data;
+
+    const comparison = await storage.getItineraryComparison(comparisonId);
+    if (!comparison || comparison.userId !== userId) {
+      return res.status(404).json({ error: "Comparison not found" });
+    }
+    if (!comparison.tripId) {
+      return res.status(400).json({ error: "Comparison has no associated trip" });
+    }
+    // Same destructive-IDOR guard as apply-to-trip: owning the comparison ≠ being allowed to
+    // mutate the trip it points at. Both checks hold before any write.
+    const denied = await authorizeTripLogistics(
+      comparison.tripId,
+      userId,
+      "POST /api/itinerary-comparisons/:id/adopt-stop",
+    );
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+
+    // The stop must belong to a variant UNDER THIS comparison — a caller can't pull a stop out
+    // of someone else's variant by id.
+    const variantItem = await storage.getVariantItemById(variantItemId);
+    if (!variantItem) return res.status(404).json({ error: "Stop not found" });
+    const variant = await storage.getItineraryVariantById(variantItem.variantId);
+    if (!variant || variant.comparisonId !== comparisonId) {
+      return res.status(404).json({ error: "Stop not found" });
+    }
+
+    const tripId = comparison.tripId;
+
+    const result = await db.transaction(async (tx) => {
+      // Dedup against the whole plan — never a second copy of something already on it
+      // (providerServiceId first, then exact case-insensitive title — the apply-to-trip predicate).
+      const existing = await tx.select().from(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+      const svcIds = new Set(
+        existing.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v),
+      );
+      const titles = new Set(
+        existing.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
+      );
+      const name = String(variantItem.name ?? "").trim().toLowerCase();
+      if (
+        (variantItem.providerServiceId && svcIds.has(variantItem.providerServiceId)) ||
+        (name && titles.has(name))
+      ) {
+        return { adopted: false, reason: "already-in-plan" as const };
+      }
+
+      // Append ONE item. Every field is read from the server-side variant row — NEVER req.body:
+      //   - providerServiceId preserved (linkage guard §H5 / check-linkage-preservation.cjs),
+      //   - estimatedCost from the variant row's price (§14 — no client-supplied amount),
+      //   - origin server-stamped 'ai' (§12), consistent with apply-to-trip: the CONTENT was
+      //     authored by the optimizer even though the traveler chose to pull this one in.
+      //   - routingStatus takes the migration-159 default ('in_planning') — not written here.
+      const [row] = await tx.insert(itineraryItems).values({
+        tripId,
+        providerServiceId: variantItem.providerServiceId ?? null,
+        title: variantItem.name,
+        description: variantItem.description || "",
+        itemType: variantItem.serviceType || "activity",
+        status: "planned",
+        dayNumber: variantItem.dayNumber,
+        startTime: variantItem.startTime || "",
+        durationMinutes: variantItem.duration ?? null,
+        locationName: variantItem.location || "",
+        estimatedCost: variantItem.price ? String(variantItem.price) : null,
+        currency: "USD",
+        sortOrder: variantItem.sortOrder ?? 0,
+        suggestedBy: "AI Optimizer",
+        origin: "ai",
+        latitude: variantItem.latitude ? String(variantItem.latitude) : null,
+        longitude: variantItem.longitude ? String(variantItem.longitude) : null,
+      }).returning();
+      return { adopted: true, item: row };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error adopting stop into trip:", error);
+    res.status(500).json({ error: "Failed to add stop to plan" });
+  }
+});
+
 router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;

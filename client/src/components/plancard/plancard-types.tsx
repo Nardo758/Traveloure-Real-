@@ -472,6 +472,11 @@ export interface PlanCardProposalData {
   applyLabel: string;
   onApply: () => void;
   applying?: boolean;
+  /** Per-stop "+" tick: pull a SINGLE variant stop into the plan (mock "Adopt the
+   *  Optimization"). Absent on the baseline column (it IS your plan). Anchor rows never get one. */
+  onAdoptStop?: (variantItemId: string) => void;
+  /** The variant-item id currently being adopted, for the per-row spinner. */
+  adoptingStopId?: string | null;
 }
 
 export interface PlanCardProps {
