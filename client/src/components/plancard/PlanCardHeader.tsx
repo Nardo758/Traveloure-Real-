@@ -82,7 +82,7 @@ export function PlanCardHeader({
         </div>
 
         <h2
-          className="mt-2 text-[19px] font-semibold leading-tight pr-2"
+          className="mt-2 font-['DM_Serif_Display',serif] text-[20px] font-bold leading-tight tracking-[-0.01em] pr-2"
           data-testid={testId ? `${testId}-title` : undefined}
         >
           {title}
