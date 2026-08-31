@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
+import { useTrip } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
@@ -10,10 +10,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -131,7 +127,6 @@ export default function TripDetails() {
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
-  const generatePlan = useGenerateItinerary();
   const {
     data: plancardData,
     isLoading: itineraryLoading,
@@ -149,13 +144,6 @@ export default function TripDetails() {
   const hasExistingItineraryItems = !!plancardData?.days?.some(
     (day) => (day.activities?.length ?? 0) > 0,
   );
-  const handleRegenerateClick = () => {
-    if (hasExistingItineraryItems) {
-      setShowRegenerateConfirm(true);
-    } else {
-      generatePlan.mutate(trip!.id);
-    }
-  };
   const { toast } = useToast();
   const { user } = useAuth();
   const { open: openPlanning } = usePlanning();
@@ -174,10 +162,6 @@ export default function TripDetails() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
-  // T1-1: confirm before "Regenerate Plan" destructively rebuilds the itinerary. Only shown
-  // when there's an existing plan to lose (see `hasExistingItineraryItems` below) — first-time
-  // generation has nothing to warn about.
-  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
   // G7: "Plan ready" banner
   const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
@@ -427,6 +411,34 @@ export default function TripDetails() {
     );
   }
 
+  // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the Trip Card does not exist before Make
+  // final. A trip with NO final renders an honest notice + one action to the slip, and NOTHING else —
+  // planning lives on /plans/:tripId, never on /trip/:id. This is the sentence that closes the
+  // flow-audit's "/trip/:id is a second planning surface" finding. `plancardData.trip.finalVersion`
+  // is the source of truth: null ⇒ no final has ever been cut (finalizedAt alone can't tell "never
+  // finalized" from "reopened"). We wait for the plancard query to resolve so the notice never
+  // flashes ahead of data; an errored/absent payload falls through to the normal render.
+  if (!itineraryLoading && plancardData != null && plancardData.trip?.finalVersion == null) {
+    return (
+      <div
+        className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center"
+        data-testid="trip-not-final-notice"
+      >
+        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+          <Sparkles className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Not final yet</h2>
+        <p className="text-muted-foreground max-w-md mx-auto mb-6">
+          Your plan for {trip.destination} is on the slip. Finish it there and make it final — your
+          Trip Card appears here once you do.
+        </p>
+        <Link href={`/plans/${trip.id}`}>
+          <Button data-testid="button-go-to-slip">Go to your plan</Button>
+        </Link>
+      </div>
+    );
+  }
+
   const startDate = parseCalendarDate(trip.startDate);
   const endDate = parseCalendarDate(trip.endDate);
   const duration = startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0;
@@ -473,9 +485,9 @@ export default function TripDetails() {
                 <MapPin className="w-3 h-3 mr-1" />
                 {trip.destination}
               </Badge>
-              <Badge className="bg-accent/80 backdrop-blur-md text-white border-0">
-                {trip.status}
-              </Badge>
+              {/* Phase 3b (drift-audit §C row 3): the dead `trip.status` badge is removed — trips.status
+                  is a §13 dead field (never advances past its born value); a trip's phase derives from
+                  dates, never this column. */}
               {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
                   field a sibling change adds to GET /api/trips/:id (nullable — coded
                   defensively in case this lands before that field does). Honest: renders
@@ -612,18 +624,10 @@ export default function TripDetails() {
                       )}
                       Share with friends
                     </Button>
-                    <Button
-                      onClick={handleRegenerateClick}
-                      disabled={generatePlan.isPending}
-                      data-testid="button-regenerate"
-                    >
-                      {generatePlan.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 mr-2" />
-                      )}
-                      Regenerate Plan
-                    </Button>
+                    {/* Phase 3b (drift-audit §C row 5): the destructive "Regenerate Plan" is removed
+                        from the Trip Card entirely — no Regenerate on the card ever again. Rebuilding
+                        the AI plan is a planning action and lives on the slip; the card renders the
+                        finalized snapshot only. */}
                   </div>
                 </div>
               </div>
@@ -661,7 +665,7 @@ export default function TripDetails() {
                   )}
 
                   {/* Itinerary Timeline */}
-                  {(itineraryLoading || generatePlan.isPending) ? (
+                  {itineraryLoading ? (
                     <div className="space-y-6">
                       {[1, 2, 3].map((i) => (
                         <div key={i} className="space-y-3">
@@ -703,15 +707,10 @@ export default function TripDetails() {
                       <p className="text-muted-foreground max-w-md mx-auto mb-6">
                         Generate a personalized day-by-day plan for {trip.destination} using AI.
                       </p>
-                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                        <Button
-                          onClick={() => generatePlan.mutate(trip.id)}
-                          disabled={generatePlan.isPending}
-                          data-testid="button-generate-itinerary"
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Generate My Itinerary
-                        </Button>
+                      {/* Phase 3b (drift-audit §C row 5): the on-card "Generate My Itinerary"
+                          (destructive generate) is removed — planning/generation lives on the slip,
+                          never the card. The planning entry stays as a single link. */}
+                      <div className="flex justify-center">
                         <Button
                           variant="outline"
                           onClick={() => openPlanning({ branch: "ai", destination: trip?.destination, tripId: trip?.id })}
@@ -770,9 +769,8 @@ export default function TripDetails() {
                       <p className="text-muted-foreground max-w-md mx-auto mb-6">
                         Add flights, hotels, and activities to your trip to keep everything organized in one place.
                       </p>
-                      <Button variant="outline" data-testid="button-add-booking">
-                        Add a Booking
-                      </Button>
+                      {/* Phase 3b (drift-audit §C row 7): the inert "Add a Booking" button (no handler)
+                          is removed — adding a booking happens on the slip / marketplace, not here. */}
                     </div>
                   </div>
                 </TabsContent>
@@ -1436,33 +1434,8 @@ export default function TripDetails() {
           branch with this trip's destination — same modal, one mount, in
           PlanningProvider. */}
 
-      {/* T1-1: confirm before Regenerate destructively rebuilds the plan. Only reachable via
-          handleRegenerateClick, which itself only opens this when hasExistingItineraryItems —
-          first-time generation never shows it. */}
-      <AlertDialog open={showRegenerateConfirm} onOpenChange={setShowRegenerateConfirm}>
-        <AlertDialogContent data-testid="dialog-regenerate-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Regenerate this plan?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This replaces the current AI-generated activities with a freshly generated plan.
-              Any items an expert has added to your trip are kept. Manually-added items may be
-              replaced along with the rest of the plan.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-regenerate-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setShowRegenerateConfirm(false);
-                generatePlan.mutate(trip.id);
-              }}
-              data-testid="button-regenerate-confirm"
-            >
-              Regenerate Plan
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Phase 3b (drift-audit §C row 5): the Regenerate confirmation dialog is removed along with
+          every on-card Regenerate/Generate affordance. */}
     </div>
   );
 }
