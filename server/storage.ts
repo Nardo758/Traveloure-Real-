@@ -7431,13 +7431,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async replaceItineraryItems(tripId: string, items: any[]): Promise<void> {
-    // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE logical
-    // regeneration, not a removal). Emitting `item_removed` here would be a false removal signal
-    // (§13, R15): the traveler removed nothing, the plan was regenerated. No `item_removed` write.
     // D-1 money-safety (ledger 2026-08-31-rebuild-delete-money-guard): a rebuild delete never destroys
     // a checked-out/purchased/booked row. This method's ONLY caller (trips.routes.ts generate handler)
     // is currently SHADOWED by the guarded inline handler in routes.ts, so the guard is behavior-neutral
     // today — but the shared predicate makes the method safe-by-construction for any future caller.
+    // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE logical
+    // regeneration, not a removal). Emitting `item_removed` here would be a false removal signal
+    // (§13, R15): the traveler removed nothing, the plan was regenerated. No `item_removed` write.
     await db.delete(itineraryItems).where(and(
       eq(itineraryItems.tripId, tripId),
       itineraryItemRebuildDeletable(),
