@@ -18,6 +18,7 @@ import {
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
+import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -7406,6 +7407,22 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           // above) on the traveler's behalf — provenance is the expert.
           origin: "expert",
         } as any);
+
+        // Mid-trip purchase auto-versions the Trip Card (ledger 2026-08-31-mid-trip-purchase-versions):
+        // a completed booking that adds a NEW item to a FINALIZED trip creates v+1 — the traveler
+        // buying is the acceptance, exactly like accepting a suggestion (reFinalizeIfCurrentlyFinal).
+        // Without this, a service bought mid-trip via Explore → Book now is paid for but absent from
+        // the frozen Trip Card until a manual re-final. A booking STATUS change on an existing item is
+        // NOT a new item — it never reaches this branch (cart checkout promotes via markItemPurchased
+        // and creates no item), and even if re-finalized the fingerprint excludes booking status
+        // (Phase 1), so status-only changes stay a live overlay and never fork a version. Best-effort,
+        // non-fatal — the booking is the money truth; the version bump is a render convenience.
+        try {
+          const finalActor = (await storage.getTrip(updated.tripId))?.userId ?? sessionUserId;
+          await reFinalizeIfCurrentlyFinal(updated.tripId, finalActor);
+        } catch (reFinalErr) {
+          console.error("[affiliate-confirm] reFinalizeIfCurrentlyFinal failed (non-fatal):", reFinalErr);
+        }
       }
 
       // R4/F7 — affiliate reconciliation ledger spine. Runs exactly once per booking (gated on the
