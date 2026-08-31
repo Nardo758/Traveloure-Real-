@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTrip } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, XCircle } from "lucide-react";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Package, Share2, Copy, Check, XCircle } from "lucide-react";
 import { TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays, isValid } from "date-fns";
@@ -59,21 +59,8 @@ function getActivityIcon(type: string) {
   }
 }
 
-interface ProviderService {
-  id: string;
-  providerId: string;
-  categoryId: string;
-  name: string;
-  description: string;
-  basePrice: string;
-  pricingType: string;
-  duration: string | null;
-  location: string | null;
-  rating: string | null;
-  reviewCount: number;
-  isActive: boolean;
-  bookingCount: number;
-}
+// Phase 3b (row 12): the ProviderService type went with the "Available Services" grid — the
+// services surface is /services now, which owns its own Service type.
 
 // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the Expert / ExpertAdvisor types moved
 // with the expert-assign + suggestion-review UI to the slip family (AssignExpertDialog /
@@ -159,11 +146,6 @@ export default function TripDetails() {
   // G7: Reuse the canonical plan-card query above for optimization metadata.
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
 
-  const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
-    queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
-    enabled: !!trip?.destination,
-  });
-
   // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the guest-invite data layer
   // (user-experiences query, linkedExperience, isEventTrip, createGuestListMutation) moved to
   // the slip family with the Guests surface (SlipLogisticsSection owns it now — row 14).
@@ -192,33 +174,10 @@ export default function TripDetails() {
     toast({ title: "Opening Maps", description: `Showing ${trip.destination}` });
   };
 
-  const handleAddToCart = (serviceId: string) => {
-    if (!user) {
-      toast({ 
-        variant: "destructive", 
-        title: "Sign in required", 
-        description: "Please sign in to add items to your cart" 
-      });
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1500);
-      return;
-    }
-    addToCartMutation.mutate(serviceId);
-  };
-
-  const addToCartMutation = useMutation({
-    mutationFn: async (serviceId: string) => {
-      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-      toast({ title: "Added to cart!", description: "Service has been added to your cart." });
-    },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
-    },
-  });
+  // Phase 3b (row 12; ledger 2026-08-31-manifest-is-the-boundary): the on-trip Add-to-cart rail
+  // (servicesResult query, handleAddToCart, addToCartMutation) was removed with the "Available
+  // Services for Your Trip" grid. Adding a service to this trip is now the /services grid's job —
+  // its Add-to-trip targets the active trip via POST /api/trips/:tripId/itinerary-items.
 
   if (isLoading) {
     return (
@@ -436,7 +395,8 @@ export default function TripDetails() {
                   <TabsList className="bg-muted/50">
                     <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
                     <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
-                    <TabsTrigger value="expert" data-testid="tab-expert" className="min-h-11">Ask an Expert</TabsTrigger>
+                    {/* Phase 3b (row 12): the Expert tab is removed — assigning/messaging an expert
+                        moved to the slip + family; the services grid moved to /services. */}
                     <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
                       <Package className="w-3.5 h-3.5" />
                       Logistics
@@ -591,105 +551,12 @@ export default function TripDetails() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="expert" className="mt-0">
-                  <div className="space-y-8 py-4">
-                    {/* Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the advisor card
-                        (row 9), the duplicate EscalationCTA (row 8) and the expert-suggestion
-                        accept/decline panel (row 11) were removed here. The assigned expert and its
-                        message affordance are carried by the family's advisor strip (A10/A12,
-                        summary card) + full-stage EscalationCTA (B10); suggestion review moved to
-                        the slip family (ExpertSuggestionsPanel); assigning an expert (row 10) moved
-                        to the slip (AssignExpertDialog). */}
-
-                    <div className="border-t border-border pt-8">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
-                          Available Services for Your Trip
-                        </h4>
-                        <Link href="/discover">
-                          <Button variant="outline" size="sm" data-testid="button-browse-all">
-                            Browse All <ArrowRight className="w-4 h-4 ml-1" />
-                          </Button>
-                        </Link>
-                      </div>
-                      
-                      {servicesLoading ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {[1, 2, 3].map((i) => (
-                            <Card key={i}>
-                              <CardContent className="p-4">
-                                <Skeleton className="h-5 w-3/4 mb-2" />
-                                <Skeleton className="h-4 w-full mb-3" />
-                                <div className="flex justify-between">
-                                  <Skeleton className="h-6 w-20" />
-                                  <Skeleton className="h-8 w-24" />
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : servicesResult && servicesResult.length > 0 ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {servicesResult.slice(0, 6).map((service) => (
-                            <Card key={service.id} data-testid={`card-service-${service.id}`}>
-                              <CardContent className="p-4">
-                                <h5 className="font-semibold text-slate-900 dark:text-white mb-1 line-clamp-1">
-                                  {service.name}
-                                </h5>
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                  {service.description}
-                                </p>
-                                <div className="flex items-center gap-2 mb-3">
-                                  {service.rating && (
-                                    <Badge variant="secondary" className="gap-1">
-                                      <Star className="w-3 h-3 fill-current" />
-                                      {parseFloat(service.rating).toFixed(1)}
-                                    </Badge>
-                                  )}
-                                  {service.location && (
-                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" />
-                                      {service.location}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-lg">${parseFloat(service.basePrice).toFixed(0)}</span>
-                                  <Button 
-                                    size="sm"
-                                    onClick={() => handleAddToCart(service.id)}
-                                    disabled={addToCartMutation.isPending}
-                                    data-testid={`button-add-to-cart-${service.id}`}
-                                  >
-                                    {addToCartMutation.isPending ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <>
-                                        <ShoppingCart className="w-4 h-4 mr-1" />
-                                        Add
-                                      </>
-                                    )}
-                                  </Button>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                          <p>No services found for {trip.destination}.</p>
-                          <p className="text-sm mt-1">Check out our full marketplace for other options.</p>
-                          <Link href="/discover">
-                            <Button variant="outline" className="mt-4" data-testid="button-discover">
-                              Browse Marketplace
-                            </Button>
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </TabsContent>
+                {/* Phase 3b (row 12; ledger 2026-08-31-manifest-is-the-boundary): the "Available
+                    Services for Your Trip" grid and the whole Expert tab are removed. Adding a
+                    service to this trip is now the /services grid's own job — its Add-to-trip
+                    targets the active trip (cart-is-slip), and the slip carries a "Browse services
+                    for this trip →" link. Assigning/​messaging an expert moved to the slip + the
+                    family (rows 8-11). This partially discharges cart-is-slip Phase 2. */}
 
                 <TabsContent value="logistics" className="mt-0 space-y-6">
                   {id && (

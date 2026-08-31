@@ -18,6 +18,7 @@ import { Link, useLocation } from "wouter";
 import { format, isValid } from "date-fns";
 import {
   Anchor,
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -1104,6 +1105,18 @@ export function SlipView({
           })}
         </CardContent>
       </Card>
+      )}
+
+      {/* Row 12 (relocated): one link, not a grid — browse the marketplace scoped to THIS trip.
+          The /services grid's Add-to-trip targets the active trip (cart-is-slip), so a service
+          added there lands on this slip. Owner-only planning affordance. */}
+      {isOwner && (
+        <Link href={`/services?tripId=${encodeURIComponent(tripId)}`}>
+          <a className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline" data-testid="slip-browse-services">
+            Browse services for this trip
+            <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </Link>
       )}
 
       {/* Row 10 (relocated from the trip-details expert-tab bolt-on): choosing an expert is a
