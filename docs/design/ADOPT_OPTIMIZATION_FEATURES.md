@@ -154,14 +154,16 @@ Sub‑grid: icon + `.ak` (mono uppercase kind) / `.an` (bold name) / `.bm` (mono
 ### 3.10 Footnote (`.foot-note`, `data-testid="compare-footer"`)
 Reiterates: each version works best taken **whole**, but the owner may adopt the entire version or select one/many stops; unselected content remains in the current plan. Versions are **proposals, not separate trips** (R-B — supersedes "saved as its own trip"), and **nothing is purchased by adopting**.
 
-### 3.11 Honesty legend (`.legend`) — §13 in the UI
-Heading *"How the preview stays honest"* + a 6‑cell grid, each with a colored `.dot` (save/caution/accent/omit) and a short rule:
-1. **Money saved** — baseline vs proposal total; shown only with a real positive baseline.
+### 3.11 Honesty legend (`.legend`) — REMOVED from the live UI (decision-maker, Aug 31, 2026)
+This was shipped as `ReviewHonestyLegend` (`data-testid="compare-honesty-legend"`, heading *"How the preview stays honest"*) below the review board, but has been **removed from the traveler-facing UI** by decision-maker call. The §13 honesty rules it enumerated are **still enforced in the cards' own behavior** — they are not a display feature that needed a standalone legend to remain true:
+1. **Money saved** — baseline vs proposal total; the chip shows only with a real positive baseline.
 2. **Costs more, said plainly** — a pricier proposal shows "Costs $40 more" beside its time saving.
 3. **Shorter drive time** — sum of located transport‑leg minutes; **time only — distance is never a headline** (§21 L3).
 4. **Omitted when unknown** — a stop not located ⇒ no drive‑time chip; baseline shows no chips.
 5. **Trending & in season** — live signals; each line disappears when empty.
 6. **You confirm — nothing auto‑applies** — the chosen whole plan or selected set is named before one deliberate confirmation; nothing is purchased.
+
+The mock still depicts the legend as a historical reference; the live UI no longer renders it.
 
 ### 3.12 Mock note (`.mock-note`)
 Italic caption summarizing the target scope: anchor‑built versions (hotel/neighborhood/activity), whole‑plan adoption, selected‑stop adoption, keep‑original, and the Optimize + Finalize popups.
