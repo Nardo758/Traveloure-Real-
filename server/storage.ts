@@ -9,7 +9,7 @@ import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
 import { sanitizeText } from "./utils/text-sanitizer";
 import { 
-  trips, occasions, occasionDrafts, generatedItineraries, touristPlaceResults, touristPlacesSearches,
+  trips, tripFinals, occasions, occasionDrafts, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints, servicePickupRoutePoints,
   type ServiceRoutePoint,
@@ -1342,6 +1342,24 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(occasions, eq(occasions.id, occasionDrafts.occasionId))
       .where(and(...conditions));
 
+    // Batched latest-final lookup (Trip Card rebuild Phase 4, ledger 2026-08-31-stage-a-dashboard):
+    // ONE grouped query for the whole list — never a per-row plancard fetch — so the My Plans tile
+    // can flip between "Open slip" (pre-final) and "View Trip Card · Final · v{N}" (post-final).
+    // A final EXISTS ⇔ MAX(version) is present; a reopened trip still has its versions, so it
+    // still reads as having a final (finalVersion != null), matching the /trip/:id snapshot render.
+    const tripIds = Array.from(new Set(rows.map((r) => r.trip.id)));
+    const finalVersionByTrip = new Map<string, number>();
+    if (tripIds.length > 0) {
+      const finalRows = await db
+        .select({ tripId: tripFinals.tripId, latest: sql<number>`max(${tripFinals.version})` })
+        .from(tripFinals)
+        .where(inArray(tripFinals.tripId, tripIds))
+        .groupBy(tripFinals.tripId);
+      for (const fr of finalRows) {
+        if (fr.latest != null) finalVersionByTrip.set(fr.tripId, Number(fr.latest));
+      }
+    }
+
     return rows.map(({ trip, occasionLabel, occasionDate, occasionTemplateKey }) => ({
       ...trip,
       occasion: occasionDate && occasionTemplateKey
@@ -1350,6 +1368,7 @@ export class DatabaseStorage implements IStorage {
             date: occasionDate,
           }
         : null,
+      finalVersion: finalVersionByTrip.get(trip.id) ?? null,
     }));
   }
 

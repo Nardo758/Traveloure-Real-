@@ -386,8 +386,13 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Single full PlanCard for the selected/soonest trip, capped by the R-A
-                    compact slip strip (tracking ref + routing-status counts + "Open slip"). */}
+                {/* Stage-A summary card for the selected/soonest trip, capped by the R-A
+                    compact slip strip (tracking ref + routing-status counts + "Open slip").
+                    Trip Card rebuild Phase 4 (ledger 2026-08-31-stage-a-dashboard): the dashboard's
+                    at-a-glance card is the summary stage — the full command center lives at its own
+                    surface, the Trip Card (/trip/:id), which the summary card links into. The summary
+                    fires ONE plancard query; there is exactly one such card on this page (the selected
+                    trip in focus), never one per list row. */}
                 {selectedTrip && (
                   <>
                     <PlanSlipStrip tripId={selectedTrip.id} />
@@ -395,7 +400,7 @@ export default function Dashboard() {
                       trip={selectedTrip as any}
                       index={0}
                       role="owner"
-                      stage="full"
+                      stage="summary"
                     />
                   </>
                 )}

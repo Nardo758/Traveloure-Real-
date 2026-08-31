@@ -19,6 +19,15 @@ export type TripListItem = typeof trips.$inferSelect & {
     label: string;
     date: string;
   } | null;
+  /**
+   * The latest `trip_finals` version for this trip, or null when the trip has no final
+   * (the pre-final state). Lets the My Plans list flip a tile between "Open slip" (pre-final)
+   * and "View Trip Card · Final · v{N}" (post-final) WITHOUT a per-row plancard query
+   * (Trip Card rebuild Phase 4, ledger 2026-08-31-stage-a-dashboard). A trip reopened for
+   * revision keeps its latest version here (a final still exists, so /trip/:id still renders
+   * the frozen snapshot) — the flip is "a final exists", i.e. finalVersion != null.
+   */
+  finalVersion: number | null;
 };
 
 export const errorSchemas = {
