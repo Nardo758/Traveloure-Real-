@@ -1,46 +1,8 @@
-import type { InlineTransportLegData } from "./InlineTransportSelector";
-
-export interface ItineraryActivity {
-  id: string;
-  name: string;
-  startTime?: string | null;
-  endTime?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-  category?: string | null;
-  cost?: number;
-  description?: string | null;
-  location?: string | null;
-  duration?: number | null;
-  booked?: boolean;
-  bookingStatus?: "pending" | "booked" | "confirmed";
-  bookingType?: "inApp" | "partner";
-  partnerName?: string | null;
-}
-
-export interface ItineraryDay {
-  dayNumber: number;
-  date?: string;
-  title?: string;
-  activities: ItineraryActivity[];
-  transportLegs: InlineTransportLegData[];
-}
-
-export interface ItineraryCardData {
-  id: string;
-  name: string;
-  description?: string | null;
-  destination?: string | null;
-  dateRange?: { start?: string | null; end?: string | null };
-  totalCost?: string | number | null;
-  optimizationScore?: number | null;
-  days: ItineraryDay[];
-  transportSummary?: {
-    totalLegs: number;
-    totalMinutes: number;
-    totalCostUsd: number;
-  };
-}
+// Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the ItineraryCard renderer and its
+// ItineraryMapView sibling were deleted as dead (no live importers). This file is kept ONLY as
+// the type home for the diff shapes still consumed by the two comparison pages —
+// itinerary.tsx and itinerary-view.tsx (`import type { ActivityDiff, TransportDiff }`). The
+// card/activity/day/transport-summary types went with the renderer that was their sole consumer.
 
 export interface ActivityDiff {
   name?: string;

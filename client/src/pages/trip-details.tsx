@@ -1,22 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
+import { useState, useEffect } from "react";
+import { useTrip } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
-import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Package, Share2, Copy, Check, XCircle } from "lucide-react";
+import { TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays, isValid } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -26,9 +19,6 @@ import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
-import { EscalationCTA } from "@/components/plancard/EscalationCTA";
-import { GuestInviteManager } from "@/components/GuestInviteManager";
-import type { UserExperience } from "@shared/schema";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
 
 type Section = "activities" | "transport";
@@ -69,55 +59,12 @@ function getActivityIcon(type: string) {
   }
 }
 
-interface ProviderService {
-  id: string;
-  providerId: string;
-  categoryId: string;
-  name: string;
-  description: string;
-  basePrice: string;
-  pricingType: string;
-  duration: string | null;
-  location: string | null;
-  rating: string | null;
-  reviewCount: number;
-  isActive: boolean;
-  bookingCount: number;
-}
+// Phase 3b (row 12): the ProviderService type went with the "Available Services" grid — the
+// services surface is /services now, which owns its own Service type.
 
-interface Expert {
-  id: string;
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  bio: string | null;
-  specialties: string[];
-  destinations: string[];
-  hourly_rate: string | null;
-  years_of_experience: string | null;
-  availability: string | null;
-  response_time: string | null;
-  profile_image_url: string | null;
-  avg_rating: string;
-  review_count: number;
-}
-
-interface ExpertAdvisor {
-  advisor_id: string;
-  status: "pending" | "accepted" | "rejected";
-  message: string | null;
-  assigned_at: string;
-  first_name: string;
-  last_name: string;
-  bio: string | null;
-  specialties: string[];
-  destinations: string[];
-  hourly_rate: string | null;
-  profile_image_url: string | null;
-  avg_rating: string;
-  review_count: number;
-  expertFirstMessage: string | null;
-}
+// Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the Expert / ExpertAdvisor types moved
+// with the expert-assign + suggestion-review UI to the slip family (AssignExpertDialog /
+// ExpertSuggestionsPanel own their own local types).
 
 export default function TripDetails() {
   const { id } = useParams();
@@ -131,7 +78,6 @@ export default function TripDetails() {
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
-  const generatePlan = useGenerateItinerary();
   const {
     data: plancardData,
     isLoading: itineraryLoading,
@@ -149,13 +95,6 @@ export default function TripDetails() {
   const hasExistingItineraryItems = !!plancardData?.days?.some(
     (day) => (day.activities?.length ?? 0) > 0,
   );
-  const handleRegenerateClick = () => {
-    if (hasExistingItineraryItems) {
-      setShowRegenerateConfirm(true);
-    } else {
-      generatePlan.mutate(trip!.id);
-    }
-  };
   const { toast } = useToast();
   const { user } = useAuth();
   const { open: openPlanning } = usePlanning();
@@ -163,34 +102,14 @@ export default function TripDetails() {
   const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
   const [section, setSection] = useState<Section>(initialSection);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
-  const [showAnchorCapture, setShowAnchorCapture] = useState(false);
+  // Phase 3b: showAnchorCapture removed with the flight/hotel capture (moved to the slip, row 13).
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [expertPickerOpen, setExpertPickerOpen] = useState(false);
-  const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
-  const [expertMessage, setExpertMessage] = useState("");
-  const [selectedOfferingType, setSelectedOfferingType] = useState<{ key: string; label: string; tier: string } | null>(null);
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
-  const [rejectionNote, setRejectionNote] = useState("");
-  // T1-1: confirm before "Regenerate Plan" destructively rebuilds the itinerary. Only shown
-  // when there's an existing plan to lose (see `hasExistingItineraryItems` below) — first-time
-  // generation has nothing to warn about.
-  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
-  const suggestionsRef = useRef<HTMLDivElement | null>(null);
+  // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the expert-picker + reject-suggestion
+  // state moved to the slip family (AssignExpertDialog / ExpertSuggestionsPanel). Rows 8/9/10/11.
   // G7: "Plan ready" banner
   const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
-
-  useEffect(() => {
-    if (initialTab === "expert" && deepSection === "suggestions") {
-      setActiveTab("expert");
-      const timer = setTimeout(() => {
-        suggestionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-  }, [initialTab, deepSection]);
 
   // Mobile-lens audit #1: this effect used to compute "today's day" into a page-level
   // `selectedDay` state that nothing read (the original audit finding) — then, once wired
@@ -227,123 +146,17 @@ export default function TripDetails() {
   // G7: Reuse the canonical plan-card query above for optimization metadata.
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
 
-  const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
-    queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
-    enabled: !!trip?.destination,
-  });
+  // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the guest-invite data layer
+  // (user-experiences query, linkedExperience, isEventTrip, createGuestListMutation) moved to
+  // the slip family with the Guests surface (SlipLogisticsSection owns it now — row 14).
 
-  const { data: advisorData, isLoading: advisorLoading } = useQuery<{ advisor: ExpertAdvisor | null }>({
-    queryKey: [`/api/trips/${id}/expert-advisor`],
-    enabled: !!id,
-  });
-
-  // Guest-invite surface (A1): a trip born from an event experience template (wedding/
-  // proposal/birthday…) has a user_experiences row linked via tripId — that link is the
-  // Event-class signal. When present, the Guests tab surfaces the organizer's invite
-  // manager. Rides the live session-scoped GET /api/user-experiences (owner-only data).
-  const { data: allUserExperiences } = useQuery<UserExperience[]>({
-    queryKey: ["/api/user-experiences"],
-    enabled: !!user && !!id,
-    staleTime: 30_000,
-  });
-  const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
-
-  const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
-  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
-
-  const createGuestListMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/user-experiences", {
-      tripId: id,
-      title: trip?.title || trip?.destination || "My Event",
-      location: trip?.destination || "",
-      eventDate: trip?.startDate || new Date().toISOString(),
-    }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] }),
-    onError: () => toast({ title: "Could not set up guest list", variant: "destructive" }),
-  });
-
-  const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
-    queryKey: [`/api/trip-experts?destination=${encodeURIComponent(trip?.destination || "")}`],
-    enabled: expertPickerOpen && !!trip?.destination,
-  });
-
-  interface ExpertOfferingOption { offering_type_key: string; display_name: string; service_tier: string; tagline: string | null; }
-  const { data: expertOfferingOptions } = useQuery<ExpertOfferingOption[]>({
-    queryKey: ["/api/offering-types/experts"],
-    queryFn: async () => {
-      const res = await fetch("/api/offering-types/experts");
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    },
-    enabled: expertPickerOpen,
-    staleTime: 15 * 60_000,
-  });
-
-  interface TripSuggestion {
-    id: string;
-    trip_id: string;
-    expert_id: string;
-    type: string;
-    day_number: number | null;
-    title: string;
-    description: string | null;
-    estimated_cost: string | null;
-    status: "pending" | "approved" | "rejected";
-    rejection_note: string | null;
-    created_at: string;
-    reviewed_at: string | null;
-    expert_first_name: string;
-    expert_last_name: string;
-    expert_profile_image_url: string | null;
-  }
-
-  const advisor = advisorData?.advisor ?? null;
-
-  const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
-    queryKey: [`/api/trips/${id}/suggestions`],
-    enabled: !!id && !!advisor,
-    staleTime: 30000,
-  });
-
-  const reviewSuggestionMutation = useMutation({
-    mutationFn: async ({ suggestionId, status, rejectionNote }: { suggestionId: string; status: "approved" | "rejected"; rejectionNote?: string }) => {
-      const res = await apiRequest("PATCH", `/api/trips/${id}/suggestions/${suggestionId}`, { status, rejectionNote });
-      return res.json() as Promise<{ suggestion: { status: string } }>;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/suggestions`] });
-      if (data?.suggestion?.status === "approved") {
-        queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", id] });
-        // W3-A: approval now also materializes a real itinerary_items row (booking-actions.ts) —
-        // refresh the canonical reads so the item shows up without a manual reload.
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/itinerary-items`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/plancard`] });
-      }
-      toast({ title: "Suggestion reviewed", description: "Your response has been saved." });
-    },
-    onError: () => {
-      toast({ title: "Could not review suggestion", variant: "destructive" });
-    },
-  });
-
-  const assignExpertMutation = useMutation({
-    mutationFn: async ({ expertUserId, message, offeringTypeKey }: { expertUserId: string; message: string; offeringTypeKey?: string }) => {
-      const res = await apiRequest("POST", `/api/trips/${id}/expert-advisor`, { expertUserId, message, offeringTypeKey });
-      return res.json() as Promise<{ success: boolean; advisorId: string; status: string }>;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/expert-advisor`] });
-      setExpertPickerOpen(false);
-      setSelectedExpert(null);
-      setExpertMessage("");
-      setSelectedOfferingType(null);
-      toast({ title: "Expert request sent!", description: "They will review and respond soon." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to assign expert", description: err.message, variant: "destructive" });
-    },
-  });
+  // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the expert-assign picker and the
+  // expert-suggestion review data layer (trip-experts / offering-types / suggestions queries,
+  // reviewSuggestionMutation, assignExpertMutation) relocated to the slip family —
+  // AssignExpertDialog + ExpertSuggestionsPanel own them now (rows 10/11). The advisor query,
+  // the advisor card and the duplicate EscalationCTA (rows 8/9) are dropped here; the assigned
+  // expert is surfaced by the family's advisor strip on the summary card (A10/A12) and the
+  // full-stage EscalationCTA (B10) — both must-not-regress, both already rendering.
 
   // Open destination in maps
   const openInMaps = () => {
@@ -361,33 +174,10 @@ export default function TripDetails() {
     toast({ title: "Opening Maps", description: `Showing ${trip.destination}` });
   };
 
-  const handleAddToCart = (serviceId: string) => {
-    if (!user) {
-      toast({ 
-        variant: "destructive", 
-        title: "Sign in required", 
-        description: "Please sign in to add items to your cart" 
-      });
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1500);
-      return;
-    }
-    addToCartMutation.mutate(serviceId);
-  };
-
-  const addToCartMutation = useMutation({
-    mutationFn: async (serviceId: string) => {
-      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-      toast({ title: "Added to cart!", description: "Service has been added to your cart." });
-    },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
-    },
-  });
+  // Phase 3b (row 12; ledger 2026-08-31-manifest-is-the-boundary): the on-trip Add-to-cart rail
+  // (servicesResult query, handleAddToCart, addToCartMutation) was removed with the "Available
+  // Services for Your Trip" grid. Adding a service to this trip is now the /services grid's job —
+  // its Add-to-trip targets the active trip via POST /api/trips/:tripId/itinerary-items.
 
   if (isLoading) {
     return (
@@ -422,6 +212,34 @@ export default function TripDetails() {
         <h2 className="text-2xl font-bold mb-4">Trip not found</h2>
         <Link href="/dashboard">
           <Button>Back to Dashboard</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the Trip Card does not exist before Make
+  // final. A trip with NO final renders an honest notice + one action to the slip, and NOTHING else —
+  // planning lives on /plans/:tripId, never on /trip/:id. This is the sentence that closes the
+  // flow-audit's "/trip/:id is a second planning surface" finding. `plancardData.trip.finalVersion`
+  // is the source of truth: null ⇒ no final has ever been cut (finalizedAt alone can't tell "never
+  // finalized" from "reopened"). We wait for the plancard query to resolve so the notice never
+  // flashes ahead of data; an errored/absent payload falls through to the normal render.
+  if (!itineraryLoading && plancardData != null && plancardData.trip?.finalVersion == null) {
+    return (
+      <div
+        className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center"
+        data-testid="trip-not-final-notice"
+      >
+        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+          <Sparkles className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Not final yet</h2>
+        <p className="text-muted-foreground max-w-md mx-auto mb-6">
+          Your plan for {trip.destination} is on the slip. Finish it there and make it final — your
+          Trip Card appears here once you do.
+        </p>
+        <Link href={`/plans/${trip.id}`}>
+          <Button data-testid="button-go-to-slip">Go to your plan</Button>
         </Link>
       </div>
     );
@@ -473,9 +291,9 @@ export default function TripDetails() {
                 <MapPin className="w-3 h-3 mr-1" />
                 {trip.destination}
               </Badge>
-              <Badge className="bg-accent/80 backdrop-blur-md text-white border-0">
-                {trip.status}
-              </Badge>
+              {/* Phase 3b (drift-audit §C row 3): the dead `trip.status` badge is removed — trips.status
+                  is a §13 dead field (never advances past its born value); a trip's phase derives from
+                  dates, never this column. */}
               {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
                   field a sibling change adds to GET /api/trips/:id (nullable — coded
                   defensively in case this lands before that field does). Honest: renders
@@ -577,17 +395,13 @@ export default function TripDetails() {
                   <TabsList className="bg-muted/50">
                     <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
                     <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
-                    <TabsTrigger value="expert" data-testid="tab-expert" className="min-h-11">Ask an Expert</TabsTrigger>
+                    {/* Phase 3b (row 12): the Expert tab is removed — assigning/messaging an expert
+                        moved to the slip + family; the services grid moved to /services. */}
                     <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
-                    {isEventTrip && (
-                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1 min-h-11">
-                        <UserPlus className="w-3.5 h-3.5" />
-                        Guests
-                      </TabsTrigger>
-                    )}
+                    {/* Phase 3b (row 14): the Guests tab moved to the slip (SlipLogisticsSection). */}
                   </TabsList>
 
                   <div className="hidden md:flex gap-2">
@@ -612,56 +426,22 @@ export default function TripDetails() {
                       )}
                       Share with friends
                     </Button>
-                    <Button
-                      onClick={handleRegenerateClick}
-                      disabled={generatePlan.isPending}
-                      data-testid="button-regenerate"
-                    >
-                      {generatePlan.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 mr-2" />
-                      )}
-                      Regenerate Plan
-                    </Button>
+                    {/* Phase 3b (drift-audit §C row 5): the destructive "Regenerate Plan" is removed
+                        from the Trip Card entirely — no Regenerate on the card ever again. Rebuilding
+                        the AI plan is a planning action and lives on the slip; the card renders the
+                        finalized snapshot only. */}
                   </div>
                 </div>
               </div>
 
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
-                  {/* Flight & hotel time capture — surfaced in the primary trip view
-                      (was only reachable in the buried Logistics tab). Reuses the
-                      canonical TemporalAnchorManager filtered to the 4 flight/hotel
-                      anchor types. Optional; never blocks. */}
-                  {id && (
-                    <Collapsible open={showAnchorCapture} onOpenChange={setShowAnchorCapture}>
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-between"
-                          data-testid="button-toggle-anchor-capture"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Plane className="w-4 h-4 text-blue-600" />
-                            Add flight &amp; hotel times (optional)
-                          </span>
-                          <ChevronRight className={`w-4 h-4 transition-transform ${showAnchorCapture ? "rotate-90" : ""}`} />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-3">
-                        <TemporalAnchorManager
-                          tripId={id}
-                          allowedTypes={["flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout"]}
-                          title="Flight & hotel times"
-                          description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
-                        />
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
+                  {/* Phase 3b (row 13): the flight/hotel-time capture moved to the slip
+                      (SlipLogisticsSection) — anchors are planning input, so they live where
+                      planning happens, not on the finalized Trip Card. */}
 
                   {/* Itinerary Timeline */}
-                  {(itineraryLoading || generatePlan.isPending) ? (
+                  {itineraryLoading ? (
                     <div className="space-y-6">
                       {[1, 2, 3].map((i) => (
                         <div key={i} className="space-y-3">
@@ -703,15 +483,10 @@ export default function TripDetails() {
                       <p className="text-muted-foreground max-w-md mx-auto mb-6">
                         Generate a personalized day-by-day plan for {trip.destination} using AI.
                       </p>
-                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                        <Button
-                          onClick={() => generatePlan.mutate(trip.id)}
-                          disabled={generatePlan.isPending}
-                          data-testid="button-generate-itinerary"
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Generate My Itinerary
-                        </Button>
+                      {/* Phase 3b (drift-audit §C row 5): the on-card "Generate My Itinerary"
+                          (destructive generate) is removed — planning/generation lives on the slip,
+                          never the card. The planning entry stays as a single link. */}
+                      <div className="flex justify-center">
                         <Button
                           variant="outline"
                           onClick={() => openPlanning({ branch: "ai", destination: trip?.destination, tripId: trip?.id })}
@@ -770,628 +545,42 @@ export default function TripDetails() {
                       <p className="text-muted-foreground max-w-md mx-auto mb-6">
                         Add flights, hotels, and activities to your trip to keep everything organized in one place.
                       </p>
-                      <Button variant="outline" data-testid="button-add-booking">
-                        Add a Booking
-                      </Button>
+                      {/* Phase 3b (drift-audit §C row 7): the inert "Add a Booking" button (no handler)
+                          is removed — adding a booking happens on the slip / marketplace, not here. */}
                     </div>
                   </div>
                 </TabsContent>
 
-                <TabsContent value="expert" className="mt-0">
-                  <div className="space-y-8 py-4">
-                    {/* Assigned Expert Display */}
-                    {advisorLoading ? (
-                      <div className="flex items-center gap-4 p-4 rounded-xl border border-border">
-                        <Skeleton className="w-14 h-14 rounded-full" />
-                        <div className="flex-1 space-y-2">
-                          <Skeleton className="h-5 w-40" />
-                          <Skeleton className="h-4 w-64" />
-                        </div>
-                      </div>
-                    ) : advisor ? (
-                      <div
-                        className="flex items-start gap-4 p-4 rounded-xl border border-border bg-muted/20"
-                        data-testid="advisor-card"
-                      >
-                        <Avatar className="w-14 h-14 flex-shrink-0">
-                          <AvatarImage src={advisor.profile_image_url ?? undefined} />
-                          <AvatarFallback className="text-lg font-medium">
-                            {advisor.first_name?.[0]}{advisor.last_name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <span className="font-semibold text-foreground" data-testid="advisor-name">
-                              {advisor.first_name} {advisor.last_name}
-                            </span>
-                            <Badge
-                              variant={advisor.status === "accepted" ? "default" : "secondary"}
-                              className="text-[11px]"
-                              data-testid="advisor-status"
-                            >
-                              {advisor.status === "accepted" ? "Expert assigned" : "Request pending"}
-                            </Badge>
-                          </div>
-                          {advisor.bio && (
-                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{advisor.bio}</p>
-                          )}
-                          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            {parseFloat(advisor.avg_rating) > 0 && (
-                              <span className="flex items-center gap-1">
-                                <Star className="w-3 h-3 fill-current text-amber-500" />
-                                {parseFloat(advisor.avg_rating).toFixed(1)} ({advisor.review_count} reviews)
-                              </span>
-                            )}
-                            {advisor.hourly_rate && (
-                              <span>${advisor.hourly_rate}/hr</span>
-                            )}
-                          </div>
-                          {advisor.status === "accepted" && advisor.expertFirstMessage && (
-                            <div className="mt-3 p-3 rounded-lg bg-muted/40 border border-border text-sm text-muted-foreground italic" data-testid="advisor-first-message">
-                              <span className="not-italic font-medium text-foreground">{advisor.first_name}: </span>
-                              {advisor.expertFirstMessage}
-                            </div>
-                          )}
-                          {advisor.status === "accepted" && !advisor.expertFirstMessage && (
-                            <p className="mt-2 text-xs text-muted-foreground" data-testid="advisor-awaiting-message">
-                              Your expert will reach out with their first message soon.
-                            </p>
-                          )}
-                          {advisor.status === "accepted" && (
-                            <Link href="/chat">
-                              <Button size="sm" className="mt-3 gap-1.5" data-testid="button-message-expert">
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                Message expert
-                              </Button>
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid md:grid-cols-2 gap-8 items-center">
-                        <div>
-                          <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
-                            Connect with a Local Expert
-                          </h3>
-                          <p className="text-muted-foreground mb-6">
-                            Get personalized advice, hidden gems, and real-time support from someone who knows {trip.destination} well.
-                          </p>
-                          <div className="flex flex-wrap gap-3">
-                            <Button
-                              className="gap-2"
-                              onClick={() => setExpertPickerOpen(true)}
-                              data-testid="button-find-expert"
-                            >
-                              <UserPlus className="w-4 h-4" />
-                              Add a local expert
-                            </Button>
-                            <Link href="/experts?role=travel_expert">
-                              <Button variant="outline" className="gap-2" data-testid="button-find-trip-planner">
-                                <Sparkles className="w-4 h-4" />
-                                Work with a Trip Planner
-                              </Button>
-                            </Link>
-                          </div>
-                        </div>
-                        <div className="relative">
-                          <img
-                            src="https://picsum.photos/seed/local-expert/600/400"
-                            alt="Local Expert"
-                            className="rounded-2xl shadow-xl"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Expert escalation upsell — always visible on expert tab (CON-A.P7 / N3) */}
-                    <div>
-                      <EscalationCTA
-                        tripId={trip.id}
-                        destination={trip.destination}
-                        eventType={(trip as any).eventType}
-                      />
-                    </div>
-
-                    {/* Expert Suggestions Panel */}
-                    {advisor && (
-                      <div ref={suggestionsRef} className="border-t border-border pt-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <Lightbulb className="w-5 h-5 text-amber-500" />
-                            <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
-                              Expert Suggestions
-                            </h4>
-                            {suggestionsData?.suggestions?.filter(s => s.status === "pending").length ? (
-                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-                                {suggestionsData.suggestions.filter(s => s.status === "pending").length} pending
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        {suggestionsLoading ? (
-                          <div className="space-y-3">
-                            {[1, 2].map(i => (
-                              <div key={i} className="rounded-xl border border-border p-4">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
-                                  <div className="h-4 w-32 bg-muted rounded animate-pulse" />
-                                </div>
-                                <div className="h-3 w-full bg-muted rounded animate-pulse mb-1.5" />
-                                <div className="h-3 w-2/3 bg-muted rounded animate-pulse" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : suggestionsData?.suggestions && suggestionsData.suggestions.length > 0 ? (
-                          <div className="space-y-3" data-testid="suggestions-list">
-                            {suggestionsData.suggestions.map((suggestion) => (
-                              <div
-                                key={suggestion.id}
-                                className={`rounded-xl border p-4 transition-colors ${
-                                  suggestion.status === "approved"
-                                    ? "border-green-200 bg-green-50/50 dark:bg-green-950/20"
-                                    : suggestion.status === "rejected"
-                                    ? "border-red-200 bg-red-50/50 dark:bg-red-950/20"
-                                    : "border-border bg-muted/20"
-                                }`}
-                                data-testid={`suggestion-card-${suggestion.id}`}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase font-medium tracking-wide">
-                                        {suggestion.type}
-                                      </span>
-                                      {suggestion.day_number && (
-                                        <span className="text-[10px] text-muted-foreground">Day {suggestion.day_number}</span>
-                                      )}
-                                      {suggestion.status === "approved" && (
-                                        <span className="flex items-center gap-1 text-[10px] text-green-700 font-medium">
-                                          <CheckCircle className="w-3 h-3" /> Approved
-                                        </span>
-                                      )}
-                                      {suggestion.status === "rejected" && (
-                                        <span className="flex items-center gap-1 text-[10px] text-red-700 font-medium">
-                                          <XCircle className="w-3 h-3" /> Declined
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="font-medium text-foreground mb-1">{suggestion.title}</p>
-                                    {suggestion.description && (
-                                      <p className="text-sm text-muted-foreground mb-2">{suggestion.description}</p>
-                                    )}
-                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                      <span>
-                                        {suggestion.expert_first_name} {suggestion.expert_last_name}
-                                      </span>
-                                      {suggestion.estimated_cost && (
-                                        <span className="text-primary font-medium">~${parseFloat(suggestion.estimated_cost).toFixed(0)}</span>
-                                      )}
-                                      <span>{new Date(suggestion.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-                                    </div>
-                                    {suggestion.rejection_note && (
-                                      <p className="text-xs text-red-600 mt-1 italic">Note: {suggestion.rejection_note}</p>
-                                    )}
-                                  </div>
-                                </div>
-                                {suggestion.status === "pending" && (
-                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="flex-1 gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
-                                      onClick={() => reviewSuggestionMutation.mutate({ suggestionId: suggestion.id, status: "approved" })}
-                                      disabled={reviewSuggestionMutation.isPending}
-                                      data-testid={`button-approve-suggestion-${suggestion.id}`}
-                                    >
-                                      <CheckCircle className="w-3.5 h-3.5" />
-                                      Approve &amp; add to itinerary
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="flex-1 gap-1.5 border-red-300 text-red-700 hover:bg-red-50"
-                                      onClick={() => {
-                                        setRejectTargetId(suggestion.id);
-                                        setRejectionNote("");
-                                        setRejectDialogOpen(true);
-                                      }}
-                                      disabled={reviewSuggestionMutation.isPending}
-                                      data-testid={`button-reject-suggestion-${suggestion.id}`}
-                                    >
-                                      <XCircle className="w-3.5 h-3.5" />
-                                      Decline
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-muted-foreground" data-testid="suggestions-empty">
-                            <Lightbulb className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                            <p className="text-sm">No suggestions yet.</p>
-                            <p className="text-xs mt-1">Your expert will send curated ideas once they review your trip.</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="border-t border-border pt-8">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
-                          Available Services for Your Trip
-                        </h4>
-                        <Link href="/discover">
-                          <Button variant="outline" size="sm" data-testid="button-browse-all">
-                            Browse All <ArrowRight className="w-4 h-4 ml-1" />
-                          </Button>
-                        </Link>
-                      </div>
-                      
-                      {servicesLoading ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {[1, 2, 3].map((i) => (
-                            <Card key={i}>
-                              <CardContent className="p-4">
-                                <Skeleton className="h-5 w-3/4 mb-2" />
-                                <Skeleton className="h-4 w-full mb-3" />
-                                <div className="flex justify-between">
-                                  <Skeleton className="h-6 w-20" />
-                                  <Skeleton className="h-8 w-24" />
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : servicesResult && servicesResult.length > 0 ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {servicesResult.slice(0, 6).map((service) => (
-                            <Card key={service.id} data-testid={`card-service-${service.id}`}>
-                              <CardContent className="p-4">
-                                <h5 className="font-semibold text-slate-900 dark:text-white mb-1 line-clamp-1">
-                                  {service.name}
-                                </h5>
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                  {service.description}
-                                </p>
-                                <div className="flex items-center gap-2 mb-3">
-                                  {service.rating && (
-                                    <Badge variant="secondary" className="gap-1">
-                                      <Star className="w-3 h-3 fill-current" />
-                                      {parseFloat(service.rating).toFixed(1)}
-                                    </Badge>
-                                  )}
-                                  {service.location && (
-                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" />
-                                      {service.location}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-lg">${parseFloat(service.basePrice).toFixed(0)}</span>
-                                  <Button 
-                                    size="sm"
-                                    onClick={() => handleAddToCart(service.id)}
-                                    disabled={addToCartMutation.isPending}
-                                    data-testid={`button-add-to-cart-${service.id}`}
-                                  >
-                                    {addToCartMutation.isPending ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <>
-                                        <ShoppingCart className="w-4 h-4 mr-1" />
-                                        Add
-                                      </>
-                                    )}
-                                  </Button>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                          <p>No services found for {trip.destination}.</p>
-                          <p className="text-sm mt-1">Check out our full marketplace for other options.</p>
-                          <Link href="/discover">
-                            <Button variant="outline" className="mt-4" data-testid="button-discover">
-                              Browse Marketplace
-                            </Button>
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </TabsContent>
+                {/* Phase 3b (row 12; ledger 2026-08-31-manifest-is-the-boundary): the "Available
+                    Services for Your Trip" grid and the whole Expert tab are removed. Adding a
+                    service to this trip is now the /services grid's own job — its Add-to-trip
+                    targets the active trip (cart-is-slip), and the slip carries a "Browse services
+                    for this trip →" link. Assigning/​messaging an expert moved to the slip + the
+                    family (rows 8-11). This partially discharges cart-is-slip Phase 2. */}
 
                 <TabsContent value="logistics" className="mt-0 space-y-6">
                   {id && (
-                    <>
-                      <TripLogisticsDashboard
-                        tripId={id}
-                        tripName={trip?.title || trip?.destination || "Trip"}
-                        budget={typeof trip?.budget === 'number' ? trip.budget : 0}
-                        destination={trip?.destination || "destination"}
-                      />
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <TemporalAnchorManager tripId={id} />
-                        <ScheduleValidator tripId={id} />
-                      </div>
-                      <EnergyBudgetDisplay tripId={id} />
-                      <AnchorSuggestionsPanel tripId={id} />
-                      {trip?.eventType === "wedding" && (
-                        <WeddingAnchorPresets
-                          tripId={id}
-                          templateSlug="wedding"
-                          eventDate={trip.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : ""}
-                        />
-                      )}
-                    </>
+                    <TripLogisticsDashboard
+                      tripId={id}
+                      tripName={trip?.title || trip?.destination || "Trip"}
+                      budget={typeof trip?.budget === 'number' ? trip.budget : 0}
+                      destination={trip?.destination || "destination"}
+                    />
                   )}
+                  {/* Phase 3b (row 13): the temporal-anchor cluster (TemporalAnchorManager,
+                      ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel,
+                      WeddingAnchorPresets) moved to the slip (SlipLogisticsSection) — anchors are
+                      optimizer constraints, i.e. planning input. TripLogisticsDashboard stays. */}
                 </TabsContent>
 
-                {isEventTrip && (
-                  <TabsContent value="guests" className="mt-0">
-                    {linkedExperience ? (
-                      <GuestInviteManager
-                        experienceId={linkedExperience.id}
-                        eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
-                        eventDestination={linkedExperience.location || trip?.destination || ""}
-                        eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
-                      />
-                    ) : (
-                      <div className="py-14 flex flex-col items-center gap-4 text-center">
-                        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                          <UserPlus className="w-7 h-7 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground mb-1">Set up your guest list</p>
-                          <p className="text-sm text-muted-foreground max-w-xs">
-                            Track RSVPs, send invites, and manage attendees for{" "}
-                            {trip?.title || trip?.destination || "this event"}.
-                          </p>
-                        </div>
-                        <Button
-                          onClick={() => createGuestListMutation.mutate()}
-                          disabled={createGuestListMutation.isPending}
-                          data-testid="button-setup-guest-list"
-                        >
-                          {createGuestListMutation.isPending ? (
-                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Setting up…</>
-                          ) : (
-                            <><UserPlus className="w-4 h-4 mr-2" />Set up guest list</>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </TabsContent>
-                )}
+                {/* Phase 3b (row 14): the Guests tab (GuestInviteManager / "Set up guest list")
+                    moved to the slip (SlipLogisticsSection). Share (B3) covers the post-final
+                    companion case. */}
               </div>
             </Tabs>
           </CardContent>
         </Card>
       </div>
-
-      {/* Expert Picker Dialog */}
-      <Dialog open={expertPickerOpen} onOpenChange={(open) => {
-        setExpertPickerOpen(open);
-        if (!open) { setSelectedExpert(null); setExpertMessage(""); setSelectedOfferingType(null); }
-      }}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-expert-picker">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedOfferingType
-                ? `Choose an expert for ${trip?.destination}`
-                : "What kind of help do you need?"}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedOfferingType
-                ? `${selectedOfferingType.label} — select an expert to help curate your trip.`
-                : "Pick the type of expert service you're looking for."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Step 0 — pick offering type */}
-          {!selectedOfferingType && (
-            <div className="mt-2 space-y-2" data-testid="expert-picker-offering-step">
-              {(expertOfferingOptions ?? []).length === 0 ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-14 rounded-lg" />
-                  ))}
-                </div>
-              ) : (
-                (expertOfferingOptions ?? []).map((o) => (
-                  <button
-                    key={o.offering_type_key}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"
-                    onClick={() => setSelectedOfferingType({ key: o.offering_type_key, label: o.display_name, tier: o.service_tier })}
-                    data-testid={`button-offering-type-${o.offering_type_key}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-foreground">{o.display_name}</div>
-                      {o.tagline && <p className="text-xs text-muted-foreground truncate">{o.tagline}</p>}
-                    </div>
-                    <Badge variant="secondary" className="text-[10px] capitalize flex-shrink-0">{o.service_tier.replace(/_/g, " ")}</Badge>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-
-          {selectedOfferingType && selectedExpert ? (
-            <div className="space-y-4 mt-2">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <Avatar className="w-10 h-10">
-                  <AvatarImage src={selectedExpert.profile_image_url ?? undefined} />
-                  <AvatarFallback>{selectedExpert.first_name?.[0]}{selectedExpert.last_name?.[0]}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="font-medium">{selectedExpert.first_name} {selectedExpert.last_name}</div>
-                  {parseFloat(selectedExpert.avg_rating) > 0 && (
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Star className="w-3 h-3 fill-current text-amber-500" />
-                      {parseFloat(selectedExpert.avg_rating).toFixed(1)}
-                    </div>
-                  )}
-                </div>
-                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedExpert(null)}
-                  data-testid="button-change-expert">
-                  Change
-                </Button>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Message (optional)</label>
-                <Textarea
-                  placeholder="Tell the expert about your preferences, goals, or any specific requests..."
-                  value={expertMessage}
-                  onChange={(e) => setExpertMessage(e.target.value)}
-                  rows={3}
-                  data-testid="input-expert-message"
-                />
-              </div>
-              <Button
-                className="w-full"
-                onClick={() => assignExpertMutation.mutate({ expertUserId: selectedExpert.user_id, message: expertMessage, offeringTypeKey: selectedOfferingType?.key })}
-                disabled={assignExpertMutation.isPending}
-                data-testid="button-confirm-expert"
-              >
-                {assignExpertMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <UserPlus className="w-4 h-4 mr-2" />
-                )}
-                Send request to {selectedExpert.first_name}
-              </Button>
-            </div>
-          ) : selectedOfferingType ? (
-            <div className="mt-2 space-y-3" data-testid="expert-picker-expert-step">
-              <button
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-                onClick={() => { setSelectedExpert(null); setSelectedOfferingType(null); }}
-                data-testid="button-picker-back"
-              >
-                <ArrowLeft className="w-3 h-3" /> Change service type
-              </button>
-              {expertsLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                      <Skeleton className="w-10 h-10 rounded-full" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-3 w-48" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : expertsData && expertsData.length > 0 ? (
-                expertsData.map((expert) => (
-                  <button
-                    key={expert.id}
-                    className="w-full flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"
-                    onClick={() => setSelectedExpert(expert)}
-                    data-testid={`button-select-expert-${expert.id}`}
-                  >
-                    <Avatar className="w-10 h-10 flex-shrink-0">
-                      <AvatarImage src={expert.profile_image_url ?? undefined} />
-                      <AvatarFallback>{expert.first_name?.[0]}{expert.last_name?.[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-foreground">
-                        {expert.first_name} {expert.last_name}
-                      </div>
-                      {expert.bio && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{expert.bio}</p>
-                      )}
-                      {Array.isArray(expert.specialties) && expert.specialties.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {(expert.specialties as string[]).slice(0, 3).map((s, si) => (
-                            <span key={si} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2 mt-1.5 text-xs text-muted-foreground">
-                        {parseFloat(expert.avg_rating) > 0 && (
-                          <span className="flex items-center gap-0.5">
-                            <Star className="w-3 h-3 fill-current text-amber-500" />
-                            {parseFloat(expert.avg_rating).toFixed(1)}
-                          </span>
-                        )}
-                        {expert.hourly_rate && <span>${expert.hourly_rate}/hr</span>}
-                        {expert.response_time && <span>Responds {expert.response_time}</span>}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
-                  </button>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <User className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
-                  <p className="text-muted-foreground">No experts found for {trip?.destination}.</p>
-                  <p className="text-sm mt-1 text-muted-foreground">Check back soon or browse all experts.</p>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      {/* Reject Suggestion Dialog */}
-      <Dialog open={rejectDialogOpen} onOpenChange={(open) => { setRejectDialogOpen(open); if (!open) setRejectTargetId(null); }}>
-        <DialogContent className="sm:max-w-sm" data-testid="dialog-reject-suggestion">
-          <DialogHeader>
-            <DialogTitle>Decline suggestion</DialogTitle>
-            <DialogDescription>
-              Let the expert know why you're passing on this idea (optional).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            <Textarea
-              placeholder="e.g. Budget doesn't fit, already have plans for this day…"
-              value={rejectionNote}
-              onChange={(e) => setRejectionNote(e.target.value)}
-              rows={3}
-              data-testid="input-rejection-note"
-            />
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setRejectDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                onClick={() => {
-                  if (rejectTargetId) {
-                    reviewSuggestionMutation.mutate({ suggestionId: rejectTargetId, status: "rejected", rejectionNote: rejectionNote || undefined });
-                  }
-                  setRejectDialogOpen(false);
-                  setRejectTargetId(null);
-                }}
-                disabled={reviewSuggestionMutation.isPending}
-                data-testid="button-confirm-reject"
-              >
-                {reviewSuggestionMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <XCircle className="w-4 h-4 mr-2" />
-                )}
-                Decline suggestion
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Share Dialog */}
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
@@ -1436,33 +625,8 @@ export default function TripDetails() {
           branch with this trip's destination — same modal, one mount, in
           PlanningProvider. */}
 
-      {/* T1-1: confirm before Regenerate destructively rebuilds the plan. Only reachable via
-          handleRegenerateClick, which itself only opens this when hasExistingItineraryItems —
-          first-time generation never shows it. */}
-      <AlertDialog open={showRegenerateConfirm} onOpenChange={setShowRegenerateConfirm}>
-        <AlertDialogContent data-testid="dialog-regenerate-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Regenerate this plan?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This replaces the current AI-generated activities with a freshly generated plan.
-              Any items an expert has added to your trip are kept. Manually-added items may be
-              replaced along with the rest of the plan.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-regenerate-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setShowRegenerateConfirm(false);
-                generatePlan.mutate(trip.id);
-              }}
-              data-testid="button-regenerate-confirm"
-            >
-              Regenerate Plan
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Phase 3b (drift-audit §C row 5): the Regenerate confirmation dialog is removed along with
+          every on-card Regenerate/Generate affordance. */}
     </div>
   );
 }

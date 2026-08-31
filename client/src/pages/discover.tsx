@@ -1061,7 +1061,50 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     },
   });
 
+  // cart-is-slip (Trip Card rebuild Phase 3b, row 12; ledger 2026-08-31-manifest-is-the-boundary):
+  // an Add-to-trip click resolves the TARGET trip — the ?tripId= handoff first, then the active
+  // TripContext — and lands the service on THAT trip's plan via the persona-journey rail
+  // (POST /api/trips/:tripId/itinerary-items), not the generic cart. Only a genuinely trip-less
+  // click (guest, or no active trip) falls through to the cart, which is the draft-migration path,
+  // unchanged. This is why the /services grid needs no bolt-on Add-to-trip on the trip page — the
+  // grid itself targets the active trip. Not a money endpoint: the item's estimatedCost is display
+  // only; the server strips origin/suggestedBy and derives provenance (§14 untouched).
+  const targetTripId = expertHandoffTripId || tripCtx.tripId || "";
+
+  const addToTripMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      setAddingToCartId(serviceId);
+      const svc = result?.services?.find((s) => s.id === serviceId);
+      return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
+        title: svc?.serviceName ?? "Service",
+        description: svc?.description || svc?.shortDescription || undefined,
+        itemType: "activity",
+        providerServiceId: serviceId,
+        estimatedCost: svc?.price ? String(svc.price) : undefined,
+        locationName: svc?.location || svc?.serviceName || undefined,
+        dayNumber: 1,
+      });
+    },
+    onSuccess: (_res, serviceId) => {
+      setAddedServices((prev) => new Set(prev).add(serviceId));
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      toast({ title: "Added to your trip", description: "Find it on your plan." });
+      setAddingToCartId(null);
+    },
+    onError: (error: any, serviceId: string) => {
+      console.error("[AddToTrip] addToTripMutation failed:", error);
+      toast({ variant: "destructive", title: "Failed to add to trip", description: error?.message });
+      setAddingToCartId(null);
+    },
+  });
+
   const handleAddToCart = (serviceId: string) => {
+    // A resolved active trip means "add to THAT trip's plan" (cart-is-slip), not the generic cart.
+    if (targetTripId) {
+      addToTripMutation.mutate(serviceId);
+      return;
+    }
     // Auth is authoritative server-side (the session cookie), not the client
     // `user` query — which can still be loading on a cold page load. Only take
     // the guest path once auth has DEFINITIVELY resolved to no user; while it is

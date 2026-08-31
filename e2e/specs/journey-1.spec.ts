@@ -192,7 +192,7 @@ test.describe('Journey 1B — Guest path with cart migration', () => {
 test.describe('Stage 1 component wiring', () => {
   test.use({ storageState: authFile('traveler') });
 
-  test('EscalationCTA renders in trip-details expert tab', async ({ page }) => {
+  test('EscalationCTA (B10) renders on the finalized Trip Card', async ({ page }) => {
     await page.goto('/my-trips', { waitUntil: 'domcontentloaded' });
     const tripCount = await countVisible(page, SELECTORS.tripCard, 30_000);
     if (tripCount === 0) {
@@ -201,12 +201,29 @@ test.describe('Stage 1 component wiring', () => {
       return;
     }
 
+    // Trip Card rebuild Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the duplicate
+    // EscalationCTA on the (now removed) trip-details Expert tab is gone. B10 — the must-not-regress
+    // escalation CTA — is the full-stage PlanCard's, which /trip/:id renders only once a trip is
+    // FINALIZED; a not-yet-final trip renders the honest "Not final yet" notice + one action to the
+    // slip (the Trip Card does not exist before Make final). Assert whichever ratified state applies.
     await page.locator(SELECTORS.tripCard).first().click();
     await page.waitForURL(/\/trip\//, { timeout: 10_000 });
-    await page.waitForSelector('[data-testid="tab-expert"]', { timeout: 20_000 });
-    await page.click('[data-testid="tab-expert"]');
-    await page.waitForSelector(SELECTORS.escalationCta, { timeout: 30_000 });
-    await expect(page.locator(SELECTORS.escalationCta)).toBeVisible();
+
+    await Promise.race([
+      page.waitForSelector(SELECTORS.escalationCta, { timeout: 30_000 }).catch(() => null),
+      page.waitForSelector('[data-testid="trip-not-final-notice"]', { timeout: 30_000 }).catch(() => null),
+    ]);
+
+    const hasEscalation = await page.locator(SELECTORS.escalationCta).isVisible().catch(() => false);
+    if (hasEscalation) {
+      await expect(page.locator(SELECTORS.escalationCta)).toBeVisible();
+      return;
+    }
+
+    // Not finalized → the Trip Card (and its EscalationCTA) don't exist yet; the honest notice
+    // and its single action to the slip must render instead.
+    await expect(page.locator('[data-testid="trip-not-final-notice"]')).toBeVisible();
+    await expect(page.locator('[data-testid="button-go-to-slip"]')).toBeVisible();
   });
 
   test('ExpertMatchCard renders in discover with showExperts', async ({ page }) => {

@@ -15,7 +15,6 @@ const SELECTORS = {
   startDateInput: '[data-testid="input-start-date"]',
   endDateInput: '[data-testid="input-end-date"]',
   generateBtn: '[data-testid="button-generate-itinerary"]',
-  expertTab: '[data-testid="tab-expert"]',
   expertMatchCard: '[data-testid^="card-expert-match-"]',
   tripCard: '[data-testid^="trip-card-"]',
 } as const;
@@ -171,12 +170,12 @@ test.describe('Journey 2C — Expert match in discover', () => {
   });
 });
 
-// ─── Flow 2D: Expert advisor request from trip-details ────────────────────
+// ─── Flow 2D: Expert advisor request from the slip ────────────────────────
 
-test.describe('Journey 2D — Expert advisor request from trip-details', () => {
+test.describe('Journey 2D — Expert advisor request from the slip', () => {
   test.use({ storageState: authFile('traveler') });
 
-  test('Expert tab renders and advisor request button is visible', async ({ page }) => {
+  test('advisor-request CTA is reachable on the slip', async ({ page }) => {
     await page.goto('/my-trips', { waitUntil: 'domcontentloaded' });
 
     const tripCount = await countVisible(page, SELECTORS.tripCard, 30_000);
@@ -186,34 +185,37 @@ test.describe('Journey 2D — Expert advisor request from trip-details', () => {
       return;
     }
 
-    // R-E (Console Realign): a trip-card click now opens the SLIP (/plans/:tripId),
-    // not the Trip Card page. This flow targets the expert tab, which lives on the
-    // trip-details page (/trip/:id) — still reachable via the card's "Trip Card"
-    // button. Navigate there by id directly (robust across trip status, whereas the
-    // "Trip Card" button is hidden for completed trips).
+    // Trip Card rebuild Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): choosing an
+    // expert is a planning decision, so the advisor-request affordance moved off the (now
+    // removed) trip-details Expert tab onto the SLIP (/plans/:tripId) — AssignExpertSlot's
+    // "Add a local expert" button (button-find-expert). It renders for the owner while no
+    // expert is assigned; an already-assigned trip surfaces the expert on the summary card
+    // and the slot renders nothing, so accept either state.
     const firstCardTestId = await page
       .locator(SELECTORS.tripCard)
       .first()
       .getAttribute('data-testid');
     const tripId = (firstCardTestId ?? '').replace('trip-card-', '');
     expect(tripId, 'derived a trip id from the first card').toBeTruthy();
-    await page.goto(`/trip/${tripId}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForURL(/\/trip\//, { timeout: 10_000 });
-    await page.waitForSelector(SELECTORS.expertTab, { timeout: 25_000 });
-    await page.click(SELECTORS.expertTab);
-    // Wait for at least one of the two possible tab content indicators
-    // rather than a fixed 3 s sleep.
-    await Promise.race([
-      page.waitForSelector('[data-testid="advisor-card"]', { timeout: 15_000 }).catch(() => null),
-      page.waitForSelector('[data-testid="button-find-expert"], [data-testid^="button-request-expert-"]', { timeout: 15_000 }).catch(() => null),
-    ]);
 
-    const hasExpert = await page.locator('[data-testid="advisor-card"]').isVisible().catch(() => false);
+    await page.goto(`/plans/${tripId}`, { waitUntil: 'domcontentloaded' });
+    const slip = page.locator(`[data-testid="slip-view-${tripId}"]`);
+    await slip.waitFor({ state: 'visible', timeout: 25_000 });
+
+    // Let the slot's advisor query resolve, then read the two legitimate end states.
+    await page
+      .waitForSelector('[data-testid="button-find-expert"]', { timeout: 15_000 })
+      .catch(() => null);
     const hasCta = await page
-      .locator('[data-testid="button-find-expert"], [data-testid^="button-request-expert-"]')
+      .locator('[data-testid="button-find-expert"]')
       .isVisible()
       .catch(() => false);
+    const slotHidden =
+      (await page.locator('[data-testid="slip-assign-expert-slot"]').count()) === 0;
 
-    expect(hasExpert || hasCta, 'expert tab shows advisor or find-expert CTA').toBe(true);
+    // Either the assign CTA is offered (no expert yet), or the slot is legitimately absent
+    // (an expert is already assigned) — never a broken slip that shows neither the CTA nor a
+    // resolved advisor state.
+    expect(hasCta || slotHidden, 'slip offers the advisor-request CTA or has an expert assigned').toBe(true);
   });
 });

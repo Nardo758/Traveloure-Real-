@@ -18,6 +18,7 @@ import { Link, useLocation } from "wouter";
 import { format, isValid } from "date-fns";
 import {
   Anchor,
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -67,6 +68,9 @@ import {
 import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
+import { AssignExpertSlot } from "./AssignExpertDialog";
+import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
+import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { BuildAroundDialog } from "./BuildAroundDialog";
@@ -1102,6 +1106,34 @@ export function SlipView({
         </CardContent>
       </Card>
       )}
+
+      {/* Row 12 (relocated): one link, not a grid — browse the marketplace scoped to THIS trip.
+          The /services grid's Add-to-trip targets the active trip (cart-is-slip), so a service
+          added there lands on this slip. Owner-only planning affordance. */}
+      {isOwner && (
+        <Link href={`/services?tripId=${encodeURIComponent(tripId)}`}>
+          <a className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline" data-testid="slip-browse-services">
+            Browse services for this trip
+            <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </Link>
+      )}
+
+      {/* Row 10 (relocated from the trip-details expert-tab bolt-on): choosing an expert is a
+          planning decision, so its home is the slip. Renders only for the owner while no expert
+          is assigned. */}
+      {data.trip && (
+        <AssignExpertSlot tripId={tripId} destination={data.trip.destination} isOwner={isOwner} />
+      )}
+
+      {/* Row 11 (relocated): expert-suggestion accept/decline. Pre-final it acts on the live plan
+          here; the same component mounts on the finalized Trip Card (PlanCard full) where accepting
+          auto-creates a new final version. Renders nothing when there are no suggestions. */}
+      <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" />
+
+      {/* Rows 13/14 (relocated from the trip-details itinerary/logistics/guests tabs): temporal
+          anchors + guest invites are planning inputs, so their home is the slip. Owner-only. */}
+      {isOwner && <SlipLogisticsSection tripId={tripId} />}
 
       <TransitionLogFooter
         transitions={transitions}
