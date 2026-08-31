@@ -2,8 +2,18 @@
 
 > Reference for the Traveloure **Trip slip** — the PlanCard subsystem. One canonical component
 > set (`extend-never-fork`) renders a single server DTO (`GET /api/trips/:tripId/plancard`) across
-> every surface: the dashboard summary card, the full trip control‑center card, the `/plans/:tripId`
-> Slip, and the optimizer proposal columns. All surfaces share the query key, so React Query dedupes.
+> every surface: the dashboard summary card (`stage="summary"` on `/dashboard`), the full trip card,
+> the `/plans/:tripId` Slip, and the optimizer proposal columns. All surfaces share the query key, so
+> React Query dedupes.
+>
+> **Two-surfaces model (Trip Card rebuild, Sep 2026 — ledgers `2026-08-31-two-surfaces-one-handoff`
+> … `-stage-a-dashboard`):** the full card is now specifically the **post-final Trip Card** at
+> `/trip/:id` — the frozen `trip_finals` snapshot joined to live booking status — while a pre-final
+> `/trip/:id` renders an honest "Not final yet → slip" notice, not a control center; live planning
+> happens on the **Slip** (`/plans/:tripId`). "Make final" writes a versioned immutable `trip_finals`
+> snapshot; `finalVersion` (null pre-final) is emitted on the DTO. Accepting a suggestion, adopting a
+> stop, or **buying a service mid-trip** on a currently-finalized trip auto-forks the next version
+> (`reFinalizeIfCurrentlyFinal`), so the card advances without a manual re-final.
 >
 > Sections: **1. Features · 2. Styling · 3. UI Behavior & Editability** (the lifecycle a screenshot pass can't capture).
 

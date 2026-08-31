@@ -226,6 +226,62 @@ test.describe('Stage 1 component wiring', () => {
     await expect(page.locator('[data-testid="button-go-to-slip"]')).toBeVisible();
   });
 
+  test('My Plans tile is final-aware: View Trip Card (post-final) XOR Open slip (pre-final)', async ({ page }) => {
+    // Trip Card rebuild Phase 4 (ledger 2026-08-31-stage-a-dashboard): each My Plans tile flips on
+    // ONE fact — does a trip_finals version exist. Post-final: a green "Final · v{N}" chip + primary
+    // "View Trip Card" → /trip/:id. Pre-final: primary "Open slip" → /plans/:id. Exactly one primary
+    // renders per tile. Seed data may be either state, so assert whichever applies to the first tile
+    // (same defensive posture as the EscalationCTA test above).
+    await page.goto('/my-trips', { waitUntil: 'domcontentloaded' });
+    const tripCount = await countVisible(page, SELECTORS.tripCard, 30_000);
+    if (tripCount === 0) {
+      console.log('My Plans final-aware: no trips found — skipping');
+      test.skip();
+      return;
+    }
+
+    const firstTile = page.locator(SELECTORS.tripCard).first();
+    const testId = await firstTile.getAttribute('data-testid');
+    const tripId = testId?.replace('trip-card-', '');
+    expect(tripId, 'the tile carries a trip id').toBeTruthy();
+
+    const viewTripCard = page.locator(`[data-testid="button-view-trip-card-${tripId}"]`);
+    const openSlip = page.locator(`[data-testid="button-open-slip-${tripId}"]`);
+    const hasViewTripCard = await viewTripCard.isVisible().catch(() => false);
+    const hasOpenSlip = await openSlip.isVisible().catch(() => false);
+    // XOR — exactly one primary action renders, never both, never neither.
+    expect(hasViewTripCard).not.toBe(hasOpenSlip);
+
+    if (hasViewTripCard) {
+      // Post-final: the Final chip is present and the primary lands on the Trip Card (/trip/:id).
+      await expect(page.locator(`[data-testid="chip-final-${tripId}"]`)).toBeVisible();
+      await viewTripCard.click();
+      await page.waitForURL(new RegExp(`/trip/${tripId}`), { timeout: 10_000 });
+    } else {
+      // Pre-final: no Final chip; the primary lands on the slip (/plans/:id).
+      await expect(page.locator(`[data-testid="chip-final-${tripId}"]`)).toHaveCount(0);
+      await openSlip.click();
+      await page.waitForURL(new RegExp(`/plans/${tripId}`), { timeout: 10_000 });
+    }
+  });
+
+  test('Dashboard mounts the Stage-A summary card for the selected trip', async ({ page }) => {
+    // Trip Card rebuild Phase 4 (ledger 2026-08-31-stage-a-dashboard): /dashboard's selected-trip
+    // card is the Stage-A summary (stage="summary"), not the full card — container testid
+    // `dashboard-plan-card-<id>`, with the shared PlanCardHeader inside it. Skip only when the
+    // account has no trip to select.
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const summary = page.locator('[data-testid^="dashboard-plan-card-"]').first();
+    const appeared = await summary.waitFor({ state: 'visible', timeout: 45_000 }).then(() => true).catch(() => false);
+    if (!appeared) {
+      console.log('Dashboard summary card: no selected trip — skipping');
+      test.skip();
+      return;
+    }
+    await expect(summary).toBeVisible();
+    await expect(page.locator('[data-testid^="plancard-header-"]').first()).toBeVisible();
+  });
+
   test('ExpertMatchCard renders in discover with showExperts', async ({ page }) => {
     await page.goto('/discover?showExperts=true&destination=Kyoto', { waitUntil: 'domcontentloaded' });
     // Wait for nav to confirm page rendered, then scroll to trigger intersection observer.

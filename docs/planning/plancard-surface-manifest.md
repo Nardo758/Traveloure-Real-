@@ -6,12 +6,24 @@ gate against this list (see "Phase gate" below).
 
 **Scope:** `client/src/components/plancard/` — `PlanCard.tsx` and its sub-components.
 `PlanCard` renders three stages off the `stage` prop: `summary` (compact dashboard card →
-`PlanCardSummary`, `PlanCard.tsx:752`), `full` (control center, `PlanCard.tsx:836`), and
-`proposal` (Spec C variant-comparison column → `ProposalColumn.tsx`; renders entirely from
-the `proposal` prop, fires NO plancard query of its own — see "Stage C" below).
+`PlanCardSummary`), `full` (the full command center), and `proposal` (Spec C variant-comparison
+column → `ProposalColumn.tsx`; renders entirely from the `proposal` prop, fires NO plancard query
+of its own — see "Stage C" below).
 Primary data source for summary/full: `useQuery(['/api/trips/${id}/plancard'])` → `PlanCardData`
-(`PlanCard.tsx:745`; shape in `plancard-types.tsx:192`). Role resolves from
-`plancardData.tripRole ?? role` (`PlanCard.tsx:832`).
+(shape in `plancard-types.tsx`). Role resolves from `plancardData.tripRole ?? role`.
+
+> **Two-surfaces model (Trip Card rebuild — ledgers `2026-08-31-two-surfaces-one-handoff`,
+> `-manifest-is-the-boundary`, `-stage-a-dashboard`).** Stage mounts are now fixed to surfaces:
+> **`summary`** is the dashboard's at-a-glance for the selected trip (`dashboard.tsx`, replaced the
+> old `stage="full"` mount) and the shape of the My Plans tiles' data; **`full`** renders ONLY as the
+> post-final **Trip Card** at `/trip/:id` — the frozen `trip_finals` snapshot joined to live booking
+> status — while a pre-final `/trip/:id` renders an honest "Not final yet — your plan is on the slip"
+> notice (`trip-not-final-notice` → `button-go-to-slip`), never a live planning render; the live
+> planning surface is the **slip** at `/plans/:tripId` (`SlipView`). `finalVersion` (latest
+> `trip_finals` version, null pre-final) is emitted on the plancard DTO and on `TripListItem`. The
+> old tabbed shell (Itinerary/Bookings/Expert/Logistics/Guests) is DELETED, so `?tab=…`/`?section=…`
+> on the trip surface are **dead params**; the summary card's links resolve to `/trip/:id` when a
+> final exists else the slip `/plans/:id` (`planHref`), and its expert affordances point to the slip.
 
 > **Pairs with:** [`plancard-mobile-delivery-model.md`](./plancard-mobile-delivery-model.md) — *how* the PlanCard reaches the phone (PWA / web-push / SMS). The on-trip affordances below (esp. the `plancard_ontrip` upsell, **B26**) render in-app but depend on that delivery channel, which is **not yet built**.
 
@@ -51,14 +63,14 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 | A5 | Countdown | `PlanCard.tsx:476` | `daysUntilDate(trip.startDate)` |
 | A6 | Title / dest+dates | `PlanCard.tsx:482` | trip |
 | A7 | **Summary metrics: Days / Activities / Transit legs / Transit time** | `PlanCard.tsx:490–506` | `numDays`(`:336`), `totalActivities`(`:330`), `totalLegs`(`:331`), `totalMinutes`(`:332`) ← `plancardData.stats` ?? derived from `days` |
-| A8 💰 | Chip: services | `PlanCard.tsx:511` | `GET /api/service-bookings` filtered by tripId (`:374`) → `/trip/:id?tab=bookings` |
-| A9 | Chip: transport legs | `PlanCard.tsx:522` | `totalLegs` → `?tab=itinerary&section=transport` |
-| A10 💰 | Chip: Expert | `PlanCard.tsx:533` | `advisor` ← `GET /api/trips/:id/expert-advisor` (`:344`) → `?tab=expert` |
+| A8 💰 | Chip: services | `PlanCard.tsx` | `GET /api/service-bookings` filtered by tripId → **`planHref`** (`/trip/:id` when a final exists, else the slip `/plans/:id`). `?tab=bookings` is a dead param (tabbed shell deleted). |
+| A9 | Chip: transport legs | `PlanCard.tsx` | `totalLegs` → **`planHref`** (`/trip/:id` \| `/plans/:id`). `?tab=itinerary&section=transport` retired. |
+| A10 💰 | Chip: Expert | `PlanCard.tsx` | `advisor` ← `GET /api/trips/:id/expert-advisor` → **the slip `/plans/:id`** (expert handoff lives on the slip after Phase 3b). `?tab=expert` retired. |
 | A11 💰 | Chip: AI Optimized / "Re-optimize?" + $ saved + ★ (delta moment) | `PlanCard.tsx:558` | `lastOptimizedAt` + `optimizationDelta` (`:334`) |
 | A12 💰 | Advisor strip + expert blurb + suggestions badge | `PlanCard.tsx:603–650` | `advisor`; last assistant msg ← `GET /api/conversations/:matchedConvId` (`:392`); `GET /api/trips/:id/suggestions` (`:367`) |
 | A13 | Action items | `PlanCard.tsx:653` | `GET /api/notifications` filtered by tripId (`:380`) |
 | A14 | Maps button | `PlanCard.tsx:669` | `openMapsDeepLink` (`:671`) |
-| A15 | View itinerary | `PlanCard.tsx:679` | Link `/trip/:id?tab=itinerary` |
+| A15 | View itinerary | `PlanCard.tsx` | Link → **`planHref`** (`/trip/:id` when a `trip_finals` row exists — the frozen Trip Card — else the slip `/plans/:id`). `/trip/:id?tab=itinerary` retired. |
 | A16 💰 | **Expert-polish CTA "Have an expert polish this" (G8)** | `PlanCard.tsx:691–703` | shown when `showPolishCta = hasActivities && !advisor && !pendingExpertRequest` (`:432`) |
 | A17 💰 | ExpertPolishDialog → submit | `PlanCard.tsx:156–284` (confirm `:275`) | `POST /api/expert-requests {requestType:"polish"}` (`:173`) |
 | A18 ⏳ **IN-FLIGHT** | **Trip-card SMS opt-in prompt** (pre-trip, summary) — full disclosure + consent checkbox, shown once, dismissible | *not yet rendered (no code)* | **Gated on the consent backend** (10DLC + consent-record store + provider). **Not live; NOT yet must-not-regress.** See [`plancard-mobile-delivery-model.md`](./plancard-mobile-delivery-model.md) §4. |

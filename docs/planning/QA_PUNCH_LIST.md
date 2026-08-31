@@ -453,7 +453,7 @@ block routed to `/expert-status`, provider both-statuses-required, admin bypass,
     Ground truth of what exists:
     - **Where the plan is delivered:** in-platform, by reference — the customer's dashboard Trip
       Card and their own `/trip/:id` view render the one TripPlan object (full channel);
-      notifications deep-link to `/trip/:id?tab=itinerary`. External/offline: the read-only share
+      notifications deep-link to `/trip/:id` (post-final Trip Card) or `/plans/:id` (slip) — the `?tab=itinerary` shell was deleted in the Trip Card rebuild. External/offline: the read-only share
       link (`/itinerary-view/:token`) plus its KML/GPX exports and per-leg navigate links.
     - **Change notifications (in-app, already wired):** suggestion created → "New suggestion from
       your expert"; `in_review` → "ready for your review"; `delivered` → "delivered" — all
