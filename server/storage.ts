@@ -1141,7 +1141,6 @@ export interface IStorage {
 
   updateGeneratedItineraryData(id: string, itineraryData: any, status: string): Promise<GeneratedItinerary | undefined>;
 
-  replaceItineraryItems(tripId: string, items: any[]): Promise<void>;
   // === Itinerary comparison & variants ===
 
   getItineraryComparison(id: string): Promise<any | null>;
@@ -7430,22 +7429,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async replaceItineraryItems(tripId: string, items: any[]): Promise<void> {
-    // D-1 money-safety (ledger 2026-08-31-rebuild-delete-money-guard): a rebuild delete never destroys
-    // a checked-out/purchased/booked row. This method's ONLY caller (trips.routes.ts generate handler)
-    // is currently SHADOWED by the guarded inline handler in routes.ts, so the guard is behavior-neutral
-    // today — but the shared predicate makes the method safe-by-construction for any future caller.
-    // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE logical
-    // regeneration, not a removal). Emitting `item_removed` here would be a false removal signal
-    // (§13, R15): the traveler removed nothing, the plan was regenerated. No `item_removed` write.
-    await db.delete(itineraryItems).where(and(
-      eq(itineraryItems.tripId, tripId),
-      itineraryItemRebuildDeletable(),
-    ));
-    if (items.length > 0) {
-      await db.insert(itineraryItems).values(items);
-    }
-  }
+  // Phase 3b (drift-audit / ledger 2026-08-31-manifest-is-the-boundary): `replaceItineraryItems`
+  // was deleted with its sole caller — the §9 mount-order-dead generate twin in trips.routes.ts
+  // (always shadowed by the guarded inline handler in routes.ts). The guard made it safe (Phase 0);
+  // Phase 3b makes it gone. The one live rebuild-delete site remaining is the Regenerate handler in
+  // routes.ts + saveGeneratedItinerarySnapshot, both still carrying itineraryItemRebuildDeletable().
 
   // === Itinerary comparison & variants ===
   async getItineraryComparison(id: string): Promise<any | null> {
