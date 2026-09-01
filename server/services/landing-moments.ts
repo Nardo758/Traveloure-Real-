@@ -152,9 +152,11 @@ async function attributedPhotosForCity(
   city: string,
 ): Promise<{ photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null }> {
   try {
+    // NOTE: `users` has no review_count column, so the builder review count honest-omits (0 → the
+    // byline shows "built by @handle" with no count). A real per-expert review count is a filed
+    // follow-up; §13 — never a fabricated number.
     const rows = await db.execute(sql`
-      SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle,
-             COALESCE(u.review_count, 0) AS reviews
+      SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle
       FROM travel_pulse_hidden_gems g
       JOIN users u ON u.id = g.curated_by_expert_id
       WHERE g.city ILIKE ${city}
@@ -168,9 +170,9 @@ async function attributedPhotosForCity(
       ORDER BY g.gem_score DESC NULLS LAST
       LIMIT 4
     `);
-    const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string; reviews: number }>;
+    const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string }>;
     const photos: MomentPhoto[] = list.map((r) => ({ url: r.url, place: r.place, handle: r.handle }));
-    const builder = list.length > 0 ? { handle: list[0].handle, reviews: Number(list[0].reviews) || 0 } : null;
+    const builder = list.length > 0 ? { handle: list[0].handle, reviews: 0 } : null;
     return { photos, builder };
   } catch (e: any) {
     console.error("[landing-moments] photo query failed (moment stays out):", e?.message);
