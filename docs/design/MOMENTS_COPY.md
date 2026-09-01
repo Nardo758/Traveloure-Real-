@@ -1,12 +1,20 @@
 # Moments — copy drafts (Landing v2.5, Lane 0)
 
-**These are DRAFTS for the decision-maker's copy pass.** Per ruling `2026-09-01-landing-moments`
-and the dispatch's HARD STOP after Lane 0, the Moments section renders **Leon's ratified words,
-not these drafts**. The proposal (story 1) is taken verbatim from the v2.5 mock and is the
-**register** — concrete, present-tense, sensory; a demo-tuned headline; three pieces that each
-name the machine (a named **expert** doing something specific · a bookable **service** · a
-**booking/hold**). The golf draft (story 2) is written to that register as the second reference.
-The remaining five follow the same shape for Leon to edit.
+**Copy pass RULED (decision-maker, 2026-09-01): run the drafts as-is + two honesty riders**
+(applied below). First-weeks click data sharpens headlines; copy iterates with the walkthrough
+digests. The proposal (story 1) is verbatim from the v2.5 mock and is the **register** — concrete,
+present-tense, sensory; a demo-tuned headline; three pieces that each name the machine (a **local**
+doing something specific · a bookable **service** · a **booking/hold**).
+
+**Rider (a) — no fabricated experts.** Placeholder first names are not real experts. Where a market
+has no real builder yet, piece 01 reads "**A local who…**" and the byline **honest-omits**; the
+real first name replaces it when a real row exists. **Only Yuki (story 1) is real today.**
+
+**Rider (b) — don't promise access nobody holds.** A piece may claim an access a real platform
+expert holds (Yuki holding a counter seat — the ratified value prop). It may **not** claim a
+relationship no expert on the platform has yet. The golf story is rewritten to **taste** (knowing
+*which* courses and in what order), not **access** (getting you onto members' courses), until a
+real Scottish expert holds those relationships.
 
 ## The register (what every story must do)
 
@@ -15,7 +23,8 @@ The remaining five follow the same shape for Leon to edit.
   with a private hook ("the ring stays your secret"). Demo-tuned: it should make a person in the
   target market lean in.
 - **Three pieces**, numbered 01/02/03, each a single sentence naming a real part of the machine:
-  1. the **expert** curating something a guide can't (a named local does the choosing),
+  1. the **local** curating something a guide can't (named when a real builder row exists, else
+     "A local who…" per rider (a)),
   2. a **service** that gets booked (photographer, cellar, boat, table),
   3. the **booking/hold** that makes it real (seat held, car waiting, room blocked).
 - **Builder byline** — `built by @handle · N reviews`, from **real rows only** (honest-omit when
@@ -77,27 +86,29 @@ live-at-launch set.
   spot" beats any search box — the moment a traveler most wants a human, not an algorithm. If any
   moment converts cold traffic, it is this one.
 
-## 2 · Golf trip — Edinburgh  *(second reference draft)*
+## 2 · Golf trip — Edinburgh  *(second reference draft; rider (b) applied — taste, not access)*
 
 - **eyebrow:** A golf trip in Scotland
-- **headline:** Four rounds on the courses that don't take web bookings — and a car that knows the tee times.
+- **headline:** Four rounds in the right order, on the courses worth the trip — and a car that runs the bags between links.
 - **pieces:**
-  1. Callum trades on names at the members' courses a tourist can't ring — and slots you where the light is best.
+  1. A local who knows which courses are worth your four rounds — and the order that plays each at its best hour.
   2. A driver runs the bags between links so no one carries a bag off the 18th to a train.
-  3. Tee times held under one booking, the whisky bar after each round already on the list.
-- **builder byline:** built by @callum-fife · 31 reviews  *(illustrative — real row or omit)*
+  3. Tee times booked in sequence, the whisky bar after each round already on the list.
+- **builder byline:** *(real row or omit — no real builder yet)*
 - **`experienceType`:** `travel`  *(momentKey: golf)*
 - **market:** Edinburgh (Scotland — the home of golf)
-- **demo hypothesis:** A group trip built on access no traveler can self-serve (private tee times,
-  members' courses) tests whether the expert's *connections* — not just their taste — are the draw.
-  High ticket, clear "you literally cannot book this yourself" wedge.
+- **demo hypothesis:** A high-ticket group trip where a local's *curation* — which courses, in which
+  order, at which hour — plus the coordination of transport and tee times is the draw. Tests whether
+  taste + logistics convert on a group trip, without over-claiming access no expert holds yet
+  (rider b). If/when a real Scottish expert holds members'-course relationships, the access wedge
+  can return.
 
 ## 3 · Girls' trip — Cartagena
 
 - **eyebrow:** A girls' trip in Cartagena
 - **headline:** The rooftop before it fills, the boat that skips the crowded cay, the table for eight that never says no.
 - **pieces:**
-  1. Valentina reads the night — which rooftop is worth it Thursday, which is dead — so you never waste a sunset.
+  1. A local who reads the night — which rooftop is worth it Thursday, which is dead — so you never waste a sunset.
   2. A private boat runs you to the island the day-tour flotillas don't reach, lunch aboard.
   3. Dinner for eight held at the courtyard place that "doesn't take groups," the late table yours.
 - **builder byline:** *(real row or omit)*
@@ -112,7 +123,7 @@ live-at-launch set.
 - **eyebrow:** An anniversary in Porto
 - **headline:** The cellar that isn't on the tour, the river at the hour it turns gold, dinner where they remember your year.
 - **pieces:**
-  1. Miguel opens the family cellar that runs no public tastings — a vintage from the year you married, poured for you two.
+  1. A local who opens the family cellar that runs no public tastings — a vintage from the year you married, poured for you two.
   2. A boat down the Douro timed to the light, not the schedule the day-trips run on.
   3. The corner table at the place with no sign held for 8pm, the port after already chosen.
 - **builder byline:** *(real row or omit)*
@@ -127,7 +138,7 @@ live-at-launch set.
 - **eyebrow:** A honeymoon in Goa
 - **headline:** The beach the resorts can't sell you, the cook who comes to you, the morning nobody schedules.
 - **pieces:**
-  1. Priya sends you to the south-Goa cove the package tours never reach — and the shack that grills the morning's catch.
+  1. A local who sends you to the south-Goa cove the package tours never reach — and the shack that grills the morning's catch.
   2. A private cook sets dinner on the sand for two, the menu built around what the boats brought in.
   3. One day left deliberately empty — a boat on call if you want it, nothing booked if you don't.
 - **builder byline:** *(real row or omit)*
@@ -142,7 +153,7 @@ live-at-launch set.
 - **eyebrow:** A milestone birthday in Mumbai
 - **headline:** The city's best night, engineered — the table, the car, the after-party you didn't know existed.
 - **pieces:**
-  1. Arjun builds the night around the one restaurant worth the wait — and gets you in on a Saturday.
+  1. A local who builds the night around the one restaurant worth the wait — and gets you in on a Saturday.
   2. A car holds between the dinner, the bar, and the rooftop so the group never stands on a curb.
   3. The private room at the place that "only does members" blocked for your name, cake in on cue.
 - **builder byline:** *(real row or omit)*
@@ -158,7 +169,7 @@ live-at-launch set.
 
 - **headline:** Three generations, one palace courtyard, and a plan that moves at everyone's pace.
 - **pieces:**
-  1. Rohan opens a heritage haveli's courtyard for the family dinner — the host family cooking, not a banquet hall.
+  1. A local who opens a heritage haveli's courtyard for the family dinner — the host family cooking, not a banquet hall.
   2. Cars sized to the group carry grandparents and kids the same route, no one left standing in the heat.
   3. The fort visit booked for the cool hour, a guide who slows for the elders, the evening table held after.
 - **builder byline:** *(real row or omit)*
@@ -171,11 +182,21 @@ live-at-launch set.
 
 ---
 
-## Notes for the copy pass
+## Notes for the copy pass (riders applied)
 
+- **Riders applied (decision-maker, 2026-09-01):** (a) placeholder expert names removed — every
+  piece 01 except story 1 (Yuki, real) now reads "A local who…" and every byline except story 1
+  honest-omits; the real first name replaces "A local who" when a real builder row exists. (b) the
+  golf story is taste, not access — its former "trades on names at the members' courses a tourist
+  can't ring" is gone, along with the "courses that don't take web bookings" headline claim.
 - Every `built by @handle · N reviews` byline must resolve to a **real** builder row at render or
-  be omitted (§13) — the illustrative handles above are placeholders for Leon's edit, not
-  commitments.
+  be omitted (§13). Only `@yuki-flowers` (story 1) is a real row today.
+- **Access-claim caution beyond golf:** stories 3/4/7 still describe a local unlocking a private
+  thing (a no-groups table, a family cellar, a haveli courtyard) — that is the ratified value prop
+  (cf. Yuki's held counter seat), and the "A local who…" framing + omitted byline keep it honest as
+  *the kind of thing a local does*, not a promise from a named person. Before a given market's
+  moment goes live with a **named** expert, its access claims must match that expert's real
+  capability (rider b's principle, per market).
 - Headlines are ~1 line at the mock's `26px` display size; keep to that measure so they don't wrap
   past two lines at 1280 or overflow the story panel at 390.
 - The three pieces are the load-bearing copy — each must name a *specific* machine part, never a
