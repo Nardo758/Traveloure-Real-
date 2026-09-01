@@ -94,14 +94,32 @@ an attributed event to `landing_moment_events` via `POST /api/landing/moments/ev
 token the upsell events already use.** The funnel continues chooser → trip → purchase per
 `experienceType` (mirrors the upsell click-attribution pattern, `POST /api/upsell/click`).
 
-### Photo gate (Moments)
+### Photo gate (Moments) — a TRUST surface (ruling `2026-09-01-photo-tiers`)
 
-**Real photos only.** A moment's photos come from real rows (gem photos, expert-contributed
-photos from the field-knowledge lane's evidence capture, storefront covers) — each carrying its
-attribution (contributor `@handle`, place). The gradient shown in the mock is the **pre-photo
-state only**: a photo-less moment stays out of the slide and never renders as a permanent
-gradient card. `GET /api/landing/moments` returns **only moments with ≥1 real photo**, photos
-with their attribution.
+**Attributed real photos ONLY — never stock, never AI.** Moments is a TRUST surface (it carries a
+`@handle`), so it renders only an **attributed real photo**: an expert-curated non-stock upload
+(gem `curated_by_expert_id` → the expert's `@handle`, non-stock host) or a field-knowledge evidence
+photo — each carrying its attribution (contributor `@handle`, place). The gradient is the
+**pre-photo state only**: a photo-less moment stays out of the slide and never renders as a
+permanent gradient card. `GET /api/landing/moments` returns **only moments with ≥1 attributed real
+photo**, each with its attribution.
+
+**Launch reality (Phase 0, `docs/audits/landing-moments-phase-0.md`):** applying this gate to real
+data, **zero of the seven qualify today** — the only photo-bearing gems (Kyoto) are all
+`images.unsplash.com` stock, which the gate forbids; no gem is expert-curated; Yuki has no handle
+yet. So the launch-live set is **data-driven and today empty**.
+
+### Empty state — SUPPRESS (decision-maker DECISION 1 = B)
+
+When `moments.length === 0` the section **renders nothing** (the ExperiencesRail precedent — hidden
+until its data exists) and **appears the moment the first attributed real photo lands**. An empty
+marquee at position 2 is the dishonest option; a faint recruitment strip with no slide is a section
+admitting it has nothing to show — so neither is rendered at zero. The faint "coming as locals
+join" pills appear only once **≥1** moment qualifies (then the live one(s) show, the rest faint).
+**First photo enters through the front door (DECISION C), not a seed** — the real Yuki gets a handle
+and contributes a real Gion photo via evidence capture (or an interim admin-attributed real photo);
+never a scripted stock swap. Captures for the visual pass use a **dev-only labeled test photo** to
+sign off the layout — clearly not for production.
 
 ## Plus band (ruling `2026-09-01-plus-in-pricing`)
 
