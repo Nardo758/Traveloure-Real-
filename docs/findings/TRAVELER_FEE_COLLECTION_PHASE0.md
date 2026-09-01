@@ -1,8 +1,35 @@
 # Phase 0 — traveler-fee-collection: payment-path classification (READ-ONLY)
 
 **Lane:** `claude/traveler-fee-collection` · **Ruling:** `2026-09-02-traveler-fee-applies-everywhere`
-**Branch base:** `origin/main` @ `4644af6` · **as-of** this SHA · **Status:** HARD STOP — awaiting Leon's ratification.
-**Nothing charged has been changed.** This is the read-only classification the dispatch requires before any charge edit.
+**Branch base:** `origin/main` @ `4644af6` · **as-of** this SHA · **Status:** RATIFIED with amendments (ruling `2026-09-02-traveler-fee-applies-everywhere`, appended to `docs/DECISIONS.md`). Gates A & E resolved with evidence below; charge code cleared for Phase 1.
+**Nothing charged has been changed in Phase 0.** This is the read-only classification + the evidence the gates required.
+
+---
+
+## RATIFICATION & EVIDENCE (decision-maker, ruling `2026-09-02-traveler-fee-applies-everywhere`)
+
+**Governing principle (resolves flags A–C):** the fee attaches to marketplace transactions where a **third party
+delivers a service and earns the majority of the money**; it does NOT attach to digital-product purchases or
+platform-own products, even when those carry a seller earnings split.
+
+| Item | Ruling | Evidence (file:line) |
+|---|---|---|
+| **A — transport** | **(a), fee YES**, transport category band — merchant-of-record confirmed | Stripe path gated `option.bookingType !== "platform" → 400` at `transport-hub.routes.ts:313`; on pass it calls `createTransportBookingCheckout` (our own `stripe.checkout.sessions.create`, `stripe.service.ts:136`) at `transport-hub.routes.ts:344`. Affiliate transport is a **separate** rail — `/api/transport-booking-options/:id/click` (`transport-hub.routes.ts:375`) tracks a click + redirects to the affiliate link, **never touches our Stripe** → not in this table. |
+| **B — expert review service** | **(a), fee YES** — a person delivers it and earns 75–85%; a booking, not a product | `booking-actions.ts:131` → `createExpertServicePaymentIntent` (`stripe-payment.service.ts:1103`); its economics already live in `fee_bands` (`expert_review_book_percent`, `full_concierge_flat/percent`). |
+| **C — ready-made + template** | **(c), no fee** — digital products; the seller split does not change the class | paths 8 (`ready-made.routes.ts:1273`) & 9 (`routes.ts:5314`). |
+| **D — deposit balance** | fee on the **full subtotal, once, at the deposit charge**; balance charge carries **zero** fee; **$25 cap per BOOKING**, not per charge; idempotence keyed on booking id | path 2 (`payments.routes.ts:1748`). |
+| **E — legacy `bookings` rail** | **REACHABLE → BILL IT for parity** (no deletion lane) | mounted `app.use("/api/bookings", bookingsRoutes)` at `routes.ts:947`; `scripts/check-unmounted-routers.cjs` reports **55 mounted, 0 dark**. So `POST /api/bookings/process-cart` (`booking.service.ts:472`) is live in prod and must be billed. |
+
+**BLOCKER 1 — two-row netting APPROVED, CHECK stands.** Suppression = `traveler_service_fee (+X)` + a negative leg
+`(−X)` tagged `covered_by:trip_pass|rails`. Migration-179 `amount <> 0` is **not** relaxed.
+- **Condition 1 — RATIFIED: use a NEW `fee_waiver` fee_type (migration, Phase 1), NOT `credit_applied`.** Evidence:
+  `credit_applied` (the token) has no `fee_ledger` writer today, but the **coordination-credit balance system is
+  live** (`claimCoordinationCredit`/`getAvailableCoordinationCreditCents`, `optimization-fee.service.ts`, migrations
+  126/127) and is `credit_applied`'s legitimate future owner. A waiver is not a credit — collapsing them is the
+  meaning-collision class the ruling forbids.
+- **Condition 2 — FINDING FILED (not fixed):** `docs/findings/FEE_LEDGER_AGGREGATIONS_MUST_NET_WAIVERS.md`.
+  `fee_ledger` has **zero readers today**, so nothing overstates fee revenue yet; the finding pins the forward
+  contract that every future aggregation must net the `covered_by` legs.
 
 > The traveler service fee is **computed but never charged on any path today** (finding
 > `fee-not-billed-on-direct-path`). `resolveTravelerServiceFee` (`server/services/fee-resolution.service.ts:271`)
