@@ -1,6 +1,5 @@
 import { LandingHero } from "@/components/landing/landing-hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
-import { PlusOccasions } from "@/components/landing/plus-occasions";
 import { EntryStrips } from "@/components/landing/entry-strips";
 import { ExperiencesRail } from "@/components/landing/experiences-rail";
 import { CitiesRail } from "@/components/landing/cities-rail";
@@ -32,15 +31,12 @@ export default function LandingPage() {
           are replaced by the mock's live bento + beta pill / market caption. */}
       <LandingHero onPlanTrip={() => open()} />
 
-      {/* Ruled section order (LANDING_SPEC.md; the dispatch wins over the mock's DOM order):
-          hero -> how-it-works+price -> Plus occasions -> where-to-begin -> experiences
-          (degraded) -> cities rail -> numbers -> ways to earn -> final CTA. The old
-          Experience-Categories / How-It-Works / stats / Testimonials / Earn-CTA / Final
-          sections are replaced by these; the testimonials rail was already hidden until
-          admin-curated reviews existed and the mock carries no testimonials section —
-          revisit only with a ruling once curated reviews exist. */}
+      {/* Ruled section order (LANDING_SPEC.md v2.5): hero -> [Moments (Lane 2, position 2)] ->
+          how-it-works+price (with the Plus BAND folded in, ruling 2026-09-01-plus-in-pricing —
+          the standalone PlusOccasions section is removed) -> where-to-begin -> experiences
+          (degraded; absorbed into Moments in Lane 2) -> cities rail -> numbers -> ways to earn
+          -> final CTA. The testimonials rail stays hidden until admin-curated reviews exist. */}
       <HowItWorks />
-      <PlusOccasions />
       <EntryStrips />
       <ExperiencesRail />
       <CitiesRail />
