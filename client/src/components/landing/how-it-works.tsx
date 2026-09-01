@@ -1,12 +1,20 @@
 /**
- * how-it-works.tsx — "How it works + price strip", merged (landing-build Phase 2.2).
- * Visual of record: docs/design/landing-earn-mock.html "HOW IT WORKS + PRICE LADDER".
+ * how-it-works.tsx — "How it works + price ladder", merged (landing-build Phase 2.2;
+ * v2.5 folds the Plus band in — ruling 2026-09-01-plus-in-pricing).
+ * Visual of record: docs/design/landing-earn-mock-v2.5.html "HOW IT WORKS + PRICE LADDER".
  *
  * Every price renders from the LIVE bundle (GET /api/pricing — public; §8: no fee
  * literals here, the numbers are rows). A missing bundle field renders "—", never a
  * remembered number. Step 3 is deliberately number-free ("expert-priced") — expert rates
  * are per-offering and no floor is fabricated (§13). No coral button in this section —
- * "See full pricing →" is the action (the mock's ruling that brought coral to 3).
+ * "See full pricing →" is the action (the mock's ruling that keeps coral to 4).
+ *
+ * PLUS BAND (v2.5): Plus is no longer its own section — it renders as a slim band beneath
+ * the four travel steps, the home-city product visibly distinct from the travel ladder.
+ * It carries the live plusAnnual price and renders "coming soon" while plusSalesEnabled is
+ * false. It has NO coral CTA (the former Plus Join button and its coral leave the page —
+ * "See full pricing →" stays the only action), so the coral count holds at 4 across the
+ * PLUS_SALES_ENABLED flip.
  */
 import { useQuery } from "@tanstack/react-query";
 import { SectionHeader, OpenSection } from "./section-header";
@@ -21,6 +29,8 @@ interface PricingBundle {
   aiTaskCents?: number;
   tripPass?: { priceCents: number };
   doneForYouDepositPct?: number;
+  plusAnnual?: { priceCents: number; interval: string };
+  plusSalesEnabled?: boolean;
 }
 
 function cents(c: number | undefined): string {
@@ -131,6 +141,36 @@ export function HowItWorks() {
             )}
           </div>
         ))}
+      </div>
+
+      {/* Plus band (v2.5; ruling 2026-09-01-plus-in-pricing): the home-city product as a slim
+          band beneath the ladder — gold-ink eyebrow, live plusAnnual price, "coming soon" while
+          plusSalesEnabled is false. No coral CTA (See full pricing → in the header is the action). */}
+      <div
+        className="mt-3.5 flex flex-wrap items-center gap-[18px] rounded-[12px] border border-dashed px-4 py-3"
+        style={{ borderColor: "var(--earn-border-dash, #D5D0C8)" }}
+        data-testid="plus-band"
+      >
+        <span
+          className="text-[10px] font-medium uppercase tracking-[0.14em]"
+          style={{ fontFamily: EARN_MONO, color: "var(--earn-gold-ink)" }}
+        >
+          Plus · your own city
+        </span>
+        <span className="text-[14px]" style={{ color: "var(--earn-ink)" }}>
+          Birthdays, anniversaries, the Friday you keep meaning to plan — a local's plan arrives
+          before each date.
+        </span>
+        <span
+          className="ml-auto text-[13px] font-semibold"
+          style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
+          data-testid="plus-band-price"
+        >
+          {cents(pricing?.plusAnnual?.priceCents)}
+          <small className="font-normal" style={{ color: "var(--earn-muted)" }}>
+            {" "}/ year{pricing?.plusSalesEnabled === true ? "" : " · coming soon"}
+          </small>
+        </span>
       </div>
     </OpenSection>
   );
