@@ -19,6 +19,7 @@ import { eq, and, sql, gte, inArray } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
@@ -32,12 +33,12 @@ class AdminDigestSchedulerService {
       return;
     }
 
-    // First run 5 minutes after startup so the server is fully warmed up
+    // First run after startup (boot-herd floor + jitter, #1712) so the server is fully warmed up
     setTimeout(() => {
       void runBackgroundJob("admin-digest", () => this.runDigest()).catch((err) =>
         console.error("[AdminDigest] scheduled pass failed:", err),
       );
-    }, 5 * 60 * 1000);
+    }, jitteredStartupDelay(5 * 60 * 1000));
 
     this.timer = setInterval(() => {
       void runBackgroundJob("admin-digest", () => this.runDigest()).catch((err) =>

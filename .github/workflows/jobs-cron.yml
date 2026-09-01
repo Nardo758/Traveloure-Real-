@@ -1,0 +1,234 @@
+name: Scheduled jobs (jobs-cron)
+
+# Authoritative external trigger for the MONEY/INTEGRITY schedulers (scheduler-reliability lane,
+# #1712). The production app is Replit Autoscale, so its in-process timers are only best-effort
+# defense-in-depth — this workflow is the reliable runner. Each internal endpoint is idempotent
+# (§15 atomic conditionals / dedupe keys / DB-guarded mints), so a cron pass racing a warm
+# in-process timer no-ops via overlap dedup.
+#
+# ONE JOB PER CADENCE BUCKET (not steps): every cron entry below fires the whole workflow, and each
+# job is gated to its own schedule with `if: github.event.schedule == …`, so a failure in one
+# bucket surfaces on its own and never hides another. Each job POSTs its route(s) and fails visibly
+# on any non-200. Reuses the INTERNAL_JOB_SECRET already configured for occasion-drafts-daily.yml.
+#
+# NOTE: occasion-drafts has its own workflow (occasion-drafts-daily.yml) and is intentionally not
+# duplicated here. Partnerize's report-poll is intentionally NOT included — held for Lane 4's 404
+# triage; only Travelpayouts' poll is wired.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # backstops: latency-sensitive 5-min jobs, 15-min cold-instance ceiling
+    - cron: "0 * * * *"      # hourly: MONEY jobs (earnings release, booking auto-completion)
+    - cron: "0 */4 * * *"    # four-hourly: booking expiry
+    - cron: "0 */6 * * *"    # six-hourly: Travelpayouts commission reconcile
+    - cron: "0 9 * * *"      # daily: reconciliation drift detector, availability materialization
+  workflow_dispatch:
+    inputs:
+      bucket:
+        description: Cadence bucket to run on manual dispatch
+        required: true
+        default: hourly
+        type: choice
+        options: [backstops, hourly, four-hourly, six-hourly, daily]
+
+permissions:
+  contents: read
+
+env:
+  BASE_URL: https://www.traveloure.com
+
+jobs:
+  backstops:
+    name: 15-min backstops (checkout-sweep, itinerary-generation-sweep, email-outbox)
+    if: github.event.schedule == '*/15 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'backstops')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST the backstop runners
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          ROUTES: "checkout-sweep itinerary-generation-sweep email-outbox"
+        run: |
+          set -uo pipefail
+
+          if [[ -z "${INTERNAL_JOB_SECRET:-}" ]]; then
+            echo "::error title=Missing GitHub secret::INTERNAL_JOB_SECRET is not configured for this repository."
+            exit 1
+          fi
+
+          failed=0
+          for route in $ROUTES; do
+            url="$BASE_URL/internal/jobs/$route"
+            body="$(mktemp)"
+            code="$(curl -sS -X POST \
+              --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
+              --header "content-type: application/json" \
+              --data '{}' \
+              --output "$body" \
+              --write-out '%{http_code}' \
+              "$url" || echo "000")"
+            echo "[$route] HTTP $code"
+            cat "$body"; echo
+            rm -f "$body"
+            if [[ "$code" != "200" ]]; then
+              echo "::error title=$route failed::Expected HTTP 200 from $url, got $code"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  hourly:
+    name: Hourly MONEY jobs (earnings-release, booking-auto-completion)
+    if: github.event.schedule == '0 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'hourly')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST the hourly money runners
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          ROUTES: "earnings-release booking-auto-completion"
+        run: |
+          set -uo pipefail
+
+          if [[ -z "${INTERNAL_JOB_SECRET:-}" ]]; then
+            echo "::error title=Missing GitHub secret::INTERNAL_JOB_SECRET is not configured for this repository."
+            exit 1
+          fi
+
+          failed=0
+          for route in $ROUTES; do
+            url="$BASE_URL/internal/jobs/$route"
+            body="$(mktemp)"
+            code="$(curl -sS -X POST \
+              --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
+              --header "content-type: application/json" \
+              --data '{}' \
+              --output "$body" \
+              --write-out '%{http_code}' \
+              "$url" || echo "000")"
+            echo "[$route] HTTP $code"
+            cat "$body"; echo
+            rm -f "$body"
+            if [[ "$code" != "200" ]]; then
+              echo "::error title=$route failed::Expected HTTP 200 from $url, got $code"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  four-hourly:
+    name: Four-hourly integrity (booking-expiry)
+    if: github.event.schedule == '0 */4 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'four-hourly')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST the four-hourly runner
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          ROUTES: "booking-expiry"
+        run: |
+          set -uo pipefail
+
+          if [[ -z "${INTERNAL_JOB_SECRET:-}" ]]; then
+            echo "::error title=Missing GitHub secret::INTERNAL_JOB_SECRET is not configured for this repository."
+            exit 1
+          fi
+
+          failed=0
+          for route in $ROUTES; do
+            url="$BASE_URL/internal/jobs/$route"
+            body="$(mktemp)"
+            code="$(curl -sS -X POST \
+              --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
+              --header "content-type: application/json" \
+              --data '{}' \
+              --output "$body" \
+              --write-out '%{http_code}' \
+              "$url" || echo "000")"
+            echo "[$route] HTTP $code"
+            cat "$body"; echo
+            rm -f "$body"
+            if [[ "$code" != "200" ]]; then
+              echo "::error title=$route failed::Expected HTTP 200 from $url, got $code"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  six-hourly:
+    name: Six-hourly reconcile (travelpayouts-report-poll)
+    if: github.event.schedule == '0 */6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'six-hourly')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST the six-hourly runner
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          ROUTES: "travelpayouts-report-poll"
+        run: |
+          set -uo pipefail
+
+          if [[ -z "${INTERNAL_JOB_SECRET:-}" ]]; then
+            echo "::error title=Missing GitHub secret::INTERNAL_JOB_SECRET is not configured for this repository."
+            exit 1
+          fi
+
+          failed=0
+          for route in $ROUTES; do
+            url="$BASE_URL/internal/jobs/$route"
+            body="$(mktemp)"
+            code="$(curl -sS -X POST \
+              --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
+              --header "content-type: application/json" \
+              --data '{}' \
+              --output "$body" \
+              --write-out '%{http_code}' \
+              "$url" || echo "000")"
+            echo "[$route] HTTP $code"
+            cat "$body"; echo
+            rm -f "$body"
+            if [[ "$code" != "200" ]]; then
+              echo "::error title=$route failed::Expected HTTP 200 from $url, got $code"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  daily:
+    name: Daily jobs (stripe-reconciliation, availability-materialization)
+    if: github.event.schedule == '0 9 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'daily')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: POST the daily runners
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          ROUTES: "stripe-reconciliation availability-materialization"
+        run: |
+          set -uo pipefail
+
+          if [[ -z "${INTERNAL_JOB_SECRET:-}" ]]; then
+            echo "::error title=Missing GitHub secret::INTERNAL_JOB_SECRET is not configured for this repository."
+            exit 1
+          fi
+
+          failed=0
+          for route in $ROUTES; do
+            url="$BASE_URL/internal/jobs/$route"
+            body="$(mktemp)"
+            code="$(curl -sS -X POST \
+              --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
+              --header "content-type: application/json" \
+              --data '{}' \
+              --output "$body" \
+              --write-out '%{http_code}' \
+              "$url" || echo "000")"
+            echo "[$route] HTTP $code"
+            cat "$body"; echo
+            rm -f "$body"
+            if [[ "$code" != "200" ]]; then
+              echo "::error title=$route failed::Expected HTTP 200 from $url, got $code"
+              failed=1
+            fi
+          done
+          exit $failed

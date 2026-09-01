@@ -61,6 +61,7 @@ import {
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
 import { runBackgroundJob } from "./services/background-job-runner";
+import { jitteredStartupDelay } from "./services/startup-delay";
 
 const app = express();
 const httpServer = createServer(app);
@@ -637,7 +638,7 @@ if (process.env.NODE_ENV === "production") {
         await run();
         setInterval(run, 24 * 60 * 60 * 1000);
       })();
-    }, 2 * 60 * 60 * 1000);
+    }, jitteredStartupDelay(2 * 60 * 60 * 1000));
 
     setTimeout(() => {
       const run = () =>
@@ -645,7 +646,7 @@ if (process.env.NODE_ENV === "production") {
           .catch((err) => logger.error({ err }, "[reconciliation] scheduled pass failed"));
       void run();
       setInterval(() => void run(), 24 * 60 * 60 * 1000);
-    }, 60 * 60 * 1000);
+    }, jitteredStartupDelay(60 * 60 * 1000));
 
     // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
     // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
@@ -657,7 +658,7 @@ if (process.env.NODE_ENV === "production") {
       setInterval(() => {
         void run();
       }, 24 * 60 * 60 * 1000);
-    }, 90 * 60 * 1000);
+    }, jitteredStartupDelay(90 * 60 * 1000));
 
     // Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): nightly rollup recompute
     // (unmet_demand_slip + slip_funnel), REPLACE-BY-DATE/idempotent. Same delayed-first-pass +
@@ -670,7 +671,7 @@ if (process.env.NODE_ENV === "production") {
       setInterval(() => {
         void run();
       }, 24 * 60 * 60 * 1000);
-    }, 95 * 60 * 1000);
+    }, jitteredStartupDelay(95 * 60 * 1000));
 
     // Partner Demand Phase 4 (R32): one-pager approval re-validation — withdraw any approval whose
     // market dropped below the public floor or whose template was bumped. Runs just AFTER the rollup
@@ -683,7 +684,7 @@ if (process.env.NODE_ENV === "production") {
       setInterval(() => {
         void run();
       }, 24 * 60 * 60 * 1000);
-    }, 105 * 60 * 1000);
+    }, jitteredStartupDelay(105 * 60 * 1000));
 
     // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
     // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
@@ -704,7 +705,7 @@ if (process.env.NODE_ENV === "production") {
       setInterval(() => {
         void run();
       }, 60 * 60 * 1000);
-    }, 3 * 60 * 1000);
+    }, jitteredStartupDelay(3 * 60 * 1000));
 
     // DMO extraction warmup sweep (part 2/3 of the pre-extraction design, CLAUDE.md-adjacent
     // ruling Aug 9 2026 — see server/jobs/dmoExtractionWarmup.ts). Delayed ~60s so it never
@@ -714,7 +715,7 @@ if (process.env.NODE_ENV === "production") {
       void runBackgroundJob("dmo-extraction-warmup", () => runDmoExtractionWarmupSweep()).catch((err) =>
         logger.error({ err }, "[dmo-extraction-warmup] sweep failed unexpectedly"),
       );
-    }, 60 * 1000);
+    }, jitteredStartupDelay(60 * 1000));
 
     (() => {
       const now = new Date();
@@ -730,7 +731,7 @@ if (process.env.NODE_ENV === "production") {
         setInterval(() => {
           void run();
         }, 24 * 60 * 60 * 1000);
-      }, msUntilFirst);
+      }, jitteredStartupDelay(msUntilFirst));
     })();
 
     // Bootstrap an admin account from the ADMIN_EMAIL environment variable.

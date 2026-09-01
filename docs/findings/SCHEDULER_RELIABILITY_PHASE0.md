@@ -1,11 +1,12 @@
 # Scheduler Reliability — Phase 0 Audit (read-only)
 
 **Lane:** `scheduler-reliability` (Lane 1, issue #1712) · **as-of** `c757678c`
-**Author:** Claude Code · **Status:** HARD STOP — awaiting ratification of the conversion set
+**Author:** Claude Code · **Status:** RATIFIED — build landed (see "Ratification & build outcome" at the end)
 
-> This is the read-only classification the dispatch's first hard stop calls for. Nothing here is
-> built. The build (internal routes + cron workflow + idempotency proofs) does not start until the
-> decision-maker ratifies **which jobs convert** and the per-job in-process-timer disposition.
+> **Ratification & build outcome is recorded at the bottom of this file.** The classification below
+> is the read-only audit that the hard stop produced; the decisions taken on it, and what was built,
+> follow it. (This document began as the read-only Phase 0 audit; the build landed after the
+> decision-maker ratified the conversion set.)
 
 ---
 
@@ -159,3 +160,57 @@ boot herd further, that is a contention choice, not a safety one; call it per-jo
    `travelpulse-demand-refresh`) sidestep the pool protection. A dedicated small background pool (or
    routing all timers through `runBackgroundJob`) would harden the boot window independently of this
    conversion. Escalated, not built.
+
+---
+
+## Ratification & build outcome (decision-maker ratified)
+
+**Summary line (ratified):** ratify the set (earnings-release + auto-completion first) · 5-min jobs =
+in-process primary + 15-min cron backstop · Travelpayouts now, Partnerize held for Lane 4 · keep all
+timers, add ≥60s initial delay + jitter · one workflow, one job per cadence bucket · pool sizing filed
+as the next lane, the three cap-bypassers fixed here.
+
+### What was built
+
+1. **Internal job endpoints** (`server/routes/internal.routes.ts`) — one per converted job, on the
+   proven occasion-drafts shape: shared `requireInternalSecret` guard (503 unset, 401 mismatch,
+   `x-internal-secret` or Bearer), each run through `runBackgroundJob(<same name as the timer>, …)`
+   so a cron pass racing a warm in-process timer no-ops via overlap dedup. Routes:
+   `earnings-release`, `booking-auto-completion`, `stripe-reconciliation`, `checkout-sweep`,
+   `availability-materialization`, `booking-expiry`, `travelpayouts-report-poll`,
+   `itinerary-generation-sweep`, `email-outbox`. **Partnerize's report-poll is intentionally NOT
+   exposed** — held for Lane 4's 404 triage.
+2. **One workflow** (`.github/workflows/jobs-cron.yml`) — one **job per cadence bucket** (`*/15`,
+   hourly, 4-hourly, 6-hourly, daily), each gated by `github.event.schedule` so a bucket fails on its
+   own and never hides another; each POSTs its route(s) with a logged HTTP status and fails visibly on
+   any non-200; reuses `INTERNAL_JOB_SECRET` (verified already configured in Actions).
+   The two 5-min jobs **and** checkout-sweep (also 5-min) keep their in-process timer as PRIMARY and
+   sit in the `*/15` backstop bucket — latency when warm, a 15-min ceiling when cold.
+3. **Boot-herd fix** (`server/services/startup-delay.ts` `jitteredStartupDelay`) — a ≥60s floor plus
+   up to 60s jitter, applied to **every** retained scheduler's first-run delay (all `*-scheduler`
+   services, the `cache-scheduler` sub-timers, `travelpulse-scheduler`, and the inline `index.ts`
+   timers). It only ever pushes a first pass LATER, so no behavior regresses; nothing fires into the
+   boot window and the passes fan out. In-process timers are all KEPT as defense-in-depth.
+4. **Cap-bypassers routed through the cap** — `fx-rate-refresh` and `stripe-connect-reminder` now run
+   through `runBackgroundJob`. **Correction:** the third named in Phase 0
+   (`travelpulse-demand-refresh`) was already wrapped, so there were two, not three. See
+   `docs/findings/DB_POOL_SIZING_NEXT_LANE.md`.
+5. **Pool sizing filed as the next lane** — `docs/findings/DB_POOL_SIZING_NEXT_LANE.md` (dedicated
+   background pool vs. raising `max`; `connectionTimeoutMillis`; the provider ceiling), to be tuned
+   with data, not blind.
+
+### Proofs
+
+- `server/services/__tests__/startup-delay.test.ts` — the jitter contract (floor, bounded jitter,
+  never-earlier, fan-out). Green.
+- `server/routes/__tests__/internal-jobs-auth.http.test.ts` — every internal job route is
+  default-deny: 503 while the secret is unset, 401 on missing/wrong secret/bearer, before the job
+  body (no DB needed). Green.
+- The "runs once / overlapping call no-ops" mechanism the endpoints delegate to is already proven by
+  `server/services/__tests__/background-job-runner.test.ts` ("skips an overlapping pass").
+- The MONEY jobs' underlying double-fire safety (the `[guarded]` no-double-pay property) is already
+  proven at the DB layer: `booking-completion-machinery.db.test.ts` (releaseMaturedEarnings + §15
+  atomic-conditional completion), `booking-auto-complete.db.test.ts`, `checkout-claim-sweep.db.test.ts`,
+  `reconciliation-detection.db.test.ts`. A live test DB was not available in the build environment, so
+  these were not re-run here; the endpoints add no new money logic — they call those same idempotent
+  entry points.

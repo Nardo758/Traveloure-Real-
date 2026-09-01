@@ -5,6 +5,7 @@ import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
 import { trendEngineIngestionRunner } from "./trend-engine/ingestion-runner";
 import { trendScoreService } from "./trend-engine/trend-score.service";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 // Phase 2.3 — GROK SCORING REMOVED.
 // updateCityWithAI is no longer called from the daily scheduler.
@@ -54,8 +55,9 @@ export class TravelPulseScheduler {
 
     console.log("[TravelPulse Scheduler] Starting daily AI intelligence refresh scheduler");
 
-    // Schedule first run after initial delay
-    this.nextRunAt = new Date(Date.now() + INITIAL_DELAY);
+    // Schedule first run after initial delay (boot-herd floor + jitter, #1712)
+    const firstDelay = jitteredStartupDelay(INITIAL_DELAY);
+    this.nextRunAt = new Date(Date.now() + firstDelay);
     console.log(`[TravelPulse Scheduler] First run scheduled at: ${this.nextRunAt.toISOString()}`);
 
     // Run once after initial delay
@@ -75,7 +77,7 @@ export class TravelPulseScheduler {
           );
         }, DAILY_REFRESH_INTERVAL);
       }
-    }, INITIAL_DELAY);
+    }, firstDelay);
   }
 
   async stop(): Promise<void> {

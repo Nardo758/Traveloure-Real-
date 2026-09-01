@@ -19,6 +19,8 @@ import { db } from "../db";
 import { fxRates } from "@shared/schema";
 import { desc } from "drizzle-orm";
 import { storage } from "../storage";
+import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 // Full set of currencies the budget converter supports. Must stay in sync with the
@@ -56,11 +58,15 @@ class FxRateRefreshService {
     } catch (err) {
       console.error("[FxRateRefresh] Failed to read last refresh time; running soon:", err);
     }
-    this.timer = setTimeout(() => this.runAndReschedule(), initialDelayMs);
+    // Boot-herd fix (#1712): never fire during the boot window; add jitter. The remainder-until-due
+    // delay is preserved when it already clears the floor.
+    this.timer = setTimeout(() => this.runAndReschedule(), jitteredStartupDelay(initialDelayMs));
   }
 
   private async runAndReschedule(): Promise<void> {
-    await this.refreshOnce();
+    // Route through runBackgroundJob so this pass counts against the pool-protection concurrency cap
+    // and overlap-dedups with any manual/ad-hoc refresh (previously it bypassed the cap entirely).
+    await runBackgroundJob("fx-rate-refresh", () => this.refreshOnce());
     this.timer = setTimeout(() => this.runAndReschedule(), REFRESH_INTERVAL_MS);
   }
 
