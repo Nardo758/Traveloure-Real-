@@ -6,9 +6,9 @@ the images as AI-generated.
 
 | Moment city | Photograph | Creator | License | Source |
 | --- | --- | --- | --- | --- |
-| Kyoto | Bamboo Forest, Arashiyama, Kyoto, Japan | Basile Morin | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Bamboo_Forest,_Arashiyama,_Kyoto,_Japan.jpg) |
-| Edinburgh | Ross Fountain and Castle, Edinburgh | Matti Blume | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.en) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Ross_Fountain_and_Castle,_Edinburgh_(IMG_20190628_175956).jpg) |
-| Cartagena | Cartagena Old City | CONOCER | Public domain | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Cartagena_Old_City.JPG) |
+| Kyoto | Kusho Myōjin shrine, Ninna-ji temple, Kyoto | Carles Tomás Martí | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Kusho_My%C5%8Djin_shrine,_Ninna-ji_temple,_Kyoto_-_Oct_25,_2009.jpg) |
+| Edinburgh | Balcomie Links Golf Course at Fife Ness | Mat Fascione | [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Balcomie_Links_Golf_Course_at_Fife_Ness_-_geograph.org.uk_-_7375989.jpg) |
+| Cartagena | Night Scenes, Cartagena, Colombia | Joe Ross | [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Night_Scenes,_Cartagena,_Colombia_(24431322999).jpg) |
 
 The fixed fixture IDs start with `landing-moment-demo-`, and the attributed test
 expert uses the handle `@yuki-flowers`. This keeps the demo data identifiable and
