@@ -25,6 +25,7 @@ import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 import { TRIP_CARD_HANDOVER_WINDOW_MS } from "@shared/trip-primary-surface";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — matches earningsReleaseScheduler's cadence
 const FIRST_RUN_DELAY_MS = 3 * 60 * 1000; // stagger slightly after the other startup schedulers
@@ -56,7 +57,7 @@ class TripCardHandoverSchedulerService {
       void runBackgroundJob("trip-card-handover", () => this.runPass()).catch((err) =>
         logger.error({ err }, "[TripCardHandover] scheduled pass failed"),
       );
-    }, FIRST_RUN_DELAY_MS);
+    }, jitteredStartupDelay(FIRST_RUN_DELAY_MS));
     this.timer = setInterval(() => {
       void runBackgroundJob("trip-card-handover", () => this.runPass()).catch((err) =>
         logger.error({ err }, "[TripCardHandover] scheduled pass failed"),

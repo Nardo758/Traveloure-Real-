@@ -1,0 +1,98 @@
+name: Scheduler Jobs Gate
+
+# Guards the scheduler-reliability lane (#1712). The MONEY/INTEGRITY jobs are now fired by an
+# external cron (jobs-cron.yml → the /internal/jobs/* endpoints) in ADDITION to their in-process
+# defense-in-depth timers, so the endpoint and the timer can both run a job in the same window.
+# The endpoint wrappers add NO money logic — they call the same idempotent job entry points — so the
+# `[guarded]` property that matters ("no MONEY job can double-pay on a double-fire") is exactly the
+# idempotency these suites prove. This gate runs them on every PR so the property is enforced, not
+# merely asserted in a doc:
+#
+#   earnings-release-idempotency.db  — held→releasable flips once; a 2nd pass no-ops (the release job)
+#   booking-auto-complete.db         — the completion flip + mint are double-fire safe (auto-complete)
+#   checkout-claim-sweep.db          — void/promote can never both win; a 2nd sweep double-frees nothing
+#   reconciliation-detection.db      — append-only exceptions; dedupe_key absorbs re-detection
+#   internal-jobs-auth.http          — every /internal/jobs/* route is default-deny (503 unset / 401)
+#   startup-delay                    — the boot-herd floor+jitter contract
+#
+# Negative space (ruling 43): this gate proves the jobs are idempotent and the endpoints are
+# default-deny. It does NOT boot the app, so the owner-rail HTTP half of booking completion
+# (booking-completion-machinery.db.test.ts, which needs a running server at JOURNEY_BASE_URL) is
+# out of scope here and runs where a booted server is available. It also says nothing about the cron
+# schedule firing in production — that is verified in the Actions tab after merge (jobs-cron.yml).
+#
+# Same Postgres + composite-migration shape as fee-resolution-authority-gate.yml. Sequential steps,
+# not one combined `npx tsx --test a b c` — node:test aggregates exit codes across files unhelpfully.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: scheduler-jobs-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scheduler-jobs:
+    name: scheduler-jobs (idempotency + endpoint auth, #1712)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      ALLOW_TEST_ACCOUNTS: '1'
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      # Migrations are the fixture; the composite action is mandatory (ci-db-setup-lint forbids
+      # inline DB setup). No authenticated routes here — every suite creates its own rows directly.
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+
+      - name: Earnings release — double-fire safety (the release job)
+        run: npx tsx --test server/__tests__/earnings-release-idempotency.db.test.ts
+
+      - name: Booking auto-completion — idempotent flip + mint
+        run: npx tsx --test server/__tests__/booking-auto-complete.db.test.ts
+
+      - name: Checkout claim sweep — void/promote race + no double-free
+        run: npx tsx --test server/__tests__/checkout-claim-sweep.db.test.ts
+
+      - name: Stripe reconciliation — append-only drift detection
+        run: npx tsx --test server/__tests__/reconciliation-detection.db.test.ts
+
+      - name: Internal job endpoints — default-deny auth (no DB touched)
+        run: npx tsx --test server/routes/__tests__/internal-jobs-auth.http.test.ts
+
+      - name: Boot-herd startup delay — floor + jitter contract
+        run: npx tsx --test server/services/__tests__/startup-delay.test.ts

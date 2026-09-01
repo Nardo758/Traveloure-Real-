@@ -9,6 +9,7 @@ import { openTableService } from "./opentable.service";
 import { partnerizeSyncService } from "./partnerize/partnerize-sync.service";
 import { affiliateReconciliationService, LATE_REPORT_TOLERANCE_DAYS } from "./affiliate-reconciliation.service";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 // Partnerize campaign catalog changes infrequently — sync every 12 hours,
 // separate from the 24h stale-data refresh loop above.
@@ -72,7 +73,7 @@ class CacheSchedulerService {
       void runBackgroundJob("cache-refresh", () => this.checkAndRefreshStaleData()).catch((err) =>
         console.error("[CacheScheduler] Initial refresh failed:", err),
       );
-    }, 5 * 60 * 1000);
+    }, jitteredStartupDelay(5 * 60 * 1000));
     
     // Schedule regular refresh checks
     this.refreshTimer = setInterval(() => {
@@ -88,7 +89,7 @@ class CacheSchedulerService {
       void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
         console.error("[CacheScheduler] Initial Partnerize sync failed:", err),
       );
-    }, 2 * 60 * 1000);
+    }, jitteredStartupDelay(2 * 60 * 1000));
 
     this.partnerizeSyncTimer = setInterval(() => {
       void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
@@ -106,7 +107,7 @@ class CacheSchedulerService {
       void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
         console.error("[CacheScheduler] Initial Partnerize report poll failed:", err),
       );
-    }, 3 * 60 * 1000);
+    }, jitteredStartupDelay(3 * 60 * 1000));
 
     this.partnerizeReportTimer = setInterval(() => {
       void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
@@ -124,7 +125,7 @@ class CacheSchedulerService {
       void runBackgroundJob("travelpayouts-report-poll", () => this.pollTravelpayoutsReports()).catch((err) =>
         console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err),
       );
-    }, 4 * 60 * 1000);
+    }, jitteredStartupDelay(4 * 60 * 1000));
 
     this.travelpayoutsReportTimer = setInterval(() => {
       void runBackgroundJob("travelpayouts-report-poll", () => this.pollTravelpayoutsReports()).catch((err) =>
@@ -141,7 +142,7 @@ class CacheSchedulerService {
       void runBackgroundJob("travelpayouts-cache-prune", () => this.pruneExpiredCacheNow()).catch((err) =>
         console.error("[CacheScheduler] Initial Travelpayouts cache prune failed:", err),
       );
-    }, 10 * 60 * 1000);
+    }, jitteredStartupDelay(10 * 60 * 1000));
 
     this.travelpayoutsCachePruneTimer = setInterval(() => {
       void runBackgroundJob("travelpayouts-cache-prune", () => this.pruneExpiredCacheNow()).catch((err) =>
@@ -160,6 +161,15 @@ class CacheSchedulerService {
    */
   async pruneExpiredCacheNow(): Promise<number> {
     return sharedCache.flushExpired();
+  }
+
+  /**
+   * Public entry for the authoritative external trigger (POST /internal/jobs/travelpayouts-report-poll,
+   * scheduler-reliability lane #1712). Delegates to the SAME private poll the in-process timer runs,
+   * so there is one implementation and two callers (the cron and the defense-in-depth timer).
+   */
+  async runTravelpayoutsReportPoll(): Promise<void> {
+    return this.pollTravelpayoutsReports();
   }
 
   // Poll Travelpayouts for commission action rows and auto-match them against

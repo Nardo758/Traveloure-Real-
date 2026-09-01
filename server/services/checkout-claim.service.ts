@@ -93,6 +93,7 @@ import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 import { getStripeSecretKey } from "../utils/stripe-key";
 
 /** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
@@ -1230,7 +1231,8 @@ class CheckoutClaimSweepScheduler {
 
   start(): void {
     if (this.timer) return;
-    setTimeout(() => void this.run(), 2 * 60 * 1000);
+    // Boot-herd floor + jitter (#1712) on the first pass; the 5-min sweep cadence is unchanged.
+    setTimeout(() => void this.run(), jitteredStartupDelay(2 * 60 * 1000));
     this.timer = setInterval(() => void this.run(), SWEEP_INTERVAL_MS);
     console.log(
       `[checkout-sweep] Scheduler started — unauthorized checkout claims older than ${CHECKOUT_CLAIM_TTL_MINUTES}m are reclaimed every 5m`,

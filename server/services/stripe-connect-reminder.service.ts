@@ -17,6 +17,8 @@
 import { db } from "../db";
 import { users, notifications } from "@shared/schema";
 import { eq, and, sql, or, isNull, gte, inArray, desc } from "drizzle-orm";
+import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
 const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
@@ -77,18 +79,27 @@ class StripeConnectReminderService {
         console.log("[StripeConnectReminder] No prior reminders found — first run in 10 minutes");
       }
 
+      // Boot-herd fix (#1712): floor+jitter so the first pass never lands in the boot window.
       setTimeout(() => {
-        this.runReminders();
-        this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
-      }, initialDelayMs);
+        void this.runRemindersGuarded();
+        this.timer = setInterval(() => void this.runRemindersGuarded(), CHECK_INTERVAL_MS);
+      }, jitteredStartupDelay(initialDelayMs));
     } catch (err) {
       // If the DB query fails, fall back to the safe default (full interval delay)
       console.error("[StripeConnectReminder] Failed to determine last run time — defaulting to 72h delay:", err);
       setTimeout(() => {
-        this.runReminders();
-        this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
-      }, CHECK_INTERVAL_MS);
+        void this.runRemindersGuarded();
+        this.timer = setInterval(() => void this.runRemindersGuarded(), CHECK_INTERVAL_MS);
+      }, jitteredStartupDelay(CHECK_INTERVAL_MS));
     }
+  }
+
+  /**
+   * Route the reminder pass through runBackgroundJob so it counts against the pool-protection
+   * concurrency cap and overlap-dedups (previously it called the DB directly, bypassing the cap).
+   */
+  private async runRemindersGuarded(): Promise<void> {
+    await runBackgroundJob("stripe-connect-reminder", () => this.runReminders());
   }
 
   private async runReminders(): Promise<void> {

@@ -12,6 +12,7 @@
  */
 import { runOccasionDrafts, type RunOccasionDraftsResult } from "./occasion-drafts.service";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily — occasion windows are day-scale
 const FIRST_RUN_DELAY_MS = 110 * 60 * 1000; // ~110 min after startup, behind the heavier daily jobs
@@ -40,7 +41,7 @@ class OccasionDraftsSchedulerService {
       void runBackgroundJob("occasion-drafts", () => this.runOnce()).catch((err) =>
         console.error("[OccasionDrafts] scheduled pass failed:", err),
       );
-    }, FIRST_RUN_DELAY_MS);
+    }, jitteredStartupDelay(FIRST_RUN_DELAY_MS));
     this.timer = setInterval(() => {
       void runBackgroundJob("occasion-drafts", () => this.runOnce()).catch((err) =>
         console.error("[OccasionDrafts] scheduled pass failed:", err),

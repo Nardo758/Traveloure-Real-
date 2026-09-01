@@ -38,6 +38,7 @@
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // every 5 min — tight enough that a stuck spinner clears quickly
 const FIRST_RUN_DELAY_MS = 90 * 1000; // shortly after startup, once the DB has settled
@@ -63,7 +64,7 @@ class ItineraryGenerationSweepSchedulerService {
       void runBackgroundJob("itinerary-generation-sweep", () => this.runSweep()).catch((err) =>
         logger.error({ err }, "[ItineraryGenerationSweep] scheduled pass failed"),
       );
-    }, FIRST_RUN_DELAY_MS);
+    }, jitteredStartupDelay(FIRST_RUN_DELAY_MS));
     this.timer = setInterval(() => {
       void runBackgroundJob("itinerary-generation-sweep", () => this.runSweep()).catch((err) =>
         logger.error({ err }, "[ItineraryGenerationSweep] scheduled pass failed"),
