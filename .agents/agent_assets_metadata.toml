@@ -136,5 +136,5 @@ description = "Guest cart sign-in prompt captured during the exploratory journey
 id = "S0HuwaF2A3_DVAUIxHUB7"
 uri = "file://playwright-report/trip-card-control-audit/REPORT.md"
 type = "text"
-title = "Trip Card Control Audit"
-description = "Build comparison, three-state capture inventory, manifest classifications, slip relocation checks, and verdict for the Replit dev preview."
+title = "Trip Card Control Audit — Dev Preview"
+description = "Final control inventory for the reported dev-preview screenshot, classified against the PlanCard manifest, with California fixture and slip relocation findings."
