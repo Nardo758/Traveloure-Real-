@@ -12,6 +12,7 @@
  */
 import { ingestKyotoHeritage, isDmoIngestReady } from "./dmo-ingestion.service";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000; // 5 min after startup, once seeding has settled
@@ -38,7 +39,7 @@ class DmoIngestSchedulerService {
       void runBackgroundJob("dmo-ingest", () => this.run()).catch((err) =>
         console.error("[DMOIngest] scheduled pass failed:", err),
       );
-    }, FIRST_RUN_DELAY_MS);
+    }, jitteredStartupDelay(FIRST_RUN_DELAY_MS));
     this.timer = setInterval(() => {
       void runBackgroundJob("dmo-ingest", () => this.run()).catch((err) =>
         console.error("[DMOIngest] scheduled pass failed:", err),

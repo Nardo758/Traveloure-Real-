@@ -42,6 +42,7 @@ import { sql } from "drizzle-orm";
 import { emailOutbox, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 import {
   buildBookingConfirmationEmailPayload,
   type BookingConfirmationParams,
@@ -346,7 +347,8 @@ let _drainInterval: ReturnType<typeof setInterval> | null = null;
 export const emailOutboxScheduler = {
   start(intervalMs = 5 * 60 * 1000): void {
     if (_drainInterval) return; // already running
-    // First pass after a short delay so startup noise settles.
+    // First pass after startup (boot-herd floor + jitter, #1712 — lifts the old 30s delay clear of
+    // the boot window). The drain cadence itself is unchanged.
     setTimeout(() => {
       void runBackgroundJob("email-outbox", () => drainOutbox()).catch((err) =>
         logger.error({ err }, "[email-outbox] scheduled pass failed"),
@@ -356,7 +358,7 @@ export const emailOutboxScheduler = {
           logger.error({ err }, "[email-outbox] scheduled pass failed"),
         );
       }, intervalMs);
-    }, 30 * 1000);
+    }, jitteredStartupDelay());
     logger.info("[email-outbox] scheduler registered (interval=%dms)", intervalMs);
   },
 

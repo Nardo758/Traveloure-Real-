@@ -11,6 +11,7 @@
  */
 import { storage } from "../storage";
 import { runBackgroundJob } from "./background-job-runner";
+import { jitteredStartupDelay } from "./startup-delay";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — clearance windows are day-scale, so this is ample
 const FIRST_RUN_DELAY_MS = 2 * 60 * 1000; // 2 min after startup, once the DB has settled
@@ -36,7 +37,7 @@ class EarningsReleaseSchedulerService {
       void runBackgroundJob("earnings-release", () => this.runRelease()).catch((err) =>
         console.error("[EarningsRelease] scheduled pass failed:", err),
       );
-    }, FIRST_RUN_DELAY_MS);
+    }, jitteredStartupDelay(FIRST_RUN_DELAY_MS));
     this.timer = setInterval(() => {
       void runBackgroundJob("earnings-release", () => this.runRelease()).catch((err) =>
         console.error("[EarningsRelease] scheduled pass failed:", err),
