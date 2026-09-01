@@ -4583,6 +4583,10 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           status: "draft",
           eventType: eventType || experienceType || "vacation",
           specialRequests: normalizedSpecialRequests || null,
+          // L3: stamp the fine occasion when this trip is born from a Moment CTA. Already validated
+          // above (isMomentKeyAcceptable → 400 on a present-but-invalid key); an absent key stamps
+          // NULL. Never raw req.body — the value is the validated momentKey only.
+          momentKey: occasionLine ? momentKey : null,
         },
         generatedPlan: {
           destination,

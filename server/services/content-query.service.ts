@@ -326,6 +326,10 @@ export interface SaveGeneratedItinerarySnapshotInput {
     status: string;
     eventType: string;
     specialRequests: string | null;
+    /** Fine occasion identity when the trip is born from a landing Moment CTA (Landing v2.5 L3,
+     *  ruling 2026-09-01-moment-key). Server-validated by the caller against the moments allowlist
+     *  (never raw req.body). Nullable — no key, no stamp (§13). */
+    momentKey?: string | null;
   };
   generatedPlan: Record<string, any>;
   canonicalItems: NormalizedGeneratedCanonicalItem[];
@@ -372,6 +376,11 @@ export async function saveGeneratedItinerarySnapshot(
         status: input.trip.status,
         eventType: input.trip.eventType,
         specialRequests: input.trip.specialRequests,
+        // Landing v2.5 L3 (ruling 2026-09-01-moment-key): stamp the fine occasion identity when the
+        // trip is born from a Moment CTA. Caller-validated against the moments allowlist; nullable —
+        // no key, no stamp (§13). Additive to the insert values only; the rebuild-delete path below
+        // is unchanged (D-1 / itineraryItemRebuildDeletable).
+        momentKey: input.trip.momentKey ?? null,
         marketSlug: resolveMarketSlug(input.trip.destination),
       } as any).returning();
 
