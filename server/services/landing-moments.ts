@@ -126,6 +126,27 @@ export const MOMENT_KEYS: readonly string[] = MOMENTS.map((m) => m.key);
 export const MOMENT_EVENT_KINDS = ["impression", "tab", "dot", "cta"] as const;
 export type MomentEventKind = (typeof MOMENT_EVENT_KINDS)[number];
 
+/**
+ * A momentKey is ACCEPTABLE when it is absent (undefined/null/"") OR a known key. A
+ * present-but-unknown key is a forged/invalid input and callers reject it (400). Used by the AI
+ * generate route so a bad key never silently proceeds (Landing v2.5 L2/L3, ruling 2026-09-01-moment-key).
+ */
+export function isMomentKeyAcceptable(momentKey: unknown): boolean {
+  if (momentKey === undefined || momentKey === null || momentKey === "") return true;
+  return typeof momentKey === "string" && (MOMENT_KEYS as readonly string[]).includes(momentKey);
+}
+
+/**
+ * The PROMPT-ONLY occasion line for a valid momentKey, else "". This is NEVER written to any
+ * user-authored column (L2): it exists only to fold the fine occasion into the generation prompt
+ * ("Occasion: this trip is a proposal.") — the persisted specialRequests stays the user's text.
+ */
+export function occasionPromptLine(momentKey: unknown): string {
+  return typeof momentKey === "string" && (MOMENT_KEYS as readonly string[]).includes(momentKey)
+    ? `Occasion: this trip is a ${momentKey.replace(/_/g, " ")}.`
+    : "";
+}
+
 export interface MomentPhoto {
   url: string;
   place: string;
