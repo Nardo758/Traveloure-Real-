@@ -8136,9 +8136,9 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id),
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
-  // Phase 2.1: nullable link to the canonical Trip. Set at expert-confirmation
-  // (the create trigger is a no-trip discover surface), enabling the facilitated
-  // booking to be logged onto the Trip/PlanCard. See migration 051.
+  // Nullable link to the canonical Trip. Trip-scoped surfaces set it when creating the
+  // request; discover/non-trip surfaces omit it. Legacy expert confirmation can still attach
+  // an unlinked request after its cross-trip authorization guard passes. See migration 060.
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   itemName: varchar("item_name", { length: 255 }).notNull(),
   itemDescription: text("item_description"),

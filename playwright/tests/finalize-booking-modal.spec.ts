@@ -54,6 +54,56 @@ async function addAndStageItem(page: Page, tripId: string): Promise<string> {
   return itemId;
 }
 
+type AffiliateProductFixture = {
+  id: string;
+  name: string;
+  price: string | null;
+};
+
+async function pickAffiliateProduct(): Promise<AffiliateProductFixture> {
+  const [product] = await rows<AffiliateProductFixture>(
+    `SELECT id, name, price
+       FROM affiliate_products
+      WHERE booking_type = 'affiliate_bookable'
+        AND affiliate_url IS NOT NULL
+        AND is_active = true
+      ORDER BY id
+      LIMIT 1`,
+  );
+  expect(product, "expected an active affiliate-bookable supplier in the DB").toBeTruthy();
+  return product;
+}
+
+async function addAndStageAffiliateItem(
+  page: Page,
+  tripId: string,
+  product: AffiliateProductFixture,
+): Promise<{ itemId: string; title: string }> {
+  const title = `${product.name} supplier-ready`;
+  const itemRes = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, {
+    data: {
+      title,
+      dayNumber: 1,
+      estimatedCost: product.price ?? "45.00",
+    },
+  });
+  expect(itemRes.status(), `create affiliate item failed: ${await itemRes.text()}`).toBe(201);
+  const itemId = (await itemRes.json()).id as string;
+
+  // affiliateProductId is server-owned on create, so attach the real approved product through
+  // the supported trip-item update route used by the existing itinerary authoring surface.
+  const affiliateRes = await page.request.patch(`${BASE_URL}/api/trips/${tripId}/itinerary-items/${itemId}`, {
+    data: { affiliateProductId: product.id },
+  });
+  expect(affiliateRes.status(), `attach affiliate product failed: ${await affiliateRes.text()}`).toBe(200);
+
+  const routeRes = await page.request.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/route`, {
+    data: { to: "ready_for_checkout" },
+  });
+  expect(routeRes.status(), `route affiliate item failed: ${await routeRes.text()}`).toBe(200);
+  return { itemId, title };
+}
+
 async function finalState(tripId: string): Promise<FinalState> {
   const [state] = await rows<FinalState>(
     `SELECT
@@ -219,5 +269,108 @@ test.describe("Finalize booking chooser", () => {
     const response = await expertRequest;
     expect(response.status(), `expert request failed: ${await response.text()}`).toBeLessThan(300);
     await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
+  });
+
+  test("keeps the booking agent enabled for a supplier-ready stop and sends one request", async ({ page }) => {
+    const tripId = await registerAndTrip(page);
+    const product = await pickAffiliateProduct();
+    const { itemId, title } = await addAndStageAffiliateItem(page, tripId, product);
+    const before = await finalState(tripId);
+    const requestCountBefore = Number(
+      (await rows<{ count: string }>(
+        `SELECT count(*)::int AS count FROM affiliate_booking_requests WHERE item_name = $1`,
+        [product.name],
+      ))[0]?.count ?? 0,
+    );
+
+    const finalize = await openFinalize(page, tripId);
+    await expect(page.getByTestId(`slip-item-${itemId}`)).toContainText(title);
+
+    const finalizeResponse = page.waitForResponse(
+      (response) => response.url().endsWith(`/api/trips/${tripId}/finalize`) && response.request().method() === "POST",
+      { timeout: 15_000 },
+    );
+    await finalize.click();
+    expect((await finalizeResponse).status()).toBe(200);
+    await expect(page.getByTestId("finalize-modal")).toBeVisible({ timeout: 10_000 });
+
+    const agentOption = page.getByTestId("finalize-option-agent");
+    await expect(agentOption).toBeEnabled();
+    await expect(agentOption).toContainText("Books it as-is");
+    await expect(agentOption).not.toContainText("No partner-bookable stops in this plan");
+    const locked = await finalState(tripId);
+    const lockedRouting = await rows<{ routing_status: string }>(
+      `SELECT routing_status FROM itinerary_items WHERE id = $1`,
+      [itemId],
+    );
+    expect(lockedRouting[0]?.routing_status).toBe("ready_for_checkout");
+
+    const requestPayloads: Array<Record<string, unknown>> = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname !== "/api/affiliate-booking-requests") return;
+      requestPayloads.push(request.postDataJSON() as Record<string, unknown>);
+    });
+    await agentOption.click();
+    await expect(agentOption).toHaveAttribute("aria-pressed", "true");
+
+    const bookingRequestResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/affiliate-booking-requests") && response.request().method() === "POST",
+      { timeout: 15_000 },
+    );
+    await page.getByTestId("finalize-continue").click();
+    const response = await bookingRequestResponse;
+    expect(response.status(), `booking-agent request failed: ${await response.text()}`).toBeLessThan(300);
+    await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
+
+    expect(requestPayloads, "Continue must send exactly one booking-agent request").toHaveLength(1);
+    expect(requestPayloads[0]).toEqual(
+      expect.objectContaining({
+        itemName: title,
+        partnerName: expect.any(String),
+        bookingToken: expect.stringMatching(/^[^.]+\.\d+$/),
+        travelers: 1,
+      }),
+    );
+    expect(requestPayloads[0]).not.toHaveProperty("affiliateUrl");
+    expect(requestPayloads[0]).not.toHaveProperty("price");
+
+    const after = await finalState(tripId);
+    expect(after.finalized_at).not.toBeNull();
+    expect(after.final_count).toBe(before.final_count + 1);
+    expect(after.final_version).toBe(1);
+    expect(after.final_hashes).toHaveLength(1);
+    expect(after.transition_types).toContain("plan_finalized");
+    expect(after.final_hashes[0].content_hash).toBe(locked.final_hashes[0].content_hash);
+    const afterRouting = await rows<{ routing_status: string }>(
+      `SELECT routing_status FROM itinerary_items WHERE id = $1`,
+      [itemId],
+    );
+    expect(afterRouting[0]?.routing_status).toBe("ready_for_checkout");
+
+    const [createdRequestCount, [latestRequest]] = await Promise.all([
+      rows<{ count: string }>(
+        `SELECT count(*)::int AS count FROM affiliate_booking_requests WHERE item_name = $1`,
+        [product.name],
+      ),
+      rows<{
+        item_name: string;
+        status: string | null;
+        price: string | null;
+      }>(
+        `SELECT item_name, status, price
+           FROM affiliate_booking_requests
+          WHERE item_name = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [product.name],
+      ),
+    ]);
+    expect(Number(createdRequestCount[0]?.count ?? 0)).toBe(requestCountBefore + 1);
+    expect(latestRequest).toMatchObject({
+      item_name: product.name,
+      status: expect.stringMatching(/^(pending|assigned)$/),
+      price: null,
+    });
   });
 });
