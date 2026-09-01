@@ -172,7 +172,7 @@ export function MomentsSection() {
           </div>
 
           {/* the story */}
-          <div className="flex min-w-0 flex-col gap-3 p-7 lg:min-h-[340px] lg:pl-0">
+          <div className="flex min-w-0 flex-col gap-3 p-7 lg:min-h-[340px] lg:pl-7">
             <span
               className="text-[10.5px] font-medium uppercase tracking-[0.14em]"
               style={{ fontFamily: EARN_MONO, color: "var(--earn-coral-ink)" }}
