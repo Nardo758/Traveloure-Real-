@@ -161,6 +161,73 @@ const SEED_DATA: CitySeed[] = [
     ],
   },
 
+  // ── OPERATING-MARKET HERO COVERAGE ─────────────────────────────────────────
+  // These reference rows keep the development hero seed anchored to the same
+  // neighborhood source used by the public location feed.
+  {
+    city: "Goa",
+    country: "India",
+    neighborhoods: [
+      { name: "Panaji", slug: "panaji", centroidLat: "15.4909000", centroidLng: "73.8278000", radiusKm: "1.20", description: "Goa's riverside capital with Portuguese façades, galleries, and local cafés." },
+      { name: "Anjuna", slug: "anjuna", centroidLat: "15.5736000", centroidLng: "73.7407000", radiusKm: "1.50", description: "A beachside village known for market nights, music, and a relaxed coastal rhythm." },
+      { name: "Assagao", slug: "assagao", centroidLat: "15.6151000", centroidLng: "73.7679000", radiusKm: "1.50", description: "A leafy inland village of old homes, bakeries, and slow food." },
+    ],
+  },
+  {
+    city: "Mumbai",
+    country: "India",
+    neighborhoods: [
+      { name: "Bandra West", slug: "bandra-west", centroidLat: "19.0607000", centroidLng: "72.8362000", radiusKm: "1.50", description: "A creative west-side pocket of cafés, old villas, boutiques, and sea-facing walks." },
+      { name: "Colaba", slug: "colaba", centroidLat: "18.9220000", centroidLng: "72.8320000", radiusKm: "1.20", description: "South Mumbai's gallery, hotel, and heritage promenade district." },
+      { name: "Fort", slug: "fort", centroidLat: "18.9322000", centroidLng: "72.8337000", radiusKm: "1.20", description: "Historic lanes, art deco landmarks, bookshops, and the city's old commercial core." },
+    ],
+  },
+  {
+    city: "Jaipur",
+    country: "India",
+    neighborhoods: [
+      { name: "C-Scheme", slug: "c-scheme", centroidLat: "26.9124000", centroidLng: "75.7873000", radiusKm: "1.50", description: "A central Jaipur district for cafés, design, galleries, and modern local life." },
+      { name: "Pink City", slug: "pink-city", centroidLat: "26.9239000", centroidLng: "75.8267000", radiusKm: "1.50", description: "The walled city of bazaars, craft workshops, courtyards, and landmark gates." },
+      { name: "Bani Park", slug: "bani-park", centroidLat: "26.9300000", centroidLng: "75.7936000", radiusKm: "1.20", description: "A calm central base with heritage hotels and neighborhood restaurants." },
+    ],
+  },
+  {
+    city: "Edinburgh",
+    country: "United Kingdom",
+    neighborhoods: [
+      { name: "Old Town", slug: "old-town", centroidLat: "55.9497000", centroidLng: "-3.1900000", radiusKm: "1.20", description: "Medieval closes, hilltop views, whisky rooms, and the city's historic spine." },
+      { name: "Stockbridge", slug: "stockbridge", centroidLat: "55.9597000", centroidLng: "-3.2097000", radiusKm: "1.20", description: "A village-like north Edinburgh quarter with independent food and weekend markets." },
+      { name: "Leith", slug: "leith", centroidLat: "55.9725000", centroidLng: "-3.1690000", radiusKm: "1.80", description: "The waterfront district for restaurants, studios, and a more lived-in city pace." },
+    ],
+  },
+  {
+    city: "Porto",
+    country: "Portugal",
+    neighborhoods: [
+      { name: "Ribeira", slug: "ribeira", centroidLat: "41.1406000", centroidLng: "-8.6110000", radiusKm: "1.00", description: "The Douro riverfront's layered lanes, tiled façades, and late dinners." },
+      { name: "Cedofeita", slug: "cedofeita", centroidLat: "41.1544000", centroidLng: "-8.6167000", radiusKm: "1.20", description: "A creative central neighborhood of galleries, studios, and independent cafés." },
+      { name: "Foz do Douro", slug: "foz-do-douro", centroidLat: "41.1519000", centroidLng: "-8.6715000", radiusKm: "1.80", description: "The Atlantic edge for promenades, seafood, and sunset walks." },
+    ],
+  },
+  {
+    city: "Bogotá",
+    country: "Colombia",
+    neighborhoods: [
+      { name: "La Candelaria", slug: "la-candelaria", centroidLat: "4.5964000", centroidLng: "-74.0721000", radiusKm: "1.20", description: "The historic center's steep streets, murals, museums, and old houses." },
+      { name: "Chapinero", slug: "chapinero", centroidLat: "4.6486000", centroidLng: "-74.0628000", radiusKm: "1.80", description: "A broad, energetic district of restaurants, nightlife, and creative businesses." },
+      { name: "Usaquén", slug: "usaquen", centroidLat: "4.6964000", centroidLng: "-74.0304000", radiusKm: "1.50", description: "A former village quarter with a Sunday market, courtyards, and polished dining." },
+    ],
+  },
+  {
+    city: "Cartagena",
+    country: "Colombia",
+    neighborhoods: [
+      { name: "Old Town", slug: "old-town-cartagena", centroidLat: "10.4236000", centroidLng: "-75.5480000", radiusKm: "1.20", description: "Walled-city plazas, balconies, galleries, and long Caribbean evenings." },
+      { name: "Getsemaní", slug: "getsemani", centroidLat: "10.4215000", centroidLng: "-75.5477000", radiusKm: "1.00", description: "A colorful, music-filled quarter for street food, murals, and neighborhood bars." },
+      { name: "Bocagrande", slug: "bocagrande", centroidLat: "10.4000000", centroidLng: "-75.5560000", radiusKm: "1.80", description: "The modern waterfront district with beaches, towers, and sunset dining." },
+    ],
+  },
+
   // ── PARIS ────────────────────────────────────────────────────────────────
   {
     city: "Paris",

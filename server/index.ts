@@ -11,6 +11,7 @@ import { seedExpertServices, seedProviderServiceListings, seedMockExperts, seedP
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { seedLandingMomentDemo } from "./seeds/landing-moment-demo.seed";
+import { seedLandingHeroDemo } from "./seeds/landing-hero-demo.seed";
 import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
@@ -365,6 +366,24 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed city neighborhoods");
+  }
+
+  try {
+    const heroDemoResult = await seedLandingHeroDemo();
+    if (heroDemoResult.markets > 0) {
+      logger.info(
+        { markets: heroDemoResult.markets, services: heroDemoResult.services },
+        "Seeded development-only landing hero fixtures",
+      );
+    }
+    if (heroDemoResult.skipped.length > 0) {
+      logger.warn(
+        { markets: heroDemoResult.skipped },
+        "Skipped landing hero fixtures because city neighborhoods are missing",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed landing hero fixtures");
   }
 
   try {
