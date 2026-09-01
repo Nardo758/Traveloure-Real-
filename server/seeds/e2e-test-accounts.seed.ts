@@ -288,12 +288,15 @@ async function purgeE2EAccountsFromProd(): Promise<PurgeResult> {
         deleted++;
       } catch (err: any) {
         // pg foreign-key violation: code 23503, `.constraint` = the FK name, `.detail` names the
-        // referencing table ("...is still referenced from table \"trips\"."). `.table` on a DELETE
-        // violation is the referenced (deleted) table, so `.detail` is the useful child-table signal.
+        // referencing table ("...is still referenced from table \"affiliate_booking_requests\".").
+        // Drizzle wraps the driver error, so the pg fields live on `.cause` (possibly nested), not
+        // the outer error — walk the cause chain to the object that actually carries `.code`.
+        let pg: any = err;
+        while (pg && pg.code === undefined && pg.cause) pg = pg.cause;
         blocked.push({
           account: t.email ?? t.id,
-          constraint: err?.constraint ?? (err?.code === "23503" ? "<unnamed FK>" : `<non-FK: ${err?.code ?? "unknown"}>`),
-          detail: (err?.detail ?? err?.message ?? String(err)).toString().slice(0, 200),
+          constraint: pg?.constraint ?? (pg?.code === "23503" ? "<unnamed FK>" : `<non-FK: ${pg?.code ?? "unknown"}>`),
+          detail: (pg?.detail ?? pg?.message ?? err?.message ?? String(err)).toString().slice(0, 200),
         });
       }
     }
