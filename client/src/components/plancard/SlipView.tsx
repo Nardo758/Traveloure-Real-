@@ -513,14 +513,14 @@ function useFinalizeMutation(tripId: string) {
           title: `Trip Card is ready${v}`,
           description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
             data.stagedCount > 1 ? "aren't" : "isn't"
-          } booked yet. You can adopt this optimization now and book them later.`,
+          } booked yet. Your plan is finalized; you can book them later.`,
         });
       } else {
-        toast({ title: `Trip Card is ready${v}`, description: "Your optimization is adopted." });
+        toast({ title: `Trip Card is ready${v}`, description: "Your plan is finalized." });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Couldn't adopt optimization", description: err?.message || "Please try again", variant: "destructive" });
+      toast({ title: "Couldn't finalize plan", description: err?.message || "Please try again", variant: "destructive" });
     },
   });
 }
