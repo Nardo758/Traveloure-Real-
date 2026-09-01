@@ -123,7 +123,7 @@ export function MomentsSection() {
 
         {/* ONE moment per slide: photo slideshow + the story */}
         <div
-          className="grid min-w-0 auto-rows-[minmax(300px,auto)] overflow-hidden rounded-[16px] border lg:auto-rows-[minmax(340px,auto)] lg:grid-cols-[1.25fr_1fr]"
+          className="grid min-w-0 auto-rows-[minmax(300px,auto)] overflow-hidden rounded-[16px] border lg:auto-rows-[minmax(340px,auto)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]"
           style={{ borderColor: "var(--earn-border, #E4E4DE)", background: "var(--earn-card, #fff)" }}
           data-testid={`moment-slide-${moment.key}`}
         >
