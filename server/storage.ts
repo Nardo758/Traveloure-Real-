@@ -6127,8 +6127,9 @@ export class DatabaseStorage implements IStorage {
         const nextNumber = (result.rows[0] as any).last_number as number;
         return `${prefix}-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
       } catch (error: any) {
-        // Retry on concurrent insert conflicts
-        if (attempt < maxRetries - 1 && error.code === '23505') {
+        // Retry on concurrent insert conflicts. Drizzle wraps the driver error, so the pg code is
+        // on `.cause` — read both, or the retry silently never fires on a wrapped 23505.
+        if (attempt < maxRetries - 1 && (error.code ?? error.cause?.code) === '23505') {
           continue;
         }
         throw error;

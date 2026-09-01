@@ -157,7 +157,9 @@ router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
         return res.json({ code: created.code, url: `/r/${created.code}`, frame: created.frame });
       } catch (e: any) {
         lastError = e;
-        if (e?.code === "23505") continue; // unique violation on code -> retry
+        // Drizzle wraps the driver error → pg code is on `.cause`; without the fallback the
+        // unique-violation retry never fires and a code collision fails the whole request.
+        if ((e?.code ?? e?.cause?.code) === "23505") continue; // unique violation on code -> retry
         throw e;
       }
     }

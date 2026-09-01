@@ -6919,9 +6919,13 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   /** Map a Postgres write error to a client-meaningful status. */
   const offeringWriteError = (error: any, res: any) => {
     if (error?.name === "ZodError") return res.status(400).json({ error: "Validation failed", details: error.errors });
-    if (error?.code === "23505") return res.status(409).json({ error: "offeringTypeKey already exists" });
-    if (error?.code === "23514") return res.status(400).json({ error: "Value violates a DB constraint (serviceTier / deliveryFormats enum)", detail: error.detail ?? null });
-    if (error?.code === "23502") return res.status(400).json({ error: "Missing required field", detail: error.detail ?? null });
+    // Drizzle wraps the driver error, so the pg code/detail live on `.cause` — read through it or
+    // every constraint violation falls through to a generic 500 instead of its 409/400.
+    const code = error?.code ?? error?.cause?.code;
+    const detail = error?.detail ?? error?.cause?.detail ?? null;
+    if (code === "23505") return res.status(409).json({ error: "offeringTypeKey already exists" });
+    if (code === "23514") return res.status(400).json({ error: "Value violates a DB constraint (serviceTier / deliveryFormats enum)", detail });
+    if (code === "23502") return res.status(400).json({ error: "Missing required field", detail });
     return res.status(500).json({ error: error?.message ?? "Unknown error" });
   };
 
