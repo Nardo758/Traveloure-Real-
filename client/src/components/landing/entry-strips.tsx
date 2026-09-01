@@ -35,14 +35,19 @@ function Strip({ label, items, testId }: { label: string; items: NavLeafConfig[]
       >
         {label}
       </div>
-      <div className="grid gap-x-7 gap-y-3 sm:grid-cols-2 lg:grid-cols-4" data-testid={testId}>
+      {/* Mobile fix (v2.5 Lane 3): at ≤640px the strip is a 2-col grid of COMPACT tiles —
+          icon + title only (description sr-only), 44px tap targets, hairline dividers instead
+          of cards — so eight entries become four short rows (~half the height) with no
+          horizontal scroll. From sm up it reverts to the desktop bordered-card layout with
+          descriptions, unchanged. */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0 sm:gap-x-7 sm:gap-y-3 lg:grid-cols-4" data-testid={testId}>
         {items.map((item) => {
           const Icon = NAV_LEAF_ICONS[item.name] ?? MapPin;
           return (
             <Link
               key={item.name}
               href={item.href}
-              className="flex items-start gap-3 rounded-[12px] border bg-white px-3.5 py-3"
+              className="flex min-h-[44px] items-center gap-2.5 border-b py-2.5 sm:min-h-0 sm:items-start sm:gap-3 sm:rounded-[12px] sm:border sm:bg-white sm:px-3.5 sm:py-3"
               style={{ borderColor: "var(--earn-border, #E4E4DE)", color: "var(--earn-ink)" }}
               data-testid={`entry-${item.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
             >
@@ -54,7 +59,10 @@ function Strip({ label, items, testId }: { label: string; items: NavLeafConfig[]
               </span>
               <span>
                 <b className="block text-[14px]">{item.name}</b>
-                <small className="block text-[12px] leading-[1.35]" style={{ color: "var(--earn-muted)" }}>
+                <small
+                  className="sr-only text-[12px] leading-[1.35] sm:not-sr-only sm:block"
+                  style={{ color: "var(--earn-muted)" }}
+                >
                   {item.description}
                 </small>
               </span>
