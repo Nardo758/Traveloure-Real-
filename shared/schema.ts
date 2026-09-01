@@ -110,6 +110,14 @@ export const trips = pgTable("trips", {
   preferences: jsonb("preferences").default({}),
   eventDetails: jsonb("event_details").default({}),
   experienceType: varchar("experience_type", { length: 20 }),
+  // momentKey (Landing v2.5, ruling 2026-09-01-moment-key): the FINE occasion identity when a
+  // trip is born from a landing Moment CTA (proposal|golf|girls_trip|anniversary|honeymoon|
+  // milestone_birthday|family_occasion). experienceType stays the coarse MACHINE key (pricing
+  // tiers + PlanCard skins); momentKey never drives fees/templates — it is read by attribution
+  // (the moment→trip→purchase funnel joins on it) AND the AI/expert plan prompt ("Occasion:
+  // proposal"). Additive nullable, no CHECK (publish-trap posture, migration 270); declared here
+  // per the deploy-push durability rule.
+  momentKey: varchar("moment_key", { length: 30 }),
   travelers: integer("travelers"),
   specialRequests: text("special_requests"),
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
@@ -7773,6 +7781,26 @@ export type UpsellImpression = typeof upsellImpressions.$inferSelect;
 export const insertUpsellImpressionSchema = createInsertSchema(upsellImpressions).omit({ id: true, shownAt: true });
 export type InsertUpsellImpression = z.infer<typeof insertUpsellImpressionSchema>;
 
+// landing_moment_events (Landing v2.5, ruling 2026-09-01-landing-moments): attribution for the
+// Moments section — mirrors upsell_impressions' session posture (guest_session_id + nullable
+// user_id, NO PII beyond that token). One row per impression (slide ≥2s visible) or click
+// (tab|dot|cta). The moment→trip→purchase funnel joins on moment_key (= trips.moment_key).
+// Server-authored via an ALLOWLIST body schema at the route (§19), never createInsertSchema off
+// the body. Declared here per the deploy-push durability rule (migration 270).
+export const landingMomentEvents = pgTable("landing_moment_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  momentKey: varchar("moment_key", { length: 30 }).notNull(),
+  kind: varchar("kind", { length: 20 }).notNull(), // impression | tab | dot | cta
+  position: integer("position"),
+  guestSessionId: varchar("guest_session_id", { length: 255 }),
+  userId: varchar("user_id", { length: 255 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  momentKindIdx: index("idx_landing_moment_events_moment_kind").on(table.momentKey, table.kind),
+  createdAtIdx: index("idx_landing_moment_events_created_at").on(table.createdAt),
+}));
+export type LandingMomentEvent = typeof landingMomentEvents.$inferSelect;
+
 // Phase 5.4 (step 6) — expert endorsements. Two scopes:
 //   scope='trip'         → expert curates for a specific trip
 //   scope='neighborhood' → lead endorses for a neighborhood (compounds across trips)
@@ -8108,9 +8136,9 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id),
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
-  // Phase 2.1: nullable link to the canonical Trip. Set at expert-confirmation
-  // (the create trigger is a no-trip discover surface), enabling the facilitated
-  // booking to be logged onto the Trip/PlanCard. See migration 051.
+  // Nullable link to the canonical Trip. Trip-scoped surfaces set it when creating the
+  // request; discover/non-trip surfaces omit it. Legacy expert confirmation can still attach
+  // an unlinked request after its cross-trip authorization guard passes. See migration 060.
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   itemName: varchar("item_name", { length: 255 }).notNull(),
   itemDescription: text("item_description"),

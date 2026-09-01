@@ -75,6 +75,11 @@ interface EnhancedPlanningModalProps {
   initialDestination?: Destination | null;
   mode?: 'single' | 'multi';
   userId: string;
+  /** Coarse machine key to prefill (Landing v2.5 Moment CTA). Falls back to 'travel'. */
+  initialExperienceType?: string;
+  /** Fine occasion identity (proposal|golf|…) — rides into the generation prompt so the brief
+   *  carries the moment (ruling 2026-09-01-moment-key). */
+  momentKey?: string;
 }
 
 export default function EnhancedPlanningModal({
@@ -83,6 +88,8 @@ export default function EnhancedPlanningModal({
   initialDestination = null,
   mode = 'single',
   userId,
+  initialExperienceType,
+  momentKey,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -99,7 +106,8 @@ export default function EnhancedPlanningModal({
   const [cityInput, setCityInput] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [experienceType, setExperienceType] = useState('travel');
+  // Prefilled by a landing Moment CTA (coarse machine key); 'travel' otherwise.
+  const [experienceType, setExperienceType] = useState(initialExperienceType ?? 'travel');
   const [travelers, setTravelers] = useState(2);
 
   // Progressive disclosure toggles
@@ -271,6 +279,10 @@ export default function EnhancedPlanningModal({
           dates: { start: startDate, end: endDate },
           travelers,
           eventType: experienceType,
+          // Fine occasion identity when opened from a landing Moment — the server folds it into
+          // the generation prompt ("Occasion: …") so the brief carries the moment
+          // (ruling 2026-09-01-moment-key).
+          momentKey: momentKey || undefined,
           interests: interests.length > 0 ? interests : undefined,
           pacePreference,
           mustSeeAttractions: mustSeeAttractions || undefined,

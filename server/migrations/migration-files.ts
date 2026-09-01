@@ -1340,4 +1340,10 @@ export const MIGRATION_FILES = [
   // (trip_id, version), both declared in shared/schema.ts for publish durability; no CHECK. The
   // finalizeTrip service is the sole writer; snapshots are append-only history.
   "269_trip_finals.sql",
+  // Landing v2.5 Lane 2 (Moments): additive trips.moment_key (fine occasion identity, ruling
+  // 2026-09-01-moment-key) + landing_moment_events attribution table (ruling
+  // 2026-09-01-landing-moments). Both declared in shared/schema.ts for publish durability; no
+  // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
+  // session posture (guest_session_id + nullable user_id, no PII).
+  "270_landing_moments.sql",
 ] as const;

@@ -464,21 +464,15 @@
 <symbol fill="none" id="i-user" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></symbol>
 </svg>
 <div class="doc">
-<!-- SUPERSEDED by docs/design/landing-earn-mock-v2.5.html (dispatch Landing v2.5, 2026-09-01):
-     Moments section at position 2 (takes Plus's coral slot); Plus folds into the merged
-     how-it-works/price ladder as a slim band; "What people are planning" absorbed into Moments;
-     coral count holds at 4 (hero · moments · earn · final). Kept as the v2.4 record of what was
-     ratified before; read v2.5 + LANDING_SPEC.md for current intent. -->
-<div class="note stop" style="margin-bottom:18px"><b>Superseded → landing-earn-mock-v2.5.html.</b> This is the v2.4 record. v2.5 (dispatch 2026-09-01) moves Moments to position 2, folds Plus into the price ladder as a slim band, and absorbs the experiences rail into Moments. Read v2.5 and <code>LANDING_SPEC.md</code> for current intent.</div>
-<div class="doc-eyebrow">Mockup for sign-off · Landing v2.4 (SUPERSEDED by v2.5) · trending experiences ticker · Plus below how-it-works</div>
+<div class="doc-eyebrow">Mockup for sign-off · Landing v2.4 · trending experiences ticker · Plus below how-it-works</div>
 <h1>Show the product working, then get out of the way</h1>
 <p class="doc-lede">v2 changes two things against v1: the hero is a live mini-bento from the top trending city with a typed search that cycles real requests; and everything below drops card borders in favour of photos, hairlines, and air. Same tokens, same fonts, same components underneath.</p>
 <div class="frame">
-<div class="frame-h"><b>Home v2.4</b><span>/ · landing.tsx</span></div>
+<div class="frame-h"><b>Home v2.5</b><span>/ · landing.tsx</span></div>
 <div class="browser">
 <div class="nav" style="gap:12px;padding:14px 16px">
 <div class="logo"><svg class="plane"><use href="#i-plane"></use></svg>TRAVELOURE <span class="beta">BETA</span></div>
-<div class="links"><span>Marketplace <svg class="ic"><use href="#i-chev"></use></svg></span><span>Experts &amp; Services <svg class="ic"><use href="#i-chev"></use></svg></span><span>Experiences <svg class="ic"><use href="#i-chev"></use></svg></span><span>Planning Tools <svg class="ic"><use href="#i-chev"></use></svg></span><span>Ways to Earn</span></div>
+<div class="links"><span>Marketplace <svg class="ic"><use href="#i-chev"></use></svg></span><span>Experts &amp; Services <svg class="ic"><use href="#i-chev"></use></svg></span><span>Experiences <svg class="ic"><use href="#i-chev"></use></svg></span><span>Planning Tools <svg class="ic"><use href="#i-chev"></use></svg></span><span>Ways to Earn</span><span>Pricing</span></div>
 <button class="btn">Join as Partner <svg class="ic"><use href="#i-chev"></use></svg></button>
 <button class="btn primary">Sign In</button>
 </div>
@@ -505,8 +499,50 @@
 </div>
 </div>
 <div class="note rule"><b>Live hero — honest by construction.</b> The four tiles are real rows from <code>/api/discover/location/:City</code> for the current top city on <code>/api/travelpulse/cities</code>: the §2 anchor, the highest-scored gem, the first bookable service, the first wanted slot. Any tile whose row is absent is omitted (the grid collapses to what exists). The ticker reads the city row. Rotation pauses on hover/focus and respects <code>prefers-reduced-motion</code>. The typed search cycles titles from <code>service_requests</code> (last 7 days, ≥ 3 words), stops on focus, and submits to <code>/services?q=&amp;location=</code>. <code>Plan my trip</code> = <code>setPlanningOpen(true)</code>, unchanged.</div>
+<div class="osec">
+<div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Plan the moment · not just the trip</span><h3>Some trips are really one evening.</h3></div><a href="#">All occasions →</a></div>
+
+<!-- ONE MOMENT PER SLIDE -->
+<div style="display:grid;grid-template-columns:1.25fr 1fr;gap:28px;align-items:stretch;border:1px solid var(--earn-border);border-radius:16px;overflow:hidden;background:var(--earn-card)">
+  <!-- photo slideshow -->
+  <div style="position:relative;min-height:340px;background:linear-gradient(135deg,#E5C6B6 0%,#B97C7C 60%,#7C4A55 100%)">
+    <span class="tag" style="position:absolute;top:14px;left:14px">Proposal · Kyoto</span>
+    <div style="position:absolute;left:14px;bottom:14px;font:400 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.85)">photo 1 / 4 · Hanamikoji at dusk · @yuki-flowers</div>
+    <div style="position:absolute;right:14px;bottom:16px;display:flex;gap:6px"><i style="width:18px;height:4px;border-radius:2px;background:#fff"></i><i style="width:8px;height:4px;border-radius:2px;background:rgba(255,255,255,.5)"></i><i style="width:8px;height:4px;border-radius:2px;background:rgba(255,255,255,.5)"></i><i style="width:8px;height:4px;border-radius:2px;background:rgba(255,255,255,.5)"></i></div>
+  </div>
+  <!-- the story -->
+  <div style="padding:28px 28px 24px 0;display:flex;flex-direction:column;gap:12px">
+    <span style="font:500 10.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--earn-coral-ink)">A proposal in Kyoto</span>
+    <h4 style="font:600 26px var(--display);color:var(--earn-navy);margin:0;line-height:1.15">The spot, the photographer, the dinner after — and the ring stays your secret.</h4>
+    <ul style="margin:4px 0 0;padding:0;list-style:none;display:grid;gap:7px;font-size:14px;color:var(--earn-ink)">
+      <li><span style="font:400 10.5px var(--mono);color:var(--earn-teal-ink);margin-right:8px">01</span>Yuki picks the lane in Gion no guide lists — and the hour it empties.</li>
+      <li><span style="font:400 10.5px var(--mono);color:var(--earn-teal-ink);margin-right:8px">02</span>A photographer waits out of sight; you never see the camera.</li>
+      <li><span style="font:400 10.5px var(--mono);color:var(--earn-teal-ink);margin-right:8px">03</span>Kaiseki booked for after, the counter seat held.</li>
+    </ul>
+    <div style="margin-top:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <button class="btn primary">Plan this moment</button>
+      <span style="font:400 11px var(--mono);color:var(--earn-muted)">built by @yuki-flowers · 46 reviews</span>
+    </div>
+  </div>
+</div>
+
+<!-- the seven as a tab strip = navigation + live indicator -->
+<div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+  <span style="font:400 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--earn-faint);margin-right:6px">the moments</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:var(--earn-navy);color:#fff">Proposal</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--earn-border);color:var(--earn-ink)">Golf trip</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--earn-border);color:var(--earn-ink)">Girls' trip</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--earn-border);color:var(--earn-ink)">Anniversary</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--earn-border);color:var(--earn-ink)">Honeymoon</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--earn-border);color:var(--earn-ink)">Milestone birthday</span>
+  <span style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--earn-border);color:var(--earn-ink)">Family occasion</span>
+  <span style="margin-left:auto;font:400 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--earn-faint)">advances every 8s · pauses on hover · stops under reduced-motion</span>
+</div>
+
+<div class="note"><b>One moment per slide — position 2, directly under the hero.</b> Promise → proof → cost → paths: the hero states it, this section shows it, the price strip follows. Takes the Plus section's coral slot. Each slide = a real-photo slideshow (2–4 images, dots, captions with the contributing expert's byline) beside the story told as three concrete pieces, a demo-tuned headline, and <code>Plan this moment</code> prefilling the chooser's <code>experienceType</code>. The tab strip is both navigation and live indicator — a tap on a tab is the strongest intent signal we have and is attributed as such. Auto-advance uses the shared rotation utility (8s · hover/focus pause · reduced-motion stop). <b>Photos:</b> real only — a moment enters the rotation once it has ≥1 real photo (one photo doesn't animate; the dots hide); Kyoto's proposal qualifies today from gem photos, the rest join as experts contribute (the field-knowledge lane's evidence capture). Gradient shown here is the pre-photo state. Attribution: slide viewed ≥2s = impression; tab tap, dot tap, and CTA = clicks; funnel continues chooser → trip → purchase. Absorbs the former "What people are planning" rail. Coral count holds at 4.</div>
+</div>
 <!-- HOW IT WORKS + PRICE LADDER (merged) -->
-<div class="osec" style="border-top:0">
+<div class="osec">
 <div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">How it works · and what each step costs</span><h3>From an idea to a plan you can use.</h3></div><a href="#">See full pricing →</a></div>
 <div class="hiw">
 <div class="hw"><span class="n">01</span><h4>Share your vision</h4><p>Destination, dates, budget, and what matters. Build it on the slip.</p>
@@ -518,21 +554,14 @@
 <div class="hw"><span class="n">04</span><h4>Experience it</h4><p>Take the plan with you — or have it run for you, end to end.</p>
 <div class="price-strip"><span class="e">Done for you</span><span class="p">quote <small>· 20% deposit</small></span></div></div>
 </div>
+<div style="margin-top:14px;padding:12px 16px;border:1px dashed var(--earn-border-dash);border-radius:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+<span class="e" style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--earn-gold-ink)">Plus · your own city</span>
+<span style="font-size:14px;color:var(--earn-ink)">Birthdays, anniversaries, the Friday you keep meaning to plan — a local's plan arrives before each date.</span>
+<span style="margin-left:auto;font:600 13px var(--mono);color:var(--earn-ink)">$25 <small style="font-weight:400;color:var(--earn-muted)">/ year · coming soon</small></span>
+</div>
 <div class="keyline" style="font:400 10px var(--mono);color:var(--earn-faint);margin-top:8px">rows: traveler:service_fee_* · optimizer:run · concierge:ai_task · plans:trip_pass · expert offering + expert:band_* · concierge:done_for_you_deposit_pct</div>
-<div class="note"><b>One section, both jobs.</b> The path and the price at each step, left to right cheap→committed. Replaces the separate "How it works" and the ladder strip. No button — <code>See full pricing →</code> is the action; coral count drops to 3.</div>
-</div><div class="osec">
-<div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Plus · the city you live in</span><h3>Her birthday is in 14 days.</h3></div><a href="#">How Plus works →</a></div>
-<div class="earn2">
-<div><p style="color:var(--earn-muted);font-size:15px;margin:0 0 14px;max-width:460px">Birthdays, anniversaries, the Friday you keep meaning to do something about. Tell Traveloure your city and the dates; a plan built by someone who lives there arrives before each one.</p><div style="display:flex;gap:10px;align-items:center"><button class="btn primary">Join Plus · $25 / year</button><span style="font:400 11px var(--mono);color:var(--earn-muted)">plans:plus_annual</span></div></div>
-<div class="occ">
-<div class="oc"><div class="ph" style="background:linear-gradient(135deg,#E5C6B6,#B97C7C)"><span class="tag">Birthday</span></div><b>An evening in Gion</b><small>built by @yuki-flowers</small></div>
-<div class="oc"><div class="ph" style="background:linear-gradient(135deg,#F3E2B8,#D2A24C)"><span class="tag">Anniversary</span></div><b>Rooftop dinner, Bandra</b><small>built by a local</small></div>
-<div class="oc"><div class="ph" style="background:linear-gradient(135deg,#CFE3D3,#6FA383)"><span class="tag">Date night</span></div><b>Something new near you</b><small>every other Friday</small></div>
-</div>
-</div>
-<div class="note"><b>Coral count:</b> this adds the page's fourth coral button (hero, occasions, earn, final) — one per section, still. Cards are illustrative until the visitor has a home city; for anonymous visitors the three cards show the three occasion templates, not personal dates.</div>
-</div>
-<!-- ENTRY: open list -->
+<div class="note"><b>One section, all the prices.</b> The four travel steps left to right cheap→committed, then Plus as a slim band beneath — the <em>home-city</em> product, visibly distinct from the travel ladder rather than a fifth step. Renders "coming soon" while <code>PLUS_SALES_ENABLED</code> is off; its former coral CTA leaves the page. <code>See full pricing →</code> stays the only action.</div>
+</div><!-- ENTRY: open list -->
 <div class="osec">
 <div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Start with a direction</span><h3>Where do you want to begin?</h3></div></div>
 <div class="striplabel">Marketplace</div>
@@ -551,22 +580,7 @@
 </div>
 </div>
 <!-- EXPERIENCES: photo-led, no borders -->
-<div class="osec">
-<div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Popular now · updated daily</span><h3>What people are planning</h3></div><a href="#">See all experiences →</a></div>
-<div class="exp-ticker"><i></i><div class="run"><span>DATE NIGHT · 128 started this week ▲</span><span>WEDDINGS · 94 ▲</span><span>PROPOSALS · 61 ▲</span><span>CELEBRATIONS · 47 ▬</span><span>TRAVEL · 39 ▼</span><span>CORPORATE · 22 ▲</span></div></div>
-<div class="exp-rail" id="exp-rail">
-<div class="er"><div class="sw" style="background:linear-gradient(135deg,#E5C6B6,#B97C7C)"><span class="rank">#1</span><span class="trend">▲ trending</span></div><b>Date nights</b><small>128 started · romantic</small><a class="arw" href="#">→</a></div>
-<div class="er"><div class="sw" style="background:linear-gradient(135deg,#B9C8D8,#7C97B4)"><span class="rank">#2</span><span class="trend">▲ trending</span></div><b>Weddings</b><small>94 started · luxury</small><a class="arw" href="#">→</a></div>
-<div class="er"><div class="sw" style="background:linear-gradient(135deg,#F3E2B8,#D2A24C)"><span class="rank">#3</span><span class="trend">▲ trending</span></div><b>Proposals</b><small>61 started · surprise</small><a class="arw" href="#">→</a></div>
-<div class="er"><div class="sw" style="background:linear-gradient(135deg,#CFE3D3,#6FA383)"><span class="rank">#4</span></div><b>Celebrations</b><small>47 started · party</small><a class="arw" href="#">→</a></div>
-<div class="er" style="opacity:.55"><div class="sw" style="background:linear-gradient(135deg,#C9D3DC,#8A9AAA)"><span class="rank">#5</span></div><b>Travel</b><small>39 started · culture</small><a class="arw" href="#">→</a></div>
-</div>
-<div class="note"><b>Popular experiences = a TravelPulse for occasions.</b> Ranked by starts this week, rotating five-card rail with a mono ticker above — advances one card every 8s, re-sorting so the most-started leads; faded fifth card is next in. <code>trending</code> when starts are up W-o-W. Card to /experiences/:slug. Rows: experience_starts rollup (new); until it exists, static order and hidden ticker.</div>
-</div>
-</div>
-<!-- OCCASIONS (Plus) -->
-
-<!-- TRENDING: photo tiles -->
+<!-- "What people are planning" rail absorbed into the Moments section -->
 <div class="osec">
 <div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">TravelPulse · updated daily</span><h3>Cities with momentum this month</h3></div><a href="#">All destinations →</a></div>
 <div class="ticker" style="overflow:hidden;white-space:nowrap;gap:28px;margin-bottom:12px"><i></i><span>KYOTO · TREND 92 · HIGH</span><span>PORTO · 74 · MODERATE</span><span>MUMBAI · 68 · BUSY</span><span>EDINBURGH · 58 · MODERATE</span><span>JAIPUR · 61 · LOW</span><span>GOA · 55 · LOW</span><span>BOGOTÁ · 62 · MODERATE</span><span>CARTAGENA · 59 · MODERATE</span></div>

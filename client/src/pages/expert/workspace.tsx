@@ -3082,8 +3082,9 @@ export default function ExpertWorkspace() {
     staleTime: 60 * 1000,
   });
 
+  const partnerBookingRequestsUrl = `/api/affiliate-booking-requests/expert?tripId=${encodeURIComponent(tripId)}`;
   const { data: partnerBookingRequests, isLoading: partnerBookingLoading } = useQuery<any[]>({
-    queryKey: ["/api/affiliate-booking-requests/expert"],
+    queryKey: [partnerBookingRequestsUrl],
     staleTime: 30 * 1000,
   });
 
@@ -3096,7 +3097,7 @@ export default function ExpertWorkspace() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
+      queryClient.invalidateQueries({ queryKey: [partnerBookingRequestsUrl] });
       if (data?.attachmentBlocked) {
         const why =
           data.attachmentReason === "booking_not_owned_by_trip_traveler"
@@ -3120,7 +3121,7 @@ export default function ExpertWorkspace() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
+      queryClient.invalidateQueries({ queryKey: [partnerBookingRequestsUrl] });
       if (data?.available === false) {
         const reason =
           data.reason === "verification_unavailable"
