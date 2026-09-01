@@ -10,6 +10,9 @@ the images as AI-generated.
 | Edinburgh | Balcomie Links Golf Course at Fife Ness | Mat Fascione | [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Balcomie_Links_Golf_Course_at_Fife_Ness_-_geograph.org.uk_-_7375989.jpg) |
 | Cartagena | Night Scenes, Cartagena, Colombia | Joe Ross | [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Night_Scenes,_Cartagena,_Colombia_(24431322999).jpg) |
 
-The fixed fixture IDs start with `landing-moment-demo-`, and the attributed test
-expert uses the handle `@yuki-flowers`. This keeps the demo data identifiable and
-reversible without weakening the Landing Moments resolver.
+The fixed fixture IDs start with `landing-moment-demo-`. Each row is attributed to
+an unmistakable development-only curator (`@dev-fixture-kyoto`,
+`@dev-fixture-edinburgh`, or `@dev-fixture-cartagena`) on a
+`@traveloure.test` identity whose expert-form city matches the Moment market.
+Production seeding is disabled, and the production boot purge removes these
+reserved gem IDs and test identities after captures.
