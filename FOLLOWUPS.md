@@ -321,3 +321,32 @@ checks · no force-push/delete). Classic branch protection is retained as a dupl
 until the ruleset's bypass path is live-verified; once confirmed, delete the classic layer
 (`DELETE /repos/.../branches/main/protection`) so rulesets are the single source of truth.
 Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
+
+### FU — Landing v2.5 Moments lane (2026-08-31 close-out; `2026-09-01-landing-moments`)
+
+- **`gems-stock-photo-proof` (its own gem-card lane — L5).** The two-tier photo ruling
+  (`2026-09-01-photo-tiers`) is ratified; its IMPLEMENTATION is filed here, not built in the
+  Moments PR. **Finding (Phase 0, `docs/audits/landing-moments-phase-0.md`):** the platform's gem
+  photos are STOCK — all **8** Kyoto `travel_pulse_hidden_gems.image_url` are `images.unsplash.com`;
+  **0** gems are expert-curated (`curated_by_expert_id` null everywhere); `city_media_cache` is
+  stock by construction (`source ∈ {unsplash, pexels, google_places}`). They render on teaser
+  surfaces (the hero bento gem tile, `/discover` gem cards) under "hidden gem · score NN" bylines
+  with no honesty label. **Build (a gem-card lane):** a mono `reference photo` chip on teaser
+  surfaces for stock/places-sourced images; TRUST surfaces (Moments, expert bylines, scout reports)
+  already render attributed-real-only. Every expert-contributed attributed photo that lands retires
+  the stock reference for that place (the replacement pipeline). **Candidate rulings for the byline
+  when a photo is stock (Leon to pick in that lane):** keep the byline + label the photo · chip only ·
+  drop the photo (gradient). **Ops ask (the honest launch trigger):** the real Yuki (approved on
+  prod, currently handle-less) gets her `users.handle` set and contributes her first real attributed
+  Gion photo via the field-knowledge evidence capture — that first live moment flips
+  rail→Moments on the landing. Leon's message to send (gated on this lane's proof, already met).
+- **`per-expert-review-count` (Moments builder byline).** The byline shows `built by @handle` with
+  the review count honest-omitted because `users` has no `review_count` column (it lives on
+  service/expert tables). When a per-expert review-count source exists, `resolveLandingMoments`
+  (`server/services/landing-moments.ts`) sets `builder.reviews` from it and the byline reads
+  `built by @handle · N reviews`. Never a fabricated number (§13) until then.
+- **`ExperiencesRail` retirement (triggered by the first live moment — `2026-09-01-moments-slot-l4`).**
+  The rail holds position 2 until Moments qualifies; once the platform reliably has ≥1 live moment,
+  the rail's permanent removal + the `experience_starts` ticker's return replace the interim
+  fallback. Filed against that trigger, not built now — the rail costs nothing while it holds a live
+  slot, so there is no rush to delete it.

@@ -48,6 +48,14 @@ export interface PlanningSource {
   tripId?: string;
   /** Deep-open a branch, skipping the chooser (pricing ladder rows). */
   branch?: PlanningBranch;
+  /** Coarse machine key to prefill the AI chooser (Landing v2.5 Moment CTA). One of the five
+   *  EXPERIENCE_TYPES the modal accepts (travel|wedding|corporate|event|retreat) — never grown
+   *  (ruling 2026-09-01-moment-key). */
+  experienceType?: string;
+  /** Fine occasion identity when opened from a landing Moment (proposal|golf|…). Rides ALONGSIDE
+   *  experienceType into the AI generation prompt ("Occasion: …") so the brief carries the moment
+   *  (ruling 2026-09-01-moment-key). */
+  momentKey?: string;
 }
 
 interface PlanningApi {
@@ -390,6 +398,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           isOpen={aiOpen}
           onClose={() => setAiOpen(false)}
           initialDestination={initialDestination}
+          initialExperienceType={source?.experienceType}
+          momentKey={source?.momentKey}
           userId={user?.id || ""}
         />
       )}

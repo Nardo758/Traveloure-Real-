@@ -4412,8 +4412,21 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         dietaryRestrictions,
         mobilityConsiderations,
         specialRequests,
+        momentKey,
         tripId: tripIdParam,
       } = req.body;
+
+      // Landing v2.5 Moment CTA (ruling 2026-09-01-moment-key; L2): the FINE occasion reaches the
+      // generation PROMPT only — as an "Occasion:" line — and is NEVER written to a user-authored
+      // column (trips.special_requests is in the finalize fingerprint, so a system write there would
+      // fork Trip Card versions). A present-but-invalid momentKey is rejected (400), never silently
+      // ignored. The occasion line is composed into promptSpecialRequests (prompt + dedup) below;
+      // the persisted specialRequests stays the user's text.
+      const { isMomentKeyAcceptable, occasionPromptLine } = await import("../services/landing-moments");
+      if (!isMomentKeyAcceptable(momentKey)) {
+        return res.status(400).json({ message: "Invalid momentKey" });
+      }
+      const occasionLine = occasionPromptLine(momentKey); // prompt-only; "" when absent
 
       // Normalize destination: accept either a string or an array of {city, country} objects
       const normalizedDestination: string | null =
@@ -4455,8 +4468,13 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           return res.status(400).json({ message: specialRequestsLengthError });
         }
       }
+      // PERSISTED value — the user's text ONLY (L2). The occasion is NOT part of this.
       const normalizedSpecialRequests =
         typeof specialRequests === "string" ? specialRequests.trim() || undefined : undefined;
+      // PROMPT value — the occasion line + the user's text, for the model + the dedup key. This is
+      // never persisted; only normalizedSpecialRequests reaches the trip row.
+      const promptSpecialRequests =
+        [occasionLine, normalizedSpecialRequests].filter(Boolean).join(" ") || undefined;
       if (!dates?.start || !dates?.end) {
         return res.status(400).json({ message: "Start and end dates are required" });
       }
@@ -4509,7 +4527,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         JSON.stringify((mobilityConsiderations || []).slice().sort()),
         budget ?? "",
         eventType ?? "",
-        normalizedSpecialRequests ?? "",
+        promptSpecialRequests ?? "",
         anchorBlock,
       ].join(":");
 
@@ -4538,7 +4556,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
               mustSeeAttractions: mustSeeAttractions || [],
               dietaryRestrictions: dietaryRestrictions || [],
               mobilityConsiderations: mobilityConsiderations || [],
-              specialRequests: normalizedSpecialRequests,
+              specialRequests: promptSpecialRequests,
               immovableConstraints: anchorBlock,
             })
           )
@@ -4566,6 +4584,10 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           status: "draft",
           eventType: eventType || experienceType || "vacation",
           specialRequests: normalizedSpecialRequests || null,
+          // L3: stamp the fine occasion when this trip is born from a Moment CTA. Already validated
+          // above (isMomentKeyAcceptable → 400 on a present-but-invalid key); an absent key stamps
+          // NULL. Never raw req.body — the value is the validated momentKey only.
+          momentKey: occasionLine ? momentKey : null,
         },
         generatedPlan: {
           destination,

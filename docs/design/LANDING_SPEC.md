@@ -94,14 +94,41 @@ an attributed event to `landing_moment_events` via `POST /api/landing/moments/ev
 token the upsell events already use.** The funnel continues chooser → trip → purchase per
 `experienceType` (mirrors the upsell click-attribution pattern, `POST /api/upsell/click`).
 
-### Photo gate (Moments)
+### Photo gate (Moments) — a TRUST surface (ruling `2026-09-01-photo-tiers`)
 
-**Real photos only.** A moment's photos come from real rows (gem photos, expert-contributed
-photos from the field-knowledge lane's evidence capture, storefront covers) — each carrying its
-attribution (contributor `@handle`, place). The gradient shown in the mock is the **pre-photo
-state only**: a photo-less moment stays out of the slide and never renders as a permanent
-gradient card. `GET /api/landing/moments` returns **only moments with ≥1 real photo**, photos
-with their attribution.
+**Attributed real photos ONLY — never stock, never AI.** Moments is a TRUST surface (it carries a
+`@handle`), so it renders only an **attributed real photo**: an expert-curated non-stock upload
+(gem `curated_by_expert_id` → the expert's `@handle`, non-stock host) or a field-knowledge evidence
+photo — each carrying its attribution (contributor `@handle`, place). The gradient is the
+**pre-photo state only**: a photo-less moment stays out of the slide and never renders as a
+permanent gradient card. `GET /api/landing/moments` returns **only moments with ≥1 attributed real
+photo**, each with its attribution.
+
+**Launch reality (Phase 0, `docs/audits/landing-moments-phase-0.md`):** applying this gate to real
+data, **zero of the seven qualify today** — the only photo-bearing gems (Kyoto) are all
+`images.unsplash.com` stock, which the gate forbids; no gem is expert-curated; Yuki has no handle
+yet. So the launch-live set is **data-driven and today empty**.
+
+### Empty state — RAIL-UNTIL-LIVE (ruling `2026-09-01-moments-slot-l4`, supersedes Decision-1-B)
+
+The position-2 slot (`MomentsSlot`) renders the **`ExperiencesRail`** while the live set is empty
+(and during load — never a blank slot, never a flash of Moments), and **`MomentsSection` on the
+first qualifying moment**; the rail retires then. Decision-1-B ("render nothing when zero") was
+ruled when the alternative was an empty marquee — it isn't: the fallback is the existing, working
+experiences rail (real content at the site's #2 slot), so a gap there costs something and the rail
+costs nothing. ONE fetch (shared via react-query cache), ONE branch. Once **≥1** moment qualifies,
+the live one(s) show and the not-yet-live moments render as faint "coming as locals join" pills.
+
+> **The v2.5 mock depicts the ≥1-moment state (Moments at position 2). The zero-moment state — today's
+> reality — is the rail.** The mock does not draw the rail because it draws the state the platform
+> reaches once a real attributed photo lands; the honest current state is rail-until-live. This is
+> the mock-vs-build reconciliation: the drawing is one state, the build serves both.
+
+**First photo enters through the front door (DECISION C), not a seed** — the real Yuki gets a handle
+and contributes a real Gion photo via evidence capture (or an interim admin-attributed real photo);
+never a scripted stock swap (the ops ask is filed in `FOLLOWUPS.md`). Captures for the visual pass
+use a **dev-only labeled test photo** to sign off the ≥1-moment layout — clearly not for production,
+removed after (dev returns to rail-until-live).
 
 ## Plus band (ruling `2026-09-01-plus-in-pricing`)
 

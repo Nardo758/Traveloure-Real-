@@ -63,11 +63,13 @@ fee-tier question. So the ruling (decision-maker, 2026-09-01, ledger `2026-09-01
 | 7 | Family occasion | Jaipur | `event` | `family_occasion` |
 
 Markets are drafted for fit and are one per market across seven of the eight operating markets
-(Bogotá reserved for the typed-search / cities rail). At launch a moment only appears on the slide
-if it has ≥1 real, attributed photo (photo gate, ruling `2026-09-01-landing-moments`); the mock
-notes only Kyoto's proposal qualifies today, the rest join as experts contribute. These drafts are
-written independent of which qualify first — Lane 2 Phase 0's photo-availability table decides the
-live-at-launch set.
+(Bogotá reserved for the typed-search / cities rail). At launch a moment only appears if it has ≥1
+**attributed real** photo (photo gate, rulings `2026-09-01-landing-moments` + `2026-09-01-photo-tiers`).
+**Phase 0 finding (`docs/audits/landing-moments-phase-0.md`): ZERO qualify today** — the mock's
+"Kyoto qualifies from gem photos" is false, because those gem photos are `images.unsplash.com`
+stock, which the gate forbids. The section is therefore suppressed until the first attributed real
+photo lands (empty state B), which enters through the front door (a real expert photo via evidence
+capture), not a seed. These drafts stand regardless; the live-at-launch set is data-driven.
 
 ---
 
