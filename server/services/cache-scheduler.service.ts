@@ -7,6 +7,7 @@ import { sharedCache } from "./shared-cache.service";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { partnerizeSyncService } from "./partnerize/partnerize-sync.service";
+import { getPartnerizeCredentials } from "./partnerize/partnerize-client";
 import { affiliateReconciliationService, LATE_REPORT_TOLERANCE_DAYS } from "./affiliate-reconciliation.service";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
@@ -84,38 +85,47 @@ class CacheSchedulerService {
 
     console.log(`[CacheScheduler] Scheduled to run every ${REFRESH_INTERVAL_MS / (60 * 60 * 1000)} hours`);
 
-    // Partnerize campaign sync — separate cadence, gracefully no-ops without credentials
-    setTimeout(() => {
-      void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
-        console.error("[CacheScheduler] Initial Partnerize sync failed:", err),
-      );
-    }, jitteredStartupDelay(2 * 60 * 1000));
+    // Partnerize (campaign sync + commission report poll) is UNVALIDATED scaffolding: no
+    // credentials are configured anywhere (PARTNERIZE_* is absent from validate-env/.env.example and
+    // referenced only by partnerize-client/partnerize-sync), and the client's endpoint paths do not
+    // match the real Partnerize API. Rather than schedule two timers that log "skipping" forever (or,
+    // if creds were ever set against the guessed URLs, 404 on a schedule), start them ONLY when
+    // credentials actually resolve; otherwise say so ONCE at boot and schedule nothing. See the
+    // FOLLOWUPS note in the PR — enabling this needs the endpoints rebuilt against the real API.
+    if (getPartnerizeCredentials()) {
+      // Partnerize campaign sync — separate cadence, gracefully no-ops without credentials
+      setTimeout(() => {
+        void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
+          console.error("[CacheScheduler] Initial Partnerize sync failed:", err),
+        );
+      }, jitteredStartupDelay(2 * 60 * 1000));
 
-    this.partnerizeSyncTimer = setInterval(() => {
-      void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
-        console.error("[CacheScheduler] Partnerize sync failed:", err),
-      );
-    }, PARTNERIZE_SYNC_INTERVAL_MS);
+      this.partnerizeSyncTimer = setInterval(() => {
+        void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
+          console.error("[CacheScheduler] Partnerize sync failed:", err),
+        );
+      }, PARTNERIZE_SYNC_INTERVAL_MS);
 
-    console.log(`[CacheScheduler] Partnerize campaign sync scheduled every ${PARTNERIZE_SYNC_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+      console.log(`[CacheScheduler] Partnerize campaign sync scheduled every ${PARTNERIZE_SYNC_INTERVAL_MS / (60 * 60 * 1000)} hours`);
 
-    // Partnerize conversion/commission report polling — pulls and auto-matches
-    // recent commission data so payouts stay reconciled without requiring an
-    // admin to hit "Run Now". Gracefully no-ops (logs + skips) if credentials
-    // are missing or the API call fails.
-    setTimeout(() => {
-      void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
-        console.error("[CacheScheduler] Initial Partnerize report poll failed:", err),
-      );
-    }, jitteredStartupDelay(3 * 60 * 1000));
+      // Partnerize conversion/commission report polling — pulls and auto-matches recent commission
+      // data so payouts stay reconciled without requiring an admin to hit "Run Now".
+      setTimeout(() => {
+        void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
+          console.error("[CacheScheduler] Initial Partnerize report poll failed:", err),
+        );
+      }, jitteredStartupDelay(3 * 60 * 1000));
 
-    this.partnerizeReportTimer = setInterval(() => {
-      void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
-        console.error("[CacheScheduler] Partnerize report poll failed:", err),
-      );
-    }, PARTNERIZE_REPORT_POLL_INTERVAL_MS);
+      this.partnerizeReportTimer = setInterval(() => {
+        void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
+          console.error("[CacheScheduler] Partnerize report poll failed:", err),
+        );
+      }, PARTNERIZE_REPORT_POLL_INTERVAL_MS);
 
-    console.log(`[CacheScheduler] Partnerize report polling scheduled every ${PARTNERIZE_REPORT_POLL_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+      console.log(`[CacheScheduler] Partnerize report polling scheduled every ${PARTNERIZE_REPORT_POLL_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+    } else {
+      console.log("[CacheScheduler] Partnerize disabled — no credentials");
+    }
 
     // Travelpayouts commission polling — fetches action rows (incl. WeGoTrip)
     // via fetchTravelpayoutsActions and runs reconciliation auto-matching.

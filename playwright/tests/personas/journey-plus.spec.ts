@@ -161,25 +161,30 @@ test.describe("journey-plus — Plus member occasion draft delivery", () => {
     );
 
     if (!draftRow?.trip_id || !draftRow?.generated_at) {
-      // Honest negative — see the file header's "AI-GENERATION HONESTY" note. The CLAIM row
-      // exists (occasion_drafts always gets ONE row per occasion+cycle before generation is
-      // attempted); it was never PROMOTED because generation itself failed against this CI
-      // run's stub XAI_API_KEY/ANTHROPIC_API_KEY. Never fabricate a trip/chip/notification here.
+      // FAIL LOUDLY — do NOT swallow this as an "honest negative" (the prior behaviour, which
+      // green-passed whether or not the positive path ran, so the delivery proof could rot
+      // unnoticed). The occasion draft's generation is served by grokService.generateAutonomousItinerary,
+      // which returns a deterministic canned itinerary when E2E_AI_STUB=1 (double-gated NODE_ENV !==
+      // production). The draft-run fires SERVER-SIDE via POST /internal/run-occasion-drafts against the
+      // deployed staging app, so E2E_AI_STUB=1 must be set in STAGING's env (not this workflow's) for
+      // the positive promote path to run. A CLAIM row with a null trip_id/generated_at means generation
+      // produced nothing — the stub is almost certainly off in the target env.
       report.record({
-        action: "draft run did not promote a trip (AI generation unavailable in this CI run)",
+        action: "draft run did not promote a trip — occasion draft produced no items",
         ui: "n/a",
         db: `occasion_drafts row=${JSON.stringify(draftRow)}, run result=${JSON.stringify(runBody1?.result)}`,
-        verdict: "EXTERNAL",
+        verdict: "FAIL",
         note:
-          "FINDING: persona-nightly.yml hardcodes stub XAI_API_KEY/ANTHROPIC_API_KEY (not sourced from " +
-          "secrets), so grokService.generateAutonomousItinerary and its Anthropic fallback both fail " +
-          "deterministically in this workflow as currently wired — buildDraftSlip() throws, the claim " +
-          "stays un-promoted. This is a real, reproducible gap in the CI proof for the positive delivery " +
-          "path, not a product bug; filed, not fixed, since wiring real AI keys was outside this dispatch's " +
-          "scope (only INTERNAL_JOB_SECRET was in scope).",
+          "Occasion draft produced no items — is E2E_AI_STUB=1 set in the STAGING env the draft-run " +
+          "targets? Without it, grokService.generateAutonomousItinerary makes a real LLM call that fails " +
+          "in staging, the CLAIM stays un-promoted, and the positive delivery path is never exercised.",
       });
       report.write();
-      expect(report.hasFailures, `journey-plus had failing steps: ${JSON.stringify(report)}`).toBe(false);
+      expect(
+        draftRow?.trip_id && draftRow?.generated_at,
+        "occasion draft produced no items — is E2E_AI_STUB=1 set in staging? " +
+          `occasion_drafts row=${JSON.stringify(draftRow)}, run result=${JSON.stringify(runBody1?.result)}`,
+      ).toBeTruthy();
       return;
     }
 
