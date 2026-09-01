@@ -110,6 +110,14 @@ export const trips = pgTable("trips", {
   preferences: jsonb("preferences").default({}),
   eventDetails: jsonb("event_details").default({}),
   experienceType: varchar("experience_type", { length: 20 }),
+  // momentKey (Landing v2.5, ruling 2026-09-01-moment-key): the FINE occasion identity when a
+  // trip is born from a landing Moment CTA (proposal|golf|girls_trip|anniversary|honeymoon|
+  // milestone_birthday|family_occasion). experienceType stays the coarse MACHINE key (pricing
+  // tiers + PlanCard skins); momentKey never drives fees/templates — it is read by attribution
+  // (the moment→trip→purchase funnel joins on it) AND the AI/expert plan prompt ("Occasion:
+  // proposal"). Additive nullable, no CHECK (publish-trap posture, migration 270); declared here
+  // per the deploy-push durability rule.
+  momentKey: varchar("moment_key", { length: 30 }),
   travelers: integer("travelers"),
   specialRequests: text("special_requests"),
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
@@ -7772,6 +7780,26 @@ export const upsellImpressions = pgTable("upsell_impressions", {
 export type UpsellImpression = typeof upsellImpressions.$inferSelect;
 export const insertUpsellImpressionSchema = createInsertSchema(upsellImpressions).omit({ id: true, shownAt: true });
 export type InsertUpsellImpression = z.infer<typeof insertUpsellImpressionSchema>;
+
+// landing_moment_events (Landing v2.5, ruling 2026-09-01-landing-moments): attribution for the
+// Moments section — mirrors upsell_impressions' session posture (guest_session_id + nullable
+// user_id, NO PII beyond that token). One row per impression (slide ≥2s visible) or click
+// (tab|dot|cta). The moment→trip→purchase funnel joins on moment_key (= trips.moment_key).
+// Server-authored via an ALLOWLIST body schema at the route (§19), never createInsertSchema off
+// the body. Declared here per the deploy-push durability rule (migration 270).
+export const landingMomentEvents = pgTable("landing_moment_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  momentKey: varchar("moment_key", { length: 30 }).notNull(),
+  kind: varchar("kind", { length: 20 }).notNull(), // impression | tab | dot | cta
+  position: integer("position"),
+  guestSessionId: varchar("guest_session_id", { length: 255 }),
+  userId: varchar("user_id", { length: 255 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  momentKindIdx: index("idx_landing_moment_events_moment_kind").on(table.momentKey, table.kind),
+  createdAtIdx: index("idx_landing_moment_events_created_at").on(table.createdAt),
+}));
+export type LandingMomentEvent = typeof landingMomentEvents.$inferSelect;
 
 // Phase 5.4 (step 6) — expert endorsements. Two scopes:
 //   scope='trip'         → expert curates for a specific trip
