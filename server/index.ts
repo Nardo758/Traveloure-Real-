@@ -537,7 +537,26 @@ if (process.env.NODE_ENV === "production") {
   // Run migrations synchronously BEFORE the server accepts any connections.
   // A schema failure here exits the process — no requests land on a broken schema.
   try {
-    await runMigrations();
+    const migrationResult = await runMigrations();
+    // Emit the completion summary through the SAME pino logger the boot markers
+    // ("Server pre-bound … migrations pending" above, "Server started" below) use — NOT the
+    // raw console.log inside runMigrations. In production pino writes JSON straight to fd 1
+    // (transport undefined) while console.log buffers through the process.stdout stream; the two
+    // write paths to the same fd interleave unreliably, so the deploy-log capture showed the pino
+    // markers but dropped the raw migration summary between them. Logging it here — on the pino
+    // path, before the listen/"Server started" line — makes the migration count durably visible in
+    // the deploy log (e.g. verifying migration 270 landed on the next publish).
+    if (migrationResult.bootstrapOnly) {
+      logger.info(
+        { stamped: migrationResult.stamped.length, alreadyRecorded: migrationResult.alreadyRecorded.length },
+        "Migrations complete (bootstrap): stamped 001–051 ledger",
+      );
+    } else if (!migrationResult.dryRun) {
+      logger.info(
+        { applied: migrationResult.applied, appliedCount: migrationResult.applied.length, skippedCount: migrationResult.skipped.length },
+        "Migrations complete",
+      );
+    }
   } catch (err) {
     logger.error({ err }, "FATAL: Database migrations failed — shutting down");
     process.exit(1);

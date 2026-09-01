@@ -1,0 +1,77 @@
+name: Boot Log Gate
+
+# Guards the production boot-log ordering (Lane 3, boot-log-flush). The runMigrations completion
+# summary must be visible in the deploy log — on the pino stream, with its count — BETWEEN the
+# pre-bind "migrations pending" marker and "Server started", so the next publish can verify a
+# migration (e.g. 270) applied. Previously the summary went out via raw console.log and the deploy
+# capture dropped it between the pino markers. A regression (revert to console.log, or moving the
+# summary after "Server started") fails here.
+#
+# The test spawns the built prod bundle itself and asserts stdout ordering, so this gate only needs
+# a disposable Postgres + a build. Stub Stripe/AI keys are deliberate — boot doesn't call them.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: boot-log-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  boot-log:
+    name: boot-log (migration summary visible, ordered before "Server started")
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Boot-log ordering pin
+        run: npx tsx --test server/__tests__/boot-log-ordering.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          # NODE_ENV is set to production by the test when it spawns the bundle; the test process
+          # itself stays default. Disposable Postgres → the boot's test-account purge is safe.
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
