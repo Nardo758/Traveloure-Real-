@@ -92,6 +92,7 @@ export function FinalizeBookingModal({
         for (const stop of bookableStops) {
           try {
             await apiRequest("POST", "/api/affiliate-booking-requests", {
+              tripId: trip.id,
               itemName: stop.name,
               partnerName: stop.affiliateBooking?.partnerName ?? null,
               partnerCategory: null,
