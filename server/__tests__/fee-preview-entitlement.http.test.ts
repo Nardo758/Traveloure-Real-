@@ -72,7 +72,11 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
 
 async function feePreview(query = ""): Promise<any> {
   const res = await api(`/api/cart/fee-preview${query}`, buyerCookie);
-  assert.equal(res.status, 200, `fee-preview${query} should be 200, got ${res.status}: ${await res.text().catch(() => "")}`);
+  // Read the body EXACTLY once: text() on the failure path, json() on success. Reading it inside the
+  // assert message (eagerly evaluated) would consume it before json() → "Body has already been read".
+  if (res.status !== 200) {
+    assert.fail(`fee-preview${query} should be 200, got ${res.status}: ${await res.text().catch(() => "")}`);
+  }
   return res.json();
 }
 
@@ -88,7 +92,10 @@ before(async () => {
     firstName: "Fee",
     lastName: "Preview",
   });
-  assert.equal(reg.status, 201, `register buyer failed (${reg.status}): ${await reg.text().catch(() => "")}`);
+  // Read the body once (json on success), never in the assert message — see feePreview above.
+  if (reg.status !== 201) {
+    assert.fail(`register buyer failed (${reg.status}): ${await reg.text().catch(() => "")}`);
+  }
   const setCookie = reg.headers.get("set-cookie");
   assert.ok(setCookie, "register must set a session cookie");
   buyerCookie = setCookie!.split(";")[0];
@@ -109,7 +116,9 @@ before(async () => {
 
   // Buyer carts the service (through the real route).
   const add = await api("/api/cart/items", buyerCookie, "POST", { serviceId, quantity: 1 });
-  assert.ok(add.status >= 200 && add.status < 300, `add-to-cart failed (${add.status}): ${await add.text().catch(() => "")}`);
+  if (!(add.status >= 200 && add.status < 300)) {
+    assert.fail(`add-to-cart failed (${add.status}): ${await add.text().catch(() => "")}`);
+  }
 });
 
 after(async () => {
