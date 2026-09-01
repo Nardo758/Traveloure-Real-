@@ -123,13 +123,13 @@ export function MomentsSection() {
 
         {/* ONE moment per slide: photo slideshow + the story */}
         <div
-          className="grid overflow-hidden rounded-[16px] border lg:grid-cols-[1.25fr_1fr]"
+          className="grid min-w-0 auto-rows-[minmax(300px,auto)] overflow-hidden rounded-[16px] border lg:auto-rows-[minmax(340px,auto)] lg:grid-cols-[1.25fr_1fr]"
           style={{ borderColor: "var(--earn-border, #E4E4DE)", background: "var(--earn-card, #fff)" }}
           data-testid={`moment-slide-${moment.key}`}
         >
           {/* photo slideshow */}
           <div
-            className="relative min-h-[300px] lg:min-h-[340px]"
+            className="relative min-h-[300px] lg:min-h-0"
             onMouseEnter={() => setPhotoHover(true)}
             onMouseLeave={() => setPhotoHover(false)}
           >
@@ -172,7 +172,7 @@ export function MomentsSection() {
           </div>
 
           {/* the story */}
-          <div className="flex flex-col gap-3 p-7 lg:pl-0">
+          <div className="flex min-w-0 flex-col gap-3 p-7 lg:min-h-[340px] lg:pl-0">
             <span
               className="text-[10.5px] font-medium uppercase tracking-[0.14em]"
               style={{ fontFamily: EARN_MONO, color: "var(--earn-coral-ink)" }}
@@ -186,13 +186,13 @@ export function MomentsSection() {
             >
               {moment.headline}
             </h4>
-            <ul className="grid list-none gap-[7px] p-0 text-[14px]" style={{ color: "var(--earn-ink)" }}>
+            <ul className="grid min-w-0 list-none gap-[7px] p-0 text-[14px]" style={{ color: "var(--earn-ink)" }}>
               {moment.pieces.map((p, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-[10.5px]" style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}>
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span>{p}</span>
+                  <span className="min-w-0 break-words">{p}</span>
                 </li>
               ))}
             </ul>
