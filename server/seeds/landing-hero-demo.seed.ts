@@ -9,6 +9,15 @@ import {
 } from "@shared/schema";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 
+const DEMO_SERVICE_IMAGES = [
+  "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1200&q=80",
+  "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=1200&q=80",
+  "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=1200&q=80",
+  "https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1200&q=80",
+  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&q=80",
+  "https://images.unsplash.com/photo-1539650116574-75c0c6d73f6e?w=1200&q=80",
+];
+
 /**
  * Development-only data for the landing hero's nullable bento legs.
  *
@@ -195,6 +204,7 @@ async function upsertHeroService(
   market: (typeof OPERATING_MARKETS)[number],
   userId: string,
   neighborhoodSlug: string,
+  marketIndex: number,
 ): Promise<void> {
   const id = `landing-hero-demo-${market.marketKey}-service`;
   const serviceName = `${market.cityName} Local Planning Session`;
@@ -206,6 +216,7 @@ async function upsertHeroService(
     shortDescription: `A practical local starting point for ${market.cityName}.`,
     description: `Development-only preview service for a personal ${market.cityName} plan.`,
     serviceType: "planning",
+    serviceImage: DEMO_SERVICE_IMAGES[marketIndex % DEMO_SERVICE_IMAGES.length],
     price: "149.00",
     priceType: "fixed",
     deliveryMethod: "video",
@@ -232,6 +243,7 @@ async function upsertHeroService(
         shortDescription: values.shortDescription,
         description: values.description,
         serviceType: values.serviceType,
+        serviceImage: values.serviceImage,
         price: values.price,
         priceType: values.priceType,
         deliveryMethod: values.deliveryMethod,
@@ -257,7 +269,7 @@ export async function seedLandingHeroDemo(): Promise<{ markets: number; services
 
   const skipped: string[] = [];
   let seededMarkets = 0;
-  for (const market of OPERATING_MARKETS) {
+  for (const [marketIndex, market] of OPERATING_MARKETS.entries()) {
     const neighborhood = await firstNeighborhood(market.cityName, market.country);
     if (!neighborhood) {
       skipped.push(market.cityName);
@@ -266,7 +278,7 @@ export async function seedLandingHeroDemo(): Promise<{ markets: number; services
     const userId = await upsertHeroUser(market);
     await upsertHeroForm(market, userId, neighborhood.name);
     await upsertHeroNeighborhood(userId, neighborhood.id);
-    await upsertHeroService(market, userId, neighborhood.slug);
+    await upsertHeroService(market, userId, neighborhood.slug, marketIndex);
     seededMarkets++;
   }
 

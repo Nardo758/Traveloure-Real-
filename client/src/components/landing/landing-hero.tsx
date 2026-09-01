@@ -6,7 +6,7 @@
  * Live hero — honest by construction (§13): the bento tiles render the nullable legs of
  * GET /api/landing/hero (server-composed from the top city's real feed rows). A null leg
  * renders NO tile — the grid collapses to what exists; nothing is fabricated. The mock's
- * tile gradients are the fallback art direction (the ruled payload carries no images).
+ * Tile gradients remain the fallback art direction when a source row has no image.
  *
  * Typed search: STATIC CURATED titles (decision-maker ruled — no UGC; source of truth is
  * LANDING_SPEC.md §Typed-search titles). Rotates via the shared useRotation hook (8s,
@@ -44,9 +44,14 @@ interface LandingHeroData {
   city: string | null;
   trend: number | null;
   crowd: string | null;
-  anchorExpert: { name: string; handle: string | null; fromPriceCents: number | null } | null;
-  gem: { name: string; score: number | null } | null;
-  service: { name: string; priceCents: number | null } | null;
+  anchorExpert: {
+    name: string;
+    handle: string | null;
+    fromPriceCents: number | null;
+    imageUrl?: string;
+  } | null;
+  gem: { name: string; score: number | null; imageUrl?: string } | null;
+  service: { name: string; priceCents: number | null; imageUrl?: string } | null;
   wanted: { title: string; neighborhood: string } | null;
 }
 
@@ -216,20 +221,39 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 }}
                 data-testid="hero-tile-anchor"
               >
+                {anchor.imageUrl && (
+                  <img
+                    src={anchor.imageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
+                {anchor.imageUrl && (
+                  <div
+                    className="absolute inset-0"
+                    style={{ background: "linear-gradient(180deg,rgba(30,58,95,.12) 0%,rgba(13,33,55,.92) 100%)" }}
+                    aria-hidden="true"
+                  />
+                )}
                 <span
-                  className="mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
+                  className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
                 >
                   Local expert{hero?.city ? ` · ${hero.city}` : ""}
                 </span>
-                <b className="text-[20px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES }}>
+                <b className="relative z-10 text-[20px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES }}>
                   {anchor.name}
                 </b>
                 {anchorFrom &&
                   (anchor.handle ? (
                     <Link
                       href={`/s/${anchor.handle}`}
-                      className="mt-2 inline-block self-start rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold text-white"
+                      className="relative z-10 mt-2 inline-block self-start rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold text-white"
                       style={{ background: "var(--earn-coral-ink)" }}
                       data-testid="hero-anchor-cta"
                     >
@@ -237,7 +261,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                     </Link>
                   ) : (
                     <span
-                      className="mt-2 inline-block self-start rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold text-white"
+                      className="relative z-10 mt-2 inline-block self-start rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold text-white"
                       style={{ background: "var(--earn-coral-ink)" }}
                     >
                       Plan with {anchorFirstName} · from {anchorFrom}
@@ -255,21 +279,40 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 }}
                 data-testid="hero-tile-gem"
               >
+                {gem.imageUrl && (
+                  <img
+                    src={gem.imageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
+                {gem.imageUrl && (
+                  <div
+                    className="absolute inset-0"
+                    style={{ background: "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
+                    aria-hidden="true"
+                  />
+                )}
                 {gem.score !== null && (
                   <span
-                    className="absolute right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
+                    className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
                     style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
                   >
                     {gem.score}
                   </span>
                 )}
                 <span
-                  className="mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
+                  className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
                 >
                   Hidden gem
                 </span>
-                <b className="text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
+                <b className="relative z-10 text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
                   {gem.name}
                 </b>
               </div>
@@ -284,21 +327,40 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 }}
                 data-testid="hero-tile-service"
               >
+                {service.imageUrl && (
+                  <img
+                    src={service.imageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
+                {service.imageUrl && (
+                  <div
+                    className="absolute inset-0"
+                    style={{ background: "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
+                    aria-hidden="true"
+                  />
+                )}
                 {servicePrice && (
                   <span
-                    className="absolute right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
+                    className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
                     style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
                   >
                     {servicePrice}
                   </span>
                 )}
                 <span
-                  className="mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
+                  className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
                 >
                   Book on Traveloure
                 </span>
-                <b className="text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
+                <b className="relative z-10 text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
                   {service.name}
                 </b>
               </div>
