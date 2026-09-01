@@ -1,57 +1,124 @@
-# Landing Page Spec (v2.4) — lane `landing-build`
+# Landing Page Spec (v2.5) — lane `landing-v2.5`
 
-Lane 0 of the landing-build dispatch (reissue, `audited@3bd36b49`; branch cut at `f54a590c`).
-Visual + behavior of record: `docs/design/landing-earn-mock.html` (v2.4). Grammar:
+Visual + behavior of record: **`docs/design/landing-earn-mock-v2.5.html`** (supersedes
+`landing-earn-mock.html`, the v2.4 record). Grammar:
 `docs/design/marketplace-experts-earn-grammar-mock.html`. This spec = the mock + the
-dispatch's rulings + Phase 0's verified findings. Where the mock's DOM and the dispatch
-disagree, **the dispatch wins** (it is the reissue; delta noted below).
+v2.5 dispatch's rulings + the still-binding v2.4 contracts below.
 
-## Ruled section order (dispatch; coral count = 3)
+**v2.5 supersedes v2.4** on three structural points (dispatch 2026-09-01;
+ledger rows `2026-09-01-landing-moments`, `2026-09-01-plus-in-pricing`):
 
-1. **Hero** — live bento + typed search
-2. **How it works + price strip**
-3. **Plus occasions**
-4. **Where to begin** (entry strips)
-5. **What people are planning** (experiences ticker — degraded, see findings)
-6. **Cities with momentum**
-7. **Numbers**
-8. **Ways to earn**
-9. **Final CTA**
+1. **Moments** is a new section at **position 2**, directly under the hero — it takes
+   the Plus section's former coral slot.
+2. **Plus** leaves its own section and becomes a **slim band** under the merged
+   how-it-works/price ladder — the home-city product, visibly distinct from the travel
+   ladder, "coming soon" while `PLUS_SALES_ENABLED=false`. Its coral leaves the page.
+3. **"What people are planning"** (the experiences ticker) is **absorbed into Moments**
+   (its ticker returns beneath the slide only when `experience_starts` exists — filed,
+   not built).
 
-> Mock-DOM delta: the v2.4 mock file orders ENTRY → EXPERIENCES → OCCASIONS
-> (comments in the file). The dispatch's ruled order above moves OCCASIONS to slot 3.
-> Build to the ruled order.
+Everything in the v2.4 spec not touched by these three stays binding (data contract,
+typed-search titles, the shared rotation utility, the photo rule, the `GET /api/landing/hero`
+Phase-1 endpoint). Where the mock's DOM and this spec disagree, **this spec wins**.
 
-## Preserve exactly (verified at `f54a590c` — landing.tsx is byte-identical to `c84c5e07`)
+## Ruled section order (v2.5; coral count = 4)
 
-- Hero `Plan my trip` → `setPlanningOpen(true)` (`landing.tsx:368`) →
-  `EnhancedPlanningModal` (`:823-825`). No handler changes.
-- Earn links keep `?track=` aliases: `/earn?track=provider` (`:720`),
-  `/earn?track=expert` (`:744`).
-- NOTE: `docs/audits/landing-routing-phase-0.md` (cited by the dispatch) does **not
-  exist on main** — the earlier lane never landed it. The chain above is verified
-  directly from source instead; treat this spec as the citation of record.
+1. **Hero** — live mini-bento + typed search
+2. **Moments** — "Some trips are really one evening" (NEW; one moment per slide) — **coral**
+3. **How it works + price ladder (merged)** — the four travel steps left→right cheap→committed,
+   with the **Plus band** beneath (coming-soon; no coral)
+4. **Where do you want to begin?** (entry strips: Marketplace + Find help)
+5. **Cities with momentum** (the momentum rail)
+6. **Numbers** (honest `—` where empty)
+7. **Ways to earn** — **coral**
+8. **Final CTA** — **coral**
 
-## Data contract (every number from a live row; §13 honest-collapse)
+> The v2.4 order's separate "Plus occasions" (slot 3) and "What people are planning"
+> (slot 5) sections are **gone** — folded into slots 3 and 2 respectively per the two
+> rulings above.
 
-| Surface | Source | Verified live shape (dev, this branch) |
+## Coral accounting (v2.5 — holds at 4, no flip pending)
+
+The landing's ruled coral BUTTON count is **4**: **hero · moments · earn · final**.
+The Plus band renders the coming-soon state (gold-ink eyebrow, live price, "coming soon"),
+never a coral CTA — so the coral count does **not** change when `PLUS_SALES_ENABLED` flips
+on. This **supersedes the v2.4 "coral-at-flip" ruling** (recorded 2026-08-29): under v2.5
+Plus is no longer a section with its own CTA slot, so there is no fourth coral waiting to
+appear at the flip — Moments permanently holds the fourth coral. No lane may add a fifth
+coral. Chrome's coral budget (`2026-08-28-chrome-alignment`: Sign In + strip eyebrow +
+BETA pill) is a separate budget, unchanged.
+
+## Moments section (ruling `2026-09-01-landing-moments`)
+
+The page's spine is **promise → proof → cost → paths**: the hero states the promise, Moments
+shows the proof, the price ladder is the cost. Moments sits at position 2.
+
+- **One moment per slide.** A moment enters rotation **only when it has ≥1 real, attributed
+  photo** (never stock, never AI). One photo holds (no animation, dots hidden); two-plus
+  animate. A moment with zero photos is **absent from the slide** but shown **faint in the tab
+  strip** as "coming as locals join."
+- **The slide** = a real-photo slideshow (dots, caption with place + contributor `@handle`,
+  the shared `useRotation` at 8s / hover-focus pause / reduced-motion stop) beside **the story
+  panel** — eyebrow, demo-tuned headline, three concrete numbered pieces that name the machine
+  (expert · service · booking), a `Plan this moment` coral that prefills the chooser's
+  `experienceType`, and the builder byline + review count from **real rows** (honest-omit when
+  absent, §13).
+- **The tab strip** is both navigation and live indicator: live moments as pills, not-yet-live
+  faint with the "coming as locals join" tooltip. A tab tap is the strongest intent signal there
+  is — it navigates AND writes an attributed event.
+- **Copy** is `docs/design/MOMENTS_COPY.md` — seven stories (proposal · golf trip · girls' trip ·
+  anniversary · honeymoon · milestone birthday · family occasion). The section renders the
+  decision-maker's ratified words, not the drafts.
+
+### Attribution contract (Moments)
+
+Every slide impression (**≥2s visible** = one impression) and every click (tab, dot, CTA) writes
+an attributed event to `landing_moment_events` via `POST /api/landing/moments/event`
+`{momentKey, kind: impression|tab|dot|cta, position, sessionId}`. **No PII beyond the session
+token the upsell events already use.** The funnel continues chooser → trip → purchase per
+`experienceType` (mirrors the upsell click-attribution pattern, `POST /api/upsell/click`).
+
+### Photo gate (Moments)
+
+**Real photos only.** A moment's photos come from real rows (gem photos, expert-contributed
+photos from the field-knowledge lane's evidence capture, storefront covers) — each carrying its
+attribution (contributor `@handle`, place). The gradient shown in the mock is the **pre-photo
+state only**: a photo-less moment stays out of the slide and never renders as a permanent
+gradient card. `GET /api/landing/moments` returns **only moments with ≥1 real photo**, photos
+with their attribution.
+
+## Plus band (ruling `2026-09-01-plus-in-pricing`)
+
+Plus is removed as a section and rendered as a slim band under the four price steps:
+`--earn-border-dash` frame, **gold-ink eyebrow** ("Plus · your own city"), the live price from
+the `plans` bundle (`GET /api/pricing` → `plusAnnual`), and **"coming soon"** while
+`plusSalesEnabled` is false. It is the **home-city** product — birthdays, anniversaries, the
+recurring occasion a local's plan arrives before — visibly distinct from the travel ladder, not
+a fifth step. The Plus section's coral CTA is deleted. `See full pricing →` stays the only
+action in that block.
+
+---
+
+## Still-binding v2.4 contracts (unchanged unless amended above)
+
+### Data contract (every number from a live row; §13 honest-collapse)
+
+| Surface | Source | Verified live shape (dev) |
 |---|---|---|
-| Hero city line | `GET /api/travelpulse/cities?limit=N` (public) | `cities[]`: `cityName`, `country`, `trendingScore` (0 when below confidence floor — render no "hot" badge, never fake), `crowdLevel` ("busy"), `pulseScore`, `activeTravelers`, `vibeTags`, `currentHighlight` |
-| Hero anchor expert | `neighborhoods[].localExpert` via the city feed (`GET /api/discover/location/:city`) | `{id, firstName, lastName, profileImageUrl, packagesCount}` — **no `handle`, no `fromPrice`** today; `localExpert` is null-prone (dev Kyoto: 10 neighborhoods, **zero** carry one). Phase 1 adds handle + min-price derivation server-side, nullable. |
-| Hero gem | city feed `gems.data[]` | `placeName` (NOT `name`), `gemScore` (the score), `localRating`, coords. 21 rows in dev Kyoto. |
-| Hero bookable service | city feed `services.data[]` | `serviceName`, `price` (**decimal-dollars string**, e.g. `"480.00"` — Phase 1 converts to `priceCents`), `priceType`, `city`, `neighborhood`, `serviceImage`, approved+active only. 27 rows in dev Kyoto. |
-| Hero wanted slot | **no server home** — today derived client-side in `discover-location.tsx:1881-1906` (neighborhoods × offering types with no coverage) | Phase 1 re-derives server-side inside `/api/landing/hero` (same inputs: `expert_offering_types` minus covered), nullable. |
-| Typed search titles | **Static curated list (decision-maker ruled at the Phase 0 stop): no UGC.** `service_requests` has no public read and its only free text is traveler-authored — nothing user-generated reaches the landing. | The curated, market-spread list below (§ Typed-search titles). Client-side constant, rotated by the shared rotation utility; stops on focus; submits to `/services?q=&location=`; never writes trip context. |
-| Price strip / Plus price | `GET /api/pricing` (public, unauthenticated — verified) | `serviceFeePct:7`, `serviceFeeCapCents:2500`, `optimizerRunDisplay.priceCents:599`, `aiTaskCents:299`, `tripPass.priceCents:1900`, `plusAnnual:{priceCents:2500,interval:"year"}`, **`plusSalesEnabled:false`** — the Join-Plus CTA gates on this field (coming-soon state, price still shown). |
-| Numbers | `GET /api/platform/stats` (already consumed at `landing.tsx:270-272`) | `{totalTrips:1, totalUsers:29, totalExperts:12, totalReviews:0, totalBookings:0, totalCountries:1}` in dev. Current page renders `"0+"` fallbacks (`formatStat`); ruled behavior is honest `—` where empty — change with the section rebuild. |
-| Experiences ticker | `experience_starts` rollup **does not exist** (verified: zero references repo-wide) | Build the degraded section: static curated order, ticker hidden (mock's note). Rollup filed, not built. |
-| Cities rail | `TrendingCities` (already mounted, `landing.tsx:526`) → shared `travelpulse/CityCard` | **`CityCard` has no `density` prop** — the compact variant must be added (additive prop, default preserves current renders). |
+| Hero city line | `GET /api/travelpulse/cities?limit=N` (public) | `cities[]`: `cityName`, `country`, `trendingScore` (0 below confidence floor — no "hot" badge, never fake), `crowdLevel`, `pulseScore`, `activeTravelers`, `vibeTags`, `currentHighlight` |
+| Hero anchor expert | `neighborhoods[].localExpert` via `GET /api/discover/location/:city` | `{id, firstName, lastName, profileImageUrl, packagesCount}`; `localExpert` is null-prone. Phase 1 adds handle + min-price server-side, nullable. |
+| Hero gem | city feed `gems.data[]` | `placeName` (NOT `name`), `gemScore`, `localRating`, coords. |
+| Hero bookable service | city feed `services.data[]` | `serviceName`, `price` (decimal-dollars string), `priceType`, `city`, `neighborhood`, `serviceImage`, approved+active only. |
+| Hero wanted slot | derived (Phase 1 re-derives server-side inside `/api/landing/hero`) | `expert_offering_types` minus covered, nullable. |
+| Typed search titles | Static curated list (ruled: no UGC) | § Typed-search titles below; client constant, rotated by the shared utility; submits to `/services?q=&location=`; never writes trip context. |
+| Price strip / Plus price | `GET /api/pricing` (public) | `serviceFeePct:7`, `serviceFeeCapCents:2500`, `optimizerRunDisplay.priceCents:599`, `aiTaskCents:299`, `tripPass.priceCents:1900`, `plusAnnual:{priceCents:2500,interval:"year"}`, **`plusSalesEnabled:false`** — the Plus band gates on this field. |
+| Numbers | `GET /api/platform/stats` | `{totalTrips, totalUsers, totalExperts, totalReviews, totalBookings, totalCountries}`; honest `—` where empty. |
+| Cities rail | `TrendingCities` → shared `travelpulse/CityCard` | `CityCard` needs `density="compact"` + `chrome="none"` (additive props; defaults preserve current renders). |
 
-## Typed-search titles (ruled: static curated, market-spread, no UGC)
+### Typed-search titles (ruled: static curated, market-spread, no UGC)
 
-One per operating market (the ratified 8, `@shared/operating-markets`), phrased as
-searches a traveler would type. This list is the source of truth — edits here, not
-inline in the component:
+One per operating market (the ratified 8, `@shared/operating-markets`), phrased as searches a
+traveler would type. Source of truth — edit here, not inline:
 
 1. "A rainy-day tea itinerary in Kyoto"
 2. "Porto wine cellars a local would pick"
@@ -62,23 +129,24 @@ inline in the component:
 7. "Block-printing with a maker in Jaipur"
 8. "Bogotá coffee farms in a day"
 
-Rotation via the shared utility (below); the input stops rotating on focus; submit
-navigates to `/services?q=<text>&location=<city>` and never writes trip context.
+Rotation via the shared utility; input stops rotating on focus; submit navigates to
+`/services?q=<text>&location=<city>` and never writes trip context.
 
-## Shared rotation utility — must be CREATED (does not exist)
+### Shared rotation utility — ONE hook, all rotating surfaces
 
-The dispatch says "reuse the shared rotation utility"; Phase 0 found **no such utility**
-anywhere (no shared interval/reduced-motion rotation hook in `client/src`). Phase 2
-creates ONE hook (8s advance · pause on hover/focus · disabled under
-`prefers-reduced-motion`) and all three rotating surfaces (typed search, experiences
-ticker when it exists, cities rail) consume it. No per-surface reimplementations.
+The Moments slideshow, the typed search, the cities rail, and (when it exists) the experiences
+ticker all consume **one** `useRotation` hook (8s advance · pause on hover/focus · disabled under
+`prefers-reduced-motion`). No per-surface reimplementations. If the hook does not yet exist on
+main, Phase 2 of the Moments lane creates it before the section consumes it.
 
-## Photos
+### Photos (global)
 
-Real listing photos where rows have them (`serviceImage`, gem media, expert
-`profileImageUrl`); tinted gradient fallback otherwise; no stock, no AI images.
+Real listing photos where rows have them (`serviceImage`, gem media, expert `profileImageUrl`,
+storefront covers); tinted gradient fallback for the hero bento tiles only; **no stock, no AI
+images**. The Moments photo gate above is stricter: a photo-less moment is omitted from the
+slide entirely, never rendered as a gradient card.
 
-## Phase 1 — `GET /api/landing/hero`
+### Phase 1 — `GET /api/landing/hero`
 
 Server-composed, public, cacheable; every field nullable; collapses honestly:
 
@@ -91,28 +159,17 @@ Server-composed, public, cacheable; every field nullable; collapses honestly:
 ```
 
 - `city/trend/crowd` from the trending resolver (top operating market).
-- `anchorExpert` from `expert_neighborhoods` (deterministic pick, as the feed does) +
-  `users.handle` + min approved offering price; null when the city has no assignment —
-  never a fabricated expert.
+- `anchorExpert` deterministic pick + `users.handle` + min approved offering price; null when
+  the city has no assignment — never a fabricated expert.
 - `gem` maps `placeName`/`gemScore`. `service` converts dollars-string → cents.
 - `wanted` re-derives the client rule server-side; null when everything is covered.
 - Tests: each leg null when absent; the endpoint never fabricates; trend 0 renders no badge.
 
 ## What Not To Do (dispatch, restated)
 
-No handler changes; no stock photos; no inventory-promising copy; no fourth coral
-(see the coral-at-flip ruling below — the fourth is deferred, not rejected);
-no `layout.tssx`/`trip-strip.tsx`; no merge (draft PR, Leon merges). If
+No handler changes to `Plan my trip` (`setPlanningOpen(true)`); no stock or AI photos; no
+gradient-as-permanent (gradient is the pre-photo state only, a photo-less moment stays out of the
+slide); no fabricated review counts or bylines (real rows or omit); **no fifth coral**; no
+`experienceType` invented outside the chooser's accepted keys; no new rotation implementation
+(reuse `useRotation`); no PII in events; no merge without the captures reviewed. If
 `experience_starts` must be built, it is FILED, not built here.
-
-## Coral-at-flip (decision-maker ruled; recorded 2026-08-29)
-
-The landing's ruled coral BUTTON count is **3 while `PLUS_SALES_ENABLED` is off**
-(hero, earn, final CTA — the Plus section's CTA renders the coming-soon state, not
-coral). **When `PLUS_SALES_ENABLED` turns on, the Plus occasions section's Join-Plus
-CTA becomes the accepted FOURTH coral** (matching the v2.4 mock's own note: one coral
-per section — hero, occasions, earn, final). This is the flip's built-in visual
-change, not a new decision to make at flip time: no lane may add a fourth coral for
-any other reason, and no re-ratification is needed when the flag flips. Chrome's
-coral budget (`2026-08-28-chrome-alignment`: Sign In + strip eyebrow + BETA pill) is
-a separate budget and does not change at the flip.
