@@ -1,7 +1,7 @@
 import { LandingHero } from "@/components/landing/landing-hero";
+import { MomentsSection } from "@/components/landing/moments-section";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { EntryStrips } from "@/components/landing/entry-strips";
-import { ExperiencesRail } from "@/components/landing/experiences-rail";
 import { CitiesRail } from "@/components/landing/cities-rail";
 import { NumbersStrip } from "@/components/landing/numbers-strip";
 import { EarnSection } from "@/components/landing/earn-section";
@@ -31,14 +31,15 @@ export default function LandingPage() {
           are replaced by the mock's live bento + beta pill / market caption. */}
       <LandingHero onPlanTrip={() => open()} />
 
-      {/* Ruled section order (LANDING_SPEC.md v2.5): hero -> [Moments (Lane 2, position 2)] ->
-          how-it-works+price (with the Plus BAND folded in, ruling 2026-09-01-plus-in-pricing —
-          the standalone PlusOccasions section is removed) -> where-to-begin -> experiences
-          (degraded; absorbed into Moments in Lane 2) -> cities rail -> numbers -> ways to earn
-          -> final CTA. The testimonials rail stays hidden until admin-curated reviews exist. */}
+      {/* Ruled section order (LANDING_SPEC.md v2.5): hero -> Moments (position 2; suppressed
+          until >=1 attributed real photo — empty state B) -> how-it-works+price (with the Plus
+          BAND folded in) -> where-to-begin -> cities rail -> numbers -> ways to earn -> final CTA.
+          The standalone PlusOccasions section (Lane 1) and the ExperiencesRail "What people are
+          planning" (absorbed into Moments — the experience_starts ticker return is filed) are
+          removed. The testimonials rail stays hidden until admin-curated reviews exist. */}
+      <MomentsSection />
       <HowItWorks />
       <EntryStrips />
-      <ExperiencesRail />
       <CitiesRail />
       <NumbersStrip />
       <EarnSection />

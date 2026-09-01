@@ -4411,8 +4411,22 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         dietaryRestrictions,
         mobilityConsiderations,
         specialRequests,
+        momentKey,
         tripId: tripIdParam,
       } = req.body;
+
+      // Landing v2.5 Moment CTA (ruling 2026-09-01-moment-key): fold the FINE occasion identity
+      // into the brief so the plan reads as "a proposal", not just its coarse experienceType. The
+      // momentKey is validated against the known moment vocabulary and rendered as a readable
+      // clause prepended to the special requests (which already flow into the generation prompt).
+      // NOTE: trips.moment_key PERSISTENCE (for the attribution funnel join) is a separate filed
+      // follow-up — the AI-flow trip-of-record is born on another path; this reads momentKey for
+      // the prompt only.
+      const { MOMENT_KEYS } = await import("../services/landing-moments");
+      const momentOccasion =
+        typeof momentKey === "string" && (MOMENT_KEYS as readonly string[]).includes(momentKey)
+          ? momentKey.replace(/_/g, " ")
+          : null;
 
       // Normalize destination: accept either a string or an array of {city, country} objects
       const normalizedDestination: string | null =
@@ -4454,8 +4468,11 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           return res.status(400).json({ message: specialRequestsLengthError });
         }
       }
+      const baseSpecialRequests =
+        typeof specialRequests === "string" ? specialRequests.trim() : "";
       const normalizedSpecialRequests =
-        typeof specialRequests === "string" ? specialRequests.trim() || undefined : undefined;
+        ((momentOccasion ? `Occasion: this trip is a ${momentOccasion}. ` : "") + baseSpecialRequests).trim() ||
+        undefined;
       if (!dates?.start || !dates?.end) {
         return res.status(400).json({ message: "Start and end dates are required" });
       }

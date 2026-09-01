@@ -28,6 +28,7 @@ import { db } from "../db";
 import { users, providerServices, expertTemplates, landingMomentEvents } from "@shared/schema";
 import {
   resolveLandingMoments,
+  MOMENTS,
   MOMENT_KEYS,
   MOMENT_EVENT_KINDS,
 } from "../services/landing-moments";
@@ -169,8 +170,12 @@ router.get("/api/landing/hero", async (_req, res) => {
 router.get("/api/landing/moments", async (_req, res) => {
   try {
     const moments = await resolveLandingMoments();
+    // The full roster drives the tab strip's faint "coming as locals join" pills without the
+    // client restating the moment list (§18 rule 1). The client still SUPPRESSES the whole
+    // section when moments (the live set) is empty — empty state B.
+    const roster = MOMENTS.map((m) => ({ key: m.key, label: m.label }));
     res.set("Cache-Control", "public, max-age=120");
-    res.json({ moments });
+    res.json({ moments, roster });
   } catch (err: any) {
     console.error("[landing-moments] failed:", err);
     res.status(500).json({ message: "Failed to resolve landing moments" });
