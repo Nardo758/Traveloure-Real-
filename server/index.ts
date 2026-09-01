@@ -10,6 +10,8 @@ import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedProviderServiceListings, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
+import { seedLandingMomentDemo } from "./seeds/landing-moment-demo.seed";
+import { seedLandingHeroDemo } from "./seeds/landing-hero-demo.seed";
 import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
@@ -324,6 +326,20 @@ async function runDatabaseSeeding() {
   }
 
   try {
+    const momentDemoResult = await seedLandingMomentDemo();
+    if (momentDemoResult.upserted > 0) {
+      logger.info(
+        { count: momentDemoResult.upserted },
+        "Seeded attributed Landing Moment demo gems",
+      );
+    } else if (!momentDemoResult.expertFound) {
+      logger.warn("Skipped Landing Moment demo gems because the test expert was not found");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed Landing Moment demo gems");
+  }
+
+  try {
     await seedProviderServices();
   } catch (err) {
     logger.error({ err }, "Failed to seed provider services");
@@ -351,6 +367,24 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed city neighborhoods");
+  }
+
+  try {
+    const heroDemoResult = await seedLandingHeroDemo();
+    if (heroDemoResult.markets > 0) {
+      logger.info(
+        { markets: heroDemoResult.markets, services: heroDemoResult.services },
+        "Seeded development-only landing hero fixtures",
+      );
+    }
+    if (heroDemoResult.skipped.length > 0) {
+      logger.warn(
+        { markets: heroDemoResult.skipped },
+        "Skipped landing hero fixtures because city neighborhoods are missing",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed landing hero fixtures");
   }
 
   try {

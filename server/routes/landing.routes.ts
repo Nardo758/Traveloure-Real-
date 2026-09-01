@@ -51,9 +51,10 @@ async function enrichAnchor(anchor: { id: string; name: string }): Promise<{
   name: string;
   handle: string | null;
   fromPriceCents: number | null;
+  imageUrl?: string;
 }> {
   const [userRow] = await db
-    .select({ handle: users.handle })
+    .select({ handle: users.handle, profileImageUrl: users.profileImageUrl })
     .from(users)
     .where(eq(users.id, anchor.id))
     .limit(1);
@@ -83,11 +84,19 @@ async function enrichAnchor(anchor: { id: string; name: string }): Promise<{
   const candidates = [dollarsToCents(svcMin?.min), dollarsToCents(tplMin?.min)].filter(
     (c): c is number => c !== null,
   );
-  return {
+  const result: {
+    name: string;
+    handle: string | null;
+    fromPriceCents: number | null;
+    imageUrl?: string;
+  } = {
     name: anchor.name,
     handle: userRow?.handle ?? null,
     fromPriceCents: candidates.length > 0 ? Math.min(...candidates) : null,
   };
+  const imageUrl = userRow?.profileImageUrl?.trim();
+  if (imageUrl) result.imageUrl = imageUrl;
+  return result;
 }
 
 // ── Route ───────────────────────────────────────────────────────────────────────────────

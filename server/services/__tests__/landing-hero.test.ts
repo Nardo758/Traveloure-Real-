@@ -108,6 +108,29 @@ describe("composeLandingHero — honest collapse", () => {
     });
     assert.deepEqual(q.gem, { name: "Pontocho Alley", score: null });
   });
+  test("existing image URLs pass through for photo-backed tiles", () => {
+    const p = composeLandingHero({
+      topCity: { cityName: "Cartagena" },
+      anchorExpert: {
+        name: "Local Guide",
+        handle: "local-guide",
+        fromPriceCents: 14900,
+        imageUrl: "https://example.test/expert.jpg",
+      },
+      gems: [{ placeName: "Night Market", gemScore: 96, imageUrl: "https://example.test/gem.jpg" }],
+      services: [
+        {
+          serviceName: "Local Planning",
+          price: "149.00",
+          serviceImage: "https://example.test/service.jpg",
+        },
+      ],
+      wanted: null,
+    });
+    assert.equal(p.anchorExpert?.imageUrl, "https://example.test/expert.jpg");
+    assert.equal(p.gem?.imageUrl, "https://example.test/gem.jpg");
+    assert.equal(p.service?.imageUrl, "https://example.test/service.jpg");
+  });
   test("service converts dollars-string price to cents; priceless service keeps null price", () => {
     const p = composeLandingHero({
       topCity: { cityName: "Kyoto" }, anchorExpert: null, gems: [],

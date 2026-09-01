@@ -13,16 +13,26 @@ export interface LandingHeroPayload {
   /** trend_scores trendingScore; 0 = below confidence floor (no badge), null = no city. */
   trend: number | null;
   crowd: string | null;
-  anchorExpert: { name: string; handle: string | null; fromPriceCents: number | null } | null;
-  gem: { name: string; score: number | null } | null;
-  service: { name: string; priceCents: number | null } | null;
+  anchorExpert: {
+    name: string;
+    handle: string | null;
+    fromPriceCents: number | null;
+    imageUrl?: string;
+  } | null;
+  gem: { name: string; score: number | null; imageUrl?: string } | null;
+  service: { name: string; priceCents: number | null; imageUrl?: string } | null;
   wanted: { title: string; neighborhood: string } | null;
 }
 
 export interface HeroNeighborhood {
   id?: unknown;
   name?: string | null;
-  localExpert?: { id: string; firstName: string | null; lastName: string | null } | null;
+  localExpert?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl?: string | null;
+  } | null;
 }
 
 export interface HeroOfferingType {
@@ -48,7 +58,10 @@ export function pickAnchorExpert(
     const e = nb?.localExpert;
     if (e && e.id) {
       const name = [e.firstName, e.lastName].filter(Boolean).join(" ").trim();
-      if (name.length > 0) return { id: e.id, name };
+      if (name.length > 0) {
+        const imageUrl = typeof e.profileImageUrl === "string" ? e.profileImageUrl.trim() : "";
+        return imageUrl.length > 0 ? { id: e.id, name, imageUrl } : { id: e.id, name };
+      }
     }
   }
   return null;
@@ -79,9 +92,19 @@ export function deriveWantedSlot(
 /** Assemble the payload from already-resolved legs. Absent legs stay null — no defaults. */
 export function composeLandingHero(input: {
   topCity: { cityName: string; trendingScore?: number | null; crowdLevel?: string | null } | null;
-  anchorExpert: { name: string; handle: string | null; fromPriceCents: number | null } | null;
-  gems: Array<{ placeName?: string | null; gemScore?: unknown }>;
-  services: Array<{ serviceName?: string | null; price?: unknown }>;
+  anchorExpert: {
+    name: string;
+    handle: string | null;
+    fromPriceCents: number | null;
+    imageUrl?: string;
+  } | null;
+  gems: Array<{ placeName?: string | null; gemScore?: unknown; imageUrl?: unknown }>;
+  services: Array<{
+    serviceName?: string | null;
+    price?: unknown;
+    serviceImage?: unknown;
+    vendorPhoto?: unknown;
+  }>;
   wanted: { title: string; neighborhood: string } | null;
 }): LandingHeroPayload {
   const { topCity } = input;
@@ -89,7 +112,7 @@ export function composeLandingHero(input: {
   const gemScore = gemRow ? Number(gemRow.gemScore) : NaN;
   const svcRow =
     input.services.find((s) => (s?.serviceName ?? "").toString().trim().length > 0) ?? null;
-  return {
+  const payload: LandingHeroPayload = {
     city: topCity?.cityName ?? null,
     trend: topCity ? Number(topCity.trendingScore ?? 0) : null,
     crowd: topCity?.crowdLevel ?? null,
@@ -102,5 +125,18 @@ export function composeLandingHero(input: {
       : null,
     wanted: input.wanted,
   };
+
+  const gemImageUrl = typeof gemRow?.imageUrl === "string" ? gemRow.imageUrl.trim() : "";
+  if (payload.gem && gemImageUrl) payload.gem.imageUrl = gemImageUrl;
+
+  const serviceImageUrl =
+    typeof svcRow?.serviceImage === "string" && svcRow.serviceImage.trim()
+      ? svcRow.serviceImage.trim()
+      : typeof svcRow?.vendorPhoto === "string"
+        ? svcRow.vendorPhoto.trim()
+        : "";
+  if (payload.service && serviceImageUrl) payload.service.imageUrl = serviceImageUrl;
+
+  return payload;
 }
 
