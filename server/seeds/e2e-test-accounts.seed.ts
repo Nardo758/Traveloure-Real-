@@ -235,7 +235,18 @@ async function seedE2EAccounts() {
  * and catches every test account present or future.
  * Call at startup when ENVIRONMENT === 'PROD'. Idempotent.
  */
-async function purgeE2EAccountsFromProd() {
+export interface PurgeBlockedAccount {
+  account: string;
+  constraint: string;
+  detail: string;
+}
+export interface PurgeResult {
+  neutralized: number;
+  deleted: number;
+  blocked: PurgeBlockedAccount[];
+}
+
+async function purgeE2EAccountsFromProd(): Promise<PurgeResult> {
   const { sql } = await import("drizzle-orm");
 
   // Landing Moments demo gems use reserved IDs and have a soft curator reference, so
@@ -274,13 +285,27 @@ async function purgeE2EAccountsFromProd() {
       .from(users)
       .where(sql`${users.email} LIKE '%@traveloure.test'`);
     let deleted = 0;
-    const blocked: string[] = [];
+    // Capture WHICH foreign key blocked each residue account, not just that one did. A single boot
+    // line naming the constraint + child table (e.g. `trips_user_id_fkey` → `trips`) is what lets a
+    // future decision about clearing the blocking child rows be made with the FK in hand, instead of
+    // guessing a cascade. Deleting those child rows is deliberately NOT done here (a second decision).
+    const blocked: PurgeBlockedAccount[] = [];
     for (const t of targets) {
       try {
         await db.delete(users).where(eq(users.id, t.id));
         deleted++;
-      } catch {
-        blocked.push(t.email ?? t.id);
+      } catch (err: any) {
+        // pg foreign-key violation: code 23503, `.constraint` = the FK name, `.detail` names the
+        // referencing table ("...is still referenced from table \"affiliate_booking_requests\".").
+        // Drizzle wraps the driver error, so the pg fields live on `.cause` (possibly nested), not
+        // the outer error — walk the cause chain to the object that actually carries `.code`.
+        let pg: any = err;
+        while (pg && pg.code === undefined && pg.cause) pg = pg.cause;
+        blocked.push({
+          account: t.email ?? t.id,
+          constraint: pg?.constraint ?? (pg?.code === "23503" ? "<unnamed FK>" : `<non-FK: ${pg?.code ?? "unknown"}>`),
+          detail: (pg?.detail ?? pg?.message ?? err?.message ?? String(err)).toString().slice(0, 200),
+        });
       }
     }
     if (deleted > 0) {
@@ -290,10 +315,12 @@ async function purgeE2EAccountsFromProd() {
       console.warn(
         `[security] ${blocked.length} test account(s) FK-blocked from deletion — remain NEUTRALIZED (role user, unverifiable password):`,
       );
-      blocked.forEach((e) => console.warn(`  - ${e}`));
+      blocked.forEach((b) => console.warn(`  - ${b.account} — blocked by ${b.constraint} (${b.detail})`));
     }
+    return { neutralized: neutralized.length, deleted, blocked };
   } catch (err) {
     console.warn(`[security] Test-account purge enumeration failed — accounts remain NEUTRALIZED:`, err);
+    return { neutralized: neutralized.length, deleted: 0, blocked: [] };
   }
 }
 

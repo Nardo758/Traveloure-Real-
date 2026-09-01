@@ -1,0 +1,108 @@
+name: Fee Preview Gate
+
+# Guards the Trip-Pass waiver on GET /api/cart/fee-preview (Lane 4, small-filed rider 3b).
+# The waiver is INFORMATIONAL today: the D3 traveler-service-fee is not billed on the direct path
+# (`billedOnDirectPathToday: false`), so a pass-holder and a non-holder see the SAME cart total; the
+# waiver only reports the counterfactual (`wouldHaveBeenAmountTotal`). This test pins that truth:
+#   A no tripId → no waiver, baseline total
+#   B tripId with no pass → no waiver, total unchanged
+#   C tripId with an active pass → waiver flag + counterfactual, total UNCHANGED
+# If someone STARTS billing the fee on this path (so the waiver should move the total), assertion C
+# flips and this gate fails loudly — the intended tripwire. See docs/findings/FEE_NOT_BILLED_ON_DIRECT_PATH.md.
+#
+# Boot recipe mirrors payout-parity-gate.yml (build → prod bundle → /api/ready poll). Stub Stripe/AI
+# keys are deliberate — fee-preview is read-only and makes no external call.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fee-preview-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fee-preview:
+    name: fee-preview (Trip-Pass informational waiver)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The suite registers its own buyer over HTTP and inserts its own fixtures.
+          seed-ci-users: 'false'
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Fee-preview Trip-Pass waiver pins (A–C)
+        run: npx tsx --test server/__tests__/fee-preview-entitlement.http.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'

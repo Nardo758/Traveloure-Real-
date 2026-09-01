@@ -457,7 +457,7 @@ class BookingService {
       } catch (error: any) {
         // Distinguish slot-taken (23505 unique violation or explicit SLOT_ALREADY_BOOKED)
         // from generic errors so the route layer can return 409 instead of 500.
-        if (error.slotTaken || error.message === 'SLOT_ALREADY_BOOKED' || error.code === '23505') {
+        if (error.slotTaken || error.message === 'SLOT_ALREADY_BOOKED' || (error.code ?? error.cause?.code) === '23505') {
           errors.push(`SLOT_TAKEN:${item.title}`);
         } else {
           errors.push(`Error booking ${item.title}: ${error.message}`);

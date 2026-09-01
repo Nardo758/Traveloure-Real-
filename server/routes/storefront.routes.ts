@@ -102,8 +102,9 @@ router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
         .returning({ handle: users.handle });
       return res.json({ handle: updated?.handle ?? handle });
     } catch (e: any) {
-      // unique_violation → someone else owns it
-      if (e?.code === "23505") {
+      // unique_violation → someone else owns it. Drizzle wraps the driver error, so the pg code
+      // lives on `.cause` (see e2e-test-accounts purge fix); read both or a real 23505 reads as 500.
+      if ((e?.code ?? e?.cause?.code) === "23505") {
         return res.status(409).json({ message: "That handle is already taken." });
       }
       throw e;

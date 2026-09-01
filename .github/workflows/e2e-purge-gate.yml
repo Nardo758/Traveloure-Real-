@@ -1,0 +1,62 @@
+name: E2E Purge Gate
+
+# Guards the prod-boot purge of @traveloure.test accounts (Lane 4, small-filed). A test account left
+# live in production is a security hole; the purge neutralizes then best-effort deletes every such
+# account, and an FK-blocked one must be reported WITH the blocking constraint (not silently
+# swallowed) so a later decision to clear the child rows is made with the FK in hand. This proves
+# both: the FK name is captured and the blocked account stays neutralized, never deleted-or-left-live.
+#
+# Same Postgres + ci-db-setup composite shape as scheduler-jobs-gate / fee-resolution-authority-gate.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-purge-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-purge:
+    name: e2e-purge (FK-blocked accounts are named, not swallowed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      ALLOW_TEST_ACCOUNTS: '1'
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      - name: Purge names the blocking FK and leaves the account neutralized
+        run: npx tsx --test server/__tests__/e2e-purge-fk-naming.db.test.ts
