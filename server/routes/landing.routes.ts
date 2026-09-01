@@ -22,9 +22,15 @@
  * Pure composers are exported for tests (the getPricingHandler precedent).
  */
 import { Router } from "express";
+import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates } from "@shared/schema";
+import { users, providerServices, expertTemplates, landingMomentEvents } from "@shared/schema";
+import {
+  resolveLandingMoments,
+  MOMENT_KEYS,
+  MOMENT_EVENT_KINDS,
+} from "../services/landing-moments";
 import {
   composeLandingHero,
   deriveWantedSlot,
@@ -154,6 +160,53 @@ router.get("/api/landing/hero", async (_req, res) => {
     console.error("[landing-hero] failed:", err);
     res.status(500).json({ message: "Failed to compose landing hero" });
   }
+});
+
+// ── Moments (Landing v2.5 Lane 2) ─────────────────────────────────────────────────────────
+// GET returns only moments with ≥1 attributed real photo (the TRUST-surface gate,
+// 2026-09-01-photo-tiers). Today []: the client suppresses the section (empty state B). Public,
+// cacheable; the section never fabricates a photo, byline or count (§13).
+router.get("/api/landing/moments", async (_req, res) => {
+  try {
+    const moments = await resolveLandingMoments();
+    res.set("Cache-Control", "public, max-age=120");
+    res.json({ moments });
+  } catch (err: any) {
+    console.error("[landing-moments] failed:", err);
+    res.status(500).json({ message: "Failed to resolve landing moments" });
+  }
+});
+
+// POST attribution — mirrors the upsell session posture (guest_session_id + nullable user_id, NO
+// PII beyond that token, 2026-09-01-landing-moments). ALLOWLIST body (§19): momentKey must be a
+// known moment key, kind a known kind — never a createInsertSchema off the body. Fire-and-forget;
+// a write failure never breaks the page.
+const momentEventBody = z.object({
+  momentKey: z.enum(MOMENT_KEYS as [string, ...string[]]),
+  kind: z.enum(MOMENT_EVENT_KINDS as unknown as [string, ...string[]]),
+  position: z.number().int().min(0).max(50).optional(),
+  sessionId: z.string().trim().max(255).optional(),
+});
+router.post("/api/landing/moments/event", async (req, res) => {
+  const parsed = momentEventBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid moment event" });
+  }
+  const { momentKey, kind, position, sessionId } = parsed.data;
+  const userId = (req.user as any)?.id ?? null; // best-effort; the surface is public
+  try {
+    await db.insert(landingMomentEvents).values({
+      momentKey,
+      kind,
+      position: position ?? null,
+      guestSessionId: sessionId ?? null,
+      userId,
+    });
+  } catch (e: any) {
+    console.error("[landing-moments] event insert failed (non-fatal):", e?.message);
+  }
+  // Always 204 — attribution is best-effort and must never surface an error to the page.
+  res.status(204).end();
 });
 
 export default router;
