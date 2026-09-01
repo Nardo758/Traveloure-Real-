@@ -1049,9 +1049,9 @@ export interface IStorage {
 
   getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined>;
 
-  getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
+  getAffiliateBookingRequestsByUser(userId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
 
-  getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
+  getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<AffiliateBookingRequest[]>;
 
   updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // R4/F7 (§15): atomic pending→confirmed claim used by the confirm site so a duplicate/concurrent
@@ -7236,25 +7236,28 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
+  async getAffiliateBookingRequestsByUser(userId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
+    const conditions = [eq(affiliateBookingRequests.userId, userId)];
+    if (tripId) conditions.push(eq(affiliateBookingRequests.tripId, tripId));
     const rows = await db
       .select()
       .from(affiliateBookingRequests)
-      .where(eq(affiliateBookingRequests.userId, userId))
+      .where(and(...conditions))
       .orderBy(desc(affiliateBookingRequests.createdAt));
     return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
   }
 
-  async getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]> {
+  async getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<AffiliateBookingRequest[]> {
+    const expertScope = or(
+      eq(affiliateBookingRequests.expertId, expertId),
+      sql`${affiliateBookingRequests.expertId} IS NULL`,
+    )!;
     return db
       .select()
       .from(affiliateBookingRequests)
-      .where(
-        or(
-          eq(affiliateBookingRequests.expertId, expertId),
-          sql`${affiliateBookingRequests.expertId} IS NULL`,
-        )
-      )
+      .where(tripId
+        ? and(expertScope, eq(affiliateBookingRequests.tripId, tripId))
+        : expertScope)
       .orderBy(asc(affiliateBookingRequests.status), asc(affiliateBookingRequests.createdAt));
   }
 
