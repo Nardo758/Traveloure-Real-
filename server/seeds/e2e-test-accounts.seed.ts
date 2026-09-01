@@ -249,6 +249,14 @@ export interface PurgeResult {
 async function purgeE2EAccountsFromProd(): Promise<PurgeResult> {
   const { sql } = await import("drizzle-orm");
 
+  // Landing Moments demo gems use reserved IDs and have a soft curator reference, so
+  // deleting the @traveloure.test user alone would leave inert fixture rows behind.
+  const purgedMomentGems = await db
+    .execute(sql`DELETE FROM travel_pulse_hidden_gems WHERE id LIKE 'landing-moment-demo-%' RETURNING id`);
+  if (purgedMomentGems.rows.length > 0) {
+    console.warn(`[security] Purged ${purgedMomentGems.rows.length} Landing Moment dev fixture gem(s) from PROD DB.`);
+  }
+
   // NEUTRALIZE FIRST, delete second (dispatch P0 hardening): a plain DELETE can
   // fail on FK references (the traveler account owns a seeded trip), and a purge
   // that throws leaves a live admin credential behind. Step 1 always succeeds:

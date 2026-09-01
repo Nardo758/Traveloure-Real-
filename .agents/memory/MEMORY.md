@@ -43,6 +43,7 @@
 - [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.
 - [Calendar-date boundaries](calendar-date-boundaries.md) — date-only trip values and exported wall-clock events must never pass through viewer/server timezone conversion.
 - [TravelPulse city index publish compatibility](travelpulse-city-index-publish.md) — production duplicate city pairs block the normalized unique index; keep enforcement in lookup paths until approved cleanup.
+- [Landing Moment demo seeding](landing-moment-demo-seeding.md) — demos use licensed real photos and a labeled test curator; production activates through publish, never direct SQL.
 - [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
 - [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
 - [Vite development logger resilience](vite-dev-logger-resilience.md) — Vite/client diagnostics must log without terminating the dev server and dropping the preview.
@@ -61,3 +62,4 @@
 - [Background scheduler resilience](background-scheduler-resilience.md) — claim timers before first runs, cap aggregate concurrency, retry transient DB failures only, and never leak health clients.
 - [Proposal map provider policy](proposal-map-provider-policy.md) — Google is primary in-app; Leaflet/OSM is only the keyless or share/export fallback, with no invented locations or routes.
 - [Playwright audit captures](playwright-audit-captures.md) — HTML reporter can clear custom files under playwright-report; use line reporter when preserving screenshot evidence.
+- [Development database host guard](dev-database-host-guard.md) — Replit development databases can use Neon hostnames; gate fixture seeds by environment flags, not host matching.

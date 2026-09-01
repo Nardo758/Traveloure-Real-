@@ -126,6 +126,10 @@ export const MOMENT_KEYS: readonly string[] = MOMENTS.map((m) => m.key);
 export const MOMENT_EVENT_KINDS = ["impression", "tab", "dot", "cta"] as const;
 export type MomentEventKind = (typeof MOMENT_EVENT_KINDS)[number];
 
+function isProductionRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV === "production" || env.ENVIRONMENT === "PROD";
+}
+
 /**
  * A momentKey is ACCEPTABLE when it is absent (undefined/null/"") OR a known key. A
  * present-but-unknown key is a forged/invalid input and callers reject it (400). Used by the AI
@@ -180,6 +184,9 @@ async function attributedPhotosForCity(
       SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle
       FROM travel_pulse_hidden_gems g
       JOIN users u ON u.id = g.curated_by_expert_id
+      JOIN local_expert_forms f
+        ON f.user_id = u.id
+       AND LOWER(TRIM(f.city)) = LOWER(TRIM(${city}))
       WHERE g.city ILIKE ${city}
         AND g.image_url IS NOT NULL AND g.image_url <> ''
         AND COALESCE(g.ai_generated, false) = false
@@ -188,6 +195,7 @@ async function attributedPhotosForCity(
         AND g.image_url NOT ILIKE '%pexels%'
         AND g.image_url NOT ILIKE '%googleusercontent%'
         AND g.image_url NOT ILIKE '%googleapis%'
+        ${isProductionRuntime() ? sql`AND u.email NOT ILIKE '%@traveloure.test'` : sql``}
       ORDER BY g.gem_score DESC NULLS LAST
       LIMIT 4
     `);

@@ -19,11 +19,13 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveLandingMoments } from "../services/landing-moments";
+import { shouldSeedLandingMomentDemo } from "../seeds/landing-moment-demo.seed";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const HANDLE = `mtest-${RUN}`;
 const expertWith = `u-with-${RUN}`;
 const expertNo = `u-no-${RUN}`;
+const expertPorto = `u-porto-${RUN}`;
 const NONSTOCK = "https://cdn.traveloure.test/gion.jpg";
 const STOCK = "https://images.unsplash.com/photo-x.jpg";
 
@@ -44,21 +46,35 @@ async function insertGem(city: string, url: string, curator: string): Promise<vo
   `);
 }
 
+async function insertExpert(id: string, email: string, handle: string | null, city: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO users (id, email, handle, role)
+    VALUES (${id}, ${email}, ${handle}, ${"expert"})
+  `);
+  await db.execute(sql`
+    INSERT INTO local_expert_forms (id, user_id, email, city, status)
+    VALUES (gen_random_uuid(), ${id}, ${email}, ${city}, ${"approved"})
+  `);
+}
+
 before(async () => {
   await assertDisposableDb();
-  await db.execute(sql`INSERT INTO users (id, email, handle, role) VALUES (${expertWith}, ${`w-${RUN}@t.test`}, ${HANDLE}, ${"expert"})`);
-  await db.execute(sql`INSERT INTO users (id, email, handle, role) VALUES (${expertNo}, ${`n-${RUN}@t.test`}, ${null}, ${"expert"})`);
+  await insertExpert(expertWith, `w-${RUN}@traveloure.test`, HANDLE, "Edinburgh");
+  await insertExpert(expertNo, `n-${RUN}@traveloure.test`, null, "Cartagena");
+  await insertExpert(expertPorto, `p-${RUN}@traveloure.test`, `porto-${RUN}`, "Porto");
   // Golf market (Edinburgh): curated NON-stock + handle → live.
   await insertGem("Edinburgh", NONSTOCK, expertWith);
   // Anniversary market (Porto): curated STOCK → excluded.
-  await insertGem("Porto", STOCK, expertWith);
+  await insertGem("Porto", STOCK, expertPorto);
   // Girls' trip market (Cartagena): curated NON-stock but curator has NO handle → excluded.
   await insertGem("Cartagena", NONSTOCK, expertNo);
+  // Anniversary market (Porto): a non-stock photo curated by an Edinburgh expert → excluded.
+  await insertGem("Porto", NONSTOCK, expertWith);
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM travel_pulse_hidden_gems WHERE place_name = ${`Test gem ${RUN}`}`).catch(() => {});
-  await db.execute(sql`DELETE FROM users WHERE id IN (${expertWith}, ${expertNo})`).catch(() => {});
+  await db.execute(sql`DELETE FROM users WHERE id IN (${expertWith}, ${expertNo}, ${expertPorto})`).catch(() => {});
 });
 
 test("M1 curated non-stock gem + expert handle → the moment goes live with attribution", async () => {
@@ -82,4 +98,36 @@ test("M3 a curated non-stock gem whose expert has NO handle does NOT go live", a
   const live = await resolveLandingMoments();
   const girls = live.find((m) => m.key === "girls_trip");
   assert.equal(girls, undefined, "girls_trip stays out — the curating expert has no handle, so attribution can't resolve");
+});
+
+test("M4 a non-stock photo curated by an expert from another market does NOT go live", async () => {
+  const live = await resolveLandingMoments();
+  const anniversary = live.find((m) => m.key === "anniversary");
+  assert.equal(
+    anniversary,
+    undefined,
+    "anniversary stays out — an Edinburgh curator cannot attribute a Porto photo",
+  );
+});
+
+test("M5 production does not seed or resolve development-only Moment fixtures", async () => {
+  assert.equal(shouldSeedLandingMomentDemo({ NODE_ENV: "production" }), false);
+
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousEnvironment = process.env.ENVIRONMENT;
+  process.env.NODE_ENV = "production";
+  delete process.env.ENVIRONMENT;
+  try {
+    const live = await resolveLandingMoments();
+    assert.equal(
+      live.some((moment) => ["golf", "girls_trip"].includes(moment.key)),
+      false,
+      "production must not expose the @traveloure.test Moment fixtures",
+    );
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousEnvironment === undefined) delete process.env.ENVIRONMENT;
+    else process.env.ENVIRONMENT = previousEnvironment;
+  }
 });
