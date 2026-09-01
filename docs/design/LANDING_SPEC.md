@@ -70,6 +70,22 @@ shows the proof, the price ladder is the cost. Moments sits at position 2.
   anniversary · honeymoon · milestone birthday · family occasion). The section renders the
   decision-maker's ratified words, not the drafts.
 
+### `experienceType` + `momentKey` (ruling `2026-09-01-moment-key`)
+
+`experienceType` is a **machine key** (five values: `travel`, `wedding`, `corporate`, `event`,
+`retreat`) driving optimizer complexity/pricing tiers and PlanCard skins — it does **not** grow to
+carry occasion identity. A moment's `Plan this moment` CTA prefills one of the five (the coarse
+mapping in `MOMENTS_COPY.md`). The fine occasion identity rides on a **new nullable `momentKey`**
+carried on the trip, written by the chooser **only when opened from a moment**, persisted through
+trip creation, and read by (a) **attribution** — the moment→trip→purchase funnel joins on it — and
+(b) the **AI/expert plan-generation prompt** ("this is a proposal"), so the identity improves the
+plan, not only the analytics. `momentKey` values are the moment keys (`proposal`, `golf`,
+`girls_trip`, `anniversary`, `honeymoon`, `milestone_birthday`, `family_occasion`) — one vocabulary
+across the `moments` config, the `landing_moment_events` row, and the trip. **Where it lands
+(`trip_contexts` vs `trips`) is a Lane 2 Phase 0 question**; additive nullable column, migration
+number verified against origin, declared in `shared/schema.ts` (publish-trap rule). **No fee-tier
+or template changes.**
+
 ### Attribution contract (Moments)
 
 Every slide impression (**≥2s visible** = one impression) and every click (tab, dot, CTA) writes
