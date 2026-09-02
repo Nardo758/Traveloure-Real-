@@ -164,6 +164,13 @@ export default function AdminProviders() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/provider-applications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-service-providers"] });
+      // F-5: the admin sidebar's Providers badge is the Stripe-incomplete count
+      // (client/src/components/admin-sidebar.tsx reads
+      // ["/api/admin/providers/stripe-incomplete-count"], refetched only every 60s). An approval
+      // adds a provider who has not onboarded to Stripe yet, so the badge is stale the moment the
+      // queue empties. Invalidated for BOTH outcomes — the mutation is one handler for approve and
+      // reject, and either can move the set.
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/providers/stripe-incomplete-count"] });
       toast({
         title: variables.status === "approved" ? "Provider Approved" : "Application Rejected",
         description: variables.status === "approved"

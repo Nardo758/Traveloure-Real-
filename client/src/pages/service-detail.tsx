@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, Link, useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { ServiceLocationMap, parseLatLng } from "@/components/service-location-map";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useTripContext } from "@/lib/trip-context";
+import { resolveTargetTripId } from "@/lib/trip-target";
 // T-REP (G5 #13): pure "Good to know" formatting/derivation helpers, unit-tested in
 // client/src/lib/__tests__/service-good-to-know.test.ts.
 import {
@@ -411,6 +413,15 @@ export default function ServiceDetailPage() {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const [, navigate] = useLocation();
+  // TRIP HANDOFF (F-2). The slip's "Browse services for this trip" CTA scopes the marketplace to
+  // ONE trip (`/services?tripId=`); the grid forwards that id into this page's URL. Resolved through
+  // the SAME module the grid uses — client/src/lib/trip-target.ts, "URL first, then the active
+  // TripContext" — so the two surfaces cannot drift apart on which trip is active (§18 rule 1).
+  // Used ONLY to scope the cart row to a trip; it is never an amount, a rate or a payer identity
+  // (§14/§18/§19), and the server re-checks ownership of the trip it names.
+  const searchString = useSearch();
+  const [tripCtx] = useTripContext();
+  const targetTripId = resolveTargetTripId(searchString, tripCtx);
   // Native "Book on Traveloure": capture a preferred date/time and carry it into the
   // cart (cart_items.scheduled_date → checkout bookingDetails). Optional — non-dated
   // services (e.g. a PDF deliverable) can book without it. This closes the gap where
@@ -433,6 +444,11 @@ export default function ServiceDetailPage() {
         quantity: 1,
         scheduledDate,
         ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
+        // F-2: scope the row to the handed-off trip. POST /api/cart has always accepted `tripId`
+        // (server/routes.ts) — this page simply never sent it, so a slip-scoped browse ended in a
+        // trip-less cart. With it set, `POST /api/cart/resolve-trip` reuses THIS trip instead of
+        // minting a second one, and checkout books against it.
+        ...(targetTripId ? { tripId: targetTripId } : {}),
       });
     },
     onSuccess: (_data, vars) => {
@@ -442,11 +458,13 @@ export default function ServiceDetailPage() {
       } else {
         toast({
           title: "Added to cart",
-          description: selectedSlot
-            ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
-            : bookingDate
-              ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
-              : "Service has been added to your cart",
+          description:
+            (selectedSlot
+              ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
+              : bookingDate
+                ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
+                : "Service has been added to your cart") +
+            (targetTripId ? " · Held for your trip." : ""),
         });
       }
     },
@@ -576,6 +594,8 @@ export default function ServiceDetailPage() {
         serviceId: id,
         checkIn: roomCheckIn,
         checkOut: roomCheckOut,
+        // F-2: same trip scoping as the service add above.
+        ...(targetTripId ? { tripId: targetTripId } : {}),
       });
     },
     onSuccess: (_data, vars) => {
@@ -585,7 +605,9 @@ export default function ServiceDetailPage() {
       } else {
         toast({
           title: "Added to cart",
-          description: `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`,
+          description:
+            `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}` +
+            (targetTripId ? " · Held for your trip." : ""),
         });
       }
     },
@@ -1401,6 +1423,29 @@ export default function ServiceDetailPage() {
                 and the fee disclosure — all in one sticky sidebar column. */}
             <div className="order-1 lg:order-2">
               <DetailCard className="lg:sticky lg:top-4">
+                {/* F-2 trip handoff. The slip's CTA promised "for this trip"; say plainly what
+                    that means HERE, at the booking CTAs, rather than letting the traveler find out
+                    on the cart. Deliberately claims only what the code does: the cart row is scoped
+                    to this trip (cart_items.trip_id) and the booking is logged onto it at checkout
+                    (service_bookings.trip_id = the cart row's trip). It does NOT claim the service
+                    appears on the plan's day list before checkout — it doesn't (§13). */}
+                {targetTripId && (
+                  <div
+                    className="mb-[17px] rounded-[8px] border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-3 py-2.5 text-[11.5px] leading-snug text-[color:var(--earn-ink)]"
+                    data-testid="banner-trip-handoff"
+                  >
+                    <span className="font-semibold">Booking for your trip.</span> This goes into your
+                    cart scoped to the trip you came from, and the booking is logged onto that trip
+                    when you check out.{" "}
+                    <Link
+                      href={`/plans/${targetTripId}`}
+                      className="underline font-medium"
+                      data-testid="link-back-to-plan"
+                    >
+                      Back to your plan
+                    </Link>
+                  </div>
+                )}
                 <div className="flex items-baseline gap-[7px] flex-wrap border-b border-[color:var(--earn-border)] pb-[17px]">
                   <strong
                     className="text-[color:var(--earn-navy)] text-[30px] leading-none"
