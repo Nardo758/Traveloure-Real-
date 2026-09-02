@@ -134,8 +134,14 @@ export function travelerServiceFeeWaiverLedgerKey(bookingId: string): string {
 export function buildTravelerServiceFeeRows(
   t: any,
   opts: {
-    bookingId: string;
+    /** Seeds the deterministic idempotency keys. For a booking this is the booking id; for a
+     *  non-booking source (expert review) it is the PaymentIntent id. */
+    keySeed: string;
+    /** The `booking_id` COLUMN — null for a non-booking event (fee_ledger allows it). */
+    bookingId: string | null;
     sourceType: string;
+    /** `source_id` — defaults to `keySeed`. */
+    sourceId?: string;
     acquisitionRef?: string | null;
     stripePaymentRef?: string | null;
     actor: string;
@@ -146,7 +152,8 @@ export function buildTravelerServiceFeeRows(
   // +X row in both cases; `charged` (0 when waived) is what actually rode the Stripe total.
   const wouldHaveBeen = round2(Number(t.wouldHaveBeen ?? t.charged ?? 0));
   if (!Number.isFinite(wouldHaveBeen) || wouldHaveBeen <= 0) return { rows: [], considered: 0 };
-  const { bookingId } = opts;
+  const { keySeed, bookingId } = opts;
+  const sourceId = opts.sourceId ?? keySeed;
   const waived = t.waived === true;
   const waiverBasis: string | null = waived ? (t.waiverBasis ?? null) : null;
   const bandId = t.bandId ?? null;
@@ -158,7 +165,7 @@ export function buildTravelerServiceFeeRows(
   // gross fee stays visible and the suppressed total is derivable).
   rows.push({
     sourceType: opts.sourceType,
-    sourceId: bookingId,
+    sourceId,
     bookingId,
     feeType: "traveler_service_fee",
     amount: wouldHaveBeen,
@@ -169,8 +176,8 @@ export function buildTravelerServiceFeeRows(
     capApplied,
     acquisitionRef: opts.acquisitionRef ?? null,
     stripePaymentRef: opts.stripePaymentRef ?? null,
-    idempotencyKey: travelerServiceFeeLedgerKey(bookingId),
-    description: `Traveler service fee on booking ${bookingId} (band ${t.bandKey ?? "unknown"})`,
+    idempotencyKey: travelerServiceFeeLedgerKey(keySeed),
+    description: `Traveler service fee on ${opts.sourceType} ${sourceId} (band ${t.bandKey ?? "unknown"})`,
     metadata: {
       actor: opts.actor,
       bandKey: t.bandKey ?? null,
@@ -184,7 +191,7 @@ export function buildTravelerServiceFeeRows(
   if (waived) {
     rows.push({
       sourceType: opts.sourceType,
-      sourceId: bookingId,
+      sourceId,
       bookingId,
       feeType: "fee_waiver",
       amount: -wouldHaveBeen,
@@ -198,8 +205,8 @@ export function buildTravelerServiceFeeRows(
       sourceAttribution: waiverBasis === "rails" ? "rails" : "platform",
       acquisitionRef: opts.acquisitionRef ?? null,
       stripePaymentRef: opts.stripePaymentRef ?? null,
-      idempotencyKey: travelerServiceFeeWaiverLedgerKey(bookingId),
-      description: `Traveler service fee WAIVED on booking ${bookingId} (covered_by:${waiverBasis ?? "unknown"})`,
+      idempotencyKey: travelerServiceFeeWaiverLedgerKey(keySeed),
+      description: `Traveler service fee WAIVED on ${opts.sourceType} ${sourceId} (covered_by:${waiverBasis ?? "unknown"})`,
       metadata: {
         actor: opts.actor,
         bandKey: t.bandKey ?? null,
@@ -229,6 +236,7 @@ export async function recordTravelerServiceFeeLedger(opts: {
   let considered = 0;
   for (const raw of (res.rows ?? []) as any[]) {
     const built = buildTravelerServiceFeeRows(raw.tfee, {
+      keySeed: String(raw.id),
       bookingId: String(raw.id),
       sourceType: "service_booking",
       acquisitionRef: raw.acquisition_ref ?? null,
@@ -265,6 +273,7 @@ export async function recordLegacyBookingTravelerFeeLedger(opts: {
   `);
   const raw = (res.rows ?? [])[0] as any;
   const built = buildTravelerServiceFeeRows(raw?.tfee, {
+    keySeed: String(opts.bookingId),
     bookingId: String(opts.bookingId),
     sourceType: "booking",
     stripePaymentRef: opts.stripePaymentRef ?? null,
@@ -275,6 +284,34 @@ export async function recordLegacyBookingTravelerFeeLedger(opts: {
     logger.info(
       { considered: built.considered, inserted, actor: opts.actor, bookingId: opts.bookingId },
       "[fee-ledger] legacy-rail traveler service fee event recorded",
+    );
+  }
+  return { inserted, considered: built.considered };
+}
+
+/**
+ * Expert review service (ruling path 5). No booking row — the fee event is keyed on the verified
+ * PaymentIntent id, `sourceType:"expert_request"`, `booking_id` NULL. Snapshot comes from the PI
+ * metadata (Stripe's own word — server-verified, §14). Idempotent per PI; best-effort at the caller.
+ */
+export async function recordExpertReviewTravelerFeeLedger(opts: {
+  paymentIntentId: string;
+  snapshot: any;
+  actor: string;
+}): Promise<{ inserted: number; considered: number }> {
+  const built = buildTravelerServiceFeeRows(opts.snapshot, {
+    keySeed: opts.paymentIntentId,
+    bookingId: null,
+    sourceType: "expert_request",
+    sourceId: opts.paymentIntentId,
+    stripePaymentRef: opts.paymentIntentId,
+    actor: opts.actor,
+  });
+  const inserted = await appendFeeLedgerRows(built.rows);
+  if (built.rows.length > 0) {
+    logger.info(
+      { considered: built.considered, inserted, actor: opts.actor, paymentIntentId: opts.paymentIntentId },
+      "[fee-ledger] expert-review traveler service fee event recorded",
     );
   }
   return { inserted, considered: built.considered };

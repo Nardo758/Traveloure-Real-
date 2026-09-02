@@ -192,9 +192,9 @@ export async function getVariantCost(variantId: string): Promise<number> {
 // totalCost is the server-side source of truth; the client must never send its own amount.
 export async function getVariantOwnerAndCost(
   variantId: string,
-): Promise<{ ownerUserId: string; totalCost: number } | null> {
+): Promise<{ ownerUserId: string; totalCost: number; tripId: string | null } | null> {
   const result = await db.execute(sql`
-    SELECT c.user_id AS owner_user_id, v.total_cost
+    SELECT c.user_id AS owner_user_id, v.total_cost, c.trip_id
     FROM itinerary_variants v
     JOIN itinerary_comparisons c ON c.id = v.comparison_id
     WHERE v.id = ${variantId}
@@ -202,7 +202,13 @@ export async function getVariantOwnerAndCost(
   `);
   const row = result.rows?.[0];
   if (!row) return null;
-  return { ownerUserId: String(row.owner_user_id), totalCost: Number(row.total_cost) || 0 };
+  // trip_id lets the traveler-fee lane (ruling 2026-09-02) check Trip Pass coverage for the
+  // variant's trip; it is nullable (a comparison need not be tied to a saved trip yet).
+  return {
+    ownerUserId: String(row.owner_user_id),
+    totalCost: Number(row.total_cost) || 0,
+    tripId: row.trip_id == null ? null : String(row.trip_id),
+  };
 }
 
 // Expert-review service tiers — SERVER-SIDE source of truth for the charge amount. The client
