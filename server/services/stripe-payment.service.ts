@@ -900,6 +900,14 @@ class StripePaymentService {
        * never client-supplied (§14). Clamped to [0, total_amount]; undefined = full refund.
        */
       amountOverride?: number;
+      /**
+       * Ruling 2026-09-02-traveler-fee-refundability: the percentage (0–100) of the assessed
+       * traveler service fee to refund. SERVER-derived by the caller (§14): the cancellation-tier %
+       * for a traveler cancellation, 100 for a provider/expert cancellation or a made-whole refund.
+       * Omitted → a full booking refund (no `amountOverride`) refunds the full fee; a policy-scaled
+       * refund refunds none (conservative — never over-refund without an explicit percent).
+       */
+      feeRefundPercent?: number;
     },
   ) {
     const rows = await db.execute(sql`
@@ -921,11 +929,29 @@ class StripePaymentService {
       options?.amountOverride !== undefined
         ? Math.min(Math.max(options.amountOverride, 0), amountCharged)
         : amountCharged;
-    if (options?.amountOverride !== undefined && amount <= 0) {
+
+    // ── Traveler service fee refund (ruling 2026-09-02-traveler-fee-refundability) ──────────────
+    // The fee lives in `booking_details.travelerServiceFee.charged`, NOT in total_amount/platform_fee,
+    // so it is refunded SEPARATELY and added to the Stripe amount. A suppressed (waived) booking billed
+    // no fee → nothing to refund (its `fee_waiver` leg is untouched, per the ruling). The refund % is
+    // the caller's: the cancellation-tier % for a traveler cancel, 100% for a provider/expert cancel.
+    const feeSnap = (row.booking_details as any)?.travelerServiceFee ?? null;
+    const feeCharged = feeSnap && feeSnap.waived !== true ? (Number(feeSnap.charged) || 0) : 0;
+    const feeRefundPct =
+      options?.feeRefundPercent !== undefined
+        ? Math.min(Math.max(options.feeRefundPercent, 0), 100)
+        : options?.amountOverride === undefined
+          ? 100 // a full booking refund makes the traveler whole on the fee too
+          : 0; // a policy-scaled refund with no explicit fee % refunds no fee (conservative)
+    const feeRefund = feeCharged > 0 ? Math.round(feeCharged * (feeRefundPct / 100) * 100) / 100 : 0;
+    // The total Stripe refund = the booking share + the fee share. Both server-derived (§14).
+    const totalRefund = Math.round((amount + feeRefund) * 100) / 100;
+
+    if (options?.amountOverride !== undefined && totalRefund <= 0) {
       throw new Error('Refund amount must be greater than zero');
     }
     if (row.status === 'refunded') {
-      return { alreadyRefunded: true, amount, status: 'refunded' as const };
+      return { alreadyRefunded: true, amount: totalRefund, status: 'refunded' as const };
     }
     const paymentIntentId = row.stripe_payment_intent_id;
     if (!paymentIntentId) throw new Error('Booking has no payment intent to refund');
@@ -937,7 +963,7 @@ class StripePaymentService {
       RETURNING id
     `);
     if (!claim.rows || claim.rows.length === 0) {
-      return { alreadyRefunded: true, amount, status: 'refunded' as const };
+      return { alreadyRefunded: true, amount: totalRefund, status: 'refunded' as const };
     }
 
     const priorStatus = row.status;
@@ -955,7 +981,9 @@ class StripePaymentService {
     // after the policy window shifted the computed amount). Amount-scoped keys keep each distinct
     // refund attempt retry-safe while the atomic status claim above still guarantees at most ONE
     // refund actually proceeds per booking.
-    const amountCents = Math.round(amount * 100);
+    // Amount-scoped on the TOTAL (booking + fee) so a fee-inclusive refund and a bare-booking refund
+    // of the same booking are retry-distinct at Stripe.
+    const amountCents = Math.round(totalRefund * 100);
     const idempotencyKey =
       options?.amountOverride !== undefined
         ? `refund-sb-${bookingId}-${amountCents}`
@@ -983,8 +1011,33 @@ class StripePaymentService {
       INSERT INTO refunds (
         booking_id, stripe_refund_id, stripe_payment_intent_id,
         amount, currency, status, reason, created_at
-      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
+      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${totalRefund}, 'usd', ${refund.status}, ${internalReason}, NOW())
     `);
+
+    // ── Traveler service fee reversal (ruling 2026-09-02-traveler-fee-refundability) ────────────
+    // Record the refunded fee share as a `reversal` fee_ledger row linked to the booking's original
+    // +traveler_service_fee row. Best-effort: the money already moved, so a recording failure is
+    // logged, never undoes the refund. Idempotent per (booking, amount). Skipped when no fee was
+    // billed (waived / snapshot-less bookings) — feeRefund is 0 there.
+    if (feeRefund > 0) {
+      try {
+        const { recordTravelerServiceFeeReversal } = await import('./fee-ledger.service');
+        const res = await recordTravelerServiceFeeReversal({
+          bookingId,
+          refundAmount: feeRefund,
+          actor: 'refund',
+          stripeRefundRef: refund.id,
+          reason: internalReason,
+        });
+        if (!res.reversed && res.reason === 'original_row_missing') {
+          console.error(
+            `[refund] traveler-fee reversal skipped for booking ${bookingId}: original ledger row not found (fee refunded; ledger gap logged)`,
+          );
+        }
+      } catch (revErr) {
+        console.error(`[refund] traveler-fee ledger reversal failed for booking ${bookingId} (fee already refunded):`, revErr);
+      }
+    }
 
     // COMPLETION/REFUND RACE SWEEP (task 1091 review): callers reverse the ledger BEFORE this
     // atomic claim (ledger-first order). A completion mint can commit in between — the caller's
@@ -1036,7 +1089,7 @@ class StripePaymentService {
       }
     }
 
-    return { refundId: refund.id, amount, status: refund.status };
+    return { refundId: refund.id, amount: totalRefund, bookingRefund: amount, feeRefund, status: refund.status };
   }
 
   /**
