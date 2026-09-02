@@ -25,6 +25,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
+import { EgressBlockedError } from "../utils/egress-guard";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
@@ -8007,6 +8008,16 @@ router.post("/api/admin/affiliate/partners/:id/scrape", isAuthenticated, async (
       const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
       res.json(result);
     } catch (error: any) {
+      // SSRF guard refusal (audit §2, ledger 2026-09-02-outbound-fetch-egress): the target
+      // was refused BEFORE any request left the server. That is a bad partner row, not a
+      // server fault — 400 with the guard's plain reason, which never carries a resolved
+      // address, only the category the target fell into.
+      if (error instanceof EgressBlockedError) {
+        return res.status(400).json({
+          message: `Scrape target refused by the egress guard: ${error.message}`,
+          reason: error.reason,
+        });
+      }
       console.error("Scrape error:", error);
       res.status(500).json({ message: "Failed to scrape partner website", error: error.message });
     }
