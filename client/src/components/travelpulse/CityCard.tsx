@@ -1,6 +1,8 @@
 import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
 import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
+import { isReferencePhoto } from "@/lib/photo-provenance";
+import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 
 /**
  * Shared city card — one component behind every "city" surface (Discover trending
@@ -128,6 +130,12 @@ export function CityCard(props: CityCardProps) {
               Trend {score}
             </span>
           )}
+          {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): city_media_cache images are
+              stock/places-sourced — labeled on this TEASER tile until an attributed real photo
+              replaces them. */}
+          {imageUrl && isReferencePhoto({ url: imageUrl }) && (
+            <ReferencePhotoChip testId={testId ? `${testId}-reference-photo` : undefined} />
+          )}
         </div>
         <h4 className="mt-2 text-[14px] font-semibold text-[var(--earn-ink)]">{cityName}</h4>
         {compactMeta.length > 0 && (
@@ -177,6 +185,10 @@ export function CityCard(props: CityCardProps) {
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[rgba(20,32,45,0.62)] via-[rgba(20,32,45,0.12)] to-transparent" />
+        {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers) — see compact-variant note above. */}
+        {imageUrl && isReferencePhoto({ url: imageUrl }) && (
+          <ReferencePhotoChip testId={testId ? `${testId}-reference-photo` : undefined} />
+        )}
 
         {/* score pill (top-right) */}
         {typeof score === "number" && score > 0 && (
