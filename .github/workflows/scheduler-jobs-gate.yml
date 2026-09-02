@@ -13,6 +13,10 @@ name: Scheduler Jobs Gate
 #   checkout-claim-sweep.db          — void/promote can never both win; a 2nd sweep double-frees nothing
 #   reconciliation-detection.db      — append-only exceptions; dedupe_key absorbs re-detection
 #   internal-jobs-auth.http          — every /internal/jobs/* route is default-deny (503 unset / 401)
+#   internal-jobs-limiter.http        — /internal rate cap + failed-auth lockout, per-IP (L1/L7)
+#   internal-jobs-skip-semantics.db  — a skip, a real run and a broken job are three answers (L4)
+#   internal-jobs-heartbeat.db       — cron liveness: roster-driven staleness; a skip never stamps (L6)
+#   internal-spa-fallback-exemption  — a dead /internal route can never be answered 200-HTML (L3)
 #   startup-delay                    — the boot-herd floor+jitter contract
 #
 # Negative space (ruling 43): this gate proves the jobs are idempotent and the endpoints are
@@ -93,6 +97,18 @@ jobs:
 
       - name: Internal job endpoints — default-deny auth (no DB touched)
         run: npx tsx --test server/routes/__tests__/internal-jobs-auth.http.test.ts
+
+      - name: Internal job endpoints — rate cap + failed-auth lockout (L1/L7)
+        run: npx tsx --test server/routes/__tests__/internal-jobs-limiter.http.test.ts
+
+      - name: Internal job endpoints — skip vs ran vs broken are three answers (L4)
+        run: npx tsx --test server/routes/__tests__/internal-jobs-skip-semantics.db.test.ts
+
+      - name: Internal job endpoints — heartbeat roster + staleness (L6)
+        run: npx tsx --test server/routes/__tests__/internal-jobs-heartbeat.db.test.ts
+
+      - name: SPA fallback never answers /internal (L3, no DB touched)
+        run: npx tsx --test server/__tests__/internal-spa-fallback-exemption.test.ts
 
       - name: Boot-herd startup delay — floor + jitter contract
         run: npx tsx --test server/services/__tests__/startup-delay.test.ts

@@ -1361,4 +1361,12 @@ export const MIGRATION_FILES = [
   // in shared/schema.ts so the deploy push and the chain agree (ledger
   // 2026-09-02-field-knowledge-v2-canonical).
   "272_expert_neighborhood_claims.sql",
+  // 273: job_heartbeats (renumbered from 271 on the main-merge: main landed
+  // 271_expert_neighborhood_claims first; independent additive migrations, order carries no behavior)
+  // — job_heartbeats — one row per internal job name, upserted by runJob on a real success
+  // (never on a skip). The health endpoint iterates the CADENCE ROSTER and left-joins this table,
+  // so a job that has NEVER succeeded is reported `never_succeeded` rather than being absent —
+  // absence-compared-to-absence is the failure this whole lane exists to close. Additive, no
+  // CHECK; table + index declared in shared/schema.ts for publish durability.
+  "273_job_heartbeats.sql",
 ] as const;

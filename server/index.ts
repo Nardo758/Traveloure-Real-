@@ -63,6 +63,7 @@ import {
   adminRateLimiter,
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
+import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
 
@@ -119,6 +120,15 @@ app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
 app.use("/api/activities", searchRateLimiter as RequestHandler);
 app.use("/api/auth", authRateLimiter as RequestHandler);
+
+// The machine-to-machine job runners register at a BARE /internal (server/routes.ts,
+// `app.use(internalRoutes)`), so none of the /api-prefixed limiters above ever saw them — the only
+// session-less surface on the app with no rate limit at all, guarding "release earnings" and
+// "auto-complete bookings" behind a shared secret with unlimited guesses (lane:
+// internal-jobs-hardening, L1). Mounted HERE, before registerRoutes, rather than inside
+// internal.routes.ts, so internal-jobs-auth.http.test.ts — which mounts the bare router and fires
+// 30 deliberate 401s — keeps passing unmodified.
+app.use("/internal", internalJobsLimiter as RequestHandler);
 
 // CORS — explicit header control for all API routes.
 // Allowed origins are the Replit-hosted domains for this repl; fall back to the
@@ -580,6 +590,15 @@ if (process.env.NODE_ENV === "production") {
   // catch-all (which returned 200 text/html and masked missing routes).
   // Mounted immediately after registerRoutes so every real API route wins first.
   app.use("/api", notFoundHandler);
+
+  // Same rule for /internal/* (lane: internal-jobs-hardening, L3). These are the
+  // machine-to-machine MONEY/INTEGRITY job runners; their ONLY health signal is the
+  // external cron's read of the response. Without this, an unmatched /internal path fell
+  // through to the SPA fallback and answered 200 text/html, so a renamed or deleted job
+  // route would have reported green forever while the job never ran (§9: a dead endpoint
+  // returns 200-HTML, NOT 404). Defense in depth with the cron's parsed-JSON health
+  // contract (L2) — either alone would catch it; both together make it hard to regress.
+  app.use("/internal", notFoundHandler);
 
   // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
   // Must be registered after API routes but before Vite's catch-all

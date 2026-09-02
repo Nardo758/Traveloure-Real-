@@ -2,6 +2,27 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 
+/**
+ * Path prefixes the SPA fallback must NEVER answer.
+ *
+ * `/api` was always exempt. `/internal` joins it (lane: internal-jobs-hardening, L3): the
+ * `/internal/jobs/*` MONEY runners are fired by an external cron whose only health signal is the
+ * response, and an unmatched `/internal/*` path falling through to `sendFile(index.html)` answers
+ * **HTTP 200 text/html** — so a renamed or deleted job route would report green forever while the
+ * job never ran (§9: a dead endpoint returns 200-HTML, not 404). Exempting the prefix here lets
+ * `app.use("/internal", notFoundHandler)` produce an honest 404 JSON instead.
+ *
+ * Shared by BOTH catch-alls below on purpose — the boot-window one matters too, because a cron
+ * pass can land while `routesReady` is still false.
+ */
+const SERVER_PATH_PREFIXES = ["/api", "/internal"] as const;
+
+function isServerPath(originalUrl: string): boolean {
+  return SERVER_PATH_PREFIXES.some(
+    (prefix) => originalUrl === prefix || originalUrl.startsWith(`${prefix}/`) || originalUrl.startsWith(`${prefix}?`),
+  );
+}
+
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
@@ -29,7 +50,7 @@ export function serveStatic(app: Express) {
   // requests flow to the real routes; mountSpaFallback() (mounted AFTER the routes)
   // then serves index.html for genuine SPA paths.
   app.use("*", (req, res, next) => {
-    if (req.originalUrl.startsWith("/api")) return next();
+    if (isServerPath(req.originalUrl)) return next();
     if ((req.app.locals as any).routesReady) return next();
     res.sendFile(path.resolve(distPath, "index.html"));
   });
@@ -42,7 +63,7 @@ export function serveStatic(app: Express) {
 export function mountSpaFallback(app: Express) {
   const distPath = path.resolve(__dirname, "public");
   app.use("*", (req, res, next) => {
-    if (req.originalUrl.startsWith("/api")) return next();
+    if (isServerPath(req.originalUrl)) return next();
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

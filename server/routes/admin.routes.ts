@@ -13,6 +13,8 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
+import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
+import { JOB_CADENCE } from "./internal.routes";
 import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
@@ -1428,6 +1430,31 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
  * Triggers Stripe reconciliation immediately and returns the result.
  * Useful for on-demand checks without waiting for the daily schedule.
  */
+// ── GET /api/admin/jobs/health ─────────────────────────────────────────────────────────────────
+// The admin-authenticated twin of GET /internal/jobs/health (internal-jobs-hardening, L6). ONE
+// compute (computeJobHealth over JOB_CADENCE), TWO callers — the ops/cron read behind the shared
+// secret, and this one behind the §2 blanket /api/admin guard. Two implementations of "is the cron
+// alive" would be two answers.
+//
+// What it measures is the LAST CRON-DRIVEN SUCCESS, not job health at large: the in-process
+// defense-in-depth timers deliberately do not stamp, which is what lets this detect a dead cron
+// channel while a warm timer is masking the symptom. The `measures` field carries that wording to
+// the UI so a red row is never read as "the job is broken".
+router.get("/api/admin/jobs/health", isAuthenticated, async (_req, res) => {
+  try {
+    const jobs = await computeJobHealth(JOB_CADENCE);
+    return res.json({
+      healthy: !isAnyJobUnhealthy(jobs),
+      staleCount: jobs.filter((j) => j.status !== "ok").length,
+      measures: "last cron-driven success",
+      jobs,
+    });
+  } catch (err: any) {
+    console.error("[admin/jobs/health] failed:", err?.message ?? err);
+    return res.status(500).json({ message: "Failed to read scheduled-job health" });
+  }
+});
+
 router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {

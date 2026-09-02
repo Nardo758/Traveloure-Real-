@@ -23,8 +23,9 @@
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
 import crypto from "crypto";
+import { logger } from "../infrastructure/logger";
 import { runOccasionDrafts } from "../services/occasion-drafts.service";
-import { runBackgroundJob } from "../services/background-job-runner";
+import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-job-runner";
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
@@ -34,14 +35,28 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
 import { drainOutbox } from "../services/email-outbox.service";
+import {
+  recordJobSuccess,
+  computeJobHealth,
+  isAnyJobUnhealthy,
+  type JobCadence,
+} from "../services/job-heartbeats.service";
 
 const router = Router();
 
+/**
+ * Constant-time secret comparison (lane: internal-jobs-hardening, L7).
+ *
+ * The previous shape returned early on a length mismatch, which leaked the secret's LENGTH before
+ * timingSafeEqual ever ran — the cheapest possible reduction of a guesser's search space, on a
+ * public repository whose workflow file already publishes every route name. Hashing both sides
+ * first makes the compared buffers a fixed 32 bytes, so length is no longer observable and the
+ * early return disappears. Behaviour is otherwise identical: equal inputs compare equal.
+ */
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
+  const ah = crypto.createHash("sha256").update(a, "utf8").digest();
+  const bh = crypto.createHash("sha256").update(b, "utf8").digest();
+  return crypto.timingSafeEqual(ah, bh);
 }
 
 /**
@@ -66,40 +81,112 @@ function requireInternalSecret(req: Request, res: Response, next: NextFunction) 
 /**
  * Run one job pass through the shared background-job runner (overlap dedup + pool-protection cap)
  * and map the outcome to an HTTP response the cron can read:
- *   - a thrown error            → 500 { ok:false, error }
- *   - an overlap/cap skip        → 200 { ok:true, skipped:true }   (a timer pass was mid-flight)
+ *   - a thrown error             → 500 { ok:false, error }
+ *   - an overlap/cap SENTINEL    → 200 { ok:true, skipped:true, reason }  (a pass was mid-flight)
+ *   - a bare `undefined`         → 500 { ok:false, error: contract }      (see below)
  *   - a result flagged failed    → 500 { ok:false, error, result } (isFailure predicate)
  *   - otherwise                  → 200 { ok:true, result }
  *
  * `isFailure` lets jobs that catch internally and return a status/error field (rather than throw)
  * still surface as a visible 500 to the cron.
+ *
+ * WHY `undefined` IS AN ERROR, NOT A SKIP (lane: internal-jobs-hardening, L4): this mapping used to
+ * read `result === undefined → skipped`, but `runBackgroundJob` returned `undefined` for BOTH a
+ * skip and a job body that resolved void — so the two void-returning jobs (email-outbox,
+ * travelpayouts-report-poll) answered `skipped: true` on every single call. A successful drain, an
+ * overlap skip, and an outbox that had silently stopped draining were indistinguishable to the
+ * operator, which is exactly what §17 rule 2 forbids. A skip is now an explicit sentinel; a job
+ * that resolves `undefined` is violating the contract every job here already honours (return a
+ * result object) and must say so loudly rather than borrow the skip's clothes.
+ *
+ * Exported for tests only — the contract-error branch has no endpoint that can reach it (by
+ * design), so it is proven by calling this directly.
  */
-async function runJob(
+export async function runJob(
   name: string,
   fn: () => Promise<unknown>,
   isFailure?: (result: any) => boolean,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
     const result = await runBackgroundJob(name, fn);
+    if (isBackgroundJobSkip(result)) {
+      return { status: 200, body: { ok: true, skipped: true, reason: result.reason, job: name } };
+    }
     if (result === undefined) {
-      return { status: 200, body: { ok: true, skipped: true, job: name } };
+      return {
+        status: 500,
+        body: {
+          ok: false,
+          job: name,
+          error: `job ${name} resolved undefined — a job must return a result object (L4 contract)`,
+        },
+      };
     }
     if (isFailure?.(result)) {
       const error = (result as any)?.error ?? `job ${name} reported failure`;
+      // SERVER-SIDE is where a job failure is DIAGNOSED (lane: internal-jobs-hardening, L5). A job
+      // that catches internally and returns an { error } field never throws, so runBackgroundJob's
+      // own logger.error never fires for it — this branch was the one failure path with no server
+      // log at all, which is why the CI job log was the only place the message existed. Now that
+      // the cron prints an allowlist instead of the body, this log is the record.
+      logger.error({ job: name, error: String(error), result }, "[internal-jobs] job reported failure");
       return { status: 500, body: { ok: false, job: name, error: String(error), result } };
     }
-    return { status: 200, body: { ok: true, job: name, result } };
+    const body = { ok: true, job: name, result };
+    // A REAL pass — stamp the heartbeat. Never on the skip branch above (L6/H2): a job stuck in
+    // permanent overlap must go stale rather than look healthy. See job-heartbeats.service.ts for
+    // why only the cron-driven path stamps and why that asymmetry must not be "fixed".
+    await recordJobSuccess(name, body);
+    return { status: 200, body };
   } catch (err: any) {
+    // runBackgroundJob already logs a thrown pass, but log here too so the endpoint's own record is
+    // self-sufficient and does not depend on the runner's internals (L5).
+    logger.error({ err, job: name }, "[internal-jobs] job threw");
     return { status: 500, body: { ok: false, job: name, error: err?.message || String(err) } };
   }
 }
+
+// ── Cadence roster ─────────────────────────────────────────────────────────────────────────────
+//
+// The expected firing interval of every job below, derived from the bucket that fires it. ONE
+// source of truth for staleness, and the roster the health endpoint ITERATES — a job with no
+// heartbeat row is reported `never_succeeded` rather than silently absent (L6/A).
+//
+// ⚠ COUPLED TO .github/workflows/jobs-cron.yml (and occasion-drafts-daily.yml). If a bucket's cron
+// expression or route list changes, this map changes in the SAME commit — otherwise staleness is
+// measured against a schedule that no longer exists. A `check-cron-route-drift` guard that parses
+// the workflow's route strings against these entries is filed in FOLLOWUPS.md; until it lands this
+// comment is the coupling.
+export const JOB_CADENCE: readonly JobCadence[] = [
+  // jobs-cron.yml — backstops, */15 * * * *
+  { job: "checkout-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  { job: "itinerary-generation-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  { job: "email-outbox", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  // jobs-cron.yml — hourly, 0 * * * *
+  { job: "earnings-release", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  { job: "booking-auto-completion", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // jobs-cron.yml — four-hourly, 0 */4 * * *
+  { job: "booking-expiry", expectedIntervalSec: 4 * 60 * 60, bucket: "four-hourly" },
+  // jobs-cron.yml — six-hourly, 0 */6 * * *
+  { job: "travelpayouts-report-poll", expectedIntervalSec: 6 * 60 * 60, bucket: "six-hourly" },
+  // jobs-cron.yml — daily, 0 9 * * *
+  { job: "stripe-reconciliation", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  { job: "availability-materialization", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // occasion-drafts-daily.yml — its own workflow, daily
+  { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
+];
 
 // ── The authoritative occasion-drafts runner (ledger 2026-08-27-plus-is-delivery) ──────────────
 router.post("/internal/run-occasion-drafts", requireInternalSecret, async (req, res) => {
   try {
     const limit = typeof req.body?.limit === "number" && req.body.limit > 0 ? Math.floor(req.body.limit) : undefined;
     const result = await runOccasionDrafts({ limit });
-    return res.status(200).json({ ok: true, result });
+    const body = { ok: true, job: "run-occasion-drafts", result };
+    // This handler predates runJob and keeps its own shape (L9: no behavioural churn beyond the
+    // lane). The stamp is purely additive so the job still appears in the health roster instead of
+    // reading `never_succeeded` forever.
+    await recordJobSuccess("run-occasion-drafts", body);
+    return res.status(200).json(body);
   } catch (err: any) {
     console.error("[internal] run-occasion-drafts failed:", err);
     return res.status(500).json({ ok: false, message: "run failed" });
@@ -162,7 +249,11 @@ router.post("/internal/jobs/booking-expiry", requireInternalSecret, async (_req,
 // earnings (idempotent for matched rows). No-ops gracefully without TRAVELPAYOUTS_TOKEN.
 // (Partnerize's equivalent is intentionally NOT exposed here — held for Lane 4's 404 triage.)
 router.post("/internal/jobs/travelpayouts-report-poll", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("travelpayouts-report-poll", () => cacheSchedulerService.runTravelpayoutsReportPoll());
+  const { status, body } = await runJob(
+    "travelpayouts-report-poll",
+    () => cacheSchedulerService.runTravelpayoutsReportPoll(),
+    (r) => !!r?.error,
+  );
   res.status(status).json(body);
 });
 
@@ -180,8 +271,35 @@ router.post("/internal/jobs/itinerary-generation-sweep", requireInternalSecret, 
 });
 
 router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("email-outbox", () => drainOutbox());
+  const { status, body } = await runJob("email-outbox", () => drainOutbox(), (r) => !!r?.error);
   res.status(status).json(body);
+});
+
+// ── GET /internal/jobs/health ──────────────────────────────────────────────────────────────────
+// Per-job staleness for ops and for the admin tile's server-side twin. Same secret guard and the
+// same /internal rate limiter as every runner above.
+//
+// `ok` means THIS READ succeeded; `healthy` is the verdict about the jobs. They are separate on
+// purpose — a monitor that conflated them would report the detector as broken whenever it correctly
+// detected something.
+//
+// Iterates JOB_CADENCE, not the heartbeat table: a job that has never once succeeded is reported
+// `never_succeeded`, never omitted (L6/A).
+router.get("/internal/jobs/health", requireInternalSecret, async (_req, res) => {
+  try {
+    const jobs = await computeJobHealth(JOB_CADENCE);
+    return res.status(200).json({
+      ok: true,
+      healthy: !isAnyJobUnhealthy(jobs),
+      staleCount: jobs.filter((j) => j.status !== "ok").length,
+      // Every surface that renders this must say LAST CRON-DRIVEN SUCCESS, not "job health": the
+      // in-process timers deliberately do not stamp (job-heartbeats.service.ts).
+      measures: "last cron-driven success",
+      jobs,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: "failed to read job health" });
+  }
 });
 
 export default router;
