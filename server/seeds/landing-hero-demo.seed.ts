@@ -353,7 +353,8 @@ export async function seedLandingHeroDemo(): Promise<{ markets: number; services
 
   const skipped: string[] = [];
   let seededMarkets = 0;
-  for (const [marketIndex, market] of OPERATING_MARKETS.entries()) {
+  for (let marketIndex = 0; marketIndex < OPERATING_MARKETS.length; marketIndex++) {
+    const market = OPERATING_MARKETS[marketIndex];
     const neighborhood = await firstNeighborhood(market.cityName, market.country);
     if (!neighborhood) {
       skipped.push(market.cityName);

@@ -7518,6 +7518,11 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
     }
   });
 
+  // The #698 v1 neighborhood-claims admin queue (list/verify/decline) that sat here was retired when
+  // #699 v2 became canonical (ledger 2026-09-02-field-knowledge-v2-canonical); the v2 queue
+  // (Ratify / Return, scorer output, web-gap verdict) is Phase 2 and lives in
+  // server/routes/neighborhood-claims.routes.ts.
+
   // GET /api/knowledge-nuggets/city — for AI to pull nuggets by city
 
 router.get("/api/admin/content-placement-rules", requireAdminLocal, async (req, res) => {

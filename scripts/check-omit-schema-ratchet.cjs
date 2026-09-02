@@ -63,7 +63,7 @@ const ENTRY_FILES = ['shared/schema.ts', 'shared/guest-invites-schema.ts'];
 // 2026-08-07: 186 (shared/schema.ts) + 4 (shared/guest-invites-schema.ts) = 190,
 // all .omit()-based, 0 bare, 0 .pick()-based. Matches ruling 46's own count on
 // shared/schema.ts exactly (186/186 omit, 0 pick) — no drift since that audit.
-const OMIT_BASELINE = 190;
+const OMIT_BASELINE = 188;
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 // Same non-greedy call-to-semicolon shape as scripts/check-money-endpoints.cjs's

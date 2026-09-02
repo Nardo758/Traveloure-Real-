@@ -36,8 +36,10 @@ import {
   localExpertForms,
   localKnowledgeNuggets,
   miniSlipTemplates,
+  nuggetPhotos,
   users,
   type ExpertNeighborhoodClaim,
+  type NuggetPhoto,
 } from "@shared/schema";
 import {
   CLAIM_DRAFT_MAX_BYTES,
@@ -594,6 +596,33 @@ export async function searchExpertsForManualEntry(q: string): Promise<Array<{ id
     .orderBy(asc(users.lastName), asc(users.firstName))
     .limit(20);
   return rows.map((r) => ({ id: r.id, name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email || r.id, email: r.email ?? null, city: r.city ?? null }));
+}
+
+// ── nugget_photos: THE read path, carrying the consent invariant ────────────────────────────
+
+/**
+ * The ONE way photos leave nugget_photos for any public or non-owner surface (ported from #698;
+ * ledger 2026-09-02-field-knowledge-v2-canonical). Every returned row is joined through
+ *   nugget_photos → local_knowledge_nuggets.claim_id → expert_neighborhood_claims.consent_at IS NOT NULL
+ * so a photo on a nugget with no claim (no consent anchor), or on a claim that never recorded
+ * consent, is never returned — "we can prove we asked". Do not add a second read path that skips
+ * this join; extend this one.
+ */
+export async function listConsentedNuggetPhotos(nuggetIds: string[]): Promise<NuggetPhoto[]> {
+  if (nuggetIds.length === 0) return [];
+  return db
+    .select({
+      id: nuggetPhotos.id,
+      nuggetId: nuggetPhotos.nuggetId,
+      position: nuggetPhotos.position,
+      photoUrl: nuggetPhotos.photoUrl,
+      createdAt: nuggetPhotos.createdAt,
+    })
+    .from(nuggetPhotos)
+    .innerJoin(localKnowledgeNuggets, eq(localKnowledgeNuggets.id, nuggetPhotos.nuggetId))
+    .innerJoin(expertNeighborhoodClaims, eq(expertNeighborhoodClaims.id, localKnowledgeNuggets.claimId))
+    .where(and(inArray(nuggetPhotos.nuggetId, nuggetIds), sql`${expertNeighborhoodClaims.consentAt} IS NOT NULL`))
+    .orderBy(asc(nuggetPhotos.nuggetId), asc(nuggetPhotos.position));
 }
 
 /** Boot check: the one-writer trigger must exist (drizzle push never manages it; log loudly if gone). */

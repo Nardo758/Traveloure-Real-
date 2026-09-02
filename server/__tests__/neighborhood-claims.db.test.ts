@@ -22,6 +22,8 @@
  *       no row; a client-planted claim/web-gap cluster is stripped from createLocalKnowledgeNugget
  *   C7. thresholds_missing blocks BOTH the cooldown check and Ratify — no code default fills in
  *   C8. the scorer-failed path leaves the claim `submitted` with the flag raised, never zeroed
+ *   C9. nugget_photos consent invariant (ported from #698): the one read path returns a photo only
+ *       when its nugget's claim recorded consent; an unlinked nugget's photo is never returned
  *
  * Run with:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
@@ -47,6 +49,7 @@ const {
   claimContingencies,
   accessClaims,
   evidenceThresholds,
+  nuggetPhotos,
 } = await import("../../shared/schema");
 const {
   createClaim,
@@ -59,6 +62,7 @@ const {
   listClaimsForExpert,
   listNeighborhoodOptions,
   stampNoNeighborhoodsAvailable,
+  listConsentedNuggetPhotos,
 } = await import("../services/neighborhood-claims.service");
 const { swapNeighborhoodLeadTx } = await import("../services/admin-query.service");
 const { createLocalKnowledgeNugget } = await import("../services/experts-query.service");
@@ -423,6 +427,29 @@ describe("neighborhood claims — Phase 1 (claims + typed evidence + one writer)
     assert.equal(row.webGap, null);
     assert.equal(row.webGapUrl, null);
     await db.delete(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.id, row.id));
+  });
+
+  it("C9. nugget_photos: only a consented claim's photo comes back through the one read path", async () => {
+    const [linked] = await db.select({ id: localKnowledgeNuggets.id }).from(localKnowledgeNuggets)
+      .where(and(eq(localKnowledgeNuggets.claimId, claimA), eq(localKnowledgeNuggets.claimVersion, 1))).limit(1);
+    const unlinked = await createLocalKnowledgeNugget({ expertUserId: EXPERT_A, nuggetType: "tip", city: CITY, insight: "no claim behind me" });
+    assert.equal(unlinked.claimId, null);
+    await db.insert(nuggetPhotos).values([
+      { nuggetId: linked.id, position: 1, photoUrl: "/objects/efk/consented-1.jpg" },
+      { nuggetId: unlinked.id, position: 1, photoUrl: "/objects/efk/unanchored-1.jpg" },
+    ]);
+    try {
+      const rows = await listConsentedNuggetPhotos([linked.id, unlinked.id]);
+      assert.deepEqual(rows.map((r) => r.nuggetId), [linked.id], "only the consented claim's photo is returned");
+      // Withdraw the consent anchor and the same photo disappears — the gate is the join, not the row.
+      await db.update(expertNeighborhoodClaims).set({ consentAt: null }).where(eq(expertNeighborhoodClaims.id, claimA));
+      assert.deepEqual(await listConsentedNuggetPhotos([linked.id, unlinked.id]), []);
+      await db.update(expertNeighborhoodClaims).set({ consentAt: new Date() }).where(eq(expertNeighborhoodClaims.id, claimA));
+      assert.equal((await listConsentedNuggetPhotos([linked.id])).length, 1);
+    } finally {
+      await db.delete(nuggetPhotos).where(sql`${nuggetPhotos.nuggetId} IN (${linked.id}, ${unlinked.id})`);
+      await db.delete(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.id, unlinked.id));
+    }
   });
 
   it("D5. the no-neighborhoods stamp is written only when the picker is empty and no claim exists", async () => {

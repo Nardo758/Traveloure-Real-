@@ -187,6 +187,10 @@ This document captures architectural decisions to maintain consistency across co
     claim only when the city has picker rows; otherwise it is skippable and the server stamps
     `local_expert_forms.no_neighborhoods_available_at` for ops backfill (not being able to claim is honest; not
     being able to apply is a funnel hole). Content of record: `docs/expert-field-knowledge/evidence-test.md`.
+    **#699 (v2) is canonical; #698 (migration 271) is superseded** (ledger `2026-09-02-field-knowledge-v2-canonical`):
+    migration 272 transforms the empty v1 state into v2 and only v2 declarations remain in `shared/schema.ts`. The one
+    piece ported from #698 is `nugget_photos` with its consent invariant — no public/non-owner photo read unless the
+    parent claim's `consent_at IS NOT NULL`; `listConsentedNuggetPhotos` is the one read path and carries the join.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
@@ -467,6 +471,16 @@ Schema changes reach production ONLY via `runMigrations` on boot, from committed
 - If destructive SQL still appears, decline and STOP, then escalate — it means something else.
 
 (ops-hardening, 2026-08-29)
+
+### Branch and publish rule
+
+**Never commit on `main`.** Before any write in any task:
+`git checkout -b task-<id> origin/main`. All work is committed on that branch and pushed; a draft
+PR carries it to review. `main` in the workspace exists only to be reset to `origin/main` before a
+publish. A publish is only ever made from a workspace where `main == origin/main`.
+
+Five incidents, two of which reached production, justify this rule.
+
 ## Service Model: Canonical Table
 
 ### Decision: `provider_services` is the canonical service source (NOT `expert_service_offerings`)

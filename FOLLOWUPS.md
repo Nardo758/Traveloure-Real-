@@ -350,6 +350,20 @@ Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
   the rail's permanent removal + the `experience_starts` ticker's return replace the interim
   fallback. Filed against that trigger, not built now — the rail costs nothing while it holds a live
   slot, so there is no rush to delete it.
+- **`gems-stock-photo-proof` → LANDED as the tier-1 chip (`2026-09-02-reference-photo-chip`).** The
+  `reference photo` chip is built on the three named teaser surfaces (gem cards `city-feed-card.tsx`,
+  hero bento gem tile `landing-hero.tsx`, city tiles `travelpulse/CityCard.tsx`) behind the shared
+  `client/src/lib/photo-provenance.ts` predicate (host-based, mirrors the Moments gate — no data
+  change). Proof `photo-provenance.test.ts` 6/6; tsc 142 no-new. The **byline-when-stock** choice
+  (keep+label · chip-only · drop-to-gradient) named in the bullet above was NOT decided here — this
+  lane adds the chip and leaves the existing "hidden gem · score NN" byline as-is; that is still a
+  decision-maker pick.
+- **`reference-chip-discover-cover` (out-of-scope teaser found by the chip lane, NOT chipped).**
+  `client/src/pages/discover-location.tsx` (~line 2061) selects the highest-scored gem's stock
+  `imageUrl` and renders it as a full-bleed location COVER banner — a teaser surface rendering stock,
+  but neither a gem card nor a city tile, so outside the dispatch's named scope. Left labeled-free
+  and flagged rather than silently widening the one-commit lane. A trivial follow-up if the
+  decision-maker wants the cover chipped too (placement differs — it's a banner, not a tile corner).
 
 ### FU — expert-field-knowledge v2, Phase 0/1 (2026-09-02; `2026-09-02-field-knowledge-phase0-ratified`)
 
@@ -388,6 +402,6 @@ Filed, not fixed, per the dispatch. Evidence lives in `docs/audits/expert-field-
   (honest) and are stamped `no_neighborhoods_available_at`. The `data/major-cities-neighborhoods` remote
   branch is the coverage fix; ops backfills the claim when a market's rows land.
 - **`COUNSEL-1` (blocker, human).** Data-use + byline + aggregated-analytics consent language and the
-  scout-report framing line. Gates flywheel consumers 2/4 (Phase 2) and all Phase 4 copy. Claims stamp
+  scout-report framing line. Draft to send: `docs/ops/counsel-ask-expert-content.md` (from #698, kept). Gates flywheel consumers 2/4 (Phase 2) and all Phase 4 copy. Claims stamp
   `consent_version` (`tos-11.2-2026-09` today) so replies under interim text stay distinguishable.
 - **`bounties` (parked).** Needs Leon's budget ruling before any wiring.

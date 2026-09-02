@@ -703,4 +703,8 @@ router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocal
   }
 });
 
+// Neighborhood claims (expert field knowledge v2) live in server/routes/neighborhood-claims.routes.ts —
+// the #698 v1 routes that sat here were retired when #699 became canonical (ledger
+// 2026-09-02-field-knowledge-v2-canonical).
+
 export default router;
