@@ -350,3 +350,44 @@ Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
   the rail's permanent removal + the `experience_starts` ticker's return replace the interim
   fallback. Filed against that trigger, not built now — the rail costs nothing while it holds a live
   slot, so there is no rush to delete it.
+
+### FU — expert-field-knowledge v2, Phase 0/1 (2026-09-02; `2026-09-02-field-knowledge-phase0-ratified`)
+
+Filed, not fixed, per the dispatch. Evidence lives in `docs/audits/expert-field-knowledge-phase-0.md`.
+
+- **`nugget-neighborhood-id-backfill` (D2 rider).** `local_knowledge_nuggets.neighborhood_id` (migration 272) is
+  populated only for P1 rows born through a claim. Pre-existing nuggets carry free-text
+  `linked_neighbourhood` and no FK; matching them onto `city_neighborhoods` is a separate decision
+  (name-match is the class the chips made dishonest — see `retired captureExpertNeighborhoods`).
+- **`independence-join-on-poi-id` (D7).** Phase 4's conflict check joins on `normalized_name`. Move it onto a
+  POI id once nuggets carry `linkedPoi` consistently (and once a stable POI id exists — today
+  `linked_poi` is a name too).
+- **`gem-candidates-audit-not-same-tx` (D4 finding, against the gem-audit lane).** `/api/admin/gem-candidates`
+  approve/reject log via `insertAccessAuditLog(...).catch(...)` (`server/routes/admin.routes.ts:7482`, `:7513`)
+  — fire-and-forget, outside the transition's transaction. A crashed log write leaves a status flip with
+  no audit row. The claims lane's `neighborhood_claim_transitions` is the same-`tx` shape to copy.
+- **`expertise-scoring-literal-thresholds` (F3).** `server/services/expertise-scoring.service.ts:78-79`
+  (`STRONG_AT`, `ADEQUATE_AT`) are code literals of the class `2026-09-01-evidence-thresholds-config` forbids
+  for the claims lane. Candidate: rows in `evidence_thresholds` (or a sibling) read through the same loader.
+- **`tavily-spend-unlogged` (F4).** No Tavily call (DMO ingestion, booking verification) writes to
+  `api_usage_logs`; the R-T1-c $150 cap is unobservable in `api-costs.service.ts:16`. Phase 2's web-gap
+  search must log `provider: "tavily"`; the two existing callers should follow.
+- **`service-form-upload-comment-stale` (F5).** `client/src/components/ServiceForm.tsx:272` says there is no
+  upload/object-storage rail to reuse; `server/infrastructure/object-storage.ts` (deliverable rail) exists.
+- **`crowd-forecasts-no-source` (F6).** `travel_pulse_crowd_forecasts` has no `source` column, so first-party
+  timing priors from P1 `when`/P2 `hard_constraint` cannot be marked as such. Phase 2 additive; consent-gated
+  (COUNSEL-1).
+- **`migration-263-header-says-262` (F7).** Cosmetic: `263_nugget_gem_promotion.sql` header still reads "262"
+  from the merge renumber.
+- **`phase-3-legacy-reader-cuts` (D1).** The four `expert_neighborhoods` readers to gate on `verified_at IS NOT
+  NULL`, one commit each in Phase 3: feed `localExpert` (`location-view.service.ts:411-430`), upsell
+  (`upsell-query.service.ts:384,575`), storefront neighborhoods (`storefront.routes.ts:161-173`), landing anchor
+  (`landing.routes.ts`). Also: the admin lead route currently requires an EXISTING row (legacy or verified);
+  Phase 3 tightens it to verified rows when those surfaces cut over.
+- **`claim-picker-market-coverage` (D5).** Experts outside the eight `042`-seeded markets cannot claim
+  (honest) and are stamped `no_neighborhoods_available_at`. The `data/major-cities-neighborhoods` remote
+  branch is the coverage fix; ops backfills the claim when a market's rows land.
+- **`COUNSEL-1` (blocker, human).** Data-use + byline + aggregated-analytics consent language and the
+  scout-report framing line. Gates flywheel consumers 2/4 (Phase 2) and all Phase 4 copy. Claims stamp
+  `consent_version` (`tos-11.2-2026-09` today) so replies under interim text stay distinguishable.
+- **`bounties` (parked).** Needs Leon's budget ruling before any wiring.

@@ -449,6 +449,11 @@ export const localExpertForms = pgTable("local_expert_forms", {
   // model }). ADVISORY in v1 — surfaced to admin as decision support, does not auto-gate approval.
   knowledgeScore: jsonb("knowledge_score"),
   knowledgeScoredAt: timestamp("knowledge_scored_at"),
+  // Phase 0 D5 (ratified, amended): the onboarding "Show us your neighborhood" step is skippable
+  // ONLY when the picker has no city_neighborhoods rows for the applicant's city. SERVER-STAMPED at
+  // application submit when that is the case and the applicant holds no claim — so ops can backfill
+  // the claim when that market's rows land. Never client-settable (omitted from the insert schema).
+  noNeighborhoodsAvailableAt: timestamp("no_neighborhoods_available_at"),
   localSpecialties: jsonb("local_specialties").default([]),
   // Experience
   yearsOfExperience: varchar("years_of_experience", { length: 50 }),
@@ -2026,6 +2031,8 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   userId: true,
   status: true,
   rejectionMessage: true,
+  // Server-stamped at submit (Phase 0 D5 of the field-knowledge lane) — never from the body.
+  noNeighborhoodsAvailableAt: true,
   createdAt: true,
   // Admin-managed influencer fields (set by backend after verification)
   verifiedInfluencer: true,
@@ -3606,6 +3613,10 @@ export const cityNeighborhoods = pgTable("city_neighborhoods", {
   // leadExpertTarget: per SEED_DATA §7 "featured-lead slot: 1". Admin can tune.
   adjacentKeys: text("adjacent_keys").array(),
   leadExpertTarget: integer("lead_expert_target").notNull().default(1),
+  // Field-knowledge capture parameter (ruling 2026-08-29-evidence-is-the-test; companion §1 —
+  // "set per neighborhood, default evening"; Phase 0 D8, migration 272). App-enforced vocabulary
+  // = shared/neighborhood-claims.ts DAYPARTS; NULL = the default (evening). Admin-editable.
+  defaultDaypart: varchar("default_daypart", { length: 20 }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -3639,15 +3650,165 @@ export const marketGeography = pgTable("market_geography", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// ─── Expert field knowledge — neighborhood claims (migration 272) ───────────────────────────
+// Rulings 2026-08-29-neighborhood-claims / -evidence-is-the-test / -graded-unlocks,
+// 2026-09-01-evidence-thresholds-config / -scorer-model / -access-claims-held; Phase 0 audit
+// docs/audits/expert-field-knowledge-phase-0.md (D1–D8 ratified). Every table and index here is
+// DECLARED (deploy-push durability rule); no DB CHECK anywhere (publish-trap posture) — every
+// vocabulary is app-enforced from shared/neighborhood-claims.ts. Privileged columns (status,
+// scorer_*, ratified_*, declined_*, consent_*, version) are written ONLY by
+// server/services/neighborhood-claims.service.ts; the insert schemas below are PICK-based
+// (allowlist, §19 / #PS18) so a new privileged column is unreachable until deliberately named.
+
+// expertNeighborhoodClaims: ONE row per (expert, neighborhood). Resubmission edits the row in place
+// and bumps `version`; the typed evidence rows carry `claim_version`, so a prior version's answers
+// are versioned inventory, never deleted. `draft_capture` is the save-and-finish-later buffer —
+// typed rows are materialized at SUBMIT from it, and admin reviews the typed rows, never the buffer.
+export const expertNeighborhoodClaims = pgTable("expert_neighborhood_claims", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  // draft | submitted | scored | verified | declined (CLAIM_STATUSES). Expert-facing = claimed|verified.
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
+  daypart: varchar("daypart", { length: 20 }).notNull().default("evening"),
+  version: integer("version").notNull().default(1),
+  draftCapture: jsonb("draft_capture"),
+  consentAt: timestamp("consent_at"),
+  consentVersion: varchar("consent_version", { length: 40 }),
+  // §4 scorer contract, ADMIN-ONLY. scorer_failed: malformed scorer output leaves the claim
+  // `submitted` with this flag raised, never silently zeroed (ruling 2026-09-01-scorer-model).
+  scorerJson: jsonb("scorer_json"),
+  scorerFailed: boolean("scorer_failed").notNull().default(false),
+  scorerFailedReason: varchar("scorer_failed_reason", { length: 60 }),
+  submittedAt: timestamp("submitted_at"),
+  scoredAt: timestamp("scored_at"),
+  ratifiedAt: timestamp("ratified_at"),
+  ratifiedBy: varchar("ratified_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  declinedAt: timestamp("declined_at"),
+  // The weakest dimension the admin picked (EVIDENCE_DIMENSIONS) — the §5 message is derived from
+  // it; the number is never written into a message.
+  declinedDimension: varchar("declined_dimension", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("expert_neighborhood_claims_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+  index("idx_expert_neighborhood_claims_status").on(table.status),
+]);
+export type ExpertNeighborhoodClaim = typeof expertNeighborhoodClaims.$inferSelect;
+/** Client-reachable create body: the neighborhood only. Everything else is server-derived. */
+export const insertExpertNeighborhoodClaimSchema = createInsertSchema(expertNeighborhoodClaims).pick({
+  neighborhoodId: true,
+});
+
+// neighborhoodClaimTransitions: the claim's diary — mirrors item_transition_log (trip-scoped, so
+// it cannot host these). APPEND-ONLY, written in the SAME transaction as every status flip by
+// server/services/neighborhood-claim-transitions.service.ts (the one writer module).
+export const neighborhoodClaimTransitions = pgTable("neighborhood_claim_transitions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  claimId: varchar("claim_id").notNull().references(() => expertNeighborhoodClaims.id, { onDelete: "cascade" }),
+  claimVersion: integer("claim_version").notNull(),
+  fromStatus: varchar("from_status", { length: 20 }),
+  toStatus: varchar("to_status", { length: 20 }).notNull(),
+  actorType: varchar("actor_type", { length: 20 }).notNull(), // expert | ops | scorer | admin | seed
+  actorId: varchar("actor_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("nct_claim_created_idx").on(table.claimId, table.createdAt),
+]);
+export type NeighborhoodClaimTransition = typeof neighborhoodClaimTransitions.$inferSelect;
+
+// miniSlipTemplates: the P2 composed {daypart} — MIRRORS the itinerary-item shape (name,
+// duration_min, transition {mode, minutes} = travelFromPrevious's {mode, duration}) without a
+// trip_id, so a later "drop this evening onto a slip" copies fields 1:1. First table of the
+// template-fragment store (Phase 2 consumer).
+export const miniSlipTemplates = pgTable("mini_slip_templates", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  claimId: varchar("claim_id").notNull().references(() => expertNeighborhoodClaims.id, { onDelete: "cascade" }),
+  claimVersion: integer("claim_version").notNull(),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  daypart: varchar("daypart", { length: 20 }).notNull(),
+  // [{position, name, normalizedName, durationMin, transition:{mode,minutes}|null}] × 3
+  items: jsonb("items").notNull(),
+  orderReason: text("order_reason").notNull(),
+  // [{kind: last_entry|reservation_window|closure_day|last_train, detail}] ≥ 1
+  hardConstraints: jsonb("hard_constraints").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("mini_slip_templates_claim_version_uniq").on(table.claimId, table.claimVersion),
+]);
+export type MiniSlipTemplate = typeof miniSlipTemplates.$inferSelect;
+
+// claimContingencies: the P3 answer — mirrors the items' backup-plan model (backupPlanId /
+// weatherConditions.triggers) as one alternate keyed to the P2 template row.
+export const claimContingencies = pgTable("claim_contingencies", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  miniSlipTemplateId: varchar("mini_slip_template_id").notNull().references(() => miniSlipTemplates.id, { onDelete: "cascade" }),
+  claimId: varchar("claim_id").notNull().references(() => expertNeighborhoodClaims.id, { onDelete: "cascade" }),
+  claimVersion: integer("claim_version").notNull(),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  trigger: varchar("trigger", { length: 20 }).notNull(), // rain | closed | child | late_start
+  replacesPosition: integer("replaces_position"), // NULL = the whole outing changes
+  alternate: jsonb("alternate").notNull(), // one P2-item-shaped object
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type ClaimContingency = typeof claimContingencies.$inferSelect;
+
+// accessClaims: the P4 answer — HELD (ruling 2026-09-01-access-claims-held): stored, never scored,
+// never surfaced publicly, never counted toward an unlock until scout-check (Phase 4) or an
+// explicit ops-verification lane exists. verification_status is 'held' until then.
+export const accessClaims = pgTable("access_claims", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  claimId: varchar("claim_id").notNull().references(() => expertNeighborhoodClaims.id, { onDelete: "cascade" }),
+  claimVersion: integer("claim_version").notNull(),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  venue: varchar("venue", { length: 255 }).notNull(),
+  normalizedName: varchar("normalized_name", { length: 255 }),
+  accessType: varchar("access_type", { length: 20 }).notNull(), // reservation | timing | introduction | entry
+  relationshipBasis: text("relationship_basis"),
+  verificationStatus: varchar("verification_status", { length: 20 }).notNull().default("held"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type AccessClaim = typeof accessClaims.$inferSelect;
+
+// evidenceThresholds: the ONLY place a pass threshold lives (ruling
+// 2026-09-01-evidence-thresholds-config; same invariant class as fee_bands, STRICTER: no code
+// fallback — a missing row blocks the scorer AND Ratify with `thresholds_missing`). Keys =
+// shared/neighborhood-claims.ts EVIDENCE_THRESHOLD_KEYS; seeded by migration 272 with the companion
+// §3 values (ON CONFLICT DO NOTHING). Admin-editable via PATCH /api/admin/evidence-thresholds/:key
+// (allowlist body: `value` only). No createInsertSchema — nothing client-reachable creates rows.
+export const evidenceThresholds = pgTable("evidence_thresholds", {
+  thresholdKey: varchar("threshold_key", { length: 60 }).primaryKey(),
+  value: integer("value").notNull(),
+  description: text("description"),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type EvidenceThreshold = typeof evidenceThresholds.$inferSelect;
+
 // ─── Phase 3 join + target tables ───────────────────────────────────────────
 // expertNeighborhoods: expert ↔ neighborhood. Soft-exclusive "lead" enforced
 // at DB level by a partial unique index (one is_lead=true per neighborhood).
+//
+// ONE WRITER (ruling 2026-08-29-neighborhood-claims; Phase 0 D1 ratified): rows are INSERTED only
+// by claim ratification (neighborhood-claims.service.ts ratifyClaim), which sets the transaction-
+// local `traveloure.expert_neighborhoods_writer = 'ratify'` that the migration-272 BEFORE INSERT
+// trigger requires — any other INSERT raises. The former writers (the approval hook's free-text
+// name match, the admin lead route's raw upsert, the demo seed's direct insert, and the exported
+// insert schema) are retired. Legacy rows (claim_id IS NULL) are kept, never deleted; Phase 3
+// gates the verification-dependent readers on verified_at IS NOT NULL, one commit each.
+// `is_lead` stays an admin curation flag TOGGLED on an existing row (UPDATE only).
 export const expertNeighborhoods = pgTable("expert_neighborhoods", {
   id: uuid("id").primaryKey().defaultRandom(),
   expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
   neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
   isLead: boolean("is_lead").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Migration 272 — the ratified join. NULL claim_id / verified_at = a legacy (pre-ruling) row.
+  claimId: varchar("claim_id").references(() => expertNeighborhoodClaims.id, { onDelete: "set null" }),
+  verifiedAt: timestamp("verified_at"),
+  ratifiedBy: varchar("ratified_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -3661,8 +3822,8 @@ export const expertNeighborhoods = pgTable("expert_neighborhoods", {
     .where(sql`is_lead = true`),
 }));
 export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
-export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertExpertNeighborhood = z.infer<typeof insertExpertNeighborhoodSchema>;
+// NOTE: there is deliberately NO insert schema for expert_neighborhoods (Phase 0 D1) — the table
+// has one writer and it is not a request body.
 
 // providerNeighborhoodCoverage: which providers serve which neighborhood × category.
 // Powers the "category × neighborhood" upsell query (brief Phase 3 gate).
@@ -8057,21 +8218,46 @@ export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
   promotionReviewNote: text("promotion_review_note"),
   promotedGemId: varchar("promoted_gem_id"),
 
+  // ── Field-knowledge P1 depth (migration 272; Phase 0 D2 ratified with rider) ──
+  // A nugget IS the P1 "place" row (this table is the gem-candidate host — companion §1 "writes
+  // gem_candidates + depth note"), so a ratified P1 enters the propose → approve → birth-gem rail
+  // above with no new consumer code. `insight` = do_this, `linked_poi` = name, `expert_user_id` =
+  // curated-by. All additive-nullable, no CHECK. claim_id/claim_version/web_gap* are SERVER-ONLY
+  // (written by the claim service at submit and by the Phase-2 scorer) — absent from the pick-based
+  // insert schema below and stripped in createLocalKnowledgeNugget (§18 two-layer posture).
+  claimId: varchar("claim_id").references(() => expertNeighborhoodClaims.id, { onDelete: "set null" }),
+  claimVersion: integer("claim_version"),
+  neighborhoodId: varchar("neighborhood_id").references(() => cityNeighborhoods.id, { onDelete: "set null" }),
+  placeCategory: varchar("place_category", { length: 50 }),
+  whenJson: jsonb("when_json"), // {hours, days, season} — structured; the scorer flags unparseable_when
+  watchOut: text("watch_out"),
+  priceBand: varchar("price_band", { length: 10 }),
+  expertConfidence: varchar("expert_confidence", { length: 20 }),
+  normalizedName: varchar("normalized_name", { length: 255 }), // Phase-4 independence join key
+  webGap: varchar("web_gap", { length: 10 }), // found | partial | absent (ruling 2026-09-01-web-gap-check)
+  webGapUrl: text("web_gap_url"),
+  webGapCheckedAt: timestamp("web_gap_checked_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_local_knowledge_nuggets_claim").on(table.claimId),
+]);
 
-export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  // §19: the promotion cluster is server-authored only — never client-settable.
-  promotionStatus: true,
-  promotionSubmittedAt: true,
-  promotionReviewedBy: true,
-  promotionReviewedAt: true,
-  promotionReviewNote: true,
-  promotedGemId: true,
+// PICK-based (allowlist) — Phase 0 D2 rider: the migration-272 columns must be unreachable by
+// construction, and a `.omit()` list is exactly the shape nobody edits for a column that did not
+// exist when it was written (§19). The pick set is the Content Studio composer's fields plus
+// expertUserId, which the route spreads in from the SESSION before parsing (never from the body).
+export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).pick({
+  expertUserId: true,
+  nuggetType: true,
+  city: true,
+  linkedPoi: true,
+  linkedNeighbourhood: true,
+  insight: true,
+  targetAudience: true,
+  notFor: true,
+  seasonality: true,
 });
 export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
 export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;

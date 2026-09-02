@@ -1346,4 +1346,12 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
+  // 272: expert field knowledge v2 Phase 1 — expert_neighborhood_claims + its append-only diary,
+  // the typed evidence tables (P1 depth columns on local_knowledge_nuggets, mini_slip_templates,
+  // claim_contingencies, access_claims), the evidence_thresholds config (seeded, companion §3),
+  // additive claim_id/verified_at/ratified_by on expert_neighborhoods, city_neighborhoods.
+  // default_daypart, local_expert_forms.no_neighborhoods_available_at, and the one-writer
+  // BEFORE INSERT trigger on expert_neighborhoods. Additive, no CHECK, all declared in
+  // shared/schema.ts. 271 is taken by the traveler-fee-collection lane (PR #696).
+  "272_expert_neighborhood_claims.sql",
 ] as const;

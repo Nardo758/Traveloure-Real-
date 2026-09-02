@@ -8083,22 +8083,16 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
     // Get current lead (for "Reassign from A to B?" UI surfacing — server still does it).
     const currentLead = await getNeighborhoodCurrentLead(id);
 
-    // Atomic swap: demote any existing lead, upsert the new one with is_lead=true.
-    await db.transaction(async (tx) => {
-      // Step 1: demote whatever's currently lead.
-      await tx.update(expertNeighborhoods)
-        .set({ isLead: false, updatedAt: new Date() })
-        .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)));
-
-      // Step 2: upsert the new lead (expert may or may not have an existing row).
-      await tx.execute(sql`
-        INSERT INTO expert_neighborhoods (expert_id, neighborhood_id, is_lead, updated_at)
-        VALUES (${expertId}, ${id}, true, NOW())
-        ON CONFLICT (expert_id, neighborhood_id) DO UPDATE SET
-          is_lead = true,
-          updated_at = NOW()
-      `);
-    });
+    // Lead swap is UPDATE-ONLY (ruling 2026-08-29-neighborhood-claims; Phase 0 D1): is_lead toggles on
+    // an EXISTING expert_neighborhoods row — rows are born only by claim ratification, and the
+    // migration-272 trigger refuses any other INSERT. An expert with no row cannot be made lead.
+    const swap = await swapNeighborhoodLeadTx(id, expertId);
+    if (!swap.promoted) {
+      return res.status(409).json({
+        error: "expert_not_in_neighborhood",
+        message: "This expert has no verified or existing row for this neighborhood. A lead is chosen among experts whose neighborhood claim has been ratified.",
+      });
+    }
 
     await insertAccessAuditLog({
       actorId: auth.userId,

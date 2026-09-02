@@ -1667,16 +1667,12 @@ export class DatabaseStorage implements IStorage {
       .set({ status, rejectionMessage })
       .where(eq(localExpertForms.id, id))
       .returning();
-    // On approval, translate the expert's self-declared neighborhoods into
-    // expert_neighborhoods rows — the source that feeds the feed's localExpert
-    // enrichment + the "Ask about <neighborhood>" routing. Best-effort: a capture
-    // failure must NEVER block or roll back the approval.
+    // expert_neighborhoods is NO LONGER written here (ruling 2026-08-29-neighborhood-claims;
+    // Phase 0 D1 ratified). Approval used to name-match the free-text `neighborhoods` chips into
+    // rows — platform assignment, not an expert's claim. Rows are now born only by claim
+    // ratification (neighborhood-claims.service.ts ratifyClaim); the migration-272 trigger refuses
+    // any other INSERT. The chips still land in local_expert_forms.neighborhoods for the admin view.
     if (updated && status === "approved") {
-      try {
-        await this.captureExpertNeighborhoods(updated);
-      } catch (err: any) {
-        console.error(`[expert-neighborhoods] capture failed for form ${id}:`, err?.message || err);
-      }
       // Auto-enroll the expert's city into the AI content pipeline. The pipeline only
       // generates content (gems/events/seasons) for cities present in travel_pulse_cities
       // (~21 seeded), so a new market with a vetted local expert would otherwise stay dark.
@@ -1718,58 +1714,6 @@ export class DatabaseStorage implements IStorage {
       .values({ cityName: name, country: ctry })
       .onConflictDoNothing();
     return Boolean(inserted.rowCount);
-  }
-
-  /**
-   * Translate a local-expert form's self-declared free-text `neighborhoods` into
-   * `expert_neighborhoods` rows, matching each name to a `city_neighborhoods` row
-   * scoped to the expert's city (+ country when present). Case-insensitive name
-   * match with a slug fallback; unmatched names are skipped + logged (a name with
-   * no city_neighborhoods row can't be honestly linked). Idempotent via the
-   * (expert_id, neighborhood_id) unique constraint. Reused by the approval hook
-   * and the one-time backfill. Returns the number of rows captured.
-   */
-  async captureExpertNeighborhoods(form: LocalExpertForm): Promise<number> {
-    const names = Array.isArray(form.neighborhoods)
-      ? (form.neighborhoods as unknown[]).map((n) => String(n)).filter((n) => n.trim().length > 0)
-      : [];
-    if (names.length === 0 || !form.city) return 0;
-
-    const cityRows = await db
-      .select({ id: cityNeighborhoods.id, name: cityNeighborhoods.name, slug: cityNeighborhoods.slug })
-      .from(cityNeighborhoods)
-      .where(
-        form.country
-          ? and(ilike(cityNeighborhoods.city, form.city), ilike(cityNeighborhoods.country, form.country))
-          : ilike(cityNeighborhoods.city, form.city),
-      );
-    if (cityRows.length === 0) return 0;
-
-    const slugify = (s: string) =>
-      s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const byName = new Map(cityRows.map((r) => [r.name.toLowerCase().trim(), r.id]));
-    const bySlug = new Map(cityRows.map((r) => [r.slug.toLowerCase().trim(), r.id]));
-
-    const matchedIds = new Set<string>();
-    for (const raw of names) {
-      const key = raw.toLowerCase().trim();
-      const id = byName.get(key) ?? bySlug.get(key) ?? bySlug.get(slugify(raw));
-      if (id) matchedIds.add(id);
-    }
-    if (matchedIds.size === 0) return 0;
-
-    await db
-      .insert(expertNeighborhoods)
-      .values(
-        Array.from(matchedIds).map((neighborhoodId, i) => ({
-          expertId: form.userId,
-          neighborhoodId,
-          isLead: false, // lead is a separate admin/curation concern; never auto-claimed here
-          sortOrder: i,
-        })),
-      )
-      .onConflictDoNothing();
-    return matchedIds.size;
   }
 
   async updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined> {

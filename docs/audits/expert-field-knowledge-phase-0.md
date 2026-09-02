@@ -365,3 +365,22 @@ or set daypart by hand in the two non-evening markets for now?
   replies fuel Phase 2's proof gate.
 - **COUNSEL-1** — data-use/byline/aggregated-analytics consent + the scout-report framing line; gates flywheel consumers
   2/4 and all Phase 4 copy. Send this week.
+
+---
+
+## RULING on Phase 0 D1–D8 (`expert-field-knowledge` v2) — decision-maker, 2026-09-02, verbatim
+
+* D1 — ratified. Legacy rows stay `claim_id IS NULL`, readers untouched in Phase 1, Phase 3 cuts the four surfaces to `verified_at IS NOT NULL` one commit each. Raw INSERT and exported insert schema deleted in Phase 1, not deferred. Demo seed calls the ratify service.
+* D2 — ratified, with a rider: the new nullable columns on `local_knowledge_nuggets` must be declared through the pick-based projection and the completeness guard pinned in CI. A column the guard can't see is the mass-assignment class reopening. `neighborhood_id` backfill onto pre-existing nuggets is a separate decision — file it.
+* D3 — ratified. No code-constant fallback. Seed migration inserts the §3 values so no environment boots with an empty table. `thresholds_missing` must block Ratify as well as the scorer — an admin cannot verify a claim against numbers that don't exist.
+* D4 — ratified. Copy `item-transition-log.service.ts`'s shape. The gem-candidates `.catch` on its audit write is a finding — file it against that lane, don't fix it here.
+* D5 — amended. Picker replaces chips, approval hook severed, `local_expert_forms.neighborhoods` still written — all ratified. The step-validity rule is wrong as stated: "at least one claim in any status" blocks onboarding submission for any expert whose city has no seeded neighborhoods. Not being able to claim is honest; not being able to apply is a funnel hole. Rule: require ≥1 claim only when the picker has options for the expert's city; when it has none, the step is skippable with a stored `no_neighborhoods_available_at` timestamp so ops can backfill the claim when that market's rows land.
+* D6 — ratified. Assertion scope is every string reachable by role `expert`, word list `test | exam | score | pass | fail`. Reword line 1018 as proposed.
+* D7 — ratified, including `affiliate_booking_requests.expert_id` and the lane's own P1/P4 rows. `normalized_name` equality is acceptable at launch; file a followup to move the join onto POI id once nuggets carry `linkedPoi` consistently, because name-matching is the same weak link that made the chips dishonest.
+* D8 — ratified.
+
+Migration 272: confirm the number against `origin/main`, not the sandbox, before the PR opens. Proceed to Phase 1 build; next stop is the PR with `information_schema` verification.
+
+> The one I'd watch when the PR lands is D5. The agent's instinct — "can't claim, can't proceed" — is the correct instinct for the claim and the wrong one for the application, and it's a one-line rule change that would otherwise quietly turn away every expert outside the eight cities.
+
+Ledger row: `2026-09-02-field-knowledge-phase0-ratified`.

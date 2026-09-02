@@ -111,6 +111,7 @@ const AdminPayouts = lazy(() => import("@/pages/admin/payouts"));
 const AdminNeighborhoodBackfill = lazy(() => import("@/pages/admin/neighborhood-backfill"));
 const AdminGemPhotoBackfill = lazy(() => import("@/pages/admin/gem-photo-backfill"));
 const AdminGemCandidates = lazy(() => import("@/pages/admin/gem-candidates"));
+const AdminNeighborhoodClaimsManualEntry = lazy(() => import("@/pages/admin/neighborhood-claims-manual-entry"));
 const AdminReviewModeration = lazy(() => import("@/pages/admin/review-moderation"));
 const AdminDestinationEvents = lazy(() => import("@/pages/admin/destination-events"));
 const AdminServiceRequests = lazy(() => import("@/pages/admin/service-requests"));
@@ -148,6 +149,7 @@ const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const AdminContentOps = lazy(() => import("@/pages/admin/content-ops"));
 const AdminAuditLog = lazy(() => import("@/pages/admin/audit-log"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
+const ExpertNeighborhoods = lazy(() => import("@/pages/expert/neighborhoods"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
 const ProvidersDirectoryPage = lazy(() => import("@/pages/providers-directory"));
@@ -805,6 +807,9 @@ function Router() {
       <Route path="/expert/content-studio/:contentType">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
+      <Route path="/expert/neighborhoods">
+        {() => <ProtectedRoute component={ExpertNeighborhoods} requiredRole="expert" />}
+      </Route>
       <Route path="/expert/clients/:id">
         {() => <ProtectedRoute component={ExpertClientDetail} requiredRole="expert" />}
       </Route>
@@ -1146,6 +1151,9 @@ function Router() {
       </Route>
       <Route path="/admin/gem-candidates">
         {() => <ProtectedRoute component={AdminGemCandidates} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/neighborhood-claims/manual-entry">
+        {() => <ProtectedRoute component={AdminNeighborhoodClaimsManualEntry} requiredRole="admin" />}
       </Route>
       <Route path="/admin/review-moderation">
         {() => <ProtectedRoute component={AdminReviewModeration} requiredRole="admin" />}
