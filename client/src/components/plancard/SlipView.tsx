@@ -15,7 +15,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { format, isValid } from "date-fns";
+import { format } from "date-fns";
 import {
   Anchor,
   ArrowRight,
@@ -38,6 +38,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import {
@@ -116,10 +117,11 @@ export interface SlipData extends PlanCardData {
 
 // ── helpers ────────────────────────────────────────────────────────────────────────────
 
+/** F-1: trip start/end arrive as bare "YYYY-MM-DD" (DATE columns) — `new Date()` would parse
+ *  those as UTC midnight and render the PREVIOUS day west of UTC. `parseTripDate` reads a
+ *  date-only string as LOCAL midnight while leaving real timestamps (diary `createdAt`) alone. */
 function safeDate(raw: string | null | undefined): Date | null {
-  if (!raw) return null;
-  const d = new Date(raw);
-  return isValid(d) ? d : null;
+  return parseTripDate(raw);
 }
 
 /** Phase chip DERIVED FROM DATES vs now — NEVER trips.status (dead field, CLAUDE.md §13). */
