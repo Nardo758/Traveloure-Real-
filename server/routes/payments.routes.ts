@@ -37,6 +37,10 @@ import {
   directRateSnapshot,
   type DirectRateResolution,
 } from "../services/direct-charge-rate.service";
+// Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler service fee is now CHARGED on
+// every marketplace booking, computed ONLY by this one band-driven resolver (rate + cap from
+// `fee_bands`, no literals, §8/§14). Per-item (per-booking) with a per-booking $25 cap.
+import { resolveTravelerServiceFee } from "../services/fee-resolution.service";
 // Lane 7 (docs/DECISIONS.md ruling 72): deposits / partial payments. Deposit amounts are derived
 // server-side from the listing's OWN opt-in config × the server-side line total (§14/§18) — never
 // from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
@@ -471,11 +475,21 @@ async function authorizeAndPromote(
      * re-drive's subtotal (Σ total_amount) already carries it — passing it again would double it.
      */
     surchargeTotal?: number;
+    /**
+     * Ruling 2026-09-02-traveler-fee-applies-everywhere: the sum of per-booking traveler service fees
+     * ACTUALLY charged (0 for each covered line), server-derived from `resolveTravelerServiceFee`
+     * (§8/§14). Added to the charged total on the first attempt AND reconstructed on the re-drive from
+     * each claimed row's `booking_details.travelerServiceFee.charged` snapshot — it is deliberately
+     * NOT in total_amount/platform_fee (those are provider-facing), so the re-drive must pass it here
+     * or it would under-charge relative to the first attempt. Absent/0 ⇒ byte-identical to pre-fee (§13).
+     */
+    travelerFeeTotal?: number;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
   const surchargeTotal = args.surchargeTotal ?? 0;
-  const fullTotal = subtotal + platformFee + conciergeFee + surchargeTotal;
+  const travelerFeeTotal = args.travelerFeeTotal ?? 0;
+  const fullTotal = subtotal + platformFee + conciergeFee + surchargeTotal + travelerFeeTotal;
   // Charge the deposit sum when this is a deposit checkout, else the full total (unchanged).
   const total = args.chargeAmount != null ? args.chargeAmount : fullTotal;
   const isDepositCheckout = args.chargeAmount != null && args.chargeAmount < fullTotal - 0.001;
@@ -558,15 +572,26 @@ async function authorizeAndPromote(
   // money and the booking row is the money truth, so a recording failure is logged loudly and the
   // promotion path retries the same idempotent write — it never fails a paid checkout.
   try {
-    const { recordRailsFeeLedger } = await import("../services/fee-ledger.service");
+    const { recordRailsFeeLedger, recordTravelerServiceFeeLedger } = await import(
+      "../services/fee-ledger.service"
+    );
     await recordRailsFeeLedger({
+      bookingIds,
+      stripePaymentRef: paymentIntent.paymentIntentId,
+      actor: "checkout",
+    });
+    // Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler service fee event(s) for these
+    // bookings — one `traveler_service_fee (+X)` row each, plus a `fee_waiver (−X)` leg on any covered
+    // line (netting to $0; the amount<>0 CHECK stands). Reads each row's `travelerServiceFee` snapshot,
+    // never re-resolves; idempotent per booking id, so the re-drive and the webhook land exactly one.
+    await recordTravelerServiceFeeLedger({
       bookingIds,
       stripePaymentRef: paymentIntent.paymentIntentId,
       actor: "checkout",
     });
   } catch (ledgerErr: any) {
     console.error(
-      `[checkout] rails fee-ledger write failed for idempotencyKey=${checkoutKey} ` +
+      `[checkout] fee-ledger write failed for idempotencyKey=${checkoutKey} ` +
         `(payment AUTHORIZED; the promotion path retries the same idempotent write):`,
       ledgerErr?.message ?? ledgerErr,
     );
@@ -819,12 +844,22 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           // rows, never recomputed from a re-priced cart (§14). No deposit rows ⇒ chargeAmount
           // equals the full total, so this is byte-identical to the pre-deposit re-drive (§13).
           const redriveAnyDeposit = provisional.some((r) => r.depositAmount != null);
+          // Ruling 2026-09-02: the traveler fee is in booking_details, not total_amount, so it is
+          // reconstructed from each row's snapshot and — like the first attempt — folded into the
+          // per-line amount-due-now (it rode the deposit charge). Passing the sum via travelerFeeTotal
+          // keeps a NON-deposit re-drive's fullTotal correct too. Either way the re-drive charges the
+          // SAME amount the first attempt would have (§14, no divergence).
+          const redriveTravelerFeeTotal = provisional.reduce(
+            (s, r) => s + parseFloat(r.travelerFeeCharged || "0"),
+            0,
+          );
           const redriveChargeNow = provisional.reduce(
             (s, r) =>
               s +
               (r.depositAmount != null
                 ? parseFloat(r.depositAmount)
-                : parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")),
+                : parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")) +
+              parseFloat(r.travelerFeeCharged || "0"),
             0,
           );
           return await authorizeAndPromote(res, {
@@ -834,6 +869,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             subtotal: provisional.reduce((s, r) => s + parseFloat(r.totalAmount || "0"), 0),
             platformFee: provisional.reduce((s, r) => s + parseFloat(r.platformFee || "0"), 0),
             conciergeFee: 0, // already folded into each row's stored platformFee
+            travelerFeeTotal: Math.round(redriveTravelerFeeTotal * 100) / 100,
             ...(redriveAnyDeposit ? { chargeAmount: Math.round(redriveChargeNow * 100) / 100 } : {}),
             redriven: true,
             useSavedCard: req.body?.useSavedCard === true,
@@ -1382,6 +1418,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // it is Σ(per-line deposit) + Σ(full non-deposit line).
       let checkoutAmountDueNow = 0;
       let anyDepositLine = false;
+      // Ruling 2026-09-02-traveler-fee-applies-everywhere: the per-booking traveler service fee sum
+      // ACTUALLY charged now (0 for each covered line). Added to the Stripe total below and — for a
+      // deposit line — folded into that line's amount-due-now, because the fee is assessed ONCE at
+      // the deposit charge, never on the balance leg (ruling D). Kept OUT of total_amount/platform_fee
+      // (those are provider-facing / reconciliation inputs); the row snapshots the fee separately.
+      let checkoutTravelerFeeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
 
@@ -1441,6 +1483,25 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // returns null when this listing takes no deposit, in which case the full line is charged now
         // and the deposit/balance columns stay NULL (byte-identical to pre-deposit, §13).
         const lineFullCharge = price + surchargeAmt + totalPlatformFeeAmt;
+
+        // ── Traveler service fee for THIS line (ruling 2026-09-02-traveler-fee-applies-everywhere) ──
+        // Per-booking, on the line's own base price, from the ONE band-driven resolver (§8/§14): no
+        // literal, no second calculator, $25 cap per booking. `wouldHaveBeen` is the fee at the band
+        // rate+cap; `feeChargedAmt` is what actually rides the charge (0 when the line is covered).
+        // Suppression precedence matches the two pre-passes above — a rails waiver wins, else Trip
+        // Pass (the trip-pass pre-pass already skips any line rails waived, so the two are exclusive).
+        const lineRailsWaiver = itemRails2?.travelerFeeWaiver ? true : false;
+        const lineTripPassWaiver = tripPassWaiverByItemId.has(item.id);
+        const feeWaived = lineRailsWaiver || lineTripPassWaiver;
+        const feeWaiverBasis: "rails" | "trip_pass" | null = lineRailsWaiver
+          ? "rails"
+          : lineTripPassWaiver
+            ? "trip_pass"
+            : null;
+        const travelerFeeResolved = await resolveTravelerServiceFee(price);
+        const feeChargedAmt = feeWaived ? 0 : travelerFeeResolved.amount;
+        checkoutTravelerFeeTotal += feeChargedAmt;
+
         const depositPlan = resolveDepositPlan(
           {
             depositEnabled: (item.service as any).depositEnabled,
@@ -1453,7 +1514,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let lineBalanceDueAt: Date | null = null;
         if (depositPlan) {
           anyDepositLine = true;
-          checkoutAmountDueNow += depositPlan.depositAmount;
+          // Ruling D: the traveler fee is assessed ONCE, at the deposit charge — so it rides the
+          // amount-due-now here and the balance leg (pay-balance) adds nothing.
+          checkoutAmountDueNow += depositPlan.depositAmount + feeChargedAmt;
           // Cutoff derived from EXISTING listing/booking facts only (§13): the service date (room
           // check-in, else the cart line's scheduled date) minus the change window.
           const serviceDateStr = stay?.checkIn
@@ -1468,7 +1531,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             leadTimeHours: (item.service as any).leadTimeHours,
           });
         } else {
-          checkoutAmountDueNow += lineFullCharge;
+          checkoutAmountDueNow += lineFullCharge + feeChargedAmt;
         }
 
         // Create contract for this booking
@@ -1535,12 +1598,27 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               // an admin re-pricing a band mid-checkout cannot rewrite what was charged.
               ...(itemRails2 ? { railsAttribution: railsSnapshot(itemRails2) } : {}),
               // Trip Pass (ruling 2026-08-29-trip-pass): the pass's traveler-fee waiver,
-              // snapshotted on the row it covers — basis 'trip_pass' beside rails' own
-              // basis, same counterfactual honesty (the fee is not billed on the direct
-              // path today; this records what WOULD have been charged and why it is 0).
+              // snapshotted on the row it covers — basis 'trip_pass' beside rails' own basis.
+              // The waiver now suppresses REAL billing (ruling 2026-09-02); the authoritative
+              // record is the `travelerServiceFee` snapshot below + the fee_waiver ledger leg.
               ...(tripPassWaiverByItemId.get(item.id)
                 ? { tripPassFeeWaiver: tripPassWaiverByItemId.get(item.id) }
                 : {}),
+              // Traveler service fee SNAPSHOT (ruling 2026-09-02-traveler-fee-applies-everywhere),
+              // locked at claim time so the fee-ledger row written at the authorization stamp records
+              // what was CHARGED, never a re-resolved band. `charged` is what rode the Stripe total
+              // (0 when covered); `wouldHaveBeen` is the band-priced fee; `waiverBasis` names the
+              // coverage. Read by recordTravelerServiceFeeLedger and by the re-drive reconstruction.
+              travelerServiceFee: {
+                charged: feeChargedAmt,
+                wouldHaveBeen: travelerFeeResolved.amount,
+                rate: travelerFeeResolved.rate,
+                bandId: travelerFeeResolved.bandId,
+                bandKey: travelerFeeResolved.bandKey,
+                capApplied: travelerFeeResolved.capApplied,
+                waived: feeWaived,
+                waiverBasis: feeWaiverBasis,
+              },
               // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
               // posture and for the same reason — a line that fell back to the legacy lane must
               // SAY so on the row, or a later reader would infer a D1 charge that never happened
@@ -1669,6 +1747,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // line. On a re-drive this is NOT passed — each claimed row already carries the surcharge in
         // its total_amount, so the re-drive's subtotal (Σ total_amount) covers it (see the arg doc).
         surchargeTotal,
+        // Ruling 2026-09-02: the per-booking traveler-fee sum actually charged (0 per covered line).
+        // For a deposit checkout it is already folded into checkoutAmountDueNow above; passing it here
+        // too is harmless because chargeAmount (when present) supersedes fullTotal — but it keeps
+        // fullTotal correct for the isDepositCheckout comparison. On the re-drive it is reconstructed
+        // from the claimed rows' snapshots (see that call site), never from a re-priced cart.
+        travelerFeeTotal: Math.round(checkoutTravelerFeeTotal * 100) / 100,
         // Lane 7: charge the deposit sum now when any line takes a deposit; else undefined ⇒ the
         // full total is charged, unchanged (§13).
         ...(anyDepositLine ? { chargeAmount: Math.round(checkoutAmountDueNow * 100) / 100 } : {}),
@@ -1942,6 +2026,11 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       let previewWaivedItemCount = 0;
       let previewWouldHaveBeenAmountTotal = 0;
       let previewWaiverBandKey: string | null = null;
+      // Ruling 2026-09-02-traveler-fee-applies-everywhere: the per-booking traveler service fee the
+      // checkout will ACTUALLY charge — 0 per covered line. Preview and charge ship together, so this
+      // MUST use the same resolver + the same per-item coverage the charge loop uses, or the quoted
+      // total ≠ the charged total from the traveler's view.
+      let previewTravelerFeeChargedTotal = 0;
 
       for (const item of cartData) {
         if (!item.service) continue;
@@ -1997,43 +2086,50 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         const psc = previewSurcharges.get(item.id);
         if (psc?.eligible) previewSurchargeTotal += psc.amount;
 
-        // Trip Pass waiver record — SAME function the charge path calls (§18 rule 1), never
-        // recomputed here. billedOnDirectPathToday is false on the resolver's own record (the D3
-        // traveler-service-fee is not yet billed on the direct path today), so this never changes
-        // platformFeeTotal above — it is the same informational parity the booking row carries.
-        if (previewTripPassCovered) {
-          try {
-            const w = await resolveTripPassFeeWaiver(itemPrice);
-            if (w) {
-              previewWaivedItemCount += 1;
-              previewWouldHaveBeenAmountTotal += Number(w.wouldHaveBeenAmount ?? 0);
-              previewWaiverBandKey = (w.bandKey as string | null) ?? previewWaiverBandKey;
-            }
-          } catch (tpWaiverErr: any) {
-            console.error("Fee preview: trip-pass waiver resolution failed for an item:", tpWaiverErr?.message ?? tpWaiverErr);
+        // ── Traveler service fee for THIS line (ruling 2026-09-02) — SAME resolver the charge loop
+        // calls, per item, $25 cap per booking. This surface has no rails ref, so the ONLY coverage
+        // is Trip Pass (previewTripPassCovered): a covered line charges 0 and the fee is recorded as a
+        // waiver counterfactual; an uncovered line adds the fee to the total. Preview == charge.
+        try {
+          const previewFeeResolved = await resolveTravelerServiceFee(itemPrice);
+          const previewFeeCharged = previewTripPassCovered ? 0 : previewFeeResolved.amount;
+          previewTravelerFeeChargedTotal += previewFeeCharged;
+          if (previewTripPassCovered && previewFeeResolved.amount > 0) {
+            previewWaivedItemCount += 1;
+            previewWouldHaveBeenAmountTotal += previewFeeResolved.amount;
+            previewWaiverBandKey = previewFeeResolved.bandKey ?? previewWaiverBandKey;
           }
+        } catch (tpFeeErr: any) {
+          console.error("Fee preview: traveler-fee resolution failed for an item:", tpFeeErr?.message ?? tpFeeErr);
         }
       }
 
       const previewSurcharge = Math.round(previewSurchargeTotal * 100) / 100;
+      // Ruling 2026-09-02: the traveler service fee the checkout will charge (0 total when the whole
+      // cart is covered). It is a term of the quoted total, so preview and charge agree.
+      const previewTravelerFee = Math.round(previewTravelerFeeChargedTotal * 100) / 100;
+      const previewWaivedTotal = Math.round(previewWouldHaveBeenAmountTotal * 100) / 100;
       res.json({
         subtotal: Math.round(previewSubtotal * 100) / 100,
         platformFeeTotal: Math.round(previewPlatformFeeTotal * 100) / 100,
         conciergeFeeTotal: Math.round(previewConciergeFeeTotal * 100) / 100,
         travelSurcharge: previewSurcharge,
-        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal + previewSurcharge) * 100) / 100,
+        // The traveler service fee actually added to the charge (a disclosed line, like travelSurcharge).
+        travelerFee: previewTravelerFee,
+        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal + previewSurcharge + previewTravelerFee) * 100) / 100,
         itemCount: cartData.filter(i => i.service).length,
-        // Mirrors resolveTripPassFeeWaiver's per-item shape (waived/basis/billedOnDirectPathToday),
-        // summed across the cart. null when no tripId was given or the trip has no active pass —
-        // never a guessed waiver.
+        // The Trip Pass waiver — now a REAL reduction (ruling 2026-09-02): billedOnDirectPathToday is
+        // true, `wouldHaveBeenAmountTotal` is the fee the pass suppressed, and `label` is the line the
+        // cart shows the traveler. null when no tripId was given or the trip has no active pass.
         tripPassFeeWaiver: previewWaivedItemCount > 0
           ? {
               waived: true,
               basis: "trip_pass",
               bandKey: previewWaiverBandKey,
               itemCount: previewWaivedItemCount,
-              wouldHaveBeenAmountTotal: Math.round(previewWouldHaveBeenAmountTotal * 100) / 100,
-              billedOnDirectPathToday: false,
+              wouldHaveBeenAmountTotal: previewWaivedTotal,
+              billedOnDirectPathToday: true,
+              label: `$${previewWaivedTotal.toFixed(2)} service fee — covered by Trip Pass`,
             }
           : null,
       });

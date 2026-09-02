@@ -121,11 +121,10 @@ export interface RailsItemResolution {
   /**
    * Present iff `attributed`. The waiver, with the counterfactual it gave up.
    *
-   * §13 HONESTY, stated once here and carried into the ledger row's metadata: the D3 traveler
-   * service fee is resolver-only — `/api/checkout` does not bill it on the direct path today
-   * (ruling 45's "spec-ahead-of-code in its entirety"). So `wouldHaveBeenAmount` is what the band
-   * says the fee WOULD be, not money the traveler was previously charged and now is not. Nobody
-   * may read the waiver record as "we stopped charging them $X".
+   * Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler service fee IS now billed on the
+   * direct path, so `billedOnDirectPathToday` is true and `wouldHaveBeenAmount` is money the traveler
+   * would have paid and now does not — a REAL reduction, recorded as a `fee_waiver` ledger leg (this
+   * supersedes ruling 45's resolver-only note).
    */
   travelerFeeWaiver: {
     waived: true;
@@ -134,7 +133,7 @@ export interface RailsItemResolution {
     rate: number;
     wouldHaveBeenAmount: number;
     wouldHaveBeenCapApplied: boolean;
-    billedOnDirectPathToday: false;
+    billedOnDirectPathToday: boolean;
   } | null;
 }
 
@@ -273,7 +272,9 @@ export async function resolveRailsForItem(opts: {
       rate: waiver.rate,
       wouldHaveBeenAmount: round2(counterfactual.amount),
       wouldHaveBeenCapApplied: counterfactual.capApplied,
-      billedOnDirectPathToday: false,
+      // Ruling 2026-09-02-traveler-fee-applies-everywhere: the fee IS billed on the direct path now,
+      // and this waiver is a REAL reduction (recorded as a fee_waiver ledger leg), not a counterfactual.
+      billedOnDirectPathToday: true,
     },
   };
 }
@@ -291,9 +292,9 @@ export async function resolveRailsForItem(opts: {
  * provider-link waiver — resolveTravelerServiceFee({waived:true}) plus the counterfactual —
  * with basis 'trip_pass' instead of 'rails'. Second trigger, no forked fee math (§18 rule 1).
  * Returns null when the fee band is unresolvable (honest absence, §13) — the checkout then
- * records nothing rather than a guessed waiver. Same honesty caveat as rails:
- * billedOnDirectPathToday=false — the traveler fee is resolver-only on the direct path today,
- * so this is a counterfactual record, not suppressed real billing.
+ * records nothing rather than a guessed waiver. Ruling 2026-09-02-traveler-fee-applies-everywhere:
+ * the fee is now billed on the direct path, so billedOnDirectPathToday=true and this waiver is a
+ * REAL reduction (recorded as a fee_waiver ledger leg), not a counterfactual.
  */
 export async function resolveTripPassFeeWaiver(
   itemSubtotal: number,
@@ -310,7 +311,9 @@ export async function resolveTripPassFeeWaiver(
       rate: waiver.rate,
       wouldHaveBeenAmount: round2(counterfactual.amount),
       wouldHaveBeenCapApplied: counterfactual.capApplied,
-      billedOnDirectPathToday: false,
+      // Ruling 2026-09-02: the fee IS billed on the direct path now; this waiver is a REAL reduction
+      // (recorded as a fee_waiver ledger leg), not a counterfactual.
+      billedOnDirectPathToday: true,
     };
   } catch {
     return null;

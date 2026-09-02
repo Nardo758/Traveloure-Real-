@@ -7009,6 +7009,11 @@ export const FEE_LEDGER_TYPES = [
   "ai_concierge_fee",
   "affiliate_margin",
   "credit_applied",
+  // Ruling 2026-09-02-traveler-fee-applies-everywhere: the negative leg of a Trip-Pass/rails
+  // traveler-fee waiver (paired with a +traveler_service_fee row, netting to $0 under the
+  // amount<>0 CHECK). Distinct from credit_applied — a waiver is not a balance credit. Kept
+  // equivalent to server/migrations/271_fee_ledger_fee_waiver_type.sql's CHECK list.
+  "fee_waiver",
   "reversal",
 ] as const;
 export type FeeLedgerType = (typeof FEE_LEDGER_TYPES)[number];

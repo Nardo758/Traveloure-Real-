@@ -302,9 +302,14 @@ export async function findPriorClaim(
   /** Lane 7 (ruling 72): present when this row is a deposit line — the amount its RE-DRIVE charges
    *  now (the deposit, not the full line), so a re-driven deposit checkout cannot charge the total. */
   depositAmount: string | null;
+  /** Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler service fee CHARGED on this
+   *  row (0 when the line was covered). Held in booking_details, NOT total_amount, so the re-drive
+   *  must read it here to charge the SAME amount the first attempt would have (§14, no divergence). */
+  travelerFeeCharged: string | null;
 }>> {
   const rows = await db.execute(sql`
-    SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee, deposit_amount, idempotency_key
+    SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee, deposit_amount, idempotency_key,
+           booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged
     FROM service_bookings
     WHERE traveler_id = ${travelerId}
       AND (idempotency_key = ${idempotencyKey} OR idempotency_key LIKE ${idempotencyKey + "#%"})
@@ -317,6 +322,7 @@ export async function findPriorClaim(
     totalAmount: String(r.total_amount ?? "0"),
     platformFee: r.platform_fee == null ? null : String(r.platform_fee),
     depositAmount: r.deposit_amount == null ? null : String(r.deposit_amount),
+    travelerFeeCharged: r.traveler_fee_charged == null ? null : String(r.traveler_fee_charged),
   }));
 }
 

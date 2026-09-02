@@ -1346,4 +1346,9 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
+  // Ruling 2026-09-02-traveler-fee-applies-everywhere (BLOCKER 1, cond 1): adds the `fee_waiver`
+  // fee_type so Trip-Pass/rails suppression is a two-row net-zero event (traveler_service_fee +X,
+  // fee_waiver -X tagged covered_by) WITHOUT relaxing the migration-179 amount<>0 CHECK. Additive
+  // CHECK swap only (no table/index touched) → no publish-push trap; FEE_LEDGER_TYPES kept in sync.
+  "271_fee_ledger_fee_waiver_type.sql",
 ] as const;
