@@ -18,6 +18,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Loader2, Plane, UserPlus, Users } from "lucide-react";
+import { calendarDateToIso } from "@/lib/calendar-date";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTrip } from "@/hooks/use-trips";
@@ -88,7 +89,10 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
             <WeddingAnchorPresets
               tripId={tripId}
               templateSlug="wedding"
-              eventDate={trip?.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : ""}
+              /* F-1: startDate is already a "YYYY-MM-DD" DATE value — round-tripping it
+                 through `new Date().toISOString()` re-reads it as UTC midnight and can slice
+                 back the PREVIOUS day. calendarDateToIso keeps the calendar day it was given. */
+              eventDate={calendarDateToIso(trip?.startDate)}
             />
           )}
         </CollapsibleContent>

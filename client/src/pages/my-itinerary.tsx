@@ -66,6 +66,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, TripLogisticsDashboard } from "@/components/logistics";
+import { parseTripDateOrInvalid as tripDate } from "@/lib/calendar-date";
 
 interface ItineraryItem {
   id: string;
@@ -437,7 +438,7 @@ export default function MyItineraryPage() {
               </span>
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
-                {new Date(data.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(data.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                {tripDate(data.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {tripDate(data.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
               <span className="flex items-center gap-1">
                 <Users className="h-4 w-4" />
@@ -569,7 +570,7 @@ export default function MyItineraryPage() {
               const dayItems = itemsByDay[dayNum] || [];
               const isExpanded = expandedDays.has(dayNum);
               const dayNote = data.dayNotes?.find(n => n.dayNumber === dayNum);
-              const date = new Date(data.startDate);
+              const date = tripDate(data.startDate);
               date.setDate(date.getDate() + dayNum - 1);
 
               return (
@@ -1041,7 +1042,7 @@ export default function MyItineraryPage() {
           <h2 className="text-xl font-bold">Complete Itinerary</h2>
           {Array.from({ length: numDays }, (_, i) => i + 1).map((dayNum) => {
             const dayItems = itemsByDay[dayNum] || [];
-            const date = new Date(data.startDate);
+            const date = tripDate(data.startDate);
             date.setDate(date.getDate() + dayNum - 1);
 
             return (

@@ -14,7 +14,7 @@ import { tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole, type PlanCardLegData,
 } from "./plancard-types";
-import { parseCalendarDate } from "@/lib/calendar-date";
+import { parseCalendarDate, parseTripDate } from "@/lib/calendar-date";
 import { HeroSection } from "./HeroSection";
 import { OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
@@ -434,8 +434,12 @@ function PlanCardSummary({
   const showCountdown = daysTil > 0;
   const tripTitle = trip.title || trip.destination;
 
-  const formatShortDate = (d: string) =>
-    new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  // F-1: DATE columns arrive as "YYYY-MM-DD"; `new Date()` reads them as UTC midnight and
+  // renders the PREVIOUS day west of UTC.
+  const formatShortDate = (d: string) => {
+    const parsed = parseTripDate(d);
+    return parsed ? parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();

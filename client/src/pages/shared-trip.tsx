@@ -7,6 +7,7 @@ import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { format, differenceInDays } from "date-fns";
+import { parseTripDateOrInvalid as tripDate } from "@/lib/calendar-date";
 
 function getActivityIcon(type: string) {
   switch (type?.toLowerCase()) {
@@ -92,8 +93,10 @@ export default function SharedTripPage() {
   }
 
   const trip = data.trip;
-  const startDate = new Date(trip.start_date);
-  const endDate = new Date(trip.end_date);
+  // F-1: start_date/end_date are DATE columns ("YYYY-MM-DD") — `new Date()` reads them as UTC
+  // midnight and renders the PREVIOUS day west of UTC.
+  const startDate = tripDate(trip.start_date);
+  const endDate = tripDate(trip.end_date);
   const duration = differenceInDays(endDate, startDate) + 1;
   const days = trip.itinerary_data?.days ?? [];
 
