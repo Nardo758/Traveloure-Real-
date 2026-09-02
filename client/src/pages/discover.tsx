@@ -73,6 +73,7 @@ import {
 } from "lucide-react";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { useTripContext } from "@/lib/trip-context";
+import { resolveTargetTripId, serviceDetailHref } from "@/lib/trip-target";
 import type { LucideIcon } from "lucide-react";
 
 // Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
@@ -344,14 +345,21 @@ function ServiceCard({
   onAddToCart,
   isAddingToCart,
   isAdded,
+  targetTripId,
 }: {
   service: Service;
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
+  /** The trip this grid is scoped to (slip handoff / active TripContext), forwarded into the
+      detail link so opening a listing does not drop the trip the way it used to. */
+  targetTripId?: string;
 }) {
   const [, navigateTo] = useLocation();
+  // ONE resolver, ONE href builder (client/src/lib/trip-target.ts) — the detail page reads the
+  // same `?tripId=` back off the URL. With no target trip this is the pre-existing plain link.
+  const detailHref = serviceDetailHref(service.id, targetTripId);
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
@@ -390,7 +398,7 @@ function ServiceCard({
         data-testid={`card-service-${service.id}`}
       >
         {/* Photo — honest gradient placeholder (never a stock photo, §13); opens the detail page. */}
-        <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
+        <Link href={detailHref} data-testid={`link-service-${service.id}`}>
           <div className="relative h-[140px] cursor-pointer bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
             <span
               className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[var(--earn-ink)]/70 text-white"
@@ -501,7 +509,7 @@ function ServiceCard({
               <Button
                 size="sm"
                 className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
-                onClick={() => navigateTo(`/services/${service.id}`)}
+                onClick={() => navigateTo(detailHref)}
               >
                 Book now
               </Button>
@@ -1069,7 +1077,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // unchanged. This is why the /services grid needs no bolt-on Add-to-trip on the trip page — the
   // grid itself targets the active trip. Not a money endpoint: the item's estimatedCost is display
   // only; the server strips origin/suggestedBy and derives provenance (§14 untouched).
-  const targetTripId = expertHandoffTripId || tripCtx.tripId || "";
+  const targetTripId = resolveTargetTripId(searchString, tripCtx);
 
   const addToTripMutation = useMutation({
     mutationFn: async (serviceId: string) => {
@@ -1595,6 +1603,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               onAddToCart={handleAddToCart}
                               isAddingToCart={addingToCartId === service.id}
                               isAdded={addedServices.has(service.id)}
+                              targetTripId={targetTripId}
                             />
                           ))}
                         </div>

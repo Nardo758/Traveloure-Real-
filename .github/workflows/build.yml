@@ -254,6 +254,11 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/trip-date-local-parse.test.ts
           done
+      # F-2: ONE trip-target resolver for the /services grid and the service-detail page — the
+      # "?tripId= first, then TripContext, else none" order, plus the detail href that carries the
+      # handoff forward. A second copy of that order is how the two surfaces drifted apart.
+      - name: Trip-target resolver pin
+        run: npx tsx --test client/src/lib/__tests__/trip-target.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
