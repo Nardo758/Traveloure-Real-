@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { parseTripDateOrInvalid as tripDate } from "@/lib/calendar-date";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -91,8 +92,8 @@ export default function MyTrips() {
     if (typeFilter !== "all" && trip.eventType !== typeFilter) return false;
     
     if (statusFilter !== "all") {
-      const start = new Date(trip.startDate);
-      const end = new Date(trip.endDate);
+      const start = tripDate(trip.startDate);
+      const end = tripDate(trip.endDate);
       
       if (statusFilter === "active" && !(start <= now && end >= now)) return false;
       if (statusFilter === "upcoming" && !(start > now)) return false;
@@ -112,12 +113,12 @@ export default function MyTrips() {
   // it; phase derives from dates). The old `t.status === "planning"` read here made a
   // future-dated trip render under both "Active Plans" and "Upcoming Events".
   const travelingNow = filteredTrips.filter(t => {
-    const start = new Date(t.startDate);
-    const end = new Date(t.endDate);
+    const start = tripDate(t.startDate);
+    const end = tripDate(t.endDate);
     return start <= now && now <= end;
   });
-  const inPlanning = filteredTrips.filter(t => new Date(t.startDate) > now);
-  const pastTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
+  const inPlanning = filteredTrips.filter(t => tripDate(t.startDate) > now);
+  const pastTrips = filteredTrips.filter(t => tripDate(t.endDate) < now);
 
   // §13 honest-or-absent: progress is the trip's REAL elapsed-time fraction, and only once the
   // trip has started. An upcoming trip has no measurable progress → null → no bar (this line
@@ -126,8 +127,8 @@ export default function MyTrips() {
   // routing-status counts the slip already shows) is a separate design decision — do not invent
   // one here.
   const getProgressValue = (trip: any): number | null => {
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate);
+    const start = tripDate(trip.startDate);
+    const end = tripDate(trip.endDate);
     const total = differenceInDays(end, start);
     const elapsed = differenceInDays(now, start);
     if (elapsed < 0) return null;
@@ -138,8 +139,8 @@ export default function MyTrips() {
   const TripCard = ({ trip }: { trip: any }) => {
     const Icon = eventTypeIcons[trip.eventType || "vacation"] || Plane;
     const progress = getProgressValue(trip);
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate);
+    const start = tripDate(trip.startDate);
+    const end = tripDate(trip.endDate);
     const isUpcoming = start > now;
     const isCompleted = end < now;
     const daysAway = differenceInDays(start, now);
