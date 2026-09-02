@@ -217,7 +217,7 @@ export interface AutonomousItineraryResult {
   estimatedSavingsWithExpert?: number;
 }
 
-// ─── E2E AI stub (non-production only; gated by E2E_AI_STUB=1) ────────────────
+// ─── E2E AI stub (explicit test-account environments only; gated by E2E_AI_STUB=1) ──
 // A deterministic, schema-valid AutonomousItineraryResult so the itinerary-
 // generation journey can run end-to-end in CI without an LLM key. Derived from
 // the request so the pipeline sees real destination/dates/traveler values.
@@ -551,15 +551,22 @@ Provide current, actionable information.`;
   }
 
   async generateAutonomousItinerary(request: AutonomousItineraryRequest): Promise<{ result: AutonomousItineraryResult; usage: GrokUsageStats }> {
-    // E2E stub: CI runs the itinerary-generation journey without XAI/Anthropic
-    // keys, so the real AI call would throw and the flow would never reach the
-    // comparison/redirect the test asserts. When E2E_AI_STUB=1 (and NOT
-    // production — double-gated so a prod deploy can never serve stubbed AI),
-    // return a valid canned result derived from the request. Every downstream
+    // E2E stub: CI and the explicitly provisioned staging deployment run the
+    // itinerary-generation journey without a live LLM call, so the real AI call
+    // would throw and the flow would never reach the comparison/redirect the test
+    // asserts. The staging deployment runs in production mode, so its separate
+    // ALLOW_TEST_ACCOUNTS opt-in is required in addition to E2E_AI_STUB. A
+    // production environment can never serve stubbed AI, even if the flag is
+    // accidentally copied there.
+    // When enabled, return a valid canned result derived from the request. Every downstream
     // step (insertAiGeneratedItinerary → insertItineraryComparison → optimizer
     // → comparisonId response → client redirect) then runs against real code;
     // only the external LLM call is bypassed.
-    if (process.env.E2E_AI_STUB === "1" && process.env.NODE_ENV !== "production") {
+    const e2eAiStubEnabled =
+      process.env.E2E_AI_STUB === "1" &&
+      (process.env.NODE_ENV !== "production" ||
+        (process.env.ALLOW_TEST_ACCOUNTS === "1" && process.env.ENVIRONMENT !== "PROD"));
+    if (e2eAiStubEnabled) {
       return { result: buildStubItinerary(request), usage: STUB_USAGE };
     }
 

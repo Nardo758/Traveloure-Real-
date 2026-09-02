@@ -449,6 +449,16 @@ Schema changes reach production ONLY via `runMigrations` on boot, from committed
 - If destructive SQL still appears, decline and STOP, then escalate — it means something else.
 
 (ops-hardening, 2026-08-29)
+
+### Branch and publish rule
+
+**Never commit on `main`.** Before any write in any task:
+`git checkout -b task-<id> origin/main`. All work is committed on that branch and pushed; a draft
+PR carries it to review. `main` in the workspace exists only to be reset to `origin/main` before a
+publish. A publish is only ever made from a workspace where `main == origin/main`.
+
+Five incidents, two of which reached production, justify this rule.
+
 ## Service Model: Canonical Table
 
 ### Decision: `provider_services` is the canonical service source (NOT `expert_service_offerings`)
