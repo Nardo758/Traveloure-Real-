@@ -551,6 +551,9 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // remain full-amount and are NOT policy-limited.
     let amountOverride: number | undefined;
     let refundFraction = 1;
+    // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER refund refunds the traveler service
+    // fee at the cancellation-tier %; an ADMIN refund is a made-whole full refund (100%).
+    let feeRefundPercent: number | undefined;
     if (!isAdmin) {
       const { quoteCancellationForBooking } = await import('../services/cancellation-policy.service');
       const quote = await quoteCancellationForBooking(bookingId);
@@ -569,6 +572,8 @@ router.post('/refund', isAuthenticated, async (req, res) => {
             refundAmount: 0,
           });
         }
+        // The fee tracks the booking's cancellation-tier % (100 when the tier gives a full refund).
+        feeRefundPercent = quote.refundPercent;
         if (quote.refundPercent < 100) {
           amountOverride = quote.refundAmount;
           refundFraction = quote.refundPercent / 100;
@@ -601,10 +606,13 @@ router.post('/refund', isAuthenticated, async (req, res) => {
 
     // Amount server-derived from service_bookings.total_amount (policy-scaled when partial);
     // idempotent (atomic status claim + amount-unambiguous Stripe idempotencyKey).
+    const refundOpts: { amountOverride?: number; feeRefundPercent?: number } = {};
+    if (amountOverride !== undefined) refundOpts.amountOverride = amountOverride;
+    if (feeRefundPercent !== undefined) refundOpts.feeRefundPercent = feeRefundPercent;
     const result = await stripePaymentService.refundServiceBooking(
       bookingId,
       reason,
-      amountOverride !== undefined ? { amountOverride } : undefined,
+      Object.keys(refundOpts).length ? refundOpts : undefined,
     );
 
     // Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its

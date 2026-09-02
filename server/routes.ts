@@ -6817,7 +6817,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             const refundResult = await stripePaymentService.refundServiceBooking(
               req.params.id,
               reason || "cancelled_by_provider",
-              { amountOverride: amountPaid },
+              // Ruling 2026-09-02-traveler-fee-refundability: a PROVIDER cancellation makes the
+              // traveler whole — the traveler service fee refunds at 100%, never policy-scaled.
+              { amountOverride: amountPaid, feeRefundPercent: 100 }, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
             );
             if (refundResult?.alreadyRefunded) {
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
@@ -7282,7 +7284,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         refundResult = await stripePaymentService.refundServiceBooking(
           req.params.id,
           reason || "requested_by_customer",
-          { amountOverride: quote.refundAmount },
+          // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER cancellation refunds the
+          // traveler service fee at the SAME cancellation-tier % as the booking.
+          { amountOverride: quote.refundAmount, feeRefundPercent: quote.refundPercent },
         );
 
         // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields
