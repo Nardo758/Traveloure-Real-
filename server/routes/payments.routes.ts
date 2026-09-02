@@ -1176,8 +1176,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           offeringTypeKeyMap.set(row.id, row.key);
         }
       }
-      // Phase 3.4: Load the Booking Concierge flat facilitation fee amount once.
-      // expert_concierge_booking is rate_type='flat' (dollar amount, NOT a split fraction).
+      // Phase 3.4: Load the Booking Concierge facilitation fee RATE once.
+      // expert_concierge_booking is rate_type='percent' since migration 066 (a
+      // fraction, e.g. 0.05 = 5 % — NOT a dollar amount and NOT a split fraction).
+      // Callers multiply by the item price: fee = itemPrice * rate.
       // This fee is added ON TOP of the normal 75/25 expert_standard split.
       // Money gate: if any cart item is booking_concierge, use the strict loader
       // which throws "Booking Concierge fee band not configured" if the band is
@@ -1187,7 +1189,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           ? offeringTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
           : false,
       );
-      const conciergeBookingFlatFee = hasAnyBookingConciergeItem
+      const conciergeBookingRate = hasAnyBookingConciergeItem
         ? await requireConciergeBookingRate()
         : await getConciergeBookingRate();
 
@@ -1355,13 +1357,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
-        // conciergeBookingFlatFee is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
+        // conciergeBookingRate is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
         const isBookingConcierge = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
         checkoutBasePlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
         if (isBookingConcierge) {
-          checkoutConciergeFeeTotal += itemPrice * conciergeBookingFlatFee;
+          checkoutConciergeFeeTotal += itemPrice * conciergeBookingRate;
         }
         // B1: the travel surcharge for this line — server-derived from the SAME map the charge loop
         // reads, so quote and charge cannot diverge (§14).
@@ -1417,12 +1419,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
         const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
-        // conciergeBookingFlatFee is a RATE (fraction), so multiply by item price.
+        // conciergeBookingRate is a RATE (fraction), so multiply by item price.
         const isBookingConcierge2 = item.service.expertOfferingTypeId
           ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
           : false;
-        const conciergeFeaAmt = isBookingConcierge2 ? price * conciergeBookingFlatFee : 0;
-        const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
+        const conciergeFeeAmt = isBookingConcierge2 ? price * conciergeBookingRate : 0;
+        const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeeAmt;
         // ── B1 (ruling 81): the travel surcharge for THIS line, server-derived (§14) from the SAME
         // map the quote loop read. The surcharge is a pure provider pass-through — it is NOT the
         // service price and NOT a platform fee, so the platform takes NO commission on it: the
