@@ -7845,9 +7845,23 @@ router.get("/api/affiliate/categories", async (_req, res) => {
     }
   });
 
+  // ─── Affiliate partner WRITES — admin-only, under the §2 blanket guard ────────────────────
+  // These four endpoints create/modify/delete/refresh platform-level affiliate partner rows and
+  // were registered at /api/affiliate/partners on `isAuthenticated` alone: ANY authenticated user
+  // could rewrite a partner's `commission_rate` (read at affiliate.service.ts resolveCommission as
+  // the platform's affiliate commission — a §18 rate-bearing field), its `affiliate_tracking_id`
+  // and `website_url` (the outbound target), or delete the row outright. Their only client callers
+  // are client/src/pages/admin/affiliate-partners.tsx.
+  //
+  // Fixed STRUCTURALLY, not per-endpoint: the paths now sit under /api/admin, which
+  // `app.use("/api/admin", adminApiGuard)` (server/routes.ts, registered before this router is
+  // mounted) covers by prefix with a fail-closed DB role lookup. §2 is explicit that per-endpoint
+  // opt-in "is what leaked", so an inline check here would have reproduced the shape that failed —
+  // and the approve/reject siblings already live at /api/admin/affiliate/partners/:id/*, so this
+  // is the convention, not a new one. The public READS below are unchanged.
   // Create affiliate partner
 
-router.post("/api/affiliate/partners", isAuthenticated, async (req, res) => {
+router.post("/api/admin/affiliate/partners", isAuthenticated, async (req, res) => {
     try {
       const { name, websiteUrl, category, affiliateTrackingId, affiliateLinkTemplate, description, logoUrl, commissionRate, scrapeConfig } = req.body;
 
@@ -7910,7 +7924,7 @@ router.get("/api/affiliate/partners/:id", async (req, res) => {
 
   // Update affiliate partner
 
-router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, res) => {
     try {
       // Phase 4: approval is set ONLY via the admin approve/reject endpoints — strip any
       // approval fields a client tries to mass-assign through this general update path (D1a).
@@ -7927,7 +7941,7 @@ router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) =>
 
   // Delete affiliate partner
 
-router.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, res) => {
     try {
       const deleted = await affiliateScraperService.deletePartner(req.params.id);
       if (!deleted) {
@@ -7941,7 +7955,7 @@ router.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) =
 
   // Trigger partner website scrape
 
-router.post("/api/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
+router.post("/api/admin/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
     try {
       const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
       res.json(result);

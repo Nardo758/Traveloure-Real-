@@ -1,0 +1,46 @@
+name: Affiliate partner admin guard
+
+# Security-audit finding (as-of 4644af6): the affiliate partner WRITE endpoints
+# (POST /api/affiliate/partners, PATCH|DELETE /:id, POST /:id/scrape) were gated on
+# `isAuthenticated` alone, so any authenticated account could rewrite a partner's
+# `commission_rate` — a §18 rate-bearing field, read by affiliate.service.ts as the platform's
+# affiliate commission — or its outbound `website_url` / `affiliate_tracking_id`, or delete the row.
+# Fixed structurally by moving them under /api/admin (§2 blanket guard); this gate keeps them there.
+#
+# No database service: the suite issues no query, so DATABASE_URL only has to be set. It runs with
+# --test-force-exit because importing content.routes.ts starts the TravelPulse scheduler timer.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: affiliate-partner-admin-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  affiliate-partner-admin-guard:
+    name: affiliate-partner writes stay under /api/admin
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://unused:unused@127.0.0.1:1/unused
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      ALLOW_TEST_ACCOUNTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Affiliate partner writes are admin-only (A1-A4)
+        run: npx tsx --test --test-force-exit server/routes/__tests__/affiliate-partner-admin-guard.http.test.ts
