@@ -22,6 +22,11 @@
  * registration starts the real session store and database", so route-wiring assertions inspect the
  * source. A1 and A4 are real runtime assertions against the mounted router.
  *
+ * These routes are registered by `registerDiscoveryRoutes()`, NOT at module import — a suite that
+ * only imports the router 404s on every one of them and would pass A1 for entirely the wrong
+ * reason. `ensureRoutes()` below is load-bearing, and A4 exists partly to prove the router really
+ * is populated when A1 runs.
+ *
  * RUN WITH `--test-force-exit`: importing content.routes.ts starts the TravelPulse scheduler at
  * module load, whose timer keeps the process alive after the assertions finish. No query is ever
  * issued here, so DATABASE_URL only has to be SET, not reachable.
@@ -31,7 +36,7 @@ import test from "node:test";
 import fs from "node:fs";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import contentRoutes from "../content.routes";
+import contentRoutes, { registerDiscoveryRoutes } from "../content.routes";
 
 const OLD_WRITE_PATHS: Array<[string, string]> = [
   ["POST", "/api/affiliate/partners"],
@@ -42,7 +47,16 @@ const OLD_WRITE_PATHS: Array<[string, string]> = [
 
 const UNMATCHED = 404;
 
+let routesRegistered = false;
+async function ensureRoutes() {
+  if (!routesRegistered) {
+    await registerDiscoveryRoutes();
+    routesRegistered = true;
+  }
+}
+
 async function withRouter<T>(fn: (base: string) => Promise<T>): Promise<T> {
+  await ensureRoutes();
   const app = express();
   app.use(express.json());
   app.use(contentRoutes);
@@ -112,8 +126,14 @@ test("A3: the blanket admin guard is mounted before this router — what makes A
   );
 });
 
-test("A4: the public affiliate-partner READS are unchanged", () => {
-  const src = fs.readFileSync("server/routes/content.routes.ts", "utf8");
-  assert.ok(src.includes('router.get("/api/affiliate/partners"'), "the public list read must stay put");
-  assert.ok(src.includes('router.get("/api/affiliate/partners/:id"'), "the public detail read must stay put");
+test("A4: the public affiliate-partner READ still resolves on the same router", async () => {
+  await withRouter(async (base) => {
+    const res = await fetch(`${base}/api/affiliate/partners`);
+    assert.notEqual(
+      res.status,
+      UNMATCHED,
+      "the public list read must still be served — and its being served is what proves the router " +
+        "was populated when A1 asserted the write paths were gone",
+    );
+  });
 });
