@@ -160,8 +160,10 @@ test("R1: a valid provider link resolves the rails lane — min(band, rails) + t
     expectedCounterfactual,
     "the waiver records what the band would have charged, band-derived and cap-aware",
   );
-  // §13: the D3 traveler fee is not billed on the direct path today — the record must say so.
-  assert.equal(r.travelerFeeWaiver!.billedOnDirectPathToday, false);
+  // The D3 traveler fee is now billed on the direct path (ruling 2026-09-02-traveler-fee-applies-
+  // everywhere), so the waiver is a real net-zero event — §13: the record truthfully says money moved
+  // and was waived, not that it never moved.
+  assert.equal(r.travelerFeeWaiver!.billedOnDirectPathToday, true);
 });
 
 /** R2 — a FABRICATED ref buys nothing. Full rate, and the refusal is recorded with its reason. */
@@ -285,7 +287,7 @@ test("R7: the rails fee event is recorded once, stamped, with the waiver visible
   assert.equal(meta.travelerFeeWaiverBasis, "rails");
   assert.equal(Number(meta.travelerFeeWouldHaveBeen), resolution.travelerFeeWaiver!.wouldHaveBeenAmount);
   assert.equal(meta.travelerFeeBandKey, resolution.travelerFeeWaiver!.bandKey);
-  assert.equal(meta.travelerFeeBilledOnDirectPathToday, false, "§13: the record must not claim money stopped moving");
+  assert.equal(meta.travelerFeeBilledOnDirectPathToday, true, "§13: the fee is now billed on the direct path, so the waiver is a real net-zero event — the record must say money moved and was waived");
   assert.equal(meta.frame, "story");
 
   // REPLAY — the webhook rescue, a re-drive, a double signal. Exactly one row, and the FIRST one.
