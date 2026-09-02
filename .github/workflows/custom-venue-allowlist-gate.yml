@@ -1,0 +1,49 @@
+name: Custom venue allowlist gate
+
+# Security-audit finding (as-of 4644af6): insertCustomVenueSchema was .omit()-based, so `userId`
+# and `source` stayed client-settable and POST /api/custom-venues never stamped an owner — a caller
+# could birth a venue owned by someone else, or attach one to any trip id (the FK requires the trip
+# to exist, not to be yours). §19's stated fix shape is a pick-based ALLOWLIST; this is the first
+# #PS18 conversion, so check-omit-schema-ratchet's baseline moves 190 -> 189 in the same PR.
+#
+# No database service: the suite parses schemas and reads source. The ratchet + its self-test run
+# here too, because the baseline change is part of this fix and must not be silently reverted.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: custom-venue-allowlist-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  custom-venue-allowlist:
+    name: custom venue owner is not a body field
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://unused:unused@127.0.0.1:1/unused
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      ALLOW_TEST_ACCOUNTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Omit-schema ratchet predicate self-test
+        run: node scripts/check-omit-schema-ratchet.cjs --self-test
+      - name: Omit-schema ratchet (baseline 189 after the first #PS18 conversion)
+        run: node scripts/check-omit-schema-ratchet.cjs
+      - name: Custom venue mass-assignment (C1-C5)
+        run: npx tsx --test server/routes/__tests__/custom-venue-mass-assignment.test.ts

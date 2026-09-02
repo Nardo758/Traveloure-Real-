@@ -628,7 +628,10 @@ export interface IStorage {
 
   getCustomVenue(id: string): Promise<CustomVenue | undefined>;
 
-  createCustomVenue(venue: InsertCustomVenue): Promise<CustomVenue>;
+  // The owner is stamped by the caller from the SESSION and is deliberately NOT part of
+  // InsertCustomVenue any more — the body schema is a pick-based allowlist that cannot carry it
+  // (§19). Requiring it here means a caller physically cannot forget it.
+  createCustomVenue(venue: InsertCustomVenue & { userId: string }): Promise<CustomVenue>;
 
   updateCustomVenue(id: string, venue: Partial<InsertCustomVenue>): Promise<CustomVenue | undefined>;
 
@@ -4129,7 +4132,7 @@ export class DatabaseStorage implements IStorage {
     return venue;
   }
 
-  async createCustomVenue(venue: InsertCustomVenue): Promise<CustomVenue> {
+  async createCustomVenue(venue: InsertCustomVenue & { userId: string }): Promise<CustomVenue> {
     const [created] = await db.insert(customVenues).values(venue).returning();
     return created;
   }
