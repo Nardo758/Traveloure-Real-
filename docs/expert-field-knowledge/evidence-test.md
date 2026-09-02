@@ -101,6 +101,8 @@ The backfill email asks each expert to (a) claim their neighborhoods and (b) ans
 
 ## 8. Open decisions for Leon
 
+> `superseded@190b9909` — all three resolved by ledger rows `2026-09-01-evidence-thresholds-config` (1: values seeded in `evidence_thresholds`, admin-adjustable, no code fallback), `2026-09-01-scorer-model` (2: Sonnet, §2 rubric as system prompt, §4 JSON validated; web-gap one search per P1 entry) and `2026-09-01-access-claims-held` (3: hold). Phase 2 executes them (`server/services/evidence-scorer.service.ts`). The text below is kept as the historical proposal.
+
 1. **Threshold values** in §3 are my proposal; they're constants, so start there and tune after the twelve backfill captures score.
 2. **Scorer model**: Sonnet with the rubric as system prompt is enough; the web-gap search is the expensive part — one search per P1 entry, ~3 per capture.
 3. **P4 access claims**: verified by ops call at launch, or held until scout-check? Recommendation: hold. An unverified access claim on a public profile is the one thing here that could embarrass you.

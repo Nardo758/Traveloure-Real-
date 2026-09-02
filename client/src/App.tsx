@@ -112,6 +112,7 @@ const AdminNeighborhoodBackfill = lazy(() => import("@/pages/admin/neighborhood-
 const AdminGemPhotoBackfill = lazy(() => import("@/pages/admin/gem-photo-backfill"));
 const AdminGemCandidates = lazy(() => import("@/pages/admin/gem-candidates"));
 const AdminNeighborhoodClaimsManualEntry = lazy(() => import("@/pages/admin/neighborhood-claims-manual-entry"));
+const AdminNeighborhoodClaims = lazy(() => import("@/pages/admin/neighborhood-claims"));
 const AdminReviewModeration = lazy(() => import("@/pages/admin/review-moderation"));
 const AdminDestinationEvents = lazy(() => import("@/pages/admin/destination-events"));
 const AdminServiceRequests = lazy(() => import("@/pages/admin/service-requests"));
@@ -1154,6 +1155,12 @@ function Router() {
       </Route>
       <Route path="/admin/neighborhood-claims/manual-entry">
         {() => <ProtectedRoute component={AdminNeighborhoodClaimsManualEntry} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/neighborhood-claims/:id">
+        {() => <ProtectedRoute component={AdminNeighborhoodClaims} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/neighborhood-claims">
+        {() => <ProtectedRoute component={AdminNeighborhoodClaims} requiredRole="admin" />}
       </Route>
       <Route path="/admin/review-moderation">
         {() => <ProtectedRoute component={AdminReviewModeration} requiredRole="admin" />}

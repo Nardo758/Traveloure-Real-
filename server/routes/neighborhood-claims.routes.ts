@@ -20,13 +20,20 @@ import { insertExpertNeighborhoodClaimSchema } from "@shared/schema";
 import { updateEvidenceThresholdSchema } from "@shared/neighborhood-claims";
 import {
   createClaim,
+  declineClaim,
+  getClaimDetailForAdmin,
+  listClaimsForAdmin,
   listClaimsForExpert,
   listNeighborhoodOptions,
+  ratifyClaim,
+  requestRescore,
   saveDraftCapture,
   searchExpertsForManualEntry,
   submitClaim,
 } from "../services/neighborhood-claims.service";
-import { isEvidenceThresholdKey, listEvidenceThresholds, updateEvidenceThreshold } from "../services/evidence-thresholds.service";
+import { EvidenceThresholdsMissingError, isEvidenceThresholdKey, listEvidenceThresholds, loadEvidenceThresholds, updateEvidenceThreshold } from "../services/evidence-thresholds.service";
+import { CLAIM_STATUSES, EVIDENCE_DIMENSIONS, type ClaimStatus } from "@shared/neighborhood-claims";
+import { scoreClaim } from "../services/evidence-scorer.service";
 
 const router = Router();
 
@@ -180,6 +187,112 @@ router.post("/api/admin/neighborhood-claims/manual-entry", isAuthenticated, requ
   } catch (err) {
     console.error("[neighborhood-claims] manual entry error:", err);
     res.status(500).json({ message: "Failed to record the reply" });
+  }
+});
+
+// ── Admin queue (Phase 2) — Ratify / Return are the ONLY two decisions ─────────────────────
+
+/** D3: the queue tells the admin when thresholds are missing — a blocking banner, never a silent disable. */
+async function thresholdsState(): Promise<{ ok: boolean; missing: string[] }> {
+  try {
+    await loadEvidenceThresholds();
+    return { ok: true, missing: [] };
+  } catch (err) {
+    if (err instanceof EvidenceThresholdsMissingError) return { ok: false, missing: err.missing };
+    throw err;
+  }
+}
+
+// GET /api/admin/neighborhood-claims?status=submitted,scored (default) — the queue.
+router.get("/api/admin/neighborhood-claims", isAuthenticated, requireAdmin, async (req, res) => {
+  try {
+    const raw = typeof req.query.status === "string" ? req.query.status : "";
+    const statuses = raw
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x): x is ClaimStatus => (CLAIM_STATUSES as readonly string[]).includes(x));
+    const [claims, thresholds] = await Promise.all([listClaimsForAdmin({ statuses }), thresholdsState()]);
+    res.json({ claims, thresholds });
+  } catch (err) {
+    console.error("[neighborhood-claims] admin list error:", err);
+    res.status(500).json({ message: "Failed to load the queue" });
+  }
+});
+
+// GET /api/admin/neighborhood-claims/:id — claim + typed rows + scorer JSON + web-gap + diary.
+router.get("/api/admin/neighborhood-claims/:id", isAuthenticated, requireAdmin, async (req, res) => {
+  try {
+    const detail = await getClaimDetailForAdmin(req.params.id);
+    if (!detail) return res.status(404).json({ message: "Claim not found" });
+    res.json({ ...detail, thresholds: await thresholdsState() });
+  } catch (err) {
+    console.error("[neighborhood-claims] admin detail error:", err);
+    res.status(500).json({ message: "Failed to load the claim" });
+  }
+});
+
+// POST /api/admin/neighborhood-claims/:id/ratify — no body. THE writer of expert_neighborhoods.
+router.post("/api/admin/neighborhood-claims/:id/ratify", isAuthenticated, requireAdmin, async (req, res) => {
+  try {
+    const adminId = (req as any).adminId as string;
+    const r = await ratifyClaim({ claimId: req.params.id, adminId });
+    if (!r.ok) return sendFailure(res, r);
+    await insertAccessAuditLog({
+      actorId: adminId,
+      actorRole: "admin",
+      action: "neighborhood_claim_ratify",
+      resourceType: "expert_neighborhood_claim",
+      resourceId: req.params.id,
+      metadata: { expertId: r.value.claim.expertId, neighborhoodId: r.value.claim.neighborhoodId, version: r.value.claim.version, neighborhoodRowId: r.value.neighborhoodRowId },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[neighborhood-claims] audit log failed (non-fatal):", err));
+    res.json({ claimId: r.value.claim.id, status: r.value.claim.status, neighborhoodRowId: r.value.neighborhoodRowId });
+  } catch (err) {
+    console.error("[neighborhood-claims] ratify error:", err);
+    res.status(500).json({ message: "Failed to ratify" });
+  }
+});
+
+const returnBodySchema = z.object({ dimension: z.enum(EVIDENCE_DIMENSIONS) }).strict();
+
+// POST /api/admin/neighborhood-claims/:id/return { dimension } — allowlisted body; the §5 sentence is
+// derived from the dimension server-side, the admin never types a message or a number.
+router.post("/api/admin/neighborhood-claims/:id/return", isAuthenticated, requireAdmin, async (req, res) => {
+  try {
+    const parsed = returnBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: "dimension must be one of the rubric dimensions" });
+    const adminId = (req as any).adminId as string;
+    const r = await declineClaim({ claimId: req.params.id, adminId, dimension: parsed.data.dimension });
+    if (!r.ok) return sendFailure(res, r);
+    await insertAccessAuditLog({
+      actorId: adminId,
+      actorRole: "admin",
+      action: "neighborhood_claim_return",
+      resourceType: "expert_neighborhood_claim",
+      resourceId: req.params.id,
+      metadata: { dimension: parsed.data.dimension, version: r.value.version },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[neighborhood-claims] audit log failed (non-fatal):", err));
+    res.json({ claimId: r.value.id, status: r.value.status, dimension: parsed.data.dimension });
+  } catch (err) {
+    console.error("[neighborhood-claims] return error:", err);
+    res.status(500).json({ message: "Failed to return the claim" });
+  }
+});
+
+// POST /api/admin/neighborhood-claims/:id/rescore — clears a scorer_failed flag and runs the scorer now.
+router.post("/api/admin/neighborhood-claims/:id/rescore", isAuthenticated, requireAdmin, async (req, res) => {
+  try {
+    const adminId = (req as any).adminId as string;
+    const r = await requestRescore({ claimId: req.params.id, adminId });
+    if (!r.ok) return sendFailure(res, r);
+    const result = await scoreClaim({ claimId: r.value.id, version: r.value.version });
+    res.json({ claimId: r.value.id, result });
+  } catch (err) {
+    console.error("[neighborhood-claims] rescore error:", err);
+    res.status(500).json({ message: "Failed to re-run the scorer" });
   }
 });
 
