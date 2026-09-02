@@ -43,11 +43,13 @@
  *   denylist count < OMIT_BASELINE  → FAIL: improvement not locked in, lower the baseline
  *   denylist count == OMIT_BASELINE → PASS
  *
- * OMIT_BASELINE measured 2026-08-07 against shared/schema.ts (186 denylist calls,
+ * OMIT_BASELINE was 190, measured 2026-08-07 against shared/schema.ts (186 denylist calls,
  * matching ruling 46's own count exactly — no drift since that audit) +
  * shared/guest-invites-schema.ts (4 denylist calls, 0 bare) = 190. Zero .pick()-based
  * createInsertSchema calls exist anywhere yet; the first #PS18 conversion PR lowers
- * this number and must edit OMIT_BASELINE in the same PR (see the FAIL message).
+ * this number and must edit OMIT_BASELINE in the same PR (see the FAIL message). That first
+ * conversion has now happened — insertCustomVenueSchema — so the baseline is 189 and one .pick()
+ * exists in shared/schema.ts.
  *
  * Node built-ins only — no npm ci needed. Self-test: --self-test
  */
@@ -63,7 +65,11 @@ const ENTRY_FILES = ['shared/schema.ts', 'shared/guest-invites-schema.ts'];
 // 2026-08-07: 186 (shared/schema.ts) + 4 (shared/guest-invites-schema.ts) = 190,
 // all .omit()-based, 0 bare, 0 .pick()-based. Matches ruling 46's own count on
 // shared/schema.ts exactly (186/186 omit, 0 pick) — no drift since that audit.
-const OMIT_BASELINE = 190;
+// 189 after the first #PS18 conversion: insertCustomVenueSchema (custom_venues) moved from
+// .omit() to .pick() — it left `userId` client-settable, and the POST route never stamped an
+// owner. Lowering the baseline in the same PR is what this guard's FAIL message instructs, and is
+// what locks the improvement in: the next .omit() that appears cannot hide behind the old slack.
+const OMIT_BASELINE = 189;
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 // Same non-greedy call-to-semicolon shape as scripts/check-money-endpoints.cjs's

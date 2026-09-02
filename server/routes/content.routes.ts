@@ -1001,8 +1001,18 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
 router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
+      // §14: the owner comes from the SESSION. `insertCustomVenueSchema` used to be `.omit()`-based
+      // and this route never stamped a userId, so `req.body.userId` was written verbatim — a caller
+      // could birth a venue owned by someone else, who then owns it for the PATCH/DELETE ownership
+      // checks below. The schema is now a pick-based allowlist (§19) that cannot carry userId at all;
+      // the stamp here is the second layer, so every caller is covered.
+      const userId = getUserId(req)!;
       const input = sanitizeStringFields(insertCustomVenueSchema.parse(req.body));
-      const venue = await storage.createCustomVenue(input);
+      // A tripId FK only requires the trip to EXIST, not to be yours — verify before attaching.
+      if (input.tripId && !(await verifyTripOwnership(input.tripId, userId))) {
+        return res.status(403).json({ message: "Not your trip" });
+      }
+      const venue = await storage.createCustomVenue({ ...input, userId });
       res.status(201).json(venue);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1028,6 +1038,12 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Forbidden" });
       }
       const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
+      // Same trip check as the create path: the allowlist permits tripId, the FK does not care whose
+      // trip it is. (userId is not in the allowlist at all, so a venue can no longer be handed to
+      // another account through this route.)
+      if (input.tripId && !(await verifyTripOwnership(input.tripId, userId))) {
+        return res.status(403).json({ message: "Not your trip" });
+      }
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Custom venue not found" });

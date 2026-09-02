@@ -2529,7 +2529,28 @@ export type ItineraryVariantMetric = typeof itineraryVariantMetrics.$inferSelect
 export type InsertItineraryVariantMetric = z.infer<typeof insertItineraryVariantMetricSchema>;
 
 // Custom Venues schemas and types
-export const insertCustomVenueSchema = createInsertSchema(customVenues).omit({ id: true, createdAt: true });
+// ALLOWLIST, not a denylist (§19 / #PS18 — the FIRST pick-based conversion of a body-reachable
+// insert schema). The .omit() form left `userId` and `source` client-settable by default: the
+// POST route never stamped an owner, so a caller could birth a venue owned by someone else (who
+// then owns it for the PATCH/DELETE ownership checks), and PATCH's `.partial()` let an owner hand
+// a venue to another account outright. §19's stated fix shape is exactly this — a new privileged
+// column is unreachable until someone deliberately names it here.
+//
+// `userId` is stamped from the session; `source` is server-authored provenance (defaults 'custom').
+// `tripId` IS pickable but the routes verify the caller owns that trip — the FK only requires the
+// row to exist, not to be yours.
+export const insertCustomVenueSchema = createInsertSchema(customVenues).pick({
+  tripId: true,
+  experienceType: true,
+  name: true,
+  address: true,
+  latitude: true,
+  longitude: true,
+  venueType: true,
+  notes: true,
+  estimatedCost: true,
+  imageUrl: true,
+});
 export type CustomVenue = typeof customVenues.$inferSelect;
 export type InsertCustomVenue = z.infer<typeof insertCustomVenueSchema>;
 
