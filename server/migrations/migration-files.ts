@@ -1359,7 +1359,8 @@ export const MIGRATION_FILES = [
   // fee_type so Trip-Pass/rails suppression is a two-row net-zero event (traveler_service_fee +X,
   // fee_waiver -X tagged covered_by) WITHOUT relaxing the migration-179 amount<>0 CHECK. Additive
   // CHECK swap only (no table/index touched) → no publish-push trap; FEE_LEDGER_TYPES kept in sync.
-  // RENUMBERED 271→272 on the main-merge: main landed 271_expert_neighborhood_claims first; the two
-  // are independent additive migrations, so the order between them carries no behavior.
-  "272_fee_ledger_fee_waiver_type.sql",
+  // RENUMBERED 271→272→273: main landed 271_expert_neighborhood_claims first (the merge bumped this
+  // to 272), then #699 (expert-field-knowledge v2) claimed 272 for its own migration, so this cedes
+  // to 273. All three are independent additive migrations — the order between them carries no behavior.
+  "273_fee_ledger_fee_waiver_type.sql",
 ] as const;
