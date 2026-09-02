@@ -551,7 +551,8 @@ async function runDatabaseSeeding() {
 const _productionPort = parseInt(process.env.PORT || "5000", 10);
 if (process.env.NODE_ENV === "production") {
   serveStatic(app);
-  httpServer.listen({ port: _productionPort, host: "0.0.0.0", reusePort: true }, () => {
+  // SO_REUSEPORT is unsupported on Windows — leaving it on makes the bind fail on any port.
+  httpServer.listen({ port: _productionPort, host: "0.0.0.0", reusePort: process.platform !== "win32" }, () => {
     logger.info({ port: _productionPort }, "Server pre-bound: static serving active, migrations pending");
   });
 }
@@ -891,8 +892,9 @@ if (process.env.NODE_ENV === "production") {
     onServerReady(_productionPort);
   } else {
     const port = parseInt(process.env.PORT || "5000", 10);
+    // SO_REUSEPORT is unsupported on Windows — leaving it on makes the bind fail on any port.
     httpServer.listen(
-      { port, host: "0.0.0.0", reusePort: true },
+      { port, host: "0.0.0.0", reusePort: process.platform !== "win32" },
       () => onServerReady(port),
     );
   }
