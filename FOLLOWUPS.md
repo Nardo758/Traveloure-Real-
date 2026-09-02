@@ -350,3 +350,29 @@ Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
   the rail's permanent removal + the `experience_starts` ticker's return replace the interim
   fallback. Filed against that trigger, not built now — the rail costs nothing while it holds a live
   slot, so there is no rush to delete it.
+
+## From the traveler-fee-collection lane (ruling 2026-09-02-traveler-fee-applies-everywhere)
+
+### FU — `fee-not-billed-on-direct-path` RETIRED
+
+The finding `docs/findings/FEE_NOT_BILLED_ON_DIRECT_PATH.md` is resolved: the traveler service fee
+is now charged on every marketplace path (cart, legacy bookings rail, platform transport, expert
+review), computed only by `resolveTravelerServiceFee`, written to `fee_ledger`, with Trip-Pass/rails
+suppression as a two-row net-zero `fee_waiver` event. CI-gated by
+`scripts/check-traveler-fee-coverage.cjs` (wired in `.github/workflows/build.yml`).
+
+### FU — traveler-fee refund policy is UNDECIDED (money-out, out of this lane's scope)
+
+`refundServiceBooking` (`server/services/stripe-payment.service.ts`) computes the refund ceiling as
+`total_amount + platform_fee + insurance_fee` — it does NOT include the traveler service fee, so on a
+full refund the traveler currently does NOT get the fee back (fee is non-refundable, the industry
+norm). The ruling governs COLLECTING the fee, not refunding it. Whether a refund should return the
+traveler fee (and on which cancellation reasons) is a separate decision-maker call. Not fixed here —
+changing it silently would be deciding money-out policy by omission. Evidence: the ledger records the
+fee as its own `traveler_service_fee` row, so a future refund policy can reverse it precisely
+(a `reversal` row) without disturbing provider commissions.
+
+### FU — ledger aggregations must net waivers (forward contract)
+
+See `docs/findings/FEE_LEDGER_AGGREGATIONS_MUST_NET_WAIVERS.md` — `fee_ledger` has no readers yet;
+the first revenue aggregation that sums `traveler_service_fee` must net the `fee_waiver` legs.

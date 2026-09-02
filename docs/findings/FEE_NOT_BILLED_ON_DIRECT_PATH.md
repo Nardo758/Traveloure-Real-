@@ -1,8 +1,16 @@
 # Finding: the traveler service fee is not billed on the direct path
 
+> **✅ RESOLVED — ruling `2026-09-02-traveler-fee-applies-everywhere` (branch `claude/traveler-fee-collection`).**
+> The traveler service fee is now CHARGED on every marketplace path (cart checkout, legacy bookings
+> rail, platform transport, expert review service), computed only by `resolveTravelerServiceFee`,
+> added to the charge, and written to `fee_ledger` — with Trip-Pass/rails suppression recorded as a
+> two-row net-zero `fee_waiver` event. The fee-preview now moves with the charge (preview == charge)
+> and the former tripwire test flipped to expectation. Coverage is CI-gated by
+> `scripts/check-traveler-fee-coverage.cjs`. This finding is retired; kept for provenance.
+
 **Id:** `fee-not-billed-on-direct-path` · **Class:** revenue / product decision (NOT an agent bug-fix)
 **Surfaced by:** Lane 4 rider 3b (fee-preview × Trip-Pass) · **as-of** `main` @ #692 branch
-**Owner:** decision-maker (revenue question) — filed, not fixed.
+**Owner:** decision-maker (revenue question) — RESOLVED by ruling 2026-09-02.
 
 ## What
 
