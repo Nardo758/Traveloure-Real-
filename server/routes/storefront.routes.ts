@@ -20,7 +20,7 @@
  * Phase 0.5): additionally gate on identity/KYB verification status before any marketing push.
  */
 import { Router } from "express";
-import { getUserId } from "../utils/auth";
+import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
 import fs from "fs";
@@ -1244,7 +1244,9 @@ const notificationEmailSchema = z.object({
 
 router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
   try {
-    const userRole = req.user?.role ?? req.user?.claims?.role;
+    // Earner gate = authorization ⇒ DB role (CLAUDE.md §2; audit finding 14 class — the
+    // OIDC session shape carries no role at all, so the session read failed closed there).
+    const userRole = await getDbRole(req);
     if (!isEarnerRole(userRole)) {
       return res.status(403).json({ message: "Only experts and providers can set a notification email" });
     }
@@ -1263,7 +1265,9 @@ router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) 
 
 router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
   try {
-    const userRole = req.user?.role ?? req.user?.claims?.role;
+    // Earner gate = authorization ⇒ DB role (CLAUDE.md §2; audit finding 14 class — the
+    // OIDC session shape carries no role at all, so the session read failed closed there).
+    const userRole = await getDbRole(req);
     if (!isEarnerRole(userRole)) {
       return res.status(403).json({ message: "Only experts and providers can set a notification email" });
     }
