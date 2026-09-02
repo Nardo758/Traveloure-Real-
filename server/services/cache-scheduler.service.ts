@@ -50,6 +50,26 @@ interface CacheRefreshStats {
   lastRefreshTime: Date;
 }
 
+/**
+ * Result of one Travelpayouts commission-report poll (lane: internal-jobs-hardening, L4).
+ *
+ * The poll used to return void, which the internal-job endpoint could not distinguish from an
+ * overlap skip — so `POST /internal/jobs/travelpayouts-report-poll` reported `skipped:true` on
+ * every call, and because the poll also swallows its own error it reported that on a FAILED poll
+ * too (§17 rule 2). Returning an object makes "ran" observable, and `error` makes a swallowed
+ * failure surface as a 500 to the cron.
+ *
+ * `matchedCount` is deliberately NULL, never 0: `affiliateReconciliationService.matchRecords`
+ * returns void, so this wrapper has no count to report and will not invent one (§13). Producing a
+ * real count means changing the reconciliation service's own return — job business logic, out of
+ * this lane's remit (L8) — and is filed in FOLLOWUPS.md instead.
+ */
+export interface TravelpayoutsPollResult {
+  window: string;
+  matchedCount: number | null;
+  error?: string;
+}
+
 class CacheSchedulerService {
   private refreshTimer: NodeJS.Timeout | null = null;
   private partnerizeSyncTimer: NodeJS.Timeout | null = null;
@@ -178,14 +198,14 @@ class CacheSchedulerService {
    * scheduler-reliability lane #1712). Delegates to the SAME private poll the in-process timer runs,
    * so there is one implementation and two callers (the cron and the defense-in-depth timer).
    */
-  async runTravelpayoutsReportPoll(): Promise<void> {
+  async runTravelpayoutsReportPoll(): Promise<TravelpayoutsPollResult> {
     return this.pollTravelpayoutsReports();
   }
 
   // Poll Travelpayouts for commission action rows and auto-match them against
   // internal affiliate_earnings. Safe on an interval; the underlying fetcher
   // logs a warning and returns an empty array when the token isn't configured.
-  private async pollTravelpayoutsReports(): Promise<void> {
+  private async pollTravelpayoutsReports(): Promise<TravelpayoutsPollResult> {
     try {
       // Rolling 35-day window (instead of "this_month") so commissions the
       // partner reports in the first days of a new month still match internal
@@ -197,8 +217,14 @@ class CacheSchedulerService {
         dateToleranceDays: LATE_REPORT_TOLERANCE_DAYS,
       });
       console.log("[CacheScheduler] Travelpayouts report poll + auto-match complete (last_35_days)");
+      return { window: "last_35_days", matchedCount: null };
     } catch (err) {
       console.error("[CacheScheduler] Travelpayouts report poll error:", err);
+      return {
+        window: "last_35_days",
+        matchedCount: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 

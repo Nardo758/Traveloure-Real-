@@ -24,7 +24,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import crypto from "crypto";
 import { runOccasionDrafts } from "../services/occasion-drafts.service";
-import { runBackgroundJob } from "../services/background-job-runner";
+import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-job-runner";
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
@@ -66,23 +66,46 @@ function requireInternalSecret(req: Request, res: Response, next: NextFunction) 
 /**
  * Run one job pass through the shared background-job runner (overlap dedup + pool-protection cap)
  * and map the outcome to an HTTP response the cron can read:
- *   - a thrown error            → 500 { ok:false, error }
- *   - an overlap/cap skip        → 200 { ok:true, skipped:true }   (a timer pass was mid-flight)
+ *   - a thrown error             → 500 { ok:false, error }
+ *   - an overlap/cap SENTINEL    → 200 { ok:true, skipped:true, reason }  (a pass was mid-flight)
+ *   - a bare `undefined`         → 500 { ok:false, error: contract }      (see below)
  *   - a result flagged failed    → 500 { ok:false, error, result } (isFailure predicate)
  *   - otherwise                  → 200 { ok:true, result }
  *
  * `isFailure` lets jobs that catch internally and return a status/error field (rather than throw)
  * still surface as a visible 500 to the cron.
+ *
+ * WHY `undefined` IS AN ERROR, NOT A SKIP (lane: internal-jobs-hardening, L4): this mapping used to
+ * read `result === undefined → skipped`, but `runBackgroundJob` returned `undefined` for BOTH a
+ * skip and a job body that resolved void — so the two void-returning jobs (email-outbox,
+ * travelpayouts-report-poll) answered `skipped: true` on every single call. A successful drain, an
+ * overlap skip, and an outbox that had silently stopped draining were indistinguishable to the
+ * operator, which is exactly what §17 rule 2 forbids. A skip is now an explicit sentinel; a job
+ * that resolves `undefined` is violating the contract every job here already honours (return a
+ * result object) and must say so loudly rather than borrow the skip's clothes.
+ *
+ * Exported for tests only — the contract-error branch has no endpoint that can reach it (by
+ * design), so it is proven by calling this directly.
  */
-async function runJob(
+export async function runJob(
   name: string,
   fn: () => Promise<unknown>,
   isFailure?: (result: any) => boolean,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
     const result = await runBackgroundJob(name, fn);
+    if (isBackgroundJobSkip(result)) {
+      return { status: 200, body: { ok: true, skipped: true, reason: result.reason, job: name } };
+    }
     if (result === undefined) {
-      return { status: 200, body: { ok: true, skipped: true, job: name } };
+      return {
+        status: 500,
+        body: {
+          ok: false,
+          job: name,
+          error: `job ${name} resolved undefined — a job must return a result object (L4 contract)`,
+        },
+      };
     }
     if (isFailure?.(result)) {
       const error = (result as any)?.error ?? `job ${name} reported failure`;
@@ -162,7 +185,11 @@ router.post("/internal/jobs/booking-expiry", requireInternalSecret, async (_req,
 // earnings (idempotent for matched rows). No-ops gracefully without TRAVELPAYOUTS_TOKEN.
 // (Partnerize's equivalent is intentionally NOT exposed here — held for Lane 4's 404 triage.)
 router.post("/internal/jobs/travelpayouts-report-poll", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("travelpayouts-report-poll", () => cacheSchedulerService.runTravelpayoutsReportPoll());
+  const { status, body } = await runJob(
+    "travelpayouts-report-poll",
+    () => cacheSchedulerService.runTravelpayoutsReportPoll(),
+    (r) => !!r?.error,
+  );
   res.status(status).json(body);
 });
 
@@ -180,7 +207,7 @@ router.post("/internal/jobs/itinerary-generation-sweep", requireInternalSecret, 
 });
 
 router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("email-outbox", () => drainOutbox());
+  const { status, body } = await runJob("email-outbox", () => drainOutbox(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 
