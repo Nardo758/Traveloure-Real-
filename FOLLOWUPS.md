@@ -492,3 +492,41 @@ fee as its own `traveler_service_fee` row, so a future refund policy can reverse
 
 See `docs/findings/FEE_LEDGER_AGGREGATIONS_MUST_NET_WAIVERS.md` — `fee_ledger` has no readers yet;
 the first revenue aggregation that sums `traveler_service_fee` must net the `fee_waiver` legs.
+
+## From the `schema_migrations` ledger-drift audit (2026-09-02, dev DB)
+
+The dev DB ledger holds 291 rows against 274 canonical `MIGRATION_FILES`. `run-migrations.ts`'s gate
+only fails on *missing* canonical migrations (0 here), so this is not a schema fault: the 16 extras
+are tombstone rows for filenames applied on this long-lived shared dev DB and later renamed,
+renumbered, or retired. Evidence: `comm -23` of the ledger against `server/migrations/*.sql`.
+
+### FU — `migration-files.ts` header audit is incomplete (7 undocumented prefix collisions)
+
+The header documents the `067-075` consolidation, but seven later orphans have no note there. Each
+is a *resolved* prefix collision: the ledger recorded one migration at a prefix while a different
+migration occupies that prefix on disk today. Complete the header (or add a `docs/findings/` note):
+
+| Prefix | In ledger (superseded) | On disk now (canonical) |
+|---|---|---|
+| 151 | `151_downgrade_test_account_admins` | `151_bundle_components` |
+| 195 | `195_completion_mint_unique_guards` | `195_service_logistics_capture` |
+| 196 | `196_expert_profile_display_fields` | `196_deliverable_uploaded_at` |
+| 258 | `258_null_placeholder_neighborhood_descriptions` | `258_plans_reconcile` |
+| 259 | `259_pricing_ledger_lane1_fee_bands_and_plans` | `259_provider_fee_bands_reconcile` |
+| 264 | `264_vendor_creation_provenance` | `264_trip_entitlement_source` |
+| 265 | `265_provider_application_current_unique` | `265_vendor_creation_provenance` |
+
+Root cause is the section 9.3 "migration collisions" class: parallel agent/branch authoring races on
+the next free prefix; the shared dev DB records whichever ran first, then the merge renumbers the
+loser (264 to 265 is a cascade). Collisions are resolved on disk (one file per prefix), so this is
+historical ledger residue, not a live duplicate -- but it is what `check-duplicate-migration-prefixes.cjs`
+exists to catch, and that guard was skipped at the step-7 stop.
+
+### FU — dispatch step-7 ledger assertion is stricter than the code contract
+
+The dispatch asserted `recorded == MIGRATION_FILES.length` (291 == 274), stricter than
+`run-migrations.ts`'s real gate (zero *missing* canonical migrations). Tombstones are expected on any
+long-lived dev DB and equal zero on a fresh/prod DB, so make the assertion missing-only to stop the
+false blocker. Because a collision means the dev DB applied a *different* SQL body than canonical at
+that prefix, money-path guards (`check-decision-guards.cjs`, R114 / #1758) should take their
+definitive green on a freshly migrated DB, not this accumulated one.
