@@ -16,6 +16,7 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
 import { JOB_CADENCE } from "./internal.routes";
 import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
+import { listClaimCandidates, verifyClaim, declineClaim } from "../services/neighborhood-claims.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
@@ -7542,6 +7543,91 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
     } catch (err) {
       console.error("[Gem Candidates] reject error:", err);
       res.status(500).json({ message: "Failed to reject gem candidate" });
+    }
+  });
+
+  // ─── Neighborhood claims queue (Phase 1, ledger 2026-08-29-neighborhood-claims) ─────────
+  // Experts CLAIM neighborhoods; admin RATIFIES. Verify births exactly one expert_neighborhoods
+  // row (existing UNIQUE + one-lead partial index arbitrate); decline requires a reason the
+  // expert sees. Never returns score columns (admin-only, Phase 2 scorer — not exposed by
+  // listClaimCandidates' explicit column selection). Rides the blanket /api/admin adminApiGuard
+  // (§2) plus the explicit per-handler admin check, matching gem-candidates.
+
+  // GET /api/admin/neighborhood-claims — submitted claims + expert + neighborhood identity.
+  router.get("/api/admin/neighborhood-claims", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      res.json({ claims: await listClaimCandidates() });
+    } catch (err) {
+      console.error("[Neighborhood Claims] admin list error:", err);
+      res.status(500).json({ message: "Failed to fetch neighborhood claims" });
+    }
+  });
+
+  // POST /api/admin/neighborhood-claims/:id/verify — no body needed Phase 1. Atomic
+  // submitted -> verified, THEN births the expert_neighborhoods row (onConflictDoNothing).
+  router.post("/api/admin/neighborhood-claims/:id/verify", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const result = await verifyClaim({ claimId: req.params.id, adminId: user.id });
+      if (!result.ok) return res.status(result.status).json({ message: result.message });
+
+      await insertAccessAuditLog({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "neighborhood_claim_verify",
+        resourceType: "expert_neighborhood_claim",
+        resourceId: req.params.id,
+        metadata: {
+          expertId: result.claim.expertId,
+          neighborhoodId: result.claim.neighborhoodId,
+          expertNeighborhoodJoined: result.neighborhoodJoined,
+        },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/neighborhood-claims] audit log failed (non-fatal):", err));
+
+      res.json({ success: true, claim: result.claim });
+    } catch (err) {
+      console.error("[Neighborhood Claims] verify error:", err);
+      res.status(500).json({ message: "Failed to verify neighborhood claim" });
+    }
+  });
+
+  // POST /api/admin/neighborhood-claims/:id/decline — allowlist body: {reason} only.
+  // Reason required — the expert sees it verbatim.
+  router.post("/api/admin/neighborhood-claims/:id/decline", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const result = await declineClaim({
+        claimId: req.params.id,
+        adminId: user.id,
+        reason: String(req.body?.reason ?? ""),
+      });
+      if (!result.ok) return res.status(result.status).json({ message: result.message });
+      await insertAccessAuditLog({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "neighborhood_claim_decline",
+        resourceType: "expert_neighborhood_claim",
+        resourceId: req.params.id,
+        metadata: { reason: result.claim.reviewNote },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/neighborhood-claims] audit log failed (non-fatal):", err));
+      res.json({ success: true, claim: result.claim });
+    } catch (err) {
+      console.error("[Neighborhood Claims] decline error:", err);
+      res.status(500).json({ message: "Failed to decline neighborhood claim" });
     }
   });
 

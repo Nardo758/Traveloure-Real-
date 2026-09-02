@@ -1346,10 +1346,21 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
-  // 271: job_heartbeats — one row per internal job name, upserted by runJob on a real success
+  // 271: expert field-knowledge claims, Phase 1 (ledger 2026-08-29-neighborhood-claims +
+  // 2026-08-29-evidence-is-the-test, 2026-08-29-graded-unlocks, 2026-08-29-scout-check).
+  // Additive: expert_neighborhood_claims (the claim; scores admin-only), claim_evening_stops +
+  // claim_contingencies (typed evidence child rows, Phase 2 writes them), local_knowledge_nuggets
+  // .claim_id (nullable evidence linkage), and nugget_photos (the ratified photo amendment —
+  // 2-4 photos per nugget for a Moments slideshow). No CHECK constraints (publish-trap posture);
+  // every table/index/FK declared in shared/schema.ts for deploy-push durability. Ratification
+  // births exactly one expert_neighborhoods row per claim — that join table is untouched here.
+  "271_expert_neighborhood_claims.sql",
+  // 273: job_heartbeats (renumbered from 271 on the main-merge: main landed
+  // 271_expert_neighborhood_claims first; independent additive migrations, order carries no behavior)
+  // — job_heartbeats — one row per internal job name, upserted by runJob on a real success
   // (never on a skip). The health endpoint iterates the CADENCE ROSTER and left-joins this table,
   // so a job that has NEVER succeeded is reported `never_succeeded` rather than being absent —
   // absence-compared-to-absence is the failure this whole lane exists to close. Additive, no
   // CHECK; table + index declared in shared/schema.ts for publish durability.
-  "271_job_heartbeats.sql",
+  "273_job_heartbeats.sql",
 ] as const;
