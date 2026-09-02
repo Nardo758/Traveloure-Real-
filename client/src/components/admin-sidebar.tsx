@@ -99,6 +99,8 @@ const menuGroups = [
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
       // Nugget → gem review + scoring queue (2026-08-29-replit-gem-audit ruling 4).
       { title: "Gem Candidates", href: "/admin/gem-candidates", icon: Sparkles },
+      // Expert field knowledge v2 Phase 1: ops manual entry for the backfill email replies.
+      { title: "Neighborhood Claims (ops)", href: "/admin/neighborhood-claims/manual-entry", icon: MapPin },
       { title: "Service Requests", href: "/admin/service-requests", icon: Inbox },
     ],
   },

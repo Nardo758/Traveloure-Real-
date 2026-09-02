@@ -415,6 +415,13 @@ export async function createLocalKnowledgeNugget(values: Record<string, any>): P
     promotionReviewedAt: _pra,
     promotionReviewNote: _prn,
     promotedGemId: _pgi,
+    // Field-knowledge cluster (migration 272): claim linkage is written ONLY by
+    // neighborhood-claims.service.ts at submit; web_gap* ONLY by the Phase-2 scorer.
+    claimId: _ci,
+    claimVersion: _cv,
+    webGap: _wg,
+    webGapUrl: _wgu,
+    webGapCheckedAt: _wgc,
     ...safe
   } = values;
   const [row] = await db.insert(localKnowledgeNuggets).values(safe as any).returning();
