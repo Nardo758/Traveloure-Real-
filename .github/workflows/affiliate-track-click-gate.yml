@@ -1,0 +1,66 @@
+name: Affiliate track-click gate
+
+# Security-audit finding (as-of 4644af6): POST /api/affiliate/track-click is unauthenticated and
+#   (a) wrote req.body.userId straight into affiliate_clicks.user_id — a column with no FK, read by
+#       affiliate attribution/revenue (§14: the acting user comes from the session, never the body);
+#   (b) resolved the outbound affiliate URL with NO approvedOnly gate, so an unapproved partner's
+#       product URL was reachable by id from an anonymous caller — bypassing the migration-121
+#       partner-approval read gate and the §16 posture that keeps that URL server-side.
+#
+# Needs a real database: the suite seeds approved and unapproved partners and asserts on the
+# persisted click row. --test-force-exit because importing content.routes.ts starts the TravelPulse
+# scheduler timer at module load.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: affiliate-track-click-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  affiliate-track-click:
+    name: track-click takes no identity from the body and gates on approval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      ALLOW_TEST_ACCOUNTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      - name: track-click identity + approval gate (B1-B4)
+        run: npx tsx --test --test-force-exit server/routes/__tests__/affiliate-track-click-identity.db.test.ts

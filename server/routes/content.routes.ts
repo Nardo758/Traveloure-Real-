@@ -8338,11 +8338,18 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
 
 router.post("/api/affiliate/track-click", async (req, res) => {
     try {
-      const { productId, partnerId, userId, tripId, itineraryItemId, initiatedBy, agentType, sessionId } = req.body;
-      
+      const { productId, partnerId, tripId, itineraryItemId, initiatedBy, agentType, sessionId } = req.body;
+
       if (!productId && !partnerId) {
         return res.status(400).json({ message: "productId or partnerId is required" });
       }
+
+      // §14: the acting user comes from the SESSION, never from req.body. This endpoint is
+      // unauthenticated (the feed is public) and used to write `req.body.userId` straight into
+      // affiliate_clicks.user_id — a column with no FK, so any string landed, and affiliate
+      // attribution/revenue reads it. The sibling /api/affiliates/track already did it this way;
+      // this one was the outlier.
+      const userId = getUserId(req) ?? undefined;
 
       const result = await affiliateScraperService.trackClick({
         productId,
