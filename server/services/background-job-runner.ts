@@ -40,6 +40,23 @@ const TRANSIENT_CONNECTION_MESSAGES = [
 const activeJobs = new Set<string>();
 let activeJobCount = 0;
 
+/**
+ * The sentinel a skipped pass resolves to (lane: internal-jobs-hardening, L4).
+ *
+ * `undefined` used to mean BOTH "this pass was skipped" and "the job body returned void" — so an
+ * endpoint could not tell a real overlap skip from a job that ran, and the two void-returning jobs
+ * (email-outbox, travelpayouts-report-poll) reported `skipped: true` on EVERY call, successful or
+ * not. §17 rule 2: silence must be distinguishable from the job not having run.
+ */
+export interface BackgroundJobSkipped {
+  __skipped: true;
+  reason: "overlap" | "cap";
+}
+
+export function isBackgroundJobSkip(value: unknown): value is BackgroundJobSkipped {
+  return typeof value === "object" && value !== null && (value as BackgroundJobSkipped).__skipped === true;
+}
+
 export interface BackgroundJobOptions {
   maxAttempts?: number;
   initialBackoffMs?: number;
@@ -71,10 +88,10 @@ export async function runBackgroundJob<T>(
   name: string,
   job: () => Promise<T>,
   options: BackgroundJobOptions = {},
-): Promise<T | undefined> {
+): Promise<T | BackgroundJobSkipped> {
   if (activeJobs.has(name)) {
     logger.warn({ job: name }, "[background-job] overlapping pass skipped");
-    return undefined;
+    return { __skipped: true, reason: "overlap" };
   }
 
   if (activeJobCount >= MAX_CONCURRENT_BACKGROUND_JOBS) {
@@ -82,7 +99,7 @@ export async function runBackgroundJob<T>(
       { job: name, activeJobs: activeJobCount, maxConcurrent: MAX_CONCURRENT_BACKGROUND_JOBS },
       "[background-job] pool-protection concurrency limit reached; pass skipped",
     );
-    return undefined;
+    return { __skipped: true, reason: "cap" };
   }
 
   const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
@@ -119,7 +136,10 @@ export async function runBackgroundJob<T>(
     activeJobCount--;
   }
 
-  return undefined;
+  // Unreachable: the loop above always returns or throws (maxAttempts >= 1). Kept for the
+  // type-checker. Callers treat a bare `undefined` as a CONTRACT ERROR, not a skip (L4), so if
+  // this ever did become reachable it would surface loudly instead of masquerading as a skip.
+  return undefined as unknown as T;
 }
 
 export function getBackgroundJobStats(): {

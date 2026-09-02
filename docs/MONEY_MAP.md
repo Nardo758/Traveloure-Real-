@@ -37,7 +37,7 @@
 > deliberately NOT in `total_amount`/`platform_fee` (provider-facing); the reconciliation job's
 > expected-charge derivation adds `booking_details.travelerServiceFee.charged` back. Suppression
 > (Trip Pass / rails) is a two-row net-zero `fee_ledger` event — `traveler_service_fee (+X)` plus
-> `fee_waiver (−X)` tagged `covered_by` (migration 273 adds the type; the amount<>0 CHECK stands).
+> `fee_waiver (−X)` tagged `covered_by` (migration 274 adds the type; the amount<>0 CHECK stands).
 > Refunds are UNCHANGED (fee currently non-refundable — FOLLOWUPS). CI: `check-traveler-fee-coverage.cjs`.
 >
 > **Update (branch `claude/money-verify-cluster`) — verification lane, #846/#874/#875/#876/#877:**

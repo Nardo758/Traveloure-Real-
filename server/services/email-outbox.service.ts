@@ -157,8 +157,21 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
  * concurrent delivery.
  *
  * Never throws.
+ *
+ * RETURN SHAPE (lane: internal-jobs-hardening, L4): `{ drained }` — the number of rows this pass
+ * claimed and attempted. It used to return void, which the internal-job endpoint could not tell
+ * apart from an overlap skip, so `POST /internal/jobs/email-outbox` answered `skipped:true` on
+ * every call — a successful drain, a skip, and an outbox that had silently stopped draining all
+ * rendered identically to the cron (§17 rule 2). `{ drained: 0 }` is now an honest "ran, nothing
+ * due"; a claim failure carries `error` so the endpoint surfaces it as a 500 instead of a silent
+ * 200. Delivery outcomes per row are unchanged and still reported by attemptDelivery's own logs.
  */
-export async function drainOutbox(): Promise<void> {
+export interface DrainOutboxResult {
+  drained: number;
+  error?: string;
+}
+
+export async function drainOutbox(): Promise<DrainOutboxResult> {
   type ClaimedRow = {
     id:            number;
     to_email:      string;
@@ -204,10 +217,10 @@ export async function drainOutbox(): Promise<void> {
     claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
     logger.error({ err }, "[email-outbox] drainOutbox: failed to claim rows");
-    return;
+    return { drained: 0, error: "failed to claim rows" };
   }
 
-  if (claimed.length === 0) return;
+  if (claimed.length === 0) return { drained: 0 };
   logger.info({ count: claimed.length }, "[email-outbox] drainOutbox: processing claimed rows");
 
   for (const row of claimed) {
@@ -223,6 +236,8 @@ export async function drainOutbox(): Promise<void> {
       maxAttempts:  row.max_attempts,
     });
   }
+
+  return { drained: claimed.length };
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

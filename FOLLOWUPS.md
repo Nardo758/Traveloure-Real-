@@ -365,6 +365,108 @@ Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
   and flagged rather than silently widening the one-commit lane. A trivial follow-up if the
   decision-maker wants the cover chipped too (placement differs — it's a banner, not a tile corner).
 
+### FU — expert-field-knowledge v2, Phase 0/1 (2026-09-02; `2026-09-02-field-knowledge-phase0-ratified`)
+
+Filed, not fixed, per the dispatch. Evidence lives in `docs/audits/expert-field-knowledge-phase-0.md`.
+
+- **`nugget-neighborhood-id-backfill` (D2 rider).** `local_knowledge_nuggets.neighborhood_id` (migration 272) is
+  populated only for P1 rows born through a claim. Pre-existing nuggets carry free-text
+  `linked_neighbourhood` and no FK; matching them onto `city_neighborhoods` is a separate decision
+  (name-match is the class the chips made dishonest — see `retired captureExpertNeighborhoods`).
+- **`independence-join-on-poi-id` (D7).** Phase 4's conflict check joins on `normalized_name`. Move it onto a
+  POI id once nuggets carry `linkedPoi` consistently (and once a stable POI id exists — today
+  `linked_poi` is a name too).
+- **`gem-candidates-audit-not-same-tx` (D4 finding, against the gem-audit lane).** `/api/admin/gem-candidates`
+  approve/reject log via `insertAccessAuditLog(...).catch(...)` (`server/routes/admin.routes.ts:7482`, `:7513`)
+  — fire-and-forget, outside the transition's transaction. A crashed log write leaves a status flip with
+  no audit row. The claims lane's `neighborhood_claim_transitions` is the same-`tx` shape to copy.
+- **`expertise-scoring-literal-thresholds` (F3).** `server/services/expertise-scoring.service.ts:78-79`
+  (`STRONG_AT`, `ADEQUATE_AT`) are code literals of the class `2026-09-01-evidence-thresholds-config` forbids
+  for the claims lane. Candidate: rows in `evidence_thresholds` (or a sibling) read through the same loader.
+- **`tavily-spend-unlogged` (F4).** No Tavily call (DMO ingestion, booking verification) writes to
+  `api_usage_logs`; the R-T1-c $150 cap is unobservable in `api-costs.service.ts:16`. Phase 2's web-gap
+  search must log `provider: "tavily"`; the two existing callers should follow.
+- **`service-form-upload-comment-stale` (F5).** `client/src/components/ServiceForm.tsx:272` says there is no
+  upload/object-storage rail to reuse; `server/infrastructure/object-storage.ts` (deliverable rail) exists.
+- **`crowd-forecasts-no-source` (F6).** `travel_pulse_crowd_forecasts` has no `source` column, so first-party
+  timing priors from P1 `when`/P2 `hard_constraint` cannot be marked as such. Phase 2 additive; consent-gated
+  (COUNSEL-1).
+- **`migration-263-header-says-262` (F7).** Cosmetic: `263_nugget_gem_promotion.sql` header still reads "262"
+  from the merge renumber.
+- **`phase-3-legacy-reader-cuts` (D1).** The four `expert_neighborhoods` readers to gate on `verified_at IS NOT
+  NULL`, one commit each in Phase 3: feed `localExpert` (`location-view.service.ts:411-430`), upsell
+  (`upsell-query.service.ts:384,575`), storefront neighborhoods (`storefront.routes.ts:161-173`), landing anchor
+  (`landing.routes.ts`). Also: the admin lead route currently requires an EXISTING row (legacy or verified);
+  Phase 3 tightens it to verified rows when those surfaces cut over.
+- **`claim-picker-market-coverage` (D5).** Experts outside the eight `042`-seeded markets cannot claim
+  (honest) and are stamped `no_neighborhoods_available_at`. The `data/major-cities-neighborhoods` remote
+  branch is the coverage fix; ops backfills the claim when a market's rows land.
+- **`COUNSEL-1` (blocker, human).** Data-use + byline + aggregated-analytics consent language and the
+  scout-report framing line. Draft to send: `docs/ops/counsel-ask-expert-content.md` (from #698, kept). Gates flywheel consumers 2/4 (Phase 2) and all Phase 4 copy. Claims stamp
+  `consent_version` (`tos-11.2-2026-09` today) so replies under interim text stay distinguishable.
+- **`bounties` (parked).** Needs Leon's budget ruling before any wiring.
+### FU — Internal jobs hardening (2026-09-01 close-out; `2026-09-01-internal-jobs-hardening`)
+
+Four items the lane deliberately did NOT build. Each names why it is a separate decision.
+
+- **`job-staleness-alerting` (needs a channel decision — NOT a code question).** `job_heartbeats` +
+  `GET /internal/jobs/health` + the `/admin/reconciliation` tile make a dead cron channel *visible*;
+  nothing *pages* anyone. A heartbeat that goes stale at 03:00 on a Saturday is discovered whenever
+  someone next opens the admin page, which for a MONEY job (earnings release, booking
+  auto-completion) is not a monitoring story. **The blocker is a channel, not an implementation:**
+  where does it go — the existing admin-digest email, a Slack webhook, a PagerDuty-style escalation?
+  Each has a different on-call assumption and none is currently wired for machine-generated alerts.
+  Build shape once ruled: the daily admin digest already runs (`admin-digest-scheduler.service.ts`);
+  the cheapest honest version is a digest section listing any job not `ok`, which needs no new
+  channel at all and should probably be the first cut. **Decision needed from the decision-maker.**
+
+- **`internal-jobs-runner-architecture` (a ruling request — F5's root cause, untouched by design).**
+  See the one-paragraph recommendation below. The dispatch explicitly forbade a keep-alive hack, so
+  the lane built DETECTION (heartbeats) and left the architecture alone. **Decision needed.**
+
+- **`check-cron-route-drift` (a guard, filed for free).** Phase 0 proved by hand that the ten
+  registered `/internal/*` routes and the ten route strings across `jobs-cron.yml` +
+  `occasion-drafts-daily.yml` match exactly, and `JOB_CADENCE` now carries a third copy of that list.
+  Three lists that must agree, kept in agreement by a comment. A guard that parses the workflows'
+  `ROUTES:` values and the curl URL, the `router.post("/internal/...")` registrations, and the
+  `JOB_CADENCE` entries — and fails on any asymmetry — makes the Gate 0 table permanent for the next
+  person who renames a job. Wire it into `build.yml` beside the other grep gates. Cheap; no ruling
+  required; just not this lane's scope.
+
+- **`travelpayouts-matched-count` (a real number instead of an honest null).**
+  `runTravelpayoutsReportPoll` returns `matchedCount: null` because
+  `affiliateReconciliationService.matchRecords` returns `void` — there is no count to report and the
+  lane would not invent a `0` (§13). Producing a real count means changing `matchRecords`' own
+  return, which is job business logic and outside a reliability wrapper's remit (L8). Worth doing:
+  "the poll ran" and "the poll matched 14 commission rows" are different facts, and only the second
+  tells you the reconciliation is actually working.
+
+#### Recommendation for the runner-architecture ruling (one paragraph, no code)
+
+GitHub Actions `schedule` is the wrong tier for a MONEY runner: deliveries are best-effort and
+routinely late under load, and — the part that matters — **scheduled workflows are auto-disabled
+after 60 days of repository inactivity**, silently, with no failure to notice. This repo is active
+today, so the risk is latent rather than live; it becomes live the first quiet stretch. My
+recommendation is to **keep GitHub as the runner for now and rule the question properly once the
+heartbeat has data**, because the heartbeat this lane just built is precisely the instrument that
+would tell us whether the schedule is actually reliable in practice — moving the runner today would
+be a decision made without the measurement we just paid for. Concretely: leave `jobs-cron.yml` as
+is, watch the `/admin/reconciliation` tile for a month, and revisit with evidence. If it proves
+unreliable, the honest fix is a real scheduler (a Replit Scheduled Deployment, or any hosted cron
+with delivery guarantees) pointed at the same idempotent endpoints — **not** a keep-alive commit
+bot, which would trade a silent failure for a noisy repo and still leave the delivery guarantee
+unimproved. Whatever is chosen, the in-process timers stay as defense-in-depth and continue not to
+stamp heartbeats, or the signal is destroyed.
+
+#### Repo visibility (cross-reference)
+
+L5's log allowlist was built assuming the repository is **public** (verified during the re-audit: an
+unauthenticated clone succeeds), which also means `jobs-cron.yml` publishes all ten internal route
+names — that is why F3's rate limit and F4's log hygiene compose into a real surface rather than two
+minor hygiene items. The lane's posture does **not** depend on the pending repo-visibility ruling:
+the allowlist is correct either way, and nothing here should be relaxed if the repo later goes
+private.
+
 ## From the traveler-fee-collection lane (ruling 2026-09-02-traveler-fee-applies-everywhere)
 
 ### FU — `fee-not-billed-on-direct-path` RETIRED

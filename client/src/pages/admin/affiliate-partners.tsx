@@ -142,7 +142,7 @@ export default function AdminAffiliatePartners() {
 
   const createMutation = useMutation({
     mutationFn: async (data: PartnerFormData) => {
-      return apiRequest("POST", "/api/affiliate/partners", data);
+      return apiRequest("POST", "/api/admin/affiliate/partners", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
@@ -156,7 +156,7 @@ export default function AdminAffiliatePartners() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<PartnerFormData> }) => {
-      return apiRequest("PATCH", `/api/affiliate/partners/${id}`, data);
+      return apiRequest("PATCH", `/api/admin/affiliate/partners/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
@@ -170,7 +170,7 @@ export default function AdminAffiliatePartners() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/affiliate/partners/${id}`);
+      return apiRequest("DELETE", `/api/admin/affiliate/partners/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
@@ -183,7 +183,7 @@ export default function AdminAffiliatePartners() {
 
   const scrapeMutation = useMutation({
     mutationFn: async (partnerId: string) => {
-      return apiRequest("POST", `/api/affiliate/partners/${partnerId}/scrape`);
+      return apiRequest("POST", `/api/admin/affiliate/partners/${partnerId}/scrape`);
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate") });

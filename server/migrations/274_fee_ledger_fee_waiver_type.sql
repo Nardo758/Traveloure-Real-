@@ -1,4 +1,4 @@
--- 273_fee_ledger_fee_waiver_type.sql
+-- 274_fee_ledger_fee_waiver_type.sql
 -- Ruling 2026-09-02-traveler-fee-applies-everywhere (BLOCKER 1, condition 1).
 --
 -- Adds the `fee_waiver` fee_type to fee_ledger so Trip-Pass / rails suppression of the traveler

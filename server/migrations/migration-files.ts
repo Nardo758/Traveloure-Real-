@@ -1346,21 +1346,35 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
-  // 271: expert field-knowledge claims, Phase 1 (ledger 2026-08-29-neighborhood-claims +
-  // 2026-08-29-evidence-is-the-test, 2026-08-29-graded-unlocks, 2026-08-29-scout-check).
-  // Additive: expert_neighborhood_claims (the claim; scores admin-only), claim_evening_stops +
-  // claim_contingencies (typed evidence child rows, Phase 2 writes them), local_knowledge_nuggets
-  // .claim_id (nullable evidence linkage), and nugget_photos (the ratified photo amendment —
-  // 2-4 photos per nugget for a Moments slideshow). No CHECK constraints (publish-trap posture);
-  // every table/index/FK declared in shared/schema.ts for deploy-push durability. Ratification
-  // births exactly one expert_neighborhoods row per claim — that join table is untouched here.
+  // 271: expert field-knowledge claims v1 (#698, merged first). SUPERSEDED by 272 — its claim table
+  // and evidence tables were empty when 272 landed; 272 drops them and creates the v2 shapes. Kept
+  // in the chain because it is already recorded in every environment's ledger; its one surviving
+  // piece is nugget_photos (ported with its consent_at read invariant).
   "271_expert_neighborhood_claims.sql",
+  // 272: expert field knowledge v2 Phase 1 — TRANSFORMS the 271 v1 state (drops the empty v1
+  // claim/evidence tables + v1 claim_id columns, refusing loudly if any hold rows) and creates v2: — expert_neighborhood_claims + its append-only diary,
+  // the typed evidence tables (P1 depth columns on local_knowledge_nuggets, mini_slip_templates,
+  // claim_contingencies, access_claims), the evidence_thresholds config (seeded, companion §3),
+  // additive claim_id/verified_at/ratified_by on expert_neighborhoods, city_neighborhoods.
+  // default_daypart, local_expert_forms.no_neighborhoods_available_at, and the one-writer
+  // BEFORE INSERT trigger on expert_neighborhoods. No CHECK; everything it leaves behind is declared
+  // in shared/schema.ts so the deploy push and the chain agree (ledger
+  // 2026-09-02-field-knowledge-v2-canonical).
+  "272_expert_neighborhood_claims.sql",
+  // 273: job_heartbeats (renumbered from 271 on the main-merge: main landed
+  // 271_expert_neighborhood_claims first; independent additive migrations, order carries no behavior)
+  // — job_heartbeats — one row per internal job name, upserted by runJob on a real success
+  // (never on a skip). The health endpoint iterates the CADENCE ROSTER and left-joins this table,
+  // so a job that has NEVER succeeded is reported `never_succeeded` rather than being absent —
+  // absence-compared-to-absence is the failure this whole lane exists to close. Additive, no
+  // CHECK; table + index declared in shared/schema.ts for publish durability.
+  "273_job_heartbeats.sql",
   // Ruling 2026-09-02-traveler-fee-applies-everywhere (BLOCKER 1, cond 1): adds the `fee_waiver`
   // fee_type so Trip-Pass/rails suppression is a two-row net-zero event (traveler_service_fee +X,
   // fee_waiver -X tagged covered_by) WITHOUT relaxing the migration-179 amount<>0 CHECK. Additive
   // CHECK swap only (no table/index touched) → no publish-push trap; FEE_LEDGER_TYPES kept in sync.
-  // RENUMBERED 271→272→273: main landed 271_expert_neighborhood_claims first (the merge bumped this
+  // RENUMBERED 271→272→273→274: main landed 271 (#698), 272 (#699) and 273_job_heartbeats (#702) first (each merge bumped this
   // to 272), then #699 (expert-field-knowledge v2) claimed 272 for its own migration, so this cedes
   // to 273. All three are independent additive migrations — the order between them carries no behavior.
-  "273_fee_ledger_fee_waiver_type.sql",
+  "274_fee_ledger_fee_waiver_type.sql",
 ] as const;
