@@ -23,6 +23,7 @@
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
 import crypto from "crypto";
+import { logger } from "../infrastructure/logger";
 import { runOccasionDrafts } from "../services/occasion-drafts.service";
 import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-job-runner";
 import { storage } from "../storage";
@@ -117,10 +118,19 @@ export async function runJob(
     }
     if (isFailure?.(result)) {
       const error = (result as any)?.error ?? `job ${name} reported failure`;
+      // SERVER-SIDE is where a job failure is DIAGNOSED (lane: internal-jobs-hardening, L5). A job
+      // that catches internally and returns an { error } field never throws, so runBackgroundJob's
+      // own logger.error never fires for it — this branch was the one failure path with no server
+      // log at all, which is why the CI job log was the only place the message existed. Now that
+      // the cron prints an allowlist instead of the body, this log is the record.
+      logger.error({ job: name, error: String(error), result }, "[internal-jobs] job reported failure");
       return { status: 500, body: { ok: false, job: name, error: String(error), result } };
     }
     return { status: 200, body: { ok: true, job: name, result } };
   } catch (err: any) {
+    // runBackgroundJob already logs a thrown pass, but log here too so the endpoint's own record is
+    // self-sufficient and does not depend on the runner's internals (L5).
+    logger.error({ err, job: name }, "[internal-jobs] job threw");
     return { status: 500, body: { ok: false, job: name, error: err?.message || String(err) } };
   }
 }

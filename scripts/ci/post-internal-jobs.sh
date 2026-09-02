@@ -35,12 +35,31 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Reports one route's outcome. Phase 4 (L5) narrows this to an allowlist of fields; keeping the
-# reporting in one function is what makes that a contained change.
-log_result() {
-  local route="$1" code="$2" ctype="$3" body_file="$4"
-  echo "[$route] HTTP $code ($ctype)"
-  cat "$body_file"; echo
+# LOG HYGIENE (lane: internal-jobs-hardening, L5) — this script runs in GitHub Actions on a PUBLIC
+# repository, so every line it prints is on the open internet. It used to `cat` the whole response
+# body: earnings counts, reconciliation results, and on a 500 the server's verbatim err.message,
+# which for a database failure can carry row detail.
+#
+# So: an ALLOWLIST, never the body. Booleans `ok`/`skipped`/`reason` plus every NUMERIC leaf (the
+# counts that make a run legible — drained, expert, provider, voided…). Strings are excluded by
+# construction, which is what keeps `error` and any free-text field out. On a non-2xx nothing from
+# the body is printed at all — just the status and the run URL, because the diagnosis belongs in the
+# server log (runJob logs both the thrown and the isFailure branch) and not in a public CI log.
+run_url() {
+  if [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]]; then
+    echo "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  else
+    echo "(no run URL outside GitHub Actions)"
+  fi
+}
+
+# Booleans + numeric leaves only. Never strings, never the raw body.
+summarize() {
+  jq -c '
+    { ok: .ok, skipped: (.skipped // false) }
+    + (if .reason then { reason: .reason } else {} end)
+    + ( [ paths(type == "number") as $p | { ($p | map(tostring) | join(".")): getpath($p) } ] | add // {} )
+  ' "$1" 2>/dev/null || echo '{"summary":"unparseable"}'
 }
 
 failed=0
@@ -57,20 +76,26 @@ for route in $ROUTES; do
   code="${meta%% *}"
   ctype="${meta#* }"
 
-  log_result "$route" "$code" "$ctype" "$body"
-
   if [[ "$code" != "200" ]]; then
-    echo "::error title=$route failed::Expected HTTP 200 from $url, got $code"
+    # No body, not even a summary: a non-2xx is where the server's error text lives.
+    echo "[$route] HTTP $code — see the server log for the failure detail"
+    echo "::error title=$route failed::Expected HTTP 200 from /internal/jobs/$route, got $code. Run: $(run_url)"
     failed=1
   elif [[ "$ctype" != application/json* ]]; then
-    # The tell-tale of a dead route served by the SPA fallback.
-    echo "::error title=$route not JSON::$url answered $code with content-type '$ctype' — the route is not being served by the internal router (dead or renamed route?)."
+    # The tell-tale of a dead route served by the SPA fallback. The content-type is a header, not
+    # body content, and it is the whole diagnosis — so it is named.
+    echo "[$route] HTTP $code, content-type '$ctype'"
+    echo "::error title=$route not JSON::/internal/jobs/$route answered $code with a non-JSON content-type — the route is not being served by the internal router (dead or renamed route?). Run: $(run_url)"
     failed=1
   elif ! jq -e '.ok == true' "$body" >/dev/null 2>&1; then
-    echo "::error title=$route reported failure::$url returned 200 JSON without ok:true."
+    echo "[$route] HTTP 200 but ok is not true"
+    echo "::error title=$route reported failure::/internal/jobs/$route returned 200 JSON without ok:true — see the server log. Run: $(run_url)"
     failed=1
-  elif jq -e '.skipped == true' "$body" >/dev/null 2>&1; then
-    echo "[$route] skipped (a pass was already in flight) — treated as success"
+  else
+    echo "[$route] HTTP 200 $(summarize "$body")"
+    if jq -e '.skipped == true' "$body" >/dev/null 2>&1; then
+      echo "[$route] skipped (a pass was already in flight) — treated as success"
+    fi
   fi
 
   rm -f "$body"
