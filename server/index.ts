@@ -569,6 +569,15 @@ if (process.env.NODE_ENV === "production") {
   // Mounted immediately after registerRoutes so every real API route wins first.
   app.use("/api", notFoundHandler);
 
+  // Same rule for /internal/* (lane: internal-jobs-hardening, L3). These are the
+  // machine-to-machine MONEY/INTEGRITY job runners; their ONLY health signal is the
+  // external cron's read of the response. Without this, an unmatched /internal path fell
+  // through to the SPA fallback and answered 200 text/html, so a renamed or deleted job
+  // route would have reported green forever while the job never ran (§9: a dead endpoint
+  // returns 200-HTML, NOT 404). Defense in depth with the cron's parsed-JSON health
+  // contract (L2) — either alone would catch it; both together make it hard to regress.
+  app.use("/internal", notFoundHandler);
+
   // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
   // Must be registered after API routes but before Vite's catch-all
   app.use("/__mockup", (req: Request, res: Response) => {
