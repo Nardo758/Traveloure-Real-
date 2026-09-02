@@ -170,6 +170,24 @@ This document captures architectural decisions to maintain consistency across co
     end-to-end AND the home market is stocked — a thin draft in an unstocked market is honest (§13, a seed-lane
     signal), not a bug to hide. Checkout (Stripe annual) is a SEPARATE lane: this one delivers, that one collects.
 
+27. **Neighborhood claims: `expert_neighborhoods` has ONE writer, and evidence is typed rows (decision-maker
+    ratified Sep 2, 2026 — ledger `2026-08-29-neighborhood-claims`, `2026-08-29-evidence-is-the-test`,
+    `2026-09-01-evidence-thresholds-config`, `2026-09-01-access-claims-held`, `2026-09-02-field-knowledge-phase0-ratified`;
+    migration 272).** An `expert_neighborhoods` row is born ONLY by admin ratification of an expert's own claim
+    (`expert_neighborhood_claims`, `neighborhood-claims.service.ts ratifyClaim`) — never by ops judgment or platform
+    assignment. Enforced at the DB: a BEFORE INSERT trigger refuses any insert outside that transaction; the
+    approval-hook name-match, the admin lead route's raw upsert and the demo seed's direct insert are retired, and
+    the lead flag is UPDATE-only on an existing row. Legacy rows (`claim_id IS NULL`) are kept; the four
+    verification-dependent readers cut to `verified_at IS NOT NULL` in Phase 3, one commit each. Verification
+    evidence is the four-prompt capture written as TYPED rows (P1 = depth columns on `local_knowledge_nuggets`, the
+    gem-candidate host; P2 `mini_slip_templates`; P3 `claim_contingencies`; P4 `access_claims`, HELD — never scored,
+    surfaced or counted until scout-check). Scores are admin-only; the expert and the public see exactly two words,
+    `claimed → verified`, and never test/exam/score/pass/fail. Every pass threshold lives in `evidence_thresholds`
+    with NO code fallback — `thresholds_missing` blocks the scorer and Ratify alike. The onboarding step requires a
+    claim only when the city has picker rows; otherwise it is skippable and the server stamps
+    `local_expert_forms.no_neighborhoods_available_at` for ops backfill (not being able to claim is honest; not
+    being able to apply is a funnel hole). Content of record: `docs/expert-field-knowledge/evidence-test.md`.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

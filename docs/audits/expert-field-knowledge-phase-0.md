@@ -290,7 +290,7 @@ number lives" is stricter than `fee_bands`' documented fallback).
 
 ---
 
-## Decisions for Leon (the hard stop)
+## Decisions for Leon (the hard stop) — `superseded@2584b6d5`: ruled Sep 2 (two amendments); see the RULING section at the end
 
 **D1 — `expert_neighborhoods` writers.** Ruling: written only by admin ratification. Reality: four writers (headline 1).
 Proposal: (a) `captureExpertNeighborhoods` stops being called from the approval hook (`storage.ts:1676`) — the free-text
