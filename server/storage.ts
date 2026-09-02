@@ -558,9 +558,13 @@ export interface IStorage {
 
   addUserExperienceItem(item: InsertUserExperienceItem): Promise<UserExperienceItem>;
 
-  updateUserExperienceItem(id: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined>;
+  /** Ownership-scoped: `userId` is the ACTING user (from the session, never the body — §14).
+   *  An item's owner lives on its parent `user_experiences.user_id`; a non-owner matches zero rows
+   *  and gets `undefined`. */
+  updateUserExperienceItem(id: string, userId: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined>;
 
-  removeUserExperienceItem(id: string): Promise<void>;
+  /** Ownership-scoped (see above). Returns false when nothing matched, so the route can 404. */
+  removeUserExperienceItem(id: string, userId: string): Promise<boolean>;
 
   // Expert Experience Types
 
@@ -4079,16 +4083,41 @@ export class DatabaseStorage implements IStorage {
     return newItem;
   }
 
-  async updateUserExperienceItem(id: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined> {
+  /**
+   * Ownership predicate for a single `user_experience_items` row.
+   *
+   * The item table has NO `user_id` column — an item is owned through its parent
+   * `user_experiences.user_id` — so the check is a subselect on the parent, applied INSIDE the
+   * WHERE of the write itself. That placement is the point: it is the `markAsRead` /
+   * `deleteNotification` shape (`and(eq(id), eq(userId))`), one derivative up. A read-then-write
+   * pre-check in the route would be a TOCTOU and, worse, would leave this writer reachable
+   * unowned by the next caller. A non-owner's UPDATE/DELETE matches zero rows.
+   */
+  private ownedExperienceItem(id: string, userId: string) {
+    return and(
+      eq(userExperienceItems.id, id),
+      inArray(
+        userExperienceItems.userExperienceId,
+        db.select({ id: userExperiences.id })
+          .from(userExperiences)
+          .where(eq(userExperiences.userId, userId)),
+      ),
+    );
+  }
+
+  async updateUserExperienceItem(id: string, userId: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined> {
     const [updated] = await db.update(userExperienceItems)
       .set(updates)
-      .where(eq(userExperienceItems.id, id))
+      .where(this.ownedExperienceItem(id, userId))
       .returning();
     return updated;
   }
 
-  async removeUserExperienceItem(id: string): Promise<void> {
-    await db.delete(userExperienceItems).where(eq(userExperienceItems.id, id));
+  async removeUserExperienceItem(id: string, userId: string): Promise<boolean> {
+    const deleted = await db.delete(userExperienceItems)
+      .where(this.ownedExperienceItem(id, userId))
+      .returning({ id: userExperienceItems.id });
+    return deleted.length > 0;
   }
 
   // Expert Experience Types Methods
