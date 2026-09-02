@@ -13,6 +13,8 @@ import { resolveBookability, type Bookability } from "@shared/bookability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { normalizeGemScore } from "@/lib/gem-score";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
+import { isReferencePhoto } from "@/lib/photo-provenance";
+import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -892,6 +894,12 @@ export function CityFeedCardGem({
           Top pick
         </span>
       )}
+      {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): a stock/places image on this
+          TEASER surface is labeled until an attributed real photo replaces it. Non-stock
+          (attributed) photos and the no-photo gradient carry no chip. */}
+      {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
+        <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
+      )}
     </div>
   );
 
@@ -1103,6 +1111,10 @@ export function CityFeedCardGem({
               >
                 Top pick
               </span>
+            )}
+            {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers) — see full-density note above. */}
+            {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
+              <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
             )}
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
