@@ -181,6 +181,6 @@ export function resolveSelectionsToFilterQuery(
     }
   }
 
-  if (tags.size > 0) query.tags = [...tags];
+  if (tags.size > 0) query.tags = Array.from(tags);
   return query;
 }
