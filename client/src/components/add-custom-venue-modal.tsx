@@ -109,7 +109,8 @@ export function AddCustomVenueModal({
     }
 
     createVenueMutation.mutate({
-      userId,
+      // userId is no longer sent: the server stamps the owner from the session, and the body
+      // schema is a pick-based allowlist that cannot carry it (§19).
       tripId,
       experienceType,
       name: name.trim(),
@@ -119,7 +120,7 @@ export function AddCustomVenueModal({
       notes: notes.trim() || null,
       estimatedCost: parsedCost,
       venueType: "custom",
-      source: "custom",
+      // `source` is server-authored provenance (DB default 'custom') and is not in the allowlist.
     });
   };
 

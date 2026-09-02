@@ -1,0 +1,49 @@
+name: User experience allowlist gate
+
+# Security-audit finding (as-of 4644af6): POST and PATCH /api/user-experiences both passed RAW
+# req.body through — POST spread it into createUserExperience, PATCH assigned it into a
+# .set({...updates}) — so every column of user_experiences was client-writable, including `userId`
+# (PATCH checks the ROW's ownership and then lets the body reassign the owner), any `tripId` (the FK
+# requires the trip to exist, not to be yours), and the UNIQUE `trackingNumber`.
+#
+# The sharp part: insertUserExperienceSchema already omits userId. The routes never used it — which
+# is why no schema-shape guard could see this: they analyse createInsertSchema call sites, and an
+# unvalidated route has none.
+#
+# No database service: the suite parses the route's exported allowlist and reads source.
+# --test-force-exit because importing content.routes.ts starts the TravelPulse scheduler timer.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: user-experience-allowlist-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  user-experience-allowlist:
+    name: user experience owner is not a body field
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://unused:unused@127.0.0.1:1/unused
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      ALLOW_TEST_ACCOUNTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: User experience mass-assignment (D1-D5)
+        run: npx tsx --test --test-force-exit server/routes/__tests__/user-experience-mass-assignment.test.ts

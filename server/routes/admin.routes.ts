@@ -16,7 +16,6 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
 import { JOB_CADENCE } from "./internal.routes";
 import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
-import { listClaimCandidates, verifyClaim, declineClaim } from "../services/neighborhood-claims.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
@@ -7546,90 +7545,10 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
     }
   });
 
-  // ─── Neighborhood claims queue (Phase 1, ledger 2026-08-29-neighborhood-claims) ─────────
-  // Experts CLAIM neighborhoods; admin RATIFIES. Verify births exactly one expert_neighborhoods
-  // row (existing UNIQUE + one-lead partial index arbitrate); decline requires a reason the
-  // expert sees. Never returns score columns (admin-only, Phase 2 scorer — not exposed by
-  // listClaimCandidates' explicit column selection). Rides the blanket /api/admin adminApiGuard
-  // (§2) plus the explicit per-handler admin check, matching gem-candidates.
-
-  // GET /api/admin/neighborhood-claims — submitted claims + expert + neighborhood identity.
-  router.get("/api/admin/neighborhood-claims", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(getUserId(req)!);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Admin access required" });
-    }
-    try {
-      res.json({ claims: await listClaimCandidates() });
-    } catch (err) {
-      console.error("[Neighborhood Claims] admin list error:", err);
-      res.status(500).json({ message: "Failed to fetch neighborhood claims" });
-    }
-  });
-
-  // POST /api/admin/neighborhood-claims/:id/verify — no body needed Phase 1. Atomic
-  // submitted -> verified, THEN births the expert_neighborhoods row (onConflictDoNothing).
-  router.post("/api/admin/neighborhood-claims/:id/verify", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(getUserId(req)!);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Admin access required" });
-    }
-    try {
-      const result = await verifyClaim({ claimId: req.params.id, adminId: user.id });
-      if (!result.ok) return res.status(result.status).json({ message: result.message });
-
-      await insertAccessAuditLog({
-        actorId: user.id,
-        actorRole: user.role,
-        action: "neighborhood_claim_verify",
-        resourceType: "expert_neighborhood_claim",
-        resourceId: req.params.id,
-        metadata: {
-          expertId: result.claim.expertId,
-          neighborhoodId: result.claim.neighborhoodId,
-          expertNeighborhoodJoined: result.neighborhoodJoined,
-        },
-        ipAddress: req.ip ?? null,
-        userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/neighborhood-claims] audit log failed (non-fatal):", err));
-
-      res.json({ success: true, claim: result.claim });
-    } catch (err) {
-      console.error("[Neighborhood Claims] verify error:", err);
-      res.status(500).json({ message: "Failed to verify neighborhood claim" });
-    }
-  });
-
-  // POST /api/admin/neighborhood-claims/:id/decline — allowlist body: {reason} only.
-  // Reason required — the expert sees it verbatim.
-  router.post("/api/admin/neighborhood-claims/:id/decline", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(getUserId(req)!);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Admin access required" });
-    }
-    try {
-      const result = await declineClaim({
-        claimId: req.params.id,
-        adminId: user.id,
-        reason: String(req.body?.reason ?? ""),
-      });
-      if (!result.ok) return res.status(result.status).json({ message: result.message });
-      await insertAccessAuditLog({
-        actorId: user.id,
-        actorRole: user.role,
-        action: "neighborhood_claim_decline",
-        resourceType: "expert_neighborhood_claim",
-        resourceId: req.params.id,
-        metadata: { reason: result.claim.reviewNote },
-        ipAddress: req.ip ?? null,
-        userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/neighborhood-claims] audit log failed (non-fatal):", err));
-      res.json({ success: true, claim: result.claim });
-    } catch (err) {
-      console.error("[Neighborhood Claims] decline error:", err);
-      res.status(500).json({ message: "Failed to decline neighborhood claim" });
-    }
-  });
+  // The #698 v1 neighborhood-claims admin queue (list/verify/decline) that sat here was retired when
+  // #699 v2 became canonical (ledger 2026-09-02-field-knowledge-v2-canonical); the v2 queue
+  // (Ratify / Return, scorer output, web-gap verdict) is Phase 2 and lives in
+  // server/routes/neighborhood-claims.routes.ts.
 
   // GET /api/knowledge-nuggets/city — for AI to pull nuggets by city
 
@@ -8196,22 +8115,16 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
     // Get current lead (for "Reassign from A to B?" UI surfacing — server still does it).
     const currentLead = await getNeighborhoodCurrentLead(id);
 
-    // Atomic swap: demote any existing lead, upsert the new one with is_lead=true.
-    await db.transaction(async (tx) => {
-      // Step 1: demote whatever's currently lead.
-      await tx.update(expertNeighborhoods)
-        .set({ isLead: false, updatedAt: new Date() })
-        .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)));
-
-      // Step 2: upsert the new lead (expert may or may not have an existing row).
-      await tx.execute(sql`
-        INSERT INTO expert_neighborhoods (expert_id, neighborhood_id, is_lead, updated_at)
-        VALUES (${expertId}, ${id}, true, NOW())
-        ON CONFLICT (expert_id, neighborhood_id) DO UPDATE SET
-          is_lead = true,
-          updated_at = NOW()
-      `);
-    });
+    // Lead swap is UPDATE-ONLY (ruling 2026-08-29-neighborhood-claims; Phase 0 D1): is_lead toggles on
+    // an EXISTING expert_neighborhoods row — rows are born only by claim ratification, and the
+    // migration-272 trigger refuses any other INSERT. An expert with no row cannot be made lead.
+    const swap = await swapNeighborhoodLeadTx(id, expertId);
+    if (!swap.promoted) {
+      return res.status(409).json({
+        error: "expert_not_in_neighborhood",
+        message: "This expert has no verified or existing row for this neighborhood. A lead is chosen among experts whose neighborhood claim has been ratified.",
+      });
+    }
 
     await insertAccessAuditLog({
       actorId: auth.userId,

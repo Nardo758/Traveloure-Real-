@@ -99,7 +99,7 @@ import {
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
-  insertCustomVenueSchema, insertGeneratedItinerarySchema,
+  insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
   userAndExpertChats, insertUserAndExpertChatSchema,
@@ -1001,8 +1001,18 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
 router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
+      // §14: the owner comes from the SESSION. `insertCustomVenueSchema` used to be `.omit()`-based
+      // and this route never stamped a userId, so `req.body.userId` was written verbatim — a caller
+      // could birth a venue owned by someone else, who then owns it for the PATCH/DELETE ownership
+      // checks below. The schema is now a pick-based allowlist (§19) that cannot carry userId at all;
+      // the stamp here is the second layer, so every caller is covered.
+      const userId = getUserId(req)!;
       const input = sanitizeStringFields(insertCustomVenueSchema.parse(req.body));
-      const venue = await storage.createCustomVenue(input);
+      // A tripId FK only requires the trip to EXIST, not to be yours — verify before attaching.
+      if (input.tripId && !(await verifyTripOwnership(input.tripId, userId))) {
+        return res.status(403).json({ message: "Not your trip" });
+      }
+      const venue = await storage.createCustomVenue({ ...input, userId });
       res.status(201).json(venue);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1028,6 +1038,12 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Forbidden" });
       }
       const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
+      // Same trip check as the create path: the allowlist permits tripId, the FK does not care whose
+      // trip it is. (userId is not in the allowlist at all, so a venue can no longer be handed to
+      // another account through this route.)
+      if (input.tripId && !(await verifyTripOwnership(input.tripId, userId))) {
+        return res.status(403).json({ message: "Not your trip" });
+      }
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -1687,10 +1703,40 @@ router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
 
   // Create new experience
 
+// Allowlist body schema for user-experience writes (§19). Derived from the existing insert schema
+// with .pick(), the same shape ruling 46 used for createBookingRequestSchema — NOT a
+// createInsertSchema call site, so the omit-schema ratchet neither counts nor is affected by it.
+//
+// Both routes below used to pass RAW `req.body` straight through: POST spread it into
+// createUserExperience and PATCH assigned `const updates = req.body` into a `.set({...updates})`.
+// `insertUserExperienceSchema` already omits userId — the routes simply never used it. So every
+// column was writable, including `userId` (ownership transfer / re-attribution on PATCH) and the
+// UNIQUE `trackingNumber`. tripId stays writable but is ownership-checked below: the FK requires
+// the trip to exist, not to be yours.
+// Exported so the negative test asserts against the REAL artifact, not a copy of it.
+export const userExperienceBodySchema = insertUserExperienceSchema.pick({
+  experienceTypeId: true,
+  tripId: true,
+  title: true,
+  status: true,
+  eventDate: true,
+  location: true,
+  budget: true,
+  guestCount: true,
+  preferences: true,
+  stepData: true,
+  currentStep: true,
+  mapData: true,
+});
+
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const experience = await storage.createUserExperience({ ...req.body, userId });
+      const body = userExperienceBodySchema.parse(req.body);
+      if (body.tripId && !(await verifyTripOwnership(body.tripId, userId))) {
+        return res.status(403).json({ message: "Not your trip" });
+      }
+      const experience = await storage.createUserExperience({ ...body, userId });
 
       // Auto-create a linked trip
       let tripId: string | null = experience.tripId ?? null;
@@ -1729,7 +1775,12 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: "Experience not found" });
     }
 
-    const updates = req.body;
+    // Allowlisted — never the raw body. `userId` is not pickable, so an owner can no longer hand
+    // this experience to another account, and the UNIQUE trackingNumber is not settable either.
+    const updates: Record<string, any> = userExperienceBodySchema.partial().parse(req.body);
+    if (updates.tripId && !(await verifyTripOwnership(updates.tripId, userId))) {
+      return res.status(403).json({ message: "Not your trip" });
+    }
 
     // Auto-create linked trip on first save if not already linked
     if (!experience.tripId && !updates.tripId) {
@@ -7845,9 +7896,23 @@ router.get("/api/affiliate/categories", async (_req, res) => {
     }
   });
 
+  // ─── Affiliate partner WRITES — admin-only, under the §2 blanket guard ────────────────────
+  // These four endpoints create/modify/delete/refresh platform-level affiliate partner rows and
+  // were registered at /api/affiliate/partners on `isAuthenticated` alone: ANY authenticated user
+  // could rewrite a partner's `commission_rate` (read at affiliate.service.ts resolveCommission as
+  // the platform's affiliate commission — a §18 rate-bearing field), its `affiliate_tracking_id`
+  // and `website_url` (the outbound target), or delete the row outright. Their only client callers
+  // are client/src/pages/admin/affiliate-partners.tsx.
+  //
+  // Fixed STRUCTURALLY, not per-endpoint: the paths now sit under /api/admin, which
+  // `app.use("/api/admin", adminApiGuard)` (server/routes.ts, registered before this router is
+  // mounted) covers by prefix with a fail-closed DB role lookup. §2 is explicit that per-endpoint
+  // opt-in "is what leaked", so an inline check here would have reproduced the shape that failed —
+  // and the approve/reject siblings already live at /api/admin/affiliate/partners/:id/*, so this
+  // is the convention, not a new one. The public READS below are unchanged.
   // Create affiliate partner
 
-router.post("/api/affiliate/partners", isAuthenticated, async (req, res) => {
+router.post("/api/admin/affiliate/partners", isAuthenticated, async (req, res) => {
     try {
       const { name, websiteUrl, category, affiliateTrackingId, affiliateLinkTemplate, description, logoUrl, commissionRate, scrapeConfig } = req.body;
 
@@ -7910,7 +7975,7 @@ router.get("/api/affiliate/partners/:id", async (req, res) => {
 
   // Update affiliate partner
 
-router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, res) => {
     try {
       // Phase 4: approval is set ONLY via the admin approve/reject endpoints — strip any
       // approval fields a client tries to mass-assign through this general update path (D1a).
@@ -7927,7 +7992,7 @@ router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) =>
 
   // Delete affiliate partner
 
-router.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, res) => {
     try {
       const deleted = await affiliateScraperService.deletePartner(req.params.id);
       if (!deleted) {
@@ -7941,7 +8006,7 @@ router.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) =
 
   // Trigger partner website scrape
 
-router.post("/api/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
+router.post("/api/admin/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
     try {
       const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
       res.json(result);
@@ -8324,11 +8389,18 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
 
 router.post("/api/affiliate/track-click", async (req, res) => {
     try {
-      const { productId, partnerId, userId, tripId, itineraryItemId, initiatedBy, agentType, sessionId } = req.body;
-      
+      const { productId, partnerId, tripId, itineraryItemId, initiatedBy, agentType, sessionId } = req.body;
+
       if (!productId && !partnerId) {
         return res.status(400).json({ message: "productId or partnerId is required" });
       }
+
+      // §14: the acting user comes from the SESSION, never from req.body. This endpoint is
+      // unauthenticated (the feed is public) and used to write `req.body.userId` straight into
+      // affiliate_clicks.user_id — a column with no FK, so any string landed, and affiliate
+      // attribution/revenue reads it. The sibling /api/affiliates/track already did it this way;
+      // this one was the outlier.
+      const userId = getUserId(req) ?? undefined;
 
       const result = await affiliateScraperService.trackClick({
         productId,
