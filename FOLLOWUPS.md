@@ -350,3 +350,66 @@ Legacy ruleset `TBranch` (17359387) is disabled, not deleted.
   the rail's permanent removal + the `experience_starts` ticker's return replace the interim
   fallback. Filed against that trigger, not built now — the rail costs nothing while it holds a live
   slot, so there is no rush to delete it.
+
+### FU — Internal jobs hardening (2026-09-01 close-out; `2026-09-01-internal-jobs-hardening`)
+
+Four items the lane deliberately did NOT build. Each names why it is a separate decision.
+
+- **`job-staleness-alerting` (needs a channel decision — NOT a code question).** `job_heartbeats` +
+  `GET /internal/jobs/health` + the `/admin/reconciliation` tile make a dead cron channel *visible*;
+  nothing *pages* anyone. A heartbeat that goes stale at 03:00 on a Saturday is discovered whenever
+  someone next opens the admin page, which for a MONEY job (earnings release, booking
+  auto-completion) is not a monitoring story. **The blocker is a channel, not an implementation:**
+  where does it go — the existing admin-digest email, a Slack webhook, a PagerDuty-style escalation?
+  Each has a different on-call assumption and none is currently wired for machine-generated alerts.
+  Build shape once ruled: the daily admin digest already runs (`admin-digest-scheduler.service.ts`);
+  the cheapest honest version is a digest section listing any job not `ok`, which needs no new
+  channel at all and should probably be the first cut. **Decision needed from the decision-maker.**
+
+- **`internal-jobs-runner-architecture` (a ruling request — F5's root cause, untouched by design).**
+  See the one-paragraph recommendation below. The dispatch explicitly forbade a keep-alive hack, so
+  the lane built DETECTION (heartbeats) and left the architecture alone. **Decision needed.**
+
+- **`check-cron-route-drift` (a guard, filed for free).** Phase 0 proved by hand that the ten
+  registered `/internal/*` routes and the ten route strings across `jobs-cron.yml` +
+  `occasion-drafts-daily.yml` match exactly, and `JOB_CADENCE` now carries a third copy of that list.
+  Three lists that must agree, kept in agreement by a comment. A guard that parses the workflows'
+  `ROUTES:` values and the curl URL, the `router.post("/internal/...")` registrations, and the
+  `JOB_CADENCE` entries — and fails on any asymmetry — makes the Gate 0 table permanent for the next
+  person who renames a job. Wire it into `build.yml` beside the other grep gates. Cheap; no ruling
+  required; just not this lane's scope.
+
+- **`travelpayouts-matched-count` (a real number instead of an honest null).**
+  `runTravelpayoutsReportPoll` returns `matchedCount: null` because
+  `affiliateReconciliationService.matchRecords` returns `void` — there is no count to report and the
+  lane would not invent a `0` (§13). Producing a real count means changing `matchRecords`' own
+  return, which is job business logic and outside a reliability wrapper's remit (L8). Worth doing:
+  "the poll ran" and "the poll matched 14 commission rows" are different facts, and only the second
+  tells you the reconciliation is actually working.
+
+#### Recommendation for the runner-architecture ruling (one paragraph, no code)
+
+GitHub Actions `schedule` is the wrong tier for a MONEY runner: deliveries are best-effort and
+routinely late under load, and — the part that matters — **scheduled workflows are auto-disabled
+after 60 days of repository inactivity**, silently, with no failure to notice. This repo is active
+today, so the risk is latent rather than live; it becomes live the first quiet stretch. My
+recommendation is to **keep GitHub as the runner for now and rule the question properly once the
+heartbeat has data**, because the heartbeat this lane just built is precisely the instrument that
+would tell us whether the schedule is actually reliable in practice — moving the runner today would
+be a decision made without the measurement we just paid for. Concretely: leave `jobs-cron.yml` as
+is, watch the `/admin/reconciliation` tile for a month, and revisit with evidence. If it proves
+unreliable, the honest fix is a real scheduler (a Replit Scheduled Deployment, or any hosted cron
+with delivery guarantees) pointed at the same idempotent endpoints — **not** a keep-alive commit
+bot, which would trade a silent failure for a noisy repo and still leave the delivery guarantee
+unimproved. Whatever is chosen, the in-process timers stay as defense-in-depth and continue not to
+stamp heartbeats, or the signal is destroyed.
+
+#### Repo visibility (cross-reference)
+
+L5's log allowlist was built assuming the repository is **public** (verified during the re-audit: an
+unauthenticated clone succeeds), which also means `jobs-cron.yml` publishes all ten internal route
+names — that is why F3's rate limit and F4's log hygiene compose into a real surface rather than two
+minor hygiene items. The lane's posture does **not** depend on the pending repo-visibility ruling:
+the allowlist is correct either way, and nothing here should be relaxed if the repo later goes
+private.
+
