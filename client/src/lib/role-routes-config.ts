@@ -190,6 +190,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/neighborhood-backfill', description: 'Neighborhood backfill tool' },
   { href: '/admin/gem-photo-backfill',  description: 'Gem photo backfill tool' },
   { href: '/admin/gem-candidates',      description: 'Nugget → gem promotion review queue' },
+  { href: '/admin/neighborhood-claims', description: 'Expert neighborhood-claim review queue' },
   { href: '/admin/review-moderation',   description: 'Review moderation queue' },
   { href: '/admin/message-moderation',  description: 'Message moderation queue' },
   { href: '/admin/destination-events',  description: 'Destination events management' },
