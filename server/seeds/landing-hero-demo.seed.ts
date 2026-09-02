@@ -8,6 +8,13 @@ import {
   providerServices,
 } from "@shared/schema";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
+import {
+  createClaim,
+  markClaimScored,
+  ratifyClaim,
+  submitClaim,
+} from "../services/neighborhood-claims.service";
+import type { ClaimCaptureSubmit } from "@shared/neighborhood-claims";
 
 const DEMO_SERVICE_IMAGES = [
   "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1200&q=80",
@@ -154,9 +161,59 @@ async function upsertHeroForm(
     });
 }
 
+/**
+ * Development-only demo capture so the fixture expert's neighborhood row can be born the ONLY way
+ * a row is born — through claim ratification (ruling 2026-08-29-neighborhood-claims; Phase 0 D1).
+ * The seed is a sanctioned CALLER of the product functions (persona-seed precedent), never a
+ * second writer; the migration-272 trigger would refuse a direct insert. Every string says it is
+ * a fixture, and the "score" is a labeled seed marker, not a real scorer verdict.
+ */
+function demoCapture(neighborhoodName: string): ClaimCaptureSubmit {
+  const place = (n: number) => `Demo fixture place ${n} (${neighborhoodName})`;
+  return {
+    p1: [
+      {
+        name: place(1),
+        category: "cafe",
+        doThis: "Development fixture — sit at the counter, order the house pour. Not real expert content.",
+        when: { hours: "08:00-10:00", days: "weekdays", season: "" },
+        watchOut: "Development fixture — closes early on holidays. Not real expert content.",
+        priceBand: "$$",
+        expertConfidence: "usually_right",
+      },
+      {
+        name: place(2),
+        category: "viewpoint",
+        doThis: "Development fixture — walk up from the side street, not the main steps. Not real expert content.",
+        when: { hours: "17:30-18:30", days: "", season: "autumn" },
+        watchOut: "Development fixture — the main steps queue at sunset. Not real expert content.",
+        priceBand: null,
+        expertConfidence: "certain",
+      },
+    ],
+    p2: {
+      items: [
+        { name: place(1), durationMin: 45, transition: null },
+        { name: place(2), durationMin: 60, transition: { mode: "walk", minutes: 12 } },
+        { name: place(3), durationMin: 90, transition: { mode: "bus", minutes: 15 } },
+      ],
+      orderReason: "Development fixture — light first, the view at dusk, dinner last. Not real expert content.",
+      hardConstraints: [{ kind: "last_entry", detail: "Development fixture — last entry 18:30." }],
+    },
+    p3: {
+      trigger: "rain",
+      replacesPosition: 2,
+      alternate: { name: `Demo fixture covered arcade (${neighborhoodName})`, durationMin: 60, transition: { mode: "walk", minutes: 5 } },
+      reason: "Development fixture — the viewpoint is worthless in rain; the arcade is covered. Not real expert content.",
+    },
+    p4: [],
+  };
+}
+
 async function upsertHeroNeighborhood(
   userId: string,
   neighborhoodId: string,
+  neighborhoodName: string,
 ): Promise<void> {
   const [existing] = await db
     .select({
@@ -172,6 +229,42 @@ async function upsertHeroNeighborhood(
     )
     .limit(1);
 
+  let rowId = existing?.id ?? null;
+  if (!rowId) {
+    // Born through the claim rail: claim → submit (fixture capture) → seed-marked "scored" → ratify.
+    const created = await createClaim({ expertId: userId, neighborhoodId, actorType: "seed", actorId: null });
+    if (!created.ok) throw new Error(`[landing-hero-seed] claim failed: ${created.message}`);
+    let claim = created.value.claim;
+    if (claim.status === "draft" || claim.status === "declined") {
+      const submitted = await submitClaim({
+        claimId: claim.id,
+        expertId: userId,
+        actorType: "seed",
+        actorId: null,
+        consent: true,
+        consentVersion: "seed-fixture",
+        capture: demoCapture(neighborhoodName),
+      });
+      if (!submitted.ok) throw new Error(`[landing-hero-seed] claim submit failed: ${submitted.message}`);
+      claim = submitted.value;
+    }
+    if (claim.status === "submitted") {
+      const scored = await markClaimScored({
+        claimId: claim.id,
+        version: claim.version,
+        scorerJson: { seed: true, note: "development fixture — not a scorer verdict" },
+      });
+      if (!scored.ok) throw new Error(`[landing-hero-seed] claim score mark failed: ${scored.message}`);
+      claim = scored.value;
+    }
+    if (claim.status === "scored") {
+      const ratified = await ratifyClaim({ claimId: claim.id, adminId: null, actorType: "seed" });
+      if (!ratified.ok) throw new Error(`[landing-hero-seed] claim ratify failed: ${ratified.message}`);
+      rowId = ratified.value.neighborhoodRowId;
+    }
+  }
+  if (!rowId) return; // claim exists in a state the seed does not force (e.g. verified elsewhere)
+
   const [existingLead] = await db
     .select({ expertId: expertNeighborhoods.expertId })
     .from(expertNeighborhoods)
@@ -184,20 +277,11 @@ async function upsertHeroNeighborhood(
     .limit(1);
 
   const isLead = !existingLead || existingLead.expertId === userId;
-  if (existing) {
-    await db
-      .update(expertNeighborhoods)
-      .set({ isLead, sortOrder: 0, updatedAt: new Date() })
-      .where(eq(expertNeighborhoods.id, existing.id));
-    return;
-  }
-
-  await db.insert(expertNeighborhoods).values({
-    expertId: userId,
-    neighborhoodId,
-    isLead,
-    sortOrder: 0,
-  });
+  // Lead is an admin curation flag TOGGLED on an existing row (UPDATE only) — never an insert.
+  await db
+    .update(expertNeighborhoods)
+    .set({ isLead, sortOrder: 0, updatedAt: new Date() })
+    .where(eq(expertNeighborhoods.id, rowId));
 }
 
 async function upsertHeroService(
@@ -278,7 +362,7 @@ export async function seedLandingHeroDemo(): Promise<{ markets: number; services
     }
     const userId = await upsertHeroUser(market);
     await upsertHeroForm(market, userId, neighborhood.name);
-    await upsertHeroNeighborhood(userId, neighborhood.id);
+    await upsertHeroNeighborhood(userId, neighborhood.id, neighborhood.name);
     await upsertHeroService(market, userId, neighborhood.slug, marketIndex);
     seededMarkets++;
   }
