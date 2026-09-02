@@ -1,17 +1,17 @@
 name: Fee Preview Gate
 
-# Guards the Trip-Pass waiver on GET /api/cart/fee-preview (Lane 4, small-filed rider 3b).
-# The waiver is INFORMATIONAL today: the D3 traveler-service-fee is not billed on the direct path
-# (`billedOnDirectPathToday: false`), so a pass-holder and a non-holder see the SAME cart total; the
-# waiver only reports the counterfactual (`wouldHaveBeenAmountTotal`). This test pins that truth:
-#   A no tripId → no waiver, baseline total
+# Guards the traveler service fee on GET /api/cart/fee-preview + the fee-ledger netting
+# (ruling 2026-09-02-traveler-fee-applies-everywhere). The fee is now BILLED on the direct path, so:
+#   A no tripId → no waiver, baseline total (which includes the fee)
 #   B tripId with no pass → no waiver, total unchanged
-#   C tripId with an active pass → waiver flag + counterfactual, total UNCHANGED
-# If someone STARTS billing the fee on this path (so the waiver should move the total), assertion C
-# flips and this gate fails loudly — the intended tripwire. See docs/findings/FEE_NOT_BILLED_ON_DIRECT_PATH.md.
+#   C tripId with an active pass → waiver flag + counterfactual, total REDUCED by the waived fee,
+#     travelerFee === 0, billedOnDirectPathToday === true
+# Plus the fee-ledger contract (traveler-fee-ledger.db.test.ts): an uncovered booking lands one
+# traveler_service_fee (+X) row; a covered booking lands that row PLUS a fee_waiver (−X) leg netting
+# to $0; a $0 fee lands no row; idempotent.
 #
 # Boot recipe mirrors payout-parity-gate.yml (build → prod bundle → /api/ready poll). Stub Stripe/AI
-# keys are deliberate — fee-preview is read-only and makes no external call.
+# keys are deliberate — fee-preview is read-only and the ledger test writes only DB fixtures.
 
 on:
   pull_request:
@@ -102,6 +102,15 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
+
+      - name: Traveler-fee ledger netting (+X / −X, $0-no-row, idempotency)
+        run: npx tsx --test server/__tests__/traveler-fee-ledger.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
           NODE_ENV: test
