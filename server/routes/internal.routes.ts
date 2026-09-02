@@ -37,11 +37,19 @@ import { drainOutbox } from "../services/email-outbox.service";
 
 const router = Router();
 
+/**
+ * Constant-time secret comparison (lane: internal-jobs-hardening, L7).
+ *
+ * The previous shape returned early on a length mismatch, which leaked the secret's LENGTH before
+ * timingSafeEqual ever ran — the cheapest possible reduction of a guesser's search space, on a
+ * public repository whose workflow file already publishes every route name. Hashing both sides
+ * first makes the compared buffers a fixed 32 bytes, so length is no longer observable and the
+ * early return disappears. Behaviour is otherwise identical: equal inputs compare equal.
+ */
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
+  const ah = crypto.createHash("sha256").update(a, "utf8").digest();
+  const bh = crypto.createHash("sha256").update(b, "utf8").digest();
+  return crypto.timingSafeEqual(ah, bh);
 }
 
 /**

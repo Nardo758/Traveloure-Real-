@@ -62,6 +62,7 @@ import {
   adminRateLimiter,
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
+import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
 
@@ -118,6 +119,15 @@ app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
 app.use("/api/activities", searchRateLimiter as RequestHandler);
 app.use("/api/auth", authRateLimiter as RequestHandler);
+
+// The machine-to-machine job runners register at a BARE /internal (server/routes.ts,
+// `app.use(internalRoutes)`), so none of the /api-prefixed limiters above ever saw them — the only
+// session-less surface on the app with no rate limit at all, guarding "release earnings" and
+// "auto-complete bookings" behind a shared secret with unlimited guesses (lane:
+// internal-jobs-hardening, L1). Mounted HERE, before registerRoutes, rather than inside
+// internal.routes.ts, so internal-jobs-auth.http.test.ts — which mounts the bare router and fires
+// 30 deliberate 401s — keeps passing unmodified.
+app.use("/internal", internalJobsLimiter as RequestHandler);
 
 // CORS — explicit header control for all API routes.
 // Allowed origins are the Replit-hosted domains for this repl; fall back to the
