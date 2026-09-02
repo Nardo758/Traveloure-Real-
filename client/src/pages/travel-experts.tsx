@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +42,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { CLAIM_PROMPTS, type Daypart } from "@shared/neighborhood-claims";
+import {
+  ClaimCaptureForm,
+  captureCompleteness,
+  captureHasContent,
+  emptyCapture,
+  toSubmitPayload,
+  type CaptureDraft,
+} from "@/components/neighborhood-claims/claim-capture-form";
 import {
   saveApplicationDraft,
   loadApplicationDraft,
@@ -175,7 +184,6 @@ export default function TravelExpertsPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialAuthConnected, setSocialAuthConnected] = useState(false);
-  const [neighborhoodInput, setNeighborhoodInput] = useState("");
   
   // Check for influencer, auth, and expert type query parameters
   const urlParams = new URLSearchParams(window.location.search);
@@ -224,6 +232,11 @@ export default function TravelExpertsPage() {
     agreeToTerms: false,
     // Local Expert specific fields
     neighborhoods: [] as string[],
+    // Field-knowledge claims (ruling 2026-08-29-neighborhood-claims): picked from city_neighborhoods,
+    // never free-typed. `neighborhoods` above stays in sync (names) for local_expert_forms.
+    neighborhoodClaims: [] as { neighborhoodId: string; name: string; daypart: Daypart }[],
+    neighborhoodCapture: null as CaptureDraft | null,
+    neighborhoodConsent: false,
     localityProof: "",
     knowledgeProofAnswers: ["", "", ""] as string[],
     localSpecialties: [] as string[],
@@ -245,6 +258,35 @@ export default function TravelExpertsPage() {
   const [formData, setFormData] = useState(() =>
     savedDraft ? { ...defaultFormData, ...savedDraft.formData } : defaultFormData
   );
+
+  // Field-knowledge picker source: the public city_neighborhoods catalog (guests fill this form
+  // before signing in, so the authenticated options endpoint can't be used here). Filtered by the
+  // typed city, case-insensitively. An empty result is the honest D5 state: the step is skippable.
+  const { data: cityNeighborhoodsData } = useQuery<{ data: Array<{ id: string; city: string; country: string; name: string; slug: string; defaultDaypart: string | null }> }>({
+    queryKey: ["/api/city-neighborhoods", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/city-neighborhoods?limit=200", { credentials: "include" });
+      if (!res.ok) throw new Error("Couldn't load neighborhoods");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: isLocalExpert,
+  });
+  const neighborhoodOptions = useMemo(() => {
+    const c = formData.city.trim().toLowerCase();
+    if (!c) return [] as Array<{ id: string; name: string; slug: string; daypart: Daypart }>;
+    return (cityNeighborhoodsData?.data ?? [])
+      .filter((n) => n.city.trim().toLowerCase() === c)
+      .map((n) => ({ id: n.id, name: n.name, slug: n.slug, daypart: ((n.defaultDaypart as Daypart | null) ?? "evening") }));
+  }, [cityNeighborhoodsData, formData.city]);
+  const toggleNeighborhoodClaim = (opt: { id: string; name: string; daypart: Daypart }) => {
+    const has = formData.neighborhoodClaims.some((c) => c.neighborhoodId === opt.id);
+    const nextClaims = has
+      ? formData.neighborhoodClaims.filter((c) => c.neighborhoodId !== opt.id)
+      : [...formData.neighborhoodClaims, { neighborhoodId: opt.id, name: opt.name, daypart: opt.daypart }];
+    setFormData((prev) => ({ ...prev, neighborhoodClaims: nextClaims, neighborhoods: nextClaims.map((c) => c.name) }));
+  };
+  const firstClaim = formData.neighborhoodClaims[0] ?? null;
 
   // Fetch user data if authenticated via social login
   const { data: userData } = useQuery<any>({
@@ -341,7 +383,14 @@ export default function TravelExpertsPage() {
         case 1:
           return formData.firstName && formData.lastName && formData.email && formData.phone;
         case 2:
-          return !!(formData.city && formData.neighborhoods.length > 0 && formData.localityProof && formData.languages.length > 0);
+          // D5 (amended): a claim is required only when the catalog has neighborhoods for this city.
+          // No options ⇒ skippable (the server stamps no_neighborhoods_available_at at submit).
+          return !!(
+            formData.city &&
+            formData.localityProof &&
+            formData.languages.length > 0 &&
+            (neighborhoodOptions.length === 0 || formData.neighborhoodClaims.length > 0)
+          );
         case 3:
           return formData.knowledgeProofAnswers.every(a => a.trim().split(/\s+/).filter(w => w.length > 0).length >= 50);
         case 4:
@@ -455,10 +504,37 @@ export default function TravelExpertsPage() {
         youtubeLink: formData.youtubeLink,
         socialFollowers,
       };
-      return apiRequest("POST", "/api/expert-application", applicationData);
+      const res = await apiRequest("POST", "/api/expert-application", applicationData);
+      // Field-knowledge claims ride the same submit: each picked neighborhood becomes a claim
+      // (= "claimed"); the first one's answers are saved, and sent when complete and consented.
+      // Best-effort — the application is already in; anything that fails here is finished in
+      // the console's Neighborhoods panel.
+      if (isLocalExpert && formData.neighborhoodClaims.length > 0) {
+        try {
+          for (let idx = 0; idx < formData.neighborhoodClaims.length; idx++) {
+            const c = formData.neighborhoodClaims[idx];
+            const created = await apiRequest("POST", "/api/expert/neighborhood-claims", { neighborhoodId: c.neighborhoodId });
+            const body = (await created.json()) as { claim: { id: string } | null };
+            const claimId = body.claim?.id;
+            if (idx === 0 && claimId && formData.neighborhoodCapture && captureHasContent(formData.neighborhoodCapture)) {
+              await apiRequest("PUT", `/api/expert/neighborhood-claims/${claimId}/capture`, { capture: formData.neighborhoodCapture });
+              if (formData.neighborhoodConsent && captureCompleteness(formData.neighborhoodCapture).complete) {
+                await apiRequest("POST", `/api/expert/neighborhood-claims/${claimId}/submit`, { consent: true, capture: toSubmitPayload(formData.neighborhoodCapture) });
+              }
+            }
+          }
+        } catch (e: any) {
+          toast({
+            title: "Application saved — neighborhoods need a second look",
+            description: "We couldn't save every neighborhood answer. You can finish them any time in your console under Neighborhoods.",
+          });
+        }
+      }
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/service-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/neighborhood-claims"] });
       // Gating the status query on isAuthenticated (below) means it can fetch and
       // cache a "no form yet" result right after sign-in but before submit; without
       // this invalidation, /expert-status's client-side nav (same QueryClient, no
@@ -904,56 +980,73 @@ export default function TravelExpertsPage() {
                   />
                 </div>
 
-                {/* Neighbourhoods tag input */}
+                {/* Neighborhoods — picked from the catalog (ruling 2026-08-29-neighborhood-claims) */}
                 <div>
                   <Label className="text-[#374151] mb-1 block">
-                    Neighbourhoods You Know Deeply <span className="text-red-500">*</span>
+                    Neighbourhoods You Know Deeply {neighborhoodOptions.length > 0 && <span className="text-red-500">*</span>}
                   </Label>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Be specific — not "Tokyo" but "Shimokitazawa, Kōenji, Yanaka". Press <kbd className="px-1 py-0.5 rounded bg-gray-100 text-xs">Enter</kbd> or comma to add each one.
-                  </p>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {formData.neighborhoods.map((n) => (
-                      <Badge key={n} className="bg-primary text-white gap-1 pr-1" data-testid={`badge-neighborhood-${n}`}>
-                        {n}
-                        <button
-                          type="button"
-                          onClick={() => updateFormData("neighborhoods", formData.neighborhoods.filter(x => x !== n))}
-                          className="ml-1 rounded-full hover:bg-white/20 p-0.5"
-                          aria-label={`Remove ${n}`}
-                        >
-                          ×
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                  <Input
-                    value={neighborhoodInput}
-                    onChange={(e) => setNeighborhoodInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.key === "Enter" || e.key === ",") && neighborhoodInput.trim()) {
-                        e.preventDefault();
-                        const val = neighborhoodInput.trim().replace(/,$/, "");
-                        if (val && !formData.neighborhoods.includes(val)) {
-                          updateFormData("neighborhoods", [...formData.neighborhoods, val]);
-                        }
-                        setNeighborhoodInput("");
-                      }
-                    }}
-                    onBlur={() => {
-                      if (neighborhoodInput.trim()) {
-                        const val = neighborhoodInput.trim().replace(/,$/, "");
-                        if (val && !formData.neighborhoods.includes(val)) {
-                          updateFormData("neighborhoods", [...formData.neighborhoods, val]);
-                        }
-                        setNeighborhoodInput("");
-                      }
-                    }}
-                    placeholder="Type a neighbourhood and press Enter…"
-                    className="h-12 border-border"
-                    data-testid="input-neighborhood"
-                  />
+                  {!formData.city.trim() ? (
+                    <p className="text-xs text-muted-foreground">Tell us your city first and we'll show you its neighbourhoods.</p>
+                  ) : neighborhoodOptions.length === 0 ? (
+                    <div className="mt-2 p-3 rounded-lg border border-border bg-gray-50 text-sm text-[#374151]" data-testid="neighborhoods-unavailable">
+                      We don't have {formData.city.trim()}'s neighbourhoods mapped yet. You can continue — we'll ask you to claim yours once they're in.
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground mb-2">Pick every one you know block by block. Others can claim the same neighbourhood — this is a join, not a territory.</p>
+                      <div className="flex flex-wrap gap-2">
+                        {neighborhoodOptions.map((opt) => {
+                          const picked = formData.neighborhoodClaims.some((c) => c.neighborhoodId === opt.id);
+                          return (
+                            <Badge
+                              key={opt.id}
+                              variant={picked ? "default" : "outline"}
+                              className={cn("cursor-pointer px-3 py-2", picked ? "bg-primary hover:bg-primary/90" : "border-border hover:border-primary")}
+                              onClick={() => toggleNeighborhoodClaim(opt)}
+                              data-testid={`badge-neighborhood-${opt.slug}`}
+                            >
+                              {opt.name}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
+
+                {/* Show us {neighborhood} — the four prompts, inline for the first pick; finish later is fine */}
+                {firstClaim && (
+                  <div className="rounded-xl border border-border p-4 sm:p-6 space-y-5" data-testid="onboarding-claim-capture">
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">{CLAIM_PROMPTS.heading(firstClaim.name)}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Three short things about {firstClaim.name}. You can finish this later in your console — leaving it blank keeps {firstClaim.name} claimed.
+                        {formData.neighborhoodClaims.length > 1 && " We'll ask about your other neighbourhoods there too."}
+                      </p>
+                    </div>
+                    <ClaimCaptureForm
+                      neighborhoodName={firstClaim.name}
+                      daypart={firstClaim.daypart}
+                      value={formData.neighborhoodCapture ?? emptyCapture()}
+                      onChange={(next) => updateFormData("neighborhoodCapture", next)}
+                      compact
+                    />
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="neighborhood-consent"
+                        checked={formData.neighborhoodConsent}
+                        onCheckedChange={(v) => updateFormData("neighborhoodConsent", v === true)}
+                        data-testid="checkbox-neighborhood-consent"
+                      />
+                      <Label htmlFor="neighborhood-consent" className="text-sm leading-snug text-muted-foreground">
+                        I'm happy for Traveloure to use what I share here — my places may appear with my name on them and my {firstClaim.daypart.replace("_", " ")} may be offered to travelers as a starting point.
+                      </Label>
+                    </div>
+                    {formData.neighborhoodCapture && captureHasContent(formData.neighborhoodCapture) && !captureCompleteness(formData.neighborhoodCapture).complete && (
+                      <p className="text-xs text-muted-foreground">Not finished yet — that's fine, we'll save it as a draft. Still needed: {captureCompleteness(formData.neighborhoodCapture).firstIssue}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* How are you local? */}
                 <div>
@@ -1015,7 +1108,7 @@ export default function TravelExpertsPage() {
               <CardHeader>
                 <CardTitle className="text-2xl text-foreground">Knowledge Proof</CardTitle>
                 <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                  <strong>Be specific.</strong> Vague answers that could come from a guidebook won't pass review. Our team is looking for the kind of insight only a real local can give — including where to avoid and why.
+                  <strong>Be specific.</strong> Vague answers that could come from a guidebook won't be enough. Our team is looking for the kind of insight only a real local can give — including where to avoid and why.
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">

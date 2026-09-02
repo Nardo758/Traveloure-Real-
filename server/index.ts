@@ -12,6 +12,7 @@ import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { seedLandingMomentDemo } from "./seeds/landing-moment-demo.seed";
 import { seedLandingHeroDemo } from "./seeds/landing-hero-demo.seed";
+import { isRatifyOnlyTriggerPresent } from "./services/neighborhood-claims.service";
 import { seedTravelPulseData } from "./seed-travelpulse";
 import { seedCityNeighborhoods } from "./seeds/city-neighborhoods.seed";
 import { seedPopularCitiesContent } from "./seeds/popular-cities-content.seed";
@@ -367,6 +368,17 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed city neighborhoods");
+  }
+
+  // expert_neighborhoods one-writer guard (migration 272; ruling 2026-08-29-neighborhood-claims).
+  // The trigger is not a drizzle-managed object, so if a deploy push ever removed it the migration
+  // (already stamped) would never recreate it — say so loudly rather than silently losing the guard.
+  try {
+    if (!(await isRatifyOnlyTriggerPresent())) {
+      logger.error("expert_neighborhoods_ratify_only_trg is MISSING — expert_neighborhoods has lost its one-writer guard (migration 272)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
   }
 
   try {
