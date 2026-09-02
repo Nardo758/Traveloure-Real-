@@ -20,19 +20,19 @@ Line numbers are `as-of` the SHA above and will drift.
 | Sev | # | Finding | State |
 |---|---|---|---|
 | P1 | 1 | Affiliate partner writes were world-writable (admin-guard hole + §18 rate) | **PR #704** |
-| P1 | 2 | SSRF via the affiliate scraper's unrestricted outbound fetch | open |
+| P1 | 2 | SSRF via the affiliate scraper's unrestricted outbound fetch | **PR #711** |
 | P1 | 3 | `track-click` trusted a body `userId` and skipped the partner-approval gate | **PR #705** |
-| P2 | 4 | `user-experience-items` IDOR (PATCH/DELETE, no ownership check) | open |
+| P2 | 4 | `user-experience-items` IDOR (PATCH/DELETE, no ownership check) | **PR #712** |
 | P2 | 5 | `PATCH /api/user-experiences/:id` took the raw body — owner reassignable | **PR #707** |
-| P2 | 6 | `GET /api/user-experiences/:id` read IDOR | open |
+| P2 | 6 | `GET /api/user-experiences/:id` read IDOR | **PR #712** |
 | P2 | 7 | Custom venue owner was a body field (§19 denylist schema) | **PR #706** |
-| P2 | 8 | Admin tier on `GET /api/bookings/:id` reads a 7-day-stale session role | open |
+| P2 | 8 | Admin tier on `GET /api/bookings/:id` reads a 7-day-stale session role | **PR #714** |
 | P2 | 9 | Nine LLM endpoints with no AI rate limit and no budget enforcement | open |
 | P3 | 10 | Seven unauthorized trip-mutation twins in `trips.routes.ts` (shadowed today) | open |
 | P3 | 11 | A CI-only seed endpoint is live in production | open |
 | P3 | 12 | Five unannotated affiliate margin literals, invisible to the fee gate | open |
 | P3 | 13 | CORS fails open when `REPLIT_DOMAINS` is empty | open |
-| P3 | 14 | Two admin checks read `req.user.role` instead of the DB | open |
+| P3 | 14 | Two admin checks read `req.user.role` instead of the DB | **PR #714** |
 | P3 | 15 | `POST /api/optimization-preview` accepts an unbounded `items` array | open |
 | P3 | 16 | Landing moment attribution drops every email-auth user | open |
 | P3 | 17 | Importing a route module starts a background scheduler | open |
@@ -42,6 +42,8 @@ Four PRs are open, one per finding, each off `origin/main` with a negative test 
 unfixed code. Everything marked *open* is left for prioritisation — no fix was pushed for it.
 
 ---
+
+**Close-out 2026-09-02 (as-of `4124963`):** findings 2, 4, 6, 8 and 14 landed via PRs #711, #712 and #714 (each with negative tests; see the PR bodies for proofs and stated negative space). #714 also converted nine further session-role authorization sites of the same shape and filed the ~20 `admin.routes.ts` `claims.role` checks behind the blanket guard as a functional follow-up (OIDC admins likely 403). Still open: 9, 10, 11, 12, 13, 15, 16, 17.
 
 ## P1
 
@@ -65,7 +67,7 @@ rate lookup without touching an approved row.
 `createInsertSchema` call sites and this route hand-destructures; its line-level pass needs a money-named file
 or handler. Both are stated blind spots.
 
-### 2. SSRF via the affiliate scraper — **open**
+### 2. SSRF via the affiliate scraper — **PR #711**
 
 `server/services/affiliate-scraper.service.ts:318` (`fetchWebPage`), reached from
 `server/routes/content.routes.ts:7944` (`POST /api/affiliate/partners/:id/scrape`), via
@@ -99,7 +101,7 @@ deliberately keeps server-side.
 
 ## P2
 
-### 4. `user-experience-items` IDOR — **open**
+### 4. `user-experience-items` IDOR — **PR #712**
 
 `server/routes/content.routes.ts:1789, 1799`; `server/storage.ts:4135, 4143`
 
@@ -116,7 +118,7 @@ rating was set when it had company. Fix: enforce ownership in the UPDATE/DELETE 
 
 `server/routes/content.routes.ts:1732`; `server/storage.ts:4111`
 
-### 6. `GET /api/user-experiences/:id` read IDOR — **open**
+### 6. `GET /api/user-experiences/:id` read IDOR — **PR #712**
 
 `server/routes/content.routes.ts:1679`
 
@@ -129,7 +131,7 @@ into PR #707 (that one is a mass-assignment fix; this is an authorization fix on
 
 `shared/schema.ts:2532`; `server/routes/content.routes.ts:1002`
 
-### 8. Admin tier reads a stale session role — **open**
+### 8. Admin tier reads a stale session role — **PR #714**
 
 `server/utils/auth.ts:35` (`getSessionRole`); `server/routes/bookings.ts:49, 59, 71`;
 `server/replit_integrations/auth/replitAuth.ts:132–133`, `emailAuth.ts:153, 253`
@@ -209,7 +211,7 @@ credentialed XHR. This is defence-in-depth that has failed open, not an active s
 is medium and the reason is stated:** the deployed `REPLIT_DOMAINS` value could not be checked from this
 session. One `curl -I -H 'Origin: https://evil.example' https://www.traveloure.com/api/pricing` settles it.
 
-### 14. Admin checks reading `req.user.role` — **open**
+### 14. Admin checks reading `req.user.role` — **PR #714**
 
 `server/routes/content.routes.ts:6665, 6687`
 
