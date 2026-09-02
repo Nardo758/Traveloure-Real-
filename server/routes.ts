@@ -722,6 +722,7 @@ export async function registerRoutes(
     "/api/expert/analytics",
     "/api/expert/knowledge-nuggets",
     "/api/expert/assigned-trips",
+    "/api/expert/neighborhood-claims",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/verification-status",
@@ -4591,6 +4592,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json({
         neighborhoods: (form?.neighborhoods as string[]) || [],
         localityProof: form?.localityProof || "",
+        // Additive (ledger 2026-08-29-neighborhood-claims): the claim picker needs the expert's
+        // city to scope /api/cities/neighborhoods. Read-only here — the claims lane never writes
+        // through this endpoint.
+        city: form?.city || null,
       });
     } catch (err) {
       console.error("Error fetching expert neighborhoods:", err);
