@@ -59,7 +59,7 @@ jobs:
         run: ./scripts/ci/post-internal-jobs.sh
 
   hourly:
-    name: Hourly MONEY jobs (earnings-release, booking-auto-completion)
+    name: Hourly MONEY + integrity jobs (earnings-release, booking-auto-completion, score-neighborhood-claims)
     if: github.event.schedule == '0 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'hourly')
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -68,7 +68,7 @@ jobs:
       - name: POST the hourly money runners
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
-          ROUTES: "earnings-release booking-auto-completion"
+          ROUTES: "earnings-release booking-auto-completion score-neighborhood-claims"
         run: ./scripts/ci/post-internal-jobs.sh
 
   four-hourly:
