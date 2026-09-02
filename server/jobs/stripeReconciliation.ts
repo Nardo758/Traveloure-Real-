@@ -190,6 +190,11 @@ interface CartBookingRow {
    *  stamping paths act only on rows that already carry it). A stamped row without it has
    *  UNVERIFIABLE payment provenance — see the `payment_provenance_unverified` classification. */
   hasStripeAttempt: boolean;
+  /** Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler service fee CHARGED on this row
+   *  (0 when covered). It rode the Stripe charge but is deliberately NOT in total_amount/platform_fee
+   *  (those are provider-facing), so the expected-charge derivation must add it back or every
+   *  fee-bearing checkout would read as an amount_mismatch. */
+  travelerFeeCharged: string | null;
 }
 
 function mapCartRow(r: any): CartBookingRow {
@@ -204,13 +209,15 @@ function mapCartRow(r: any): CartBookingRow {
     createdAt: r.created_at ? new Date(String(r.created_at)) : null,
     hasReconciliationException: Boolean(r.has_recon_exception),
     hasStripeAttempt: Boolean(r.has_stripe_attempt),
+    travelerFeeCharged: r.traveler_fee_charged == null ? null : String(r.traveler_fee_charged),
   };
 }
 
 const CART_COLUMNS = sql`
   id, status, stripe_payment_intent_id, total_amount, platform_fee, idempotency_key,
   traveler_id, created_at, (booking_details ? 'reconciliationException') AS has_recon_exception,
-  (COALESCE(booking_details, '{}'::jsonb) ? 'stripeAttemptAt') AS has_stripe_attempt
+  (COALESCE(booking_details, '{}'::jsonb) ? 'stripeAttemptAt') AS has_stripe_attempt,
+  booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged
 `;
 
 // ── The job ──────────────────────────────────────────────────────────────────────────────────
@@ -485,7 +492,10 @@ async function scanCartRail(args: {
     const chargeable = linked.filter((r) => !TERMINAL_STATUSES.includes(r.status ?? ""));
     if (chargeable.length > 0) {
       const expected = chargeable.reduce(
-        (sum, r) => sum + parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0"),
+        // Ruling 2026-09-02: + the traveler service fee actually charged (0 per covered line). It rode
+        // the PaymentIntent but is not in total_amount/platform_fee, so it must be added back here or
+        // a fee-bearing checkout reads as a false amount_mismatch.
+        (sum, r) => sum + parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0") + parseFloat(r.travelerFeeCharged || "0"),
         0,
       );
       const actual = centsToDollars(pi.amount_received || pi.amount);
@@ -526,7 +536,7 @@ async function scanCartRail(args: {
         severity: "critical",
         dedupeKey: `cart:booking_confirmed_no_pi:${r.id}`,
         bookingId: r.id,
-        expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")),
+        expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0") + parseFloat(r.travelerFeeCharged || "0")),
         details: {
           bookingStatus: r.status,
           note:
@@ -617,7 +627,7 @@ async function scanCartRail(args: {
       dedupeKey: `cart:payment_provenance_unverified:${r.id}:${r.stripePaymentIntentId}`,
       bookingId: r.id,
       paymentIntentId: r.stripePaymentIntentId,
-      expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")),
+      expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0") + parseFloat(r.travelerFeeCharged || "0")),
       currency: pi?.currency ?? null,
       details: {
         bookingStatus: r.status,

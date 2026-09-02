@@ -25,6 +25,21 @@
 > regardless (it simply never fires without a token-bearing sub_id to match against). See the
 > struck F-4/F-5 entries below.
 >
+> **Update (branch `claude/traveler-fee-collection`) — traveler service fee now CHARGED (ruling
+> 2026-09-02-traveler-fee-applies-everywhere).** The traveler service fee (`resolveTravelerServiceFee`,
+> rate + $25 cap from the `traveler_service_fee` band, §8/§14) is now a real charge on every
+> marketplace path, per booking: **cart/direct checkout** (`payments.routes.ts` — added to the
+> Stripe total + fee-preview, ledgered at the authorization stamp), the **legacy `bookings` rail**
+> (`booking.service.ts` — charged in processInstantBookings, ledgered at `confirmBookingPayment`),
+> **platform transport** (`stripe.service.ts` — its own disclosed Checkout line item, ledgered at
+> `handleStripePaymentSuccess`), and the **expert review service** (`booking-actions.ts` — added to
+> the PI, ledgered at request confirmation, revenue split so the fee isn't double-counted). It is
+> deliberately NOT in `total_amount`/`platform_fee` (provider-facing); the reconciliation job's
+> expected-charge derivation adds `booking_details.travelerServiceFee.charged` back. Suppression
+> (Trip Pass / rails) is a two-row net-zero `fee_ledger` event — `traveler_service_fee (+X)` plus
+> `fee_waiver (−X)` tagged `covered_by` (migration 274 adds the type; the amount<>0 CHECK stands).
+> Refunds are UNCHANGED (fee currently non-refundable — FOLLOWUPS). CI: `check-traveler-fee-coverage.cjs`.
+>
 > **Update (branch `claude/money-verify-cluster`) — verification lane, #846/#874/#875/#876/#877:**
 > - **#846 (booking confirm-payment double-earnings) — ALREADY-SAFE, proven, not a bug.**
 >   `bookingService.confirmBookingPayment` (`booking.service.ts` ~589-772) already claims the

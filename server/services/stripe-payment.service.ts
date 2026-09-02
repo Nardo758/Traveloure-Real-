@@ -1086,7 +1086,10 @@ class StripePaymentService {
     serviceType: 'review' | 'review_and_book' | 'full_concierge',
     amount: number,
     notes: string,
-    currency: string = 'usd'
+    currency: string = 'usd',
+    /** Ruling 2026-09-02 (path 5): the traveler-fee snapshot, carried in the PI metadata so the
+     *  request-confirmation step can ledger it from Stripe's own word (server-verified, §14). */
+    travelerServiceFee?: Record<string, unknown>,
   ) {
     try {
       const serviceTitles = {
@@ -1112,6 +1115,9 @@ class StripePaymentService {
             destination,
             serviceType,
             notes: notes.substring(0, 450),
+            // Ruling 2026-09-02 (path 5): the traveler-fee snapshot as a compact JSON string, read
+            // back at request confirmation to write the fee_ledger row (bounded well under 500 chars).
+            ...(travelerServiceFee ? { travelerServiceFee: JSON.stringify(travelerServiceFee).substring(0, 480) } : {}),
           },
           description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
           receipt_email: userEmail,

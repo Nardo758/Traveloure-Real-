@@ -128,6 +128,29 @@ router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res)
     const amount = await resolveExpertReviewAmount(serviceType, ctx.totalCost);
     if (amount == null) return res.status(400).json({ error: 'Invalid service tier' });
 
+    // ── Traveler service fee (ruling 2026-09-02, path 5) ──────────────────────────────────────
+    // On the expert-review amount, from the ONE band-driven resolver (§8/§14), $25 cap. Trip Pass
+    // suppression via coversAction on the variant's trip (nullable — a comparison need not be tied to
+    // a saved trip). Added to the PI amount; the snapshot rides the PI metadata (Stripe's own word) so
+    // confirmation can ledger it. Covered → charged 0, waiver recorded.
+    const { resolveTravelerServiceFee } = await import('../services/fee-resolution.service');
+    const { coversAction } = await import('../services/trip-entitlement.service');
+    const feeCovered = ctx.tripId
+      ? await coversAction(ctx.tripId, 'traveler_service_fee').catch(() => false)
+      : false;
+    const travelerFeeResolved = await resolveTravelerServiceFee(amount);
+    const feeChargedAmt = feeCovered ? 0 : travelerFeeResolved.amount;
+    const travelerServiceFeeSnapshot = {
+      charged: feeChargedAmt,
+      wouldHaveBeen: travelerFeeResolved.amount,
+      rate: travelerFeeResolved.rate,
+      bandId: travelerFeeResolved.bandId,
+      bandKey: travelerFeeResolved.bandKey,
+      capApplied: travelerFeeResolved.capApplied,
+      waived: feeCovered,
+      waiverBasis: feeCovered ? 'trip_pass' : null,
+    };
+
     const paymentIntent = await stripePaymentService.createExpertServicePaymentIntent(
       sessionUserId,
       userEmail || `user${sessionUserId}@traveloure.com`,
@@ -135,8 +158,10 @@ router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res)
       comparisonId,
       destination,
       serviceType,
-      amount,
-      notes || ''
+      amount + feeChargedAmt,
+      notes || '',
+      'usd',
+      travelerServiceFeeSnapshot,
     );
 
     res.json(paymentIntent);
@@ -206,7 +231,19 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       ) {
         return res.status(402).json({ error: 'Payment not verified for this request' });
       }
-      verifiedFee = pi.amount / 100;
+      // Ruling 2026-09-02 (path 5): the PI amount now includes the traveler service fee. Split it so
+      // the expert-review REVENUE event records the expert's portion only, and the traveler fee is
+      // recorded once in fee_ledger — never double-counted across the two systems. The snapshot is
+      // the PI's own metadata (Stripe's word — server-verified, §14).
+      let travelerFeeSnapshot: any = null;
+      try {
+        const rawSnap = (pi.metadata as any)?.travelerServiceFee;
+        if (rawSnap) travelerFeeSnapshot = typeof rawSnap === 'string' ? JSON.parse(rawSnap) : rawSnap;
+      } catch {
+        travelerFeeSnapshot = null;
+      }
+      const travelerFeeCharged = Number(travelerFeeSnapshot?.charged ?? 0) || 0;
+      verifiedFee = pi.amount / 100 - travelerFeeCharged; // the expert-review portion
       try {
         const { revenueTrackingService } = await import('../services/revenue-tracking.service');
         await revenueTrackingService.recordRevenueEventOnce({
@@ -218,6 +255,16 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
         });
       } catch (revErr) {
         console.error('[expert-requests] revenue record failed (non-fatal):', revErr);
+      }
+
+      // The traveler service fee leg (idempotent per PI id; best-effort — payment is verified).
+      try {
+        if (travelerFeeSnapshot) {
+          const { recordExpertReviewTravelerFeeLedger } = await import('../services/fee-ledger.service');
+          await recordExpertReviewTravelerFeeLedger({ paymentIntentId: pi.id, snapshot: travelerFeeSnapshot, actor: 'expert_review_confirm' });
+        }
+      } catch (feeLedgerErr) {
+        console.error('[expert-requests] traveler-fee ledger write failed (non-fatal):', feeLedgerErr);
       }
     }
 

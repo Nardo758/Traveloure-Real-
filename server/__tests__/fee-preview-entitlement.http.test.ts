@@ -1,26 +1,25 @@
 /**
- * FEE-PREVIEW × TRIP-PASS ENTITLEMENT — informational-waiver contract (Lane 4, small-filed rider 3b).
+ * FEE-PREVIEW × TRIP-PASS ENTITLEMENT — the traveler fee is BILLED and the waiver is a REAL reduction
+ * (ruling 2026-09-02-traveler-fee-applies-everywhere; was Lane 4 small-filed rider 3b's informational
+ * contract, now flipped by the ruling).
  *
  * GET /api/cart/fee-preview accepts an optional `?tripId=` and, when the trip holds an active Trip
  * Pass, reports a Trip Pass waiver via the SAME `coversAction(tripId, "traveler_service_fee")` the
- * charge path calls (payments.routes.ts). What this proves is the TRUTH of that surface today, which
- * is subtle and worth pinning exactly:
+ * charge path calls (payments.routes.ts). The traveler service fee is now a term of the quoted total
+ * (a `travelerFee` line), computed by the SAME `resolveTravelerServiceFee` the charge loop uses, so
+ * preview == charge:
  *
- *   - The D3 traveler-service-fee is NOT billed on the direct path today (the handler stamps
- *     `billedOnDirectPathToday: false` and its own comment says the waiver "never changes
- *     platformFeeTotal"). So the waiver is INFORMATIONAL: it reports what WOULD have been charged
- *     (`wouldHaveBeenAmountTotal`), and the cart `total` is UNCHANGED whether or not a pass applies.
- *   - Filed alongside as a finding (`docs/findings/FEE_NOT_BILLED_ON_DIRECT_PATH.md`): because the
- *     fee isn't collected on this path, a pass-holder and a non-holder pay the same total here —
- *     which is a revenue question, not a bug for this test to paper over. This test asserts the
- *     honest current behaviour so a future change that STARTS billing (and thus makes the waiver
- *     move the total) will surface here loudly rather than silently.
+ *   - Uncovered: the preview `total` INCLUDES the fee (`travelerFee > 0`).
+ *   - Covered (active pass): the fee is 0, the `total` is REDUCED by exactly the waived amount, and
+ *     the waiver reports `billedOnDirectPathToday: true` + `wouldHaveBeenAmountTotal` (what the pass
+ *     suppressed) + a `label` line for the cart. This is the former tripwire flipped to expectation.
  *
  * Assertions (all against the real booted route, buyer's own session + cart):
- *   A. No tripId → `tripPassFeeWaiver: null`, and a baseline `total` T.
+ *   A. No tripId → `tripPassFeeWaiver: null`, and a baseline `total` T (which now includes the fee).
  *   B. tripId of a trip with NO pass → still `null`, total still T (a tripId alone never waives).
  *   C. tripId of a trip WITH an active pass → waiver present (`waived:true`, `basis:"trip_pass"`,
- *      `wouldHaveBeenAmountTotal > 0`, `billedOnDirectPathToday:false`) AND `total` === T (unchanged).
+ *      `wouldHaveBeenAmountTotal > 0`, `billedOnDirectPathToday:true`), `travelerFee === 0`, AND
+ *      `total === T − wouldHaveBeenAmountTotal` (a real reduction).
  *
  * SERVER REQUIRED (JOURNEY_BASE_URL, default :5000) + DISPOSABLE DB ONLY. Every row is created and
  * deleted by this file. Run solo against a local dev server:
@@ -142,8 +141,10 @@ test("B: a tripId with NO pass never waives, and the total is unchanged", async 
   assert.equal(withTrip.total, baseline.total, "an unpassed tripId must not change the total");
 });
 
-test("C: a tripId WITH an active pass reports an informational waiver — flag + counterfactual, total UNCHANGED", async () => {
+test("C: a tripId WITH an active pass REDUCES the total by the waived fee — the waiver is real now", async () => {
   const baseline = await feePreview();
+  // Baseline (no pass) now CHARGES the traveler service fee, so it is a term of the total.
+  assert.ok(baseline.travelerFee > 0, `uncovered baseline must charge a traveler fee, got ${baseline.travelerFee}`);
 
   const { created } = await grantTripPass({
     tripId: tripPassId,
@@ -157,10 +158,15 @@ test("C: a tripId WITH an active pass reports an informational waiver — flag +
   assert.ok(w, "an active pass must surface a tripPassFeeWaiver");
   assert.equal(w.waived, true, "waived flag");
   assert.equal(w.basis, "trip_pass", "waiver basis");
-  assert.ok(w.wouldHaveBeenAmountTotal > 0, `counterfactual fee should be > 0, got ${w.wouldHaveBeenAmountTotal}`);
-  // The truth this rider pins: the fee is NOT billed on the direct path today, so the waiver is
-  // informational and does NOT reduce the total. If someone starts billing it, this flips and the
-  // assertion below fails loudly (that is the intended tripwire — see the finding doc).
-  assert.equal(w.billedOnDirectPathToday, false, "the D3 fee is not billed on the direct path today");
-  assert.equal(covered.total, baseline.total, "informational waiver must NOT change the cart total today");
+  assert.ok(w.wouldHaveBeenAmountTotal > 0, `waived fee should be > 0, got ${w.wouldHaveBeenAmountTotal}`);
+  // Ruling 2026-09-02-traveler-fee-applies-everywhere: the fee IS billed on the direct path now, so
+  // the waiver is a REAL reduction — the covered total drops by exactly the waived fee, and the
+  // covered cart charges no traveler fee. This is the tripwire flipped to the expectation.
+  assert.equal(w.billedOnDirectPathToday, true, "the traveler fee is now billed on the direct path");
+  assert.equal(covered.travelerFee, 0, "a fully covered cart charges no traveler fee");
+  assert.equal(
+    covered.total,
+    Math.round((baseline.total - w.wouldHaveBeenAmountTotal) * 100) / 100,
+    "an active pass must reduce the total by exactly the waived fee",
+  );
 });

@@ -129,6 +129,22 @@ jobs:
       - name: Itinerary rebuild-delete coverage guard
         run: node scripts/check-itinerary-rebuild-guard.cjs
 
+  traveler-fee-coverage:
+    name: traveler-fee-coverage (ruling 2026-09-02 — every charge path bills + ledgers the fee)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a known traveler-charging path stops resolving the fee via resolveTravelerServiceFee
+      # or stops writing it to fee_ledger via a shared writer. Node built-ins only — no npm ci.
+      # See ruling 2026-09-02-traveler-fee-applies-everywhere. Predicate fixtures FIRST (§18d).
+      - name: Traveler-fee coverage predicate self-test
+        run: node scripts/check-traveler-fee-coverage.cjs --self-test
+      - name: Traveler-fee coverage gate
+        run: node scripts/check-traveler-fee-coverage.cjs
+
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest

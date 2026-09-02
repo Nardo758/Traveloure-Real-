@@ -1369,4 +1369,12 @@ export const MIGRATION_FILES = [
   // absence-compared-to-absence is the failure this whole lane exists to close. Additive, no
   // CHECK; table + index declared in shared/schema.ts for publish durability.
   "273_job_heartbeats.sql",
+  // Ruling 2026-09-02-traveler-fee-applies-everywhere (BLOCKER 1, cond 1): adds the `fee_waiver`
+  // fee_type so Trip-Pass/rails suppression is a two-row net-zero event (traveler_service_fee +X,
+  // fee_waiver -X tagged covered_by) WITHOUT relaxing the migration-179 amount<>0 CHECK. Additive
+  // CHECK swap only (no table/index touched) → no publish-push trap; FEE_LEDGER_TYPES kept in sync.
+  // RENUMBERED 271→272→273→274: main landed 271 (#698), 272 (#699) and 273_job_heartbeats (#702) first (each merge bumped this
+  // to 272), then #699 (expert-field-knowledge v2) claimed 272 for its own migration, so this cedes
+  // to 273. All three are independent additive migrations — the order between them carries no behavior.
+  "274_fee_ledger_fee_waiver_type.sql",
 ] as const;

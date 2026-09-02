@@ -431,7 +431,23 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
 
   // The shared recipe gives the base platform-fee component (excludes concierge, same as R3).
   const expected = await recipeExpectation(price);
-  const expectedTotal = price + Number(expected.platformFee) + expectedConciergeFee;
+
+  // Traveler service fee (ruling 2026-09-02-traveler-fee-applies-everywhere): now a DISCLOSED line
+  // AND a term of the quoted total. Server-derived from the traveler_service_fee band (no fee
+  // literal), cap-aware — mirrors resolveTravelerServiceFee's own recipe (rate, capped by max_amount).
+  const tfBandRow = await db.execute(sql`
+    SELECT CAST(default_rate AS FLOAT) AS rate, CAST(max_amount AS FLOAT) AS max_amount
+    FROM fee_bands
+    WHERE band_key = 'traveler_service_fee' AND rate_type = 'percent' AND is_active = true
+    LIMIT 1
+  `);
+  const tfRate = Number((tfBandRow.rows[0] as any)?.rate ?? 0);
+  const tfCap = (tfBandRow.rows[0] as any)?.max_amount != null ? Number((tfBandRow.rows[0] as any).max_amount) : null;
+  assert.ok(tfRate > 0, "traveler_service_fee band must be active with a positive rate so the preview fee is discriminable");
+  const uncappedTravelerFee = price * tfRate;
+  const expectedTravelerFee = tfCap !== null && uncappedTravelerFee > tfCap ? tfCap : uncappedTravelerFee;
+
+  const expectedTotal = price + Number(expected.platformFee) + expectedConciergeFee + expectedTravelerFee;
 
   // Cart the service, then call the preview endpoint.
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
@@ -444,6 +460,7 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
     subtotal: number;
     platformFeeTotal: number;
     conciergeFeeTotal: number;
+    travelerFee: number;
     total: number;
     itemCount: number;
   };
@@ -460,9 +477,14 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
     "fee-preview must expose the concierge facilitation fee separately so travelers are never surprised",
   );
   assert.equal(
+    preview.travelerFee.toFixed(2),
+    expectedTravelerFee.toFixed(2),
+    "fee-preview must disclose the traveler service fee as its own line (ruling 2026-09-02) so travelers are never surprised",
+  );
+  assert.equal(
     preview.total.toFixed(2),
     expectedTotal.toFixed(2),
-    "fee-preview total must equal subtotal + platformFeeTotal + conciergeFeeTotal — matching what checkout would charge",
+    "fee-preview total must equal subtotal + platformFeeTotal + conciergeFeeTotal + travelerFee — matching what checkout would charge",
   );
 
   // Clean up the cart so subsequent tests start clean.

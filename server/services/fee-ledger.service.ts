@@ -98,6 +98,225 @@ export function railsCommissionLedgerKey(bookingId: string): string {
   return `fee-ledger:rails-commission:${bookingId}`;
 }
 
+/** The traveler-service-fee row (+X) and its optional waiver leg (−X). One deterministic key each,
+ *  so a retry / re-drive / webhook-vs-inline race lands EXACTLY ONE of each (same idempotency story
+ *  as the rails commission row above). */
+export function travelerServiceFeeLedgerKey(bookingId: string): string {
+  return `fee-ledger:traveler-fee:${bookingId}`;
+}
+export function travelerServiceFeeWaiverLedgerKey(bookingId: string): string {
+  return `fee-ledger:traveler-fee-waiver:${bookingId}`;
+}
+
+/**
+ * Record the TRAVELER SERVICE FEE event for every booking whose `booking_details.travelerServiceFee`
+ * snapshot says a fee was resolved (ruling 2026-09-02-traveler-fee-applies-everywhere).
+ *
+ * READS THE SNAPSHOT, NEVER RE-RESOLVES — identical posture to `recordRailsFeeLedger`: the fee was
+ * stamped server-side at claim time from `resolveTravelerServiceFee` (rate + cap from `fee_bands`,
+ * §8/§14), and the ledger must record what was CHARGED, not what a re-priced band would resolve now.
+ *
+ * TWO SHAPES, ONE CALLER (BLOCKER 1, netting):
+ *   - NOT covered → ONE `traveler_service_fee (+X)` row, borne by the traveler.
+ *   - covered (Trip Pass or rails) → that SAME `+X` row PLUS a `fee_waiver (−X)` row tagged
+ *     `covered_by:trip_pass|rails`, borne by the platform (which gives up the revenue). The pair
+ *     nets to $0, so the migration-179 invariant `traveler_paid − provider_credited = SUM(amount)`
+ *     holds while the `amount <> 0` CHECK stays intact — the suppressed total is queryable, never
+ *     silence.
+ *
+ * A booking with no positive fee (a $0 line) writes nothing — `appendFeeLedgerRows` skips a zero row.
+ */
+/**
+ * Build the fee-ledger rows for ONE booking's traveler-fee snapshot. Shared by both rails
+ * (service_bookings and the legacy `bookings` table) so the +X / −X shape is written ONE way.
+ * Returns 0 rows (no fee / no snapshot), 1 row (uncovered), or 2 rows (covered net-zero).
+ */
+export function buildTravelerServiceFeeRows(
+  t: any,
+  opts: {
+    /** Seeds the deterministic idempotency keys. For a booking this is the booking id; for a
+     *  non-booking source (expert review) it is the PaymentIntent id. */
+    keySeed: string;
+    /** The `booking_id` COLUMN — null for a non-booking event (fee_ledger allows it). */
+    bookingId: string | null;
+    sourceType: string;
+    /** `source_id` — defaults to `keySeed`. */
+    sourceId?: string;
+    acquisitionRef?: string | null;
+    stripePaymentRef?: string | null;
+    actor: string;
+  },
+): { rows: FeeLedgerAppendRow[]; considered: number } {
+  if (!t) return { rows: [], considered: 0 };
+  // The fee that WOULD have been charged at the resolved band rate + cap. This is the amount of the
+  // +X row in both cases; `charged` (0 when waived) is what actually rode the Stripe total.
+  const wouldHaveBeen = round2(Number(t.wouldHaveBeen ?? t.charged ?? 0));
+  if (!Number.isFinite(wouldHaveBeen) || wouldHaveBeen <= 0) return { rows: [], considered: 0 };
+  const { keySeed, bookingId } = opts;
+  const sourceId = opts.sourceId ?? keySeed;
+  const waived = t.waived === true;
+  const waiverBasis: string | null = waived ? (t.waiverBasis ?? null) : null;
+  const bandId = t.bandId ?? null;
+  const rate = t.rate ?? null;
+  const capApplied = t.capApplied === true;
+  const rows: FeeLedgerAppendRow[] = [];
+
+  // +X — the fee itself. Present whether or not it was waived (the waiver leg nets it, so the
+  // gross fee stays visible and the suppressed total is derivable).
+  rows.push({
+    sourceType: opts.sourceType,
+    sourceId,
+    bookingId,
+    feeType: "traveler_service_fee",
+    amount: wouldHaveBeen,
+    borneBy: "traveler",
+    bandId,
+    rateAsResolved: rate,
+    rateSource: "band",
+    capApplied,
+    acquisitionRef: opts.acquisitionRef ?? null,
+    stripePaymentRef: opts.stripePaymentRef ?? null,
+    idempotencyKey: travelerServiceFeeLedgerKey(keySeed),
+    description: `Traveler service fee on ${opts.sourceType} ${sourceId} (band ${t.bandKey ?? "unknown"})`,
+    metadata: {
+      actor: opts.actor,
+      bandKey: t.bandKey ?? null,
+      chargedAmount: round2(Number(t.charged ?? 0)),
+      waived,
+      waiverBasis,
+    },
+  });
+
+  // −X — the waiver leg, only when covered. Borne by the PLATFORM (it gives up the revenue).
+  if (waived) {
+    rows.push({
+      sourceType: opts.sourceType,
+      sourceId,
+      bookingId,
+      feeType: "fee_waiver",
+      amount: -wouldHaveBeen,
+      borneBy: "platform",
+      bandId,
+      rateAsResolved: rate,
+      rateSource: "band",
+      capApplied,
+      // `source_attribution` names WHY it was waived on this money-input table: a rails waiver is
+      // rails-attributed, a Trip-Pass waiver is a platform product coverage.
+      sourceAttribution: waiverBasis === "rails" ? "rails" : "platform",
+      acquisitionRef: opts.acquisitionRef ?? null,
+      stripePaymentRef: opts.stripePaymentRef ?? null,
+      idempotencyKey: travelerServiceFeeWaiverLedgerKey(keySeed),
+      description: `Traveler service fee WAIVED on ${opts.sourceType} ${sourceId} (covered_by:${waiverBasis ?? "unknown"})`,
+      metadata: {
+        actor: opts.actor,
+        bandKey: t.bandKey ?? null,
+        covered_by: waiverBasis, // 'trip_pass' | 'rails'
+        waivedAmount: wouldHaveBeen,
+      },
+    });
+  }
+  return { rows, considered: 1 };
+}
+
+export async function recordTravelerServiceFeeLedger(opts: {
+  bookingIds: string[];
+  stripePaymentRef?: string | null;
+  actor: string;
+}): Promise<{ inserted: number; considered: number }> {
+  if (opts.bookingIds.length === 0) return { inserted: 0, considered: 0 };
+
+  const res = await db.execute(sql`
+    SELECT id, acquisition_ref,
+           booking_details->'travelerServiceFee' AS tfee
+      FROM service_bookings
+     WHERE id IN (${sql.join(opts.bookingIds.map((id) => sql`${id}`), sql`, `)})
+  `);
+
+  const rows: FeeLedgerAppendRow[] = [];
+  let considered = 0;
+  for (const raw of (res.rows ?? []) as any[]) {
+    const built = buildTravelerServiceFeeRows(raw.tfee, {
+      keySeed: String(raw.id),
+      bookingId: String(raw.id),
+      sourceType: "service_booking",
+      acquisitionRef: raw.acquisition_ref ?? null,
+      stripePaymentRef: opts.stripePaymentRef ?? null,
+      actor: opts.actor,
+    });
+    rows.push(...built.rows);
+    considered += built.considered;
+  }
+
+  const inserted = await appendFeeLedgerRows(rows);
+  if (rows.length > 0) {
+    logger.info(
+      { considered, inserted, actor: opts.actor, stripePaymentRef: opts.stripePaymentRef ?? null },
+      "[fee-ledger] traveler service fee events recorded",
+    );
+  }
+  return { inserted, considered };
+}
+
+/**
+ * Legacy `bookings` rail (ruling E: reachable → billed for parity). Same +X/−X shape, read from
+ * `bookings.booking_metadata->travelerServiceFee` (the legacy table has no `booking_details`), with
+ * `sourceType:"booking"`. Written at payment confirmation; idempotent per booking id.
+ */
+export async function recordLegacyBookingTravelerFeeLedger(opts: {
+  bookingId: string;
+  stripePaymentRef?: string | null;
+  actor: string;
+}): Promise<{ inserted: number; considered: number }> {
+  const res = await db.execute(sql`
+    SELECT booking_metadata->'travelerServiceFee' AS tfee
+      FROM bookings WHERE id = ${opts.bookingId} LIMIT 1
+  `);
+  const raw = (res.rows ?? [])[0] as any;
+  const built = buildTravelerServiceFeeRows(raw?.tfee, {
+    keySeed: String(opts.bookingId),
+    bookingId: String(opts.bookingId),
+    sourceType: "booking",
+    stripePaymentRef: opts.stripePaymentRef ?? null,
+    actor: opts.actor,
+  });
+  const inserted = await appendFeeLedgerRows(built.rows);
+  if (built.rows.length > 0) {
+    logger.info(
+      { considered: built.considered, inserted, actor: opts.actor, bookingId: opts.bookingId },
+      "[fee-ledger] legacy-rail traveler service fee event recorded",
+    );
+  }
+  return { inserted, considered: built.considered };
+}
+
+/**
+ * Expert review service (ruling path 5). No booking row — the fee event is keyed on the verified
+ * PaymentIntent id, `sourceType:"expert_request"`, `booking_id` NULL. Snapshot comes from the PI
+ * metadata (Stripe's own word — server-verified, §14). Idempotent per PI; best-effort at the caller.
+ */
+export async function recordExpertReviewTravelerFeeLedger(opts: {
+  paymentIntentId: string;
+  snapshot: any;
+  actor: string;
+}): Promise<{ inserted: number; considered: number }> {
+  const built = buildTravelerServiceFeeRows(opts.snapshot, {
+    keySeed: opts.paymentIntentId,
+    bookingId: null,
+    sourceType: "expert_request",
+    sourceId: opts.paymentIntentId,
+    stripePaymentRef: opts.paymentIntentId,
+    actor: opts.actor,
+  });
+  const inserted = await appendFeeLedgerRows(built.rows);
+  if (built.rows.length > 0) {
+    logger.info(
+      { considered: built.considered, inserted, actor: opts.actor, paymentIntentId: opts.paymentIntentId },
+      "[fee-ledger] expert-review traveler service fee event recorded",
+    );
+  }
+  return { inserted, considered: built.considered };
+}
+
 /**
  * Record the rails commission event for every booking in `bookingIds` that carries a rails
  * attribution snapshot.
@@ -173,10 +392,11 @@ export async function recordRailsFeeLedger(opts: {
         travelerFeeRate: waiver?.rate ?? null,
         travelerFeeWouldHaveBeen: waiver?.wouldHaveBeenAmount ?? null,
         travelerFeeWouldHaveBeenCapApplied: waiver?.wouldHaveBeenCapApplied ?? null,
-        // §13: the D3 traveler service fee is resolver-only — the direct path does not bill it
-        // today (ruling 45). The waiver above is a band-priced counterfactual, NOT money the
-        // traveler used to pay and no longer does.
-        travelerFeeBilledOnDirectPathToday: false,
+        // Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler fee IS billed on the direct
+        // path now, and a rails-waived line's suppression is recorded authoritatively as its own
+        // `fee_waiver (−X)` leg (recordTravelerServiceFeeLedger). This metadata is the informational
+        // echo on the commission row; the flag is now true to match the money truth.
+        travelerFeeBilledOnDirectPathToday: true,
       },
     });
   }
