@@ -69,7 +69,9 @@ const ENTRY_FILES = ['shared/schema.ts', 'shared/guest-invites-schema.ts'];
 // .omit() to .pick() — it left `userId` client-settable, and the POST route never stamped an
 // owner. Lowering the baseline in the same PR is what this guard's FAIL message instructs, and is
 // what locks the improvement in: the next .omit() that appears cannot hide behind the old slack.
-const OMIT_BASELINE = 189;
+// 187 once merged with main's 188 (#699 converted insertLocalKnowledgeNuggetSchema): the two
+// conversions are independent, so the locked count is the sum of both.
+const OMIT_BASELINE = 187;
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 // Same non-greedy call-to-semicolon shape as scripts/check-money-endpoints.cjs's
