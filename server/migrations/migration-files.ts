@@ -1346,13 +1346,19 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
-  // 271: expert field-knowledge claims, Phase 1 (ledger 2026-08-29-neighborhood-claims +
-  // 2026-08-29-evidence-is-the-test, 2026-08-29-graded-unlocks, 2026-08-29-scout-check).
-  // Additive: expert_neighborhood_claims (the claim; scores admin-only), claim_evening_stops +
-  // claim_contingencies (typed evidence child rows, Phase 2 writes them), local_knowledge_nuggets
-  // .claim_id (nullable evidence linkage), and nugget_photos (the ratified photo amendment —
-  // 2-4 photos per nugget for a Moments slideshow). No CHECK constraints (publish-trap posture);
-  // every table/index/FK declared in shared/schema.ts for deploy-push durability. Ratification
-  // births exactly one expert_neighborhoods row per claim — that join table is untouched here.
+  // 271: expert field-knowledge claims v1 (#698, merged first). SUPERSEDED by 272 — its claim table
+  // and evidence tables were empty when 272 landed; 272 drops them and creates the v2 shapes. Kept
+  // in the chain because it is already recorded in every environment's ledger; its one surviving
+  // piece is nugget_photos (ported with its consent_at read invariant).
   "271_expert_neighborhood_claims.sql",
+  // 272: expert field knowledge v2 Phase 1 — TRANSFORMS the 271 v1 state (drops the empty v1
+  // claim/evidence tables + v1 claim_id columns, refusing loudly if any hold rows) and creates v2: — expert_neighborhood_claims + its append-only diary,
+  // the typed evidence tables (P1 depth columns on local_knowledge_nuggets, mini_slip_templates,
+  // claim_contingencies, access_claims), the evidence_thresholds config (seeded, companion §3),
+  // additive claim_id/verified_at/ratified_by on expert_neighborhoods, city_neighborhoods.
+  // default_daypart, local_expert_forms.no_neighborhoods_available_at, and the one-writer
+  // BEFORE INSERT trigger on expert_neighborhoods. No CHECK; everything it leaves behind is declared
+  // in shared/schema.ts so the deploy push and the chain agree (ledger
+  // 2026-09-02-field-knowledge-v2-canonical).
+  "272_expert_neighborhood_claims.sql",
 ] as const;

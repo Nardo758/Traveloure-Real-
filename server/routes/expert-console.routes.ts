@@ -31,7 +31,6 @@ import {
   deleteLocalKnowledgeNugget,
 } from "../services/experts-query.service";
 import { proposeNuggetAsGem } from "../services/gem-promotion.service";
-import { createDraftClaim, submitClaim, listMyClaims } from "../services/neighborhood-claims.service";
 
 const router = Router();
 
@@ -704,58 +703,8 @@ router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocal
   }
 });
 
-// ─── Expert field-knowledge claims (Phase 1, ledger 2026-08-29-neighborhood-claims) ──────────
-// Experts CLAIM neighborhoods; admin ratifies. NEVER returns score columns — those are
-// admin-only (neighborhood-claims.service.ts's explicit column selection enforces this).
-
-// GET /api/expert/neighborhood-claims — the caller's own claims, no score columns.
-router.get("/api/expert/neighborhood-claims", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
-  try {
-    const expertId = sessionUserId(req);
-    res.json({ claims: await listMyClaims(expertId) });
-  } catch (err) {
-    console.error("[Neighborhood Claims] list error:", err);
-    res.status(500).json({ message: "Failed to fetch neighborhood claims" });
-  }
-});
-
-// POST /api/expert/neighborhood-claims — hand-named ALLOWLIST body (§19): neighborhoodId +
-// optional consentVersion only. Expert id is the session, never the body. Consent is stamped
-// NOW inside the service — never a client-supplied timestamp.
-router.post("/api/expert/neighborhood-claims", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
-  try {
-    const expertId = sessionUserId(req);
-    const neighborhoodId = typeof req.body?.neighborhoodId === "string" ? req.body.neighborhoodId : "";
-    const consentVersion = typeof req.body?.consentVersion === "string" ? req.body.consentVersion : null;
-    const result = await createDraftClaim(expertId, neighborhoodId, consentVersion);
-    if (!result.ok) return res.status(result.status).json({ message: result.message });
-    res.status(result.created ? 201 : 200).json({ claim: result.claim });
-  } catch (err) {
-    console.error("[Neighborhood Claims] create error:", err);
-    res.status(500).json({ message: "Failed to start neighborhood claim" });
-  }
-});
-
-// POST /api/expert/neighborhood-claims/:id/submit — no body. Atomic draft -> submitted,
-// owner-scoped; a claim not owned or not currently draft is a clean 409.
-router.post("/api/expert/neighborhood-claims/:id/submit", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
-  try {
-    const expertId = sessionUserId(req);
-    const { id } = req.params;
-    const row = await submitClaim(id, expertId);
-    if (!row) {
-      const [existing] = await listMyClaims(expertId).then((rows) => rows.filter((r) => r.id === id));
-      if (!existing) return res.status(404).json({ message: "Claim not found" });
-      return res.status(409).json({
-        message: existing.status === "draft" ? "Submission failed — try again" : `Claim is already ${existing.status}`,
-        status: existing.status,
-      });
-    }
-    res.json({ claim: row });
-  } catch (err) {
-    console.error("[Neighborhood Claims] submit error:", err);
-    res.status(500).json({ message: "Failed to submit neighborhood claim" });
-  }
-});
+// Neighborhood claims (expert field knowledge v2) live in server/routes/neighborhood-claims.routes.ts —
+// the #698 v1 routes that sat here were retired when #699 became canonical (ledger
+// 2026-09-02-field-knowledge-v2-canonical).
 
 export default router;

@@ -1213,20 +1213,35 @@ export async function clearNeighborhoodLeadTx(neighborhoodId: string) {
   });
 }
 
-export async function swapNeighborhoodLeadTx(neighborhoodId: string, expertId: string) {
+/**
+ * Lead swap — UPDATE ONLY (ruling 2026-08-29-neighborhood-claims; Phase 0 D1 ratified). `is_lead`
+ * is an admin curation flag toggled on an EXISTING expert_neighborhoods row; this never inserts one
+ * (rows are born only by claim ratification — the migration-272 trigger refuses any other INSERT).
+ * Returns `{ promoted: false }` when the expert holds no row for the neighborhood, and the demote of
+ * the previous lead is rolled back with the transaction so a failed promote never leaves the
+ * neighborhood lead-less.
+ */
+export async function swapNeighborhoodLeadTx(neighborhoodId: string, expertId: string): Promise<{ promoted: boolean }> {
   return db.transaction(async (tx) => {
     await tx.update(expertNeighborhoods)
       .set({ isLead: false, updatedAt: new Date() })
       .where(and(eq(expertNeighborhoods.neighborhoodId, neighborhoodId), eq(expertNeighborhoods.isLead, true)));
 
-    await tx.execute(sql`
-      INSERT INTO expert_neighborhoods (expert_id, neighborhood_id, is_lead, updated_at)
-      VALUES (${expertId}, ${neighborhoodId}, true, NOW())
-      ON CONFLICT (expert_id, neighborhood_id) DO UPDATE SET
-        is_lead = true,
-        updated_at = NOW()
-    `);
+    const promoted = await tx.update(expertNeighborhoods)
+      .set({ isLead: true, updatedAt: new Date() })
+      .where(and(eq(expertNeighborhoods.neighborhoodId, neighborhoodId), eq(expertNeighborhoods.expertId, expertId)))
+      .returning({ id: expertNeighborhoods.id });
+    if (promoted.length === 0) {
+      throw new NeighborhoodLeadNotClaimedError();
+    }
+    return { promoted: true };
+  }).catch((err) => {
+    if (err instanceof NeighborhoodLeadNotClaimedError) return { promoted: false };
+    throw err;
   });
+}
+export class NeighborhoodLeadNotClaimedError extends Error {
+  constructor() { super("expert holds no expert_neighborhoods row for this neighborhood"); }
 }
 
 export async function validateAdjacencyTargets(city: string, country: string, slugs: string[]) {
