@@ -23,6 +23,12 @@ import { transportBookingOptions, serviceBookings } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { getStripeSecretKey } from "../utils/stripe-key";
+// Ruling 2026-09-02-traveler-fee-applies-everywhere (path 4 — platform transport is merchant-of-record,
+// so the traveler service fee applies). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
+// coversAction, and the shared service_bookings fee-ledger writer at confirmation.
+import { resolveTravelerServiceFee } from "./fee-resolution.service";
+import { coversAction } from "./trip-entitlement.service";
+import { recordTravelerServiceFeeLedger } from "./fee-ledger.service";
 
 const key = getStripeSecretKey();
 
@@ -109,6 +115,26 @@ export async function createTransportBookingCheckout(
   const priceCents = option.priceCentsLow || 0;
   const totalAmount = priceCents * travelers;
 
+  // ── Traveler service fee (ruling 2026-09-02, path 4) ──────────────────────────────────────────
+  // On the transport subtotal, from the ONE band-driven resolver (§8/§14), $25 cap. Trip Pass
+  // suppression via the same coversAction the other rails use (transport has no rails ref, so
+  // trip_pass is the only coverage). Covered → charged 0, waiver recorded.
+  const feeCovered = tripId
+    ? await coversAction(tripId, "traveler_service_fee").catch(() => false)
+    : false;
+  const travelerFeeResolved = await resolveTravelerServiceFee(totalAmount / 100);
+  const feeChargedCents = feeCovered ? 0 : Math.round(travelerFeeResolved.amount * 100);
+  const travelerServiceFeeSnapshot = {
+    charged: feeCovered ? 0 : travelerFeeResolved.amount,
+    wouldHaveBeen: travelerFeeResolved.amount,
+    rate: travelerFeeResolved.rate,
+    bandId: travelerFeeResolved.bandId,
+    bandKey: travelerFeeResolved.bandKey,
+    capApplied: travelerFeeResolved.capApplied,
+    waived: feeCovered,
+    waiverBasis: feeCovered ? "trip_pass" : null,
+  };
+
   // Create a service booking record first
   const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -129,10 +155,13 @@ export async function createTransportBookingCheckout(
       transportMode: option.modeType,
       source: option.source,
       currency: option.currency || "USD",
+      // Locked snapshot (like the cart path) — read back at confirmation by the fee-ledger writer.
+      travelerServiceFee: travelerServiceFeeSnapshot,
     },
   });
 
-  // Create Stripe checkout session
+  // Create Stripe checkout session. The traveler fee (when not covered) is a SEPARATE, disclosed
+  // line item — not folded into the transport unit price (which is the provider's amount).
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     line_items: [
@@ -147,6 +176,18 @@ export async function createTransportBookingCheckout(
         },
         quantity: travelers,
       },
+      ...(feeChargedCents > 0
+        ? [
+            {
+              price_data: {
+                currency: (option.currency || "USD").toLowerCase(),
+                product_data: { name: "Traveloure service fee" },
+                unit_amount: feeChargedCents,
+              },
+              quantity: 1,
+            },
+          ]
+        : []),
     ],
     mode: "payment",
     success_url: `${getBaseUrl()}/itinerary/${tripId}?booking=success&session_id={CHECKOUT_SESSION_ID}`,
@@ -208,6 +249,17 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
         bookingId: parseInt(bookingId.split("-")[1]) || undefined,
       })
       .where(eq(transportBookingOptions.id, optionId));
+
+    // Ruling 2026-09-02 (path 4): record the traveler service fee event for this transport booking —
+    // idempotent per booking id, best-effort (payment is confirmed; a recording failure is logged,
+    // never re-throws). The row is a service_bookings row, so the shared writer reads its snapshot.
+    try {
+      const stripePaymentRef =
+        typeof session.payment_intent === "string" ? session.payment_intent : null;
+      await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], stripePaymentRef, actor: "transport_confirm" });
+    } catch (ledgerErr: any) {
+      console.error(`[transport] traveler-fee ledger write failed for booking=${bookingId} (payment CONFIRMED):`, ledgerErr?.message ?? ledgerErr);
+    }
 
     console.log("Booking confirmed:", { bookingId, optionId });
   } catch (error) {
