@@ -503,3 +503,19 @@ for either, apply the same ruling `2026-09-02-traveler-fee-refundability` fee-re
 
 See `docs/findings/FEE_LEDGER_AGGREGATIONS_MUST_NET_WAIVERS.md` — `fee_ledger` has no readers yet;
 the first revenue aggregation that sums `traveler_service_fee` must net the `fee_waiver` legs.
+
+### FU — expert-field-knowledge v2, Phase 2 (2026-09-02; `2026-09-02-field-knowledge-phase2-landed`)
+
+- **`resubmit-window-row-name`.** The Phase 2 dispatch names the resubmission threshold
+  `resubmit_window_days`; Phase 1 seeded the same number as `resubmit_cooldown_days` (migration 272) and the
+  code reads that key. Not duplicated. If the dispatch's name is preferred, rename in one migration
+  (`UPDATE evidence_thresholds SET threshold_key=…`) + `EVIDENCE_THRESHOLD_KEYS`, never a second row.
+- **`scorer-live-calibration` (companion §6).** The worked example (8-scorer vs 3-scorer) is proven in the
+  suite only through an injected model; calibrating the real Sonnet pass against the two example P1 entries
+  needs `ANTHROPIC_API_KEY` in an environment that can reach the API (the sandbox and CI cannot). Run it
+  against the first two backfill replies and tune `evidence_thresholds` from there (companion §8.1).
+- **`web-gap-spend-logging` (F4, still open).** The web-gap search does not yet write `api_usage_logs`
+  (`provider: "tavily"`); the R-T1-c $150 cap remains unobservable in the admin cost view.
+- **`corroboration-chip`.** The dispatch's Phase 2 line "corroboration/conflict chip when two claimants' P2
+  constraints agree or clash on the same venue" is not built here; the D7 duplicate flag covers the P1
+  venue case only. Needs a P2 hard-constraint join (same `normalized_name` in `mini_slip_templates.items`).

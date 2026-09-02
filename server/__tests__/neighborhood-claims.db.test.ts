@@ -25,6 +25,21 @@
  *   C9. nugget_photos consent invariant (ported from #698): the one read path returns a photo only
  *       when its nugget's claim recorded consent; an unlinked nugget's photo is never returned
  *
+ *   Phase 2 (scorer + admin queue) — S1–S8 as dispatched, plus the expert-view key proof:
+ *   S1. valid scorer JSON → `scored` + a `scorer` transition row + scorer_json with computed
+ *       totals / recommended_unlocks / weakest_dimension
+ *   S2. malformed model output → stays `submitted`, scorer_failed + reason set, no transition
+ *   S3. a thresholds row deleted → scorer AND Ratify both refuse `thresholds_missing`
+ *   S4. the scorer path attempting an expert_neighborhoods insert is refused by the trigger, and
+ *       a full scoring pass writes NO neighborhood row
+ *   S5. Ratify from `scored` births exactly one join row with claim_id/verified_at/ratified_by (C4)
+ *   S6. Return writes the dimension; the expert-facing copy contains no rubric word (C5)
+ *   S7. resubmit inside the window refused, outside it bumps version (C5)
+ *   S8. web-gap `found` caps Localness at the `web_gap_found_localness_cap` row value
+ *   S9. the expert-facing view carries NO score / scorer / dimension key (D6 — explicit key set)
+ *   S10. no ANTHROPIC key ⇒ no model call, claim stays submitted flagged `no_key`; a P4 row is
+ *        never handed to the model; unlock copy carries no forbidden word
+ *
  * Run with:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
  *   npx tsx --test server/__tests__/neighborhood-claims.db.test.ts
@@ -35,6 +50,8 @@ import crypto from "node:crypto";
 
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/traveloure";
 process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy";
+// Phase 2: the suite drives the scorer explicitly with injected deps — never a background pass.
+process.env.EVIDENCE_SCORER_AUTORUN = "0";
 
 const { db, pool } = await import("../db");
 const { and, eq, sql } = await import("drizzle-orm");
@@ -63,7 +80,14 @@ const {
   listNeighborhoodOptions,
   stampNoNeighborhoodsAvailable,
   listConsentedNuggetPhotos,
+  listClaimsForAdmin,
+  getClaimDetailForAdmin,
+  requestRescore,
 } = await import("../services/neighborhood-claims.service");
+const { scoreClaim, scorePendingClaims } = await import("../services/evidence-scorer.service");
+const { loadEvidenceThresholds } = await import("../services/evidence-thresholds.service");
+const { UNLOCK_COPY, EVIDENCE_UNLOCKS, EVIDENCE_DIMENSIONS } = await import("../../shared/neighborhood-claims");
+const EVIDENCE_DIMENSIONS_COUNT = EVIDENCE_DIMENSIONS.length;
 const { swapNeighborhoodLeadTx } = await import("../services/admin-query.service");
 const { createLocalKnowledgeNugget } = await import("../services/experts-query.service");
 const { CAPTURE_SHAPE } = await import("../../shared/neighborhood-claims");
@@ -302,12 +326,106 @@ describe("neighborhood claims — Phase 1 (claims + typed evidence + one writer)
     assert.deepEqual(swap, { promoted: false }, "no row → no lead, and no insert");
     assert.equal((await neighborhoodRows(EXPERT_A)).length, 0);
 
-    const scored = await markClaimScored({ claimId: claimA, version: 1, scorerJson: { p1: [], note: "fixture" } });
-    assert.ok(scored.ok);
-    assert.equal(scored.value.status, "scored");
+    // S2 first: malformed model output leaves the claim submitted + flagged, writes no transition.
+    const before = (await diary(claimA)).length;
+    const bad = await scoreClaim({ claimId: claimA, version: 1 }, { model: async () => "not json at all", search: null, modelName: "fake" });
+    assert.equal(bad.outcome, "failed");
+    assert.equal((bad as any).reason, "malformed_output");
+    let [c] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.id, claimA));
+    assert.equal(c.status, "submitted");
+    assert.equal(c.scorerFailed, true);
+    assert.equal(c.scorerFailedReason, "malformed_output");
+    assert.equal(c.scorerJson, null, "nothing zeroed in");
+    assert.equal((await diary(claimA)).length, before, "a failed pass writes no transition");
+    const again = await scoreClaim({ claimId: claimA, version: 1 }, { model: async () => "{}", search: null });
+    assert.equal(again.outcome, "skipped", "a flagged claim is not retried automatically (idempotent; rescore is explicit)");
+
+    // S4: the scorer path cannot birth a neighborhood row even if it tried.
+    const rowsBefore = (await neighborhoodRows(EXPERT_A)).length;
+    const rescored = await requestRescore({ claimId: claimA, adminId: ADMIN });
+    assert.ok(rescored.ok);
+    const sneaky = await scoreClaim({ claimId: claimA, version: 1 }, {
+      model: async () => {
+        await assert.rejects(
+          db.insert(expertNeighborhoods).values({ expertId: EXPERT_A, neighborhoodId: NEIGHBORHOOD_ID, isLead: false, sortOrder: 0 }),
+          (err: any) => /written only by claim ratification/.test(String(err?.cause?.message ?? err?.message ?? "")),
+        );
+        throw new Error("model down");
+      },
+      search: null,
+    });
+    assert.equal(sneaky.outcome, "failed");
+    assert.equal((sneaky as any).reason, "model_error");
+    assert.equal((await neighborhoodRows(EXPERT_A)).length, rowsBefore, "no neighborhood row from the scorer path");
+
+    // S1 + S8: a valid pass with a web-gap `found` verdict — Localness capped at the row value.
+    assert.ok((await requestRescore({ claimId: claimA, adminId: ADMIN })).ok);
+    const thresholds = await loadEvidenceThresholds();
+    const nuggets = await db.select().from(localKnowledgeNuggets).where(and(eq(localKnowledgeNuggets.claimId, claimA), eq(localKnowledgeNuggets.claimVersion, 1))).orderBy(localKnowledgeNuggets.createdAt, localKnowledgeNuggets.id);
+    assert.equal(nuggets.length, 2);
+    const max = thresholds.dimension_max;
+    const searched: string[] = [];
+    const fakeModel = async ({ user }: { user: string }) => {
+      assert.ok(!user.includes("owner's sister") && !user.includes("relationship"), "P4 access rows never reach the model");
+      assert.ok(user.includes("snippet: [https://guide.example/yasaka]"), "web snippets are handed to the model");
+      return JSON.stringify({
+        p1: [
+          { row_id: nuggets[0].id, specificity: max, verifiability: max, localness: max, practicality: max, web_gap: "found", web_gap_url: "https://guide.example/yasaka", note: "top-of-search" },
+          { row_id: nuggets[1].id, specificity: max, verifiability: max, localness: max, practicality: max, web_gap: "absent", web_gap_url: null, note: "" },
+        ],
+        p2: { specificity: max, verifiability: max, localness: max, practicality: max, hard_constraint_valid: true, note: "" },
+        p3: { specificity: max, verifiability: max, localness: max, practicality: max, note: "" },
+        flags: ["contradiction", "totally_made_up_flag"],
+      });
+    };
+    const ok = await scoreClaim({ claimId: claimA, version: 1 }, {
+      model: fakeModel,
+      search: async (q) => { searched.push(q); return [{ url: "https://guide.example/yasaka", title: "Yasaka", content: "Lit lanterns from 18:00, main gate." }]; },
+      modelName: "fake-sonnet",
+    });
+    assert.equal(ok.outcome, "scored", JSON.stringify(ok));
+    assert.equal(searched.length, 2, "one search per P1 entry");
+    assert.ok(searched.some((q) => q.startsWith("Yasaka Shrine A")) && searched.every((q) => q.endsWith(`Gion ${RUN}`)), "query is {name} {neighborhood}");
+    [c] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.id, claimA));
+    assert.equal(c.status, "scored");
+    assert.equal(c.scorerFailed, false);
+    const sj = c.scorerJson as any;
+    assert.equal(sj.model, "fake-sonnet");
+    assert.equal(sj.web_gap_available, true);
+    const first = sj.p1.find((e: any) => e.row_id === nuggets[0].id);
+    assert.equal(first.web_gap, "found");
+    assert.equal(first.localness, thresholds.web_gap_found_localness_cap, "S8: found caps Localness at the row value");
+    assert.equal(first.localness_uncapped, max);
+    const second = sj.p1.find((e: any) => e.row_id === nuggets[1].id);
+    assert.equal(second.localness, max, "absent is not capped");
+    assert.equal(second.total, max * EVIDENCE_DIMENSIONS_COUNT);
+    assert.deepEqual(sj.recommended_unlocks, [...EVIDENCE_UNLOCKS], "all three unlocks at full marks");
+    assert.equal(sj.weakest_dimension, "localness");
+    assert.ok(sj.flags.includes("contradiction"));
+    assert.ok(!sj.flags.includes("totally_made_up_flag"), "unknown flags are dropped");
+    const [n0] = await db.select().from(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.id, nuggets[0].id));
+    assert.equal(n0.webGap, "found");
+    assert.equal(n0.webGapUrl, "https://guide.example/yasaka");
+    assert.ok(n0.webGapCheckedAt);
+    const d = await diary(claimA);
+    assert.equal(d[d.length - 1].toStatus, "scored");
+    assert.equal(d[d.length - 1].actorType, "scorer");
     assert.equal((await neighborhoodRows(EXPERT_A)).length, 0, "scoring never births a neighborhood row");
     const wrongVersion = await markClaimScored({ claimId: claimA, version: 1, scorerJson: {} });
     assert.ok(!wrongVersion.ok, "rescoring the same version is a no-op (already scored)");
+    const rerun = await scoreClaim({ claimId: claimA, version: 1 }, { model: fakeModel, search: null });
+    assert.equal(rerun.outcome, "skipped", "idempotent on (claim_id, version)");
+
+    // Admin reads carry the scores; the queue lists it under `scored`.
+    const queue = await listClaimsForAdmin({ statuses: ["scored"] });
+    const qrow = queue.find((r) => r.id === claimA)!;
+    assert.ok(qrow);
+    assert.equal(qrow.weakestDimension, "localness");
+    assert.deepEqual(qrow.recommendedUnlocks, [...EVIDENCE_UNLOCKS]);
+    const detail = await getClaimDetailForAdmin(claimA);
+    assert.ok(detail?.scorerJson);
+    assert.equal(detail!.p1.length, 2);
+    assert.equal(detail!.p4Held.length, 1, "admin sees P4 as held");
   });
 
   it("C7. thresholds_missing blocks Ratify — no code default", async () => {
@@ -315,6 +433,15 @@ describe("neighborhood claims — Phase 1 (claims + typed evidence + one writer)
     assert.ok(row, "migration 272 seeded the thresholds");
     await db.delete(evidenceThresholds).where(eq(evidenceThresholds.thresholdKey, "resubmit_cooldown_days"));
     try {
+      const [claimB] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.expertId, EXPERT_B));
+      assert.equal(claimB.status, "submitted");
+      const scorerBlocked = await scoreClaim({ claimId: claimB.id, version: claimB.version }, { model: async () => "{}", search: null });
+      assert.equal(scorerBlocked.outcome, "failed");
+      assert.equal((scorerBlocked as any).reason, "thresholds_missing", "S3: the scorer refuses without the rows");
+      const [b2] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.id, claimB.id));
+      assert.equal(b2.status, "submitted");
+      assert.equal(b2.scorerFailedReason, "thresholds_missing");
+      assert.ok((await requestRescore({ claimId: claimB.id, adminId: ADMIN })).ok, "clear the flag so C5 can score it later");
       const blocked = await ratifyClaim({ claimId: claimA, adminId: ADMIN });
       assert.ok(!blocked.ok && blocked.code === "thresholds_missing" && blocked.status === 503);
       const [still] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.id, claimA));
@@ -345,6 +472,18 @@ describe("neighborhood claims — Phase 1 (claims + typed evidence + one writer)
     const view = (await listClaimsForExpert(EXPERT_A)).find((c) => c.id === claimA)!;
     assert.equal(view.status, "verified");
     assert.ok(view.verifiedAt);
+    // S9 (D6): the expert view's key set is explicit — no score, scorer, dimension or internal status.
+    assert.deepEqual(
+      Object.keys(view).sort(),
+      ["awaitingReview", "canEdit", "city", "daypart", "draftCapture", "id", "neighborhoodId", "neighborhoodName", "returnMessage", "status", "submittedAt", "unlocks", "verifiedAt", "version"],
+    );
+    assert.doesNotMatch(JSON.stringify(view), /score|scorer|specificity|verifiability|localness|practicality|declined|"scored"/i);
+    assert.deepEqual(view.unlocks, [...EVIDENCE_UNLOCKS], "a verified claim carries its unlock keys (never numbers)");
+    for (const u of view.unlocks) {
+      const copy = UNLOCK_COPY[u](view.neighborhoodName);
+      assert.doesNotMatch(copy, /\b(test|exam|score|pass|fail)\b/i, `unlock copy clean: ${copy}`);
+      assert.doesNotMatch(copy, /\d/, "unlock copy carries no number");
+    }
 
     // Lead is now a toggle on the existing verified row.
     const swap = await swapNeighborhoodLeadTx(NEIGHBORHOOD_ID, EXPERT_A);
@@ -358,6 +497,21 @@ describe("neighborhood claims — Phase 1 (claims + typed evidence + one writer)
 
   it("C5. decline → §5 sentence with no digit → cooldown refuses → resubmit versions, deletes nothing", async () => {
     const [claimB] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.expertId, EXPERT_B));
+    // S10: no model available ⇒ no call, stays submitted, flagged no_key (§13 never fabricates).
+    const noKey = await scoreClaim({ claimId: claimB.id, version: 1 }, { model: null, search: null });
+    assert.equal(noKey.outcome, "failed");
+    assert.equal((noKey as any).reason, "no_key");
+    const [bNoKey] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.id, claimB.id));
+    assert.equal(bNoKey.status, "submitted");
+    assert.equal(bNoKey.scorerFailedReason, "no_key");
+    // The pending runner skips flagged claims; rescore re-queues it.
+    const pass = await scorePendingClaims({}, { model: async () => "{}", search: null });
+    assert.equal(pass.scanned, 0, "a flagged claim is not in the pending set");
+    assert.ok((await requestRescore({ claimId: claimB.id, adminId: ADMIN })).ok);
+    const pass2 = await scorePendingClaims({}, { model: async () => "{}", search: null });
+    assert.equal(pass2.scanned, 1);
+    assert.equal(pass2.failed, 1, "malformed output through the runner flags it again");
+    assert.ok((await requestRescore({ claimId: claimB.id, adminId: ADMIN })).ok);
     const scored = await markClaimScored({ claimId: claimB.id, version: 1, scorerJson: { note: "fixture" } });
     assert.ok(scored.ok);
 

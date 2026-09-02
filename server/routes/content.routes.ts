@@ -1,6 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getTripRole } from "../utils/trip-role";
-import { getUserId } from "../utils/auth";
+import { getUserId, requireDbAdmin } from "../utils/auth";
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
@@ -25,6 +25,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
+import { EgressBlockedError } from "../utils/egress-guard";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
@@ -100,6 +101,7 @@ import {
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
   insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema,
+  insertUserExperienceItemSchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
   userAndExpertChats, insertUserAndExpertChatSchema,
@@ -1693,8 +1695,16 @@ router.get("/api/user-experiences", isAuthenticated, async (req, res) => {
   // Get single experience with items
 
 router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+    // Ownership check (audit finding 6). Without it this returned another account's budget,
+    // location, preferences and stepData — plus every item — to any authenticated caller, while
+    // the list sibling above correctly scopes by userId.
+    //
+    // 404 (not 403) deliberately, matching the PATCH/DELETE siblings in this same block: a
+    // non-owner learns nothing about whether the id exists. Every handler on this resource now
+    // answers "Experience not found" identically to a missing row and to someone else's row.
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
-    if (!experience) {
+    if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
     }
     const items = await storage.getUserExperienceItems(req.params.id);
@@ -1825,30 +1835,86 @@ router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => 
 
   // Add item to experience
 
+// Allowlist body schema for experience-item writes (§19). Same pick-based shape as
+// userExperienceBodySchema above, derived from the schema VARIABLE (not a createInsertSchema call
+// site), so the omit-schema ratchet neither counts it nor is affected by it. `userExperienceId` is
+// deliberately NOT pickable: an item's parent — and therefore its owner — is fixed at creation
+// from the path, and re-parenting it is the ownership transfer this pass exists to prevent.
+// `id` is not pickable either (the raw body reached `values()` on the create path).
+// Exported so the negative test asserts against the REAL artifact, not a copy of it.
+export const userExperienceItemBodySchema = insertUserExperienceItemSchema.pick({
+  stepId: true,
+  providerServiceId: true,
+  externalServiceData: true,
+  isExternal: true,
+  name: true,
+  description: true,
+  price: true,
+  scheduledDate: true,
+  scheduledTime: true,
+  location: true,
+  latitude: true,
+  longitude: true,
+  status: true,
+  notes: true,
+  metadata: true,
+  sortOrder: true,
+});
+
 router.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
     }
-    const item = await storage.addUserExperienceItem({ ...req.body, userExperienceId: req.params.id });
-    res.status(201).json(item);
+    // The parent ownership check above is the authorization (it was already correct — audit
+    // finding 4 was about the sibling item routes, not this one). The allowlist is the §19 half:
+    // the raw body previously reached `values()`, so `id` was client-settable.
+    try {
+      const body = userExperienceItemBodySchema.parse(req.body);
+      const item = await storage.addUserExperienceItem({ ...body, userExperienceId: req.params.id });
+      res.status(201).json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to add experience item" });
+    }
   });
 
   // Update experience item
 
 router.patch("/api/user-experience-items/:id", isAuthenticated, async (req, res) => {
-    const updated = await storage.updateUserExperienceItem(req.params.id, req.body);
-    if (!updated) {
-      return res.status(404).json({ message: "Item not found" });
+    // Audit finding 4: this was `isAuthenticated` only and handed the path id straight to a writer
+    // keyed on `id` alone, so any account could edit any item. Ownership is now enforced IN the
+    // storage writer's WHERE (via the parent user_experiences.user_id), not by a pre-check here —
+    // so a non-owner matches zero rows and is indistinguishable from a missing item.
+    try {
+      const userId = getUserId(req)!;
+      const updates = userExperienceItemBodySchema.partial().parse(req.body);
+      const updated = await storage.updateUserExperienceItem(req.params.id, userId, updates);
+      if (!updated) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update experience item" });
     }
-    res.json(updated);
   });
 
   // Remove experience item
 
 router.delete("/api/user-experience-items/:id", isAuthenticated, async (req, res) => {
-    await storage.removeUserExperienceItem(req.params.id);
+    // Audit finding 4 (delete half). Same ownership-in-the-WHERE shape; false ⇒ nothing matched,
+    // which is 404 for a non-owner and for a missing row alike.
+    const userId = getUserId(req)!;
+    const removed = await storage.removeUserExperienceItem(req.params.id, userId);
+    if (!removed) {
+      return res.status(404).json({ message: "Item not found" });
+    }
     res.status(204).send();
   });
 
@@ -6711,15 +6777,15 @@ router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
     }
   });
 
-  // Manually refresh cache for a city (admin only)
+  // Manually refresh cache for a city (admin only).
+  // Audit finding 14: this checked `req.user?.role`, a field the Replit OIDC session shape
+  // never carries — so it 403'd real admins while trusting a 7-day-stale claim for
+  // email-auth ones. These paths are NOT under /api/admin, so the blanket `adminApiGuard`
+  // (CLAUDE.md §2) does not cover them; `requireDbAdmin` is that same default-deny posture
+  // (DB role lookup on the session user, 401/403/500, no bypass) applied here.
 
-router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, res) => {
+router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, requireDbAdmin, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-
       const { cityCode } = req.params;
       const result = await partnerEventsCacheService.refreshCityCache(cityCode);
       
@@ -6735,13 +6801,9 @@ router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, r
 
   // Get comprehensive location summary for admin panel
 
-router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) => {
+router.post("/api/fever/cache/refresh-all", isAuthenticated, requireDbAdmin, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-
+      // Admin gate: requireDbAdmin above (audit finding 14 — see the sibling route).
       const result = await partnerEventsCacheService.refreshAllCities();
       
       res.json({
@@ -8011,6 +8073,16 @@ router.post("/api/admin/affiliate/partners/:id/scrape", isAuthenticated, async (
       const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
       res.json(result);
     } catch (error: any) {
+      // SSRF guard refusal (audit §2, ledger 2026-09-02-outbound-fetch-egress): the target
+      // was refused BEFORE any request left the server. That is a bad partner row, not a
+      // server fault — 400 with the guard's plain reason, which never carries a resolved
+      // address, only the category the target fell into.
+      if (error instanceof EgressBlockedError) {
+        return res.status(400).json({
+          message: `Scrape target refused by the egress guard: ${error.message}`,
+          reason: error.reason,
+        });
+      }
       console.error("Scrape error:", error);
       res.status(500).json({ message: "Failed to scrape partner website", error: error.message });
     }

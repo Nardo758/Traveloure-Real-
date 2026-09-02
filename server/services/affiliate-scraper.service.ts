@@ -11,6 +11,12 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, sql, ilike } from "drizzle-orm";
 import { storage } from "../storage";
+import {
+  EgressBlockedError,
+  fetchGuardedText,
+  normalizeHost,
+  registrableDomain,
+} from "../utils/egress-guard";
 
 const GROK_MODEL = "grok-3";
 
@@ -205,9 +211,15 @@ class AffiliateScraperService {
     }).returning();
 
     try {
+      // SSRF (audit §2, ledger 2026-09-02-outbound-fetch-egress): the allowlist is derived
+      // from THIS partner row, not from config or env — the scrape may only reach the
+      // partner's own registrable domain, so a row-writer cannot repoint it at the metadata
+      // service or an internal host. Derivation happens BEFORE the fetch; a partner whose
+      // websiteUrl yields no registrable domain is refused, never fetched "just in case".
+      const allowedHosts = this.deriveAllowedScrapeHosts(partner);
       const scrapeUrl = partner.scrapeConfig?.productListUrl || partner.websiteUrl;
-      
-      const htmlContent = await this.fetchWebPage(scrapeUrl);
+
+      const htmlContent = await this.fetchWebPage(scrapeUrl, allowedHosts);
       
       const products = await this.extractProductsWithAI(htmlContent, partner);
       
@@ -315,22 +327,68 @@ class AffiliateScraperService {
     }
   }
 
-  private async fetchWebPage(url: string): Promise<string> {
+  /**
+   * The egress allowlist for a scrape, derived from the partner ROW.
+   *
+   * Base entry = the registrable domain of `partner.websiteUrl`, which admits that
+   * host and its subdomains and nothing else. `scrapeConfig.productListUrl`'s host is
+   * added ONLY when it sits on that same registrable domain; when it does not, it is
+   * simply not added, and the guard then refuses the scrape URL as `host_not_allowed`
+   * (silently widening to whatever the config said would be the hole itself).
+   */
+  private deriveAllowedScrapeHosts(partner: AffiliatePartner): string[] {
+    let websiteHost: string;
     try {
-      const response = await fetch(url, {
+      websiteHost = new URL(partner.websiteUrl).hostname;
+    } catch {
+      throw new EgressBlockedError(
+        "invalid_url",
+        "Partner websiteUrl is not a valid absolute URL, so no egress allowlist can be derived.",
+      );
+    }
+
+    const base = registrableDomain(websiteHost);
+    if (!base) {
+      throw new EgressBlockedError(
+        "no_allowed_hosts",
+        "Partner websiteUrl has no registrable domain, so no egress allowlist can be derived.",
+      );
+    }
+
+    const hosts = [base];
+    const productListUrl = partner.scrapeConfig?.productListUrl;
+    if (productListUrl) {
+      try {
+        const listHost = normalizeHost(new URL(productListUrl).hostname);
+        if (listHost && registrableDomain(listHost) === base) hosts.push(listHost);
+      } catch {
+        // Unparseable productListUrl: add nothing. The guard rejects it on its own terms.
+      }
+    }
+    return hosts;
+  }
+
+  /**
+   * Guarded page fetch. Scheme allowlist, row-derived host allowlist, private/link-local
+   * address deny on the resolved addresses, and a 3-redirect cap where every hop is
+   * re-validated — see `server/utils/egress-guard.ts` for the layers and their stated
+   * negative space (notably: DNS rebinding between check and connect is NOT covered).
+   */
+  private async fetchWebPage(url: string, allowedHosts: string[]): Promise<string> {
+    try {
+      return await fetchGuardedText(url, {
+        allowedHosts,
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",
         },
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch page: ${response.status} ${response.statusText}`);
-      }
-
-      return await response.text();
     } catch (error: any) {
+      // A guard refusal keeps its type all the way to the route, which answers 400 —
+      // wrapping it in a generic Error here would turn "you pointed this somewhere it
+      // may not go" into an indistinguishable 500.
+      if (error instanceof EgressBlockedError) throw error;
       console.error("Fetch error:", error);
       throw new Error(`Failed to fetch page: ${error.message}`);
     }

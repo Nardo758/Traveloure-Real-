@@ -40,6 +40,7 @@ import { tripCardHandoverScheduler } from "./services/trip-card-handover-schedul
 import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
 import { emailOutboxScheduler } from "./services/email-outbox.service";
 import { occasionDraftsScheduler } from "./services/occasion-drafts-scheduler.service";
+import { evidenceScorerScheduler } from "./services/evidence-scorer-scheduler.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { getStripeSecretKey } from "./utils/stripe-key";
@@ -702,6 +703,12 @@ if (process.env.NODE_ENV === "production") {
     // this timer and the endpoint firing in the same window still produce one draft per cycle.
     occasionDraftsScheduler.start();
     logger.info("Occasion drafts scheduler started");
+
+    // Evidence scorer (expert field knowledge v2 Phase 2). DEFENSE-IN-DEPTH ONLY — the authoritative
+    // runner is POST /internal/jobs/score-neighborhood-claims (INTERNAL_JOB_SECRET). Idempotent on
+    // (claim_id, version); key-gated (no ANTHROPIC_API_KEY ⇒ claims stay submitted, flagged no_key).
+    evidenceScorerScheduler.start();
+    logger.info("Evidence scorer scheduler started");
 
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();

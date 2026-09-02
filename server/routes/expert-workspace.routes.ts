@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { getUserId } from "../utils/auth";
+import { getUserId, getDbRole } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -40,12 +40,14 @@ const router = Router();
 // MIDDLEWARE
 // ============================================================
 
-function requireExpert(req: any, res: any, next: any) {
+async function requireExpert(req: any, res: any, next: any) {
   if (!req.isAuthenticated || !req.isAuthenticated()) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  const user = req.user;
-  const role = user?.role || user?.claims?.role;
+  // Role from the DB (CLAUDE.md §2; audit finding 14 class): the Replit OIDC session shape
+  // carries neither `user.role` nor `user.claims.role`, so the previous session read locked
+  // OIDC experts out entirely, and for email-auth sessions it trusted a 7-day-stale claim.
+  const role = (await getDbRole(req)) ?? "";
   // Canonical expert family (shared/roles.ts, role-vocabulary audit): the previous local
   // list omitted bare "expert" (locking those users out of the DMO workspace) and included
   // executive_assistant (EA has its own /ea console and no client path to /expert/*).
