@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, smallint, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -3648,6 +3648,14 @@ export const expertNeighborhoods = pgTable("expert_neighborhoods", {
   neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
   isLead: boolean("is_lead").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
+  // PROVENANCE MARKER (Phase 1 rider, ledger 2026-08-29-neighborhood-claims; migration 271;
+  // decision-maker ratified). Additive, nullable, no CHECK. verifyClaim() stamps this with the
+  // claim it ratified; every row the legacy captureExpertNeighborhoods auto-name-match writer
+  // produced (pre-lane and the historical backfill script) stays NULL forever — provenance is
+  // mechanically answerable without a backfill guess, the same auditable-origin property
+  // trip_entitlements.source established. ON DELETE SET NULL: deleting the claim must never
+  // delete the join row it produced.
+  claimId: varchar("claim_id").references((): AnyPgColumn => expertNeighborhoodClaims.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -3659,10 +3667,99 @@ export const expertNeighborhoods = pgTable("expert_neighborhoods", {
   oneLeadPerNeighborhood: uniqueIndex("idx_expert_neighborhoods_one_lead_per")
     .on(table.neighborhoodId)
     .where(sql`is_lead = true`),
+  claimIdx: index("expert_neighborhoods_claim_idx").on(table.claimId),
 }));
 export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
 export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertExpertNeighborhood = z.infer<typeof insertExpertNeighborhoodSchema>;
+
+// ─── Expert field-knowledge claims (Phase 1, ledger 2026-08-29-neighborhood-claims) ──────────
+// An expert CLAIMS a neighborhood ("I know Gion"); evidence capture (Phase 2) doubles as
+// inventory; an admin-only scorer grades; admin ratifies. Ratification births the ONE
+// expert_neighborhoods row this claim proves (never a second writer of that table — the
+// legacy captureExpertNeighborhoods call site is gated off, storage.ts). Public vocabulary is
+// claimed -> verified; the word "test" appears nowhere client-facing. Multiple experts may
+// claim/verify the same neighborhood; unclaimed stays dark; no auto-approval anywhere.
+// Migration 271. Vocabulary is APP-ENFORCED, no DB CHECK (publish-trap posture — CLAUDE.md
+// "publish-time CHECK failure" trap): status ∈ draft|submitted|verified|declined.
+// SCORES ARE ADMIN-ONLY (score_specificity/verifiability/localness/practicality, scored_at,
+// score_model): never selected on any expert- or public-facing read — enforce by explicit
+// column selection in neighborhood-claims.service.ts, not by omission here (the row itself
+// must still carry the columns for the admin-only scorer, Phase 2).
+export const expertNeighborhoodClaims = pgTable("expert_neighborhood_claims", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  neighborhoodId: varchar("neighborhood_id").notNull().references(() => cityNeighborhoods.id, { onDelete: "cascade" }),
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft|submitted|verified|declined, app-enforced
+  consentAt: timestamp("consent_at"),
+  consentVersion: varchar("consent_version", { length: 50 }),
+  accessNote: text("access_note"),
+  submittedAt: timestamp("submitted_at"),
+  // No ON DELETE CASCADE on the reviewer FK — an admin account's deletion must never cascade
+  // away the claim it reviewed; SET NULL keeps the row, matching tripFinals.finalizedBy.
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNote: text("review_note"),
+  // ADMIN-ONLY scorer fields (Phase 2 writes these; Phase 1 declares the columns only).
+  scoreSpecificity: smallint("score_specificity"),
+  scoreVerifiability: smallint("score_verifiability"),
+  scoreLocalness: smallint("score_localness"),
+  scorePracticality: smallint("score_practicality"),
+  scoredAt: timestamp("scored_at"),
+  scoreModel: varchar("score_model", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("expert_neighborhood_claims_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+  index("expert_neighborhood_claims_expert_idx").on(table.expertId),
+  index("expert_neighborhood_claims_status_idx").on(table.status),
+]);
+export type ExpertNeighborhoodClaim = typeof expertNeighborhoodClaims.$inferSelect;
+// #PS18 (ruling 46, §19): new insert schemas must be .pick()-based allowlists, never
+// .omit()-based denylists — the omit-schema-ratchet guard fails any net-new denylist call site.
+// This is ALSO never .parse()'d against a request body — every route uses a hand-named allowlist
+// of its own ({neighborhoodId, consentVersion} on create; no body on submit/verify; {reason} on
+// decline) — kept here only for internal/service typing, naming every legitimately
+// server-settable column explicitly.
+export const insertExpertNeighborhoodClaimSchema = createInsertSchema(expertNeighborhoodClaims).pick({
+  expertId: true,
+  neighborhoodId: true,
+  consentVersion: true,
+  accessNote: true,
+});
+export type InsertExpertNeighborhoodClaim = z.infer<typeof insertExpertNeighborhoodClaimSchema>;
+
+// claimEveningStops: the "one composed evening" evidence prompt — typed child rows, never prose
+// (ledger 2026-08-29-evidence-is-the-test). Child-row pattern of dmo_extracted_places/
+// service_route_points (§20/§22): ON DELETE CASCADE, UNIQUE (claim_id, position).
+export const claimEveningStops = pgTable("claim_evening_stops", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  claimId: varchar("claim_id").notNull().references(() => expertNeighborhoodClaims.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  durationMinutes: integer("duration_minutes"),
+  whyNote: text("why_note"),
+  timingNote: text("timing_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("claim_evening_stops_claim_position_uniq").on(table.claimId, table.position),
+]);
+export type ClaimEveningStop = typeof claimEveningStops.$inferSelect;
+
+// claimContingencies: the "backup plan" evidence prompt (rain/closed/with_kids alternates).
+// Vocabulary app-enforced, no DB CHECK (publish-trap posture).
+export const claimContingencies = pgTable("claim_contingencies", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  claimId: varchar("claim_id").notNull().references(() => expertNeighborhoodClaims.id, { onDelete: "cascade" }),
+  trigger: varchar("trigger", { length: 30 }).notNull(), // rain|closed|with_kids, app-enforced
+  alternateTitle: varchar("alternate_title", { length: 200 }),
+  alternateNote: text("alternate_note"),
+  replacesPosition: integer("replaces_position"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("claim_contingencies_claim_idx").on(table.claimId),
+]);
+export type ClaimContingency = typeof claimContingencies.$inferSelect;
 
 // providerNeighborhoodCoverage: which providers serve which neighborhood × category.
 // Powers the "category × neighborhood" upsell query (brief Phase 3 gate).
@@ -8057,9 +8154,20 @@ export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
   promotionReviewNote: text("promotion_review_note"),
   promotedGemId: varchar("promoted_gem_id"),
 
+  // Field-knowledge evidence linkage (Phase 1 schema, ledger 2026-08-29-neighborhood-claims;
+  // migration 271). When set, this nugget IS a piece of evidence captured for the linked claim
+  // (Phase 2 capture forms). Nullable — most nuggets predate the claims lane and stay unlinked.
+  // Not client-settable yet: omitted from insertLocalKnowledgeNuggetSchema below because setting
+  // it legitimately requires verifying the claim belongs to the posting expert, which the Phase 2
+  // capture-form service owns — a bare body field here would let a client link a nugget to any
+  // claim id. ON DELETE SET NULL: a deleted claim must never take its evidence nuggets with it.
+  claimId: varchar("claim_id").references(() => expertNeighborhoodClaims.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("local_knowledge_nuggets_claim_idx").on(table.claimId),
+]);
 
 export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledgeNuggets).omit({
   id: true,
@@ -8072,9 +8180,41 @@ export const insertLocalKnowledgeNuggetSchema = createInsertSchema(localKnowledg
   promotionReviewedAt: true,
   promotionReviewNote: true,
   promotedGemId: true,
+  // Phase 1: claimId is schema-only until the Phase 2 capture-form service owns the
+  // claim-ownership check (see the column comment above).
+  claimId: true,
 });
 export type LocalKnowledgeNugget = typeof localKnowledgeNuggets.$inferSelect;
 export type InsertLocalKnowledgeNugget = z.infer<typeof insertLocalKnowledgeNuggetSchema>;
+
+// nuggetPhotos: 2-4 photos per nugget for a Moments slideshow (the ratified photo amendment).
+// Child-row pattern (dmo_extracted_places / service_route_points, §20/§22): ON DELETE CASCADE,
+// UNIQUE (nugget_id, position). Photos arrive via the ruling-58 objstore rail ONLY (platform-
+// served URLs, never hotlinks) — feeds the 2026-09-01-photo-tiers stock-photo replacement path,
+// the Moments gate, and Phase-4 scout reports. Upload endpoint is Phase 2 — schema only here
+// (Phase 1 exposes NO photo read path at all, owner console included).
+//
+// LOAD-BEARING CONSENT INVARIANT (decision-maker ratified, Phase 1 rider): no public/non-owner
+// consumer may EVER read a photo off this table unless the parent claim recorded consent — i.e.
+// unless it can prove "we asked". The join path is
+//   nugget_photos -> local_knowledge_nuggets.claim_id -> expert_neighborhood_claims.consent_at
+// and the gate is `expert_neighborhood_claims.consent_at IS NOT NULL`. A photo on a nugget whose
+// claim_id is NULL has NO consent anchor at all and must never be surfaced publicly — nuggets are
+// only capturable-as-evidence (and therefore photo-bearing) when linked to a claim; Phase 2's
+// upload endpoint enforces that linkage at write time, but ANY future read path — including a
+// same-lane "my photos" console view, if one is added before the public path — must carry this
+// same join from day one, not just the eventual public one. Enforce this in the READ path
+// (explicit joins/filters in the serving query), never as a comment-only intention.
+export const nuggetPhotos = pgTable("nugget_photos", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  nuggetId: varchar("nugget_id").notNull().references(() => localKnowledgeNuggets.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  photoUrl: varchar("photo_url", { length: 500 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("nugget_photos_nugget_position_uniq").on(table.nuggetId, table.position),
+]);
+export type NuggetPhoto = typeof nuggetPhotos.$inferSelect;
 
 // ─── Content Placement Rules ──────────────────────────────────────────────────
 // Explicit mapping: content item → cities → surfaces → pulse threshold.
