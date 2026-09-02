@@ -53,7 +53,7 @@ export function dollarsToCents(v: unknown): number | null {
 /** First neighborhood carrying a localExpert (the feed's deterministic order), or null. */
 export function pickAnchorExpert(
   neighborhoods: HeroNeighborhood[],
-): { id: string; name: string } | null {
+): { id: string; name: string; imageUrl?: string } | null {
   for (const nb of neighborhoods) {
     const e = nb?.localExpert;
     if (e && e.id) {

@@ -28,20 +28,13 @@
  * (server/routes/internal.routes.ts) — asserted as the honest negative rather than failing, the
  * same posture every money/service-availability gate in this dispatch uses.
  *
- * AI-GENERATION HONESTY (FINDING, found while building this suite): persona-nightly.yml's
- * "Start production server" step hardcodes XAI_API_KEY=xai-ci-stub-no-real-calls and
- * ANTHROPIC_API_KEY=sk-ant-ci-stub-no-real-calls — literal stub strings, NOT
- * `${{ secrets.X || 'stub' }}` the way STRIPE_SECRET_KEY is wired. So — UNLIKE Stripe, which runs
- * the full positive path whenever a real secret is configured — occasion-drafts.service.ts's
- * generation call (grokService.generateAutonomousItinerary, Grok then an Anthropic fallback) is
- * GUARANTEED to fail against both stub keys in the CURRENT wiring: buildDraftSlip() throws, the
- * occasion_drafts CLAIM row is written but never PROMOTED (trip_id/generated_at stay NULL), and
- * "created" in the run's own result counters stays 0. This is not asserted away — this suite
- * looks up the ledger row's ACTUAL promoted state after triggering the run (never a guessed env
- * flag) and branches honestly: promoted → the full positive path below; un-promoted → an EXTERNAL
- * finding citing the run's own counters, never a fabricated pass. Wiring real AI keys into
- * persona-nightly.yml was NOT in this dispatch's scope (only INTERNAL_JOB_SECRET was) — filed as
- * a follow-up, not fixed here.
+ * AI-GENERATION HONESTY: persona-nightly.yml explicitly enables E2E_AI_STUB=1 while retaining
+ * the test-account opt-in. The explicitly provisioned staging deployment must set the same
+ * E2E_AI_STUB=1 flag alongside ALLOW_TEST_ACCOUNTS=1; the server keeps the stub disabled for
+ * production environments. This deterministic result bypasses the external LLM call while every
+ * downstream step still uses real application code. This suite looks up the ledger row's ACTUAL
+ * promoted state after triggering the run (never a guessed env flag) and fails if the positive
+ * delivery path did not execute.
  */
 import { test, expect } from "@playwright/test";
 import {
@@ -164,11 +157,12 @@ test.describe("journey-plus — Plus member occasion draft delivery", () => {
       // FAIL LOUDLY — do NOT swallow this as an "honest negative" (the prior behaviour, which
       // green-passed whether or not the positive path ran, so the delivery proof could rot
       // unnoticed). The occasion draft's generation is served by grokService.generateAutonomousItinerary,
-      // which returns a deterministic canned itinerary when E2E_AI_STUB=1 (double-gated NODE_ENV !==
-      // production). The draft-run fires SERVER-SIDE via POST /internal/run-occasion-drafts against the
-      // deployed staging app, so E2E_AI_STUB=1 must be set in STAGING's env (not this workflow's) for
-      // the positive promote path to run. A CLAIM row with a null trip_id/generated_at means generation
-      // produced nothing — the stub is almost certainly off in the target env.
+      // which returns a deterministic canned itinerary when E2E_AI_STUB=1. Production-mode staging
+      // also needs ALLOW_TEST_ACCOUNTS=1; the server refuses the stub for ENVIRONMENT=PROD. The
+      // draft-run fires SERVER-SIDE via POST /internal/run-occasion-drafts, so E2E_AI_STUB=1 must be
+      // set in the target server environment for the positive promote path to run. A CLAIM row with
+      // a null trip_id/generated_at means generation produced nothing — the stub is almost certainly
+      // off in the target env.
       report.record({
         action: "draft run did not promote a trip — occasion draft produced no items",
         ui: "n/a",

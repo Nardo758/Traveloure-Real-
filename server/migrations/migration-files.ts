@@ -1346,4 +1346,13 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
+  // 271: expert field-knowledge claims, Phase 1 (ledger 2026-08-29-neighborhood-claims +
+  // 2026-08-29-evidence-is-the-test, 2026-08-29-graded-unlocks, 2026-08-29-scout-check).
+  // Additive: expert_neighborhood_claims (the claim; scores admin-only), claim_evening_stops +
+  // claim_contingencies (typed evidence child rows, Phase 2 writes them), local_knowledge_nuggets
+  // .claim_id (nullable evidence linkage), and nugget_photos (the ratified photo amendment —
+  // 2-4 photos per nugget for a Moments slideshow). No CHECK constraints (publish-trap posture);
+  // every table/index/FK declared in shared/schema.ts for deploy-push durability. Ratification
+  // births exactly one expert_neighborhoods row per claim — that join table is untouched here.
+  "271_expert_neighborhood_claims.sql",
 ] as const;
