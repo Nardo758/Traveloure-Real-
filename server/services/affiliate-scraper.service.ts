@@ -525,6 +525,17 @@ ${truncatedHtml}`;
     return product;
   }
 
+  /**
+   * Record a click and resolve the outbound URL for it.
+   *
+   * `approvedOnly` DEFAULTS TO TRUE — fail closed. This lookup returns an affiliate URL, and §16
+   * keeps that URL server-side deliberately (the booking agent books through it; handing it out
+   * preserves neither commission nor the funnel). Every other public product read applies the
+   * migration-121 partner-approval gate — `getProducts({approvedOnly})`, `getProductById`, and the
+   * `EXISTS (… approval_status = 'approved')` clause on /api/content/affiliate-redirect — but this
+   * path called the lookups with NO options, so an unapproved partner's product URL was reachable
+   * by id from an unauthenticated caller. Only an admin-context caller may pass false.
+   */
   async trackClick(data: {
     productId?: string;
     partnerId?: string;
@@ -537,8 +548,10 @@ ${truncatedHtml}`;
     initiatedBy?: "user" | "ai_agent" | "expert";
     agentType?: "grok" | "claude" | "system" | null;
     sessionId?: string;
+    approvedOnly?: boolean;
   }): Promise<{ affiliateUrl: string }> {
-    const { initiatedBy, agentType, sessionId, ...rest } = data;
+    const { initiatedBy, agentType, sessionId, approvedOnly, ...rest } = data;
+    const gate = { approvedOnly: approvedOnly !== false };
     await db.insert(affiliateClicks).values({
       ...rest,
       initiatedBy: initiatedBy || "user",
@@ -547,14 +560,14 @@ ${truncatedHtml}`;
     });
 
     if (data.productId) {
-      const product = await this.getProductById(data.productId);
+      const product = await this.getProductById(data.productId, gate);
       if (product) {
         return { affiliateUrl: product.affiliateUrl || product.productUrl };
       }
     }
 
     if (data.partnerId) {
-      const partner = await this.getPartnerById(data.partnerId);
+      const partner = await this.getPartnerById(data.partnerId, gate);
       if (partner) {
         return { affiliateUrl: partner.websiteUrl };
       }
