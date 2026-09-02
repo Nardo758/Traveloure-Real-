@@ -75,7 +75,7 @@ export async function getConversationList(
 
   let conversations = Array.from(conversationMap.values());
 
-  const userIds = [...new Set(conversations.map((c) => c.otherUserId))];
+  const userIds = Array.from(new Set(conversations.map((c) => c.otherUserId)));
   if (userIds.length > 0) {
     const otherUsers = await db
       .select({
