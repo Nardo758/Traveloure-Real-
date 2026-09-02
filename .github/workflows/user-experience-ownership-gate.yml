@@ -1,0 +1,73 @@
+name: User-experience ownership gate
+
+# Security-audit findings 4 and 6 (docs/findings/SECURITY_AUDIT_2026-09-01.md, as-of 4644af6):
+#
+#   §6  GET /api/user-experiences/:id had NO ownership check — it returned another account's
+#       budget, location, preferences and stepData plus every child item to any authenticated
+#       caller, while the list sibling one route above correctly scoped by userId.
+#   §4  PATCH and DELETE /api/user-experience-items/:id were isAuthenticated only and handed the
+#       path id straight to a storage writer keyed on `id` ALONE.
+#
+# Ownership for an item lives on its PARENT (user_experience_items has no user_id column), so the
+# fix puts the predicate inside the write's own WHERE — the markAsRead/deleteNotification shape.
+# The suite therefore drives the STORAGE WRITERS as well as the routes: a route-only guard would
+# leave the writer reachable unowned by the next caller, which is the shape that produced the
+# finding. Needs a real database for exactly that reason.
+#
+# --test-force-exit because importing content.routes.ts starts the TravelPulse scheduler timer at
+# module load.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: user-experience-ownership-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  user-experience-ownership:
+    name: the user-experience block is owner-scoped on read and on item writes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      - name: Ownership on read and item writes (U1-U5)
+        run: npx tsx --test --test-force-exit server/__tests__/user-experience-ownership.db.test.ts
+      - name: The user-experience write bodies stay allowlists (D1-D5)
+        run: npx tsx --test --test-force-exit server/routes/__tests__/user-experience-mass-assignment.test.ts
