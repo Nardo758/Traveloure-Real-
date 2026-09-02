@@ -35,6 +35,12 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
 import { drainOutbox } from "../services/email-outbox.service";
+import {
+  recordJobSuccess,
+  computeJobHealth,
+  isAnyJobUnhealthy,
+  type JobCadence,
+} from "../services/job-heartbeats.service";
 
 const router = Router();
 
@@ -126,7 +132,12 @@ export async function runJob(
       logger.error({ job: name, error: String(error), result }, "[internal-jobs] job reported failure");
       return { status: 500, body: { ok: false, job: name, error: String(error), result } };
     }
-    return { status: 200, body: { ok: true, job: name, result } };
+    const body = { ok: true, job: name, result };
+    // A REAL pass — stamp the heartbeat. Never on the skip branch above (L6/H2): a job stuck in
+    // permanent overlap must go stale rather than look healthy. See job-heartbeats.service.ts for
+    // why only the cron-driven path stamps and why that asymmetry must not be "fixed".
+    await recordJobSuccess(name, body);
+    return { status: 200, body };
   } catch (err: any) {
     // runBackgroundJob already logs a thrown pass, but log here too so the endpoint's own record is
     // self-sufficient and does not depend on the runner's internals (L5).
@@ -135,12 +146,47 @@ export async function runJob(
   }
 }
 
+// ── Cadence roster ─────────────────────────────────────────────────────────────────────────────
+//
+// The expected firing interval of every job below, derived from the bucket that fires it. ONE
+// source of truth for staleness, and the roster the health endpoint ITERATES — a job with no
+// heartbeat row is reported `never_succeeded` rather than silently absent (L6/A).
+//
+// ⚠ COUPLED TO .github/workflows/jobs-cron.yml (and occasion-drafts-daily.yml). If a bucket's cron
+// expression or route list changes, this map changes in the SAME commit — otherwise staleness is
+// measured against a schedule that no longer exists. A `check-cron-route-drift` guard that parses
+// the workflow's route strings against these entries is filed in FOLLOWUPS.md; until it lands this
+// comment is the coupling.
+export const JOB_CADENCE: readonly JobCadence[] = [
+  // jobs-cron.yml — backstops, */15 * * * *
+  { job: "checkout-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  { job: "itinerary-generation-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  { job: "email-outbox", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  // jobs-cron.yml — hourly, 0 * * * *
+  { job: "earnings-release", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  { job: "booking-auto-completion", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // jobs-cron.yml — four-hourly, 0 */4 * * *
+  { job: "booking-expiry", expectedIntervalSec: 4 * 60 * 60, bucket: "four-hourly" },
+  // jobs-cron.yml — six-hourly, 0 */6 * * *
+  { job: "travelpayouts-report-poll", expectedIntervalSec: 6 * 60 * 60, bucket: "six-hourly" },
+  // jobs-cron.yml — daily, 0 9 * * *
+  { job: "stripe-reconciliation", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  { job: "availability-materialization", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // occasion-drafts-daily.yml — its own workflow, daily
+  { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
+];
+
 // ── The authoritative occasion-drafts runner (ledger 2026-08-27-plus-is-delivery) ──────────────
 router.post("/internal/run-occasion-drafts", requireInternalSecret, async (req, res) => {
   try {
     const limit = typeof req.body?.limit === "number" && req.body.limit > 0 ? Math.floor(req.body.limit) : undefined;
     const result = await runOccasionDrafts({ limit });
-    return res.status(200).json({ ok: true, result });
+    const body = { ok: true, job: "run-occasion-drafts", result };
+    // This handler predates runJob and keeps its own shape (L9: no behavioural churn beyond the
+    // lane). The stamp is purely additive so the job still appears in the health roster instead of
+    // reading `never_succeeded` forever.
+    await recordJobSuccess("run-occasion-drafts", body);
+    return res.status(200).json(body);
   } catch (err: any) {
     console.error("[internal] run-occasion-drafts failed:", err);
     return res.status(500).json({ ok: false, message: "run failed" });
@@ -227,6 +273,33 @@ router.post("/internal/jobs/itinerary-generation-sweep", requireInternalSecret, 
 router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("email-outbox", () => drainOutbox(), (r) => !!r?.error);
   res.status(status).json(body);
+});
+
+// ── GET /internal/jobs/health ──────────────────────────────────────────────────────────────────
+// Per-job staleness for ops and for the admin tile's server-side twin. Same secret guard and the
+// same /internal rate limiter as every runner above.
+//
+// `ok` means THIS READ succeeded; `healthy` is the verdict about the jobs. They are separate on
+// purpose — a monitor that conflated them would report the detector as broken whenever it correctly
+// detected something.
+//
+// Iterates JOB_CADENCE, not the heartbeat table: a job that has never once succeeded is reported
+// `never_succeeded`, never omitted (L6/A).
+router.get("/internal/jobs/health", requireInternalSecret, async (_req, res) => {
+  try {
+    const jobs = await computeJobHealth(JOB_CADENCE);
+    return res.status(200).json({
+      ok: true,
+      healthy: !isAnyJobUnhealthy(jobs),
+      staleCount: jobs.filter((j) => j.status !== "ok").length,
+      // Every surface that renders this must say LAST CRON-DRIVEN SUCCESS, not "job health": the
+      // in-process timers deliberately do not stamp (job-heartbeats.service.ts).
+      measures: "last cron-driven success",
+      jobs,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: "failed to read job health" });
+  }
 });
 
 export default router;

@@ -1346,4 +1346,10 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
+  // 271: job_heartbeats — one row per internal job name, upserted by runJob on a real success
+  // (never on a skip). The health endpoint iterates the CADENCE ROSTER and left-joins this table,
+  // so a job that has NEVER succeeded is reported `never_succeeded` rather than being absent —
+  // absence-compared-to-absence is the failure this whole lane exists to close. Additive, no
+  // CHECK; table + index declared in shared/schema.ts for publish durability.
+  "271_job_heartbeats.sql",
 ] as const;

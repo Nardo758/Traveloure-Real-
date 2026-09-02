@@ -54,6 +54,13 @@ run_url() {
 }
 
 # Booleans + numeric leaves only. Never strings, never the raw body.
+#
+# ⚠ PAIRED WITH `summarizeJobResult()` IN server/services/job-heartbeats.service.ts. These two
+# allowlists must move together: they are the same rule (never print or persist a job's free-text
+# payload, because reconciliation and earnings results are money-shaped) expressed in the two
+# languages their surfaces are written in. One shared implementation across bash and TypeScript is
+# not possible, so this comment is the coupling — H6 in internal-jobs-heartbeat.db.test.ts pins the
+# TypeScript half.
 summarize() {
   jq -c '
     { ok: .ok, skipped: (.skipped // false) }

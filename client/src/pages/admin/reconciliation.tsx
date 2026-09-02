@@ -43,6 +43,18 @@ interface ReconciliationResult {
   note: string;
 }
 
+/** Per-job cron liveness (internal-jobs-hardening, L6). `never_succeeded` is a job the roster
+ *  knows about that has no heartbeat row at all — reported, never omitted. */
+interface JobHealthRow {
+  job: string;
+  bucket: string;
+  expectedIntervalSec: number;
+  status: "ok" | "stale" | "never_succeeded";
+  lastSuccessAt: string | null;
+  ageSec: number | null;
+  lastResult: Record<string, number | boolean | string> | null;
+}
+
 /** A persisted drift fact (reconciliation-detection lane). Append-only — a drift that persists
  *  across passes is ONE row stamped with the run that first saw it. */
 interface DriftException {
@@ -126,6 +138,21 @@ export default function AdminReconciliation() {
     note: string;
   }>({
     queryKey: ["/api/admin/webhooks/unprocessed"],
+  });
+
+  // Scheduled-job heartbeats (internal-jobs-hardening, L6). Reads the admin twin of
+  // GET /internal/jobs/health. NOTE THE WORDING EVERYWHERE BELOW: this is the last CRON-DRIVEN
+  // success, not "job health" — the in-process defense-in-depth timers deliberately never stamp a
+  // heartbeat, which is exactly what lets a dead cron channel show up here while a warm timer is
+  // still doing the work. A red row means "the cron has not driven this job recently", which is a
+  // real problem worth surfacing, but it is NOT the same claim as "this job is broken".
+  const { data: jobHealth, isLoading: jobHealthLoading, refetch: refetchJobHealth } = useQuery<{
+    healthy: boolean;
+    staleCount: number;
+    measures: string;
+    jobs: JobHealthRow[];
+  }>({
+    queryKey: ["/api/admin/jobs/health"],
   });
 
   // Disputed bookings (persistent, from DB)
@@ -384,7 +411,96 @@ export default function AdminReconciliation() {
               </p>
             </CardContent>
           </Card>
+
+          {/* Scheduled-job cron liveness. Labelled "cron-driven" on purpose — see the query note. */}
+          <Card className={jobHealth && !jobHealth.healthy ? "border-amber-300 bg-amber-50" : ""}>
+            <CardContent className="pt-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Cron-Driven Jobs Stale</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1" data-testid="text-stale-jobs-count">
+                    {jobHealthLoading || !jobHealth ? "—" : jobHealth.staleCount}
+                  </p>
+                </div>
+                <div className={`p-3 rounded-full ${jobHealth && !jobHealth.healthy ? "bg-amber-100" : jobHealth ? "bg-green-100" : "bg-gray-100"}`}>
+                  {jobHealth && !jobHealth.healthy
+                    ? <AlertTriangle className="h-5 w-5 text-amber-600" />
+                    : jobHealth
+                      ? <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      : <Clock className="h-5 w-5 text-gray-400" />}
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Last <strong>cron-driven</strong> success per job — in-process timers do not stamp
+              </p>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Scheduled jobs panel — the roster, so a job that has NEVER run is listed, not missing. */}
+        <Card className={jobHealth && !jobHealth.healthy ? "border-amber-300" : ""}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clock className={`h-4 w-4 ${jobHealth && !jobHealth.healthy ? "text-amber-600" : "text-gray-400"}`} />
+                  Scheduled jobs — last cron-driven success
+                  {jobHealth && jobHealth.staleCount > 0 && (
+                    <Badge variant="destructive" className="ml-1">{jobHealth.staleCount} stale</Badge>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  Every job in the cron roster, whether or not it has ever run. A job is stale past
+                  2× its expected interval. This measures the <strong>external cron channel only</strong>;
+                  the in-process timers run the same jobs as defense-in-depth and never stamp a
+                  heartbeat, so a stale row means the cron is not firing — not necessarily that the
+                  work is undone.
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetchJobHealth()} data-testid="button-refresh-job-health">
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {jobHealthLoading ? (
+              <p className="text-sm text-gray-500">Loading…</p>
+            ) : !jobHealth ? (
+              <p className="text-sm text-gray-500">Job health is unavailable right now.</p>
+            ) : (
+              <div className="space-y-2">
+                {jobHealth.jobs.map((j) => (
+                  <div
+                    key={j.job}
+                    className="flex items-center justify-between border rounded-md px-3 py-2"
+                    data-testid={`row-job-health-${j.job}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{j.job}</p>
+                      <p className="text-xs text-gray-500">
+                        {j.bucket} · expected every {Math.round(j.expectedIntervalSec / 60)} min
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 ml-3">
+                      <Badge
+                        variant={j.status === "ok" ? "secondary" : "destructive"}
+                        data-testid={`badge-job-status-${j.job}`}
+                      >
+                        {j.status === "never_succeeded" ? "never succeeded" : j.status}
+                      </Badge>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {j.lastSuccessAt
+                          ? new Date(j.lastSuccessAt).toLocaleString()
+                          : "no cron-driven success on record"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Disputes panel — always visible, red/urgent when populated */}
         <Card className={disputeCount > 0 ? "border-red-300" : ""}>

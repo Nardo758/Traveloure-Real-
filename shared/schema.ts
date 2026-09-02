@@ -7801,6 +7801,30 @@ export const landingMomentEvents = pgTable("landing_moment_events", {
 }));
 export type LandingMomentEvent = typeof landingMomentEvents.$inferSelect;
 
+// job_heartbeats (internal-jobs-hardening, L6; migration 271): the "did this scheduled job actually
+// run?" record. One row per internal job name, upserted by `runJob` when a pass really SUCCEEDED —
+// never on an overlap/cap skip, so a job stuck in permanent overlap goes stale and says so.
+//
+// WHAT IT MEASURES: the LAST CRON-DRIVEN SUCCESS, not "job health" in general. The upsert lives in
+// the /internal endpoint wrapper, so the in-process defense-in-depth timers never touch it — which
+// is the point (it detects a dead cron channel even while a warm timer masks the symptom), and is
+// why every surface that renders it must say "last cron-driven success". See the upsert site in
+// server/services/job-heartbeats.service.ts for the full note.
+//
+// `last_result` holds an ALLOWLIST summary (booleans + numeric leaves + the bounded `reason` enum),
+// never the raw result: the same rule the public CI log follows one layer out, for the same reason
+// — reconciliation and earnings results are money-shaped. Declared here (table AND index) per the
+// deploy-push durability rule; no CHECK (publish-trap posture).
+export const jobHeartbeats = pgTable("job_heartbeats", {
+  jobName: varchar("job_name", { length: 80 }).primaryKey(),
+  lastSuccessAt: timestamp("last_success_at").notNull(),
+  lastResult: jsonb("last_result"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  lastSuccessAtIdx: index("idx_job_heartbeats_last_success_at").on(table.lastSuccessAt),
+}));
+export type JobHeartbeat = typeof jobHeartbeats.$inferSelect;
+
 // Phase 5.4 (step 6) — expert endorsements. Two scopes:
 //   scope='trip'         → expert curates for a specific trip
 //   scope='neighborhood' → lead endorses for a neighborhood (compounds across trips)
