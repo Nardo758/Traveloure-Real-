@@ -19,6 +19,8 @@ import {
   CONTINGENCY_TRIGGER_LABELS,
   EXPERT_CONFIDENCE_LABELS,
   HARD_CONSTRAINT_LABELS,
+  UNLOCK_COPY,
+  EVIDENCE_UNLOCKS,
 } from "../../shared/neighborhood-claims";
 
 // Exactly the ruled list (D6): whole words, case-insensitive. "Failed to load…" is not "fail".
@@ -41,6 +43,7 @@ describe("expert-facing vocabulary — claimed → verified, never test/exam/sco
       CLAIM_PROMPTS.p4("Gion"),
       VERIFIED_COPY("Gion"),
       ...EVIDENCE_DIMENSIONS.map((d) => RETURN_TEMPLATES[d]("Yasaka Shrine")),
+      ...EVIDENCE_UNLOCKS.map((u) => UNLOCK_COPY[u]("Gion")),
       ...Object.values(CONTINGENCY_TRIGGER_LABELS),
       ...Object.values(EXPERT_CONFIDENCE_LABELS),
       ...Object.values(HARD_CONSTRAINT_LABELS),
