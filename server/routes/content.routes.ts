@@ -99,7 +99,7 @@ import {
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
-  insertCustomVenueSchema, insertGeneratedItinerarySchema,
+  insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
   userAndExpertChats, insertUserAndExpertChatSchema,
@@ -1687,10 +1687,40 @@ router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
 
   // Create new experience
 
+// Allowlist body schema for user-experience writes (§19). Derived from the existing insert schema
+// with .pick(), the same shape ruling 46 used for createBookingRequestSchema — NOT a
+// createInsertSchema call site, so the omit-schema ratchet neither counts nor is affected by it.
+//
+// Both routes below used to pass RAW `req.body` straight through: POST spread it into
+// createUserExperience and PATCH assigned `const updates = req.body` into a `.set({...updates})`.
+// `insertUserExperienceSchema` already omits userId — the routes simply never used it. So every
+// column was writable, including `userId` (ownership transfer / re-attribution on PATCH) and the
+// UNIQUE `trackingNumber`. tripId stays writable but is ownership-checked below: the FK requires
+// the trip to exist, not to be yours.
+// Exported so the negative test asserts against the REAL artifact, not a copy of it.
+export const userExperienceBodySchema = insertUserExperienceSchema.pick({
+  experienceTypeId: true,
+  tripId: true,
+  title: true,
+  status: true,
+  eventDate: true,
+  location: true,
+  budget: true,
+  guestCount: true,
+  preferences: true,
+  stepData: true,
+  currentStep: true,
+  mapData: true,
+});
+
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const experience = await storage.createUserExperience({ ...req.body, userId });
+      const body = userExperienceBodySchema.parse(req.body);
+      if (body.tripId && !(await verifyTripOwnership(body.tripId, userId))) {
+        return res.status(403).json({ message: "Not your trip" });
+      }
+      const experience = await storage.createUserExperience({ ...body, userId });
 
       // Auto-create a linked trip
       let tripId: string | null = experience.tripId ?? null;
@@ -1729,7 +1759,12 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: "Experience not found" });
     }
 
-    const updates = req.body;
+    // Allowlisted — never the raw body. `userId` is not pickable, so an owner can no longer hand
+    // this experience to another account, and the UNIQUE trackingNumber is not settable either.
+    const updates: Record<string, any> = userExperienceBodySchema.partial().parse(req.body);
+    if (updates.tripId && !(await verifyTripOwnership(updates.tripId, userId))) {
+      return res.status(403).json({ message: "Not your trip" });
+    }
 
     // Auto-create linked trip on first save if not already linked
     if (!experience.tripId && !updates.tripId) {
