@@ -126,6 +126,91 @@ export function travelerServiceFeeWaiverLedgerKey(bookingId: string): string {
  *
  * A booking with no positive fee (a $0 line) writes nothing — `appendFeeLedgerRows` skips a zero row.
  */
+/**
+ * Build the fee-ledger rows for ONE booking's traveler-fee snapshot. Shared by both rails
+ * (service_bookings and the legacy `bookings` table) so the +X / −X shape is written ONE way.
+ * Returns 0 rows (no fee / no snapshot), 1 row (uncovered), or 2 rows (covered net-zero).
+ */
+export function buildTravelerServiceFeeRows(
+  t: any,
+  opts: {
+    bookingId: string;
+    sourceType: string;
+    acquisitionRef?: string | null;
+    stripePaymentRef?: string | null;
+    actor: string;
+  },
+): { rows: FeeLedgerAppendRow[]; considered: number } {
+  if (!t) return { rows: [], considered: 0 };
+  // The fee that WOULD have been charged at the resolved band rate + cap. This is the amount of the
+  // +X row in both cases; `charged` (0 when waived) is what actually rode the Stripe total.
+  const wouldHaveBeen = round2(Number(t.wouldHaveBeen ?? t.charged ?? 0));
+  if (!Number.isFinite(wouldHaveBeen) || wouldHaveBeen <= 0) return { rows: [], considered: 0 };
+  const { bookingId } = opts;
+  const waived = t.waived === true;
+  const waiverBasis: string | null = waived ? (t.waiverBasis ?? null) : null;
+  const bandId = t.bandId ?? null;
+  const rate = t.rate ?? null;
+  const capApplied = t.capApplied === true;
+  const rows: FeeLedgerAppendRow[] = [];
+
+  // +X — the fee itself. Present whether or not it was waived (the waiver leg nets it, so the
+  // gross fee stays visible and the suppressed total is derivable).
+  rows.push({
+    sourceType: opts.sourceType,
+    sourceId: bookingId,
+    bookingId,
+    feeType: "traveler_service_fee",
+    amount: wouldHaveBeen,
+    borneBy: "traveler",
+    bandId,
+    rateAsResolved: rate,
+    rateSource: "band",
+    capApplied,
+    acquisitionRef: opts.acquisitionRef ?? null,
+    stripePaymentRef: opts.stripePaymentRef ?? null,
+    idempotencyKey: travelerServiceFeeLedgerKey(bookingId),
+    description: `Traveler service fee on booking ${bookingId} (band ${t.bandKey ?? "unknown"})`,
+    metadata: {
+      actor: opts.actor,
+      bandKey: t.bandKey ?? null,
+      chargedAmount: round2(Number(t.charged ?? 0)),
+      waived,
+      waiverBasis,
+    },
+  });
+
+  // −X — the waiver leg, only when covered. Borne by the PLATFORM (it gives up the revenue).
+  if (waived) {
+    rows.push({
+      sourceType: opts.sourceType,
+      sourceId: bookingId,
+      bookingId,
+      feeType: "fee_waiver",
+      amount: -wouldHaveBeen,
+      borneBy: "platform",
+      bandId,
+      rateAsResolved: rate,
+      rateSource: "band",
+      capApplied,
+      // `source_attribution` names WHY it was waived on this money-input table: a rails waiver is
+      // rails-attributed, a Trip-Pass waiver is a platform product coverage.
+      sourceAttribution: waiverBasis === "rails" ? "rails" : "platform",
+      acquisitionRef: opts.acquisitionRef ?? null,
+      stripePaymentRef: opts.stripePaymentRef ?? null,
+      idempotencyKey: travelerServiceFeeWaiverLedgerKey(bookingId),
+      description: `Traveler service fee WAIVED on booking ${bookingId} (covered_by:${waiverBasis ?? "unknown"})`,
+      metadata: {
+        actor: opts.actor,
+        bandKey: t.bandKey ?? null,
+        covered_by: waiverBasis, // 'trip_pass' | 'rails'
+        waivedAmount: wouldHaveBeen,
+      },
+    });
+  }
+  return { rows, considered: 1 };
+}
+
 export async function recordTravelerServiceFeeLedger(opts: {
   bookingIds: string[];
   stripePaymentRef?: string | null;
@@ -143,74 +228,15 @@ export async function recordTravelerServiceFeeLedger(opts: {
   const rows: FeeLedgerAppendRow[] = [];
   let considered = 0;
   for (const raw of (res.rows ?? []) as any[]) {
-    const t = raw.tfee as any;
-    if (!t) continue; // a booking born before this lane, or with no fee snapshot — nothing to record
-    // The fee that WOULD have been charged at the resolved band rate + cap. This is the amount of the
-    // +X row in both cases; `charged` (0 when waived) is what actually rode the Stripe total.
-    const wouldHaveBeen = round2(Number(t.wouldHaveBeen ?? t.charged ?? 0));
-    if (!Number.isFinite(wouldHaveBeen) || wouldHaveBeen <= 0) continue;
-    considered += 1;
-    const bookingId = String(raw.id);
-    const waived = t.waived === true;
-    const waiverBasis: string | null = waived ? (t.waiverBasis ?? null) : null;
-    const bandId = t.bandId ?? null;
-    const rate = t.rate ?? null;
-    const capApplied = t.capApplied === true;
-
-    // +X — the fee itself. Present whether or not it was waived (the waiver leg nets it, so the
-    // gross fee stays visible and the suppressed total is derivable).
-    rows.push({
+    const built = buildTravelerServiceFeeRows(raw.tfee, {
+      bookingId: String(raw.id),
       sourceType: "service_booking",
-      sourceId: bookingId,
-      bookingId,
-      feeType: "traveler_service_fee",
-      amount: wouldHaveBeen,
-      borneBy: "traveler",
-      bandId,
-      rateAsResolved: rate,
-      rateSource: "band",
-      capApplied,
       acquisitionRef: raw.acquisition_ref ?? null,
       stripePaymentRef: opts.stripePaymentRef ?? null,
-      idempotencyKey: travelerServiceFeeLedgerKey(bookingId),
-      description: `Traveler service fee on booking ${bookingId} (band ${t.bandKey ?? "unknown"})`,
-      metadata: {
-        actor: opts.actor,
-        bandKey: t.bandKey ?? null,
-        chargedAmount: round2(Number(t.charged ?? 0)),
-        waived,
-        waiverBasis,
-      },
+      actor: opts.actor,
     });
-
-    // −X — the waiver leg, only when covered. Borne by the PLATFORM (it gives up the revenue).
-    if (waived) {
-      rows.push({
-        sourceType: "service_booking",
-        sourceId: bookingId,
-        bookingId,
-        feeType: "fee_waiver",
-        amount: -wouldHaveBeen,
-        borneBy: "platform",
-        bandId,
-        rateAsResolved: rate,
-        rateSource: "band",
-        capApplied,
-        // `source_attribution` names WHY it was waived on this money-input table: a rails waiver is
-        // rails-attributed, a Trip-Pass waiver is a platform product coverage.
-        sourceAttribution: waiverBasis === "rails" ? "rails" : "platform",
-        acquisitionRef: raw.acquisition_ref ?? null,
-        stripePaymentRef: opts.stripePaymentRef ?? null,
-        idempotencyKey: travelerServiceFeeWaiverLedgerKey(bookingId),
-        description: `Traveler service fee WAIVED on booking ${bookingId} (covered_by:${waiverBasis ?? "unknown"})`,
-        metadata: {
-          actor: opts.actor,
-          bandKey: t.bandKey ?? null,
-          covered_by: waiverBasis, // 'trip_pass' | 'rails'
-          waivedAmount: wouldHaveBeen,
-        },
-      });
-    }
+    rows.push(...built.rows);
+    considered += built.considered;
   }
 
   const inserted = await appendFeeLedgerRows(rows);
@@ -221,6 +247,37 @@ export async function recordTravelerServiceFeeLedger(opts: {
     );
   }
   return { inserted, considered };
+}
+
+/**
+ * Legacy `bookings` rail (ruling E: reachable → billed for parity). Same +X/−X shape, read from
+ * `bookings.booking_metadata->travelerServiceFee` (the legacy table has no `booking_details`), with
+ * `sourceType:"booking"`. Written at payment confirmation; idempotent per booking id.
+ */
+export async function recordLegacyBookingTravelerFeeLedger(opts: {
+  bookingId: string;
+  stripePaymentRef?: string | null;
+  actor: string;
+}): Promise<{ inserted: number; considered: number }> {
+  const res = await db.execute(sql`
+    SELECT booking_metadata->'travelerServiceFee' AS tfee
+      FROM bookings WHERE id = ${opts.bookingId} LIMIT 1
+  `);
+  const raw = (res.rows ?? [])[0] as any;
+  const built = buildTravelerServiceFeeRows(raw?.tfee, {
+    bookingId: String(opts.bookingId),
+    sourceType: "booking",
+    stripePaymentRef: opts.stripePaymentRef ?? null,
+    actor: opts.actor,
+  });
+  const inserted = await appendFeeLedgerRows(built.rows);
+  if (built.rows.length > 0) {
+    logger.info(
+      { considered: built.considered, inserted, actor: opts.actor, bookingId: opts.bookingId },
+      "[fee-ledger] legacy-rail traveler service fee event recorded",
+    );
+  }
+  return { inserted, considered: built.considered };
 }
 
 /**

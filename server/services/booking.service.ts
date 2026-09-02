@@ -14,6 +14,12 @@ import { affiliateService } from './affiliate.service';
 import { enqueueBookingConfirmationEmail } from './email-outbox.service';
 import { sendBookingAlertEmail } from './email.service';
 import { getStripeSecretKey } from '../utils/stripe-key';
+// Ruling 2026-09-02-traveler-fee-applies-everywhere (path 3 — the legacy `bookings` rail is
+// reachable, so billed for parity). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
+// the same coversAction the cart path uses, and the shared fee-ledger writer.
+import { resolveTravelerServiceFee } from './fee-resolution.service';
+import { coversAction } from './trip-entitlement.service';
+import { recordLegacyBookingTravelerFeeLedger } from './fee-ledger.service';
 
 const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -389,6 +395,26 @@ class BookingService {
           item.itemType
         );
 
+        // ── Traveler service fee (ruling 2026-09-02, path 3) ──────────────────────────────────
+        // Per booking, on the item's own price, from the ONE band-driven resolver (§8/§14). Trip
+        // Pass suppression via the SAME coversAction the cart path uses (rails is not wired into the
+        // legacy rail, so trip_pass is the only coverage). Covered → charged 0, waiver recorded.
+        const feeCovered = item.tripId
+          ? await coversAction(String(item.tripId), 'traveler_service_fee').catch(() => false)
+          : false;
+        const travelerFeeResolved = await resolveTravelerServiceFee(finalPrice);
+        const feeChargedAmt = feeCovered ? 0 : travelerFeeResolved.amount;
+        const travelerServiceFeeSnapshot = {
+          charged: feeChargedAmt,
+          wouldHaveBeen: travelerFeeResolved.amount,
+          rate: travelerFeeResolved.rate,
+          bandId: travelerFeeResolved.bandId,
+          bandKey: travelerFeeResolved.bandKey,
+          capApplied: travelerFeeResolved.capApplied,
+          waived: feeCovered,
+          waiverBasis: feeCovered ? 'trip_pass' : null,
+        };
+
         // Determine payment amount
         let depositAmount: number | null = null;
         let balanceAmount: number | null = null;
@@ -406,7 +432,14 @@ class BookingService {
         const bookingTime = item.time || null;
         const totalAmountValue = finalPrice + feeBreakdown.platformFee;
         const providerPayout = finalPrice - feeBreakdown.providerDeduction;
-        const bookingMetadataJson = bookingMetadata ? JSON.stringify(bookingMetadata) : '{}';
+        // Snapshot the traveler-fee onto THIS item's metadata (locked, like the cart path's
+        // booking_details snapshot) so the fee-ledger row written at confirmation records what was
+        // charged. The traveler fee is deliberately NOT in total_amount (provider-facing) — it rides
+        // the payment total below and the confirm-time ledger reads it back from here.
+        const bookingMetadataJson = JSON.stringify({
+          ...(bookingMetadata ?? {}),
+          travelerServiceFee: travelerServiceFeeSnapshot,
+        });
         const expertId: string | null = item.metadata?.expertId ?? null;
 
         const booking = await db.transaction(async (tx) => {
@@ -452,8 +485,10 @@ class BookingService {
           status: 'pending_payment',
         });
 
-        // Add to payment total
-        totalAmount += depositAmount || (finalPrice + feeBreakdown.platformFee);
+        // Add to payment total. Ruling 2026-09-02 / D: the traveler fee rides the amount charged NOW
+        // (the deposit when depositing, else the full line) and is assessed once — a later balance
+        // payment carries none.
+        totalAmount += (depositAmount || (finalPrice + feeBreakdown.platformFee)) + feeChargedAmt;
       } catch (error: any) {
         // Distinguish slot-taken (23505 unique violation or explicit SLOT_ALREADY_BOOKED)
         // from generic errors so the route layer can return 409 instead of 500.
@@ -819,6 +854,22 @@ class BookingService {
         //    row-count-based R7 pass missed; verify-then-delete (R1) with the writer gone first.
       }
     });
+
+    // Ruling 2026-09-02 (path 3): record the traveler service fee event for this legacy-rail booking.
+    // Idempotent per booking id (a webhook/client double-confirm lands exactly one row) and best-effort
+    // — payment is already confirmed, so a recording failure is logged, never fails the confirmation.
+    try {
+      await recordLegacyBookingTravelerFeeLedger({
+        bookingId,
+        stripePaymentRef: paymentIntentId,
+        actor: 'legacy_confirm',
+      });
+    } catch (ledgerErr: any) {
+      console.error(
+        `[booking-confirm] traveler-fee ledger write failed for booking=${bookingId} (payment CONFIRMED):`,
+        ledgerErr?.message ?? ledgerErr,
+      );
+    }
 
     // Fire-and-forget: provider in-app notification + email (non-critical; must not block caller)
     ;(async () => {
