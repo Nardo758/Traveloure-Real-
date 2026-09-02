@@ -163,6 +163,25 @@ boot herd further, that is a contention choice, not a safety one; call it per-jo
 
 ---
 
+## Migration-ledger anomaly — closed
+
+The migration ledger counts intentionally exceed the active file count: `272/270` in production
+and `287/270` in development. The unmatched recorded names are historical stale rows, not a chain
+integrity problem:
+
+- retired collision variants `067–074`;
+- consolidated duplicate `075`;
+- removed one-off `151`;
+- renumbered migrations `195/196 → 203/204`;
+- historical entries `258` and `259`;
+- renumbered migrations `264 → 265` and `265 → 268`.
+
+All 270 registered migrations are recorded in both environments, and both boot checks report the
+full active chain as already applied. Do not re-investigate the count mismatch as a missing-migration
+chain failure.
+
+---
+
 ## Ratification & build outcome (decision-maker ratified)
 
 **Summary line (ratified):** ratify the set (earnings-release + auto-completion first) · 5-min jobs =

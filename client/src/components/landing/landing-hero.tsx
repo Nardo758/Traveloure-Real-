@@ -23,6 +23,8 @@ import { Search, Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { isReferencePhoto } from "@/lib/photo-provenance";
+import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -305,6 +307,12 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   >
                     {gem.score}
                   </span>
+                )}
+                {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): the hero gem tile is a
+                    TEASER surface — a stock/places image is labeled until an attributed real
+                    photo replaces it (top-left; score badge holds the top-right). */}
+                {gem.imageUrl && isReferencePhoto({ url: gem.imageUrl }) && (
+                  <ReferencePhotoChip className="left-2.5 top-2.5" testId="hero-gem-reference-photo" />
                 )}
                 <span
                   className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
