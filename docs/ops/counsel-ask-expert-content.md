@@ -46,8 +46,9 @@ Three things we'd like your read on before we build further:
    — no code exists yet, and no scout-report screen, public surface, or booking flow ships until
    you've answered. The facts:
 
-   - A "scout check" is a bookable offering: a local expert is booked to visit a specific place or
-     neighborhood on a stated date and file a structured report. It is evidence about one visit at
+   - A "scout check" is one of the services a local expert sells through our normal catalog — listed,
+     priced by the expert, and booked exactly like any other expert service — in which the expert
+     visits a specific place or neighborhood on a stated date and files a structured report. It is evidence about one visit at
      one point in time — deliberately distinct from a "neighborhood claim", which is an expert's
      ongoing assertion of local knowledge.
    - The report is a checklist: for each named criterion the scout records a pass, fail, or flag
