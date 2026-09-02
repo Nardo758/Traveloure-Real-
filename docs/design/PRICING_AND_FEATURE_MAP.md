@@ -28,7 +28,7 @@ The supply side (experts, providers) uses the platform weekly. Sold monthly. Pro
 | Tier | Includes | Price | `fee_bands` / `plans` key | Sold at |
 |---|---|---|---|---|
 | **Plan it yourself** | slip, browse, `Book now`, ready-made trips, guest draft · **pay-per-use access to every AI action below — no membership needed** | free | — | default |
-| **Plan with AI** (pay per use) | optimization run (3 versions around an anchor) · AI Concierge task · available to free users, guests included after sign-in at the paid gate | run **$4.99** · task **$2.99**, charged at confirm, nothing runs before | `optimizer:run`, `concierge:ai_task` | `Optimize this plan`; feed concierge panel; Finalize → Concierge |
+| **Plan with AI** (pay per use) | optimization run (3 versions around an anchor) · AI Concierge task · available to free users, guests included after sign-in at the paid gate | run **$5.99** (trip/experience; event $19.99) · task **$2.99**, charged at confirm, nothing runs before | `optimization_fees` via `getFee` (see the 2026-08-27 correction above), `concierge:ai_task` | `Optimize this plan`; feed concierge panel; Finalize → Concierge |
 | **Trip Pass** | unlimited runs + AI tasks on one slip · one expert revision · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans:trip_pass` | offered at the second paid AI action on a slip; pricing page |
 | **Plan with a local** | a named expert takes the slip: review, re-route, endorse, book what needs a human | expert's price (`from $N`), platform commission by band | expert bands below | `Plan with {name}`; Finalize → Travel expert |
 | **Done for you** | event / complex trip coordinated end to end (planner + providers) | quoted; deposit + milestones; full commission | `concierge:done_for_you_deposit_pct` **20%** | Event Planners; Finalize → Booking agent |
@@ -135,7 +135,8 @@ Order: 1 → 2 → 5 → 3 → 4.
 - `2026-08-27-two-calendars` — trips are sold per trip (Trip Pass); occasions are sold annually (Plus); supply is monthly (Pro).
 - `2026-08-27-plus-occasions` — Plus is the occasions membership at $25/yr; success metric bookings/member/year ≥ 3; not a discount club.
 - `2026-08-27-pro-supply` — Pro at $29/mo with one-band step-down and the demand view.
-- `2026-08-27-concierge-fees` — run $4.99, task $2.99, facilitation 5% cap $40, done-for-you deposit 20%.
+- `2026-08-27-concierge-fees` — run $4.99, task $2.99, facilitation 5% cap $40, done-for-you deposit 20%. **Run price amended to $5.99 by `2026-09-02-optimizer-run-price`** (decision-maker ruled; `optimization_fees` migration 076 already priced it there and `/pricing` displayed it — the $4.99 was never applied). Task, facilitation and deposit unchanged.
+- `2026-09-02-memberships-checkout-start` — the memberships checkout lane (Stripe products for Trip Pass, Plus and Pro; subscription webhook writes `plan_memberships`) **starts 2026-10-01**. Plus sales still gate on `PLUS_SALES_ENABLED`; Pro bills from `beta_free_until` (2026-12-31).
 - `2026-08-27-anchor-and-pass` — per-use is the anchor, the pass is the value; the pass is offered at the second paid action with the fee-waiver saving shown; per-use prices are never raised to push the pass.
 - `2026-08-27-trip-pass-19` — Trip Pass $19; Plus excludes a Trip Pass; Pro step-down is one band.
 - `2026-08-27-pro-beta-free` — Pro ships visible at $29/mo with `plans.pro_monthly.beta_free_until = 2026-12-31`; price struck through, "free during beta" on every Pro surface; entitlement granted to all approved experts/providers until the date, then to subscribers. One row changes at the date; nothing is built then.
@@ -143,7 +144,7 @@ Order: 1 → 2 → 5 → 3 → 4.
 - `2026-08-27-pricing-surfaces` — prices render only on: the pass-offer sheet, the Finalize popup, `/pricing`, the landing Occasions section, the Money station / `/earn` Pro band, and the two existing paid-gate fee lines. Visual of record: `docs/design/pricing-surfaces-mock.html`.
 
 ## 10. Pricing logic (ratified)
-- **Per-use is the anchor, the pass is the value.** Per-use stays low ($4.99 / $2.99) so the first paid action is a curiosity purchase. The push to the pass happens at the **second** paid action on a slip, with three numbers shown: what this action costs per use, what the Trip Pass costs, and what the service-fee waiver saves on the current cart. Never raise per-use to force the pass.
+- **Per-use is the anchor, the pass is the value.** Per-use stays low ($5.99 / $2.99) so the first paid action is a curiosity purchase. The push to the pass happens at the **second** paid action on a slip, with three numbers shown: what this action costs per use, what the Trip Pass costs, and what the service-fee waiver saves on the current cart. Never raise per-use to force the pass.
 - **The free tier's price is the 7% service fee.** The Trip Pass waives it on that trip's bookings; that line leads the offer.
 - Plus is pushed by the first delivered occasion draft, not by pricing pressure.
 
