@@ -170,6 +170,26 @@ type LocalKnowledgeNugget = {
   updatedAt: string;
 };
 
+// === Neighborhood Claims (Phase 1, ledger 2026-08-29-neighborhood-claims) ===
+type CityNeighborhoodOption = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+};
+
+type NeighborhoodClaim = {
+  id: string;
+  neighborhoodId: string;
+  neighborhoodName: string;
+  city: string;
+  country: string;
+  status: "draft" | "submitted" | "verified" | "declined";
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+};
+
 type ContentItem = {
   id: number;
   title: string;
@@ -223,7 +243,7 @@ export default function ContentStudio() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedContent, setSelectedContent] = useState<ContentItem | null>(null);
-  const [pageSection, setPageSection] = useState<"content" | "knowledge">("content");
+  const [pageSection, setPageSection] = useState<"content" | "knowledge" | "neighborhoods">("content");
   const [isNuggetDialogOpen, setIsNuggetDialogOpen] = useState(false);
   const [editingNugget, setEditingNugget] = useState<LocalKnowledgeNugget | null>(null);
   const [nuggetSearch, setNuggetSearch] = useState("");
@@ -241,6 +261,44 @@ export default function ContentStudio() {
   const { data: nuggets = [], isLoading: nuggetsLoading } = useQuery<LocalKnowledgeNugget[]>({
     queryKey: ["/api/expert/knowledge-nuggets"],
     enabled: isLocalExpert,
+  });
+
+  // ─── Neighborhood claims (Phase 1, ledger 2026-08-29-neighborhood-claims) ───────────────────
+  const { data: expertNeighborhoodInfo } = useQuery<{ neighborhoods: string[]; localityProof: string; city: string | null }>({
+    queryKey: ["/api/expert/neighborhoods"],
+    enabled: isLocalExpert && pageSection === "neighborhoods",
+  });
+  const expertCity = expertNeighborhoodInfo?.city ?? null;
+
+  const { data: cityNeighborhoodOptions = [], isLoading: cityNeighborhoodsLoading } = useQuery<CityNeighborhoodOption[]>({
+    queryKey: ["/api/cities/neighborhoods", expertCity],
+    queryFn: () => fetch(`/api/cities/neighborhoods?city=${encodeURIComponent(expertCity ?? "")}`, { credentials: "include" }).then((r) => r.json()),
+    enabled: isLocalExpert && pageSection === "neighborhoods" && !!expertCity,
+  });
+
+  const { data: claimsData, isLoading: claimsLoading } = useQuery<{ claims: NeighborhoodClaim[] }>({
+    queryKey: ["/api/expert/neighborhood-claims"],
+    enabled: isLocalExpert && pageSection === "neighborhoods",
+  });
+  const claims = claimsData?.claims ?? [];
+  const claimsByNeighborhoodId = new Map(claims.map((c) => [c.neighborhoodId, c]));
+
+  const claimMutation = useMutation({
+    mutationFn: (neighborhoodId: string) => apiRequest("POST", "/api/expert/neighborhood-claims", { neighborhoodId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/neighborhood-claims"] });
+      toast({ title: "Claim started", description: "Submit it for review when you're ready." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err?.message ?? "Failed to start claim", variant: "destructive" }),
+  });
+
+  const submitClaimMutation = useMutation({
+    mutationFn: (claimId: string) => apiRequest("POST", `/api/expert/neighborhood-claims/${claimId}/submit`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/neighborhood-claims"] });
+      toast({ title: "Claim submitted", description: "It's now in admin review." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err?.message ?? "Failed to submit claim", variant: "destructive" }),
   });
 
   const nuggetForm = useForm<NuggetFormData>({
@@ -532,6 +590,15 @@ export default function ContentStudio() {
                 <Badge variant="secondary" className="ml-1 text-xs">{nuggets.length}</Badge>
               )}
             </Button>
+            <Button
+              variant={pageSection === "neighborhoods" ? "default" : "ghost"}
+              onClick={() => setPageSection("neighborhoods")}
+              className="gap-2"
+              data-testid="button-section-neighborhoods"
+            >
+              <MapPin className="w-4 h-4" />
+              My Neighborhoods
+            </Button>
           </div>
         )}
 
@@ -805,6 +872,109 @@ export default function ContentStudio() {
                 </Form>
               </DialogContent>
             </Dialog>
+          </div>
+        ) : isLocalExpert && pageSection === "neighborhoods" ? (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold" data-testid="text-my-neighborhoods-title">My Neighborhoods</h1>
+              <p className="text-muted-foreground">
+                Claim the neighborhoods you know. Verifying a claim means showing us the
+                neighborhood — you'll add a few places, one composed evening, and a backup plan.
+              </p>
+            </div>
+
+            {!expertCity ? (
+              <Card className="p-8">
+                <p className="text-sm text-muted-foreground" data-testid="text-neighborhoods-no-city">
+                  Add your city to your expert profile to see neighborhoods you can claim.
+                </p>
+              </Card>
+            ) : cityNeighborhoodsLoading || claimsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+              </div>
+            ) : cityNeighborhoodOptions.length === 0 ? (
+              <Card className="p-8">
+                <p className="text-sm text-muted-foreground" data-testid="text-neighborhoods-empty">
+                  No neighborhoods are set up for {expertCity} yet.
+                </p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {cityNeighborhoodOptions.map((n) => {
+                  const claim = claimsByNeighborhoodId.get(n.id);
+                  return (
+                    <Card key={n.id} data-testid={`card-neighborhood-${n.id}`}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-muted-foreground" />
+                            <p className="font-medium">{n.name}</p>
+                          </div>
+                          {claim ? (
+                            claim.status === "verified" ? (
+                              <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300" data-testid={`status-claim-verified-${n.id}`}>
+                                Verified ✓
+                              </Badge>
+                            ) : claim.status === "submitted" ? (
+                              <Badge variant="outline" className="text-xs text-amber-700 border-amber-300" data-testid={`status-claim-submitted-${n.id}`}>
+                                Submitted
+                              </Badge>
+                            ) : claim.status === "declined" ? (
+                              <Badge variant="outline" className="text-xs text-red-600 border-red-300" data-testid={`status-claim-declined-${n.id}`}>
+                                Declined
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs" data-testid={`status-claim-draft-${n.id}`}>
+                                Draft
+                              </Badge>
+                            )
+                          ) : null}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {n.description && <p className="text-xs text-muted-foreground">{n.description}</p>}
+                        {claim?.status === "declined" && claim.reviewNote && (
+                          <p className="text-xs text-muted-foreground" data-testid={`text-claim-decline-reason-${n.id}`}>
+                            <span className="font-medium text-red-500">Not verified:</span> {claim.reviewNote}
+                          </p>
+                        )}
+                        {!claim ? (
+                          <Button
+                            size="sm"
+                            className="h-8"
+                            disabled={claimMutation.isPending}
+                            onClick={() => claimMutation.mutate(n.id)}
+                            data-testid={`button-claim-neighborhood-${n.id}`}
+                          >
+                            {claimMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Claim this neighborhood"}
+                          </Button>
+                        ) : claim.status === "draft" || claim.status === "declined" ? (
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              size="sm"
+                              className="h-8"
+                              disabled={submitClaimMutation.isPending}
+                              onClick={() => submitClaimMutation.mutate(claim.id)}
+                              data-testid={`button-submit-claim-${n.id}`}
+                            >
+                              {submitClaimMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit for review"}
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8" disabled data-testid={`button-evidence-coming-${n.id}`}>
+                              Evidence capture coming
+                            </Button>
+                          </div>
+                        ) : claim.status === "submitted" ? (
+                          <p className="text-xs text-muted-foreground">In admin review.</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Live on your profile.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
         <div className="space-y-6">

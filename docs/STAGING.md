@@ -68,6 +68,7 @@ Everything below is read from the code, not guessed; the source is cited.
 | `STRIPE_SECRET_KEY` | a **`sk_test_…`** key — **NOT `sk_live_`** | With `ALLOW_TEST_ACCOUNTS=1`, `isProdStrictEnv()` is **false** (`server/utils/stripe-key-policy.ts:29-34`), and `checkStripeKeyPrefix` then *requires* the `sk_test_` prefix. A live key makes `server/validate-env.ts:46` **throw at boot**. This is deliberate: E2E journeys create real Stripe objects. |
 | `STRIPE_WEBHOOK_SECRET` | staging webhook signing secret | `/api/ready` reports `fail` and returns **503** without it (`server/index.ts:198-204`), which hard-fails the daily journey suite's readiness step. |
 | `XAI_API_KEY` | any working key | Same — `/api/ready` `fail` → 503 (`server/index.ts:166-172`). |
+| `E2E_AI_STUB` | `1` | Enables deterministic occasion-draft generation for the journey-plus check. Because staging runs in production mode, `ALLOW_TEST_ACCOUNTS=1` is also required; `ENVIRONMENT=PROD` still disables the stub. |
 | `SESSION_SECRET` | any strong random string | `server/replit_integrations/auth/replitAuth.ts:33` uses it non-optionally. |
 
 Warn-only, not required to make CI green, but the journey specs will degrade without them:

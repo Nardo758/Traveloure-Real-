@@ -1672,11 +1672,13 @@ export class DatabaseStorage implements IStorage {
     // enrichment + the "Ask about <neighborhood>" routing. Best-effort: a capture
     // failure must NEVER block or roll back the approval.
     if (updated && status === "approved") {
-      try {
-        await this.captureExpertNeighborhoods(updated);
-      } catch (err: any) {
-        console.error(`[expert-neighborhoods] capture failed for form ${id}:`, err?.message || err);
-      }
+      // GATED OFF (ledger 2026-08-29-neighborhood-claims): ratified claims
+      // (expert_neighborhood_claims -> admin verify -> expert_neighborhoods) are now the SOLE
+      // writer of expert_neighborhoods for new approvals. Auto-capturing the form's self-declared
+      // free-text neighborhoods here would let an approval write expert_neighborhoods rows with
+      // no claim, no consent, and no evidence behind them — exactly the shortcut the claims lane
+      // exists to replace. captureExpertNeighborhoods itself is left intact (historical tooling —
+      // scripts/backfill-expert-neighborhoods.ts still calls it), deprecated in place, not deleted.
       // Auto-enroll the expert's city into the AI content pipeline. The pipeline only
       // generates content (gems/events/seasons) for cities present in travel_pulse_cities
       // (~21 seeded), so a new market with a vetted local expert would otherwise stay dark.
@@ -1721,13 +1723,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
+   * DEPRECATED (ledger 2026-08-29-neighborhood-claims): the expert-application approval hook no
+   * longer calls this — ratified claims (expert_neighborhood_claims -> admin verify ->
+   * expert_neighborhoods) are the sole writer of expert_neighborhoods for new approvals. Left
+   * intact as historical tooling: `scripts/backfill-expert-neighborhoods.ts` still calls it for
+   * pre-lane data. Do not wire this into any NEW call site.
+   *
    * Translate a local-expert form's self-declared free-text `neighborhoods` into
    * `expert_neighborhoods` rows, matching each name to a `city_neighborhoods` row
    * scoped to the expert's city (+ country when present). Case-insensitive name
    * match with a slug fallback; unmatched names are skipped + logged (a name with
    * no city_neighborhoods row can't be honestly linked). Idempotent via the
-   * (expert_id, neighborhood_id) unique constraint. Reused by the approval hook
-   * and the one-time backfill. Returns the number of rows captured.
+   * (expert_id, neighborhood_id) unique constraint. Returns the number of rows captured.
    */
   async captureExpertNeighborhoods(form: LocalExpertForm): Promise<number> {
     const names = Array.isArray(form.neighborhoods)
