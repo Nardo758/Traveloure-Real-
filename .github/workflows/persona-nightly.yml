@@ -132,6 +132,8 @@ jobs:
           STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          # Exercise the positive occasion-draft delivery path without making an external LLM call.
+          E2E_AI_STUB: '1'
           RESEND_API_KEY: re_ci_stub_no_real_calls
           # journey-plus.spec.ts's draft-run trigger (POST /internal/run-occasion-drafts) needs
           # this to match what the TEST PROCESS reads from its own env (see the "1/2 —
@@ -267,6 +269,7 @@ jobs:
           # directly (POST /internal/run-occasion-drafts, authenticated by a shared secret,
           # not a session). Unset here as on the server -> the spec asserts the honest 503.
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          E2E_AI_STUB: '1'
 
       - name: Re-seed (idempotent) before the second pass
         id: seed-personas-2
@@ -358,6 +361,7 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+          E2E_AI_STUB: '1'
 
       - name: Upload report (Playwright HTML report + persona journey JSON reports)
         if: always()

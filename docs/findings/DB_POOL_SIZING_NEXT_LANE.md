@@ -46,3 +46,18 @@ re-read it was already wrapped in `runBackgroundJob` on both its first-run and i
 (`travelpulse-scheduler.service.ts`), so there was no third to fix — two, not three. No other started
 scheduler bypasses the cap (verified by grep: every `*-scheduler.service.ts` that touches the DB on a
 timer routes through `runBackgroundJob`).
+
+## Evidence correction — production boot window
+
+The 12 early production health-check failures were an **Autoscale readiness race**, not pool
+evidence and not scheduler-related. Two probes were refused and ten returned HTTP 500 between
+`23:06:42` and `23:06:47` UTC, before Express bound at `23:06:57` UTC. The health probes were
+therefore racing the container start/readiness path.
+
+The actual post-start pool evidence is **two** connection-timeout events: `email-outbox` at
+`23:08:37` UTC and a second background timeout at `23:14:03` UTC. Size and investigate this lane
+against those two events, not the 12 pre-bind health failures.
+
+**Separate deploy-config finding:** the Autoscale health probe reaches the container roughly
+15 seconds before Express binds. This belongs to the readiness path/probe start-delay configuration,
+not to application code or scheduler tuning.
