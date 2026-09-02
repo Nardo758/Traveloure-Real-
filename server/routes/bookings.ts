@@ -13,7 +13,7 @@ import { storage } from '../storage';
 import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { getUserId, getSessionRole } from '../utils/auth';
+import { getUserId, getDbRole } from '../utils/auth';
 import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
@@ -46,7 +46,6 @@ async function getServiceBookingOwnerId(bookingId: string): Promise<string | nul
 router.get('/:id', isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
-    const userRole = getSessionRole(req);
 
     const rows = await db
       .select()
@@ -57,13 +56,21 @@ router.get('/:id', isAuthenticated, async (req, res) => {
     if (!rows[0]) return res.status(404).json({ message: 'Booking not found' });
     const booking = rows[0];
 
-    // Admin sees everything
-    if (userRole === 'admin') {
+    // Traveler (owner) sees full booking. Checked FIRST so the common case costs no
+    // extra query — the tier below is identical for an owner who is also an admin.
+    if (booking.travelerId === userId) {
       return res.json(booking);
     }
 
-    // Traveler (owner) sees full booking
-    if (booking.travelerId === userId) {
+    // Audit finding 8: the admin tier (full row, Stripe payment-intent ids included) and
+    // the earner redaction decision below BOTH used to come from the session's `claims.role`
+    // snapshot, which the login paths stamp with a 7-day TTL — so a demoted admin kept the
+    // full-row tier for up to a week. Role is now read from the DB per CLAUDE.md §2, once
+    // per request, and a missing user/role falls back to the least-privileged tier.
+    const userRole = (await getDbRole(req)) ?? 'user';
+
+    // Admin sees everything
+    if (userRole === 'admin') {
       return res.json(booking);
     }
 
@@ -544,6 +551,9 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // remain full-amount and are NOT policy-limited.
     let amountOverride: number | undefined;
     let refundFraction = 1;
+    // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER refund refunds the traveler service
+    // fee at the cancellation-tier %; an ADMIN refund is a made-whole full refund (100%).
+    let feeRefundPercent: number | undefined;
     if (!isAdmin) {
       const { quoteCancellationForBooking } = await import('../services/cancellation-policy.service');
       const quote = await quoteCancellationForBooking(bookingId);
@@ -562,6 +572,8 @@ router.post('/refund', isAuthenticated, async (req, res) => {
             refundAmount: 0,
           });
         }
+        // The fee tracks the booking's cancellation-tier % (100 when the tier gives a full refund).
+        feeRefundPercent = quote.refundPercent;
         if (quote.refundPercent < 100) {
           amountOverride = quote.refundAmount;
           refundFraction = quote.refundPercent / 100;
@@ -594,10 +606,13 @@ router.post('/refund', isAuthenticated, async (req, res) => {
 
     // Amount server-derived from service_bookings.total_amount (policy-scaled when partial);
     // idempotent (atomic status claim + amount-unambiguous Stripe idempotencyKey).
+    const refundOpts: { amountOverride?: number; feeRefundPercent?: number } = {};
+    if (amountOverride !== undefined) refundOpts.amountOverride = amountOverride;
+    if (feeRefundPercent !== undefined) refundOpts.feeRefundPercent = feeRefundPercent;
     const result = await stripePaymentService.refundServiceBooking(
       bookingId,
       reason,
-      amountOverride !== undefined ? { amountOverride } : undefined,
+      Object.keys(refundOpts).length ? refundOpts : undefined,
     );
 
     // Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its

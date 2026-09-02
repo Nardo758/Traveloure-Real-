@@ -6,7 +6,7 @@
  */
 
 import { Router } from "express";
-import { getUserId } from "../utils/auth";
+import { getUserId, getDbRole } from "../utils/auth";
 import { storage } from "../storage";
 import { 
   generateActivityNote, 
@@ -25,7 +25,6 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     const callerUserId = getUserId(req)!;
-    const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data
     const comparison = await storage.getItineraryComparison(id);
@@ -34,8 +33,10 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: "Itinerary not found" });
     }
 
-    // IDOR guard — verify the caller owns this itinerary comparison
-    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && callerRole !== "admin") {
+    // IDOR guard — verify the caller owns this itinerary comparison. The admin bypass reads
+    // the DB role (CLAUDE.md §2, audit findings 8/14 class), never the session's stale/absent
+    // role claim, and is short-circuited so an owner pays for no extra query.
+    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && (await getDbRole(req)) !== "admin") {
       console.warn(
         `[IDOR ATTEMPT] User ${callerUserId} tried to read itinerary comparison ` +
         `owned by ${comparison.userId} at ${req.path}`
@@ -211,7 +212,6 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
   try {
     const { id } = req.params;
     const callerUserId = getUserId(req)!;
-    const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data
     const comparison = await storage.getItineraryComparison(id);
@@ -221,7 +221,7 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     }
 
     // IDOR guard — calendar export contains private trip data
-    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && callerRole !== "admin") {
+    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && (await getDbRole(req)) !== "admin") {
       console.warn(
         `[IDOR ATTEMPT] User ${callerUserId} tried to export calendar for itinerary ` +
         `owned by ${comparison.userId} at ${req.path}`
@@ -265,7 +265,6 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     const callerUserId = getUserId(req)!;
-    const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data
     const comparison = await storage.getItineraryComparison(id);
@@ -275,7 +274,7 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
     }
 
     // IDOR guard — PDF export contains private trip details and pricing
-    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && callerRole !== "admin") {
+    if (comparison.userId && String(comparison.userId) !== String(callerUserId) && (await getDbRole(req)) !== "admin") {
       console.warn(
         `[IDOR ATTEMPT] User ${callerUserId} tried to export PDF for itinerary ` +
         `owned by ${comparison.userId} at ${req.path}`

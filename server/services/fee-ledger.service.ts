@@ -46,6 +46,11 @@ export interface FeeLedgerAppendRow {
   sourceAttribution?: "platform" | "rails";
   acquisitionRef?: string | null;
   stripePaymentRef?: string | null;
+  /** Stripe refund id — set on a `reversal` row so the refund and the ledger reversal are linked. */
+  stripeRefundRef?: string | null;
+  /** REQUIRED on a `reversal` row and NULL on every other type (migration-179 CHECK
+   *  `fee_ledger_reversal_linkage`): the id of the fee_ledger row this one reverses. */
+  reversesLedgerId?: string | null;
   idempotencyKey: string;
   description?: string | null;
   metadata?: Record<string, unknown>;
@@ -73,16 +78,16 @@ export async function appendFeeLedgerRows(rows: FeeLedgerAppendRow[]): Promise<n
       INSERT INTO fee_ledger (
         id, source_type, source_id, booking_id, fee_type, amount, borne_by,
         band_id, rate_as_resolved, rate_source, cap_applied,
-        source_attribution, acquisition_ref, stripe_payment_ref,
-        idempotency_key, description, metadata
+        source_attribution, acquisition_ref, stripe_payment_ref, stripe_refund_ref,
+        reverses_ledger_id, idempotency_key, description, metadata
       ) VALUES (
         gen_random_uuid()::text,
         ${row.sourceType}, ${row.sourceId}, ${row.bookingId},
         ${row.feeType}, ${round2(row.amount).toFixed(2)}, ${row.borneBy},
         ${row.bandId}::uuid, ${row.rateAsResolved === null ? null : String(row.rateAsResolved)}, ${row.rateSource},
         ${row.capApplied === true},
-        ${row.sourceAttribution ?? "platform"}, ${row.acquisitionRef ?? null}, ${row.stripePaymentRef ?? null},
-        ${row.idempotencyKey}, ${row.description ?? null},
+        ${row.sourceAttribution ?? "platform"}, ${row.acquisitionRef ?? null}, ${row.stripePaymentRef ?? null}, ${row.stripeRefundRef ?? null},
+        ${row.reversesLedgerId ?? null}, ${row.idempotencyKey}, ${row.description ?? null},
         ${JSON.stringify(row.metadata ?? {})}::jsonb
       )
       ON CONFLICT (idempotency_key) DO NOTHING
@@ -106,6 +111,82 @@ export function travelerServiceFeeLedgerKey(bookingId: string): string {
 }
 export function travelerServiceFeeWaiverLedgerKey(bookingId: string): string {
   return `fee-ledger:traveler-fee-waiver:${bookingId}`;
+}
+/** §15 amount-specific: a partial refund and a later different-amount refund are distinct rows,
+ *  while a retry of the SAME refund lands exactly one (ON CONFLICT DO NOTHING). */
+export function travelerServiceFeeReversalLedgerKey(bookingId: string, refundAmount: number): string {
+  return `fee-ledger:traveler-fee-reversal:${bookingId}:${round2(refundAmount).toFixed(2)}`;
+}
+
+/**
+ * Record a REVERSAL of a booking's traveler service fee, for a refund (ruling
+ * 2026-09-02-traveler-fee-refundability). Writes ONE `reversal` fee_ledger row of `-refundAmount`,
+ * linked (`reverses_ledger_id`) to the booking's original `+traveler_service_fee` row, borne by the
+ * traveler (the fee is given back). Idempotent per (booking, amount).
+ *
+ * SUPPRESSED BOOKINGS ARE NOT REVERSED HERE — the caller skips a waived booking entirely (its fee was
+ * never billed; the `fee_waiver` leg stays untouched, per the ruling).
+ *
+ * Returns `reversed:false` with a `reason` (never throws for a missing original row): the money-side
+ * refund is the caller's decision, and a missing original row is an ops-visible ledger gap, not a
+ * reason to fabricate an unlinked reversal (the CHECK forbids one anyway).
+ */
+export async function recordTravelerServiceFeeReversal(opts: {
+  bookingId: string;
+  refundAmount: number; // dollars, > 0 (the fee share being refunded)
+  actor: string;
+  stripeRefundRef?: string | null;
+  reason?: string | null;
+}): Promise<{ inserted: number; reversed: boolean; reason?: string }> {
+  const refund = round2(opts.refundAmount);
+  if (!Number.isFinite(refund) || refund <= 0) return { inserted: 0, reversed: false, reason: "non_positive" };
+
+  // Locate the ORIGINAL +traveler_service_fee row by the deterministic key the +X row was written
+  // with (cart + transport both seed the key on the booking id).
+  const orig = await db.execute(sql`
+    SELECT id, band_id, rate_as_resolved, cap_applied, amount
+      FROM fee_ledger
+     WHERE idempotency_key = ${travelerServiceFeeLedgerKey(opts.bookingId)}
+       AND fee_type = 'traveler_service_fee'
+     LIMIT 1
+  `);
+  const row = (orig.rows ?? [])[0] as any;
+  if (!row) {
+    logger.error(
+      { bookingId: opts.bookingId, refundAmount: refund, actor: opts.actor },
+      "[fee-ledger] traveler-fee reversal skipped — original traveler_service_fee row not found (ledger gap)",
+    );
+    return { inserted: 0, reversed: false, reason: "original_row_missing" };
+  }
+  const original = String(row.id);
+  // Never reverse MORE than was charged (defensive; the caller scales by the tier %).
+  const charged = Math.abs(Number(row.amount) || 0);
+  const capped = charged > 0 ? Math.min(refund, charged) : refund;
+  const hasBand = row.band_id !== null && row.band_id !== undefined;
+
+  const inserted = await appendFeeLedgerRows([
+    {
+      sourceType: "service_booking",
+      sourceId: opts.bookingId,
+      bookingId: opts.bookingId,
+      feeType: "reversal",
+      amount: -capped, // negative: the fee is given back to the traveler
+      borneBy: "traveler",
+      // A reversal of a band-priced fee names the same band (band-provenance CHECK); if the original
+      // carried no band (shouldn't happen for a resolved fee), fall back to a non-band source.
+      bandId: hasBand ? String(row.band_id) : null,
+      rateAsResolved:
+        row.rate_as_resolved === null || row.rate_as_resolved === undefined ? null : Number(row.rate_as_resolved),
+      rateSource: hasBand ? "band" : "code_fallback",
+      capApplied: row.cap_applied === true,
+      stripeRefundRef: opts.stripeRefundRef ?? null,
+      reversesLedgerId: original,
+      idempotencyKey: travelerServiceFeeReversalLedgerKey(opts.bookingId, capped),
+      description: `Traveler service fee refund on booking ${opts.bookingId}${opts.reason ? ` (${opts.reason})` : ""}`,
+      metadata: { actor: opts.actor, reversesLedgerId: original, refundAmount: capped },
+    },
+  ]);
+  return { inserted, reversed: inserted > 0 };
 }
 
 /**

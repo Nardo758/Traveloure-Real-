@@ -42,15 +42,49 @@ Three things we'd like your read on before we build further:
    testimonial with its own regulatory shape (e.g. FTC disclosure norms if compensation is
    involved)?
 
-3. **Scout-report framing.** This is the one we most want your view on before we build any UI for
-   it. A "scout check" report is a checklist of pass/fail-style verdicts against named criteria
-   (e.g. "wheelchair-accessible entrance: confirmed" / "posted hours match actual hours: flagged")
-   — deliberately not a star rating or a narrative review, because we don't want it read as an
-   opinion or endorsement. We want to frame it as **observational** — a factual record of what
-   was true on a specific visit, not a recommendation or rating. Does that framing hold up legally
-   if we show it to travelers? Is there language we should require in the UI (a disclaimer, a
-   "as observed on [date]" stamp, something else) to keep it clearly observational rather than
-   editorial?
+3. **Scout-report framing.** This is the one we most want your view on before we build any of it
+   — no code exists yet, and no scout-report screen, public surface, or booking flow ships until
+   you've answered. The facts:
+
+   - A "scout check" is one of the services a local expert sells through our normal catalog — listed,
+     priced by the expert, and booked exactly like any other expert service — in which the expert
+     visits a specific place or neighborhood on a stated date and files a structured report. It is evidence about one visit at
+     one point in time — deliberately distinct from a "neighborhood claim", which is an expert's
+     ongoing assertion of local knowledge.
+   - The report is a checklist: for each named criterion the scout records a pass, fail, or flag
+     verdict (e.g. "wheelchair-accessible entrance: confirmed" / "posted hours match actual hours:
+     flagged"), with two to four attributed photos per entry captured under our existing
+     consent-anchored evidence rule. It is never a one-to-five star rating and never an aggregate
+     score — we are deliberately avoiding anything that implies a comparative opinion.
+   - Each report carries an "as observed on [date]" stamp. Our intent is that it reads as a
+     factual record of what the scout observed on that date — **observational** — not as an
+     assessment, endorsement, certification, or warranty of quality or safety.
+   - The scout is always an independent booked expert — never a Traveloure staff member and never
+     the place's own operator. Independence is enforced in software as a join-check at booking and
+     at report time: the scout's account may not intersect the target's ownership or affiliation
+     graph (curation credit, provider or service ownership, attributed short links, earnings,
+     endorsements, affiliate booking requests). There is no "independent reviewer" title or
+     credential; independence is the enforced relationship, not a claimed badge.
+
+   The three questions:
+
+   a. **Is it a review?** Can a per-criterion pass/fail/flag checklist with a date stamp be shown
+      to travelers without being treated as a review — and what is our exposure under (i)
+      consumer-protection / unfair-and-deceptive-practices rules and (ii) defamation, given that
+      a "fail" or "flag" is a factual assertion about a named business? Does the answer change
+      across our launch jurisdictions (US/Florida, Japan, UK, Portugal, Colombia, India)?
+   b. **What keeps it observational?** What wording or labeling, beyond the "as observed on
+      [date]" stamp, keeps the report on the observational side of that line — and do the photos
+      change your answer, since an image can read as an implied judgment even under a neutral
+      caption?
+   c. **Is the independence enough disclosure?** Is the enforced join-check sufficient disclosure
+      of the scout's relationship to the target, or do we also need an explicit disclosure line
+      on the report itself (naming the scout and stating the absence of a relationship)?
+
+   If any of these points to material risk, we would rather constrain the design now — limit the
+   surface to the traveler who booked the check, drop photos, narrow the criteria language — than
+   ship and correct later. Please tell us the smallest set of changes that would let a scout
+   report be shown to a traveler safely.
 
 No rush on this — nothing ships to travelers until we hear back, but we'd like your read before
 we start building the UI for #3 specifically, and before we turn on any aggregated-analytics use

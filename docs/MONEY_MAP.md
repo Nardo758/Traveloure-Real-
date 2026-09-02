@@ -38,7 +38,12 @@
 > expected-charge derivation adds `booking_details.travelerServiceFee.charged` back. Suppression
 > (Trip Pass / rails) is a two-row net-zero `fee_ledger` event — `traveler_service_fee (+X)` plus
 > `fee_waiver (−X)` tagged `covered_by` (migration 274 adds the type; the amount<>0 CHECK stands).
-> Refunds are UNCHANGED (fee currently non-refundable — FOLLOWUPS). CI: `check-traveler-fee-coverage.cjs`.
+> Refunds: the fee IS refundable (ruling `2026-09-02-traveler-fee-refundability`) —
+> `refundServiceBooking` (`stripe-payment.service.ts`) adds the refundable fee share to the Stripe
+> refund (traveler cancel → cancellation-tier %; provider/admin → 100%; waived bookings → none) and
+> `recordTravelerServiceFeeReversal` writes a `reversal` fee_ledger row linked to the original
+> `+traveler_service_fee` row (amount-specific §15 key; processing/FX fees excluded).
+> CI: `check-traveler-fee-coverage.cjs`.
 >
 > **Update (branch `claude/money-verify-cluster`) — verification lane, #846/#874/#875/#876/#877:**
 > - **#846 (booking confirm-payment double-earnings) — ALREADY-SAFE, proven, not a bug.**

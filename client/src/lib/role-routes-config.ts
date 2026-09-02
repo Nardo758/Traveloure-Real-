@@ -192,6 +192,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/gem-photo-backfill',  description: 'Gem photo backfill tool' },
   { href: '/admin/gem-candidates',      description: 'Nugget → gem promotion review queue' },
   { href: '/admin/neighborhood-claims/manual-entry', description: 'Neighborhood claims — ops manual entry for email backfill replies' },
+  { href: '/admin/neighborhood-claims', description: 'Neighborhood claims — review queue (Ratify / Return), scorer output, web-gap verdicts' },
   { href: '/admin/review-moderation',   description: 'Review moderation queue' },
   { href: '/admin/message-moderation',  description: 'Message moderation queue' },
   { href: '/admin/destination-events',  description: 'Destination events management' },

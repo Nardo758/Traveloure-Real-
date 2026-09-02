@@ -35,6 +35,8 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
 import { drainOutbox } from "../services/email-outbox.service";
+import { scorePendingClaims } from "../services/evidence-scorer.service";
+import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import {
   recordJobSuccess,
   computeJobHealth,
@@ -165,6 +167,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // jobs-cron.yml — hourly, 0 * * * *
   { job: "earnings-release", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   { job: "booking-auto-completion", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // expert field knowledge v2 Phase 2 — the scorer's authoritative runner (idempotent, key-gated).
+  { job: "score-neighborhood-claims", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // jobs-cron.yml — four-hourly, 0 */4 * * *
   { job: "booking-expiry", expectedIntervalSec: 4 * 60 * 60, bucket: "four-hourly" },
   // jobs-cron.yml — six-hourly, 0 */6 * * *
@@ -285,6 +289,15 @@ router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, r
 //
 // Iterates JOB_CADENCE, not the heartbeat table: a job that has never once succeeded is reported
 // `never_succeeded`, never omitted (L6/A).
+// score-neighborhood-claims — expert field knowledge v2 Phase 2 (ruling 2026-09-01-scorer-model).
+// Scores every submitted, unflagged claim; idempotent on (claim_id, version); never writes
+// expert_neighborhoods. The authoritative runner (§26 posture) — the in-process timer is defense.
+router.post("/internal/jobs/score-neighborhood-claims", requireInternalSecret, async (req, res) => {
+  const limit = typeof req.body?.limit === "number" && req.body.limit > 0 ? Math.floor(req.body.limit) : undefined;
+  const { status, body } = await runJob(EVIDENCE_SCORER_JOB_NAME, () => scorePendingClaims({ limit }));
+  res.status(status).json(body);
+});
+
 router.get("/internal/jobs/health", requireInternalSecret, async (_req, res) => {
   try {
     const jobs = await computeJobHealth(JOB_CADENCE);

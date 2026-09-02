@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
-import { getUserId } from "./utils/auth";
+import { getUserId, getDbRole } from "./utils/auth";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -1859,7 +1859,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // SECURITY: User data is sanitized and contact info in messages is redacted
   app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
+    // Redaction tier is an authorization decision → DB role (CLAUDE.md §2; audit finding 8
+    // class). The session's `claims.role` is a login-time snapshot with a 7-day TTL, so a
+    // demoted admin kept sanitizeUserForRole's full-PII branch on every chat participant.
+    const userRole = (await getDbRole(req)) ?? 'user';
     const chats = await storage.getChats(userId);
     
     // Log access for audit trail
@@ -6102,7 +6105,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
   app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'expert';
+    // DB role (CLAUDE.md §2): this value picks sanitizeBookingForExpert's canSeeFull branch,
+    // i.e. whether the Stripe payment-intent columns are stripped. Resolved ONCE per request
+    // and passed into the map below — never looked up inside the loop.
+    const userRole = (await getDbRole(req)) ?? 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
@@ -6127,7 +6133,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // NOTE: User data is sanitized - providers cannot see full traveler info
   app.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'provider';
+    // DB role (CLAUDE.md §2) — same redaction decision as /api/expert/bookings above.
+    const userRole = (await getDbRole(req)) ?? 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
@@ -6610,7 +6617,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
+    // DB role (CLAUDE.md §2): canSeeFullUserData(userRole) below is the admin bypass of the
+    // "must have a booking relationship" check, so it must not ride on a stale session claim.
+    const userRole = (await getDbRole(req)) ?? 'user';
     const { clientId } = req.params;
     
     // Check if requester has a legitimate relationship with this client
@@ -6808,7 +6817,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             const refundResult = await stripePaymentService.refundServiceBooking(
               req.params.id,
               reason || "cancelled_by_provider",
-              { amountOverride: amountPaid },
+              // Ruling 2026-09-02-traveler-fee-refundability: a PROVIDER cancellation makes the
+              // traveler whole — the traveler service fee refunds at 100%, never policy-scaled.
+              { amountOverride: amountPaid, feeRefundPercent: 100 }, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
             );
             if (refundResult?.alreadyRefunded) {
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
@@ -7273,7 +7284,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         refundResult = await stripePaymentService.refundServiceBooking(
           req.params.id,
           reason || "requested_by_customer",
-          { amountOverride: quote.refundAmount },
+          // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER cancellation refunds the
+          // traveler service fee at the SAME cancellation-tier % as the booking.
+          { amountOverride: quote.refundAmount, feeRefundPercent: quote.refundPercent },
         );
 
         // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields

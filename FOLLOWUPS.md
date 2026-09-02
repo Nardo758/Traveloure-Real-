@@ -477,21 +477,48 @@ review), computed only by `resolveTravelerServiceFee`, written to `fee_ledger`, 
 suppression as a two-row net-zero `fee_waiver` event. CI-gated by
 `scripts/check-traveler-fee-coverage.cjs` (wired in `.github/workflows/build.yml`).
 
-### FU — traveler-fee refund policy is UNDECIDED (money-out, out of this lane's scope)
+### FU — traveler-fee refund policy — RESOLVED (ruling `2026-09-02-traveler-fee-refundability`)
 
-`refundServiceBooking` (`server/services/stripe-payment.service.ts`) computes the refund ceiling as
-`total_amount + platform_fee + insurance_fee` — it does NOT include the traveler service fee, so on a
-full refund the traveler currently does NOT get the fee back (fee is non-refundable, the industry
-norm). The ruling governs COLLECTING the fee, not refunding it. Whether a refund should return the
-traveler fee (and on which cancellation reasons) is a separate decision-maker call. Not fixed here —
-changing it silently would be deciding money-out policy by omission. Evidence: the ledger records the
-fee as its own `traveler_service_fee` row, so a future refund policy can reverse it precisely
-(a `reversal` row) without disturbing provider commissions.
+**✅ RULED and BUILT.** The decision-maker ruled refundability: a traveler cancellation refunds the
+assessed fee at the service's cancellation-tier % (flexible 100/0, moderate 100/50/0, strict 50/0,
+non-refundable 0); a provider/expert cancellation refunds at 100%; Trip-Pass/rails-suppressed bookings
+billed no fee and refund none; payment-processing and FX fees are excluded. Built on branch
+`claude/traveler-fee-refundability`: `refundServiceBooking` now adds the refundable fee share to the
+Stripe refund and `recordTravelerServiceFeeReversal` writes a `reversal` fee_ledger row linked to the
+booking's original `+traveler_service_fee` row (amount-specific §15 idempotency key). Callers pass the
+percent (traveler → tier %, provider/admin → 100%). Proven by
+`server/__tests__/traveler-fee-refund.db.test.ts`. **Scope boundary:** the only live refund path that
+carries a traveler fee is `refundServiceBooking` (cart + transport service_bookings); the legacy
+`bookings` rail and the expert-review PI have no live refund path today — wire the same fee-refund
+logic there IF/when one is built (below).
+
+### FU — expert-review + legacy-rail refunds are not live paths (fee-refund wiring deferred)
+
+The expert-review service (path 5, `booking-actions.ts`) and the legacy `bookings` rail (path 3) both
+BILL the traveler fee, but neither has a live refund path today (`POST /api/bookings/refund` is
+re-pointed onto `service_bookings`; expert-review has no refund endpoint). When a refund path is built
+for either, apply the same ruling `2026-09-02-traveler-fee-refundability` fee-refund + reversal logic.
 
 ### FU — ledger aggregations must net waivers (forward contract)
 
 See `docs/findings/FEE_LEDGER_AGGREGATIONS_MUST_NET_WAIVERS.md` — `fee_ledger` has no readers yet;
 the first revenue aggregation that sums `traveler_service_fee` must net the `fee_waiver` legs.
+
+### FU — expert-field-knowledge v2, Phase 2 (2026-09-02; `2026-09-02-field-knowledge-phase2-landed`)
+
+- **`resubmit-window-row-name`.** The Phase 2 dispatch names the resubmission threshold
+  `resubmit_window_days`; Phase 1 seeded the same number as `resubmit_cooldown_days` (migration 272) and the
+  code reads that key. Not duplicated. If the dispatch's name is preferred, rename in one migration
+  (`UPDATE evidence_thresholds SET threshold_key=…`) + `EVIDENCE_THRESHOLD_KEYS`, never a second row.
+- **`scorer-live-calibration` (companion §6).** The worked example (8-scorer vs 3-scorer) is proven in the
+  suite only through an injected model; calibrating the real Sonnet pass against the two example P1 entries
+  needs `ANTHROPIC_API_KEY` in an environment that can reach the API (the sandbox and CI cannot). Run it
+  against the first two backfill replies and tune `evidence_thresholds` from there (companion §8.1).
+- **`web-gap-spend-logging` (F4, still open).** The web-gap search does not yet write `api_usage_logs`
+  (`provider: "tavily"`); the R-T1-c $150 cap remains unobservable in the admin cost view.
+- **`corroboration-chip`.** The dispatch's Phase 2 line "corroboration/conflict chip when two claimants' P2
+  constraints agree or clash on the same venue" is not built here; the D7 duplicate flag covers the P1
+  venue case only. Needs a P2 hard-constraint join (same `normalized_name` in `mini_slip_templates.items`).
 
 ## From the `schema_migrations` ledger-drift audit (2026-09-02, dev DB)
 
