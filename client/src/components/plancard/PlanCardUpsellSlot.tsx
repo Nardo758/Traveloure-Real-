@@ -11,6 +11,7 @@
  */
 
 import { UpsellSlot } from "@/components/UpsellSlot";
+import { parseTripDate } from "@/lib/calendar-date";
 
 export type UpsellSurface = "plancard_pretrip" | "plancard_ontrip";
 
@@ -25,9 +26,13 @@ interface PlanCardUpsellSlotProps {
 function inWindow(surface: UpsellSurface, startDate?: string, endDate?: string): boolean {
   if (!startDate || !endDate) return false;
   const now = new Date(); now.setHours(0, 0, 0, 0);
-  const start = new Date(startDate); start.setHours(0, 0, 0, 0);
-  const end = new Date(endDate); end.setHours(0, 0, 0, 0);
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+  // F-1: DATE columns arrive as "YYYY-MM-DD"; `new Date()` reads those as UTC midnight, which
+  // shifts the window a day west of UTC. parseTripDate reads them as LOCAL midnight.
+  const start = parseTripDate(startDate);
+  const end = parseTripDate(endDate);
+  if (!start || !end) return false;
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
   return surface === "plancard_pretrip" ? now < start : now >= start && now <= end;
 }
 

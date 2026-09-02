@@ -49,6 +49,7 @@ import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
 import { TripLogisticsDashboard } from "@/components/logistics";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { BookingFeeBreakdown } from "@/components/itinerary/BookingFeeBreakdown";
+import { parseTripDateOrInvalid as tripDate } from "@/lib/calendar-date";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
@@ -113,9 +114,9 @@ export default function ItineraryPage() {
     if (!tripData?.startDate || !tripData?.endDate) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const start = new Date(tripData.startDate);
+    const start = tripDate(tripData.startDate);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(tripData.endDate);
+    const end = tripDate(tripData.endDate);
     end.setHours(0, 0, 0, 0);
     if (today >= start && today <= end) {
       const dayNum = differenceInDays(today, start) + 1;
@@ -247,7 +248,7 @@ export default function ItineraryPage() {
     if (!daysData) return null;
     return daysData.map((day: any, index: number) => ({
       day: day.day || day.dayNumber || index + 1,
-      date: tripData ? addDays(new Date(tripData.startDate), index) : addDays(new Date(), index),
+      date: tripData ? addDays(tripDate(tripData.startDate), index) : addDays(new Date(), index),
       title: day.title || day.theme || `Day ${index + 1}`,
       transportLegs: day.transportLegs || [],
       activities: (day.activities || []).map((act: any, actIdx: number) => {
@@ -278,9 +279,9 @@ export default function ItineraryPage() {
     ? transformGeneratedDays(generatedItinerary.itineraryData)
     : null;
 
-  const defaultDays = tripData ? Array.from({ length: Math.max(1, differenceInDays(new Date(tripData.endDate), new Date(tripData.startDate)) + 1) }, (_, i) => ({
+  const defaultDays = tripData ? Array.from({ length: Math.max(1, differenceInDays(tripDate(tripData.endDate), tripDate(tripData.startDate)) + 1) }, (_, i) => ({
     day: i + 1,
-    date: addDays(new Date(tripData.startDate), i),
+    date: addDays(tripDate(tripData.startDate), i),
     title: `Day ${i + 1}`,
     activities: [] as any[],
   })) : [];
@@ -289,8 +290,8 @@ export default function ItineraryPage() {
     id: tripData.id,
     title: tripData.title || "Untitled Trip",
     destination: tripData.destination || "",
-    startDate: new Date(tripData.startDate),
-    endDate: new Date(tripData.endDate),
+    startDate: tripDate(tripData.startDate),
+    endDate: tripDate(tripData.endDate),
     travelers: tripData.numberOfTravelers || 1,
     budget: Number(tripData.budget) || 0,
     status: tripData.status || "draft",
@@ -434,9 +435,9 @@ export default function ItineraryPage() {
 
   const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
     dayNum: d.day,
-    date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
+    date: format(d.date instanceof Date ? d.date : tripDate(d.date), "yyyy-MM-dd"),
     label: (() => {
-      const parsed = d.date instanceof Date ? d.date : new Date(d.date);
+      const parsed = d.date instanceof Date ? d.date : tripDate(d.date);
       return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);
     })(),
     activities: (d.activities || []).map((a: any): PlanCardActivity => ({
