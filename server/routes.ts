@@ -92,6 +92,7 @@ import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
+import { stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -178,6 +179,7 @@ import shortLinksRoutes from "./routes/short-links.routes";
 import discoverRedirectRoutes from "./routes/discover-redirect.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
+import neighborhoodClaimsRoutes from "./routes/neighborhood-claims.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
@@ -1090,6 +1092,9 @@ export async function registerRoutes(
   // Sidebar-audit repair: formerly-dark expert console endpoints (role, ESO service-template
   // catalog, knowledge-nuggets) — ported verbatim out of the unmounted experts.routes.ts (§9).
   app.use(expertConsoleRoutes);
+  // Expert field knowledge v2 Phase 1 — neighborhood claims (expert side + ops manual entry +
+  // evidence_thresholds admin). Mounted per §9; the /api/admin paths ride the blanket guard above.
+  app.use(neighborhoodClaimsRoutes);
   // Channel Calendar (Console IA PR-Ca C3, §17): GET /api/me/calendar — read-only, session-scoped
   // aggregate over existing tables (slots, bookings, agent requests, store purchases/lifecycle,
   // assigned-trip deliveries). Zero writes. Mounted per §9.
@@ -2089,6 +2094,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       await mirrorBioToUsersRow(userId, input.bio);
+      // Field-knowledge Phase 0 D5 (amended): when the picker had no city_neighborhoods rows for
+      // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
+      // claim when that market's rows land. Server-derived, idempotent, never blocks the submit.
+      try {
+        await stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null });
+      } catch (e: any) {
+        console.error("[neighborhood-claims] no-neighborhoods stamp failed:", e?.message);
+      }
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
@@ -2147,6 +2160,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       await mirrorBioToUsersRow(userId, input.bio);
+      // Field-knowledge Phase 0 D5 (amended): when the picker had no city_neighborhoods rows for
+      // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
+      // claim when that market's rows land. Server-derived, idempotent, never blocks the submit.
+      try {
+        await stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null });
+      } catch (e: any) {
+        console.error("[neighborhood-claims] no-neighborhoods stamp failed:", e?.message);
+      }
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
