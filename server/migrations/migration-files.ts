@@ -1346,9 +1346,20 @@ export const MIGRATION_FILES = [
   // CHECK. moment_key never drives fees/templates; the events table mirrors upsell_impressions'
   // session posture (guest_session_id + nullable user_id, no PII).
   "270_landing_moments.sql",
+  // 271: expert field-knowledge claims, Phase 1 (ledger 2026-08-29-neighborhood-claims +
+  // 2026-08-29-evidence-is-the-test, 2026-08-29-graded-unlocks, 2026-08-29-scout-check).
+  // Additive: expert_neighborhood_claims (the claim; scores admin-only), claim_evening_stops +
+  // claim_contingencies (typed evidence child rows, Phase 2 writes them), local_knowledge_nuggets
+  // .claim_id (nullable evidence linkage), and nugget_photos (the ratified photo amendment —
+  // 2-4 photos per nugget for a Moments slideshow). No CHECK constraints (publish-trap posture);
+  // every table/index/FK declared in shared/schema.ts for deploy-push durability. Ratification
+  // births exactly one expert_neighborhoods row per claim — that join table is untouched here.
+  "271_expert_neighborhood_claims.sql",
   // Ruling 2026-09-02-traveler-fee-applies-everywhere (BLOCKER 1, cond 1): adds the `fee_waiver`
   // fee_type so Trip-Pass/rails suppression is a two-row net-zero event (traveler_service_fee +X,
   // fee_waiver -X tagged covered_by) WITHOUT relaxing the migration-179 amount<>0 CHECK. Additive
   // CHECK swap only (no table/index touched) → no publish-push trap; FEE_LEDGER_TYPES kept in sync.
-  "271_fee_ledger_fee_waiver_type.sql",
+  // RENUMBERED 271→272 on the main-merge: main landed 271_expert_neighborhood_claims first; the two
+  // are independent additive migrations, so the order between them carries no behavior.
+  "272_fee_ledger_fee_waiver_type.sql",
 ] as const;
