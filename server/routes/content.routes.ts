@@ -1,6 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getTripRole } from "../utils/trip-role";
-import { getUserId } from "../utils/auth";
+import { getUserId, requireDbAdmin } from "../utils/auth";
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
@@ -6777,15 +6777,15 @@ router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
     }
   });
 
-  // Manually refresh cache for a city (admin only)
+  // Manually refresh cache for a city (admin only).
+  // Audit finding 14: this checked `req.user?.role`, a field the Replit OIDC session shape
+  // never carries — so it 403'd real admins while trusting a 7-day-stale claim for
+  // email-auth ones. These paths are NOT under /api/admin, so the blanket `adminApiGuard`
+  // (CLAUDE.md §2) does not cover them; `requireDbAdmin` is that same default-deny posture
+  // (DB role lookup on the session user, 401/403/500, no bypass) applied here.
 
-router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, res) => {
+router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, requireDbAdmin, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-
       const { cityCode } = req.params;
       const result = await partnerEventsCacheService.refreshCityCache(cityCode);
       
@@ -6801,13 +6801,9 @@ router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, r
 
   // Get comprehensive location summary for admin panel
 
-router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) => {
+router.post("/api/fever/cache/refresh-all", isAuthenticated, requireDbAdmin, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-
+      // Admin gate: requireDbAdmin above (audit finding 14 — see the sibling route).
       const result = await partnerEventsCacheService.refreshAllCities();
       
       res.json({
