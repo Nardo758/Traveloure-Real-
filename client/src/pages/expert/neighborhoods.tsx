@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Loader2, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
-import { CLAIM_PROMPTS, VERIFIED_COPY, type Daypart } from "@shared/neighborhood-claims";
+import { CLAIM_PROMPTS, UNLOCK_COPY, VERIFIED_COPY, type Daypart, type EvidenceUnlock } from "@shared/neighborhood-claims";
 import {
   ClaimCaptureForm,
   captureCompleteness,
@@ -42,6 +42,7 @@ interface ClaimView {
   draftCapture: unknown | null;
   submittedAt: string | null;
   verifiedAt: string | null;
+  unlocks: EvidenceUnlock[];
 }
 interface NeighborhoodOption { id: string; name: string; slug: string; city: string; country: string; daypart: Daypart }
 
@@ -85,7 +86,16 @@ function ClaimCard({ claim }: { claim: ClaimView }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {claim.status === "verified" && (
-          <p className="text-sm text-foreground" data-testid="claim-verified-copy">{VERIFIED_COPY(claim.neighborhoodName)}</p>
+          <div className="space-y-2" data-testid="claim-verified-copy">
+            <p className="text-sm font-medium text-foreground">{VERIFIED_COPY(claim.neighborhoodName)}</p>
+            {(claim.unlocks ?? []).length > 0 && (
+              <ul className="text-sm text-muted-foreground space-y-1" data-testid="claim-unlocks">
+                {(claim.unlocks ?? []).map((u) => (
+                  <li key={u} className="flex gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 text-teal-600 shrink-0" /> <span>{UNLOCK_COPY[u](claim.neighborhoodName)}</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
         {claim.awaitingReview && (
           <p className="text-sm text-muted-foreground" data-testid="claim-awaiting">Your answers are with us. We'll be in touch — nothing more to do here for now.</p>

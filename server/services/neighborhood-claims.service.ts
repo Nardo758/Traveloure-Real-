@@ -43,6 +43,7 @@ import {
 } from "@shared/schema";
 import {
   CLAIM_DRAFT_MAX_BYTES,
+  CLAIM_STATUSES,
   DAYPARTS,
   DEFAULT_DAYPART,
   EVIDENCE_DIMENSIONS,
@@ -51,6 +52,9 @@ import {
   claimCaptureSubmitSchema,
   normalizeVenueName,
   publicClaimStatus,
+  EVIDENCE_UNLOCKS,
+  type EvidenceUnlock,
+  type ScorerJson,
   type ClaimActorType,
   type ClaimCaptureSubmit,
   type ClaimStatus,
@@ -143,6 +147,15 @@ export interface ExpertClaimView {
   draftCapture: unknown | null;
   submittedAt: Date | null;
   verifiedAt: Date | null;
+  /** What a VERIFIED claim opened (ruling 2026-08-29-graded-unlocks) — unlock keys only, never a score. */
+  unlocks: EvidenceUnlock[];
+}
+
+/** The unlock keys the scorer recommended, read off the admin-only JSON — the expert sees keys, not numbers. */
+export function unlocksFromScorerJson(scorerJson: unknown): EvidenceUnlock[] {
+  const rec = (scorerJson as Partial<ScorerJson> | null)?.recommended_unlocks;
+  if (!Array.isArray(rec)) return [];
+  return EVIDENCE_UNLOCKS.filter((u) => rec.includes(u));
 }
 
 function toExpertView(row: ExpertNeighborhoodClaim, neighborhoodName: string, city: string): ExpertClaimView {
@@ -168,6 +181,7 @@ function toExpertView(row: ExpertNeighborhoodClaim, neighborhoodName: string, ci
     draftCapture: row.draftCapture ?? null,
     submittedAt: row.submittedAt ?? null,
     verifiedAt: row.ratifiedAt ?? null,
+    unlocks: status === "verified" ? unlocksFromScorerJson(row.scorerJson) : [],
   };
 }
 
@@ -422,6 +436,12 @@ export async function submitClaim(opts: {
         actorId: opts.actorId,
       });
       return { ok: true as const, value: flipped };
+    }).then((result) => {
+      // Phase 2: enqueue the first-pass scorer. Best-effort and AFTER the commit — the authoritative
+      // runner is POST /internal/score-neighborhood-claims (+ the defense-in-depth timer); this
+      // just shortens the wait while an instance is warm. Never blocks or fails the submit.
+      if (result.ok) enqueueScoring(result.value.id, result.value.version);
+      return result;
     });
   } catch (err) {
     if (err instanceof EvidenceThresholdsMissingError) {
@@ -574,6 +594,142 @@ export async function stampNoNeighborhoodsAvailable(opts: { formId: string; user
     .where(and(eq(localExpertForms.id, opts.formId), sql`${localExpertForms.noNeighborhoodsAvailableAt} IS NULL`))
     .returning({ id: localExpertForms.id });
   return !!row;
+}
+
+// ── Scoring trigger (Phase 2) ───────────────────────────────────────────────────────────────
+
+/**
+ * Fire-and-forget scoring after a submit. Dynamic import avoids a module cycle (the scorer imports
+ * this file's hooks). Disabled with EVIDENCE_SCORER_AUTORUN=0 — the DB suites drive the scorer
+ * explicitly and must not race a background pass.
+ */
+function enqueueScoring(claimId: string, version: number): void {
+  if (process.env.EVIDENCE_SCORER_AUTORUN === "0" || process.env.NODE_ENV === "test") return;
+  void import("./evidence-scorer.service")
+    .then((m) => m.scoreClaim({ claimId, version }))
+    .catch((err: any) => console.error(`[neighborhood-claims] enqueue scoring failed for ${claimId}:`, err?.message ?? err));
+}
+
+/** Admin: clear a scorer_failed flag so the next runner pass retries (an explicit action, never automatic). */
+export async function requestRescore(opts: { claimId: string; adminId: string }): Promise<ClaimResult<ExpertNeighborhoodClaim>> {
+  const [row] = await db
+    .update(expertNeighborhoodClaims)
+    .set({ scorerFailed: false, scorerFailedReason: null, updatedAt: new Date() })
+    .where(and(eq(expertNeighborhoodClaims.id, opts.claimId), eq(expertNeighborhoodClaims.status, "submitted")))
+    .returning();
+  if (!row) return fail(409, "not_rescorable", "Only a submitted claim can be re-queued for scoring");
+  enqueueScoring(row.id, row.version);
+  return { ok: true, value: row };
+}
+
+// ── Admin reads (Phase 2 queue) ─────────────────────────────────────────────────────────────
+
+export interface AdminClaimListRow {
+  id: string;
+  status: ClaimStatus;
+  version: number;
+  expertId: string;
+  expertName: string;
+  expertEmail: string | null;
+  neighborhoodId: string;
+  neighborhoodName: string;
+  city: string;
+  daypart: string;
+  submittedAt: Date | null;
+  scoredAt: Date | null;
+  ratifiedAt: Date | null;
+  declinedAt: Date | null;
+  scorerFailed: boolean;
+  scorerFailedReason: string | null;
+  recommendedUnlocks: EvidenceUnlock[];
+  weakestDimension: string | null;
+  flagCount: number;
+  webGapAvailable: boolean | null;
+}
+
+const ADMIN_LIST_DEFAULT_STATUSES: ClaimStatus[] = ["submitted", "scored"];
+
+export async function listClaimsForAdmin(opts: { statuses?: ClaimStatus[] } = {}): Promise<AdminClaimListRow[]> {
+  const statuses = (opts.statuses && opts.statuses.length ? opts.statuses : ADMIN_LIST_DEFAULT_STATUSES)
+    .filter((s): s is ClaimStatus => (CLAIM_STATUSES as readonly string[]).includes(s));
+  if (!statuses.length) return [];
+  const rows = await db
+    .select({
+      claim: expertNeighborhoodClaims,
+      neighborhoodName: cityNeighborhoods.name,
+      city: cityNeighborhoods.city,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+    })
+    .from(expertNeighborhoodClaims)
+    .innerJoin(cityNeighborhoods, eq(cityNeighborhoods.id, expertNeighborhoodClaims.neighborhoodId))
+    .innerJoin(users, eq(users.id, expertNeighborhoodClaims.expertId))
+    .where(inArray(expertNeighborhoodClaims.status, statuses))
+    .orderBy(asc(expertNeighborhoodClaims.submittedAt), asc(expertNeighborhoodClaims.createdAt));
+  return rows.map((r) => {
+    const sj = (r.claim.scorerJson as Partial<ScorerJson> | null) ?? null;
+    return {
+      id: r.claim.id,
+      status: r.claim.status as ClaimStatus,
+      version: r.claim.version,
+      expertId: r.claim.expertId,
+      expertName: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email || r.claim.expertId,
+      expertEmail: r.email ?? null,
+      neighborhoodId: r.claim.neighborhoodId,
+      neighborhoodName: r.neighborhoodName,
+      city: r.city,
+      daypart: r.claim.daypart,
+      submittedAt: r.claim.submittedAt ?? null,
+      scoredAt: r.claim.scoredAt ?? null,
+      ratifiedAt: r.claim.ratifiedAt ?? null,
+      declinedAt: r.claim.declinedAt ?? null,
+      scorerFailed: r.claim.scorerFailed,
+      scorerFailedReason: r.claim.scorerFailedReason ?? null,
+      recommendedUnlocks: unlocksFromScorerJson(sj),
+      weakestDimension: sj?.weakest_dimension ?? null,
+      flagCount: Array.isArray(sj?.flags) ? sj!.flags!.length : 0,
+      webGapAvailable: typeof sj?.web_gap_available === "boolean" ? sj.web_gap_available : null,
+    };
+  });
+}
+
+export interface AdminClaimDetail {
+  claim: AdminClaimListRow & { consentAt: Date | null; consentVersion: string | null; declinedDimension: string | null; ratifiedBy: string | null };
+  scorerJson: ScorerJson | null;
+  p1: Array<{ id: string; name: string | null; category: string | null; doThis: string; when: unknown; watchOut: string | null; priceBand: string | null; expertConfidence: string | null; webGap: string | null; webGapUrl: string | null; webGapCheckedAt: Date | null }>;
+  p2: { id: string; daypart: string; items: unknown; orderReason: string; hardConstraints: unknown } | null;
+  p3: Array<{ id: string; trigger: string; replacesPosition: number | null; alternate: unknown; reason: string }>;
+  /** HELD (ruling 2026-09-01-access-claims-held): shown to admin as held, never scored or counted. */
+  p4Held: Array<{ id: string; venue: string; accessType: string; relationshipBasis: string | null; verificationStatus: string }>;
+  transitions: Array<{ fromStatus: string | null; toStatus: string; actorType: string; actorId: string | null; claimVersion: number; createdAt: Date }>;
+}
+
+export async function getClaimDetailForAdmin(claimId: string): Promise<AdminClaimDetail | null> {
+  const [head] = await listClaimsForAdmin({ statuses: [...CLAIM_STATUSES] }).then((rows) => rows.filter((r) => r.id === claimId));
+  if (!head) return null;
+  const [raw] = await db.select().from(expertNeighborhoodClaims).where(eq(expertNeighborhoodClaims.id, claimId)).limit(1);
+  const v = raw.version;
+  const nuggets = await db.select().from(localKnowledgeNuggets)
+    .where(and(eq(localKnowledgeNuggets.claimId, claimId), eq(localKnowledgeNuggets.claimVersion, v)))
+    .orderBy(localKnowledgeNuggets.createdAt, localKnowledgeNuggets.id);
+  const [tpl] = await db.select().from(miniSlipTemplates)
+    .where(and(eq(miniSlipTemplates.claimId, claimId), eq(miniSlipTemplates.claimVersion, v))).limit(1);
+  const conts = await db.select().from(claimContingencies)
+    .where(and(eq(claimContingencies.claimId, claimId), eq(claimContingencies.claimVersion, v)));
+  const held = await db.select().from(accessClaims)
+    .where(and(eq(accessClaims.claimId, claimId), eq(accessClaims.claimVersion, v)));
+  const { listClaimTransitions } = await import("./neighborhood-claim-transitions.service");
+  const transitions = await listClaimTransitions(claimId);
+  return {
+    claim: { ...head, consentAt: raw.consentAt ?? null, consentVersion: raw.consentVersion ?? null, declinedDimension: raw.declinedDimension ?? null, ratifiedBy: raw.ratifiedBy ?? null },
+    scorerJson: (raw.scorerJson as ScorerJson | null) ?? null,
+    p1: nuggets.map((n) => ({ id: n.id, name: n.linkedPoi, category: n.placeCategory, doThis: n.insight, when: n.whenJson, watchOut: n.watchOut, priceBand: n.priceBand, expertConfidence: n.expertConfidence, webGap: n.webGap, webGapUrl: n.webGapUrl, webGapCheckedAt: n.webGapCheckedAt })),
+    p2: tpl ? { id: tpl.id, daypart: tpl.daypart, items: tpl.items, orderReason: tpl.orderReason, hardConstraints: tpl.hardConstraints } : null,
+    p3: conts.map((c) => ({ id: c.id, trigger: c.trigger, replacesPosition: c.replacesPosition, alternate: c.alternate, reason: c.reason })),
+    p4Held: held.map((a) => ({ id: a.id, venue: a.venue, accessType: a.accessType, relationshipBasis: a.relationshipBasis, verificationStatus: a.verificationStatus })),
+    transitions: transitions.map((t) => ({ fromStatus: t.fromStatus, toStatus: t.toStatus, actorType: t.actorType, actorId: t.actorId, claimVersion: t.claimVersion, createdAt: t.createdAt })),
+  };
 }
 
 // ── Ops helpers ─────────────────────────────────────────────────────────────────────────────

@@ -121,6 +121,63 @@ export const RETURN_TEMPLATES: Record<EvidenceDimension, (place: string) => stri
   practicality: () => `What goes wrong if they don't know this?`,
 };
 
+// ── Unlocks (ruling 2026-08-29-graded-unlocks; companion §3) ────────────────────────────────
+export const EVIDENCE_UNLOCKS = ["places", "sequencing", "contingency"] as const;
+export type EvidenceUnlock = (typeof EVIDENCE_UNLOCKS)[number];
+
+/** §5 — the unlock copy shown WITH "{neighborhood} — verified." Copy-level (Phase 3 enforces). */
+export const UNLOCK_COPY: Record<EvidenceUnlock, (neighborhood: string) => string> = {
+  places: (n) => `Your ${n} places can now appear as gems with your name on them, and you can anchor ${n}.`,
+  sequencing: (n) => `Your ${n} outing can be offered to travelers as a starting point, and people planning around ${n} are pointed to you first.`,
+  contingency: () => `When something changes on a plan built around your places, you can be asked to adjust it.`,
+};
+
+// ── Scorer output contract (companion §4) ───────────────────────────────────────────────────
+// Built per call because the dimension ceiling is a threshold row (`dimension_max`), never a
+// literal in the scorer. `web_gap` is null when no search client was available (the admin view
+// says so); the four ruling flags are recognized by prefix, anything else the model emits is dropped.
+export const SCORER_FLAG_PREFIXES = ["guidebook_phrasing", "duplicate_of_expert_", "contradiction", "unparseable_when"] as const;
+
+export function buildScorerOutputSchema(dimensionMax: number) {
+  const dim = z.number().int().min(0).max(dimensionMax);
+  const note = z.string().trim().max(400).optional().default("");
+  const dims = { specificity: dim, verifiability: dim, localness: dim, practicality: dim };
+  return z.object({
+    p1: z.array(z.object({
+      row_id: z.string().min(1),
+      ...dims,
+      web_gap: z.enum(WEB_GAP_RESULTS).nullable().optional().default(null),
+      web_gap_url: z.string().trim().max(1000).nullable().optional().default(null),
+      note,
+    })).min(1),
+    p2: z.object({ ...dims, hard_constraint_valid: z.boolean(), note }),
+    p3: z.object({ ...dims, note }),
+    flags: z.array(z.string().trim().max(120)).optional().default([]),
+  }).strict();
+}
+export type ScorerModelOutput = z.infer<ReturnType<typeof buildScorerOutputSchema>>;
+
+/** What the scorer persists on the claim (`scorer_json`) — admin-only, never expert-facing. */
+export interface ScorerJson {
+  claim_id: string;
+  version: number;
+  model: string;
+  scored_at: string;
+  /** false when no search client was configured — Localness was scored without the web-gap cap. */
+  web_gap_available: boolean;
+  p1: Array<{
+    row_id: string; specificity: number; verifiability: number; localness: number; practicality: number;
+    total: number; web_gap: (typeof WEB_GAP_RESULTS)[number] | null; web_gap_url: string | null; note: string;
+    /** the model's Localness before the web-gap cap was applied (admin transparency) */
+    localness_uncapped: number;
+  }>;
+  p2: { specificity: number; verifiability: number; localness: number; practicality: number; total: number; hard_constraint_valid: boolean; note: string };
+  p3: { specificity: number; verifiability: number; localness: number; practicality: number; total: number; note: string };
+  recommended_unlocks: EvidenceUnlock[];
+  weakest_dimension: EvidenceDimension;
+  flags: string[];
+}
+
 /** Venue join key (Phase 4 independence check): lowercase, diacritics stripped, punctuation out. */
 export function normalizeVenueName(name: string): string {
   return name
