@@ -557,3 +557,69 @@ long-lived dev DB and equal zero on a fresh/prod DB, so make the assertion missi
 false blocker. Because a collision means the dev DB applied a *different* SQL body than canonical at
 that prefix, money-path guards (`check-decision-guards.cjs`, R114 / #1758) should take their
 definitive green on a freshly migrated DB, not this accumulated one.
+
+## From the 2026-09-02 local test session (Windows + Neon dev)
+
+A full local run of the app on Windows against the Neon dev branch. The one thing fixed in place was
+the `reusePort: true` bind (SO_REUSEPORT is unsupported on Windows, so the server could not bind any
+port) — everything below is either a data/ops question, a spec-drift question, or a harness question,
+and none belong in a two-line platform-guard commit.
+
+### FU — Seed-era provider account has no provider-profile row, and the console cannot say so
+
+`kyoto-photography@traveloure.test` (role `service_provider`) has **no provider-profile row**. The
+consequences are two, and the second is the real defect: the account is absent from Admin → Providers
+entirely, and its publish button reads **"Verification Required"** with no path from there to
+verification — a dead end that names a state the provider cannot act on.
+
+**Action, in this order.** First establish whether this is seed-only: query **prod** for any REAL
+`service_provider` account with no provider-profile row
+(`users` LEFT JOIN the provider-profile table WHERE role = 'service_provider' AND profile IS NULL).
+If prod is clean, backfill the seed and close it. If prod has real accounts in this state, the console
+fix is the deliverable: say the profile is missing and link to creating it, rather than rendering a
+generic "Verification Required" that is not the actual blocker (§13 — a surface must not name a
+condition it cannot substantiate, and must not hide the one it can).
+
+### FU — Two pre-hardening `confirmed` bookings carry no PaymentIntent (§19b class)
+
+The SQL invariant `paid-service-bookings-have-payment-intent` flags **2** `confirmed`
+`service_bookings` — $320 and $390, both created **2026-04-03** at identical timestamps — with
+`stripe_payment_intent_id IS NULL`. Identical creation timestamps and the date place these before the
+webhook/claim hardening; they are seed rows, not a live money fault.
+
+This is exactly the class CLAUDE.md **§19b** names: rows already on disk get **detection, never silent
+trust or silent repair**, under drift kind `payment_provenance_unverified`.
+
+**Action.** Label these two in the invariant suite's **expected findings** so the suite stays
+green-with-known-exceptions rather than red-by-default (a permanently red invariant stops being read).
+Then confirm the daily drift job actually lists them under `payment_provenance_unverified` via
+`GET /api/admin/reconciliation/exceptions` — if it does not, the detector, not the data, is the finding.
+**Never delete or hand-edit money rows** to clear an invariant (§17 detect-don't-repair).
+
+### FU — Journey J1's expert loop is 3/10 after the Aug 31 Trip Card rebuild (spec drift)
+
+J1's expert loop scores **3/10**. The traveler-side "send to expert" selectors and the "Delivered" chip
+moved in the Aug 31 Trip Card rebuild, and J1 still targets the old surfaces.
+
+This is **spec drift, not a product regression**: the same state machine passes at API level in **J2**,
+so the transitions work and only the browser-level targeting is stale. **Action:** retarget J1's
+traveler selectors to the rebuilt surfaces. Until that lands, state plainly that **the expert loop has
+no browser coverage** — J2's API pass is not a substitute and must not be cited as one.
+
+### FU — J3 step 11 and J5 steps 4 and 9 time out on Windows Vite cold transforms (harness)
+
+J3 step 11 and J5 steps 4 and 9 time out at the 10 s wait on Windows while the failure screenshots show
+the features **rendered**: the Leaflet plan map with its day filters, and the trip card modal. The wait
+expires during Vite's cold transform of a route being hit for the first time, not on a missing feature.
+
+**Not a product defect.** **Action:** warm the routes before asserting (a navigation pass ahead of the
+assertions), or raise the wait for those three steps specifically. Do not raise the global timeout —
+that would hide real slowness everywhere else.
+
+### FU — Admin → Providers sidebar badge is stale after an approval (being fixed elsewhere)
+
+Approving a provider application updates the stat card but leaves the sidebar badge on the old count —
+a stale badge query, so the same page shows two different numbers for the same fact.
+
+**Being fixed in the service-detail handoff PR** (`fix/service-detail-trip-handoff`). Recorded here only
+so it is not picked up a second time; do not open work against it.
