@@ -24,6 +24,18 @@ export interface MomentConfig {
   headline: string;
   pieces: [string, string, string];
   experienceType: string; // coarse machine key the CTA prefills
+  /**
+   * The `experience_types` SLUG this moment is an instance of — the ONE runtime occasion
+   * vocabulary (ledger `2026-09-03-occasion-vocabulary`). `experienceType` above stays the coarse
+   * two-value machine key the AI chooser already accepts and is deliberately untouched; this rides
+   * beside it so the CTA can seed the plan's occasion with a real catalog row instead of a word
+   * that matches nothing.
+   *
+   * **Only a slug the seeder actually writes may appear here, or `null`.** A moment with no
+   * seeded row carries `null` and the client simply seeds no occasion — never an invented slug
+   * that would render an empty template page (§13).
+   */
+  experienceSlug: string | null;
   city: string; // market
 }
 
@@ -40,6 +52,7 @@ export const MOMENTS: MomentConfig[] = [
       "Kaiseki booked for after, the counter seat held.",
     ],
     experienceType: "event",
+    experienceSlug: "proposal",
     city: "Kyoto",
   },
   {
@@ -53,6 +66,8 @@ export const MOMENTS: MomentConfig[] = [
       "Tee times booked in sequence, the whisky bar after each round already on the list.",
     ],
     experienceType: "travel",
+    // Golf has no seeded row of its own; a golf trip IS the generic travel occasion.
+    experienceSlug: "travel",
     city: "Edinburgh",
   },
   {
@@ -66,6 +81,7 @@ export const MOMENTS: MomentConfig[] = [
       "Dinner for eight held at the courtyard place that “doesn't take groups,” the late table yours.",
     ],
     experienceType: "travel",
+    experienceSlug: "girls-trip",
     city: "Cartagena",
   },
   {
@@ -79,6 +95,9 @@ export const MOMENTS: MomentConfig[] = [
       "The corner table at the place with no sign held for 8pm, the port after already chosen.",
     ],
     experienceType: "event",
+    // The COUPLES anniversary (`anniversary-trip`), not the wedding-anniversary party
+    // (`wedding-anniversaries`) — two seeded rows, and this moment is the getaway.
+    experienceSlug: "anniversary-trip",
     city: "Porto",
   },
   {
@@ -92,6 +111,8 @@ export const MOMENTS: MomentConfig[] = [
       "One day left deliberately empty — a boat on call if you want it, nothing booked if you don't.",
     ],
     experienceType: "travel",
+    // No seeded "honeymoon" row; the honeymoon is a travel occasion in the catalog.
+    experienceSlug: "travel",
     city: "Goa",
   },
   {
@@ -105,6 +126,7 @@ export const MOMENTS: MomentConfig[] = [
       "The private room at the place that “only does members” blocked for your name, cake in on cue.",
     ],
     experienceType: "event",
+    experienceSlug: "birthday",
     city: "Mumbai",
   },
   {
@@ -118,6 +140,10 @@ export const MOMENTS: MomentConfig[] = [
       "The fort visit booked for the cool hour, a guide who slows for the elders, the evening table held after.",
     ],
     experienceType: "event",
+    // NO SEEDED ROW YET. `family-occasion` is one of the three the FLOW-SPEC brief asks the
+    // decision-maker to ratify (with `milestone-birthday` and `corporate-retreats`); until one
+    // exists this stays null and the CTA seeds no occasion rather than pointing at nothing.
+    experienceSlug: null,
     city: "Jaipur",
   },
 ];
@@ -163,6 +189,8 @@ export interface LiveMoment {
   headline: string;
   pieces: string[];
   experienceType: string;
+  /** The seeded `experience_types` slug, or null when this moment has no row yet. */
+  experienceSlug: string | null;
   photos: MomentPhoto[];
   builder: { handle: string; reviews: number } | null;
 }
@@ -222,6 +250,7 @@ export async function resolveLandingMoments(): Promise<LiveMoment[]> {
       headline: m.headline,
       pieces: [...m.pieces],
       experienceType: m.experienceType,
+      experienceSlug: m.experienceSlug,
       photos,
       builder,
     });

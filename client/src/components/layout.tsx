@@ -101,7 +101,7 @@ export const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: st
   "Proposal":          Gem,
   "Engagement Party":  Flower2,
   "Baby Shower":       Baby,
-  "Anniversary":       Gift,
+  "Wedding Anniversary": Gift,
   "Corporate Events":  Building2,
   "Corporate Retreats": Briefcase,
   "Boys Trip":         Users,

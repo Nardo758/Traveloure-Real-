@@ -14,32 +14,17 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { useCreateTrip } from "@/hooks/use-trips";
 import { updateTripContext } from "@/lib/trip-context";
-import { eventTypeEnum } from "@shared/schema";
+import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
 
 /**
- * GET /api/experience-types returns platform experience-type slugs (e.g.
- * "corporate-events", "wedding-anniversaries", "boys-trip") which are NOT the
- * same vocabulary as `trips.eventType` (shared/schema.ts eventTypeEnum). Writing
- * a raw slug there silently breaks isEventOptimizer/the coordination-fee event-
- * credit branch (optimization-fee.service.ts BRANCH_MAP reads literal
- * "wedding"/"corporate"). Map explicitly; never invent semantics — an
- * unrecognized slug (e.g. "boys-trip", "baby-shower") maps to "other".
+ * The slug→eventType map and the "unrecognized slug ⇒ other" rule MOVED to `shared/occasions.ts`
+ * (ledger `2026-09-03-occasion-vocabulary`) — the one mapping module, so the Trip Strip's edit
+ * panel writes the same `trips.event_type` this panel does instead of a second private map. The
+ * warning that made the map necessary travelled with it and is stated in full there: a raw
+ * experience-type slug in `trips.eventType` silently breaks the literal-reading fee/optimizer
+ * branches, so an unrecognized slug maps to "other" and never to a nearer-looking guess.
  */
-const EVENT_TYPE_SLUG_MAP: Record<string, (typeof eventTypeEnum)[number]> = {
-  "corporate-events": "corporate",
-  "wedding-anniversaries": "anniversary",
-  vacation: "vacation",
-  travel: "vacation",
-};
-
-function mapSlugToEventType(slug: string | null): (typeof eventTypeEnum)[number] | undefined {
-  if (!slug) return undefined;
-  if ((eventTypeEnum as readonly string[]).includes(slug)) {
-    return slug as (typeof eventTypeEnum)[number];
-  }
-  return EVENT_TYPE_SLUG_MAP[slug] ?? "other";
-}
 
 /**
  * Entry Surfaces Redesign (ratification mockup): the common shapes are featured as
@@ -49,8 +34,8 @@ function mapSlugToEventType(slug: string | null): (typeof eventTypeEnum)[number]
  * the API doesn't return simply doesn't render.
  *
  * These are EXPERIENCE-TYPE slugs (the /api/experience-types vocabulary), NOT
- * eventTypeEnum values — the same two-vocabularies trap as EVENT_TYPE_SLUG_MAP
- * above. "vacation" was listed here originally but is an eventTypeEnum value, not
+ * eventTypeEnum values — the same two-vocabularies trap `shared/occasions.ts`
+ * exists to close. "vacation" was listed here originally but is an eventTypeEnum value, not
  * a real catalog slug, so it silently never rendered (runtime audit, Aug 4). The
  * three real featured slugs + the "Plan it with AI" card fill the 2×2 grid exactly.
  */
@@ -158,7 +143,7 @@ export function IntakePanel({
     // Hand off exactly what the user entered in Step 1 — nothing invented.
     // If a shape was picked before switching to AI, carry it forward as a
     // canonical eventType hint (mapped — never the raw non-enum slug).
-    const mappedEventType = mapSlugToEventType(selectedSlug);
+    const mappedEventType = selectedSlug ? eventTypeForSlug(selectedSlug) : undefined;
     updateTripContext({
       destination: destination.trim(),
       startDate,
@@ -181,7 +166,7 @@ export function IntakePanel({
       numberOfTravelers: travelers,
       adults: travelers,
       kids: 0,
-      eventType: mapSlugToEventType(selectedSlug) ?? "other",
+      eventType: eventTypeForSlug(selectedSlug),
     } as InsertTrip;
 
     createTrip.mutate(payload, {

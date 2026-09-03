@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
-import { useTripContext } from "@/lib/trip-context";
+import { updateTripContext, useTripContext } from "@/lib/trip-context";
 import { apiRequest } from "@/lib/queryClient";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 
@@ -56,6 +56,13 @@ export interface PlanningSource {
    *  experienceType into the AI generation prompt ("Occasion: …") so the brief carries the moment
    *  (ruling 2026-09-01-moment-key). */
   momentKey?: string;
+  /** A seeded `experience_types` SLUG the door already answered (ledger
+   *  `2026-09-03-occasion-vocabulary`). Seeded into the trip context on open — the same
+   *  `updateTripContext({ experienceSlug })` merge experience-template.tsx does — so the plan the
+   *  traveler starts carries a real catalog occasion instead of nothing. Optional and additive:
+   *  a door with no occasion (or a Moment with no seeded row) passes nothing and NOTHING is
+   *  seeded, never a guessed slug (§13). This is the whole of the contract change. */
+  experienceSlug?: string;
 }
 
 interface PlanningApi {
@@ -162,6 +169,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     (src?: PlanningSource) => {
       const next = src ?? null;
       setSource(next);
+      // The door already named the occasion — record it on the planning context so every
+      // downstream surface reads the same slug. Additive merge, never a switch: this does not
+      // touch trip identity.
+      if (next?.experienceSlug) updateTripContext({ experienceSlug: next.experienceSlug });
       setStep("choose");
       setCreateError(null);
       if (next?.branch) {

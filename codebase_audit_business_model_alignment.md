@@ -14,8 +14,17 @@ The Traveloure codebase is **significantly aligned** with the reframed Experienc
 
 The schema already supports all reframed event types:
 
+> **SUPERSEDED 2026-09-03** (ledger `2026-09-03-occasion-vocabulary`). The `experienceTypeSlugEnum`
+> quoted below was DELETED: it was declared in `shared/schema.ts` and referenced nowhere, so it
+> enforced nothing, and its values had drifted from the rows actually seeded. The occasion list is
+> the **`experience_types` table** (`GET /api/experience-types`, seeded by
+> `server/seeds/experience-template-tabs.seed.ts`) — not a code enum. `eventTypeEnum` is unchanged
+> and still types `trips.event_type`; `shared/occasions.ts` maps slugs to it. The claim this
+> paragraph makes (the platform supports the reframed event types) still holds — it is the
+> EVIDENCE that moved.
+
 ```typescript
-// shared/schema.ts:1044
+// HISTORICAL — this declaration no longer exists.
 export const experienceTypeSlugEnum = [
   "travel", "wedding", "proposal", "romance", "birthday", "corporate", 
   "boys-trip", "girls-trip", "date-night", "corporate-events", "reunions", 
@@ -25,7 +34,7 @@ export const experienceTypeSlugEnum = [
 ];
 ```
 
-**Evidence:** `shared/schema.ts:1044-1049`
+**Evidence:** `server/seeds/experience-template-tabs.seed.ts` (the seeded `templates` array); `shared/occasions.ts`
 
 The schema also includes event-specific fields:
 - `paymentFlowType`: group_split, joint, single_payer, multi_stakeholder

@@ -14,8 +14,8 @@ Photography & Videography · Transportation & Logistics · Food & Culinary (cate
 consultation · planning · action · concierge · experience · specialty.
 *(Seeded examples: photography-tour planning, island-hopping packages, wellness retreats, budget itineraries, adventure expeditions.)*
 
-### Experience / event types `experienceTypeSlugEnum` + `eventTypeEnum`
-travel · wedding · proposal · romance · date-night · birthday · anniversary · honeymoon · corporate · corporate-events · reunions · retreats · baby-shower · boys-trip · girls-trip · wellness-retreat · group-travel · backpacking · adventure · cultural.
+### Experience / event types — the `experience_types` TABLE + `eventTypeEnum`
+*(Corrected 2026-09-03, ledger `2026-09-03-occasion-vocabulary`: `experienceTypeSlugEnum` was DELETED — it was declared and never referenced. The occasion list is not a code enum: it is the `experience_types` rows, read via `GET /api/experience-types` and seeded by `server/seeds/experience-template-tabs.seed.ts`. `eventTypeEnum` remains the 10-value machine vocabulary of the `trips.event_type` column; `shared/occasions.ts` maps between them.)*
 
 ### Destination event types `destinationEventTypeEnum`
 festival · holiday · cultural · sporting · religious · seasonal · weather.
