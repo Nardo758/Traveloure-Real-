@@ -175,4 +175,31 @@ describe("occasion vocabulary", () => {
       );
     }
   });
+  // O6 — a slug alias may exist ONLY for a slug that has no row of its own. Until ledger
+  // `2026-09-03-occasion-hygiene`, `romance` and `corporate` were aliased to `date-night` /
+  // `corporate-events` in BOTH the server list/detail routes and the client template page, so the
+  // rows ledger `2026-09-03-occasion-switches` seeded for the nav were unreachable by their own
+  // slug and silently served another occasion's template. Both maps are parsed from the file TEXT
+  // (the route module pulls in the DB client) and every key is checked against the seeded slugs.
+  it("O6: no slug alias shadows a seeded experience_types row", () => {
+    const slugs = new Set(seededSlugs());
+    const files = [
+      path.resolve(HERE, "../../server/routes/content.routes.ts"),
+      path.resolve(HERE, "../../client/src/pages/experience-template.tsx"),
+    ];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      const start = src.indexOf("const slugAliases: Record<string, string> = {");
+      assert.ok(start > -1, `${path.basename(file)}: the slugAliases map must still be findable — update this parser`);
+      const block = src.slice(start, src.indexOf("};", start));
+      const keys = [...block.matchAll(/"([^"]+)"\s*:/g)].map((m) => m[1]);
+      for (const key of keys) {
+        assert.ok(
+          !slugs.has(key),
+          `${path.basename(file)}: slug alias "${key}" shadows a seeded experience_types row — ` +
+            "remove the alias; the row is reachable by its own slug now",
+        );
+      }
+    }
+  });
 });
