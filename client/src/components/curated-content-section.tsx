@@ -21,6 +21,7 @@ import {
   Package,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 
 interface CuratedItem {
   id: string;
@@ -111,7 +112,7 @@ function AddToTripDialog({
     onSuccess: (_, tripId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "itinerary-items"] });
       toast({
-        title: "Added to trip",
+        title: ADDED_TO_PLAN_TITLE,
         description: `"${item?.title}" has been added to your itinerary.`,
       });
       onOpenChange(false);
@@ -250,7 +251,7 @@ function CuratedCard({
       if (data.url) {
         window.location.href = data.url;
       } else {
-        toast({ title: "Checkout unavailable", description: "Could not open checkout. Try Add to Trip instead.", variant: "destructive" });
+        toast({ title: "Checkout unavailable", description: `Could not open checkout. Try ${ADD_TO_PLAN_LABEL} instead.`, variant: "destructive" });
       }
     },
     onError: (err: unknown) => {
@@ -372,7 +373,7 @@ function CuratedCard({
               data-testid={`button-add-trip-${item.id}`}
             >
               <Plus className="w-3 h-3 mr-1" />
-              Add to Trip
+              {ADD_TO_PLAN_LABEL}
             </Button>
             {isAffiliate ? (
               // ALL affiliate items route through platform intermediary — click recorded server-side

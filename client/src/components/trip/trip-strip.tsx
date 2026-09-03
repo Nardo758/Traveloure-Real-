@@ -5,6 +5,7 @@ import { MapPin, Calendar, Users, ShoppingCart, Lock, Heart } from "lucide-react
 import { useTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { planningRouteForTrip } from "@/contexts/PlanningContext";
+import { classify } from "@/lib/plan-vocabulary";
 
 /**
  * TripStrip — the ratified Option A global trip bar (Trip-Strip program P3).
@@ -33,17 +34,10 @@ const MARKETING_PATHS = new Set([
 
 const LOCKED_PREFIXES = ["/checkout", "/payment", "/booking/confirmation"];
 
-type VocabClass = "travel" | "event" | "couple";
-
-const EVENT_KEYWORDS = ["wedding", "birthday", "corporate", "party", "reunion", "shower", "graduation", "retirement", "farewell", "housewarming", "achievement", "holiday", "bachelor", "engagement", "retreat"];
-const COUPLE_KEYWORDS = ["proposal", "date night", "date-night", "anniversar", "honeymoon"];
-
-function classify(experienceType?: string): VocabClass {
-  const t = (experienceType || "").toLowerCase();
-  if (COUPLE_KEYWORDS.some((k) => t.includes(k))) return "couple";
-  if (EVENT_KEYWORDS.some((k) => t.includes(k))) return "event";
-  return "travel";
-}
+// Ledger 2026-09-03-plan-vocabulary: `classify` and its keyword lists MOVED to
+// client/src/lib/plan-vocabulary.ts verbatim, so the occasion vocabulary is written once
+// (§18 rule 1) beside the universal action labels the add surfaces use. This strip is still
+// its only consumer; the point is that a second copy can no longer be written by accident.
 
 function formatDate(ymd?: string): string {
   if (!ymd) return "";

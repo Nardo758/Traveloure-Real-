@@ -339,7 +339,12 @@ test('[NYC] Traveler Flow - Weekend Getaway', async ({ page }) => {
   // Add activity to itinerary
   await test.step('Add food tour to itinerary', async () => {
     await page.click('text=Brooklyn Pizza & Brewery Crawl');
-    await page.click('button:has-text("Add to Trip")');
+    // Ledger 2026-09-03-plan-vocabulary: the add label is now the universal "Add to Plan"
+    // (travelers build Experiences as well as Trips). NOTE: this spec is not wired into any
+    // workflow, so this selector could not be verified against a running app — and the
+    // "Added to itinerary" assertion below matches no string in the current client either,
+    // so the step is likely stale beyond this rename.
+    await page.click('button:has-text("Add to Plan")');
     await waitForElement(page, 'text=Added to itinerary');
   });
 

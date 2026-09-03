@@ -15,6 +15,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useSearch } from "wouter";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
+import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
 import {
   MapPin,
   Plus,
@@ -90,7 +91,7 @@ export function AddToExperienceDialog({
             ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
           }),
         });
-        if (!res.ok) throw new Error("Failed to add to trip");
+        if (!res.ok) throw new Error("Failed to add to your plan");
         return res.json();
       }
       const contentId =
@@ -121,7 +122,7 @@ export function AddToExperienceDialog({
       }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
-        title: targetTripId ? "Added to your trip" : "Added to your trip cart",
+        title: targetTripId ? ADDED_TO_PLAN_TITLE : "Added to your cart",
         description: targetTripId
           ? `"${item?.title}" is on your plan — check out whenever you're ready.`
           : `"${item?.title}" is in your cart — plan & optimize whenever you're ready.`,
@@ -177,7 +178,7 @@ export function AddToExperienceDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
       toast({
-        title: "Added to trip",
+        title: ADDED_TO_PLAN_TITLE,
         description: `"${item?.title}" has been added to your itinerary.`,
       });
       onOpenChange(false);
