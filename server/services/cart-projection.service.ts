@@ -48,7 +48,7 @@
  */
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "../db";
-import { cartItems, itineraryItems, trips } from "@shared/schema";
+import { cartItems, itineraryItems, providerServices, trips } from "@shared/schema";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 
@@ -131,6 +131,34 @@ export async function attachTripToCartItems(
 // SECTION 2 — the projection itself (the only new logic in this module).
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The `contentMeta` a per-night stay must carry for the money path to see it, in EXACTLY the
+ * shape `getRoomNights()` (server/routes/payments.routes.ts) parses — `YYYY-MM-DD` strings,
+ * `checkOut > checkIn`, 1..30 nights. Ledger 2026-09-03-slip-convergence.
+ *
+ * WHY A LOCAL PREDICATE AND NOT AN IMPORT: `getRoomNights` lives in the payments ROUTE module;
+ * importing a route into the projection service would drag the whole Stripe/checkout graph into
+ * every projection sync. The equivalence is proven instead — `server/__tests__/
+ * slip-stay-projection.db.test.ts` runs the REAL `getRoomNights` over both a projected row and
+ * the cart-direct row it replaces and asserts identical output. If that predicate ever moves,
+ * the test fails rather than the two drifting silently (§18 rule 1's failure mode, pinned).
+ *
+ * §13: a range that would NOT parse produces NOTHING — no partial meta, no guessed second date.
+ * An unparseable range must render as "no stay dates", never as a fabricated one-night stay.
+ */
+function stayContentMeta(
+  checkIn: unknown,
+  checkOut: unknown,
+): { checkIn: string; checkOut: string } | null {
+  const ci = typeof checkIn === "string" ? checkIn : null;
+  const co = typeof checkOut === "string" ? checkOut : null;
+  if (!ci || !co || !/^\d{4}-\d{2}-\d{2}$/.test(ci) || !/^\d{4}-\d{2}-\d{2}$/.test(co)) return null;
+  if (co <= ci) return null;
+  const nights = Math.round((Date.parse(co) - Date.parse(ci)) / 86400000);
+  if (!Number.isFinite(nights) || nights < 1 || nights > 30) return null;
+  return { checkIn: ci, checkOut: co };
+}
+
 export type ProjectionSyncResult =
   | { action: "upserted"; cartItemId: string }
   | { action: "deleted"; removed: number }
@@ -192,6 +220,22 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     return { action: "noop", reason: "no_owner" };
   }
 
+  // Ledger 2026-09-03-slip-convergence: a per-night STAY must project the night range the money
+  // path reads. `getRoomNights()` gates on the SERVICE's `pricingUnit`, so the pricing unit is
+  // resolved from the listing row here — never from the item, never from a request (§14). One
+  // extra single-row read, only when the item actually names a service.
+  let stayMeta: { checkIn: string; checkOut: string } | null = null;
+  if (item.providerServiceId) {
+    const [svc] = await db
+      .select({ pricingUnit: providerServices.pricingUnit })
+      .from(providerServices)
+      .where(eq(providerServices.id, item.providerServiceId))
+      .limit(1);
+    if (svc?.pricingUnit === "per_night") {
+      stayMeta = stayContentMeta(item.checkIn, item.checkOut);
+    }
+  }
+
   const values = {
     userId: ownerId,
     guestSessionId: null as string | null,
@@ -203,7 +247,10 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     contentType: item.providerServiceId ? null : EXTERNAL_PROJECTION_CONTENT_TYPE,
     contentId: item.providerServiceId ? null : item.id,
     contentMeta: item.providerServiceId
-      ? {}
+      ? // A per-night stay carries its night range; every other service keeps today's empty
+        // object byte-for-byte. `stayMeta` is null whenever the listing is not per-night or the
+        // item's range is absent/unparseable, so nothing is invented (§13).
+        (stayMeta ?? {})
       : {
           ...(item.title ? { name: item.title } : {}),
           ...(item.description ? { description: item.description } : {}),
@@ -213,6 +260,10 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     quantity: 1,
     tripId: item.tripId,
     scheduledDate: item.scheduledDate ? new Date(item.scheduledDate) : null,
+    // The traveler's picked slot rides the projection (migration 275). INTENT only — the
+    // capacity claim is still the atomic `storage.bookSlot` at checkout (§15), never here.
+    // NULL when the item names no slot, which is every pre-275 row and every non-dated service.
+    slotId: item.slotId ?? null,
     itineraryItemId: item.id,
   };
 

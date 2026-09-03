@@ -1377,4 +1377,12 @@ export const MIGRATION_FILES = [
   // to 272), then #699 (expert-field-knowledge v2) claimed 272 for its own migration, so this cedes
   // to 273. All three are independent additive migrations — the order between them carries no behavior.
   "274_fee_ledger_fee_waiver_type.sql",
+  // Ledger 2026-09-03-slip-convergence: `itinerary_items.slot_id` / `check_in` / `check_out` —
+  // the traveler's BOOKING INPUTS move upstream onto the plan item, so the three surfaces that
+  // wrote straight to /api/cart (service-detail, experience-template, add-to-experience-dialog)
+  // can post to the itinerary rail instead and still carry a picked slot / a stay's night range.
+  // The cart row is then rebuilt by `syncItemProjection`, which makes the dates SERVER-derived
+  // (§14 tightening) instead of client-supplied. Additive nullable, no CHECK; all three declared
+  // in shared/schema.ts for publish durability.
+  "275_itinerary_item_booking_inputs.sql",
 ] as const;

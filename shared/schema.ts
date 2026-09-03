@@ -4393,6 +4393,31 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Calendar date when this item is planned — carries the "Add to {date}" intent
   scheduledDate: date("scheduled_date"),
 
+  // ── BOOKING INPUTS (migration 275, ledger 2026-09-03-slip-convergence) ──────────────────
+  // The slip is stationary (SLIP_EXPERIENCE_DISPATCH.md §0): every surface is a VIEW of this
+  // table and the cart is its `ready_for_checkout` projection. These three columns are what
+  // let a plan item CARRY the booking inputs the marketplace surfaces collect, so those
+  // surfaces can post here instead of writing a NULL-keyed cart row the projection is blind
+  // to. Declared here (not only in the migration) per the CLAUDE.md deploy-push rule — an
+  // object `schema.ts` does not declare is dropped by the publish push and never recreated.
+  //
+  // The traveler's picked availability slot. Mirrors `cart_items.slotId` (migration 145) and
+  // means the same thing: an INTENT marker, NOT a capacity hold. The atomic capacity CLAIM
+  // still happens exactly once, at checkout, via `storage.bookSlot` (§15) — never at add
+  // time. ON DELETE SET NULL: deleting a slot must never cascade-delete a plan item.
+  slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
+  // The stay's night range for a `pricingUnit === 'per_night'` service (§17 PROPERTY rung).
+  // These do NOT move the money path: `getRoomNights()` (server/routes/payments.routes.ts)
+  // still reads `contentMeta.checkIn`/`checkOut` off the CART row. They are the upstream
+  // SOURCE the projection copies from, which replaces a client-supplied value with a
+  // server-derived one (§14 tightening). Ledger 107/108 (S11) chose contentMeta as "the
+  // smallest existing carrier" for a cart-direct add; this extends that choice one hop
+  // upstream rather than reversing it — contentMeta remains the carrier. `date` (calendar,
+  // not timestamp) matches the `YYYY-MM-DD` shape getRoomNights parses. NULL = not a stay
+  // (or the range was never given) — the honest absent state (§13), never a default.
+  checkIn: date("check_in"),
+  checkOut: date("check_out"),
+
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
@@ -4760,7 +4785,40 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // money-decision read) is DELIBERATELY left alone here; it is grandfathered in the completeness
 // guard pending a separate, narrower investigation. Found by
 // `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true });
+// Ledger 2026-09-03-slip-convergence: the three migration-275 booking-input columns are
+// OMITTED here and re-admitted only through the pick-based allowlist immediately below.
+// This is the §19 posture applied to a NEW column rather than retro-fitted to an old one:
+// under a denylist schema a freshly-added column is client-settable BY DEFAULT ("nobody
+// edits an omit list for a column that did not exist when it was written"), and these three
+// are read by the cart projection, which feeds the money path's `getRoomNights()`. Naming
+// them in an allowlist makes the acceptance deliberate and keeps the generic body parse from
+// being the thing that grants it. Nothing about the schema's overall denylist shape changes
+// here — the layer-wide conversion is still #PS18 (scripts/check-omit-schema-ratchet.cjs).
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true });
+
+/**
+ * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
+ * booking-input columns. Pick-based on purpose: a future privileged column added to
+ * `itinerary_items` is unreachable through this schema until someone deliberately names it.
+ *
+ * All three are the TRAVELER'S OWN booking input, the same class as `cart_items.scheduledDate`
+ * / `slotId` / `pickupLocation` / `partySize` — a scope/intent, never an amount, a rate or a
+ * payer identity (§14/§18). `slotId` is an intent marker only; the capacity claim stays the
+ * atomic `storage.bookSlot` at checkout (§15). `checkIn`/`checkOut` are validated as calendar
+ * dates here and re-validated by `getRoomNights()`'s own predicate before they can influence a
+ * charge — the server derives the nightly rate from `vendor_availability_slots.pricing`
+ * regardless of what the client sent.
+ */
+export const itineraryItemBookingInputsSchema = createInsertSchema(itineraryItems)
+  .pick({ slotId: true, checkIn: true, checkOut: true })
+  .partial()
+  // drizzle-zod types a `date` column as a bare string; pin the calendar-date SHAPE here so a
+  // malformed range is a 400 the traveler can see, not a Postgres error at insert — and so the
+  // stored value can only ever be the `YYYY-MM-DD` form `getRoomNights()` parses.
+  .extend({
+    checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "checkIn must be YYYY-MM-DD").nullish(),
+    checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "checkOut must be YYYY-MM-DD").nullish(),
+  });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 
