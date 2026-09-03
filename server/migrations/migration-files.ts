@@ -1385,6 +1385,15 @@ export const MIGRATION_FILES = [
   // (§14 tightening) instead of client-supplied. Additive nullable, no CHECK; all three declared
   // in shared/schema.ts for publish durability.
   "275_itinerary_item_booking_inputs.sql",
+  // Ledger 2026-09-03-occasion-switches (CLAUDE.md Locked Decision 28): the six SWITCH columns on
+  // `experience_types` — default_stops / default_duration / default_schedule / default_guests /
+  // vocabulary / default_visibility. An occasion is a ROW carrying defaults, not a class: stops, an
+  // internal schedule and a guest list are independent capabilities any occasion can need in any
+  // combination, which a three-class model cannot express. Additive nullable, NO DEFAULT and NO
+  // CHECK (publish-trap posture, 181/195/273 precedent — the value sets are app-enforced); NULL
+  // means "not decided", which readers render as the plain-trip shape and say so (§13). All six
+  // declared in shared/schema.ts so the deploy push cannot drop them.
+  "276_experience_type_switches.sql",
   // Ledger 2026-09-03-item-event-link (CLAUDE.md entry 29): `itinerary_items.user_experience_id` —
   // the item→EVENT link. A plan is one `trips` row; an event inside it is one `user_experiences`
   // row already bound by the pre-existing nullable `user_experiences.trip_id`, so no new event
@@ -1392,9 +1401,5 @@ export const MIGRATION_FILES = [
   // never delete the items under it — they fall back to the plan's ONE implicit event, which is
   // what NULL means here), plus idx_itinerary_items_user_experience_id. Column AND index declared
   // in shared/schema.ts for publish durability.
-  // NUMBERING NOTE: 276 belongs to a CONCURRENT sibling lane (CLAUDE.md entry 28) that had not
-  // landed on main when this was written, so 277 is registered directly after 275 here. Registry
-  // order is authoritative, not numeric filename order; both are independent additive migrations
-  // and the order between them carries no behavior. Reconcile at the merge (ruling 19).
   "277_itinerary_item_event_link.sql",
 ] as const;

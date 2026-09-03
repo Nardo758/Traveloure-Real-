@@ -952,6 +952,13 @@ const TEMPLATE_PRESETS: Record<string, TemplatePresets> = {
   "farewell-party": PARTY_PRESETS,
   "holiday-party": PARTY_PRESETS,
   reunions: REUNIONS_PRESETS,
+  // The four occasions seeded by ledger `2026-09-03-occasion-switches`. Each REUSES a preset set
+  // that already exists — this lane authors no new anchors: a fabricated timeline for an occasion
+  // nobody has written one for would be a guess rendered as the platform's advice (§13).
+  romance: ANNIVERSARY_PRESETS,          // a couple's getaway — the anniversary shape, not date-night's single evening
+  corporate: CORPORATE_PRESETS,          // "Corporate Retreats" — the corporate approval/agenda shape
+  "milestone-birthday": BIRTHDAY_PRESETS,
+  "family-occasion": BIRTHDAY_PRESETS,
 };
 
 /**

@@ -1760,6 +1760,24 @@ export const experienceTypes = pgTable("experience_types", {
   locationLabel: varchar("location_label", { length: 100 }),
   heroImage: text("hero_image"),
   contextFields: jsonb("context_fields").default([]),
+  // ── Occasion SWITCHES (migration 276, ledger `2026-09-03-occasion-switches`) ────────────────
+  // An occasion is a ROW carrying defaults, not a class: stops, an internal schedule and a guest
+  // list are three INDEPENDENT capabilities any occasion can need in any combination, which a
+  // travel/event/couple class cannot express. Each column is a DEFAULT the traveler can flip from
+  // inside the plan — never a lock.
+  //
+  // ALL NULLABLE, NO DEFAULT and NO DB CHECK, deliberately. The value sets in the comments are
+  // APP-enforced (see `experienceTypeSwitchesSchema` below) because a CHECK over a column prod rows
+  // can violate fails the Replit deploy push mid-push (CLAUDE.md publish-trap note; migrations
+  // 181/195/273 precedent). **NULL means NOT SET** — a reader must fall back to the plain-trip
+  // shape EXPLICITLY and say so (§13), never fabricate a `one`/`day`/`off` and present it as this
+  // occasion's own answer.
+  defaultStops: varchar("default_stops", { length: 10 }),        // "one" | "many" — step 2: one destination vs an ordered stop list
+  defaultDuration: varchar("default_duration", { length: 10 }),  // "day" | "range" — step 3: a single date+time vs first/last day
+  defaultSchedule: boolean("default_schedule"),                  // step 5 "What's happening" + the step-3 "main moment" anchor + slip grouping
+  defaultGuests: boolean("default_guests"),                      // the Guests page, per-event columns, invites, "N attending"
+  vocabulary: varchar("vocabulary", { length: 20 }),             // "travelers" | "guests" | "attendees" — step 4's noun, strip chip, slip panels
+  defaultVisibility: varchar("default_visibility", { length: 10 }), // "shown" | "hidden" — hidden suppresses Guests/Share/invites (the proposal case)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2431,6 +2449,38 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
 // Experience Types schemas and types
 export const insertExperienceTypeSchema = createInsertSchema(experienceTypes).omit({ id: true, createdAt: true });
+/**
+ * The six occasion SWITCHES (migration 276, ledger `2026-09-03-occasion-switches`) as an
+ * ALLOWLIST body schema — a `.pick()` of exactly those columns, never an `.omit()` of everything
+ * else (§19: a privileged column is client-settable BY DEFAULT under a denylist, and nobody edits
+ * an omit list for a column that did not exist when it was written). `.partial()` so a future
+ * admin editor can send one switch without restating the other five.
+ *
+ * NO WRITER ROUTE EXISTS IN THIS LANE — the seeder
+ * (`server/seeds/experience-template-tabs.seed.ts`) is the one author of these values today. This
+ * schema is here so that when an admin editor is built it starts from the allowlist shape rather
+ * than reaching for `insertExperienceTypeSchema.partial()`, which would expose the whole row.
+ * The enums are the app-side enforcement of the value sets the DB deliberately does not CHECK.
+ */
+export const experienceTypeSwitchesSchema = createInsertSchema(experienceTypes)
+  .pick({
+    defaultStops: true,
+    defaultDuration: true,
+    defaultSchedule: true,
+    defaultGuests: true,
+    vocabulary: true,
+    defaultVisibility: true,
+  })
+  .extend({
+    defaultStops: z.enum(["one", "many"]).nullable(),
+    defaultDuration: z.enum(["day", "range"]).nullable(),
+    defaultSchedule: z.boolean().nullable(),
+    defaultGuests: z.boolean().nullable(),
+    vocabulary: z.enum(["travelers", "guests", "attendees"]).nullable(),
+    defaultVisibility: z.enum(["shown", "hidden"]).nullable(),
+  })
+  .partial();
+export type ExperienceTypeSwitches = z.infer<typeof experienceTypeSwitchesSchema>;
 export const insertExperienceTemplateStepSchema = createInsertSchema(experienceTemplateSteps).omit({ id: true, createdAt: true });
 export const insertExpertExperienceTypeSchema = createInsertSchema(expertExperienceTypes).omit({ id: true, createdAt: true });
 export const insertUserExperienceSchema = createInsertSchema(userExperiences).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
