@@ -116,6 +116,7 @@ import {
 } from "../services/commission";
 import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
+import { renderTripPdf } from "../services/trip-pdf.render";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
 // the same module for the full rationale. Advisor-only gate — never owner, never author.
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
@@ -1254,6 +1255,77 @@ router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, re
       res.status(500).json({ message: "Failed to fetch itinerary items" });
     }
   });
+
+// ── The printable trip document (Lane C, ledger `2026-09-03-slip-convergence`) ───────────────
+//
+// Renders the trip's CANONICAL `itinerary_items` — the same rows the slip, the PlanCard and the
+// cart projection read — so the paper copy can never disagree with the screen. A buyer of a
+// ready-made trip gets both: the editable clone (ready-made-purchase.service.ts) and this.
+//
+// NOT a replacement for `/api/my-itinerary/:id/pdf`, which renders an itinerary COMPARISON's
+// variant rows; a purchased ready-made trip has no comparison, so that endpoint could never
+// serve this. Two siblings, two sources, neither reimplementing the other.
+//
+// READ gate, not a write gate: `getTripRole` (§12 — read surfaces grant a PENDING advisor;
+// only mutation paths use `getTripWriteRole`), plus the authoring-mode branch so an author can
+// print the source trip they are building. `privateNotes` and `trips.expertNotes` are never
+// read by the renderer (§21).
+router.get("/api/trips/:tripId/pdf", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { tripId } = req.params;
+
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const tripRole = await getTripRole(tripId, userId);
+      if (!tripRole && !(await isTripAuthor(tripId, userId))) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const items = await storage.getItineraryItems(tripId);
+
+      const pdf = await renderTripPdf({
+        title: trip.title || "Your trip",
+        destination: trip.destination,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        trackingNumber: trip.trackingNumber,
+        // §21: the TRAVELER-FACING trip note. `trip.expertNotes` (private build notes) is
+        // deliberately not passed — the renderer has no field for it.
+        expertTravelerNote: (trip as any).expertTravelerNote ?? null,
+        items: items.map((item: any) => ({
+          title: item.title,
+          description: item.description,
+          dayNumber: item.dayNumber,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          scheduledDate: item.scheduledDate,
+          locationName: item.locationName,
+          locationAddress: item.locationAddress,
+          estimatedCost: item.estimatedCost,
+          actualCost: item.actualCost,
+          currency: item.currency,
+          notes: item.notes,
+          expertNote: item.expertNote,
+          itemType: item.itemType,
+          checkIn: item.checkIn,
+          checkOut: item.checkOut,
+          sortOrder: item.sortOrder,
+        })),
+      });
+
+      const slug = (trip.title || "trip").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "trip";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${slug}.pdf"`);
+      res.setHeader("Content-Length", String(pdf.length));
+      return res.send(pdf);
+    } catch (error) {
+      console.error("[TripPDF] render error:", error);
+      return res.status(500).json({ message: "Failed to generate trip PDF" });
+    }
+  });
+
 
 
 router.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req, res) => {

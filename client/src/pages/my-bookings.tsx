@@ -550,6 +550,15 @@ export default function MyBookingsPage() {
                             <Link href={`/plans/${p.cloneTripId}`}>Open my trip</Link>
                           </Button>
                         )}
+                        {/* Lane C (ledger 2026-09-03-slip-convergence) — "the digital clone AND a
+                            physical copy": the buyer gets both from the same row here. Renders the
+                            clone's canonical itinerary_items, so it stays in step with every edit
+                            the buyer makes afterwards. */}
+                        {p.cloneTripId && p.status !== "refunded" && (
+                          <Button size="sm" variant="outline" asChild data-testid={`button-clone-pdf-${p.id}`}>
+                            <a href={`/api/trips/${p.cloneTripId}/pdf`} download>Download PDF</a>
+                          </Button>
+                        )}
                       </div>
                       {(p.status === "paid" || p.status === "cloned") && (
                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-dashed border-border">
