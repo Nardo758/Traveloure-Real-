@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
+import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -168,7 +169,7 @@ export function CityFeedCardRecommendation({
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add to trip";
+    : ADD_TO_PLAN_LABEL;
 
   const photoArea = (
     <div

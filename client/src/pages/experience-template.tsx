@@ -105,6 +105,7 @@ import { updateTripContext, useTripContext, switchTripContextPreservingId, getTr
 // §18 rule 1: the "URL first, then the active TripContext" order is written ONCE, in
 // client/src/lib/trip-target.ts, and every marketplace add resolves through it.
 import { resolveTargetTripId } from "@/lib/trip-target";
+import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { planningRouteForTrip } from "@/contexts/PlanningContext";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { DestinationTransfersSection } from "@/components/destination-transfers-section";
@@ -1550,9 +1551,9 @@ export default function ExperienceTemplatePage() {
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
           landedOnPlan = true;
-          toast({ title: "Added to your trip", description: `${item.name} is on your plan` });
+          toast({ title: ADDED_TO_PLAN_TITLE, description: `${item.name} is on your plan` });
         } catch (error) {
-          toast({ variant: "destructive", title: "Failed to add to your trip" });
+          toast({ variant: "destructive", title: ADD_TO_PLAN_FAILED_TITLE });
         }
       } else {
         try {

@@ -53,6 +53,7 @@ import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
+import { addLabel, addedTitle } from "@/lib/plan-vocabulary";
 // Ledger 2026-08-28-single-planning-entry: mid-planning continues on the PLANNING surface
 // (/plans/:tripId, the canonical slip). Used here so "Book on Traveloure" lands where the item
 // actually IS once the add goes to the plan rail rather than the cart.
@@ -499,7 +500,7 @@ export default function ServiceDetailPage() {
             ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
             : "";
         toast({
-          title: targetTripId ? "Added to your trip" : "Added to cart",
+          title: addedTitle(!!targetTripId),
           description: targetTripId
             ? `${when ? `${when} · ` : ""}Find it on your plan — check out when you're ready.`
             : when || "Service has been added to your cart",
@@ -509,7 +510,7 @@ export default function ServiceDetailPage() {
     onError: () => {
       toast({
         title: "Error",
-        description: targetTripId ? "Failed to add to your trip" : "Failed to add to cart",
+        description: targetTripId ? "Failed to add to your plan" : "Failed to add to cart",
         variant: "destructive",
       });
     },
@@ -672,7 +673,7 @@ export default function ServiceDetailPage() {
       } else {
         const nights = `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`;
         toast({
-          title: targetTripId ? "Added to your trip" : "Added to cart",
+          title: addedTitle(!!targetTripId),
           description: targetTripId
             ? `${nights} · Find it on your plan — check out when you're ready.`
             : nights,
@@ -1545,10 +1546,12 @@ export default function ServiceDetailPage() {
                         data-testid="button-add-to-cart"
                       >
                         <ShoppingCart className="w-4 h-4 mr-2" />
-                        {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this
+                        {/* Ledger 2026-09-03-slip-convergence: with a target resolved this
                             button adds to the PLAN, not the cart — say so rather than promising
-                            a cart row the traveler will not find (§13). */}
-                        {targetTripId ? "Add to Trip" : "Add to Cart"}
+                            a cart row the traveler will not find (§13). The noun is UNIVERSAL
+                            (2026-09-03-plan-vocabulary): travelers build Experiences as well as
+                            Trips, so it never says "Trip". */}
+                        {addLabel(!!targetTripId)}
                       </Button>
                     </>
                   ) : (
@@ -1594,10 +1597,12 @@ export default function ServiceDetailPage() {
                         data-testid="button-add-to-cart"
                       >
                         <ShoppingCart className="w-4 h-4 mr-2" />
-                        {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this
+                        {/* Ledger 2026-09-03-slip-convergence: with a target resolved this
                             button adds to the PLAN, not the cart — say so rather than promising
-                            a cart row the traveler will not find (§13). */}
-                        {targetTripId ? "Add to Trip" : "Add to Cart"}
+                            a cart row the traveler will not find (§13). The noun is UNIVERSAL
+                            (2026-09-03-plan-vocabulary): travelers build Experiences as well as
+                            Trips, so it never says "Trip". */}
+                        {addLabel(!!targetTripId)}
                       </Button>
                     </>
                   )}

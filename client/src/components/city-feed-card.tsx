@@ -15,6 +15,7 @@ import { normalizeGemScore } from "@/lib/gem-score";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
+import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -839,7 +840,7 @@ export function CityFeedCardGem({
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add to trip";
+    : ADD_TO_PLAN_LABEL;
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -1260,7 +1261,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   };
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add to trip";
+    : ADD_TO_PLAN_LABEL;
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Price chip
@@ -1889,7 +1890,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add to trip";
+    : ADD_TO_PLAN_LABEL;
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Price chip

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 
 interface ActivityMapMarker {
   id: string;
@@ -731,7 +732,7 @@ export function ActivitySearch({
                               Added
                             </>
                           ) : (
-                            "Add to Trip"
+                            ADD_TO_PLAN_LABEL
                           )}
                         </Button>
                       </div>

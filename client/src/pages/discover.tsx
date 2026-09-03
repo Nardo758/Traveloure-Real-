@@ -74,6 +74,7 @@ import {
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId, serviceDetailHref } from "@/lib/trip-target";
+import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import type { LucideIcon } from "lucide-react";
 
 // Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
@@ -525,7 +526,7 @@ function ServiceCard({
                   disabled={isAddingToCart || isAdded}
                   data-testid={`button-add-to-cart-${service.id}`}
                 >
-                  {isAdded ? "Added" : isAddingToCart ? "Adding…" : "Add to trip"}
+                  {isAdded ? "Added" : isAddingToCart ? "Adding…" : ADD_TO_PLAN_LABEL}
                 </Button>
               )}
             </div>
@@ -1098,12 +1099,12 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       setAddedServices((prev) => new Set(prev).add(serviceId));
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
-      toast({ title: "Added to your trip", description: "Find it on your plan." });
+      toast({ title: ADDED_TO_PLAN_TITLE, description: "Find it on your plan." });
       setAddingToCartId(null);
     },
     onError: (error: any, serviceId: string) => {
       console.error("[AddToTrip] addToTripMutation failed:", error);
-      toast({ variant: "destructive", title: "Failed to add to trip", description: error?.message });
+      toast({ variant: "destructive", title: ADD_TO_PLAN_FAILED_TITLE, description: error?.message });
       setAddingToCartId(null);
     },
   });
