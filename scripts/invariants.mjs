@@ -299,10 +299,13 @@ const INVARIANTS = [
     id: "template-purchases-completed-have-expert-earning",
     severity: "MONEY-INTEGRITY",
     rule:
-      "server/routes.ts POST /api/expert-templates/:id/purchase/confirm — the atomic " +
+      "The retired POST /api/expert-templates/:id/purchase/confirm (ledger " +
+      "2026-09-03-expert-templates-consumer-sunset) made the atomic " +
       "pending_payment→completed transition and the createExpertEarning('template_sale') call are " +
-      "meant to happen together for the confirm that WON the race; a completed purchase with zero " +
-      "linked template_sale earnings for its expert means a sale closed with nothing credited.",
+      "happen together for the confirm that WON the race; a completed purchase with zero " +
+      "linked template_sale earnings for its expert means a sale closed with nothing credited. " +
+      "The write path is gone but `template_purchases` rows are KEPT as history, so this " +
+      "historical-integrity check stays — it can only ever report a pre-sunset row.",
     sql: `
       SELECT tp.id, tp.expert_id, tp.price, tp.status
       FROM template_purchases tp

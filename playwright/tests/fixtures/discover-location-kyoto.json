@@ -1,5 +1,5 @@
 {
-  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. THREE neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert) AND a neighborhood-scoped ready-made tile, 'arashiyama' WITHOUT an eligible expert (its appended city-wide ready-made leads as a 2×1 tile with no anchor), and 'nishiki' (Phase 2g) whose window carries the PLATFORM-RECOMMENDATION tile. GION LAYOUT (Phase 2f, the mock's Gion frame): expert anchor (col-span-2 row-span-2) + four 1×1 gems over the two beside-anchor rows, then a full row of [1×1 · ready-made(col-span-2) · 1×1] — the ready-made (tmpl-2, @yuki-flowers) stays col-span-2 even though the section has the tall expert anchor (the packer never demotes a ready-made to 1×1). COMPOSITION / one-injected-tile-per-window: each neighbourhood's stream window holds exactly ONE injected tile. The three candidates land one per window IN RANKED ORDER at the recCadence-2 injection points: rec-0 tmpl-2 → Gion (retagged to a ready-made beside the expert anchor), rec-1 off-arashiyama-affiliate-1 (sourceType 'affiliate') → Arashiyama, where it renders as feed-card-rec-1, rec-2 off-nishiki-1 (sourceType 'platform_provider', NOT retagged) → Nishiki, where it renders as feed-card-rec-2. The city-scoped tmpl-1 is appended to Arashiyama as a 2×1 fallback with the Kyoto-wide mono label and is not duplicated into Nishiki. ROUTE-BY-SOURCE: tmpl-1 carries source 'ready_made' (→ /ready-made/:id) and tmpl-2 source 'expert_templates' (→ /expert-templates/:id), so test 9 proves the feed card routes each by its OWN source — never unified — matching storefront.tsx's two lanes. svc-3 is the trailing filler that homes into Nishiki's window and provides the organic item after the Nishiki marker that lets the third rec inject there (without it the last candidate falls short of cadence and is dropped). This restores the recommendation render + impression-POST-once (money-adjacent side effect) as FIXTURE-PROVABLE (test 9 + test 10), no longer a real-data-only matrix row. CHIP-FILTER DIFFERENTIAL: gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant); arashiyama and nishiki carry NONE, so the Eat chip proves filter + drop-out (both drop, only gion survives). COMPACT SOURCE/PRICE: svc-1 durationMinutes 240 + providerHandle 'norisato' (compact meta '4 hrs · @norisato' linked /s/norisato, price $85 band pill); svc-2 durationMinutes 90 + providerName 'Aya S.' ('90 min · Aya S.', $60 pill); svc-3 durationMinutes 120 + providerHandle 'kyoto-crafts' ('2 hrs · @kyoto-crafts', $70 pill). Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1); the single wanted slot (gion) re-homes to Gion's section.",
+  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. THREE neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert) AND a neighborhood-scoped ready-made tile, 'arashiyama' WITHOUT an eligible expert (its appended city-wide ready-made leads as a 2×1 tile with no anchor), and 'nishiki' (Phase 2g) whose window carries the PLATFORM-RECOMMENDATION tile. GION LAYOUT (Phase 2f, the mock's Gion frame): expert anchor (col-span-2 row-span-2) + four 1×1 gems over the two beside-anchor rows, then a full row of [1×1 · ready-made(col-span-2) · 1×1] — the ready-made (tmpl-2, @yuki-flowers) stays col-span-2 even though the section has the tall expert anchor (the packer never demotes a ready-made to 1×1). COMPOSITION / one-injected-tile-per-window: each neighbourhood's stream window holds exactly ONE injected tile. The three candidates land one per window IN RANKED ORDER at the recCadence-2 injection points: rec-0 tmpl-2 → Gion (retagged to a ready-made beside the expert anchor), rec-1 off-arashiyama-affiliate-1 (sourceType 'affiliate') → Arashiyama, where it renders as feed-card-rec-1, rec-2 off-nishiki-1 (sourceType 'platform_provider', NOT retagged) → Nishiki, where it renders as feed-card-rec-2. The city-scoped tmpl-1 is appended to Arashiyama as a 2×1 fallback with the Kyoto-wide mono label and is not duplicated into Nishiki. ROUTE-BY-SOURCE: tmpl-1 carries source 'ready_made' (→ /ready-made/:id) and tmpl-2 source 'expert_templates' (→ /expert-templates/:id), so test 9 proves the feed card routes each by its OWN source — never unified — matching storefront.tsx's two lanes. svc-3 is the trailing filler that homes into Nishiki's window and provides the organic item after the Nishiki marker that lets the third rec inject there (without it the last candidate falls short of cadence and is dropped). This restores the recommendation render + impression-POST-once (money-adjacent side effect) as FIXTURE-PROVABLE (test 9 + test 10), no longer a real-data-only matrix row. CHIP-FILTER DIFFERENTIAL: gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant); arashiyama and nishiki carry NONE, so the Eat chip proves filter + drop-out (both drop, only gion survives). COMPACT SOURCE/PRICE: svc-1 durationMinutes 240 + providerHandle 'norisato' (compact meta '4 hrs · @norisato' linked /s/norisato, price $85 band pill); svc-2 durationMinutes 90 + providerName 'Aya S.' ('90 min · Aya S.', $60 pill); svc-3 durationMinutes 120 + providerHandle 'kyoto-crafts' ('2 hrs · @kyoto-crafts', $70 pill). Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1); the single wanted slot (gion) re-homes to Gion's section. RETIRED (ledger 2026-09-03-expert-templates-consumer-sunset): the `packages` array and the `expert_package` candidate are gone with the expert-template lane, so this fixture no longer produces ready-made tiles (tmpl-1 / tmpl-2) — the city feed has no ready-made source until the surviving `ready_made_trips` lane is wired into it. Gion keeps its expert anchor + gems; Arashiyama is now anchorless with gems only. The two remaining candidates are consumed in RANK order (feed-composition.ts is strictly recIndex-sequential), so with rec-0 tmpl-2 gone the affiliate off-arashiyama-affiliate-1 is rec-0 and the platform off-nishiki-1 is rec-1; the two shorter organic runs now put them in the FIRST TWO cadence windows — rec-0 in Gion and rec-1 in Arashiyama — and Nishiki's window has no candidate left to receive. Tests 9/10/11/12 assert those two indices and sections.",
 
   "locationView": {
     "city": "Kyoto",
@@ -111,52 +111,12 @@
     }
   ],
 
-  "packages": [
-    {
-      "id": "tmpl-2",
-      "title": "Romance & Honeymoon in Kyoto",
-      "price": "149",
-      "coverImage": null,
-      "destination": "Kyoto",
-      "duration": 6,
-      "neighborhood": "gion",
-      "source": "expert_templates",
-      "expertName": "Yuki",
-      "handle": "yuki-flowers",
-      "reviewCount": 9,
-      "averageRating": 4.9,
-      "salesCount": 14,
-      "itineraryPreview": [{ "day": 1, "title": "Arrival and a private teahouse evening" }, { "day": 2, "title": "Arashiyama at dawn, two by two" }]
-    },
-    {
-      "id": "tmpl-1",
-      "title": "Kyoto in Five Unhurried Days",
-      "price": "149",
-      "coverImage": null,
-      "destination": "Kyoto",
-      "duration": 5,
-      "source": "ready_made",
-      "reviewCount": 12,
-      "averageRating": 4.7,
-      "salesCount": 30,
-      "itineraryPreview": [{ "day": 1, "title": "Arrival and Gion at dusk" }, { "day": 2, "title": "Arashiyama at dawn" }]
-    }
-  ],
-
   "offeringTypes": [
     { "offering_type_key": "guide", "display_name": "Local guide", "service_tier": "local" },
     { "offering_type_key": "photographer", "display_name": "Photographer", "service_tier": "local" }
   ],
 
   "candidates": [
-    {
-      "offeringId": "tmpl-2",
-      "categoryKey": "itinerary",
-      "displayName": "Romance & Honeymoon in Kyoto",
-      "tagline": "Six unhurried days for two.",
-      "reason": "A ready-made trip authored by a Gion local.",
-      "sourceType": "expert_package"
-    },
     {
       "offeringId": "off-arashiyama-affiliate-1",
       "categoryKey": "guided_tour",

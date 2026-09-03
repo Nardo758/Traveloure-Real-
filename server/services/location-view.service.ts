@@ -19,7 +19,7 @@
 
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
-import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
@@ -130,8 +130,6 @@ export interface NeighborhoodLocalExpert {
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
-  /** Approved + published expert_templates count for this expert (public packages). */
-  packagesCount: number;
 }
 
 export interface Neighborhood {
@@ -408,13 +406,13 @@ class LocationViewService {
       }
 
       // Local expert per neighborhood (Feed v2 F8): one deterministic pick from
-      // expert_neighborhoods (lead first, then earliest created), enriched with a
-      // packagesCount from expert_templates — approved + published only (the same
-      // gate as the public /api/expert-templates feed; §10 read-gate). One row
-      // query + one grouped count query for the whole neighborhood set — no N+1.
+      // expert_neighborhoods (lead first, then earliest created). One row query for the
+      // whole neighborhood set — no N+1. The `packagesCount` enrichment (approved+published
+      // `expert_templates`) is RETIRED with that lane
+      // (ledger 2026-09-03-expert-templates-consumer-sunset) — it counted a product with no
+      // detail page or purchase path left, which is the §13 unbacked-claim class.
       const neighborhoodIds = neighborhoods.map((n) => n.id);
       const localExpertByNeighborhood = new Map<string, { expertId: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null }>();
-      const packagesCountByExpert = new Map<string, number>();
       if (neighborhoodIds.length > 0) {
         const expertRows = await db
           .select({
@@ -431,26 +429,6 @@ class LocationViewService {
         for (const row of expertRows) {
           if (!localExpertByNeighborhood.has(row.neighborhoodId)) {
             localExpertByNeighborhood.set(row.neighborhoodId, row);
-          }
-        }
-        const pickedExpertIds = Array.from(new Set(Array.from(localExpertByNeighborhood.values()).map((r) => r.expertId)));
-        if (pickedExpertIds.length > 0) {
-          const countRows = await db
-            .select({
-              expertId: expertTemplates.expertId,
-              count: sql<number>`cast(count(*) as int)`,
-            })
-            .from(expertTemplates)
-            .where(
-              and(
-                inArray(expertTemplates.expertId, pickedExpertIds),
-                eq(expertTemplates.approvalStatus, "approved"),
-                eq(expertTemplates.isPublished, true),
-              ),
-            )
-            .groupBy(expertTemplates.expertId);
-          for (const row of countRows) {
-            packagesCountByExpert.set(row.expertId, row.count);
           }
         }
       }
@@ -472,7 +450,6 @@ class LocationViewService {
                 firstName: expertRow.firstName,
                 lastName: expertRow.lastName,
                 profileImageUrl: expertRow.profileImageUrl,
-                packagesCount: packagesCountByExpert.get(expertRow.expertId) ?? 0,
               }
             : null,
         };

@@ -386,17 +386,9 @@ export default function ServiceDetailPage() {
     enabled: !!service?.userId,
   });
 
-  // Same-owner cross-sell (marketplace Phase B4): purchasable packages by this service's
-  // owner, if they're an expert with approved+published templates. Server-gated + teaser-only.
-  const { data: ownerPackages = [] } = useQuery<any[]>({
-    queryKey: ["/api/expert-templates", { expertId: service?.userId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/expert-templates?expertId=${service!.userId}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!service?.userId,
-  });
+  // The same-owner package cross-sell (`expert_templates`) RETIRED — ledger
+  // 2026-09-03-expert-templates-consumer-sunset. The seller's other offerings are still
+  // reachable through the storefront return path below.
 
   // C2: read-only availability calendar, month-scoped.
   const [availabilityMonth, setAvailabilityMonth] = useState(() => format(new Date(), "yyyy-MM"));
@@ -1397,39 +1389,6 @@ export default function ServiceDetailPage() {
                           From {fmtPrice(Number(room.price))}{" "}
                           <span className="font-normal text-[color:var(--earn-muted)] text-[11px]">/ night</span>
                         </p>
-                      </Link>
-                    ))}
-                  </div>
-                </DetailCard>
-              )}
-
-              {/* Same-owner cross-sell — packages by this expert (Phase B4) */}
-              {ownerPackages.length > 0 && (
-                <DetailCard data-testid="card-owner-packages">
-                  <div className="flex items-center gap-2 mb-3">
-                    <BookOpen className="w-5 h-5 text-[color:var(--earn-teal-ink)]" />
-                    <SectionHeading>Ready made trips by this expert</SectionHeading>
-                  </div>
-                  <div className="grid gap-3">
-                    {ownerPackages.slice(0, 3).map((pkg: any) => (
-                      <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
-                        <div
-                          className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-[color:var(--earn-border)] hover:border-[color:var(--earn-coral-border)] cursor-pointer transition-colors"
-                          data-testid={`owner-package-${pkg.id}`}
-                        >
-                          <div className="min-w-0">
-                            <p className="font-medium text-[13px] text-[color:var(--earn-navy)] truncate">{pkg.title}</p>
-                            <div className="flex items-center gap-3 text-[11px] text-[color:var(--earn-muted)] mt-1">
-                              <span className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3" /> {pkg.destination}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" /> {pkg.duration} days
-                              </span>
-                            </div>
-                          </div>
-                          <p className="font-bold text-[color:var(--earn-coral-ink)] whitespace-nowrap text-[13px]">${pkg.price}</p>
-                        </div>
                       </Link>
                     ))}
                   </div>

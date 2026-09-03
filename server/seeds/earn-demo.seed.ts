@@ -307,36 +307,11 @@ async function upsertServices(
   return serviceIds;
 }
 
-async function upsertTemplate(
-  conn: Connection,
-  market: Market,
-  userId: string,
-  prefix: string,
-  counter: Counter,
-): Promise<void> {
-  const duration = prefix === "local" ? 5 : 4;
-  await upsertById(conn, expertTemplates, {
-    id: `earn-demo-${market.slug}-${prefix}-template`,
-    expertId: userId,
-    title: `${market.city} in ${duration} days`,
-    description: `A balanced ${market.city} plan with neighborhood texture, memorable meals, and room to wander.`,
-    shortDescription: `A considered ${market.city} starter itinerary.`,
-    destination: market.city,
-    duration,
-    price: prefix === "local" ? "149.00" : "129.00",
-    currency: "USD",
-    category: "culture",
-    coverImage: image(market.slug.length),
-    images: [image(1), image(3)],
-    itineraryData: { days: [], highlights: [`See ${market.city} at a local pace.`], includes: ["Planning notes"] },
-    tags: ["culture", "food", market.slug],
-    highlights: ["Neighborhood discoveries", "Flexible pacing"],
-    isPublished: true,
-    approvalStatus: "approved",
-    submittedAt: MEMBER_SINCE,
-    reviewedAt: MEMBER_SINCE,
-  }, counter, "templates");
-}
+// upsertTemplate REMOVED (ledger 2026-09-03-expert-templates-consumer-sunset): the demo no
+// longer seeds an `expert_templates` row — that product has no traveler surface, so a seeded
+// row would be invisible stock. The demo's store lane is upsertReadyMade below.
+// deleteProbeFixtures still counts/clears the table so any pre-existing demo rows are
+// still cleaned up.
 
 async function upsertReadyMade(
   conn: Connection,
@@ -582,7 +557,6 @@ async function seedEarnDemo(): Promise<void> {
       }, result);
       await upsertExpertForm(tx, market, localId, "local_expert", neighborhoods.map((n) => n.name), result);
       await upsertServices(tx, market, localId, "local", 3, result);
-      await upsertTemplate(tx, market, localId, "local", result);
       await upsertReadyMade(tx, market, localId, "local", result);
       await upsertGems(tx, market, neighborhoods, localId, result);
 

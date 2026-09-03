@@ -73,8 +73,6 @@ async function buildSitemap(): Promise<string> {
           AND (
             EXISTS (SELECT 1 FROM provider_services ps
                     WHERE ps.user_id = u.id AND ps.approval_status = 'approved' AND ps.status = 'active')
-            OR EXISTS (SELECT 1 FROM expert_templates et
-                       WHERE et.expert_id = u.id AND et.approval_status = 'approved')
             OR EXISTS (SELECT 1 FROM ready_made_trips rmt
                        WHERE rmt.author_id = u.id AND rmt.status = 'approved' AND rmt.active = true)
           )

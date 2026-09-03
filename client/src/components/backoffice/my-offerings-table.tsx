@@ -44,7 +44,9 @@ import { useToast } from "@/hooks/use-toast";
 import { LayoutList, Share2, Pencil, Copy, Pause, Play, Link2, Image as ImageIcon, Hammer } from "lucide-react";
 import { OfferingShareDetail, OfferingShareOption } from "@/components/backoffice/share-tools";
 
-type Lane = "service" | "template" | "ready_made";
+// The "template" (`expert_templates`) lane retired — ledger
+// 2026-09-03-expert-templates-consumer-sunset. Two lanes remain.
+type Lane = "service" | "ready_made";
 
 interface OfferingRow {
   id: string;
@@ -87,12 +89,11 @@ export function MyOfferingsTable() {
   const [shareTarget, setShareTarget] = useState<OfferingRow | null>(null);
 
   const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
-  const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
   // /mine returns { listings: [...] } (ready-made.routes.ts), NOT a bare array — audit
   // finding: the old Array.isArray guard silently emptied this lane forever.
   const readyMade = useQuery<{ listings: any[] }>({ queryKey: ["/api/expert/ready-made/mine"] });
   // Backoffice C1: soonest future, not-fully-booked vendor_availability_slots row per
-  // service id (service lane only — templates/Ready Made Trips have no slots).
+  // service id (service lane only — Ready Made Trips have no slots).
   const nextAvailability = useQuery<Record<string, string>>({ queryKey: ["/api/me/next-availability"] });
 
   // C2: pause/activate + duplicate — the SAME endpoints/invalidations services.tsx used
@@ -124,7 +125,7 @@ export function MyOfferingsTable() {
     },
   });
 
-  const isLoading = services.isLoading || templates.isLoading || readyMade.isLoading;
+  const isLoading = services.isLoading || readyMade.isLoading;
 
   const rows: OfferingRow[] = [
     ...(Array.isArray(services.data) ? services.data : []).map((s: any): OfferingRow => {
@@ -144,25 +145,6 @@ export function MyOfferingsTable() {
         editLabel: "Edit",
         publicHref: approval === "approved" ? `/services/${s.id}` : null,
         nextAvailability: nextAvailability.data?.[s.id] ?? null,
-      };
-    }),
-    ...(Array.isArray(templates.data) ? templates.data : []).map((t: any): OfferingRow => {
-      const approval = t.approvalStatus ?? "unknown";
-      return {
-        id: t.id,
-        lane: "template",
-        laneLabel: "Itinerary Template",
-        name: t.title ?? "Untitled template",
-        city: null,
-        price: t.price != null ? `$${Number(t.price).toFixed(0)}` : null,
-        approval,
-        serviceStatus: null,
-        // Seller surface retired (§10/§17 sunset) — existing templates stay readable/sellable
-        // but have no edit page; new store trips are built in the Workstation.
-        editHref: null,
-        editLabel: "Edit",
-        publicHref: approval === "approved" && t.isPublished ? `/expert-templates/${t.id}` : null,
-        nextAvailability: null,
       };
     }),
     ...(readyMade.data?.listings ?? []).map((r: any): OfferingRow => {
@@ -241,7 +223,7 @@ export function MyOfferingsTable() {
           </div>
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center" data-testid="text-no-offerings">
-            No offerings yet — create a service, itinerary template, or Ready Made Trip to start selling.
+            No offerings yet — create a service or a Ready Made Trip to start selling.
           </p>
         ) : (
           <div className="overflow-x-auto">

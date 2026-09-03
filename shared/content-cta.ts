@@ -8,7 +8,10 @@
 //     (POST /api/affiliate-booking-requests) — NEVER a raw off-site window.open. Purely informational
 //     affiliate content may use the TRACKED redirect (POST /api/content/affiliate-redirect), labelled
 //     "View", not "Book". In-platform-bookable partner inventory (e.g. Amadeus hotels) → add-to-cart.
-//   • provider_services (platform) → book/cart. expert_templates (Ready Made Trips) → 2-step purchase.
+//   • provider_services (platform) → book/cart.
+//   NOTE: the `expert_templates` 2-step purchase lane RETIRED — ledger
+//   2026-09-03-expert-templates-consumer-sunset. The `purchase_template` kind below is kept in the
+//   vocabulary for content_registry rows typed "template"; no renderer consumes it today.
 //   • coordination/event Full → coordination engagement.
 
 import { contentOriginFor, type ContentOrigin } from "./content-origin";
@@ -34,7 +37,7 @@ export function isAvailabilityStatus(v: unknown): v is AvailabilityStatus {
 
 export type CtaKind =
   | "book_service"       // platform provider_service → /services/:id date-picker → cart → checkout
-  | "purchase_template"  // Ready Made Trip → 2-step Stripe purchase on /expert-templates/:id
+  | "purchase_template"  // content_registry "template" rows; the expert_templates purchase route is retired
   | "add_to_cart"        // in-platform-bookable inventory (incl. in_platform_bookable affiliate)
   | "agent_rail"         // affiliate/partner booking → POST /api/affiliate-booking-requests (§16)
   | "tracked_view"       // informational affiliate → POST /api/content/affiliate-redirect (tracked)
@@ -79,7 +82,7 @@ export function resolveContentCTA(item: CtaResolvableItem): CtaDescriptor {
     return { kind: "book_service", label: "Book" };
   }
 
-  // Ready Made Trips (expert itinerary templates).
+  // content_registry rows typed "template" (NOT the retired `expert_templates` lane).
   if (ct === "template") {
     return { kind: "purchase_template", label: "Buy this itinerary" };
   }
