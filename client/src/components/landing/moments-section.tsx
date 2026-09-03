@@ -32,6 +32,9 @@ interface LiveMoment {
   headline: string;
   pieces: string[];
   experienceType: string;
+  /** The seeded `experience_types` slug, or null when this moment has no catalog row yet
+   *  (ledger `2026-09-03-occasion-vocabulary`). Passed straight through to the planner. */
+  experienceSlug: string | null;
   photos: MomentPhoto[];
   builder: { handle: string; reviews: number } | null;
 }
@@ -204,7 +207,12 @@ export function MomentsSection() {
                 data-testid="moment-cta"
                 onClick={() => {
                   postEvent(moment.key, "cta", active);
-                  open({ branch: "ai", experienceType: moment.experienceType, momentKey: moment.key });
+                  open({
+                    branch: "ai",
+                    experienceType: moment.experienceType,
+                    experienceSlug: moment.experienceSlug ?? undefined,
+                    momentKey: moment.key,
+                  });
                 }}
               >
                 Plan this moment

@@ -128,7 +128,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
           { name: "Proposal", i18nKey: "links.proposal", href: "/experiences/proposal", description: "Perfect proposal moment" },
           { name: "Engagement Party", i18nKey: "links.engagementParty", href: "/experiences/engagement-party", description: "Celebrate your love" },
           { name: "Baby Shower", i18nKey: "links.babyShower", href: "/experiences/baby-shower", description: "Welcome the new arrival" },
-          { name: "Anniversary", i18nKey: "links.anniversary", href: "/experiences/wedding-anniversaries", description: "Celebrate your journey" },
+          { name: "Wedding Anniversary", i18nKey: "links.anniversary", href: "/experiences/wedding-anniversaries", description: "Celebrate your journey" },
         ],
       },
       {

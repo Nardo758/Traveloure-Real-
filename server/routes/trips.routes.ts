@@ -17,6 +17,7 @@ import { db } from "../db";
 import * as cartProjection from "../services/cart-projection.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { createInsertSchema } from "drizzle-zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -48,6 +49,7 @@ import {
   contentPlacementRules,
   optimizationFees,
   experienceTypes,
+  eventTypeEnum,
   type InsertContentPlacementRule,
 } from "@shared/schema";
 import {
@@ -3227,6 +3229,53 @@ router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (
       res.status(500).json({ message: "Failed to save expert traveler note" });
     }
   });
+
+
+
+// ── PATCH /api/trips/:tripId/occasion ────────────────────────────────────────────────────────
+// ONE occasion vocabulary (ledger `2026-09-03-occasion-vocabulary`). THE BUG THIS CLOSES: the
+// Trip Strip's edit panel saved its occasion through `PUT /api/trip-context`, which upserts the
+// `trip_contexts.context` jsonb and NOTHING else — while `SlipLogisticsSection` gates the wedding
+// Guest/Anchor tooling on `trips.event_type`, a different table. So correcting "A trip" to "A
+// wedding" after a trip existed never unlocked the wedding tools; the two surfaces read different
+// stores. This is the ADDITIONAL write that makes the correction land, called only when the
+// context has a `tripId` bound.
+//
+// §19 ALLOWLIST, not a denylist. `PATCH /api/trips/:id` parses `insertTripSchema.partial()`, which
+// is `.omit()`-based — it happens to admit `eventType` today, but as an untyped varchar: any
+// string, including a raw experience-type slug, would be accepted and then read as a literal by
+// the fee/optimizer branches. Rather than widen or lean on that denylist, this is a PICK-based
+// body schema over exactly one column, re-typed to `eventTypeEnum`. Nothing else on `trips` is
+// reachable through it, so a future privileged column on the table is unreachable here by
+// construction.
+//
+// Owner-gated with the shared `verifyTripOwnership` (fail-closed): the occasion is trip IDENTITY,
+// not itinerary content, so this is deliberately the OWNER gate and not the broader §12
+// advisor-write posture the item/note mutations use.
+const tripOccasionBody = createInsertSchema(trips)
+  .pick({ eventType: true })
+  .extend({ eventType: z.enum(eventTypeEnum) });
+
+router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId } = req.params;
+    if (!(await verifyTripOwnership(tripId, userId))) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const parsed = tripOccasionBody.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "eventType must be one of: " + eventTypeEnum.join(", ") });
+    }
+
+    await storage.updateTrip(tripId, { eventType: parsed.data.eventType });
+    res.json({ ok: true, eventType: parsed.data.eventType });
+  } catch (err: any) {
+    console.error("[trips] set occasion failed:", err?.message);
+    res.status(500).json({ message: "Failed to save the occasion" });
+  }
+});
 
 
   // === EA Client Delegation Routes ===

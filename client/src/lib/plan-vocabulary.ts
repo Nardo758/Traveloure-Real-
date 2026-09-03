@@ -29,26 +29,27 @@
  * Nothing here touches money, ownership or routing — it is presentation vocabulary only.
  */
 
-/** Vocabulary classes for the possessive OCCASION lead, keyed off `TripContext.experienceType`. */
-export type VocabClass = "travel" | "event" | "couple";
-
-const EVENT_KEYWORDS = [
-  "wedding", "birthday", "corporate", "party", "reunion", "shower", "graduation",
-  "retirement", "farewell", "housewarming", "achievement", "holiday", "bachelor",
-  "engagement", "retreat",
-];
-const COUPLE_KEYWORDS = ["proposal", "date night", "date-night", "anniversar", "honeymoon"];
+import { classifyOccasion, type OccasionClass } from "@shared/occasions";
 
 /**
- * Classify an experience type into its occasion vocabulary. Moved here verbatim from
- * `trip-strip.tsx` so the strip and any future occasion-aware surface read ONE list; the keyword
- * sets and the travel-is-the-default fallback are unchanged.
+ * Vocabulary classes for the possessive OCCASION lead, keyed off `TripContext.experienceType`.
+ *
+ * The classifier itself now lives in `shared/occasions.ts` (ledger `2026-09-03-occasion-vocabulary`)
+ * beside the slug→eventType map, so ONE module answers "what kind of occasion is this?" for the
+ * client AND the server (§18 rule 1). This alias and the `classify` re-export below keep the name
+ * every calling surface already imports.
+ */
+export type VocabClass = OccasionClass;
+
+/**
+ * Classify an experience type into its occasion vocabulary. DELEGATES to
+ * `shared/occasions.ts#classifyOccasion`, which prefers the EXPLICIT per-slug table (every slug the
+ * `experience_types` seeder writes) and falls back to the original keyword sniff — the same keyword
+ * lists, the same couple-beats-event precedence, the same travel default — for anything that is not
+ * a known slug. Kept exported under this name because the Trip Strip and its pinned test import it.
  */
 export function classify(experienceType?: string): VocabClass {
-  const t = (experienceType || "").toLowerCase();
-  if (COUPLE_KEYWORDS.some((k) => t.includes(k))) return "couple";
-  if (EVENT_KEYWORDS.some((k) => t.includes(k))) return "event";
-  return "travel";
+  return classifyOccasion(experienceType);
 }
 
 /**

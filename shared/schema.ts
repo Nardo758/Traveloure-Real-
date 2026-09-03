@@ -1726,12 +1726,13 @@ export const itineraryVariantMetrics = pgTable("itinerary_variant_metrics", {
 
 // === Experience Types & Templates ===
 
-export const experienceTypeSlugEnum = [
-  "travel", "wedding", "proposal", "romance", "birthday", "corporate", "boys-trip", "girls-trip",
-  "date-night", "corporate-events", "reunions", "wedding-anniversaries", "retreats", "baby-shower",
-  "graduation-party", "engagement-party", "housewarming-party", "retirement-party",
-  "career-achievement-party", "farewell-party", "holiday-party"
-] as const;
+// DELETED (ledger `2026-09-03-occasion-vocabulary`): `experienceTypeSlugEnum`. It was declared here
+// and referenced NOWHERE — not by a column, a CHECK, a route, a form or a test — so it enforced
+// nothing while reading like the platform's occasion vocabulary, and its 21 values had already
+// drifted from the 22 the seeder writes (it carried "romance" and "corporate", which no seeded row
+// has, and lacked "bachelor-bachelorette" and "sports-event", which every seeded environment does).
+// The ONE runtime vocabulary is the `experience_types` table below, read through
+// GET /api/experience-types; the translations OUT of it live in `shared/occasions.ts`.
 
 export const experienceTypes = pgTable("experience_types", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
