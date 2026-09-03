@@ -159,3 +159,54 @@ export function classifyOccasion(slugOrName?: string | null): OccasionClass {
   if (EVENT_KEYWORDS.some((k) => raw.includes(k))) return "event";
   return "travel";
 }
+
+/**
+ * THE REVERSE LOOKUP, AND WHY IT REFUSES TO GUESS (ledger `2026-09-03-switch-readers`).
+ *
+ * `eventTypeForSlug` is MANY-TO-ONE: `travel`, `romance` and `vacation` all land on `"vacation"`;
+ * `birthday` and `milestone-birthday` both land on `"birthday"`. So a `trips.event_type` value
+ * does NOT identify an occasion row, and a surface that has only a trip (the slip does — the
+ * plancard DTO carries no experience-type id) cannot in general recover the occasion it was
+ * planned as.
+ *
+ * This function says so out loud instead of picking a nearest match. It returns a row ONLY when
+ * exactly ONE occasion in the supplied list maps to that event type; zero matches or two return
+ * `null`, and the caller falls back to the plain-plan shape (§13). Concretely that means the
+ * proposal case — the one occasion the seeder marks `visibility: "hidden"`, and the reason the
+ * slip needs this at all — resolves unambiguously (`proposal` is itself an `eventTypeEnum` member,
+ * so it is the only slug that maps to `"proposal"`), while an ambiguous family like
+ * birthday/milestone-birthday honestly resolves to nothing rather than to whichever row happened
+ * to be seeded first.
+ *
+ * Generic over `{ slug }` so it takes an `ExperienceType[]` straight off `GET /api/experience-types`
+ * without this module importing a row type.
+ */
+export function findOccasionByEventType<T extends { slug: string }>(
+  rows: readonly T[] | null | undefined,
+  eventType: string | null | undefined,
+): T | null {
+  const wanted = (eventType || "").trim().toLowerCase();
+  if (!wanted || !rows) return null;
+  const matches = rows.filter((r) => eventTypeForSlug(r.slug) === wanted);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * The occasion row for a slug or a display name, matched the same normalized way the edit panel
+ * seeds its select (`normalizeOccasionKey` on both sides, so "Wedding Anniversaries" finds
+ * `wedding-anniversaries`). Returns `null` when nothing matches — never a nearest-looking row.
+ */
+export function findOccasionByKey<T extends { slug: string; name?: string | null }>(
+  rows: readonly T[] | null | undefined,
+  slugOrName: string | null | undefined,
+): T | null {
+  const wanted = normalizeOccasionKey(slugOrName || "");
+  if (!wanted || !rows) return null;
+  return (
+    rows.find(
+      (r) =>
+        normalizeOccasionKey(r.slug) === wanted ||
+        (typeof r.name === "string" && normalizeOccasionKey(r.name) === wanted),
+    ) ?? null
+  );
+}
