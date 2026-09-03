@@ -363,7 +363,9 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
       const dayItems = itemsByDay[dayNum];
       const dayLabel = dayNum === 0 ? "Arrival/Departure" : `Day ${dayNum}`;
 
-      doc.pageBreak();
+      // pdfkit has no `pageBreak()` — the call threw on the FIRST day of every export, so
+      // this endpoint has never produced bytes. `addPage()` is the real API.
+      doc.addPage();
       doc.fontSize(16).font("Helvetica-Bold").text(dayLabel);
       doc.fontSize(10).font("Helvetica");
 
@@ -396,7 +398,9 @@ router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
     doc.end();
 
     return new Promise((resolve, reject) => {
-      doc.on("finish", () => {
+      // pdfkit's writable side emits `end`, not `finish` — waiting on `finish` hung the request
+      // forever (same trap noted in demand-onepager.render.ts).
+      doc.on("end", () => {
         const pdfBuffer = Buffer.concat(buffers);
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader(

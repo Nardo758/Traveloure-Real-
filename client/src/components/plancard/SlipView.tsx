@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  FileDown,
   List as ListIcon,
   Loader2,
   Map as MapIcon,
@@ -791,6 +792,15 @@ function SlipActions({
     <div className="flex items-center gap-2 flex-wrap" data-testid="slip-actions">
       <Button variant="outline" size="sm" onClick={handleShare} data-testid="slip-action-share">
         <Share2 className="w-3.5 h-3.5 mr-1.5" /> Share
+      </Button>
+      {/* Lane C (ledger 2026-09-03-slip-convergence) — the printable copy. Renders the SAME
+          canonical itinerary_items this slip is showing, so the paper and the screen can never
+          disagree. A plain anchor: the endpoint is session-authenticated and answers with a
+          Content-Disposition attachment, so the browser saves it without a client-side blob. */}
+      <Button variant="outline" size="sm" asChild data-testid="slip-action-pdf">
+        <a href={`/api/trips/${trip.id}/pdf`} download>
+          <FileDown className="w-3.5 h-3.5 mr-1.5" /> Download PDF
+        </a>
       </Button>
       <Link href={`/trip/${trip.id}`}>
         <Button variant="outline" size="sm" data-testid="slip-action-trip-card">
