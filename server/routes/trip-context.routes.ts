@@ -91,6 +91,14 @@ const tripContextSchema = z
     userExperienceId: str(64).optional(),
     id: str(64).optional(),
     intent: str(2000).optional(),
+    // Ledger `2026-09-03-switch-readers` — the two fields the edit panel holds while NO trip row
+    // exists yet (migration 276's `default_duration = "day"` main moment, and the step-5
+    // "What's happening" chips). Both are ordinary planning content authored by the session user
+    // about their own draft: no amount, no identity, no rate, so §14/§18/§19 have nothing to
+    // strip here. Added to this hand-written ALLOWLIST explicitly — `.strip()` below means an
+    // unlisted key is silently dropped, so a field nobody names here does not persist at all.
+    mainMomentTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    pendingEventTitles: z.array(str(120)).max(20).optional(),
     contextFields: z.record(z.unknown()).optional(),
     selectedServices: z
       .array(

@@ -52,6 +52,22 @@ export interface TripContext {
   /** Legacy alias some readers fall back to for userExperienceId. */
   id?: string;
   intent?: string;
+  /**
+   * "HH:MM" — the main moment on a single-day occasion (migration 276 `default_duration = "day"`;
+   * ledger `2026-09-03-switch-readers`). Held here ONLY while no trip row exists: once `tripId` is
+   * bound the edit panel writes the moment as a `temporal_anchors` row, which is the platform's
+   * real home for a time the plan must be built around, and this field is only the pre-trip
+   * holding pen. Absent = the traveler never gave one (§13) — never a fabricated time.
+   */
+  mainMomentTime?: string;
+  /**
+   * The "What's happening" chips ticked before a trip row existed (step 5, migration 276
+   * `default_schedule`). Once `tripId` is bound each becomes ONE `user_experiences` row (an event
+   * inside the plan, Locked Decision 29) and this list is not used. **KNOWN GAP, stated rather
+   * than hidden (§13):** no trip-mint path drains this list today — see the note on
+   * `pendingEventTitles` in edit-trip-panel.tsx.
+   */
+  pendingEventTitles?: string[];
   contextFields?: Record<string, unknown>;
   selectedServices?: Array<{ name?: string; provider?: string; price?: number; category?: string }>;
 }
