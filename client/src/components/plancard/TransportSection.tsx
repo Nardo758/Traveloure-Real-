@@ -458,14 +458,22 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
       {day.transports?.length > 0 && (
         <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/30 rounded-xl p-3.5 flex flex-wrap justify-between items-center mb-5 gap-3" data-testid={`transport-summary-${tripId}`}>
           <div className="flex gap-6">
-            {[
-              { l: "Legs", v: day.transports.length },
-              { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
-              { l: "Est. Cost", v: `$${day.transports.reduce((s: number, t) => s + (t.cost || 0), 0).toLocaleString()}` },
-            ].map((s, si) => (
-              <div key={si}>
+            {(() => {
+              // Est. Cost is OMITTED when the day's legs carry no cost at all. On a shared link the
+              // server strips money for non-owners (ledger 2026-09-03-share-link-price-redaction), and
+              // everywhere else a leg list with no cost data has no estimate to state — `$0` would be
+              // the card asserting a price nobody gave it (§13). Tiles are coloured by LABEL, not by
+              // index, so dropping one cannot recolour the others.
+              const legCost = day.transports.reduce((s: number, t) => s + (t.cost || 0), 0);
+              return [
+                { l: "Legs", v: day.transports.length },
+                { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
+                ...(legCost > 0 ? [{ l: "Est. Cost", v: `$${legCost.toLocaleString()}` }] : []),
+              ];
+            })().map((s) => (
+              <div key={s.l}>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.l}</div>
-                <div className={`text-lg font-bold ${si === 2 ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}`} data-testid={`text-transport-stat-${s.l.toLowerCase().replace(/\s+/g, '-')}-${tripId}`}>{s.v}</div>
+                <div className={`text-lg font-bold ${s.l === "Est. Cost" ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}`} data-testid={`text-transport-stat-${s.l.toLowerCase().replace(/\s+/g, '-')}-${tripId}`}>{s.v}</div>
               </div>
             ))}
           </div>

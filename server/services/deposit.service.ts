@@ -106,3 +106,68 @@ export function resolveBalanceDueAt(input: {
         : 0;
   return new Date(serviceMs - windowHours * 3600 * 1000);
 }
+
+// ══ CAPTURED-DEPOSIT RESOLUTION (ledger `2026-09-03-deposit-paid-cancel`) ═══════════════════════
+//
+// A provider cancelling a `deposit_paid` booking refunds EXACTLY what was captured — the deposit —
+// and nothing else; the balance was never charged, so there is nothing to refund on it. That amount
+// is derived HERE, from the booking row, because this module is already "the ONE place a deposit
+// amount is derived" (see the file header). It is never read off a request body (§14).
+//
+// WHY THIS IS A RESOLVER AND NOT A `parseFloat` AT THE CALL SITE: the honest answers are three, not
+// one. A row can be (a) not a deposit-partial at all, (b) a deposit-partial whose deposit is
+// provably captured, or (c) a `deposit_paid` row whose own columns DISAGREE about what was captured.
+// (c) must be REFUSED, never coerced into a 0 refund (§13): "refunded $0.00" is a false statement
+// about money, and it would take the booking terminal with the traveler's deposit still at Stripe.
+
+/** The `service_bookings` columns this resolution reads. */
+export interface CapturedDepositRow {
+  status?: string | null;
+  depositAmount?: string | number | null;
+  depositPaid?: boolean | null;
+  balanceAmount?: string | number | null;
+  balancePaid?: boolean | null;
+  stripePaymentIntentId?: string | null;
+  stripeDepositIntentId?: string | null;
+}
+
+export type CapturedDeposit =
+  /** Not a deposit-partial awaiting its balance — the caller's existing full-charge path applies. */
+  | { kind: "not_deposit_paid" }
+  /** A deposit-partial with exactly its deposit captured. `amount` is what may be refunded. */
+  | { kind: "deposit_only"; amount: number; paymentIntentId: string }
+  /** `deposit_paid`, but the row cannot say what was captured. REFUSE — never refund 0. */
+  | { kind: "unresolvable"; reason: string };
+
+/**
+ * Resolve what a booking has actually CAPTURED, for the deposit-partial case only.
+ *
+ * SCOPE IS DELIBERATELY `status === 'deposit_paid'` AND NOTHING ELSE. A booking that has since paid
+ * its balance is `confirmed`, and the refund question on a cancelled `confirmed` booking is the
+ * SEPARATE, still-unruled sibling gap flagged beside `OWNER_BOOKING_TRANSITIONS` (audit SD-2 / Q2).
+ * Keying on the status value is what keeps this ruling from widening into that one.
+ */
+export function resolveCapturedDeposit(row: CapturedDepositRow): CapturedDeposit {
+  if ((row?.status ?? "") !== "deposit_paid") return { kind: "not_deposit_paid" };
+
+  // `stripe_payment_intent_id` is the column `refundServiceBooking` refunds against; on a
+  // deposit-partial booking the promotion stamps the DEPOSIT PI onto both it and
+  // `stripe_deposit_intent_id` (checkout-claim.service.ts). Both must agree, or the row cannot say
+  // which intent holds the traveler's money.
+  const pi = (row.stripePaymentIntentId ?? "").trim();
+  if (!pi) return { kind: "unresolvable", reason: "no_payment_intent" };
+  const depositPi = (row.stripeDepositIntentId ?? "").trim();
+  if (depositPi && depositPi !== pi) {
+    return { kind: "unresolvable", reason: "payment_intent_mismatch" };
+  }
+
+  if (row.depositPaid !== true) return { kind: "unresolvable", reason: "deposit_not_marked_paid" };
+  if (row.balancePaid === true) return { kind: "unresolvable", reason: "balance_already_paid" };
+
+  const amount = Number(row.depositAmount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { kind: "unresolvable", reason: "no_captured_deposit_amount" };
+  }
+
+  return { kind: "deposit_only", amount: round2(amount), paymentIntentId: pi };
+}

@@ -18,6 +18,7 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
+import { redactMoneyForNonOwner } from "../utils/share-money-redaction";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
@@ -2194,7 +2195,24 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         expertTravelerNote = linkedTrip?.expertTravelerNote ?? null;
       }
 
-      res.json({
+      // ── MONEY REDACTION (ledger 2026-09-03-share-link-price-redaction) ─────────────────────
+      // Same PUBLIC-endpoint reasoning as the expertNotes/expertDiff gate above, applied to the
+      // figures this response has always sent to every token holder: per-activity `cost`,
+      // per-leg `estimatedCostUsd`, the plan-level `totalCost` and the transport `totalCostUsd`.
+      // What a trip costs is the traveler's own business; a "view" link handed to a friend is an
+      // ITINERARY, not an invoice.
+      //
+      // THE AXIS IS OWNER / NOT-OWNER — strictly `isOwner`, NOT `canSeeExpertContent`. The
+      // expert-review widening exists because the notes are the reviewing expert's OWN content;
+      // the traveler's prices are nobody else's, so a `suggest`/`edit` link holder is a non-owner
+      // here like any other. Their surface renders price-free and honest (§13) rather than
+      // showing someone else's money.
+      //
+      // ONE redaction, applied ONCE (§18 rule 1): the FULL body is built first and handed to the
+      // single helper below. The four emit sites above are deliberately NOT each gated — that
+      // restatement is exactly the drift the rule names, and it is how the fifth money field
+      // would leak. Keys are DELETED, never zeroed (§13).
+      const payload = {
         variant: {
           id: plan.meta.sourceRef.id,
           name: plan.meta.title,
@@ -2240,7 +2258,8 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         transportPreferences: shared.transportPreferences,
         shareToken: token,
         isOwner,
-      });
+      };
+      res.json(isOwner ? payload : redactMoneyForNonOwner(payload));
     } catch (err: any) {
       console.error("Get shared itinerary error:", err);
       res.status(500).json({ error: "Failed to load shared itinerary" });

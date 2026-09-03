@@ -41,6 +41,11 @@ interface SharedItineraryResponse {
     description?: string | null;
     destination?: string | null;
     dateRange?: { start?: string | null; end?: string | null };
+    /**
+     * ABSENT (key deleted) for a non-owner viewer — ledger 2026-09-03-share-link-price-redaction.
+     * `null` means the OWNER has no figure; `undefined` means it was never sent. Same for every
+     * `cost` / `estimatedCostUsd` / `totalCostUsd` below.
+     */
     totalCost?: string | number | null;
     optimizationScore?: number | null;
     days: Array<{
@@ -64,7 +69,8 @@ interface SharedItineraryResponse {
     transportSummary?: {
       totalLegs: number;
       totalMinutes: number;
-      totalCostUsd: number;
+      /** ABSENT for a non-owner viewer — money is redacted server-side, never zeroed (§13). */
+      totalCostUsd?: number;
     };
   };
   mapsLinks?: {
@@ -397,9 +403,20 @@ export default function ItineraryViewPage() {
   const transportCost = data.variant.transportSummary?.totalCostUsd || planCardDays.reduce((s, d) => s + (d.transports || []).reduce((t, tr) => t + (tr.cost || 0), 0), 0);
   const grandTotal = totalCostNum + transportCost;
 
-  const extraStats: ExtraStat[] = [
-    { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
-  ];
+  // ── Price-free plans render price-free (ledger 2026-09-03-share-link-price-redaction) ────────
+  // `GET /api/itinerary-share/:token` sends money figures ONLY to the link's owner; for every
+  // other holder the keys are ABSENT (deleted server-side, never zeroed — §13). So `undefined`
+  // here means "not sent", while `null` means "the owner has one and it is empty". This reads
+  // the SHAPE OF THE DATA, not a restatement of the server's rule — the server stays the single
+  // authority on who may see money.
+  const costsVisible =
+    data.variant.totalCost !== undefined || data.variant.transportSummary?.totalCostUsd !== undefined;
+
+  // No money ⇒ no cost stat at all. A "$0" tile would be the page asserting a price it was never
+  // given.
+  const extraStats: ExtraStat[] = costsVisible
+    ? [{ label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon }]
+    : [];
 
   const startEditActivity = (activityId: string, name: string, startTime?: string | null) => {
     setEditingActivity(activityId);
@@ -628,7 +645,7 @@ export default function ItineraryViewPage() {
                 trip={planCardTrip}
                 traveloureScore={data.variant.optimizationScore}
                 shareToken={token}
-                totalCost={grandTotal > 0 ? `$${grandTotal.toLocaleString()}` : null}
+                totalCost={costsVisible && grandTotal > 0 ? `$${grandTotal.toLocaleString()}` : null}
                 perPerson={null}
                 budget={null}
               />
@@ -1177,14 +1194,21 @@ function ExpertTransportSection({
       {day.transports?.length > 0 && (
         <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/30 rounded-xl p-3.5 flex flex-wrap justify-between items-center mb-5 gap-3">
           <div className="flex gap-6">
-            {[
-              { l: "Legs", v: day.transports.length },
-              { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
-              { l: "Est. Cost", v: `$${day.transports.reduce((s: number, t) => s + (t.cost || 0), 0).toLocaleString()}` },
-            ].map((s, si) => (
-              <div key={si}>
+            {(() => {
+              // Est. Cost is OMITTED when the day's legs carry no cost at all — on a shared link
+              // the server strips money for non-owners (ledger 2026-09-03-share-link-price-redaction)
+              // and `$0` would be this page asserting a price it was never given (§13). Tiles are
+              // coloured by LABEL, not by index, so dropping one cannot recolour the others.
+              const legCost = day.transports.reduce((s: number, t) => s + (t.cost || 0), 0);
+              return [
+                { l: "Legs", v: day.transports.length },
+                { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
+                ...(legCost > 0 ? [{ l: "Est. Cost", v: `$${legCost.toLocaleString()}` }] : []),
+              ];
+            })().map((s) => (
+              <div key={s.l}>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.l}</div>
-                <div className={`text-lg font-bold ${si === 2 ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}`}>{s.v}</div>
+                <div className={`text-lg font-bold ${s.l === "Est. Cost" ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}`}>{s.v}</div>
               </div>
             ))}
           </div>
