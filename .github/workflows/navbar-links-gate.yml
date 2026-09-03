@@ -291,7 +291,11 @@ jobs:
     name: hardcoded-links-check
     runs-on: ubuntu-latest
     # No PostgreSQL service — pure file-system analysis, no DB or server needed.
-    timeout-minutes: 5
+    # 10, not 5: on 2026-09-03 a cold runner spent over five minutes inside `npm ci` and the job was
+    # cancelled before a single check ran (run 33815797306), the same shape the cart-redirect static job
+    # hit the same evening. The other static-analysis jobs in this repo get 10. A timeout that fires
+    # inside install measures the runner, not the code.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
