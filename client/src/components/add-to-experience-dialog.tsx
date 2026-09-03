@@ -12,6 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { queryClient } from "@/lib/queryClient";
+import { useSearch } from "wouter";
+import { useTripContext } from "@/lib/trip-context";
+import { resolveTargetTripId } from "@/lib/trip-target";
 import {
   MapPin,
   Plus,
@@ -54,13 +57,42 @@ export function AddToExperienceDialog({
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
 
-  // Funnel consistency fix: feed content items add straight to the CART (the one
-  // planning pipeline) — the trip/experience question is asked once, in the
-  // cart's Trip-details step, not at add-time. contentMeta is display-only;
-  // no price field is sent (§14 — a client price must never reach a charge).
+  // ── SLIP CONVERGENCE (ledger 2026-09-03-slip-convergence) ──────────────────────────────────
+  // This dialog carried BOTH rails: the primary button wrote straight to /api/cart, while the
+  // per-trip buttons below already used the itinerary rail. A cart row born here has
+  // `itinerary_item_id IS NULL`, which `syncItemProjection` is permanently blind to — so the
+  // primary action put feed content somewhere the traveler's own plan could never show it, while
+  // the secondary action put identical content where it could. Two rails, one intent, opposite
+  // outcomes. The primary now converges on the SAME itinerary rail whenever a target trip
+  // resolves ("URL first, then the active TripContext" — client/src/lib/trip-target.ts, §18
+  // rule 1), and falls back to the cart only for a genuinely trip-less click (the sanctioned
+  // guest/no-trip fallback until G2, ledger row 5). No price is sent on either rail (§14).
+  const searchString = useSearch();
+  const [tripCtx] = useTripContext();
+  const targetTripId = resolveTargetTripId(searchString, tripCtx);
+
   const addToCartMutation = useMutation({
     mutationFn: async () => {
       if (!item) return;
+      if (targetTripId) {
+        // Same payload shape the per-trip rail below builds — one rail, one body.
+        const res = await fetch(`/api/trips/${targetTripId}/itinerary-items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            title: item.title,
+            description: item.description || "",
+            itemType: item.type || "experience",
+            dayNumber: 1,
+            status: "planned",
+            ...(item.city ? { locationName: item.city } : {}),
+            ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to add to trip");
+        return res.json();
+      }
       const contentId =
         item.id ||
         item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120) ||
@@ -83,15 +115,25 @@ export function AddToExperienceDialog({
       return res.json();
     },
     onSuccess: () => {
+      if (targetTripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
-        title: "Added to your trip cart",
-        description: `"${item?.title}" is in your cart — plan & optimize whenever you're ready.`,
+        title: targetTripId ? "Added to your trip" : "Added to your trip cart",
+        description: targetTripId
+          ? `"${item?.title}" is on your plan — check out whenever you're ready.`
+          : `"${item?.title}" is in your cart — plan & optimize whenever you're ready.`,
       });
       onOpenChange(false);
     },
     onError: () => {
-      toast({ variant: "destructive", title: "Could not add to cart", description: "Please try again." });
+      toast({
+        variant: "destructive",
+        title: targetTripId ? "Could not add to your trip" : "Could not add to cart",
+        description: "Please try again.",
+      });
     },
   });
 
@@ -222,7 +264,12 @@ export function AddToExperienceDialog({
             )}
           </div>
           <div>
-            <p className="font-semibold text-sm">Add to my trip cart</p>
+            {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this button lands
+                the item on the PLAN, not the cart — say which, rather than promising a cart row
+                the traveler will not find (§13). */}
+            <p className="font-semibold text-sm">
+              {targetTripId ? "Add to my trip plan" : "Add to my trip cart"}
+            </p>
             <p className="text-xs text-muted-foreground">
               Plan &amp; optimize whenever you're ready — nothing to set up now
             </p>

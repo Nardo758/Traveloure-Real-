@@ -102,6 +102,10 @@ import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { updateTripContext, useTripContext, switchTripContextPreservingId, getTripContext } from "@/lib/trip-context";
+// §18 rule 1: the "URL first, then the active TripContext" order is written ONCE, in
+// client/src/lib/trip-target.ts, and every marketplace add resolves through it.
+import { resolveTargetTripId } from "@/lib/trip-target";
+import { planningRouteForTrip } from "@/contexts/PlanningContext";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { DestinationTransfersSection } from "@/components/destination-transfers-section";
 
@@ -1483,6 +1487,10 @@ export default function ExperienceTemplatePage() {
     const isExternalByPrefix = item.id.startsWith("hotel-") || item.id.startsWith("activity-") || item.id.startsWith("flight-");
     const isExternal = item.isExternal === true || isExternalByPrefix;
     const existing = cart.find((i) => i.id === item.id);
+    // Ledger 2026-09-03-slip-convergence — resolved once here because it decides BOTH which rail
+    // the add takes (below) and where the traveler is sent afterwards (the tail of this function).
+    const targetTripId = resolveTargetTripId(searchString, tripCtx);
+    let landedOnPlan = false;
     
     if (isExternal) {
       if (existing) {
@@ -1517,18 +1525,49 @@ export default function ExperienceTemplatePage() {
         toast({ variant: "destructive", title: "Failed to update cart" });
       }
     } else if (!existing) {
-      try {
-        const payload: any = { quantity: 1, experienceSlug: slug };
-        if (isCustomVenue) {
-          payload.customVenueId = item.id.replace("custom-", "");
-        } else {
-          payload.serviceId = item.id.startsWith("service-") ? item.id.replace("service-", "") : item.id;
+      // ── SLIP CONVERGENCE (ledger 2026-09-03-slip-convergence) ──────────────────────────────
+      // The slip is stationary and every surface is a VIEW of `itinerary_items`
+      // (docs/briefs/SLIP_EXPERIENCE_DISPATCH.md §0). A component service added here used to go
+      // STRAIGHT to /api/cart, minting a row with `itinerary_item_id IS NULL` — invisible to
+      // `syncItemProjection` and therefore absent from the traveler's own plan forever. With a
+      // resolved target trip it now lands on the PLAN via the same rail the /services grid uses;
+      // the cart row is rebuilt by the projection when the item is routed to checkout. A
+      // trip-less click keeps the cart path below, unchanged (the guest fallback, ledger row 5).
+      // A CUSTOM VENUE has no `provider_services` row to point a plan item at, so it stays on the
+      // cart rail regardless — pointing an item at a venue id it cannot resolve would be worse
+      // than the fallback (§13).
+      const serviceId = item.id.startsWith("service-") ? item.id.replace("service-", "") : item.id;
+      if (targetTripId && !isCustomVenue) {
+        try {
+          await apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
+            title: item.name,
+            description: item.details || undefined,
+            itemType: "activity",
+            providerServiceId: serviceId,
+            estimatedCost: typeof item.price === "number" && item.price > 0 ? String(item.price) : undefined,
+            dayNumber: 1,
+          });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+          landedOnPlan = true;
+          toast({ title: "Added to your trip", description: `${item.name} is on your plan` });
+        } catch (error) {
+          toast({ variant: "destructive", title: "Failed to add to your trip" });
         }
-        await apiRequest("POST", "/api/cart", payload);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-        toast({ title: "Added to cart", description: `${item.name} added to your cart` });
-      } catch (error) {
-        toast({ variant: "destructive", title: "Failed to add to cart" });
+      } else {
+        try {
+          const payload: any = { quantity: 1, experienceSlug: slug };
+          if (isCustomVenue) {
+            payload.customVenueId = item.id.replace("custom-", "");
+          } else {
+            payload.serviceId = serviceId;
+          }
+          await apiRequest("POST", "/api/cart", payload);
+          queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+          toast({ title: "Added to cart", description: `${item.name} added to your cart` });
+        } catch (error) {
+          toast({ variant: "destructive", title: "Failed to add to cart" });
+        }
       }
     }
     // Store experience context and navigate to full cart page
@@ -1543,7 +1582,10 @@ export default function ExperienceTemplatePage() {
                     travelers: adults + kids
                   });
     updateTripContext({ experienceSlug: slug });
-    setLocation("/cart");
+    // An item that landed on the PLAN is not in the cart — sending the traveler to /cart would
+    // show an empty cart and break the promise the click just made. The slip is where they route
+    // it to checkout (ledger 2026-08-28-single-planning-entry / 2026-09-03-slip-convergence).
+    setLocation(landedOnPlan ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart");
   };
 
   const removeFromCart = async (id: string) => {

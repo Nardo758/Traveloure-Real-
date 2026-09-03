@@ -53,6 +53,10 @@ import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
+// Ledger 2026-08-28-single-planning-entry: mid-planning continues on the PLANNING surface
+// (/plans/:tripId, the canonical slip). Used here so "Book on Traveloure" lands where the item
+// actually IS once the add goes to the plan rail rather than the cart.
+import { planningRouteForTrip } from "@/contexts/PlanningContext";
 // T-REP (G5 #13): pure "Good to know" formatting/derivation helpers, unit-tested in
 // client/src/lib/__tests__/service-good-to-know.test.ts.
 import {
@@ -434,8 +438,47 @@ export default function ServiceDetailPage() {
   // as slotId — the server derives the schedule from the slot and checkout claims it atomically.
   const [selectedSlot, setSelectedSlot] = useState<AvailabilityDay | null>(null);
 
+  // ── SLIP CONVERGENCE (ledger 2026-09-03-slip-convergence) ────────────────────────────────
+  // The slip is stationary and every surface is a VIEW of `itinerary_items`
+  // (docs/briefs/SLIP_EXPERIENCE_DISPATCH.md §0); the cart is specifically the
+  // `ready_for_checkout` projection. This page used to write STRAIGHT to /api/cart, minting a
+  // row with `itinerary_item_id IS NULL` — a row `syncItemProjection` is permanently blind to —
+  // so a service booked here never appeared on the traveler's own plan. With a resolved target
+  // trip the add now lands on the PLAN via the same rail the /services grid uses
+  // (`POST /api/trips/:tripId/itinerary-items`, client/src/pages/discover.tsx), carrying the
+  // booking inputs on the migration-275 columns; the cart row is then REBUILT by the projection
+  // when the traveler routes the item to checkout. A genuinely trip-less/guest click keeps the
+  // cart path below, unchanged — the sanctioned fallback until G2 (ledger row 5).
+  // Not a money change: `estimatedCost` is display only, and the charge is still derived
+  // server-side from the listing/slot rows (§14).
+  const planRoute = targetTripId ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart";
+
   const addToCartMutation = useMutation({
     mutationFn: async (_vars: { proceed: boolean }) => {
+      if (targetTripId) {
+        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
+          title: service?.serviceName ?? "Service",
+          description: service?.description || service?.shortDescription || undefined,
+          itemType: "activity",
+          providerServiceId: id,
+          estimatedCost: service?.price ? String(service.price) : undefined,
+          // FP-1/B3: the stored 'Unknown' default is ABSENCE, not a place — never plant it as a
+          // location on the plan (§13). Same filter the page's own location chip uses.
+          locationName:
+            service?.location && service.location.trim() !== "Unknown" ? service.location : undefined,
+          dayNumber: 1,
+          // A plan item's `scheduledDate` is a calendar DATE (the cart row's is a timestamp) —
+          // the slot's own date wins over a hand-typed one, and the time rides `startTime`.
+          ...(selectedSlot?.date
+            ? { scheduledDate: selectedSlot.date, ...(selectedSlot.startTime ? { startTime: selectedSlot.startTime } : {}) }
+            : bookingDate
+              ? { scheduledDate: bookingDate, ...(bookingTime ? { startTime: bookingTime } : {}) }
+              : {}),
+          // Migration-275 allowlist field: an INTENT marker. The capacity claim is still the
+          // atomic `storage.bookSlot` at checkout (§15), never at add time.
+          ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
+        });
+      }
       const scheduledDate = bookingDate
         ? new Date(`${bookingDate}T${bookingTime || "09:00"}:00`).toISOString()
         : undefined;
@@ -444,32 +487,39 @@ export default function ServiceDetailPage() {
         quantity: 1,
         scheduledDate,
         ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
-        // F-2: scope the row to the handed-off trip. POST /api/cart has always accepted `tripId`
-        // (server/routes.ts) — this page simply never sent it, so a slip-scoped browse ended in a
-        // trip-less cart. With it set, `POST /api/cart/resolve-trip` reuses THIS trip instead of
-        // minting a second one, and checkout books against it.
-        ...(targetTripId ? { tripId: targetTripId } : {}),
       });
     },
     onSuccess: (_data, vars) => {
+      if (targetTripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (vars.proceed) {
-        navigate("/cart");
+        // The plan item lands `in_planning`, NOT in the cart — sending the traveler to /cart
+        // would show them an empty cart and break the promise the button just made. The slip is
+        // where they route it to checkout.
+        navigate(planRoute);
       } else {
+        const when = selectedSlot
+          ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
+          : bookingDate
+            ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
+            : "";
         toast({
-          title: "Added to cart",
-          description:
-            (selectedSlot
-              ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
-              : bookingDate
-                ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
-                : "Service has been added to your cart") +
-            (targetTripId ? " · Held for your trip." : ""),
+          title: targetTripId ? "Added to your trip" : "Added to cart",
+          description: targetTripId
+            ? `${when ? `${when} · ` : ""}Find it on your plan — check out when you're ready.`
+            : when || "Service has been added to your cart",
         });
       }
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to add to cart", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: targetTripId ? "Failed to add to your trip" : "Failed to add to cart",
+        variant: "destructive",
+      });
     },
   });
 
@@ -590,24 +640,50 @@ export default function ServiceDetailPage() {
 
   const addRoomToCartMutation = useMutation({
     mutationFn: async (_vars: { proceed: boolean }) => {
+      if (targetTripId) {
+        // Same convergence as the service add above. `itemType: "accommodation"` is a real value
+        // in `itineraryItemTypeEnum` — the stay renders AS a stay on the plan and feeds the
+        // anchor logic, rather than passing as a generic activity.
+        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
+          title: service?.serviceName ?? "Stay",
+          description: service?.description || service?.shortDescription || undefined,
+          itemType: "accommodation",
+          providerServiceId: id,
+          locationName:
+            service?.location && service.location.trim() !== "Unknown" ? service.location : undefined,
+          dayNumber: 1,
+          // The stay starts on check-in night; the range itself rides the migration-275 columns.
+          scheduledDate: roomCheckIn,
+          checkIn: roomCheckIn,
+          checkOut: roomCheckOut,
+          // DELIBERATELY no `estimatedCost`: a stay's cost is nights × EACH night's own
+          // materialized rate (S11), which only `resolveStayNightlyRates` knows. Restating that
+          // arithmetic here would be a second derivation of the same number (§18 rule 1) and
+          // would read as a claim the moment rates are mixed — an absent estimate is the honest
+          // state (§13). The traveler still sees the real total at checkout, server-derived.
+        });
+      }
       return apiRequest("POST", "/api/cart", {
         serviceId: id,
         checkIn: roomCheckIn,
         checkOut: roomCheckOut,
-        // F-2: same trip scoping as the service add above.
-        ...(targetTripId ? { tripId: targetTripId } : {}),
       });
     },
     onSuccess: (_data, vars) => {
+      if (targetTripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (vars.proceed) {
-        navigate("/cart");
+        navigate(planRoute);
       } else {
+        const nights = `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`;
         toast({
-          title: "Added to cart",
-          description:
-            `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}` +
-            (targetTripId ? " · Held for your trip." : ""),
+          title: targetTripId ? "Added to your trip" : "Added to cart",
+          description: targetTripId
+            ? `${nights} · Find it on your plan — check out when you're ready.`
+            : nights,
         });
       }
     },
@@ -1510,7 +1586,10 @@ export default function ServiceDetailPage() {
                         data-testid="button-add-to-cart"
                       >
                         <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
+                        {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this
+                            button adds to the PLAN, not the cart — say so rather than promising
+                            a cart row the traveler will not find (§13). */}
+                        {targetTripId ? "Add to Trip" : "Add to Cart"}
                       </Button>
                     </>
                   ) : (
@@ -1556,7 +1635,10 @@ export default function ServiceDetailPage() {
                         data-testid="button-add-to-cart"
                       >
                         <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
+                        {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this
+                            button adds to the PLAN, not the cart — say so rather than promising
+                            a cart row the traveler will not find (§13). */}
+                        {targetTripId ? "Add to Trip" : "Add to Cart"}
                       </Button>
                     </>
                   )}
