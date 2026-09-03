@@ -27,6 +27,7 @@ import {
 } from "@/lib/trip-context";
 import { apiRequest } from "@/lib/queryClient";
 import { eventTypeForSlug, normalizeOccasionKey } from "@shared/occasions";
+import { travelersForSave } from "@/lib/plan-vocabulary";
 import type { ExperienceType } from "@shared/schema";
 
 /**
@@ -79,7 +80,13 @@ export function EditTripPanel({
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [travelers, setTravelers] = useState(2);
+  /**
+   * "" = the traveler has not stated a party size. Held as a STRING, not a number, because the
+   * empty state has to be representable: migration 241 de-masked party size so an unanswered
+   * question stays NULL, and this input used to seed a literal `2` and write it on every save —
+   * re-masking one layer up (§13). See `travelersForSave`.
+   */
+  const [travelers, setTravelers] = useState("");
   /** "" = nothing chosen. Never seeded with a placeholder occasion. */
   const [occasionSlug, setOccasionSlug] = useState("");
 
@@ -97,7 +104,9 @@ export function EditTripPanel({
     setDestination(ctx.destination || "");
     setStartDate(ctx.startDate || "");
     setEndDate(ctx.endDate || "");
-    setTravelers(ctx.travelers && ctx.travelers > 0 ? ctx.travelers : 2);
+    // A real stored count seeds the input; NO stored count leaves it EMPTY. Never a default of 2 —
+    // a number the traveler never typed must not become one they appear to have stated.
+    setTravelers(ctx.travelers && ctx.travelers > 0 ? String(ctx.travelers) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -141,7 +150,10 @@ export function EditTripPanel({
       destination: trimmedDestination,
       startDate: start,
       endDate: end,
-      travelers,
+      // UNTOUCHED ⇒ NOT SET. `travelersForSave` returns undefined for an empty/zero/unparseable
+      // input, and switchTripContext's SWITCH_FIELDS are REPLACE semantics, so the field is
+      // CLEARED rather than re-asserted as a fabricated 2 (§13, migration 241's de-masking).
+      travelers: travelersForSave(travelers),
       // No occasion chosen ⇒ keep whatever was stored. switchTripContext has REPLACE semantics
       // for this field, so omitting it would silently CLEAR an occasion the panel never asked
       // the traveler to clear.
@@ -227,7 +239,11 @@ export function EditTripPanel({
                 min={1}
                 max={500}
                 value={travelers}
-                onChange={(e) => setTravelers(Math.max(1, parseInt(e.target.value) || 1))}
+                placeholder="Not set"
+                // Raw passthrough: clearing the field must be possible, so the old
+                // `Math.max(1, parseInt(...) || 1)` coercion — which turned an empty box straight
+                // back into a 1 — is gone. `travelersForSave` is the single normalizer, at save.
+                onChange={(e) => setTravelers(e.target.value)}
                 data-testid="input-etp-travelers"
               />
             </div>

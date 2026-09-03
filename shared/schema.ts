@@ -4469,6 +4469,26 @@ export const itineraryItems = pgTable("itinerary_items", {
   checkIn: date("check_in"),
   checkOut: date("check_out"),
 
+  // ── THE EVENT THIS ITEM BELONGS TO (migration 277, ledger 2026-09-03-item-event-link) ──────
+  // A plan is ONE `trips` row; an event inside that plan is ONE `user_experiences` row, already
+  // bound to the trip by the pre-existing nullable `user_experiences.tripId` (no uniqueness —
+  // many events per trip) and already carrying eventDate / location / budget / guestCount /
+  // experienceTypeId. Invites already hang off an event (`event_invites.experienceId`) and a
+  // temporal anchor already can (`temporal_anchors.userExperienceId`); this is the link the other
+  // direction, from the ITEM to the event. No new event table exists or is wanted.
+  //
+  // NULLABLE BY DESIGN, and NULL is not "unknown": every plan has ONE IMPLICIT unnamed event and
+  // NULL *is* that event, so an item always resolves to an event and no backfill is owed (§13).
+  // ON DELETE SET NULL is the ratified behaviour, not a default: deleting an event must never
+  // cascade-delete the items planned under it — they fall back to the implicit event and stay on
+  // the traveler's slip (same posture as `bookingId` / `providerServiceId` / `slotId` above).
+  //
+  // §19 ADMISSION: OMITTED from `insertItineraryItemSchema` and re-admitted only through the
+  // pick-based `itineraryItemEventLinkSchema` below, with the trip↔event pairing VERIFIED
+  // server-side on both live write rails (§14 — the client's pairing is never trusted).
+  // Declared HERE, not only in the migration, per the deploy-push durability rule.
+  userExperienceId: varchar("user_experience_id").references(() => userExperiences.id, { onDelete: "set null" }),
+
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
@@ -4527,6 +4547,11 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Migration 217 — per-trip loads/deletes + routing predicates. Leading trip_id also serves
   // bare trip_id lookups (leftmost prefix), so no separate single-column index is needed.
   itineraryItemsTripRoutingIdx: index("idx_itinerary_items_trip_id_routing_status").on(table.tripId, table.routingStatus),
+  // Migration 277 — "give me this event's items" (the slip's per-event grouping read) and the
+  // ON DELETE SET NULL fan-out when an event row is removed. Declared here for the SAME reason as
+  // the two above: the publish-time drizzle push DROPS an index this file does not declare, and
+  // the stamped migration never recreates it.
+  itineraryItemsUserExperienceIdx: index("idx_itinerary_items_user_experience_id").on(table.userExperienceId),
 }));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
@@ -4845,7 +4870,13 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // them in an allowlist makes the acceptance deliberate and keeps the generic body parse from
 // being the thing that grants it. Nothing about the schema's overall denylist shape changes
 // here — the layer-wide conversion is still #PS18 (scripts/check-omit-schema-ratchet.cjs).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true });
+// Ledger 2026-09-03-item-event-link (CLAUDE.md entry 29): migration 277's `userExperienceId` is
+// OMITTED here for the SAME reason as the three migration-275 columns immediately above and
+// re-admitted only through its own pick-based allowlist below. Under a denylist schema a freshly
+// added column is client-settable BY DEFAULT — and this one names a row in ANOTHER table, so a
+// generic body parse would let a client staple an item to an event on a trip they do not own. The
+// allowlist makes the acceptance deliberate; the server then VERIFIES the trip↔event pairing (§14).
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -4870,6 +4901,28 @@ export const itineraryItemBookingInputsSchema = createInsertSchema(itineraryItem
     checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "checkIn must be YYYY-MM-DD").nullish(),
     checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "checkOut must be YYYY-MM-DD").nullish(),
   });
+/**
+ * ALLOWLIST (§19 / #PS18 shape, migration 277) — the ONLY way a request body may reach
+ * `itinerary_items.user_experience_id`, the item→EVENT link. Pick-based on purpose: a future
+ * privileged column added to `itinerary_items` is unreachable through this schema until someone
+ * deliberately names it.
+ *
+ * NULLABLE ON PURPOSE, and the two absent states are DIFFERENT and must stay so:
+ *   · the key is ABSENT   ⇒ the caller is not talking about the event link; leave it alone.
+ *   · the key is `null`   ⇒ move this item back to the plan's ONE implicit unnamed event.
+ * That is why the route reads `"userExperienceId" in body`, and why this is `.nullish()` rather
+ * than `.optional()`.
+ *
+ * ACCEPTING THE ID IS NOT TRUSTING IT. This schema proves only the SHAPE. The pairing — that the
+ * `user_experiences` row exists AND its `tripId` is the route's `tripId` — is resolved against the
+ * DB by `resolveItemEventLink` (server/services/item-event-link.service.ts) on every write rail,
+ * because a client-supplied foreign key naming a row in another trip is exactly the §14 class.
+ */
+export const itineraryItemEventLinkSchema = createInsertSchema(itineraryItems)
+  .pick({ userExperienceId: true })
+  .partial()
+  .extend({ userExperienceId: z.string().min(1).nullish() });
+
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 

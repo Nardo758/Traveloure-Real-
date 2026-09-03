@@ -209,6 +209,47 @@ This document captures architectural decisions to maintain consistency across co
     (`travel`/`event`/`couple`) survives ONLY as presentation vocabulary and must not be promoted back into a flow
     switch.
 
+29. **An item belongs to an EVENT, and the event is a `user_experiences` row (decision-maker ratified
+    Sep 3, 2026 — ledger `2026-09-03-item-event-link`; migration 277).** A plan is ONE `trips` row;
+    an event inside that plan is ONE `user_experiences` row already bound to it by the existing
+    nullable `user_experiences.trip_id` (no uniqueness — many events per trip). **No new event
+    table** and no new artifact type: invites already hang off an event
+    (`event_invites.experience_id`), a temporal anchor already can (`temporal_anchors.user_experience_id`),
+    and the slip already mints one row per trip on "set up guest list"
+    (`SlipLogisticsSection` → `POST /api/user-experiences`). The one thing missing was the link the
+    other direction, which this adds: **`itinerary_items.user_experience_id`** — additive, NULLABLE,
+    **NO DB CHECK** (migration-181/195/275 posture; a CHECK here is exactly the publish-time
+    drizzle-push failure the Coordination Prevention rules warn about), FK
+    `REFERENCES user_experiences(id) ON DELETE SET NULL`, plus
+    `idx_itinerary_items_user_experience_id`. **Column AND index are declared in `shared/schema.ts`**
+    — the deploy-push durability rule: an object `schema.ts` does not declare is dropped at publish
+    and never recreated, because the migration is already stamped.
+    **ON DELETE SET NULL is the ruling, not an implementation detail:** deleting an event must never
+    delete the items planned under it. Every plan has ONE implicit unnamed event, so `NULL` is that
+    event and items always resolve — a de-linked item falls back to the plan's implicit event, it is
+    never orphaned and never silently destroyed (§13).
+    **ADMISSION IS A §19 ALLOWLIST.** `insertItineraryItemSchema` **`.omit()`s** `userExperienceId`
+    so the generic body parse cannot grant it, and a pick-based `itineraryItemEventLinkSchema`
+    re-admits exactly that one field (nullable — an explicit `null` is how a traveler moves an item
+    back to the implicit event). This is the §19 posture applied to a NEW column rather than
+    retro-fitted to an old one: under a denylist schema a freshly-added column is client-settable BY
+    DEFAULT.
+    **THE PAIRING IS SERVER-VERIFIED, NEVER CLIENT-TRUSTED (§14 posture).** On both live write rails
+    — `POST /api/trips/:tripId/itinerary-items` (the `server/routes.ts` monolith copy, which
+    registers first and SHADOWS the `trips.routes.ts` twin) and
+    `PATCH /api/trips/:tripId/itinerary-items/:itemId` (`trips.routes.ts`, the serving copy) — a
+    non-null `userExperienceId` is resolved against the DB and REFUSED with a 400 unless the
+    `user_experiences` row exists AND its `trip_id` equals the route's `tripId`. ONE implementation
+    (`server/services/item-event-link.service.ts`), two callers — a second copy of the same
+    admission decision is the derivation-drift class §18 rule 1 names. Writes gate on the same §12
+    advisor WRITE statuses as every other item mutation. The shadowed POST twin is ANNOTATED, not
+    duplicated (the migration-275 precedent).
+    **READ EXPOSURE ONLY, no grouping UI in this lane:** `GET /api/trips/:tripId/itinerary-items`
+    carries the column on each row, the plancard activity DTO carries it present-only-when-set, and
+    the plancard payload gains an `events` array (the trip's `user_experiences` rows) behind the
+    same owner/advisor/author gate the plancard already has. Grouping the slip by event is a
+    separate lane.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

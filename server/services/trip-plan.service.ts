@@ -824,6 +824,16 @@ export async function assembleTripPlan(
       // pass-through; nothing here writes routing_status (contract §2).
       routingStatus: item.routingStatus,
 
+      // Migration 277 (ledger 2026-09-03-item-event-link): the EVENT this item is scheduled
+      // under. PRESENT ONLY when the row really carries a link, so an unlinked item — every item
+      // on a single-event plan — serializes exactly as it did before this field existed (§13,
+      // and the same present-only-when-real posture as `booking` directly above). An absent key
+      // means the plan's ONE implicit unnamed event, never "unknown". READ-ONLY pass-through:
+      // nothing here writes the column (the two verified write rails are its sole authors).
+      ...((item as any).userExperienceId
+        ? { userExperienceId: (item as any).userExperienceId as string }
+        : {}),
+
       // Item 2 Phase 2: the affiliate agent-booking CTA — PRESENT ONLY when the item was grounded
       // to an affiliate_bookable product and a token was minted above (§16/§13, present-only-when-
       // real like `booking`, so every non-affiliate item is byte-identical to before).

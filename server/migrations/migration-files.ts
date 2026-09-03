@@ -1394,4 +1394,12 @@ export const MIGRATION_FILES = [
   // means "not decided", which readers render as the plain-trip shape and say so (§13). All six
   // declared in shared/schema.ts so the deploy push cannot drop them.
   "276_experience_type_switches.sql",
+  // Ledger 2026-09-03-item-event-link (CLAUDE.md entry 29): `itinerary_items.user_experience_id` —
+  // the item→EVENT link. A plan is one `trips` row; an event inside it is one `user_experiences`
+  // row already bound by the pre-existing nullable `user_experiences.trip_id`, so no new event
+  // table is created. Additive nullable, NO CHECK, FK ON DELETE SET NULL (deleting an event must
+  // never delete the items under it — they fall back to the plan's ONE implicit event, which is
+  // what NULL means here), plus idx_itinerary_items_user_experience_id. Column AND index declared
+  // in shared/schema.ts for publish durability.
+  "277_itinerary_item_event_link.sql",
 ] as const;

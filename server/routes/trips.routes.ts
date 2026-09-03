@@ -15,6 +15,9 @@ import { db } from "../db";
 // inline routes.ts copy wins the path). It is re-pointed anyway so no live-or-dead file retains a
 // direct cart write. Passthrough; behavior identical.
 import * as cartProjection from "../services/cart-projection.service";
+// The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
+// POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
+import { resolveItemEventLink } from "../services/item-event-link.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
@@ -106,6 +109,7 @@ import {
   insertVendorContractSchema, 
   insertTripTransactionSchema,
   insertItineraryItemSchema,
+  itineraryItemEventLinkSchema,
   insertTripEmergencyContactSchema,
   insertTripAlertSchema,
   insertProviderAvailabilityScheduleSchema,
@@ -1369,6 +1373,12 @@ router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, asyn
 // duplicated here: a second implementation of the same admission decision is the derivation-drift
 // class §18 rule 1 names. If this copy is ever promoted to live, port the allowlist parse with it —
 // without it a repointed marketplace add silently loses the traveler's slot and stay dates.
+//
+// SAME NOTE, SECOND LANE (ledger 2026-09-03-item-event-link, migration 277): the live copy also
+// carries the item→EVENT allowlist (`itineraryItemEventLinkSchema`) and the server-side
+// trip↔event pairing check (`resolveItemEventLink`). Also deliberately NOT duplicated here. If
+// this copy is ever promoted to live, port BOTH — without the pairing check a client could staple
+// an item to an event on a trip it does not belong to (§14).
 router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -3144,7 +3154,33 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // traveler-facing `trips.expertTravelerNote` (PATCH /api/trips/:tripId/expert-traveler-note,
       // below). This write path already carried it — the §21 audit's "Workstation write path" gap
       // was the client never sending the field, not a missing server allow-list entry.
-      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, origin: _origin, ...safeBody } = req.body as any;
+      const {
+        id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt,
+        suggestedBy: _sb, origin: _origin,
+        // Ledger 2026-09-03-item-event-link (migration 277): the item→EVENT link is stripped out
+        // of the raw destructure and re-admitted BELOW through its pick-based allowlist, because
+        // this route parses no insert schema at all — a raw `...safeBody` would carry a
+        // client-chosen foreign key straight into the write, naming a row in another table (and
+        // possibly on another trip). This destructure is layer 1; the resolver is the §14 layer.
+        userExperienceId: _uxid,
+        ...safeBody
+      } = req.body as any;
+      const eventLink = itineraryItemEventLinkSchema.safeParse(req.body);
+      if (!eventLink.success) {
+        return res.status(400).json({ message: "Invalid event link", errors: eventLink.error.errors });
+      }
+      // ONE implementation, two callers (the other is the live POST in server/routes.ts): the
+      // event must EXIST and its `tripId` must be the route's `tripId`. A cross-trip or unknown id
+      // is a 400 and NOTHING is written — the item keeps whatever link it already had.
+      const resolvedEvent = await resolveItemEventLink(
+        tripId,
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "userExperienceId"),
+        eventLink.data.userExperienceId,
+      );
+      if (!resolvedEvent.ok) return res.status(400).json({ message: resolvedEvent.message });
+      // ABSENT ≠ NULL: `ignore` leaves the existing link untouched, `set` writes it (including an
+      // explicit null, which moves the item back to the plan's implicit event).
+      if (resolvedEvent.action === "set") (safeBody as any).userExperienceId = resolvedEvent.value;
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);

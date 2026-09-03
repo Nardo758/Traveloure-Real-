@@ -85,3 +85,33 @@ export function addLabel(hasTarget: boolean): string {
 export function addedTitle(hasTarget: boolean): string {
   return hasTarget ? ADDED_TO_PLAN_TITLE : ADDED_TO_CART_TITLE;
 }
+
+/**
+ * TRAVELERS, DE-MASKED (ledger `2026-09-03-item-event-link`; the fix restores migration 241's
+ * intent on the edit panel).
+ *
+ * THE DEFECT THIS CLOSES. `EditTripPanel` seeded its travelers input with a literal `2` and wrote
+ * `travelers` on EVERY save. Migration 241 de-masked party size precisely so an uncaptured count
+ * stays NULL — an honest "not captured" the demand rollup can tell apart from a real answer (§13,
+ * and the same posture `insertTripSchema`'s de-masking comment states). The panel silently put the
+ * mask back one layer up: a traveler who opened the panel to fix a typo in the title left with a
+ * fabricated party of two, and nothing downstream could tell it from a stated one.
+ *
+ * THE RULE: untouched ⇒ NOT SET. An empty input is not a party of one, not a party of two, and not
+ * a zero — it is an unanswered question, and `undefined` is how this codebase says that. The panel
+ * writes through `switchTripContext`, whose SWITCH_FIELDS have REPLACE semantics, so an omitted
+ * `travelers` clears the field rather than re-asserting a guess.
+ *
+ * @param raw the raw input value (`""` while empty, a numeric string once typed, or a number when
+ *            seeded from an existing context).
+ * @returns a positive integer when the traveler really stated one; `undefined` for every form of
+ *          "they did not" — empty, whitespace, non-numeric, zero or negative.
+ */
+export function travelersForSave(raw: string | number | undefined | null): number | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "string" && raw.trim() === "") return undefined;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  const rounded = Math.floor(n);
+  return rounded > 0 ? rounded : undefined;
+}
