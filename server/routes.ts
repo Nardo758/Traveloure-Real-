@@ -206,6 +206,7 @@ import {
   insertVendorContractSchema, 
   insertTripTransactionSchema,
   insertItineraryItemSchema,
+  itineraryItemBookingInputsSchema,
   insertTripEmergencyContactSchema,
   insertTripAlertSchema,
   insertProviderAvailabilityScheduleSchema,
@@ -10973,6 +10974,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // an item can only be stamped 'expert' by a caller who actually has write access.
       delete itemData.origin;
       itemData.origin = isAdvisor ? "expert" : "traveler";
+      // Ledger 2026-09-03-slip-convergence — the ONE door for the migration-275 booking inputs.
+      // `insertItineraryItemSchema` OMITS slotId/checkIn/checkOut precisely so the generic body
+      // parse above cannot grant them; they are re-admitted here through a pick-based ALLOWLIST
+      // (§19/#PS18 shape), which is what makes the acceptance deliberate for a column that did
+      // not exist when that omit list was written. Nothing privileged rides this schema: it picks
+      // exactly three traveler booking inputs — a slot INTENT (the capacity claim is still the
+      // atomic `storage.bookSlot` at checkout, §15) and a stay's night range (the CHARGE is still
+      // derived server-side from `vendor_availability_slots.pricing`, §14). A malformed range is
+      // a visible 400, never a silently dropped date.
+      const bookingInputs = itineraryItemBookingInputsSchema.safeParse(req.body);
+      if (!bookingInputs.success) {
+        return res.status(400).json({ message: "Invalid booking inputs", errors: bookingInputs.error.errors });
+      }
+      for (const [key, value] of Object.entries(bookingInputs.data)) {
+        if (value !== undefined) itemData[key] = value;
+      }
       const item = await storage.createItineraryItem(itemData);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
 

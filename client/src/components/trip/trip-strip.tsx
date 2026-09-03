@@ -98,6 +98,16 @@ export function TripStrip() {
   // vocabulary shows the invite's event framing. Graceful fallback: no event
   // title carried → the generic strip, never a fabricated placeholder (§13).
   const inviteAware = ctx.origin === "guest_invite" && vocab === "event" && !!ctx.title;
+  // Ledger 2026-09-03-slip-convergence. At >=sm the coral eyebrow above already reads
+  // "Your Trip" (one of the three ratified coral touches, ruling 2026-08-28-chrome-alignment —
+  // it stays), and the TRAVEL-class lead is the literal "Your trip", so the strip printed the
+  // same two words twice, side by side. Suppress the redundant lead TEXT at exactly the
+  // breakpoint where the eyebrow appears (`hidden sm:inline` there => `sm:hidden` here); mobile,
+  // where the eyebrow is hidden, still shows the lead, and the pin icon and destination chip are
+  // untouched at every width. ONLY the travel class duplicates: the event/couple leads are
+  // composed ("Your Kyoto wedding") and the invite-aware lead carries the event's own title, so
+  // neither is touched.
+  const leadDuplicatesEyebrow = !inviteAware && vocab === "travel";
   const lead = inviteAware
     ? `You're planning for ${ctx.title}`
     : vocab === "travel"
@@ -152,7 +162,12 @@ export function TripStrip() {
             <MapPin className="w-3.5 h-3.5 text-[color:var(--earn-muted)]" />
           )}
           {/* no `capitalize` on the invite lead — the event title keeps its own casing */}
-          <span className={inviteAware ? undefined : "capitalize"}>{lead}</span>
+          <span
+            className={`${inviteAware ? "" : "capitalize"}${leadDuplicatesEyebrow ? " sm:hidden" : ""}`.trim() || undefined}
+            data-testid="trip-strip-lead-text"
+          >
+            {lead}
+          </span>
         </span>
 
         {destination && vocab === "travel" && (

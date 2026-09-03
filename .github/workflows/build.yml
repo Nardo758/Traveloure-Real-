@@ -259,6 +259,12 @@ jobs:
       # handoff forward. A second copy of that order is how the two surfaces drifted apart.
       - name: Trip-target resolver pin
         run: npx tsx --test client/src/lib/__tests__/trip-target.test.ts
+      # 2026-09-03-slip-convergence: the strip's coral eyebrow already says "Your Trip" at >=sm,
+      # so the travel-class lead ("Your trip") printed the same words twice. The pin asserts the
+      # eyebrow SURVIVES (it is a ratified coral touch), the lead is suppressed only at that
+      # breakpoint, and the composed event/couple/invite leads are untouched.
+      - name: Trip-strip lead-duplication pin
+        run: npx tsx --test client/src/components/__tests__/trip-strip-lead.test.tsx
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
