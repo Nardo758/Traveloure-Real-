@@ -50,7 +50,6 @@ async function assertDisposableDb(): Promise<void> {
 const tag = `srch-${crypto.randomUUID().slice(0, 8)}`;
 const mainLoc = `TestLoc-${tag}`;        // location shared by main fixture services
 const suggLoc = `SuggLoc-${tag}`;       // location used ONLY by the suggestion fixture
-const pkgDest = `TestDest-${tag}`;      // destination for expert_templates packages
 
 const { pool } = await import("../db");
 const { storage } = await import("../storage");
@@ -70,8 +69,6 @@ let svcMid: string;          // price 80, rating 4.2
 let svcPricey: string;       // price 500, rating 5.0
 // suggestion fixture (different location — not returned by location-filtered searches)
 let svcSuggestion: string;   // "Zephyr Lagoon Voyage"
-// packages
-const pkgIds: string[] = [];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -89,16 +86,6 @@ async function insertService(
         status, approval_status, delivery_method)
      VALUES ($1,$2,$3,$4,$5,$6,$7,'active','approved','pdf')`,
     [id, userId, name, description, location, price, rating],
-  );
-}
-
-async function insertPackage(id: string, title: string, destination: string): Promise<void> {
-  await pool.query(
-    `INSERT INTO expert_templates
-       (id, expert_id, title, description, destination, duration, price,
-        is_published, approval_status)
-     VALUES ($1,$2,$3,$4,$5,3,'99.00',true,'approved')`,
-    [id, userId, title, `Description for ${title}`, destination],
   );
 }
 
@@ -196,22 +183,10 @@ before(async () => {
     [svcExpertRole, expertUserId, "Expert Guided Heritage Stroll", "Private guided walk.", mainLoc, 15, 3.0],
   );
 
-  // ── 7 packages (limit in runPkgSearch is 6 — packagesTotal must report 7)
-  for (let i = 1; i <= 7; i++) {
-    const id = crypto.randomUUID();
-    pkgIds.push(id);
-    await insertPackage(id, `Bali Adventure Package ${i}`, pkgDest);
-  }
 });
 
 after(async () => {
   // Delete in reverse FK order
-  if (pkgIds.length) {
-    await pool.query(
-      `DELETE FROM expert_templates WHERE id = ANY($1::varchar[])`,
-      [pkgIds],
-    );
-  }
   await pool.query(
     `DELETE FROM provider_services WHERE user_id = ANY($1::varchar[])`,
     [[userId, expertUserId]],
@@ -393,23 +368,6 @@ describe("unifiedSearch – seller role for source-link resolution (2026-08-25-c
   });
 });
 
-describe("unifiedSearch – packagesTotal is the pre-LIMIT count", () => {
-  it("packagesTotal reflects all matching packages, not the 6-package page cap", async () => {
-    // 7 packages were inserted for pkgDest.  runPkgSearch caps the page at LIMIT 6,
-    // but packagesTotal must be the COUNT(*) before the cap (7), not packages.length (6).
-    const result = await storage.unifiedSearch({ location: pkgDest });
-
-    assert.ok(
-      result.packagesTotal >= 7,
-      `packagesTotal must be ≥ 7 (all inserted packages), got ${result.packagesTotal}`,
-    );
-    assert.ok(
-      result.packages.length <= 6,
-      `packages page must be capped at 6, got ${result.packages.length}`,
-    );
-    assert.ok(
-      result.packagesTotal > result.packages.length,
-      "packagesTotal must exceed the page length, proving it is the pre-LIMIT count",
-    );
-  });
-});
+// The `packagesTotal` / `packages` half of unifiedSearch RETIRED with the expert-template
+// lane (ledger 2026-09-03-expert-templates-consumer-sunset) — search no longer returns a
+// result a reader cannot open, so its pre-LIMIT-count proof retires with it.

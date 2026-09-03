@@ -493,7 +493,7 @@ Five incidents, two of which reached production, justify this rule.
 
 **What This Means:**
 - All **service** creation (expert custom, provider, and the `service_templates` seed catalog) writes to `provider_services`.
-  **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — sunset decision archived in `docs/findings/CLAUDE_MD_ARCHIVE.md` (§10 block; canonical in `docs/DECISIONS.md`).
+  **Do not conflate with expert *itinerary* templates:** those were a separate product living in the `expert_templates` table (marketplace), **not** `provider_services`. That lane is **FULLY RETIRED** — seller side Jul 27 2026 (`docs/findings/CLAUDE_MD_ARCHIVE.md` §10), consumer side ledger `2026-09-03-expert-templates-consumer-sunset` (gate = PROD purchase counts; decision-maker confirmed zero purchases ever). **No surface, feed, purchase path or admin queue remains**; the `expert_templates` / `template_purchases` / `template_reviews` tables and their storage accessors are KEPT as historical rows (no migration). **`ready_made_trips` is the single store lane.** Note `/admin/expert-templates` and `/api/admin/expert-templates*` are a NAME COLLISION — they read `expert_service_offerings`, not this lane.
 - The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
   **F2-CLOSED (migration 111):** offerings are now born `submitted` — `provider_services.approval_status` defaults `"submitted"`
   at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). Approval-lifecycle history (§1/D1a) archived in `docs/findings/CLAUDE_MD_ARCHIVE.md`.
@@ -538,7 +538,7 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   (migration 013); do not re-add it. The former `/api/expert/custom-services` and `/api/admin/custom-services` **routes**
   operated on `provider_services` (via the mapper) and were **renamed** to `/api/expert/service-listings` and
   `/api/admin/provider-services` (the misnomer fix, Jul 14 2026) — the `custom-services` vocabulary is retired in code
-- Service schema (`provider_services`; `expert_service_offerings` = read-only catalog; `expert_templates` = marketplace)
+- Service schema (`provider_services`; `expert_service_offerings` = read-only catalog; `expert_templates` = the RETIRED marketplace — historical rows only, ledger `2026-09-03-expert-templates-consumer-sunset`; `ready_made_trips` = the store lane)
 - The two offering catalogs (`expert_offering_types` / `service_offering_types`) — never merge them (see §4)
 - Approval workflows (status enums, submission logic)
 - Fee/commission config (`fee_bands`) — no rate literals in code (see §8)

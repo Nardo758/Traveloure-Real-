@@ -8,8 +8,9 @@
  * listing (creates the authoring trip + draft listing and opens the workspace builder) and track
  * each listing's approval state on its way to the shelf.
  *
- * `expert_templates` (/expert/templates) is the older store-itinerary console being folded into
- * this one factory — its existing stock keeps selling until the migration decision lands.
+ * `expert_templates` was the older store-itinerary lane. It is now fully RETIRED — seller side
+ * Jul 27 2026, consumer side ledger 2026-09-03-expert-templates-consumer-sunset — so
+ * `ready_made_trips` is the single store lane and this is its only console.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";

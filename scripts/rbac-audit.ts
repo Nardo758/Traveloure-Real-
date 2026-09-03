@@ -141,7 +141,6 @@ async function runTests(sessions: Record<Role, Session | null>): Promise<TestRes
     "/api/expert/dashboard",
     "/api/expert/earnings",
     "/api/expert/services",
-    "/api/expert/templates",
     "/api/expert/revenue-optimization",
     "/api/expert/referrals",
     "/api/expert/tips",
@@ -208,23 +207,25 @@ async function runTests(sessions: Record<Role, Session | null>): Promise<TestRes
 
   // ── E: Privilege escalation — traveler tries to POST as expert/admin ──────
 
-  // Traveler tries to write to expert-only endpoints
-  const escalationPost = await probe("POST", "/api/expert/templates", sess("traveler"), {
-    name: "INJECTED_TEMPLATE",
+  // Traveler tries to write to expert-only endpoints.
+  // (Was POST /api/expert/templates until that lane retired — ledger
+  // 2026-09-03-expert-templates-consumer-sunset. Same EXPERT_SELF_SERVICE_PREFIXES backstop.)
+  const escalationPost = await probe("POST", "/api/expert/knowledge-nuggets", sess("traveler"), {
+    title: "INJECTED_NUGGET",
     description: "Escalation test",
   });
-  results.push(result("traveler", "POST /api/expert/templates (escalation)", escalationPost.status, [403, 401]));
+  results.push(result("traveler", "POST /api/expert/knowledge-nuggets (escalation)", escalationPost.status, [403, 401]));
 
   // Traveler tries to approve a service (admin-only action)
   const approvePost = await probe("PATCH", "/api/admin/service-approvals/fake-id", sess("traveler"), { status: "approved" });
   results.push(result("traveler", "PATCH /api/admin/service-approvals/fake-id (escalation)", approvePost.status, [403, 401]));
 
   // Provider tries expert endpoint
-  const providerEscalation = await probe("POST", "/api/expert/templates", sess("provider"), {
-    name: "PROVIDER_ESCALATION",
+  const providerEscalation = await probe("POST", "/api/expert/knowledge-nuggets", sess("provider"), {
+    title: "PROVIDER_ESCALATION",
     description: "Escalation test",
   });
-  results.push(result("provider", "POST /api/expert/templates (escalation)", providerEscalation.status, [403, 401]));
+  results.push(result("provider", "POST /api/expert/knowledge-nuggets (escalation)", providerEscalation.status, [403, 401]));
 
   // Expert tries admin endpoint (write)
   const expertEscalation = await probe("POST", "/api/admin/neighborhoods/backfill", sess("expert"), {});

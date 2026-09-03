@@ -397,9 +397,11 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   await page.route('**/api/offering-types/experts', (route) => route.fulfill(json(BENTO_FIX.offeringTypes)));
   // Experts for the market (the lead-expert source).
   await page.route('**/api/experts?location=**', (route) => route.fulfill(json(BENTO_FIX.experts)));
-  // Ready-made trips (retag source for the expert_package candidate).
-  await page.route('**/api/expert-templates**', (route) => route.fulfill(json(BENTO_FIX.packages)));
-  // Engine slate (POST): one platform rec (stays a rec tile) + one expert_package (retags to a ready-made).
+  // The ready-made tile source (GET /api/expert-templates) and its expert_package candidate
+  // RETIRED with that lane — ledger 2026-09-03-expert-templates-consumer-sunset. The city feed
+  // has no ready-made source until the surviving `ready_made_trips` lane is wired into it, so
+  // this suite's package-tile proofs retire with their subject.
+  // Engine slate (POST): an affiliate rec and a platform rec, both rendering as rec tiles.
   await page.route('**/api/upsell/discover-location', (route) =>
     route.fulfill(json({ candidates: BENTO_FIX.candidates, suppressed: [] })),
   );
@@ -448,7 +450,7 @@ test.describe('city-feed bento — /discover/location', () => {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
       // Gion has an eligible local anchor; Arashiyama deliberately has no
-      // eligible expert and starts with its ready-made 2×1 tile.
+      // eligible expert, so it renders anchorless.
       const expectedAnchors = slug === 'gion' ? 1 : 0;
       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
       // §3.2 may pull one ready-made to the leading slot in an anchorless
@@ -463,91 +465,14 @@ test.describe('city-feed bento — /discover/location', () => {
     }
   });
 
-  test('2. packer keeps a ready-made 2×1 beside a lead expert — the Gion layout (Phase 2f)', async ({ page }) => {
-    // Gion carries BOTH a lead local expert (its anchor) AND a ready-made
-    // (tmpl-2, @yuki-flowers). The expert anchors the section (col-span-2,
-    // row-span-2); the ready-made stays a col-span-2 tile (row-span-1) — the
-    // packer never DEMOTES a ready-made to 1×1, even when it is not the anchor.
-    // Until Phase 2f the package span was only ever exercised as Arashiyama's
-    // fallback anchor; this proves the beside-a-lead-expert path.
-    const gionAnchor = page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]');
-    await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
-    await expect(gionAnchor).toHaveAttribute('data-col-span', '2');
-    await expect(gionAnchor).toHaveAttribute('data-row-span', '2');
-
-    // The Gion ready-made tile: a NON-anchor col-span-2, row-span-1 package.
-    const pkgTile = page.locator(
-      '[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-2"])',
-    );
-    await expect(pkgTile).toHaveCount(1);
-    await expect(pkgTile).toHaveAttribute('data-bento-role', 'tile');
-    await expect(pkgTile).toHaveAttribute('data-col-span', '2');
-    await expect(pkgTile).toHaveAttribute('data-row-span', '1');
-  });
-
-  test('3. anchor rule — expert anchors its section; no eligible expert leaves the ready-made as a leading tile', async ({ page }) => {
-    // Gion HAS a lead local expert → the anchor tile is the dark-gradient ExpertCard.
-    const gionAnchor = page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]');
-    await expect(gionAnchor.locator('[data-testid^="card-expert-"]')).toHaveCount(1);
-    await expect(gionAnchor.locator('[data-expert-variant="anchor"]')).toHaveCount(1);
-
-    // Arashiyama has NO eligible expert → there is no anchor; the appended
-    // city-wide ready-made is pulled to the leading 2×1 slot as a normal tile.
-    const ara = page.getByTestId('bento-section-arashiyama');
-    await expect(ara.locator('[data-bento-role="anchor"]')).toHaveCount(0);
-    const araLead = ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])');
-    await expect(araLead).toHaveAttribute('data-bento-role', 'tile');
-    await expect(araLead).toHaveAttribute('data-col-span', '2');
-    await expect(araLead).toHaveAttribute('data-row-span', '1');
-  });
-
-  test('3a. §2 case (d) — event planner only is never an anchor; ready-made leads 2×1', async ({ page }) => {
-    // This is the explicit §10 fixture case (d): the only expert is an event
-    // planner, so it must render as a normal expert tile. The existing Gion
-    // ready-made becomes the leading 2×1 tile with zero bento anchors.
-    await page.route('**/api/experts?location=**', (route) =>
-      route.fulfill({ json: [{
-        id: 'exp-event-only',
-        role: 'event_planner',
-        firstName: 'Rhea',
-        lastName: 'Desai',
-        bio: 'Event planner for Kyoto celebrations.',
-        specialties: ['Events'],
-        packagesCount: 0,
-        averageRating: 4.8,
-        reviewCount: 8,
-        selectedServices: [],
-      }] }),
-    );
-    await page.reload();
-    await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
-    const gion = page.getByTestId('bento-section-gion');
-    await expect(gion.locator('[data-bento-role="anchor"]')).toHaveCount(0);
-    const readyMadeLead = gion.locator(
-      '[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-2"])',
-    );
-    await expect(readyMadeLead).toHaveAttribute('data-bento-role', 'tile');
-    await expect(readyMadeLead).toHaveAttribute('data-col-span', '2');
-    await expect(readyMadeLead).toHaveAttribute('data-row-span', '1');
-    await expect(
-      gion.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-expert-exp-event-only"])'),
-    ).toHaveAttribute('data-bento-role', 'tile');
-  });
-
-  test('3b. one city-wide ready-made fills only the first package-less neighbourhood as a 2×1 tile', async ({ page }) => {
-    const ara = page.locator('[data-testid="bento-section-arashiyama"]');
-    await expect(ara.getByTestId('feed-card-package-tmpl-1')).toHaveCount(1);
-    await expect(ara.getByTestId('package-city-wide-tmpl-1')).toHaveText('Kyoto-wide');
-    await expect(ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'))
-      .toHaveAttribute('data-col-span', '2');
-    await expect(ara.locator('[data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'))
-      .toHaveAttribute('data-row-span', '1');
-    // This is a single-fill rule, not a per-section fill: the sole city-wide
-    // listing lands in the first package-less section and is never duplicated.
-    await expect(page.locator('[data-testid="feed-card-package-tmpl-1"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="bento-section-gion"] [data-testid="package-city-wide-tmpl-1"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="bento-section-nishiki"] [data-testid="package-city-wide-tmpl-1"]')).toHaveCount(0);
-  });
+  // Tests 2, 3, 3a and 3b RETIRED with their subject (ledger
+  // 2026-09-03-expert-templates-consumer-sunset). Each proved a packer rule ABOUT the
+  // ready-made 2×1 tile — that it survives beside a tall expert anchor, that it leads an
+  // anchorless section, and that the one city-wide fill lands in exactly one package-less
+  // neighbourhood. Those tiles came from `expert_templates`, which no longer has a feed, a
+  // detail page or a purchase path; there is no honest fixture for them until the surviving
+  // `ready_made_trips` lane is wired into the city feed. Restore them with that change — the
+  // packer code itself (client/src/lib/bento-anchor.ts, feed-composition.ts) is untouched here.
 
   test('4. partner tile has no storefront link (only a partner label)', async ({ page }) => {
     const partner = page.getByTestId('external-stub-stub-1');
@@ -576,14 +501,14 @@ test.describe('city-feed bento — /discover/location', () => {
         if (rowSpan === 2) expect(role).toBe('anchor');
       }
     }
-    // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead);
-    // Arashiyama has no anchor; its leading ready-made stays 2×1.
+    // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead).
+    // Arashiyama has no anchor at all (the ready-made lead retired with its lane).
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
     ).toHaveAttribute('data-row-span', '2');
     await expect(
-      page.locator('[data-testid="bento-section-arashiyama"] [data-testid^="bento-tile-"]:has([data-testid="feed-card-package-tmpl-1"])'),
-    ).toHaveAttribute('data-row-span', '1');
+      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveCount(0);
   });
 
   test('5a. §3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
@@ -624,17 +549,9 @@ test.describe('city-feed bento — /discover/location', () => {
         expect(containment).not.toHaveLength(0);
         expect(containment.filter((entry) => !entry.contained)).toEqual([]);
 
-        const packageShells = await grid.locator('[data-testid^="feed-card-package-"]').evaluateAll((cards) =>
-          cards.map((card) => {
-            const tile = card.parentElement;
-            return {
-              cardBorder: getComputedStyle(card).borderTopWidth,
-              tileBorder: tile ? getComputedStyle(tile).borderTopWidth : "missing",
-            };
-          }),
-        );
-        expect(packageShells).not.toHaveLength(0);
-        expect(packageShells).toEqual(packageShells.map((shell) => ({ cardBorder: "0px", tileBorder: "1px" })));
+        // The embedded-shell proof (card border 0px inside a 1px tile) was asserted on the
+        // ready-made card; it retired with that lane (ledger
+        // 2026-09-03-expert-templates-consumer-sunset).
       }
     }
   });
@@ -656,7 +573,6 @@ test.describe('city-feed bento — /discover/location', () => {
       page.locator('[data-testid="bento-section-gion"] [data-testid="section-recruitment-gion"]'),
     ).toHaveCount(1);
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
-    await expect(page.getByTestId('feed-card-package-tmpl-1')).toBeVisible();
     // Phase 2c: ONE rendering per neighbourhood — the legacy container and its
     // "IN {nb}" list are gone; the neighbourhood's gems are bento tiles now,
     // each carrying the Hidden gem tag.
@@ -743,12 +659,10 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(
       page.locator('[data-bento-role="anchor"] a[href="/experts/exp-gion-1"]'),
     ).not.toHaveCount(0);
-    // Get this trip → routed by SOURCE, never unified (storefront.tsx is the
-    // reference; Phase 2e's "always /ready-made/:id" 404'd template-backed cards).
-    // tmpl-1 is a ready_made_trips-sourced card → /ready-made/:id; tmpl-2 is an
-    // expert_templates-sourced card → /expert-templates/:id. One assertion per source.
-    await expect(page.getByTestId('btn-view-package-tmpl-1')).toHaveAttribute('href', '/ready-made/tmpl-1');
-    await expect(page.getByTestId('btn-view-package-tmpl-2')).toHaveAttribute('href', '/expert-templates/tmpl-2');
+    // The "Get this trip" route-by-source proof retired with the expert-template lane
+    // (ledger 2026-09-03-expert-templates-consumer-sunset): the card now has ONE
+    // destination, /ready-made/:id, because `ready_made_trips` is the only source that
+    // can reach it. No package tile renders from this fixture any more.
     // Offer this → recruitment deep-link carrying city + neighbourhood + offering.
     const offerHref = await page.getByTestId('link-wanted-apply').first().getAttribute('href');
     expect(offerHref).toContain('/become-expert');
@@ -895,11 +809,8 @@ test.describe('city-feed bento — /discover/location', () => {
     expect(await usesToken(serviceBook, '--earn-teal')).toBe(true);
     expect(await usesToken(serviceBook, '--earn-navy')).toBe(false);
 
-    // Ready-made → teal Get this trip, never navy Add to trip.
-    const readyMadeBook = page.getByTestId('btn-view-package-tmpl-1');
-    await expect(readyMadeBook).toHaveText('Get this trip');
-    expect(await usesToken(readyMadeBook, '--earn-teal')).toBe(true);
-    expect(await usesToken(readyMadeBook, '--earn-navy')).toBe(false);
+    // The ready-made "Get this trip" channel-colour assertion retired with its tile
+    // (ledger 2026-09-03-expert-templates-consumer-sunset).
 
     // Affiliate/partner → gold Book on {Partner}.
     const affiliateBook = page.getByTestId('btn-book-rec-1');

@@ -41,7 +41,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { eq, and, isNull, sql, gte, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks, serviceBookings } from "@shared/schema";
+import { users, providerServices, readyMadeTrips, shortLinks, serviceBookings } from "@shared/schema";
 import { SHARE_FRAMES, SHARE_FRAME_LABEL, UNTAGGED_FRAME_LABEL, type ShareFrame } from "@shared/share-frames";
 // Ledger 90 (FP-5, M1/M2): the ONE money-bearing status predicate every earner surface shares.
 // Both aggregations below summed EVERY booking row regardless of status, so an unauthorized
@@ -55,7 +55,11 @@ const isAuthenticated = (req: any, res: any, next: any) => {
   return res.status(401).json({ message: "Authentication required" });
 };
 
-const TARGET_TYPES = ["storefront", "service", "template", "ready_made"] as const;
+// "template" (expert_templates) RETIRED as a NEW short-link target
+// (ledger 2026-09-03-expert-templates-consumer-sunset) — /expert-templates/:id no longer
+// exists, so a fresh link would be minted onto a dead route. Historical rows that already
+// carry target_type='template' are kept and fall through to /discover at redirect time.
+const TARGET_TYPES = ["storefront", "service", "ready_made"] as const;
 type TargetType = (typeof TARGET_TYPES)[number];
 
 const createSchema = z.object({
@@ -103,16 +107,6 @@ router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
         .limit(1);
       if (!row || row.userId !== userId) {
         return res.status(403).json({ message: "You do not own this service." });
-      }
-    } else if (targetType === "template") {
-      if (!targetId) return res.status(400).json({ message: "targetId is required for this target type." });
-      const [row] = await db
-        .select({ expertId: expertTemplates.expertId })
-        .from(expertTemplates)
-        .where(eq(expertTemplates.id, targetId))
-        .limit(1);
-      if (!row || row.expertId !== userId) {
-        return res.status(403).json({ message: "You do not own this template." });
       }
     } else if (targetType === "ready_made") {
       if (!targetId) return res.status(400).json({ message: "targetId is required for this target type." });
@@ -268,8 +262,10 @@ router.get("/r/:code", async (req, res) => {
       return res.redirect(302, `/s/${owner.handle}${ref}`);
     }
     if (targetType === "service") return res.redirect(302, `/services/${row.targetId}${ref}`);
-    if (targetType === "template") return res.redirect(302, `/expert-templates/${row.targetId}${ref}`);
     if (targetType === "ready_made") return res.redirect(302, `/ready-made/${row.targetId}${ref}`);
+    // A legacy target_type='template' row falls through to /discover — its destination
+    // route retired with the lane (ledger 2026-09-03-expert-templates-consumer-sunset).
+    // Existing rows are kept, never rewritten.
     return res.redirect(302, "/discover");
   } catch (error: any) {
     console.error("[short-links] redirect failed:", error);

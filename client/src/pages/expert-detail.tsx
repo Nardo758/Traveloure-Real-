@@ -62,8 +62,10 @@ const ROLE_LABELS: Record<string, string> = {
   event_planner: "Event planner",
 };
 
-type OfferingKind = "service" | "template" | "ready-made";
-type Category = "All" | "Services" | "Templates" | "Ready-made";
+// The "template" (`expert_templates`) kind retired — ledger
+// 2026-09-03-expert-templates-consumer-sunset.
+type OfferingKind = "service" | "ready-made";
+type Category = "All" | "Services" | "Ready-made";
 
 interface UnifiedOffering {
   kind: OfferingKind;
@@ -100,7 +102,7 @@ function OfferingTile({
           className="m-2.5 inline-block rounded-[5px] px-1.5 py-1 text-[10px] font-extrabold"
           style={{ background: "rgba(255,255,255,.92)", color: "#153b59" }}
         >
-          {offering.kind === "service" ? "Service" : offering.kind === "template" ? "Itinerary template" : "Ready-made trip"}
+          {offering.kind === "service" ? "Service" : "Ready-made trip"}
         </span>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3.5">
@@ -195,20 +197,12 @@ export default function ExpertDetailPage() {
     enabled: !!expertId,
   });
 
-  // This expert's purchasable packages (marketplace Phase B4). Server-gated:
-  // only approved + published templates return, content-redacted to a teaser.
-  const { data: packages = [] } = useQuery<any[]>({
-    queryKey: ["/api/expert-templates", { expertId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/expert-templates?expertId=${expertId}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!expertId,
-  });
+  // The "Itinerary templates" lane (`expert_templates`) RETIRED — ledger
+  // 2026-09-03-expert-templates-consumer-sunset. This profile's purchasable catalog is
+  // services + Ready-Made Trips.
 
-  // This expert's Ready-Made Trips (lane nav-storefront D2) — the OTHER purchasable
-  // catalog (ready_made_trips, NOT expert_templates; the two are never merged).
+  // This expert's Ready-Made Trips (lane nav-storefront D2) — the purchasable trip
+  // catalog (`ready_made_trips`).
   // Server-gated: GET /api/ready-made?authorId= returns only approved+active listings
   // by this author. Mirrors the storefront's Ready-Made lane; the tab renders only
   // when non-empty (§13 — no empty shelf).
@@ -418,19 +412,6 @@ export default function ExpertDetailPage() {
     cta: "Book now",
     testId: `button-book-service-${s.id}`,
   }));
-  const templateOfferings: UnifiedOffering[] = packages.map((p: any) => ({
-    kind: "template",
-    id: p.id,
-    title: p.title,
-    image: p.coverImage || null,
-    chips: [p.destination, p.duration ? `${p.duration} days` : null].filter(Boolean),
-    description: p.shortDescription,
-    rating: p.averageRating && parseFloat(p.averageRating) > 0 ? parseFloat(p.averageRating) : null,
-    price: `$${p.price}`,
-    cta: "Preview template",
-    href: `/expert-templates/${p.id}`,
-    testId: `expert-package-${p.id}`,
-  }));
   const readyMadeOfferings: UnifiedOffering[] = readyMade.map((r) => ({
     kind: "ready-made",
     id: r.id,
@@ -446,31 +427,28 @@ export default function ExpertDetailPage() {
     href: `/ready-made/${r.id}`,
     testId: `expert-ready-made-${r.id}`,
   }));
-  const allOfferings = [...serviceOfferings, ...templateOfferings, ...readyMadeOfferings];
+  const allOfferings = [...serviceOfferings, ...readyMadeOfferings];
 
   const categories: Category[] = [
     "All",
     "Services",
-    ...(templateOfferings.length > 0 ? (["Templates"] as const) : []),
     ...(readyMadeOfferings.length > 0 ? (["Ready-made"] as const) : []),
   ];
   const visibleOfferings =
     offeringFilter === "All" ? allOfferings
     : offeringFilter === "Services" ? serviceOfferings
-    : offeringFilter === "Templates" ? templateOfferings
     : readyMadeOfferings;
 
   // Summary strip — only real, non-empty facts (§13: no empty tile, no invented count).
   const summaryTiles: Array<{ value: string | number; label: string }> = [];
   if (serviceOfferings.length > 0) summaryTiles.push({ value: serviceOfferings.length, label: serviceOfferings.length === 1 ? "service" : "services" });
-  const tripPlanCount = templateOfferings.length + readyMadeOfferings.length;
+  const tripPlanCount = readyMadeOfferings.length;
   if (tripPlanCount > 0) summaryTiles.push({ value: tripPlanCount, label: tripPlanCount === 1 ? "trip plan" : "trip plans" });
   if (totalReviews > 0) summaryTiles.push({ value: totalReviews, label: "reviews" });
   if (destinations.length > 0) summaryTiles.push({ value: destinations[0], label: destinations.length > 1 ? "+" + (destinations.length - 1) + " more areas" : "area of expertise" });
 
   const offeringKindsPresent = [
     serviceOfferings.length > 0 ? "services" : null,
-    templateOfferings.length > 0 ? "itinerary templates" : null,
     readyMadeOfferings.length > 0 ? "ready-made trips" : null,
   ].filter((v): v is string => Boolean(v));
 
@@ -646,9 +624,9 @@ export default function ExpertDetailPage() {
                     onClick={() => setOfferingFilter(cat)}
                     className="rounded-[6px] px-3 py-1.5 text-[11px] font-bold"
                     style={offeringFilter === cat ? { background: "#fff", color: INK, boxShadow: "0 1px 4px rgba(17,24,39,.12)" } : { color: MUTED }}
-                    data-testid={cat === "Templates" ? "tab-expert-packages" : cat === "Ready-made" ? "tab-expert-ready-made" : undefined}
+                    data-testid={cat === "Ready-made" ? "tab-expert-ready-made" : undefined}
                   >
-                    {cat === "Templates" ? `Itinerary templates (${templateOfferings.length})` : cat === "Ready-made" ? `Ready-made trips (${readyMadeOfferings.length})` : cat}
+                    {cat === "Ready-made" ? `Ready-made trips (${readyMadeOfferings.length})` : cat}
                   </button>
                 ))}
               </div>

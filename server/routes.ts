@@ -16,7 +16,6 @@ import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
-import { redactTemplateContent } from "./utils/template-content-gate";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
 import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
@@ -111,7 +110,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { draftServiceTranslation, isContentLocale, effectiveSourceLocale, CONTENT_LOCALES } from "./services/service-translation.service";
 import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
-import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
+import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService, BudgetValidationError } from "./services/budget.service";
@@ -212,7 +211,6 @@ import {
   insertProviderAvailabilityScheduleSchema,
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
-  templatePurchases,
 } from "@shared/schema";
 import { sanitizeText } from "./utils/text-sanitizer";
 import { sanitizeStringFields } from "./utils/text-sanitizer";
@@ -712,9 +710,7 @@ export async function registerRoutes(
     "/api/expert/selected-services",
     "/api/expert/specializations",
     "/api/expert/service-listings",
-    "/api/expert/templates",
     "/api/expert/earnings",
-    "/api/expert/template-sales",
     "/api/expert/tips",
     "/api/expert/referrals",
     "/api/expert/affiliate-earnings",
@@ -4422,32 +4418,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
 
     // Storefront metrics for expert cards — all REAL aggregates, never fabricated (§13):
-    //   packagesCount / packagesSold : approved+published expert_templates (same §10 gate
-    //     as the public /api/expert-templates feed) — count + SUM(salesCount). salesCount
-    //     is only server-incremented on a completed purchase, so it is honest sales volume.
     //   servicesCount / serviceBookings : approved+active provider_services for this expert
     //     (owner console gate) — count + SUM(bookingsCount), the real booking volume.
-    // Two grouped queries, applied to every role (local_expert / travel_expert /
-    // event_planner) so trip advisors + event planners carry sales numbers too.
+    // Applied to every role (local_expert / travel_expert / event_planner) so trip advisors
+    // + event planners carry booking numbers too.
+    // packagesCount / packagesSold RETIRED (ledger 2026-09-03-expert-templates-consumer-sunset):
+    // they counted approved+published `expert_templates`, a product that no longer has a
+    // detail page, a feed or a purchase path — a count of something a reader cannot reach
+    // is the §13 unbacked-claim class. The store lane's own counts live on `ready_made_trips`.
     try {
       const expertIds = Array.from(new Set(filtered.map((e: any) => String(e.id)).filter(Boolean)));
       if (expertIds.length > 0) {
-        const [templateRows, serviceRows, ratingRows] = await Promise.all([
-          db
-            .select({
-              expertId: expertTemplates.expertId,
-              count: sql<number>`cast(count(*) as int)`,
-              sold: sql<number>`cast(coalesce(sum(${expertTemplates.salesCount}), 0) as int)`,
-            })
-            .from(expertTemplates)
-            .where(
-              and(
-                inArray(expertTemplates.expertId, expertIds),
-                eq(expertTemplates.approvalStatus, "approved"),
-                eq(expertTemplates.isPublished, true),
-              ),
-            )
-            .groupBy(expertTemplates.expertId),
+        const [serviceRows, ratingRows] = await Promise.all([
           db
             .select({
               userId: providerServices.userId,
@@ -4484,17 +4466,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             )
             .groupBy(serviceReviews.providerId),
         ]);
-        const tplMap = new Map(templateRows.map((r) => [r.expertId, r]));
         const svcMap = new Map(serviceRows.map((r) => [r.userId, r]));
         const ratingMap = new Map(ratingRows.map((r) => [r.providerId, r]));
         filtered = filtered.map((e: any) => {
-          const tpl = tplMap.get(String(e.id));
           const svc = svcMap.get(String(e.id));
           const rat = ratingMap.get(String(e.id));
           return {
             ...e,
-            packagesCount: tpl?.count ?? 0,
-            packagesSold: tpl?.sold ?? 0,
             servicesCount: svc?.count ?? 0,
             serviceBookings: svc?.bookings ?? 0,
             // null (not 0) when there are no reviews → the card shows "New", never a fake score.
@@ -5010,581 +4988,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // === Expert Templates (Income Streams) ===
-
-  // Gap 2 field whitelist (marketplace activation, Phase A/A1): the expert create/update
-  // endpoints must write ONLY these expert-editable content fields — never raw req.body.
-  // Deliberately excluded: isPublished / isFeatured (approval- and admin-gated, not
-  // self-settable — see the shared approval queue), expertId (ownership), and every derived
-  // counter (salesCount, viewCount, averageRating, reviewCount) + timestamps. Guarding these
-  // closes the mass-assignment hole where an expert could self-publish or overwrite any column.
-  // (Currency VALUE validation against a supported set lands with A3/price-integrity.)
-  const EXPERT_TEMPLATE_EDITABLE_FIELDS = [
-    "title", "description", "shortDescription", "destination", "duration",
-    "price", "currency", "category", "coverImage", "images", "itineraryData",
-    "tags", "highlights",
-  ] as const;
-  const pickExpertTemplateFields = (body: any): any => {
-    const out: Record<string, any> = {};
-    if (body && typeof body === "object") {
-      for (const k of EXPERT_TEMPLATE_EDITABLE_FIELDS) {
-        if (body[k] !== undefined) out[k] = body[k];
-      }
-    }
-    return out;
-  };
-
-  // Get all published templates (public)
-  // Content-gate (§10 Phase B): shared helper — see server/utils/template-content-gate.ts.
-  // Public template reads return a teaser only; full itineraryData is purchaser/owner/admin-only.
-
-  app.get("/api/expert-templates", async (req, res) => {
-    try {
-      const { category, destination, expertId } = req.query;
-      // PUBLIC marketplace feed — read-gate on approved (D1a / §10 "safety before surfacing").
-      // Only admin-approved AND expert-published templates surface. Matches the purchase gate
-      // (routes.ts purchase: approvalStatus==='approved' && isPublished) so nothing appears in the
-      // feed that couldn't be bought, and no unapproved listing leaks publicly. The expert's own
-      // pipeline is the ungated owner console at GET /api/expert/templates.
-      const templates = await storage.getExpertTemplates({
-        isPublished: true,
-        approvalStatus: "approved",
-        category: category as string | undefined,
-        destination: destination as string | undefined,
-        expertId: expertId as string | undefined,
-      });
-      // Feed never needs the paid content — always redacted.
-      res.json(templates.map(redactTemplateContent));
-    } catch (err) {
-      console.error("Error fetching templates:", err);
-      res.status(500).json({ message: "Failed to fetch templates" });
-    }
-  });
-
-  // Get single template (public - also tracks views)
-  app.get("/api/expert-templates/:id", async (req, res) => {
-    try {
-      const template = await storage.getExpertTemplate(req.params.id);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      // Read-gate (D1a / §10): the PUBLIC detail read only exposes an approved + published
-      // template — the same bar the feed and the purchase gate use — so an unapproved listing's
-      // detail page can't be loaded by a would-be buyer. The OWNER (previewing their own pipeline)
-      // and an ADMIN (reviewing the queue) are exempt. Route is unauthenticated, so req.user is
-      // read opportunistically (session middleware populates it when a cookie is present).
-      const isPublic = template.approvalStatus === "approved" && template.isPublished;
-      const userId = getUserId(req)!;
-      const isOwner = !!userId && template.expertId === userId;
-      let isAdmin = false;
-      if (userId && !isOwner) {
-        const actor = await storage.getUser(userId);
-        isAdmin = actor?.role === "admin";
-      }
-      if (!isPublic && !isOwner && !isAdmin) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      // Increment view count (only for genuinely public views — don't inflate on owner/admin preview)
-      if (isPublic && !isOwner && !isAdmin) {
-        await storage.incrementTemplateView(req.params.id);
-      }
-      // Content-gate: full itineraryData only for purchaser / owner / admin; everyone else
-      // gets the teaser (see redactTemplateContent above).
-      const isPurchaser = !!userId && !isOwner && !isAdmin
-        ? await storage.hasUserPurchasedTemplate(userId, req.params.id)
-        : false;
-      const fullAccess = isOwner || isAdmin || isPurchaser;
-      res.json(fullAccess ? { ...template, hasPurchased: isPurchaser } : redactTemplateContent(template));
-    } catch (err) {
-      console.error("Error fetching template:", err);
-      res.status(500).json({ message: "Failed to fetch template" });
-    }
-  });
-
-  // Get expert's own templates (authenticated)
-  app.get("/api/expert/templates", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const templates = await storage.getExpertTemplates({ expertId: userId });
-      res.json(templates);
-    } catch (err) {
-      console.error("Error fetching expert templates:", err);
-      res.status(500).json({ message: "Failed to fetch templates" });
-    }
-  });
-
-  // Create new template — RETIRED (seller-surface sunset, §10/§17). Gone tombstone, not a
-  // deletion: the route shape stays stable; GET/PATCH/submit/purchase/confirm remain intact.
-  app.post("/api/expert/templates", isAuthenticated, async (_req, res) => {
-    res.status(410).json({ message: "New itinerary-template listings are retired — build store trips in the Workstation instead." });
-  });
-
-  // Update template (authenticated - owner only)
-  app.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const template = await storage.getExpertTemplate(req.params.id);
-      
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      if (template.expertId !== userId) {
-        return res.status(403).json({ message: "Not authorized to update this template" });
-      }
-
-      // Field whitelist (Gap 2): only expert-editable content fields persist; isPublished /
-      // approval / ownership / earning columns are ignored if present in the body.
-      const fields = pickExpertTemplateFields(req.body);
-
-      // A3 material-change re-review: what admin approved INCLUDES the price. Changing price
-      // or currency on an ALREADY-approved template drops it back to 'submitted' (re-enters the
-      // queue) so it can't silently go live at a new, unreviewed price. Content-only edits keep
-      // their status. approvalStatus is never in `fields` (it's not whitelisted), so this is the
-      // only path that can move an approved template's approval state via a PATCH.
-      const changesPrice =
-        (fields.price !== undefined && String(fields.price) !== String(template.price)) ||
-        (fields.currency !== undefined && fields.currency !== template.currency);
-      if (template.approvalStatus === "approved" && changesPrice) {
-        (fields as any).approvalStatus = "submitted";
-        (fields as any).submittedAt = new Date();
-        (fields as any).reviewedAt = null;
-        (fields as any).reviewedBy = null;
-      }
-
-      const updated = await storage.updateExpertTemplate(req.params.id, fields);
-      res.json(updated);
-    } catch (err) {
-      console.error("Error updating template:", err);
-      res.status(500).json({ message: "Failed to update template" });
-    }
-  });
-
-  // Delete template (authenticated - owner only)
-  app.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const template = await storage.getExpertTemplate(req.params.id);
-      
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      if (template.expertId !== userId) {
-        return res.status(403).json({ message: "Not authorized to delete this template" });
-      }
-
-      await storage.deleteExpertTemplate(req.params.id);
-      res.json({ success: true });
-    } catch (err) {
-      console.error("Error deleting template:", err);
-      res.status(500).json({ message: "Failed to delete template" });
-    }
-  });
-
-  // Submit a template for admin review (owner only, draft/rejected → submitted).
-  // Experts can submit; only an admin can approve (see the /api/admin queue below).
-  app.post("/api/expert/templates/:id/submit", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const template = await storage.getExpertTemplate(req.params.id);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      if (template.expertId !== userId) {
-        return res.status(403).json({ message: "Not authorized to submit this template" });
-      }
-      if (template.approvalStatus === "approved") {
-        return res.status(400).json({ message: "Template is already approved" });
-      }
-      const submitted = await storage.submitExpertTemplate(req.params.id);
-      res.json(submitted);
-    } catch (err) {
-      console.error("Error submitting template:", err);
-      res.status(500).json({ message: "Failed to submit template" });
-    }
-  });
-
-  // ── Admin approval queue for expert templates (shared queue = Phase 4's queue) ──
-  // All /api/admin/* routes sit behind the blanket adminApiGuard (default-deny, §2) —
-  // no per-endpoint role opt-in. adminId is read for the reviewedBy stamp only.
-  app.get("/api/admin/expert-templates/pending", async (req, res) => {
-    try {
-      const pending = await storage.getSubmittedExpertTemplates();
-      res.json(pending);
-    } catch (err) {
-      console.error("Error listing pending templates:", err);
-      res.status(500).json({ message: "Failed to list pending templates" });
-    }
-  });
-
-  app.post("/api/admin/expert-templates/:id/approve", async (req, res) => {
-    try {
-      const adminId = getUserId(req)!;
-      const template = await storage.getExpertTemplate(req.params.id);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      if (template.approvalStatus !== "submitted") {
-        return res.status(400).json({ message: "Can only approve submitted templates" });
-      }
-      const approved = await storage.approveExpertTemplate(req.params.id, adminId);
-
-      // Rides the blanket /api/admin adminApiGuard (§2) — adminId is already confirmed admin.
-      insertAccessAuditLog({
-        actorId: adminId,
-        actorRole: "admin",
-        action: "expert_template_approve",
-        resourceType: "expert_template",
-        resourceId: req.params.id,
-        targetUserId: template.expertId ?? null,
-        metadata: {},
-        ipAddress: req.ip ?? null,
-        userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/expert-templates] audit log failed (non-fatal):", err));
-
-      res.json(approved);
-    } catch (err) {
-      console.error("Error approving template:", err);
-      res.status(500).json({ message: "Failed to approve template" });
-    }
-  });
-
-  app.post("/api/admin/expert-templates/:id/reject", async (req, res) => {
-    try {
-      const adminId = getUserId(req)!;
-      const reason = (req.body?.reason ?? "").toString().trim();
-      if (!reason) {
-        return res.status(400).json({ message: "A rejection reason is required" });
-      }
-      const template = await storage.getExpertTemplate(req.params.id);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      if (template.approvalStatus !== "submitted") {
-        return res.status(400).json({ message: "Can only reject submitted templates" });
-      }
-      const rejected = await storage.rejectExpertTemplate(req.params.id, adminId, reason);
-
-      // Rides the blanket /api/admin adminApiGuard (§2) — adminId is already confirmed admin.
-      insertAccessAuditLog({
-        actorId: adminId,
-        actorRole: "admin",
-        action: "expert_template_reject",
-        resourceType: "expert_template",
-        resourceId: req.params.id,
-        targetUserId: template.expertId ?? null,
-        metadata: { reason },
-        ipAddress: req.ip ?? null,
-        userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/expert-templates] audit log failed (non-fatal):", err));
-
-      res.json(rejected);
-    } catch (err) {
-      console.error("Error rejecting template:", err);
-      res.status(500).json({ message: "Failed to reject template" });
-    }
-  });
-
-  // Purchase template (authenticated)
-  // ── Step 1: create a pending purchase + return a Stripe PaymentIntent ────
-  // The client must confirm payment via Stripe.js and then call /confirm below.
-  // Earning records are NOT created here — only after confirmed payment.
-  app.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const template = await storage.getExpertTemplate(req.params.id);
-
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      // Purchase gate (marketplace activation, A2): admin-approval is the gate the expert
-      // CANNOT self-satisfy; isPublished stays the expert's own visibility toggle. BOTH must
-      // hold — an approved-but-unpublished template respects the expert's choice to hide it,
-      // and a published-but-unapproved template is not purchasable (approval wins).
-      if (template.approvalStatus !== "approved" || !template.isPublished) {
-        return res.status(400).json({ message: "Template is not available for purchase" });
-      }
-      if (template.expertId === userId) {
-        return res.status(400).json({ message: "You cannot purchase your own template" });
-      }
-
-      // Already paid — return the existing completed purchase (idempotent)
-      const alreadyPurchased = await storage.hasUserPurchasedTemplate(userId, req.params.id);
-      if (alreadyPurchased) {
-        return res.status(400).json({ message: "You have already purchased this template" });
-      }
-
-      // Resolve commission rates from booking_fee_configs (fallback: fee_bands expert_standard)
-      const templateRates = await resolveCommissionRates(template.category ?? null);
-      const price = parseFloat(template.price as string);
-      const platformFee = price * templateRates.platformFeeRate;
-      const expertEarnings = price * templateRates.expertShareRate;
-
-      // Create a PENDING purchase — no earning created until Stripe confirms
-      const purchase = await storage.createTemplatePurchase({
-        templateId: req.params.id,
-        buyerId: userId,
-        expertId: template.expertId,
-        price: template.price,
-        currency: template.currency || 'USD',
-        platformFee: platformFee.toFixed(2),
-        expertEarnings: expertEarnings.toFixed(2),
-        status: 'pending_payment',
-      });
-
-      // Create Stripe PaymentIntent; embed purchaseId in metadata so /confirm
-      // can verify it without an extra DB column.
-      const stripeClient = new Stripe(getStripeSecretKey() || '', {
-        apiVersion: '2024-12-18.acacia' as any,
-      });
-      const currency = (template.currency || 'USD').toLowerCase();
-      const isZeroDecimal = currency === 'jpy';
-      const stripeAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
-
-      const paymentIntent = await stripeClient.paymentIntents.create(
-        {
-          amount: stripeAmount,
-          currency,
-          metadata: {
-            purchaseId: purchase.id,
-            templateId: req.params.id,
-            buyerId: userId,
-            expertId: template.expertId,
-          },
-          description: `Traveloure template: ${template.title}`,
-          automatic_payment_methods: { enabled: true },
-        },
-        // §15 (MONEY_MAP F-3): deterministic key — a retried purchase click can't mint a second
-        // uncaptured PI for the same template+buyer.
-        { idempotencyKey: `tpl-buy-${req.params.id}-${userId}` },
-      );
-
-      // 202 Accepted — payment not yet captured; client must call /confirm.
-      // Template is content-REDACTED here: payment hasn't succeeded yet, so the buyer
-      // doesn't get the paid itinerary until /confirm verifies the intent.
-      return res.status(202).json({
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-        purchaseId: purchase.id,
-        template: redactTemplateContent(template),
-        subtotal: price,
-        platformFee,
-        expertPayout: expertEarnings,
-        commissionRate: templateRates.platformFeeRate,
-      });
-    } catch (err) {
-      console.error("Error initiating template purchase:", err);
-      res.status(500).json({ message: "Failed to initiate template purchase" });
-    }
-  });
-
-  // ── Step 2: confirm payment and unlock the purchase ───────────────────────
-  // Called by the client after Stripe.js confirms the PaymentIntent.
-  // Verifies payment succeeded server-side, then marks the purchase complete
-  // and records the expert earning. Fully idempotent.
-  app.post("/api/expert-templates/:id/purchase/confirm", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const { paymentIntentId, purchaseId } = req.body;
-
-      if (!paymentIntentId || !purchaseId) {
-        return res.status(400).json({ message: "paymentIntentId and purchaseId are required" });
-      }
-
-      // Retrieve intent from Stripe — never trust client-reported status
-      const stripeClient = new Stripe(getStripeSecretKey() || '', {
-        apiVersion: '2024-12-18.acacia' as any,
-      });
-      const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
-
-      if (intent.status !== 'succeeded') {
-        return res.status(402).json({
-          message: `Payment not completed (status: ${intent.status}). Complete payment before confirming.`,
-          stripeStatus: intent.status,
-        });
-      }
-
-      // IDOR guard — the intent must reference this exact purchase
-      if (intent.metadata?.purchaseId !== purchaseId) {
-        return res.status(400).json({ message: "PaymentIntent does not match the specified purchase" });
-      }
-
-      // Load the purchase and verify ownership
-      const purchase = await storage.getTemplatePurchase(purchaseId);
-      if (!purchase) {
-        return res.status(404).json({ message: "Purchase not found" });
-      }
-      if (purchase.buyerId !== userId) {
-        return res.status(403).json({ message: "Not authorised to confirm this purchase" });
-      }
-
-      // Idempotent — already completed by a prior confirm call
-      if (purchase.status === 'completed') {
-        const template = await storage.getExpertTemplate(purchase.templateId);
-        return res.json({ purchase, template });
-      }
-
-      if (purchase.status !== 'pending_payment') {
-        return res.status(409).json({
-          message: `Purchase is in status '${purchase.status}' and cannot be confirmed`,
-        });
-      }
-
-      // Idempotency guard (atomic transition, not check-then-update): the status flip IS the
-      // concurrency guard. Only the confirm that actually transitions pending_payment→completed
-      // records the earning. A concurrent/duplicate confirm updates zero rows and must NOT
-      // double-credit (the `!== pending_payment` check above is a fast-path, not the guard — two
-      // confirms can both pass it before either writes; the WHERE status='pending_payment' closes it).
-      const [completed] = await db
-        .update(templatePurchases)
-        .set({ status: 'completed' })
-        .where(and(eq(templatePurchases.id, purchaseId), eq(templatePurchases.status, 'pending_payment')))
-        .returning();
-
-      if (!completed) {
-        // Lost the race — another confirm already completed this purchase. Idempotent success,
-        // no second earning credited.
-        const template = await storage.getExpertTemplate(purchase.templateId);
-        return res.json({ purchase, template, alreadyCompleted: true });
-      }
-
-      await storage.createExpertEarning({
-        expertId: purchase.expertId,
-        type: 'template_sale',
-        amount: purchase.expertEarnings,
-        currency: purchase.currency || 'USD',
-        referenceId: purchase.id,
-        referenceType: 'template_purchase',
-        description: `Sale of template (confirmed payment ${paymentIntentId})`,
-        status: 'held', // escrow: born held (migration 112)
-        availableAt: availableAtFor('template_sale'), // P2: template clearance window (was immediate; ratified per-surface window)
-      });
-
-      const template = await storage.getExpertTemplate(purchase.templateId);
-
-      // Record platform revenue for this sale — mirrors the booking_commission pattern
-      // (server/services/booking.service.ts:721-729). §15: guarded by hasPlatformRevenueForSource
-      // so a retry/duplicate confirm never double-records; non-fatal so a bookkeeping failure never
-      // blocks the buyer's unlocked purchase. storage.createTemplatePurchase's own status-gated write
-      // stays dead for this path — this route-level write is authoritative.
-      try {
-        if (!(await storage.hasPlatformRevenueForSource(completed.id))) {
-          const grossAmount = Number(completed.price);
-          const platformFeeAmt = Number(completed.platformFee);
-          const expertEarningsAmt = Number(completed.expertEarnings);
-          const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
-          const netAmount = platformFeeAmt - processingFees;
-          await storage.recordPlatformRevenue({
-            sourceType: 'template_commission',
-            sourceId: completed.id,
-            grossAmount: String(grossAmount),
-            platformFee: String(platformFeeAmt),
-            netAmount: String(netAmount),
-            processingFees: String(processingFees),
-            currency: completed.currency || 'USD',
-            expertId: completed.expertId,
-            expertEarnings: String(expertEarningsAmt),
-            description: `Template sale commission: ${template?.title ?? completed.templateId}`,
-            status: 'recorded',
-            transactionDate: new Date(),
-          } as any);
-        }
-      } catch (err) {
-        console.error(`Failed to record platform revenue for template purchase ${completed.id}:`, err);
-      }
-
-      return res.json({ purchase: completed, template });
-    } catch (err) {
-      console.error("Error confirming template purchase:", err);
-      res.status(500).json({ message: "Failed to confirm template purchase" });
-    }
-  });
-
-  // Get user's purchased templates
-  app.get("/api/my-purchased-templates", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const purchases = await storage.getTemplatePurchases({ buyerId: userId });
-      
-      // Get full template data for each purchase
-      const templatesWithPurchases = await Promise.all(
-        purchases.map(async (purchase) => {
-          const template = await storage.getExpertTemplate(purchase.templateId);
-          return { ...purchase, template };
-        })
-      );
-      
-      res.json(templatesWithPurchases);
-    } catch (err) {
-      console.error("Error fetching purchased templates:", err);
-      res.status(500).json({ message: "Failed to fetch purchased templates" });
-    }
-  });
-
-  // Get template reviews
-  app.get("/api/expert-templates/:id/reviews", async (req, res) => {
-    try {
-      const reviews = await storage.getTemplateReviews(req.params.id);
-      res.json(reviews);
-    } catch (err) {
-      console.error("Error fetching reviews:", err);
-      res.status(500).json({ message: "Failed to fetch reviews" });
-    }
-  });
-
-  // Create template review (authenticated - must have purchased)
-  app.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      
-      // Get user's purchase of this template
-      const purchases = await storage.getTemplatePurchases({ buyerId: userId });
-      const purchase = purchases.find(p => p.templateId === req.params.id);
-      
-      if (!purchase) {
-        return res.status(403).json({ message: "You must purchase this template before reviewing" });
-      }
-
-      const review = await storage.createTemplateReview({
-        templateId: req.params.id,
-        purchaseId: purchase.id,
-        reviewerId: userId,
-        rating: req.body.rating,
-        review: sanitizeText(req.body.review),
-      });
-
-      res.json(review);
-    } catch (err) {
-      console.error("Error creating review:", err);
-      res.status(500).json({ message: "Failed to create review" });
-    }
-  });
+  // === Expert-template marketplace — CONSUMER SURFACE RETIRED ===
+  // Ledger 2026-09-03-expert-templates-consumer-sunset completes the Jul 27 2026 SELLER-side
+  // sunset (archive §10): the `expert_templates` lane is closed in favour of the single
+  // `ready_made_trips` store lane. The gate the July ruling set — PROD purchase counts — was
+  // read on 2026-09-03: nothing was ever bought or sold through this product. Retired here:
+  // the public feed + detail read, POST /api/expert-templates/:id/purchase and its
+  // /purchase/confirm, GET /api/my-purchased-templates, the template review read/write, the
+  // owner console (GET/PATCH/DELETE /api/expert/templates, /:id/submit, /api/expert/template-sales)
+  // and the admin approval queue (/api/admin/expert-templates/pending|approve|reject).
+  // NOT retired: the `expert_templates`, `template_purchases` and `template_reviews` TABLES and
+  // their `server/storage.ts` accessors — historical rows are kept, no migration lands.
+  // NOTE: `/api/admin/expert-templates` and `/api/admin/expert-templates/:id/roles` in
+  // server/routes/admin.routes.ts are a NAME COLLISION — they read `expert_service_offerings`
+  // (the read-only onboarding catalog), not this lane, and are deliberately untouched.
 
   // NOTE (task retirement, Aug 2026): the legacy GET /api/expert/earnings endpoint was removed.
   // It built pseudo-transactions from service_bookings (refunded bookings still appeared as earned,
   // grossBookingTotal included refunds, revenueShareRate was a meaningless derived ratio, and
   // lastPayout reported pending payout requests as paid). The live UI and tests use the
   // ledger-backed GET /api/expert/earnings/details (server/routes/experts.routes.ts).
-
-  // Get expert template sales (authenticated)
-  app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const sales = await storage.getTemplatePurchases({ expertId: userId });
-      
-      // Get template details for each sale
-      const salesWithTemplates = await Promise.all(
-        sales.map(async (sale) => {
-          const template = await storage.getExpertTemplate(sale.templateId);
-          return { ...sale, template };
-        })
-      );
-      
-      res.json(salesWithTemplates);
-    } catch (err) {
-      console.error("Error fetching sales:", err);
-      res.status(500).json({ message: "Failed to fetch sales" });
-    }
-  });
 
   // === Income Streams & Revenue Splits ===
   
@@ -7744,14 +7167,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const prefs = preferences || (experienceType ? [experienceType] : undefined);
-      const [recommendations, packages] = await Promise.all([
-        serviceRecommendationEngine.getUserRecommendations(userId, city, prefs, limit),
-        // Destination-aware, quality-ranked package recs — additive field; existing
-        // consumers read `.recommendations` and are unaffected.
-        serviceRecommendationEngine.getRecommendedPackagesForUser(city, prefs, 6),
-      ]);
+      // The additive `packages` field is RETIRED with the expert-template lane
+      // (ledger 2026-09-03-expert-templates-consumer-sunset). Consumers always read
+      // `.recommendations`; nothing else changes here.
+      const recommendations = await serviceRecommendationEngine.getUserRecommendations(userId, city, prefs, limit);
 
-      res.json({ recommendations, packages, city });
+      res.json({ recommendations, city });
     } catch (err) {
       console.error("Error fetching user recommendations:", err);
       res.status(500).json({ message: "Failed to fetch recommendations" });

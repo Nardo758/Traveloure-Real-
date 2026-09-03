@@ -100,17 +100,6 @@ interface StorefrontService {
   shownInOriginal?: boolean;
 }
 
-interface StorefrontTemplate {
-  id: string;
-  title: string;
-  destination: string;
-  price: string;
-  coverImage: string | null;
-  duration: number | null;
-  averageRating: string | null;
-  reviewCount: number | null;
-}
-
 interface StorefrontReadyMade {
   id: string;
   title: string;
@@ -123,7 +112,6 @@ interface StorefrontReadyMade {
 interface StorefrontData {
   earner: StorefrontEarner;
   services: StorefrontService[];
-  templates: StorefrontTemplate[];
   readyMade: StorefrontReadyMade[];
   // Vacation mode (mockup §06b/§08, CLAUDE.md, migration 189): business-level flag only —
   // null when the owner isn't away. The server (storefront.routes.ts loadStorefront) already
@@ -324,31 +312,24 @@ export default function StorefrontPage() {
   const term = query.trim().toLowerCase();
   const matchesTerm = (title: string) => !term || title.toLowerCase().includes(term);
   const services = data?.services ?? [];
-  const templates = data?.templates ?? [];
   const readyMade = data?.readyMade ?? [];
   const visibleServices = useMemo(
     () => (category === "All" || category === "Services" ? services.filter((s) => matchesTerm(s.serviceName)) : []),
     [services, category, term],
   );
-  // Ready-Made Trips is a display-layer merge of two genuinely different products —
-  // expert_templates (a static, self-guided itinerary write-up) and ready_made_trips (an
-  // author-owned trip that clones into the buyer's own editable planner). No schema
-  // unification: each keeps its own data, its own card badge, and its own detail route.
-  // Sort order is source-grouped (templates first, then ready-made) — never a fabricated
-  // cross-source ranking.
-  const visibleTemplates = useMemo(
-    () => (category === "All" || category === "Ready-Made Trips" ? templates.filter((t) => matchesTerm(t.title)) : []),
-    [templates, category, term],
-  );
+  // The lane's `expert_templates` half RETIRED — ledger
+  // 2026-09-03-expert-templates-consumer-sunset. "Ready-Made Trips" is now one product,
+  // `ready_made_trips` (an author-owned trip that clones into the buyer's editable planner),
+  // so the display-layer merge of two sources is gone with it.
   const visibleReadyMade = useMemo(
     () => (category === "All" || category === "Ready-Made Trips" ? readyMade.filter((r) => matchesTerm(r.title)) : []),
     [readyMade, category, term],
   );
-  const visibleTotal = visibleServices.length + visibleTemplates.length + visibleReadyMade.length;
+  const visibleTotal = visibleServices.length + visibleReadyMade.length;
   const availableCategories: OfferingCategory[] = [
     "All",
     ...(services.length > 0 ? (["Services"] as const) : []),
-    ...(templates.length > 0 || readyMade.length > 0 ? (["Ready-Made Trips"] as const) : []),
+    ...(readyMade.length > 0 ? (["Ready-Made Trips"] as const) : []),
   ];
 
   if (isLoading) {
@@ -410,10 +391,7 @@ export default function StorefrontPage() {
   // earner genuinely sells across more than one lane — never implies three when there's one.
   const presentLaneNames: string[] = [
     ...(services.length > 0 ? [`book time with ${firstName}`] : []),
-    // Templates and Ready-Made Trips now render as one merged "Ready-Made Trips" lane
-    // (each card keeps its own Guide/Editable trip badge) — one note entry, not two,
-    // since the visible tab count no longer distinguishes them.
-    ...(templates.length > 0 || readyMade.length > 0 ? ["start from a finished plan"] : []),
+    ...(readyMade.length > 0 ? ["start from a finished plan"] : []),
   ];
   const planWaysNote =
     presentLaneNames.length > 1
@@ -747,40 +725,17 @@ export default function StorefrontPage() {
             </div>
           )}
 
-          {/* Lane 2: Ready-Made Trips — a display-layer merge of two different products that
-              both let a traveler start from a finished plan instead of building one from
-              scratch. Source-grouped, never a fabricated cross-source ranking: templates
-              (self-guided write-ups) render first, then ready-made trips (clone into the
-              buyer's own planner) — each keeps its own real href, badge and copy. */}
-          {(visibleTemplates.length > 0 || visibleReadyMade.length > 0) && (
+          {/* Lane 2: Ready-Made Trips — author-owned trips that clone into the buyer's own
+              planner. The retired `expert_templates` half of this lane is gone (ledger
+              2026-09-03-expert-templates-consumer-sunset). */}
+          {visibleReadyMade.length > 0 && (
             <div className="mb-10 sm:mb-12" data-testid="storefront-lane-readymade">
               <LaneHeader
                 eyebrow="Start from a finished plan"
                 title="Ready-Made Trips"
-                count={visibleTemplates.length + visibleReadyMade.length}
+                count={visibleReadyMade.length}
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {visibleTemplates.map((t) => {
-                  const chips = [
-                    ...(t.duration ? [`${t.duration} day${t.duration === 1 ? "" : "s"}`] : []),
-                    t.destination,
-                  ];
-                  return (
-                    <StorefrontOfferingCard
-                      key={t.id}
-                      href={`/expert-templates/${t.id}`}
-                      testId={`storefront-template-${t.id}`}
-                      image={t.coverImage}
-                      categoryLabel="Guide"
-                      meta="Guide · day-by-day, yours to follow"
-                      title={t.title}
-                      chips={chips}
-                      ratingSlot={<RatingLine rating={t.averageRating} count={t.reviewCount} />}
-                      price={`$${Number(t.price).toFixed(0)}`}
-                      cta="View template →"
-                    />
-                  );
-                })}
                 {visibleReadyMade.map((r) => {
                   const chips = [
                     ...(r.durationDays ? [`${r.durationDays} day${r.durationDays === 1 ? "" : "s"}`] : []),

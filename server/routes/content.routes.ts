@@ -2,7 +2,6 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getTripRole } from "../utils/trip-role";
 import { getUserId, requireDbAdmin } from "../utils/auth";
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
-import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
@@ -2680,10 +2679,10 @@ router.get("/api/discover", async (req, res) => {
       }).catch(err => console.error("Failed to track search pattern:", err));
     }
 
-    // Content-gate (§10): packages in search results are teaser-redacted like every public read.
+    // `packages` (expert_templates) retired from unified search — see
+    // ledger 2026-09-03-expert-templates-consumer-sunset.
     res.json({
       ...result,
-      packages: (result.packages ?? []).map(redactTemplateContent),
       hasMore: offset + result.services.length < result.total,
       limit,
       offset,
@@ -5634,7 +5633,7 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
       const cities = await travelPulseService.getAllCities();
 
       // Get seasonal data for all cities for this month
-      const { destinationSeasons, destinationEvents, expertTemplates, expertNeighborhoods } = await import("@shared/schema");
+      const { destinationSeasons, destinationEvents, expertNeighborhoods } = await import("@shared/schema");
       const seasonsData = await db
         .select()
         .from(destinationSeasons)
@@ -5652,32 +5651,10 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
         );
       
       // D3 honest counts (§13): grouped queries across the whole city set — no N+1.
-      // Packages = approved + published expert templates whose destination mentions the city.
-      // Price is carried alongside destination so the modal can show a real "from $X"
-      // (min over the city's matching approved packages) — never a fabricated figure.
-      const approvedTemplateRows = await db
-        .select({
-          destination: expertTemplates.destination,
-          price: expertTemplates.price,
-          currency: expertTemplates.currency,
-        })
-        .from(expertTemplates)
-        .where(
-          and(
-            eq(expertTemplates.approvalStatus, "approved"),
-            eq(expertTemplates.isPublished, true)
-          )
-        );
-      const templateDestinationsLower = approvedTemplateRows
-        .map(t => (t.destination || "").toLowerCase())
-        .filter(d => d.length > 0);
-      const templatePriceRows = approvedTemplateRows
-        .map(t => ({
-          dest: (t.destination || "").toLowerCase(),
-          price: parseFloat(t.price as unknown as string),
-          currency: t.currency || "USD",
-        }))
-        .filter(t => t.dest.length > 0 && Number.isFinite(t.price) && t.price > 0);
+      // The packages count / "from $X" per city RETIRED with the expert-template lane
+      // (ledger 2026-09-03-expert-templates-consumer-sunset): the product has no detail
+      // page, feed or purchase path left, so a count and a price for it are claims with
+      // nothing behind them.
 
       // Local experts = DISTINCT experts with neighborhood coverage in the city.
       const expertCountRows = await db
@@ -5787,22 +5764,6 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
               specificDate: e.specificDate,
             })),
             // D3 honest counts — real aggregates only (§13)
-            packagesCount: templateDestinationsLower.filter(d =>
-              d.includes(city.cityName.toLowerCase())
-            ).length,
-            // Min price across this city's approved packages ("from $X"); null when none.
-            packagesFromPrice: (() => {
-              const matches = templatePriceRows.filter(t =>
-                t.dest.includes(city.cityName.toLowerCase())
-              );
-              return matches.length > 0 ? Math.min(...matches.map(t => t.price)) : null;
-            })(),
-            packagesCurrency: (() => {
-              const match = templatePriceRows.find(t =>
-                t.dest.includes(city.cityName.toLowerCase())
-              );
-              return match?.currency ?? null;
-            })(),
             expertsCount: expertCountMap.get(city.cityName.toLowerCase()) || 0,
             // Real neighbourhood coverage names for the EXPERTS row (empty when none).
             expertNeighborhoods: expertNeighborhoodMap.get(city.cityName.toLowerCase()) ?? [],

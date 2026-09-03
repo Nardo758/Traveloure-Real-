@@ -22,16 +22,18 @@
 //        --db-url "postgresql://postgres@localhost:55442/expws?host=/var/tmp/expws-pg"
 //
 // ── EXTERNAL-STEP MARKING (§4b rule 4) ──────────────────────────────────────────────
-// Two steps are marked `{ external: true }`: B12b (template_purchases completed → confirm-again
-// replay) and B12c (ready-made refunded → confirm-again replay). Both routes retrieve the
+// B12b (template_purchases confirm-again replay) and C14 (expert-template content-gate) were
+// RETIRED with the expert-template lane — ledger 2026-09-03-expert-templates-consumer-sunset.
+// One step is marked `{ external: true }`: B12c (ready-made refunded → confirm-again replay).
+// The route retrieves the
 // PaymentIntent from Stripe UNCONDITIONALLY, before any status check on the local row — there is
 // no early-return the sandbox's dummy `STRIPE_SECRET_KEY=sk_test_x` can reach (unlike the
 // coordination-fee confirm route in B12a, which early-returns on a `refunded` row BEFORE ever
 // calling Stripe). Empirically, in this sandbox the agent proxy intercepts the outbound call and
 // Stripe's SDK throws `StripeAPIError: Invalid JSON received from the Stripe API` — a real
 // network failure, not a 401 from a rejected key — so there is no way to reach the actual
-// idempotency-guard code path without a live Stripe test-mode key. Structural proof that these
-// two routes gate on the LOCAL row's terminal status is left to the Replit dev tester (the
+// idempotency-guard code path without a live Stripe test-mode key. Structural proof that this
+// route gates on the LOCAL row's terminal status is left to the Replit dev tester (the
 // "Two tracks" convention, scripts/journeys/README.md).
 //
 // ── FIXTURES (idempotent, `advx-` prefixed) ────────────────────────────────────────
@@ -101,8 +103,6 @@ const UNAPPROVED_SVC_ID = "advx-svc-unapproved";
 const READYMADE_TITLE = "Journey: Adversarial Unapproved Build";
 const EARNER_HANDLE = "advx-earner-storefront";
 
-const TEMPLATE_ID = "advx-template-1";
-const TEMPLATE_SECRET_MARKER = "ADVX-SECRET-DAY-2-CONTENT-MUST-NEVER-LEAK";
 
 async function resetAndSeedFixtures(pg) {
   const travelerAId = await resolveUserIdByEmail(pg, TRAVELER_A_EMAIL);
@@ -145,8 +145,6 @@ async function resetAndSeedFixtures(pg) {
   await pg.query("DELETE FROM coordination_states WHERE id = $1", [COORD_STATE_ID]);
   await pg.query("DELETE FROM expert_payouts WHERE expert_id = $1", [earnerId]);
   await pg.query("DELETE FROM expert_earnings WHERE expert_id = $1", [earnerId]);
-  await pg.query("DELETE FROM template_purchases WHERE template_id = $1", [TEMPLATE_ID]);
-  await pg.query("DELETE FROM expert_templates WHERE id = $1", [TEMPLATE_ID]);
   // Ready-made fixture: delete by author+title marker (the create endpoint mints its own trip id).
   await pg.query(
     `DELETE FROM ready_made_trips WHERE source_trip_id IN
@@ -247,20 +245,6 @@ async function resetAndSeedFixtures(pg) {
      VALUES ($1, $2, 'Journey Unapproved Service', 'probe', 'probe desc', '50.00', 'pdf',
              'active', 'submitted')`,
     [UNAPPROVED_SVC_ID, earnerId],
-  );
-
-  // ── Approved+published expert_template with real content (C14 content-gate). ──
-  await pg.query(
-    `INSERT INTO expert_templates (id, expert_id, title, description, destination, duration,
-                                    price, is_published, approval_status, itinerary_data)
-     VALUES ($1, $2, 'Journey Adversarial Template', 'A template for the content-gate probe',
-             'Kyoto, Japan', 3, '199.00', true, 'approved', $3::jsonb)`,
-    [TEMPLATE_ID, earnerId, JSON.stringify({
-      days: [
-        { day: 1, title: "Arrival day", activities: [{ name: TEMPLATE_SECRET_MARKER, notes: TEMPLATE_SECRET_MARKER }] },
-        { day: 2, title: "Temple day", activities: [{ name: TEMPLATE_SECRET_MARKER }] },
-      ],
-    })],
   );
 
   return { travelerAId, userBId, earnerId };
@@ -626,8 +610,8 @@ async function main() {
       },
     );
 
-    // ── B12b/B12c: template_purchases + ready-made confirm-again — needs a live Stripe PI retrieve.
-    // Both routes call `stripe.paymentIntents.retrieve(...)` UNCONDITIONALLY before any local-row
+    // ── B12c: ready-made confirm-again — needs a live Stripe PI retrieve.
+    // The route calls `stripe.paymentIntents.retrieve(...)` UNCONDITIONALLY before any local-row
     // status check (unlike B12a's coordination-fee confirm, which early-returns on a 'refunded'
     // row BEFORE ever calling Stripe) — so there is no code path this sandbox's dummy
     // STRIPE_SECRET_KEY=sk_test_x can reach; the agent proxy mangles the response
@@ -636,54 +620,8 @@ async function main() {
     // using the `stripe` package directly (test card `pm_card_visa`, confirmed server-side —
     // the same technique server/__tests__/refund-retry-convergence.test.ts uses) rather than a
     // browser Stripe.js flow, since this suite is API-driven.
-    await runStep(
-      "B12b: template_purchases completed -> replay /purchase/confirm -> no duplicate earning",
-      async () => {
-        const Stripe = (await import("stripe")).default;
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
-
-        const purchaseResp = await aPage.request.post(`/api/expert-templates/${TEMPLATE_ID}/purchase`);
-        if (purchaseResp.status() !== 202) throw new Error(`purchase init failed: ${purchaseResp.status()} ${await purchaseResp.text()}`);
-        const { paymentIntentId, purchaseId } = await purchaseResp.json();
-
-        await stripe.paymentIntents.confirm(paymentIntentId, { payment_method: "pm_card_visa" });
-
-        const confirm1 = await aPage.request.post(`/api/expert-templates/${TEMPLATE_ID}/purchase/confirm`, {
-          data: { paymentIntentId, purchaseId },
-        });
-        if (!confirm1.ok()) throw new Error(`first confirm failed: ${confirm1.status()} ${await confirm1.text()}`);
-
-        const earningsBefore = await dbAll(
-          pg, "SELECT id FROM expert_earnings WHERE reference_id = $1 AND reference_type = 'template_purchase'", [purchaseId],
-        );
-
-        // Replay — same paymentIntentId + purchaseId, purchase already 'completed'.
-        const confirm2 = await aPage.request.post(`/api/expert-templates/${TEMPLATE_ID}/purchase/confirm`, {
-          data: { paymentIntentId, purchaseId },
-        });
-        const body2 = await confirm2.json().catch(() => ({}));
-        const earningsAfter = await dbAll(
-          pg, "SELECT id FROM expert_earnings WHERE reference_id = $1 AND reference_type = 'template_purchase'", [purchaseId],
-        );
-        const purchaseRow = await dbOne(pg, "SELECT status FROM template_purchases WHERE id = $1", [purchaseId]);
-
-        if (!confirm2.ok() || purchaseRow.status !== "completed") {
-          throw new Error(`replay confirm misbehaved: ${confirm2.status()} ${JSON.stringify(body2)}, status='${purchaseRow.status}'`);
-        }
-        if (earningsAfter.length !== earningsBefore.length) {
-          throw new Error(
-            `ATTACK SUCCEEDED: replayed confirm created a DUPLICATE earning — ` +
-              `before=${earningsBefore.length} after=${earningsAfter.length}`,
-          );
-        }
-        return {
-          ui: "N/A (API-driven, live Stripe test-mode confirm)",
-          db: `template_purchases.status stays 'completed'; expert_earnings for purchase ${purchaseId} ` +
-            `unchanged at ${earningsAfter.length} row(s) after the replayed confirm`,
-        };
-      },
-      { external: true, page: aPage },
-    );
+    // B12b (the template_purchases twin of this step) retired with the expert-template lane —
+    // ledger 2026-09-03-expert-templates-consumer-sunset.
     await runStep(
       "B12c: ready-made purchase refunded -> replay /purchase/confirm -> stays refunded, no re-fulfillment",
       async () => {
@@ -809,30 +747,9 @@ async function main() {
       },
     );
 
-    // ── C14: non-purchaser GET of a paid expert-template detail — content-gated to a teaser ──
-    await runStep(
-      "C14: non-purchaser (authenticated, not the buyer) GETs the template detail -> full itineraryData withheld, teaser only",
-      async () => {
-        const resp = await aPage.request.get(`/api/expert-templates/${TEMPLATE_ID}`);
-        if (!resp.ok()) throw new Error(`template detail read failed: ${resp.status()} ${await resp.text()}`);
-        const body = await resp.json();
-        const raw = JSON.stringify(body);
-        if (body.itineraryData !== undefined) {
-          throw new Error(`LEAK: full itineraryData key present in a non-purchaser's response: ${raw.slice(0, 300)}`);
-        }
-        if (raw.includes(TEMPLATE_SECRET_MARKER)) {
-          throw new Error(`LEAK: the secret content marker leaked into a non-purchaser's response: ${raw.slice(0, 300)}`);
-        }
-        if (!Array.isArray(body.itineraryPreview) || body.itineraryPreview.length !== 2 || body.itineraryPreview[0]?.title !== "Arrival day") {
-          throw new Error(`unexpected teaser shape: ${JSON.stringify(body.itineraryPreview)}`);
-        }
-        return {
-          ui: "N/A (API-driven)",
-          db: `GET /api/expert-templates/${TEMPLATE_ID} as a non-purchaser: itineraryData key absent, secret marker absent, ` +
-            `itineraryPreview carries only {day,title} for both days`,
-        };
-      },
-    );
+    // ── C14 RETIRED: it proved the expert-template detail read content-gated the paid
+    //    itinerary to a teaser for a non-purchaser. That read, and the whole lane, are gone —
+    //    ledger 2026-09-03-expert-templates-consumer-sunset.
 
     // ── C15: §16 sweep — extends partner-gate.mjs's pattern on TRIP_PARTNER ──
     let sweepSuggestionId, sweepItemId;

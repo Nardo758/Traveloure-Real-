@@ -172,11 +172,12 @@ function VerificationStatusBanner() {
 /**
  * The /p/:handle management header. Handle comes from the session-backed cached auth user
  * (/api/auth/user — §14: never client-supplied); the Live count N is derived from the SAME
- * three owner-console queries the offerings table already loads (react-query dedups the
+ * two owner-console queries the offerings table already loads (react-query dedups the
  * keys — no new endpoint), filtered by each lane's PUBLIC read-gate so the chip mirrors
- * exactly what /p/:handle serves (storefront.routes.ts: services approved+active; templates
- * approved+published; Ready Made status approved; 404 at zero — that IS "not live"). §13:
- * no chip renders until the real counts are loaded.
+ * exactly what /p/:handle serves (storefront.routes.ts: services approved+active;
+ * Ready Made status approved; 404 at zero — that IS "not live"). §13: no chip renders
+ * until the real counts are loaded. The `expert_templates` lane retired — ledger
+ * 2026-09-03-expert-templates-consumer-sunset.
  */
 function StorefrontHeader() {
   const { toast } = useToast();
@@ -184,16 +185,12 @@ function StorefrontHeader() {
   const handle = (user as any)?.handle as string | null | undefined;
 
   const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
-  const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
   const readyMade = useQuery<{ listings: any[] }>({ queryKey: ["/api/expert/ready-made/mine"] });
-  const countsLoaded = !services.isLoading && !templates.isLoading && !readyMade.isLoading;
+  const countsLoaded = !services.isLoading && !readyMade.isLoading;
 
   const approvedCount =
     (Array.isArray(services.data) ? services.data : []).filter(
       (s: any) => s.approvalStatus === "approved" && s.status === "active",
-    ).length +
-    (Array.isArray(templates.data) ? templates.data : []).filter(
-      (t: any) => t.approvalStatus === "approved" && t.isPublished,
     ).length +
     (readyMade.data?.listings ?? []).filter((r: any) => r.status === "approved").length;
 
