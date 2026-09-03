@@ -16,6 +16,7 @@ import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions } from "../services/transport-booking-options.service";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { requireTestSeedEnabled } from "../middleware/test-only-endpoint";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 
 const router = Router();
@@ -500,8 +501,23 @@ router.get("/api/transport-options", async (req, res) => {
  * known externalUrl so the click endpoint can be exercised without a real
  * itinerary in the database. Static segment must come BEFORE the dynamic
  * /seed/:variantId route so Express matches it first.
+ *
+ * UNREACHABLE IN PRODUCTION (audit finding 11, ledger `2026-09-03-security-9-11-13`).
+ * It described itself as "CI/test-only" and was nevertheless mounted and live on the production
+ * boot behind `isAuthenticated` alone — unbounded junk-row insertion into the traveler-facing
+ * `transport_booking_options` table by any account, with no consumer that could clean it up.
+ * `requireTestSeedEnabled` refuses it on a production boot (503) and runs BEFORE the session guard
+ * so the refusal costs nothing. See `server/middleware/test-only-endpoint.ts` for why the predicate
+ * is the shared `isProdStrictEnv` rather than a bare NODE_ENV check, and why no new env var or
+ * secret was introduced. Its one caller, `e2e/specs/journey-6.spec.ts`, runs against an
+ * ALLOW_TEST_ACCOUNTS boot and is unchanged.
+ *
+ * NOTE the sibling `/seed/:variantId` below is deliberately NOT gated this way: it is a real
+ * per-trip capability that is authorized by the variant's owning trip, and its own comment says
+ * why environment would be the wrong boundary there. Pinned by
+ * `server/__tests__/test-seed-endpoint-gate.test.ts`.
  */
-router.post("/api/transport-booking-options/seed/test-variant", isAuthenticated, async (req, res) => {
+router.post("/api/transport-booking-options/seed/test-variant", requireTestSeedEnabled, isAuthenticated, async (req, res) => {
   try {
     const [row] = await db
       .insert(transportBookingOptions)
