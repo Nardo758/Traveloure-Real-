@@ -16,6 +16,12 @@
  *       Extended by ledger `2026-09-03-occasion-switches`: the four occasions that ruling seeded
  *       (`romance`, `corporate`, `milestone-birthday`, `family-occasion`) are additionally named
  *       one by one, so a seeder regression that drops one cannot pass by leaving nothing to check.
+ *   O5  every seeded row's DISPLAY NAME resolves back to its own slug through
+ *       `normalizeOccasionKey`. Kebab-casing a name is a heuristic that holds only while name and
+ *       slug agree; renaming `wedding-anniversaries` to the singular "Wedding Anniversary" broke it
+ *       and sent the name straight back into the keyword sniff that answers "couple" — the exact
+ *       collision O4 exists to forbid. A rename must fail HERE, not on a traveler's Trip Strip.
+ *       Ledger `2026-09-03-occasion-hygiene`.
  *   O4  the TWO anniversaries are different occasions and land in different classes —
  *       `anniversary-trip` (a couple's getaway) vs `wedding-anniversaries` (a party with guests).
  *       They were indistinguishable under the keyword sniff, and the nav item labelled just
@@ -35,6 +41,7 @@ import {
   OCCASION_SLUG_TO_EVENT_TYPE,
   classifyOccasion,
   eventTypeForSlug,
+  normalizeOccasionKey,
 } from "../occasions";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +65,17 @@ function seededSlugs(): string[] {
   return slugs;
 }
 
+/** The `{ slug, name }` pairs the seeder writes — same TEXT parse, for O5. */
+function seededNames(): Array<{ slug: string; name: string }> {
+  const src = readFileSync(SEED, "utf8");
+  const open = src.indexOf("}> = [", src.indexOf("const templates: Array<{"));
+  const block = src.slice(open, src.indexOf("\n  ];", open));
+  return [...block.matchAll(/\{\s*slug:\s*"([^"]+)",\s*name:\s*"([^"]+)"/g)].map((m) => ({
+    slug: m[1],
+    name: m[2],
+  }));
+}
+
 describe("occasion vocabulary", () => {
   // O1 — the explicit table covers the ONE runtime vocabulary, exactly.
   it("O1: every seeded template slug has an explicit occasion class", () => {
@@ -71,7 +89,9 @@ describe("occasion vocabulary", () => {
     // The four seeded by ledger `2026-09-03-occasion-switches`, named explicitly: the loop above
     // is only as strong as the seed file it parses, so a row silently dropped from the seeder
     // would make this test pass by having nothing left to check.
-    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion"]) {
+    // `honeymoon` joins them by ledger `2026-09-03-occasion-hygiene`: it was an eventTypeEnum
+    // member, a BRANCH_MAP entry, a preset key and a landing Moment before it was ever a row.
+    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion", "honeymoon"]) {
       assert.ok(slugs.includes(slug), `"${slug}" must still be seeded — a shipped surface links to it`);
       assert.ok(OCCASION_CLASS_BY_SLUG[slug], `"${slug}" has no explicit occasion class`);
     }
@@ -112,6 +132,10 @@ describe("occasion vocabulary", () => {
     assert.equal(eventTypeForSlug("corporate-events"), "corporate");
     assert.equal(eventTypeForSlug("wedding-anniversaries"), "anniversary");
     assert.equal(eventTypeForSlug("travel"), "vacation");
+    // Ledger `2026-09-03-occasion-hygiene` — the seeded slug and the enum member share a spelling,
+    // and BRANCH_MAP puts "honeymoon" in the "trip" branch.
+    assert.equal(eventTypeForSlug("honeymoon"), "honeymoon");
+    assert.equal(eventTypeForSlug("Honeymoon"), "honeymoon");
     // Display names resolve too — a caller holding only `experienceType.name` gets the same answer.
     assert.equal(eventTypeForSlug("Corporate Events"), "corporate");
   });
@@ -128,5 +152,27 @@ describe("occasion vocabulary", () => {
     // …and by display name, which is what the Trip Strip actually holds.
     assert.equal(classifyOccasion("Anniversary Trip"), "couple");
     assert.equal(classifyOccasion("Wedding Anniversaries"), "event");
+    // …and by the SINGULAR name the row now carries (ledger `2026-09-03-occasion-hygiene`). Without
+    // the alias table this kebab-cases to "wedding-anniversary", misses the explicit table and comes
+    // back "couple" off the "anniversar" keyword — the collision, silently restored by a rename.
+    assert.equal(classifyOccasion("Wedding Anniversary"), "event");
+    // The honeymoon is a couple's occasion, by slug and by name.
+    assert.equal(classifyOccasion("honeymoon"), "couple");
+    assert.equal(classifyOccasion("Honeymoon"), "couple");
+  });
+
+  // O5 — a display name always resolves back to its own slug.
+  it("O5: every seeded display name normalizes to its own slug", () => {
+    const pairs = seededNames();
+    assert.ok(pairs.length >= 27, `expected the full seeded template set, parsed ${pairs.length}`);
+    for (const { slug, name } of pairs) {
+      assert.equal(
+        normalizeOccasionKey(name),
+        slug,
+        `the seeded name "${name}" does not resolve to its slug "${slug}" — add it to ` +
+          "OCCASION_NAME_ALIASES in shared/occasions.ts, or the name falls through to the keyword " +
+          "sniff and can silently change the occasion's class",
+      );
+    }
   });
 });

@@ -111,8 +111,10 @@ export const MOMENTS: MomentConfig[] = [
       "One day left deliberately empty — a boat on call if you want it, nothing booked if you don't.",
     ],
     experienceType: "travel",
-    // No seeded "honeymoon" row; the honeymoon is a travel occasion in the catalog.
-    experienceSlug: "travel",
+    // Ledger `2026-09-03-occasion-hygiene`: `honeymoon` is now a real `experience_types` row, so
+    // this Moment seeds its OWN occasion instead of the generic `travel` row it borrowed while
+    // none existed — the same repair `milestone-birthday` got one ledger row earlier.
+    experienceSlug: "honeymoon",
     city: "Goa",
   },
   {

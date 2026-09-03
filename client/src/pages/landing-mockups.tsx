@@ -40,7 +40,9 @@ const experienceCategories = [
   { icon: Sparkles, label: "Date Night", slug: "date-night", color: "text-red-500", bgColor: "bg-red-500/10" },
   { icon: Cake, label: "Birthday", slug: "birthday", color: "text-orange-500", bgColor: "bg-orange-500/10" },
   { icon: PartyPopper, label: "Bachelor/Bachelorette", slug: "bachelor-bachelorette", color: "text-pink-600", bgColor: "bg-pink-600/10" },
-  { icon: HeartHandshake, label: "Anniversary", slug: "anniversary-trip", color: "text-rose-600", bgColor: "bg-rose-600/10" },
+  // "Anniversary Trip", not "Anniversary": the bare word is the two-products-one-word collision
+  // ledger `2026-09-03-occasion-vocabulary` named, and this card links to the COUPLE'S getaway.
+  { icon: HeartHandshake, label: "Anniversary Trip", slug: "anniversary-trip", color: "text-rose-600", bgColor: "bg-rose-600/10" },
   { icon: Building2, label: "Corporate", slug: "corporate-events", color: "text-slate-600", bgColor: "bg-slate-600/10" },
   { icon: Users, label: "Reunions", slug: "reunions", color: "text-indigo-500", bgColor: "bg-indigo-500/10" },
   { icon: Mountain, label: "Retreats", slug: "retreats", color: "text-emerald-500", bgColor: "bg-emerald-500/10" },
