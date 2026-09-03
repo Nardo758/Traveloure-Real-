@@ -401,7 +401,8 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   // RETIRED with that lane — ledger 2026-09-03-expert-templates-consumer-sunset. The city feed
   // has no ready-made source until the surviving `ready_made_trips` lane is wired into it, so
   // this suite's package-tile proofs retire with their subject.
-  // Engine slate (POST): an affiliate rec and a platform rec, both rendering as rec tiles.
+  // Engine slate (POST): an affiliate rec (rank 0) and a platform rec (rank 1), both
+  // rendering as rec tiles — in Gion's and Arashiyama's cadence windows respectively.
   await page.route('**/api/upsell/discover-location', (route) =>
     route.fulfill(json({ candidates: BENTO_FIX.candidates, suppressed: [] })),
   );
@@ -729,18 +730,26 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
     // Two-field search NEVER writes trip context: the where field is read-only.
     await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
-    // Candidates land one per window in ranked order: the affiliate tile is
-    // in Arashiyama and the platform recommendation is in Nishiki.
+    // Candidates land one per window in ranked order. The recIndex is the
+    // candidate's own rank (feed-composition.ts consumes recs strictly
+    // recIndex-sequentially), so with the expert_package candidate retired
+    // (ledger 2026-09-03-expert-templates-consumer-sunset) the affiliate is
+    // rank 0 and the platform recommendation rank 1 — landing in the FIRST TWO
+    // cadence windows, Gion and Arashiyama. Nishiki's window has no candidate
+    // left to receive, so it holds none.
     const recTiles = page.locator('[data-testid^="feed-card-rec-"]');
     await expect(recTiles).toHaveCount(2);
+    await expect(page.getByTestId('feed-card-rec-0')).toBeVisible();
     await expect(page.getByTestId('feed-card-rec-1')).toBeVisible();
-    await expect(page.getByTestId('feed-card-rec-2')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
+    ).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
     ).toHaveCount(1);
     await expect(
-      page.locator('[data-testid="bento-section-nishiki"] [data-testid="feed-card-rec-2"]'),
-    ).toHaveCount(1);
+      page.locator('[data-testid="bento-section-nishiki"] [data-testid^="feed-card-rec-"]'),
+    ).toHaveCount(0);
 
     // Card-is-link vs button propagation: clicking the card BODY opens the gem's
     // details sheet; clicking a button STOPS propagation, so only that button's
@@ -773,7 +782,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.reload();
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
     await expect(
-      page.locator('[data-testid="bento-section-nishiki"] [data-testid="feed-card-rec-2"]'),
+      page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
     ).toBeVisible();
     // Let the mount-time impression(s) settle, then snapshot.
     await expect.poll(() => impressions, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
@@ -812,8 +821,9 @@ test.describe('city-feed bento — /discover/location', () => {
     // The ready-made "Get this trip" channel-colour assertion retired with its tile
     // (ledger 2026-09-03-expert-templates-consumer-sunset).
 
-    // Affiliate/partner → gold Book on {Partner}.
-    const affiliateBook = page.getByTestId('btn-book-rec-1');
+    // Affiliate/partner → gold Book on {Partner}. Rank 0 since the
+    // expert_package candidate retired (2026-09-03-expert-templates-consumer-sunset).
+    const affiliateBook = page.getByTestId('btn-book-rec-0');
     await expect(affiliateBook).toHaveText(/^Book on .+/);
     expect(await usesToken(affiliateBook, '--earn-gold-ink')).toBe(true);
     expect(await usesToken(affiliateBook, '--earn-teal')).toBe(false);
@@ -826,7 +836,8 @@ test.describe('city-feed bento — /discover/location', () => {
     // bare catalog. It navigates to /services?categoryKey=…&location=<city>&upsellSource=…
     // The click also fires the (now-validating) upsell click beacon, mocked in
     // mockBentoEndpoints so it never 400s the test.
-    await page.getByTestId('btn-book-rec-2').click();
+    // The platform_provider candidate is rank 1 post-sunset (see test 9).
+    await page.getByTestId('btn-book-rec-1').click();
     await expect.poll(() => page.url(), { timeout: 10_000 }).toContain('/services?');
     const url = new URL(page.url());
     expect(url.searchParams.get('location')).toBe('Kyoto');
