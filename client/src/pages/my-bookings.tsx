@@ -283,70 +283,9 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
   );
 }
 
-// Purchased expert package (template) — Marketplace Phase B3 (the delivery surface).
-// Full itinerary lives on /expert-templates/:id, which unlocks for purchasers (B2 content-gate).
-interface PurchasedPackage {
-  id: string;
-  templateId: string;
-  status: string;
-  price: string;
-  purchasedAt: string | null;
-  template: {
-    id: string;
-    title: string;
-    destination: string;
-    duration: number;
-    coverImage?: string | null;
-  } | null;
-}
-
-function PurchasedPackageCard({ purchase }: { purchase: PurchasedPackage }) {
-  const t = purchase.template;
-  return (
-    <Card data-testid={`package-${purchase.id}`}>
-      <CardContent className="p-4 flex items-center gap-4">
-        {t?.coverImage ? (
-          <img src={t.coverImage} alt={t.title} className="w-20 h-20 object-cover rounded-lg shrink-0" />
-        ) : (
-          <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <BookOpen className="w-8 h-8 text-primary/40" />
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold truncate">{t?.title ?? "Package unavailable"}</p>
-            {purchase.status === "completed" ? (
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">Purchased</Badge>
-            ) : purchase.status === "refunded" ? (
-              <Badge variant="destructive">Refunded</Badge>
-            ) : (
-              <Badge variant="outline">Payment pending</Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1 flex-wrap">
-            {t && (
-              <>
-                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {t.destination}</span>
-                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {t.duration} days</span>
-              </>
-            )}
-            <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" /> ${purchase.price}</span>
-            {purchase.purchasedAt && (
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" /> {format(new Date(purchase.purchasedAt), "MMM d, yyyy")}
-              </span>
-            )}
-          </div>
-        </div>
-        {t && purchase.status === "completed" && (
-          <Button asChild size="sm" data-testid={`button-view-package-${purchase.id}`}>
-            <Link href={`/expert-templates/${t.id}`}>View itinerary</Link>
-          </Button>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// The purchased expert-package (expert_templates) delivery card RETIRED — ledger
+// 2026-09-03-expert-templates-consumer-sunset. Nothing was ever purchased through that lane,
+// and its detail page is gone. The Trips tab now carries `ready_made_trips` purchases only.
 
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -357,11 +296,6 @@ export default function MyBookingsPage() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/my-bookings"],
-    enabled: !!user,
-  });
-
-  const { data: purchasedPackages } = useQuery<PurchasedPackage[]>({
-    queryKey: ["/api/my-purchased-templates"],
     enabled: !!user,
   });
 
@@ -443,7 +377,7 @@ export default function MyBookingsPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (!bookings || bookings.length === 0) && (purchasedPackages?.length ?? 0) === 0 && rmPurchases.length === 0 ? (
+        ) : (!bookings || bookings.length === 0) && rmPurchases.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -457,7 +391,7 @@ export default function MyBookingsPage() {
         ) : (
           <Tabs
             defaultValue={
-              (bookings?.length ?? 0) === 0 && ((purchasedPackages?.length ?? 0) > 0 || rmPurchases.length > 0)
+              (bookings?.length ?? 0) === 0 && rmPurchases.length > 0
                 ? "packages"
                 : "all"
             }
@@ -476,9 +410,9 @@ export default function MyBookingsPage() {
               <TabsTrigger value="completed" data-testid="tab-completed">
                 Completed ({completedBookings.length})
               </TabsTrigger>
-              {((purchasedPackages?.length ?? 0) > 0 || rmPurchases.length > 0) && (
+              {rmPurchases.length > 0 && (
                 <TabsTrigger value="packages" data-testid="tab-packages">
-                  Trips ({(purchasedPackages?.length ?? 0) + rmPurchases.length})
+                  Trips ({rmPurchases.length})
                 </TabsTrigger>
               )}
             </TabsList>
@@ -519,7 +453,7 @@ export default function MyBookingsPage() {
               )}
             </TabsContent>
 
-            {/* Purchased expert packages — Phase B3 delivery surface */}
+            {/* Purchased Ready Made Trips — the store lane's delivery surface */}
             <TabsContent value="packages" className="space-y-4">
               {/* Ready-made STORE purchases — clone access + the concierge recourse ladder
                   (ledger 2026-08-22-concierge-p3): revision status is the primary affordance;
@@ -594,13 +528,7 @@ export default function MyBookingsPage() {
                   ))}
                 </div>
               )}
-              {(purchasedPackages ?? []).length === 0 ? (
-                <EmptyState message="No purchased trips yet" />
-              ) : (
-                (purchasedPackages ?? []).map((purchase) => (
-                  <PurchasedPackageCard key={purchase.id} purchase={purchase} />
-                ))
-              )}
+              {rmPurchases.length === 0 && <EmptyState message="No purchased trips yet" />}
             </TabsContent>
           </Tabs>
         )}

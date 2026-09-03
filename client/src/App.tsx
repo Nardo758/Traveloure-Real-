@@ -184,7 +184,6 @@ const BlogPage = lazy(() => import("@/pages/blog"));
 const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
 const ExpertDetailPage = lazy(() => import("@/pages/expert-detail"));
-const ExpertTemplateDetail = lazy(() => import("@/pages/expert-template-detail"));
 const QuickStartItinerary = lazy(() => import("@/pages/quick-start-itinerary"));
 const BookingDemo = lazy(() => import("@/pages/booking-demo"));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
@@ -409,9 +408,6 @@ function Router() {
           an unapproved listing sees the same page flagged Preview. */}
       <Route path="/ready-made/:id">
         {() => <ReadyMadeDetailPage />}
-      </Route>
-      <Route path="/expert-templates/:id">
-        <ExpertTemplateDetail />
       </Route>
       {/* Public earner storefront — one canonical path for experts and providers.
           /p/:handle remains a legacy-compatible SPA entry point while the server redirects it. */}

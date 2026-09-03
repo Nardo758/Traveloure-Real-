@@ -299,7 +299,8 @@ type Service = {
 type DiscoverResult = {
   services: Service[];
   total: number;
-  packagesTotal?: number;
+  // `packagesTotal` retired with the expert-template lane — ledger
+  // 2026-09-03-expert-templates-consumer-sunset; unifiedSearch no longer returns it.
   suggestion?: string | null;
 };
 

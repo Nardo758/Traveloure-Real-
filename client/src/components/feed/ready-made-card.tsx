@@ -1,19 +1,14 @@
 /**
- * Feed panel — Ready-Made (expert itinerary template) tile for the city-feed
- * bento. Phase 2c: ALWAYS the 2×1 photo-left treatment (including as the
- * fallback anchor — the grid gives every ready-made col-span-2), on the family
- * grammar: photo band (gradient + tag fallback, no grey box) · title · meta ·
- * three-column mono facts row · source row · action row (View itinerary, teal).
- * The CARD is the link, routed by SOURCE (a ready_made_trips row → /ready-made/:id,
- * an expert_templates row → /expert-templates/:id — never unified; see the
- * detailHref note below) — the teaser "More info" modal is gone; the detail page
- * carries the teaser.
+ * Feed panel — Ready-Made trip tile for the city-feed bento. Phase 2c: ALWAYS the
+ * 2×1 photo-left treatment (including as the fallback anchor — the grid gives every
+ * ready-made col-span-2), on the family grammar: photo band (gradient + tag fallback,
+ * no grey box) · title · meta · three-column mono facts row · source row · action row
+ * (View itinerary, teal). The CARD is the link — the teaser "More info" modal is gone;
+ * the detail page carries the teaser.
  *
  * Kept testids: wrapper `feed-card-package-${id}`, `package-rating-${id}`,
  * `package-sold-${id}`, `btn-view-package-${id}`.
  *
- * Data comes from the already-gated public GET /api/expert-templates
- * (approved+published, teaser-redacted); no full content is read here.
  * §13: a real rating renders only when reviewCount > 0, otherwise an honest "New".
  */
 import React, { useState } from "react";
@@ -57,21 +52,14 @@ export function FeedReadyMadeCard({
     .join(" · ");
   const byline = expertName ? `by ${expertName}` : destDuration;
 
-  // Route by SOURCE, never unified. storefront.tsx is the reference: its template
-  // lane links /expert-templates/:id and its ready-made lane /ready-made/:id — two
-  // routes, chosen by source. Phase 2e's "unify every card to /ready-made/:id" was
-  // itself the bug the marketplace audit caught: /ready-made/:id resolves the
-  // `ready_made_trips` table ONLY, so a card backed by `expert_templates` 404'd
-  // there ("Trip not found", confirmed live on the Mumbai demo). The href now
-  // follows the card's OWN source — a `ready_made_trips` row → /ready-made/:id, an
-  // `expert_templates` row → /expert-templates/:id — bringing the feed into line
-  // with what the storefront already proves. The whole card is ONE destination:
-  // body click, source row and the `Get this trip` CTA all land on that route.
-  const isReadyMadeSource =
-    template.source === "ready_made" || template.source === "ready_made_trips";
-  const detailHref = isReadyMadeSource
-    ? `/ready-made/${template.id}`
-    : `/expert-templates/${template.id}`;
+  // ONE destination: /ready-made/:id. This card used to route by SOURCE because the
+  // feed carried two lanes — a `ready_made_trips` row and an `expert_templates` row —
+  // and /ready-made/:id resolves the `ready_made_trips` table ONLY, so a template-backed
+  // card 404'd there. The `expert_templates` lane retired (ledger
+  // 2026-09-03-expert-templates-consumer-sunset), so `ready_made_trips` is the only
+  // source that reaches this card and the fork is gone. Body click, source row and the
+  // `Get this trip` CTA all land on that route.
+  const detailHref = `/ready-made/${template.id}`;
   const ctaHref = detailHref;
 
   // ─── Compact density ────────────────────────────────────────────────────────

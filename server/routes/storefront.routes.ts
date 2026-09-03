@@ -5,7 +5,9 @@
  * mockup-backoffice-dashboard.html). Three surfaces:
  *   PATCH /api/me/handle          — claim/change the caller's handle (§14: user from session only)
  *   GET   /api/storefront/:handle — public JSON: earner profile + APPROVED offerings across the
- *                                   three lanes (provider_services / expert_templates / ready_made_trips)
+ *                                   two lanes (provider_services / ready_made_trips). The third
+ *                                   lane (`expert_templates`) retired with that product, response
+ *                                   key included — ledger 2026-09-03-expert-templates-consumer-sunset.
  *   GET   /s/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
  *   GET   /p/:handle              — legacy alias redirecting to the canonical /s/:handle route
  *                                   /itinerary-view/:token route-interception pattern), then the SPA
@@ -27,11 +29,11 @@ import fs from "fs";
 import path from "path";
 import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
+import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
-// providerServices/expertTemplates/readyMadeTrips rows or their approval/status columns.
+// providerServices/readyMadeTrips rows or their approval/status columns.
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isExpertRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { transformDevHtml } from "../vite-dev-html";
@@ -489,9 +491,10 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
     }
     const consoleFamily = isProviderRole(me.role) || me.role === "provider" ? "provider" : "expert";
 
-    // Offerings across the three lanes (same owner columns + approved criteria as the
-    // public storefront gates above: F2 for services, §10 for templates, migration-133
-    // status for Ready Made Trips).
+    // Offerings across the two live lanes (same owner columns + approved criteria as the
+    // public storefront gates above: F2 for services, migration-133 status for Ready Made
+    // Trips). The `expert_templates` lane retired — ledger
+    // 2026-09-03-expert-templates-consumer-sunset.
     const [svcAgg] = await db
       .select({
         total: sql<number>`count(*)::int`,
@@ -499,13 +502,6 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
       })
       .from(providerServices)
       .where(eq(providerServices.userId, me.id));
-    const [tplAgg] = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        approved: sql<number>`count(*) filter (where ${expertTemplates.approvalStatus} = 'approved')::int`,
-      })
-      .from(expertTemplates)
-      .where(eq(expertTemplates.expertId, me.id));
     const [rmtAgg] = await db
       .select({
         total: sql<number>`count(*)::int`,
@@ -514,8 +510,8 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
       .from(readyMadeTrips)
       .where(eq(readyMadeTrips.authorId, me.id));
 
-    const offeringsTotal = (svcAgg?.total ?? 0) + (tplAgg?.total ?? 0) + (rmtAgg?.total ?? 0);
-    const offeringsApproved = (svcAgg?.approved ?? 0) + (tplAgg?.approved ?? 0) + (rmtAgg?.approved ?? 0);
+    const offeringsTotal = (svcAgg?.total ?? 0) + (rmtAgg?.total ?? 0);
+    const offeringsApproved = (svcAgg?.approved ?? 0) + (rmtAgg?.approved ?? 0);
 
     // Availability applies to the in-person (provider) track only — future, non-blocked slots
     // on the caller's OWN services (the vendor_availability_slots canonical table).
@@ -688,27 +684,9 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
     }
   }
 
-  // Lane 2: itinerary templates — approved + expert-published (§10 read-gate). Teaser fields only
-  // (the content-gate: no itineraryData here, ever).
-  const templates = await db
-    .select({
-      id: expertTemplates.id,
-      title: expertTemplates.title,
-      destination: expertTemplates.destination,
-      price: expertTemplates.price,
-      coverImage: expertTemplates.coverImage,
-      duration: expertTemplates.duration,
-      averageRating: expertTemplates.averageRating,
-      reviewCount: expertTemplates.reviewCount,
-    })
-    .from(expertTemplates)
-    .where(
-      and(
-        eq(expertTemplates.expertId, owner.id),
-        eq(expertTemplates.approvalStatus, "approved"),
-        eq(expertTemplates.isPublished, true),
-      ),
-    );
+  // Lane 2 (itinerary templates) RETIRED — ledger 2026-09-03-expert-templates-consumer-sunset.
+  // The lane is gone from the query, the offering total and the response body; no
+  // `expert_templates` row can reach a public page.
 
   // Lane 3: Ready Made Trips — status='approved' is the sellable state (migration 133 CHECK).
   const readyMade = await db
@@ -723,7 +701,7 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
     .from(readyMadeTrips)
     .where(and(eq(readyMadeTrips.authorId, owner.id), eq(readyMadeTrips.status, "approved")));
 
-  const total = services.length + templates.length + readyMade.length;
+  const total = services.length + readyMade.length;
   // No approved inventory → no public page (an unvetted earner is not publishable).
   if (total === 0) return null;
 
@@ -774,7 +752,7 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
   const memberSince = owner.createdAt ? owner.createdAt.toISOString() : null;
 
   // Vacation mode (§ above): non-null vacationUntil AND in the future = away. Business-level
-  // flag only — the services/templates/readyMade arrays below are UNCHANGED by this; away
+  // flag only — the services/readyMade arrays below are UNCHANGED by this; away
   // listings stay visible-not-bookable, enforcement happens at the booking path (checkout
   // claim), not by removing anything from this payload.
   const away =
@@ -806,7 +784,6 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
       gemsSharedCount,
     },
     services: resolvedServices,
-    templates,
     readyMade,
     away,
   };
@@ -961,7 +938,7 @@ router.get("/s/:handle", async (req, res, next) => {
     const data = await loadStorefront(req.params.handle);
     if (!data) return next(); // SPA renders its own not-found
 
-    const count = data.services.length + data.templates.length + data.readyMade.length;
+    const count = data.services.length + data.readyMade.length;
     const isProvider = isProviderRole(data.earner.role);
     const providerServiceCount = data.services.length;
     const title = isProvider
@@ -975,7 +952,6 @@ router.get("/s/:handle", async (req, res, next) => {
     const ogImage =
       data.earner.coverImageUrl ??
       data.readyMade[0]?.heroImageUrl ??
-      data.templates[0]?.coverImage ??
       data.earner.profileImageUrl ??
       `https://traveloure.com/og-cover.png`;
 

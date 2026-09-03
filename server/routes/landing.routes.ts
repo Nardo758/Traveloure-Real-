@@ -15,9 +15,10 @@
  *     the same full-list fallback. The landing takes slot 0 of the same rule.
  *
  * anchorExpert additions the feed shape lacks (Phase 0 finding): users.handle and a
- * server-derived fromPrice = MIN across the expert's approved+active provider_services and
- * approved+published expert_templates (the same predicates the feed's packagesCount uses),
+ * server-derived fromPrice = MIN across the expert's approved+active provider_services,
  * converted to integer cents. Null when the expert has no priced public offering.
+ * (The `expert_templates` half of that MIN retired with that lane — ledger
+ * 2026-09-03-expert-templates-consumer-sunset; a price for an unbuyable product is §13.)
  *
  * Pure composers are exported for tests (the getPricingHandler precedent).
  */
@@ -25,7 +26,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, landingMomentEvents } from "@shared/schema";
+import { users, providerServices, landingMomentEvents } from "@shared/schema";
 import {
   resolveLandingMoments,
   MOMENTS,
@@ -59,8 +60,8 @@ async function enrichAnchor(anchor: { id: string; name: string }): Promise<{
     .where(eq(users.id, anchor.id))
     .limit(1);
 
-  // MIN price across the expert's public offerings — the same public-read predicates the
-  // feed uses: provider_services approved+active; expert_templates approved+published.
+  // MIN price across the expert's public offerings — the same public-read predicate the
+  // feed uses: provider_services approved+active.
   const [svcMin] = await db
     .select({ min: sql<string | null>`min(${providerServices.price})` })
     .from(providerServices)
@@ -71,17 +72,7 @@ async function enrichAnchor(anchor: { id: string; name: string }): Promise<{
         eq(providerServices.status, "active"),
       ),
     );
-  const [tplMin] = await db
-    .select({ min: sql<string | null>`min(${expertTemplates.price})` })
-    .from(expertTemplates)
-    .where(
-      and(
-        eq(expertTemplates.expertId, anchor.id),
-        eq(expertTemplates.approvalStatus, "approved"),
-        eq(expertTemplates.isPublished, true),
-      ),
-    );
-  const candidates = [dollarsToCents(svcMin?.min), dollarsToCents(tplMin?.min)].filter(
+  const candidates = [dollarsToCents(svcMin?.min)].filter(
     (c): c is number => c !== null,
   );
   const result: {

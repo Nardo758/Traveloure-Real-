@@ -163,8 +163,10 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/revenue',             description: 'Revenue overview' },
   { href: '/admin/analytics',           description: 'Platform analytics' },
   { href: '/admin/categories',          description: 'Service categories' },
-  { href: '/admin/expert-templates',    description: 'Expert template library' },
-  { href: '/admin/template-approvals',  description: 'Template approval queue' },
+  // NOTE: /admin/expert-templates is the expert_service_offerings (ESO) onboarding catalog —
+  // a name collision with the retired `expert_templates` marketplace, not that lane.
+  { href: '/admin/expert-templates',    description: 'Expert service template library (ESO)' },
+  { href: '/admin/template-approvals',  description: 'Ready Made Trips approval + curation queue' },
   { href: '/admin/search',              description: 'Global search' },
   { href: '/admin/notifications',       description: 'Notification management' },
   { href: '/admin/system',              description: 'System health & config' },

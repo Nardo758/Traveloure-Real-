@@ -206,7 +206,17 @@
     fixtures only; the test-email filter must include %@test.dev / %@t.test / **%@example.com** — the last
     added Aug 2, 2026 when invariant triage found the seed-expert-services personas live there; RFC 2606
     reserved, always fixtures). Do not build new features on
-    `expert_templates`. Historical §10 record below stands for the still-live consumer surface.
+    `expert_templates`.
+    **⇒ THE GATE WAS READ AND THE CONSUMER WIND-DOWN IS DONE (ledger `2026-09-03-expert-templates-consumer-sunset`).**
+    On 2026-09-03 the decision-maker confirmed ZERO real purchases ever, and the whole list this block
+    calls "INTACT and untouched" — the consumer read/purchase surface, `/api/my-purchased-templates`,
+    the owner reads (My Offerings lane 2, storefront lane 2), the admin queues and the §15
+    purchase/confirm money endpoints — was retired, plus the owner console and every derived count.
+    The TABLES (`expert_templates`, `template_purchases`, `template_reviews`), their `shared/schema.ts`
+    declarations and their `server/storage.ts` accessors are KEPT as historical rows; no migration
+    landed. `ready_made_trips` is the single surviving store lane. **Everything below this line is now
+    a HISTORICAL record of a surface that no longer exists** — read it for provenance, never as a
+    description of live behaviour.
 
 <!-- FINDINGS class. Original CLAUDE.md lines 225-300, as-of 5941a4ff. -->
     **(Historical) ACTIVATION record:** (`claude/marketplace-phaseA-gate` and follow-ons).

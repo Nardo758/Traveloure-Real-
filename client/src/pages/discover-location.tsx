@@ -1742,18 +1742,11 @@ export default function DiscoverLocationPage() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Packages (expert itinerary templates) for this city — the already-gated
-  // public feed (approved+published only, teaser-redacted, quality-ordered).
-  const { data: packagesData } = useQuery<any[]>({
-    queryKey: ["/api/expert-templates", { destination: city }],
-    queryFn: async () => {
-      const res = await fetch(`/api/expert-templates?destination=${encodeURIComponent(city)}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!city,
-    staleTime: 10 * 60 * 1000,
-  });
+  // The city feed's package lane (`expert_templates`) RETIRED — ledger
+  // 2026-09-03-expert-templates-consumer-sunset. Nothing fetches that product any more, so
+  // the `package` tile has no source and the city-wide ready-made fill has nothing to add.
+  // An empty aisle is honest (§13); a tile linking to a route that no longer exists is not.
+  // Wiring the surviving `ready_made_trips` store lane into this feed is its own change.
 
   // Unsplash download tracking (API compliance)
   const trackedDownloadsRef = useRef<Set<string>>(new Set());
@@ -1958,29 +1951,12 @@ export default function DiscoverLocationPage() {
         )
       : feedItems;
 
-  // Shape A: expert packages are now first-class engine candidates, ranked in the SAME
-  // slate as offering recommendations (server: gatherOfferingCandidates includePackages,
-  // OPT-floored so they never crowd out a REQ offering). They arrive through the
-  // recommendation channel; re-tag them here as package feed items so they render as
-  // PackageCard, joining the thin candidate (offeringId = template.id) to the fetched
-  // package data. A candidate with no matching package is dropped (never render a raw id).
-  // This SUPERSEDES the old fixed 4/16 package splice + the #205 client-side ranking.
-  const packageById = new Map((packagesData ?? []).map((p: any) => [String(p.id), p]));
-  // The public query is already destination-scoped. A neighborhood field, when
-  // present in fixture or future payloads, identifies a neighborhood listing;
-  // the first unscoped result is the city-wide fallback.
-  const cityWideReadyMade = (packagesData ?? []).find(
-    (p: any) => !p.neighborhood && !p.neighborhoodSlug && !p.neighborhood_name,
-  ) ?? null;
-  const retagged: FeedItem[] = composedItems
-    .map((it: any) => {
-      if (it.kind === "recommendation" && it.data?.candidate?.sourceType === "expert_package") {
-        const pkg = packageById.get(String(it.data.candidate.offeringId));
-        return pkg ? ({ kind: "package", id: `package-${pkg.id}`, data: pkg } as FeedItem) : null;
-      }
-      return it as FeedItem;
-    })
-    .filter(Boolean) as FeedItem[];
+  // The expert-package retag (a `sourceType: "expert_package"` recommendation joined back to
+  // the fetched package row and re-emitted as a `package` tile) RETIRED with the lane —
+  // ledger 2026-09-03-expert-templates-consumer-sunset. The server no longer gathers those
+  // candidates either (upsell-query.service.ts), so there is nothing to re-tag.
+  const cityWideReadyMade = null;
+  const retagged: FeedItem[] = composedItems as FeedItem[];
   // Trailhead T4.3: published external stubs as distinct, non-bookable feed items.
   const externalStubItems: FeedItem[] = (externalStubs as any[]).map((s) => ({
     kind: "external-stub" as FeedItem["kind"],
