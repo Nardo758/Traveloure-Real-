@@ -13,6 +13,9 @@
  *       branches read literals.
  *   O3  an unmapped slug resolves to "other" and NEVER to a nearer-looking member (§13), and a slug
  *       that IS already an enum member passes straight through.
+ *       Extended by ledger `2026-09-03-occasion-switches`: the four occasions that ruling seeded
+ *       (`romance`, `corporate`, `milestone-birthday`, `family-occasion`) are additionally named
+ *       one by one, so a seeder regression that drops one cannot pass by leaving nothing to check.
  *   O4  the TWO anniversaries are different occasions and land in different classes —
  *       `anniversary-trip` (a couple's getaway) vs `wedding-anniversaries` (a party with guests).
  *       They were indistinguishable under the keyword sniff, and the nav item labelled just
@@ -64,6 +67,13 @@ describe("occasion vocabulary", () => {
         OCCASION_CLASS_BY_SLUG[slug],
         `seeded slug "${slug}" has no entry in OCCASION_CLASS_BY_SLUG — class it explicitly`,
       );
+    }
+    // The four seeded by ledger `2026-09-03-occasion-switches`, named explicitly: the loop above
+    // is only as strong as the seed file it parses, so a row silently dropped from the seeder
+    // would make this test pass by having nothing left to check.
+    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion"]) {
+      assert.ok(slugs.includes(slug), `"${slug}" must still be seeded — a shipped surface links to it`);
+      assert.ok(OCCASION_CLASS_BY_SLUG[slug], `"${slug}" has no explicit occasion class`);
     }
     // …and nothing extra: an entry for a slug the seeder no longer writes is stale vocabulary.
     for (const slug of Object.keys(OCCASION_CLASS_BY_SLUG)) {

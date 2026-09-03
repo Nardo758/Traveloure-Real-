@@ -1385,4 +1385,13 @@ export const MIGRATION_FILES = [
   // (§14 tightening) instead of client-supplied. Additive nullable, no CHECK; all three declared
   // in shared/schema.ts for publish durability.
   "275_itinerary_item_booking_inputs.sql",
+  // Ledger 2026-09-03-occasion-switches (CLAUDE.md Locked Decision 28): the six SWITCH columns on
+  // `experience_types` — default_stops / default_duration / default_schedule / default_guests /
+  // vocabulary / default_visibility. An occasion is a ROW carrying defaults, not a class: stops, an
+  // internal schedule and a guest list are independent capabilities any occasion can need in any
+  // combination, which a three-class model cannot express. Additive nullable, NO DEFAULT and NO
+  // CHECK (publish-trap posture, 181/195/273 precedent — the value sets are app-enforced); NULL
+  // means "not decided", which readers render as the plain-trip shape and say so (§13). All six
+  // declared in shared/schema.ts so the deploy push cannot drop them.
+  "276_experience_type_switches.sql",
 ] as const;

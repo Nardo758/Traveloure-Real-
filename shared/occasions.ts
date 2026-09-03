@@ -42,6 +42,20 @@ export const OCCASION_SLUG_TO_EVENT_TYPE: Record<string, EventType> = {
   "wedding-anniversaries": "anniversary",
   vacation: "vacation",
   travel: "vacation",
+  // ── The four occasions seeded by ledger `2026-09-03-occasion-switches` ──────────────────────
+  // Each eventType was chosen by reading which FEE/OPTIMIZER BRANCH it lands the trip in
+  // (`server/services/optimization-fee.service.ts` BRANCH_MAP: vacation/adventure/honeymoon/
+  // anniversary → "trip"; proposal/birthday → "experience"; wedding/corporate → "event"; anything
+  // unmapped → "trip"), not by which word reads nicest — a mapping IS a fee decision (§8/§14).
+  romance: "vacation", // a couple's getaway is a trip; "trip" branch, same as `travel`.
+  corporate: "corporate", // "Corporate Retreats" — the "event" branch, same as `corporate-events`.
+  "milestone-birthday": "birthday", // the "experience" branch, same as `birthday`.
+  // No eventTypeEnum member describes a family gathering. "other" is unmapped in BRANCH_MAP and
+  // therefore lands in the DEFAULT "trip" branch — the same branch every unclassified trip already
+  // gets. Listed explicitly rather than left to the fallback so the choice is visible and
+  // reviewable; borrowing "wedding" or "corporate" would silently buy this occasion the event
+  // branch's fee semantics (§13 — an honest "we do not claim to know" beats a nearer-looking guess).
+  "family-occasion": "other",
 };
 
 /**
@@ -103,6 +117,13 @@ export const OCCASION_CLASS_BY_SLUG: Record<string, OccasionClass> = {
   "farewell-party": "event",
   "holiday-party": "event",
   "sports-event": "travel",
+  // Seeded by ledger `2026-09-03-occasion-switches`. The class is PRESENTATION vocabulary only
+  // (the possessive lead and the party noun) — the flow shape comes from the row's own switch
+  // columns (migration 276), never from this.
+  romance: "couple",
+  corporate: "event",
+  "milestone-birthday": "event",
+  "family-occasion": "event",
 };
 
 /**
