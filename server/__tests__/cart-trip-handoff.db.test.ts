@@ -2,10 +2,18 @@
  * CART TRIP HANDOFF — F-2 regression (slip row-12 CTA → /services?tripId= → listing → Add).
  *
  * Sibling of `slip-add-to-trip-targeting.db.test.ts`, which pins the GRID's rail (the trip-scoped
- * itinerary-items rail). This one pins the LISTING's rail: the service-detail page keeps the cart
- * path (its `slotId` hold and its room `checkIn`/`checkOut` night range have no itinerary-item
- * equivalent — `syncItemProjection` writes neither), and now sends the resolved `tripId` in the
- * POST /api/cart body so the row is trip-scoped instead of landing in a generic trip-less cart.
+ * itinerary-items rail). This one pins the CART rail the service-detail page falls back to.
+ *
+ * SUPERSEDED IN PART, ledger `2026-09-03-slip-convergence` (READ THIS BEFORE TRUSTING THE PROSE
+ * BELOW): the reason this suite originally gave for the listing STAYING on the cart rail — that
+ * a picked `slotId` and a room's `checkIn`/`checkOut` night range "have no itinerary-item
+ * equivalent" — is no longer true. Migration 275 gave `itinerary_items` all three columns and
+ * `syncItemProjection` now carries them onto the projected cart row (proven by
+ * `slip-stay-projection.db.test.ts`), so with a resolved target trip the listing posts to the
+ * PLAN rail like the grid does. What is proven here is still exactly right and still live: it is
+ * the TRIP-LESS / guest fallback — the sanctioned path until G2 (ledger row 5) — plus the
+ * unchanged guarantee that a cart row born this way is never adopted by the projection. The
+ * `tripId` scoping proved by C1/C2 also still applies to that fallback row.
  *
  * The writes below go through `cartProjection.addToCart` — the SINGLE writer of `cart_items` and
  * exactly what the POST /api/cart handler calls — and the reads through `storage.getCartItems`,
@@ -156,9 +164,10 @@ test("C3 the trip-less path is unchanged — no tripId in, no trip guessed out",
 test("C4 the listing's slot hold rides ALONGSIDE the trip scope on one row", async () => {
   // Re-add the same service with a picked slot and the slot's server-derived date, exactly as the
   // C3 slot branch of POST /api/cart does. `slotId` + `scheduledDate` + `tripId` coexist on ONE
-  // cart row — and `slotId` has no itinerary-item equivalent (`syncItemProjection` never writes
-  // one), which is precisely why this page's Add stays on the cart rail instead of mirroring the
-  // grid's plan rail. A rail that dropped the hold would be a silent loss (§13).
+  // cart row. (Ledger 2026-09-03-slip-convergence: `slotId` DOES now have an itinerary-item
+  // equivalent — migration 275 — and the projection carries it, so this is no longer the reason
+  // the page uses the cart; it is the trip-less fallback. The hold itself must still survive on
+  // this rail: a rail that dropped it would be a silent loss (§13).)
   const when = new Date("2026-10-03T14:30:00.000Z");
   const readded = await cartProjection.addToCart(userId, {
     serviceId: scopedServiceId,

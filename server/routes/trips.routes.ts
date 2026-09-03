@@ -1287,7 +1287,14 @@ router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, asyn
   });
 
   // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
-
+//
+// §9 MOUNT-ORDER NOTE (ledger 2026-09-03-slip-convergence): this copy is SHADOWED. routes.ts
+// registers its own `app.post("/api/trips/:tripId/itinerary-items")` before `app.use(tripsRoutes)`,
+// so THAT handler is the one serving traffic and the one this lane extended with the migration-275
+// booking-input ALLOWLIST (`itineraryItemBookingInputsSchema`). The allowlist is deliberately NOT
+// duplicated here: a second implementation of the same admission decision is the derivation-drift
+// class §18 rule 1 names. If this copy is ever promoted to live, port the allowlist parse with it —
+// without it a repointed marketplace add silently loses the traveler's slot and stay dates.
 router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
