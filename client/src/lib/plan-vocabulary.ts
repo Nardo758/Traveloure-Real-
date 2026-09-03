@@ -115,3 +115,60 @@ export function travelersForSave(raw: string | number | undefined | null): numbe
   const rounded = Math.floor(n);
   return rounded > 0 ? rounded : undefined;
 }
+
+/**
+ * THE PARTY NOUN (ledger `2026-09-03-switch-readers`; migration 276's `vocabulary` column).
+ *
+ * The occasion ROW says what to call the people on the plan — `experience_types.vocabulary`,
+ * one of "travelers" | "guests" | "attendees". Before this lane nothing read that column: the
+ * step-4 label was the literal word "Travelers" and the Trip Strip's party chip derived its
+ * wording from the presentation CLASS (`classify`), which is a different question — a class
+ * answers "how do we headline this occasion", the column answers "what are these people called".
+ *
+ * §13 — **NULL means NOT SET**, and the fallback is the PLAIN-PLAN shape: "travelers", the word
+ * the surface already used before any occasion was chosen. It is a stated fallback, never this
+ * occasion's own answer, so nothing here fabricates a vocabulary for a row that has none.
+ */
+export type PartyNoun = "travelers" | "guests" | "attendees";
+
+const PARTY_NOUNS: readonly PartyNoun[] = ["travelers", "guests", "attendees"];
+
+/**
+ * The plural noun for the people on a plan.
+ *
+ * @param vocabulary  `experience_types.vocabulary` for the chosen occasion. NULL/absent/unknown ⇒
+ *                    "travelers" — the plain-plan fallback (§13), not a guess at the occasion.
+ * @param hasGuestList `experience_types.default_guests`. Passing an explicit `false` forces
+ *                    "travelers": an occasion that has NO guest list must show no guest copy
+ *                    (Locked Decision 28 — the switches are independent, and this is the one
+ *                    place their combination is resolved rather than restated at each caller).
+ *                    NULL/absent ⇒ not set ⇒ the vocabulary column is left to speak for itself.
+ */
+export function partyNoun(
+  vocabulary?: string | null,
+  hasGuestList?: boolean | null,
+): PartyNoun {
+  if (hasGuestList === false) return "travelers";
+  const v = (vocabulary || "").trim().toLowerCase();
+  return (PARTY_NOUNS as readonly string[]).includes(v) ? (v as PartyNoun) : "travelers";
+}
+
+/** The singular of a party noun, for a count of exactly one. */
+export function partyNounSingular(noun: PartyNoun): string {
+  return noun.replace(/s$/, "");
+}
+
+/**
+ * "3 guests" / "1 traveler" — the count and its noun, agreeing in number. Returns "" for a count
+ * the traveler never stated, so a caller cannot accidentally print "0 travelers" for an
+ * unanswered question (the same honest-or-absent posture `travelersForSave` enforces on write).
+ */
+export function partyCountLabel(
+  count: number | null | undefined,
+  vocabulary?: string | null,
+  hasGuestList?: boolean | null,
+): string {
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return "";
+  const noun = partyNoun(vocabulary, hasGuestList);
+  return `${count} ${count === 1 ? partyNounSingular(noun) : noun}`;
+}

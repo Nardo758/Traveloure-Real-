@@ -5,7 +5,9 @@ import { MapPin, Calendar, Users, ShoppingCart, Lock, Heart } from "lucide-react
 import { useTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { planningRouteForTrip } from "@/contexts/PlanningContext";
-import { classify } from "@/lib/plan-vocabulary";
+import { classify, partyCountLabel } from "@/lib/plan-vocabulary";
+import { findOccasionByKey } from "@shared/occasions";
+import type { ExperienceType } from "@shared/schema";
 
 /**
  * TripStrip — the ratified Option A global trip bar (Trip-Strip program P3).
@@ -54,6 +56,18 @@ export function TripStrip() {
   const { data: cart } = useQuery<{ itemCount: number; total: string }>({
     queryKey: ["/api/cart"],
     staleTime: 30_000,
+  });
+
+  /**
+   * The chosen occasion's ROW (ledger `2026-09-03-switch-readers`) — the same
+   * `GET /api/experience-types` query key the edit panel and IntakePanel use, so this costs the
+   * cache lookup and not a second fetch, and the three surfaces can never see different rows.
+   * Fetched only once an occasion has actually been chosen: a browser with no occasion in context
+   * has nothing to look up, and the strip must not add a request to every marketing page.
+   */
+  const { data: occasions } = useQuery<ExperienceType[]>({
+    queryKey: ["/api/experience-types"],
+    enabled: !!(ctx.experienceSlug || ctx.experienceType),
   });
 
   // External (affiliate) items live only in sessionStorage, keyed by slug.
@@ -113,12 +127,28 @@ export function TripStrip() {
   // Honest-or-absent (§13): render the party fragment only for a real traveler count the user
   // actually entered — never an invented "2".
   const hasTravelers = typeof ctx.travelers === "number" && ctx.travelers > 0;
+  /**
+   * THE PARTY NOUN COMES FROM THE OCCASION ROW WHEN THE ROW HAS ONE (migration 276's
+   * `vocabulary`; ledger `2026-09-03-switch-readers`). The class-based wording below is a
+   * different question — a class answers "how do we headline this occasion", the column answers
+   * "what are these people called" — and until this lane the strip only had the class to go on.
+   *
+   * §13: a row that is absent (a free-text or legacy `experienceType` that matches nothing) or
+   * whose `vocabulary` is NULL is NOT SET, so the strip falls back to EXACTLY the class-based
+   * label it has always rendered — the plain-plan shape here, not a fabricated "travelers" that
+   * would silently demote every couple-class plan from "Party of 2".
+   */
+  const occasionRow = findOccasionByKey(occasions, ctx.experienceSlug || ctx.experienceType);
+  const rowPartyLabel = occasionRow?.vocabulary
+    ? partyCountLabel(ctx.travelers, occasionRow.vocabulary, occasionRow.defaultGuests)
+    : "";
   const partyLabel = hasTravelers
-    ? vocab === "event"
-      ? `${ctx.travelers} guests`
-      : vocab === "couple"
-        ? `Party of ${ctx.travelers}`
-        : `${ctx.travelers} traveler${ctx.travelers === 1 ? "" : "s"}`
+    ? rowPartyLabel ||
+      (vocab === "event"
+        ? `${ctx.travelers} guests`
+        : vocab === "couple"
+          ? `Party of ${ctx.travelers}`
+          : `${ctx.travelers} traveler${ctx.travelers === 1 ? "" : "s"}`)
     : "";
 
   const singleDay = ctx.startDate && ctx.startDate === ctx.endDate;

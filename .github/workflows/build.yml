@@ -265,6 +265,13 @@ jobs:
       # breakpoint, and the composed event/couple/invite leads are untouched.
       - name: Trip-strip lead-duplication pin
         run: npx tsx --test client/src/components/__tests__/trip-strip-lead.test.tsx
+      # 2026-09-03-switch-readers: migration 276's six occasion switches are nullable with NO DB
+      # CHECK, so every reader meets three states and the third — NULL = NOT SET — is the one §13
+      # governs. This pins that each reader falls back to the plain-plan shape in the SAFE
+      # direction, that default_guests:false beats the vocabulary column, and that the reverse
+      # event-type lookup returns a row only on a UNIQUE match instead of guessing.
+      - name: Occasion switch readers pin
+        run: npx tsx --test client/src/lib/__tests__/occasion-switch-readers.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)

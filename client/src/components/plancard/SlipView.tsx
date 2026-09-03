@@ -73,6 +73,7 @@ import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { AssignExpertSlot } from "./AssignExpertDialog";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { SlipLogisticsSection } from "./SlipLogisticsSection";
+import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { BuildAroundDialog } from "./BuildAroundDialog";
@@ -613,6 +614,17 @@ function SlipActions({
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const finalizeMutation = useFinalizeMutation(trip.id);
+  /**
+   * A HIDDEN OCCASION HAS NO SHARE LINK (migration 276 `default_visibility`; ledger
+   * `2026-09-03-switch-readers`). Sharing a proposal plan is the failure mode the switch exists
+   * to prevent, so the Share button is not rendered — the PDF and the trip-card preview stay,
+   * because neither hands anyone a link.
+   *
+   * §13: unresolved occasion or NULL column ⇒ NOT hidden, i.e. exactly today's behaviour. That is
+   * also what a viewer who cannot read the trip row gets, and it is the right direction: an
+   * undecided occasion must not lose its Share button.
+   */
+  const { isHidden: occasionHidden } = useOccasionSwitches(trip.id);
 
   // ── A1: Optimize this plan — the SAME shared gate sequence cart.tsx runs
   // (lib/optimization-gate.ts), fed from this trip's real DTO fields. The server reads the
@@ -790,9 +802,11 @@ function SlipActions({
 
   return (
     <div className="flex items-center gap-2 flex-wrap" data-testid="slip-actions">
-      <Button variant="outline" size="sm" onClick={handleShare} data-testid="slip-action-share">
-        <Share2 className="w-3.5 h-3.5 mr-1.5" /> Share
-      </Button>
+      {!occasionHidden && (
+        <Button variant="outline" size="sm" onClick={handleShare} data-testid="slip-action-share">
+          <Share2 className="w-3.5 h-3.5 mr-1.5" /> Share
+        </Button>
+      )}
       {/* Lane C (ledger 2026-09-03-slip-convergence) — the printable copy. Renders the SAME
           canonical itinerary_items this slip is showing, so the paper and the screen can never
           disagree. A plain anchor: the endpoint is session-authenticated and answers with a
