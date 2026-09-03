@@ -92,6 +92,7 @@ import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
 import { stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
+import { resolveCapturedDeposit } from "./services/deposit.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -6178,11 +6179,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
     // Accept: only a request-rail booking awaiting the owner's answer.
     confirmed: ["pending"],
-    // Decline / cancel: an unanswered request, or an already-accepted booking. NOTE this keeps the
-    // pre-existing cancel-a-confirmed-booking behaviour verbatim — the missing-refund question on
-    // that edge is a SEPARATE, still-unruled finding (audit SD-2 / Q2) and is deliberately not
-    // changed here rather than silently altered under cover of this fix.
-    cancelled: ["pending", "confirmed"],
+    // Decline / cancel: an unanswered request, an already-accepted booking, or a DEPOSIT-PAID one.
+    //
+    // `deposit_paid` added by ledger `2026-09-03-deposit-paid-cancel`. Its absence was not a policy
+    // — it was an omission: a listing that takes deposits produced bookings its own provider could
+    // not cancel, answering every attempt with a 409 that named no remedy. The traveler's money sat
+    // at Stripe and the claimed availability slot stayed consumed. The RULING is narrow: a provider
+    // cancel of a deposit-paid booking refunds exactly what was CAPTURED — the deposit — and
+    // nothing else, because the balance was never charged and there is nothing on it to refund.
+    //
+    // NOTE this still keeps the pre-existing cancel-a-CONFIRMED-booking behaviour verbatim — the
+    // missing-refund question on that edge is a SEPARATE, still-unruled finding (audit SD-2 / Q2)
+    // and is deliberately not changed here rather than silently altered under cover of this fix.
+    // `resolveCapturedDeposit` keys strictly on `status = 'deposit_paid'` for exactly that reason:
+    // a booking that has paid its balance is `confirmed`, and stays that sibling gap's business.
+    cancelled: ["pending", "confirmed", "deposit_paid"],
   };
   const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
@@ -6221,6 +6232,30 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // failure refundServiceBooking restores the prior status and throws, so the booking stays
       // cancellable). refundServiceBooking's atomic claim (pending/confirmed → refunded) is the
       // concurrency guard — a simultaneous traveler cancel and owner cancel issue at most ONE refund.
+      //
+      // ── DEPOSIT-PAID CANCEL (ledger 2026-09-03-deposit-paid-cancel) ─────────────────────────────
+      // What a `deposit_paid` booking has actually CAPTURED is resolved from the ROW (§14 — never
+      // from req.body, and never from the caller's belief about the price) by the ONE place a
+      // deposit amount is derived, `deposit.service.ts`. Three honest answers, three behaviours:
+      //   • not_deposit_paid — every existing path below is byte-identical to before (§13).
+      //   • deposit_only     — the refund is the DEPOSIT, not the total. The balance was never
+      //                        charged; refunding it would be inventing a return of money nobody
+      //                        paid, and Stripe would reject a refund exceeding the charge anyway.
+      //   • unresolvable     — the row is `deposit_paid` but its columns cannot say what was
+      //                        captured. REFUSED (409), never cancelled with a "$0 refund": that
+      //                        would take the booking terminal while the traveler's deposit is
+      //                        still at Stripe, and would state a refund that did not happen.
+      const capturedDeposit =
+        status === "cancelled" ? resolveCapturedDeposit(booking as any) : { kind: "not_deposit_paid" as const };
+      if (capturedDeposit.kind === "unresolvable") {
+        return res.status(409).json({
+          message:
+            "This booking took a deposit, but the platform cannot tell how much was captured, so it will not be cancelled with an unknown refund. Support has been given the details.",
+          currentStatus: booking.status,
+          reason: capturedDeposit.reason,
+        });
+      }
+
       if (status === "cancelled" && booking.stripePaymentIntentId) {
         // A stamped PI is NOT proof of payment (a pending request-rail booking can carry a
         // never-charged intent). Only a Stripe-verified `succeeded` PI enters the refund branch;
@@ -6233,11 +6268,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         } catch (piErr) {
           console.error("Provider cancel: PI lookup failed, treating as unpaid:", piErr);
         }
+        // A `deposit_paid` row whose deposit PI Stripe will not vouch for is the same refusal as
+        // `unresolvable` above: falling through here would cancel a deposit-taking booking with no
+        // refund at all and no error — the exact silent-money outcome this ruling exists to stop.
+        if (!piSucceeded && capturedDeposit.kind === "deposit_only") {
+          return res.status(409).json({
+            message:
+              "This booking's deposit payment could not be confirmed with the payment processor, so it was NOT cancelled. Please try again in a moment.",
+            currentStatus: booking.status,
+            reason: "deposit_intent_unconfirmed",
+          });
+        }
         if (piSucceeded) {
-          const amountPaid =
-            parseFloat(booking.totalAmount || "0") +
-            parseFloat((booking as any).platformFee || "0") +
-            parseFloat((booking as any).insuranceFee || "0");
+          // THE REFUNDABLE AMOUNT, SERVER-DERIVED (§14). For a deposit-partial booking that is the
+          // captured deposit; for every other booking it is the full charged amount, exactly as
+          // before. `refundServiceBooking` clamps it to what the row was charged and owns the
+          // Stripe call, its deterministic idempotency key (`refund-sb-<id>-<cents>` — booking id +
+          // operation amount, so a retry produces ONE refund, §15) and the atomic status claim.
+          const isDepositRefund = capturedDeposit.kind === "deposit_only";
+          const amountPaid = isDepositRefund
+            ? capturedDeposit.amount
+            : parseFloat(booking.totalAmount || "0") +
+              parseFloat((booking as any).platformFee || "0") +
+              parseFloat((booking as any).insuranceFee || "0");
           try {
             const { stripePaymentService } = await import("./services/stripe-payment.service");
             const refundResult = await stripePaymentService.refundServiceBooking(
@@ -6256,6 +6309,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
             // rail re-running them, never by a second Stripe refund).
+            //
+            // The SAME two reversals run for a deposit cancel, deliberately: 100% of what this
+            // booking captured is going back, so 100% of anything recognised against it must be
+            // reversed. In practice a `deposit_paid` booking has neither to reverse — completion
+            // never fired, so no `expert_earnings` were minted and no `platform_revenue` row was
+            // written (booking.service.ts mints both on the completion flip) — and both helpers
+            // are no-ops on an empty set. They run for the reason they run on the full path: to
+            // sweep anything that raced in between the read and the claim.
             await storage.reverseEarningsForBooking(req.params.id);
             await storage.reversePlatformRevenueForBooking(req.params.id, new Date(), 1);
             await db.execute(sql`
@@ -6267,16 +6328,30 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             await revertPurchasedItemsForBooking(req.params.id);
             if (booking.travelerId) {
               try {
+                // §13 wording: a deposit cancel returns the DEPOSIT — everything the traveler
+                // actually paid — but calling that "a full refund" of the booking would describe a
+                // return of money they were never charged. The balance is simply never collected.
+                const refundNoun = isDepositRefund
+                  ? `A refund of your deposit ($${amountPaid.toFixed(2)}) has been issued to your original payment method, and the outstanding balance will not be collected.`
+                  : `A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`;
                 await storage.createNotification({
                   userId: booking.travelerId,
                   type: "booking_cancelled",
-                  title: "Booking cancelled by provider — full refund issued",
+                  title: isDepositRefund
+                    ? "Booking cancelled by provider — deposit refunded"
+                    : "Booking cancelled by provider — full refund issued",
                   message: reason
-                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
-                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. ${refundNoun} Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. ${refundNoun}`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
+                  data: {
+                    bookingId: req.params.id,
+                    refundAmount: amountPaid,
+                    cancelledBy: "provider",
+                    ...(isDepositRefund ? { refundScope: "deposit" } : {}),
+                    ...(reason ? { reason } : {}),
+                  },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
@@ -6301,7 +6376,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
-            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+            return res.json({
+              ...refreshed,
+              refund: {
+                issued: true,
+                amount: refundResult?.amount ?? amountPaid,
+                // "deposit" says the outstanding balance was never charged and never will be —
+                // the client must not render this as a full-price refund (§13).
+                scope: isDepositRefund ? "deposit" : "full",
+              },
+            });
           } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
             return res.status(502).json({
