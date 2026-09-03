@@ -1,13 +1,27 @@
 # Brief — one occasion vocabulary, and what an occasion should carry
 
-**Status: PROPOSAL. NOT APPLIED.** Nothing in the "Proposed columns" or "Proposed rows" sections
-below exists in the database, in `shared/schema.ts`, or in any migration. Applying any of it is a
-**schema change**, and CLAUDE.md's Coordination Prevention rule reserves those for the
-decision-maker: *"Update this document FIRST with the decision and rationale… If you find this
-document conflicts with your plan, escalate to the decision-maker (user) rather than overriding."*
-The publish-trap rules make that doubly true — a column added here must be declared in
-`shared/schema.ts` or the Replit deploy push will drop it, and a CHECK added over an existing column
-fails the publish mid-push and offers the destructive "copy dev over production" option.
+**Status: APPLIED by migration 276, ledger `2026-09-03-occasion-switches`.** The six columns in
+"Proposed columns" and the rows in "Proposed rows" were ratified by the decision-maker on
+2026-09-03 and exist: `experience_types.default_stops` / `default_duration` / `default_schedule` /
+`default_guests` / `vocabulary` / `default_visibility`, all additive-nullable with **no DB CHECK**
+(publish-trap posture) and all declared in `shared/schema.ts` so the deploy push cannot drop them.
+CLAUDE.md Locked Decision **28** carries the intent.
+
+**Where the applied values differ from the §4 table below, the ledger row wins** (this file is the
+brief that asked; the ledger is what was answered). The ruling settled the ⚠ rows and two others in
+the direction FLOW-SPEC v2 argued for: `retreats` is **many** stops (travel-shaped, not one venue);
+`sports-event` has **schedule on** (the fixture IS the immovable anchor the brief flagged);
+`date-night` has **schedule on** (v2: "events only, one evening, own city"); `anniversary-trip`
+takes the honeymoon-like couples shape (**many · range**, no schedule, no guests). Everything else
+is as tabulated.
+
+**Four rows were seeded, not three.** §5's `corporate-retreats` shipped as **`corporate`** — the
+slug the nav item actually links to — and the also-unseeded `romance` ("Romantic Getaways") was
+seeded rather than left as a nav decision, so neither nav item points at a template-less page any
+more. `milestone-birthday` and `family-occasion` shipped as proposed, and the two landing Moments
+now point at their own rows. §7's "no new mappings in `OCCASION_SLUG_TO_EVENT_TYPE`" was superseded
+for these four only: each mapping was chosen by reading which `BRANCH_MAP` branch it lands the trip
+in, and the reasoning is committed beside each entry.
 
 Shipped alongside this brief (ledger `2026-09-03-occasion-vocabulary`), and requiring no schema
 change: `shared/occasions.ts`, the table-driven occasion select on the Trip Strip's edit panel, the

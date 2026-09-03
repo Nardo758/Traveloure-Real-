@@ -192,6 +192,23 @@ This document captures architectural decisions to maintain consistency across co
     piece ported from #698 is `nugget_photos` with its consent invariant — no public/non-owner photo read unless the
     parent claim's `consent_at IS NOT NULL`; `listConsentedNuggetPhotos` is the one read path and carries the join.
 
+28. **An occasion is a ROW carrying defaults, not a class (decision-maker ratified Sep 3, 2026 — ledger
+    `2026-09-03-occasion-switches`; migration 276).** The three-class flow model did not survive its stress test:
+    stops, an internal schedule and a guest list are three INDEPENDENT capabilities any occasion can need in any
+    combination. So `experience_types` carries six switch columns — `default_stops` (one|many), `default_duration`
+    (day|range), `default_schedule` (bool), `default_guests` (bool), `vocabulary` (travelers|guests|attendees),
+    `default_visibility` (shown|hidden) — every one a DEFAULT the traveler can flip inside the plan, never a lock.
+    All additive-nullable, **NO DB CHECK** (publish-trap posture, migrations 181/195/273 precedent; app-enforced,
+    DB-permissive) and **declared in `shared/schema.ts`** (deploy-push durability rule). **NULL = not set ⇒ the
+    reader falls back to the plain-trip shape explicitly and says so in a comment (§13)** — never a fabricated
+    `one`/`day`/`off` presented as the occasion's own answer. Writes are allowlist-only
+    (`experienceTypeSwitchesSchema`, `.pick()` — §19); no writer route exists in this lane, the seeder is the one
+    author. Same ruling seeds four occasions that surfaces already referenced with no row behind them: `romance`
+    (nav "Romantic Getaways"), `corporate` (nav "Corporate Retreats"), `milestone-birthday` and `family-occasion`
+    (the two landing Moments) — reusing existing tabs/presets, authoring no new filter content. The class
+    (`travel`/`event`/`couple`) survives ONLY as presentation vocabulary and must not be promoted back into a flow
+    switch.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

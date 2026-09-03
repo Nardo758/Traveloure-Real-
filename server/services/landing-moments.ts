@@ -126,7 +126,10 @@ export const MOMENTS: MomentConfig[] = [
       "The private room at the place that “only does members” blocked for your name, cake in on cue.",
     ],
     experienceType: "event",
-    experienceSlug: "birthday",
+    // Seeded by ledger `2026-09-03-occasion-switches`: `milestone-birthday` is now a real
+    // `experience_types` row, so this Moment points at its OWN occasion instead of the generic
+    // `birthday` row it borrowed while none existed.
+    experienceSlug: "milestone-birthday",
     city: "Mumbai",
   },
   {
@@ -140,10 +143,9 @@ export const MOMENTS: MomentConfig[] = [
       "The fort visit booked for the cool hour, a guide who slows for the elders, the evening table held after.",
     ],
     experienceType: "event",
-    // NO SEEDED ROW YET. `family-occasion` is one of the three the FLOW-SPEC brief asks the
-    // decision-maker to ratify (with `milestone-birthday` and `corporate-retreats`); until one
-    // exists this stays null and the CTA seeds no occasion rather than pointing at nothing.
-    experienceSlug: null,
+    // Ratified and seeded by ledger `2026-09-03-occasion-switches` — the row this Moment's CTA
+    // had no honest target for now exists, so it stops seeding no occasion at all.
+    experienceSlug: "family-occasion",
     city: "Jaipur",
   },
 ];

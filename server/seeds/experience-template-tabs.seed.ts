@@ -36,6 +36,25 @@ interface TabDef {
   filters: FilterDef[];
 }
 
+/**
+ * The six occasion SWITCHES carried by every template row (migration 276, ledger
+ * `2026-09-03-occasion-switches`; CLAUDE.md Locked Decision 28). An occasion is a ROW carrying
+ * defaults, not a class — stops, an internal schedule and a guest list are three INDEPENDENT
+ * capabilities any occasion can need in any combination.
+ *
+ * Every value here is a DEFAULT the traveler can flip from inside the plan, never a lock. The
+ * columns are nullable in the DB precisely so a row nobody has decided for reads as UNDECIDED
+ * (§13); this seeder is the one author that decides them, so every template below states all six.
+ */
+type OccasionSwitches = {
+  stops: "one" | "many";
+  duration: "day" | "range";
+  schedule: boolean;
+  guests: boolean;
+  vocabulary: "travelers" | "guests" | "attendees";
+  visibility: "shown" | "hidden";
+};
+
 interface UniversalFilterDef {
   name: string;
   slug: string;
@@ -3280,6 +3299,22 @@ const retreatsTabs: TabDef[] = [
   },
 ];
 
+/**
+ * CORPORATE RETREATS (`corporate`) — the nav item "Corporate Retreats" links to
+ * `/experiences/corporate`, a slug no seeder wrote until ledger `2026-09-03-occasion-switches`,
+ * so the page had no template and rendered nothing.
+ *
+ * This authors NO new filter content (§13 — a made-up filter set is a guess wearing a tab). It is
+ * a COMPOSITION of tabs that already exist and are already seeded elsewhere: the two corporate
+ * non-negotiables (approval/budget sign-off, agenda) taken verbatim from `corporateTabs`, plus the
+ * retreat venue tabs taken verbatim from `retreatsTabs`. Selected by slug rather than by index so
+ * a reorder of either source array cannot silently change what this template is.
+ */
+const corporateRetreatTabs: TabDef[] = [
+  ...corporateTabs.filter((t) => t.slug === "approval_budget" || t.slug === "agenda_schedule"),
+  ...retreatsTabs.filter((t) => t.slug === "venues" || t.slug === "accommodations"),
+];
+
 // Standard universal filters for all templates
 const standardUniversalFilters: UniversalFilterDef[] = [
   {
@@ -4737,29 +4772,69 @@ export async function seedExperienceTemplateTabs() {
     tabs: TabDef[];
     universalFilters: UniversalFilterDef[];
     backfillControls?: boolean;
+    // The six occasion switches (migration 276). REQUIRED, not optional: a template that entered
+    // this array without stating them would seed a row the flow reads as undecided, which is the
+    // honest-but-useless state the nullable columns exist for — not something to arrive at by
+    // forgetting. `experience-type-switches.test.ts` pins that every row here carries all six.
+    switches: OccasionSwitches;
   }> = [
-    { slug: "bachelor-bachelorette", name: "Bachelor/Bachelorette Party", tabs: bachelorTabs, universalFilters: bachelorUniversalFilters },
-    { slug: "anniversary-trip", name: "Anniversary Trip", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters },
-    { slug: "travel", name: "Travel", tabs: travelTabs, universalFilters: travelUniversalFilters, backfillControls: true },
-    { slug: "wedding", name: "Wedding", tabs: weddingTabs, universalFilters: standardUniversalFilters, backfillControls: true },
-    { slug: "date-night", name: "Date Night", tabs: dateNightTabs, universalFilters: standardUniversalFilters },
-    { slug: "birthday", name: "Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters },
-    { slug: "corporate-events", name: "Corporate Events", tabs: corporateTabs, universalFilters: standardUniversalFilters, backfillControls: true },
-    { slug: "retreats", name: "Retreats", tabs: retreatsTabs, universalFilters: standardUniversalFilters },
-    { slug: "wedding-anniversaries", name: "Wedding Anniversaries", tabs: weddingAnniversariesTabs, universalFilters: standardUniversalFilters },
-    { slug: "proposal", name: "Proposal", tabs: proposalTabs, universalFilters: standardUniversalFilters },
-    { slug: "boys-trip", name: "Boys Trip", tabs: boysTripTabs, universalFilters: standardUniversalFilters },
-    { slug: "girls-trip", name: "Girls Trip", tabs: girlsTripTabs, universalFilters: standardUniversalFilters },
-    { slug: "reunions", name: "Reunions", tabs: reunionsTabs, universalFilters: standardUniversalFilters },
-    { slug: "baby-shower", name: "Baby Shower", tabs: babyShowerTabs, universalFilters: standardUniversalFilters },
-    { slug: "graduation-party", name: "Graduation Party", tabs: graduationTabs, universalFilters: standardUniversalFilters },
-    { slug: "engagement-party", name: "Engagement Party", tabs: engagementTabs, universalFilters: standardUniversalFilters },
-    { slug: "housewarming-party", name: "Housewarming Party", tabs: housewarmingTabs, universalFilters: standardUniversalFilters },
-    { slug: "retirement-party", name: "Retirement Party", tabs: retirementTabs, universalFilters: standardUniversalFilters },
-    { slug: "career-achievement-party", name: "Career Achievement Party", tabs: careerAchievementTabs, universalFilters: standardUniversalFilters },
-    { slug: "farewell-party", name: "Farewell Party", tabs: farewellTabs, universalFilters: standardUniversalFilters },
-    { slug: "holiday-party", name: "Holiday Party", tabs: holidayPartyTabs, universalFilters: standardUniversalFilters },
-    { slug: "sports-event", name: "Sports Event", tabs: sportsEventTabs, universalFilters: standardUniversalFilters },
+    { slug: "bachelor-bachelorette", name: "Bachelor/Bachelorette Party", tabs: bachelorTabs, universalFilters: bachelorUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "anniversary-trip", name: "Anniversary Trip", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+    { slug: "travel", name: "Travel", tabs: travelTabs, universalFilters: travelUniversalFilters, backfillControls: true,
+      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+    { slug: "wedding", name: "Wedding", tabs: weddingTabs, universalFilters: standardUniversalFilters, backfillControls: true,
+      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "date-night", name: "Date Night", tabs: dateNightTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" } },
+    { slug: "birthday", name: "Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "corporate-events", name: "Corporate Events", tabs: corporateTabs, universalFilters: standardUniversalFilters, backfillControls: true,
+      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
+    { slug: "retreats", name: "Retreats", tabs: retreatsTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
+    { slug: "wedding-anniversaries", name: "Wedding Anniversaries", tabs: weddingAnniversariesTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "proposal", name: "Proposal", tabs: proposalTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "hidden" } },
+    { slug: "boys-trip", name: "Boys Trip", tabs: boysTripTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" } },
+    { slug: "girls-trip", name: "Girls Trip", tabs: girlsTripTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" } },
+    { slug: "reunions", name: "Reunions", tabs: reunionsTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "baby-shower", name: "Baby Shower", tabs: babyShowerTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "graduation-party", name: "Graduation Party", tabs: graduationTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "engagement-party", name: "Engagement Party", tabs: engagementTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "housewarming-party", name: "Housewarming Party", tabs: housewarmingTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: false, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "retirement-party", name: "Retirement Party", tabs: retirementTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "career-achievement-party", name: "Career Achievement Party", tabs: careerAchievementTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "farewell-party", name: "Farewell Party", tabs: farewellTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "holiday-party", name: "Holiday Party", tabs: holidayPartyTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "sports-event", name: "Sports Event", tabs: sportsEventTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" } },
+
+    // ── The four occasions shipped surfaces already referenced with NO row behind them ──────────
+    // (ledger `2026-09-03-occasion-switches`). Each reuses tabs and presets that already exist —
+    // this lane authors NO new filter content (§13). Until they were seeded, two nav items linked
+    // to template-less pages and two landing Moments had no occasion to seed.
+    { slug: "romance", name: "Romantic Getaways", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
+      switches: { stops: "one", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+    { slug: "corporate", name: "Corporate Retreats", tabs: corporateRetreatTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
+    { slug: "milestone-birthday", name: "Milestone Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+    { slug: "family-occasion", name: "Family Occasion", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
   ];
 
   // ── Deploy-speed fast path ─────────────────────────────────────────────────
@@ -4846,6 +4921,82 @@ export async function seedExperienceTemplateTabs() {
   // P4: Seed hero-card config fields (headcountLabel, showKids, showOriginCity, locationLabel)
   await updateExperienceTypeHeroConfigs();
   console.log("Experience type hero configs seeded.");
+
+  // Migration 276 / ledger `2026-09-03-occasion-switches`: the six occasion switches.
+  await updateExperienceTypeSwitches(templates);
+}
+
+/**
+ * The six occasion SWITCHES (migration 276, ledger `2026-09-03-occasion-switches`;
+ * CLAUDE.md Locked Decision 28) — written by UPDATE keyed on the row's natural key, `slug`.
+ *
+ * WHY AN UPDATE AND NOT AN INSERT-TIME WRITE. `getOrCreateExperienceType` returns early for a row
+ * that already exists, and the deploy fast path skips a fully-seeded template before it is ever
+ * reached, so a value set only at insert time would land in a FRESH environment and never in
+ * production — where all 22 pre-existing rows live. This is the UPDATE half of the upsert, and it
+ * is what makes the seeder the single author of these values in every environment.
+ *
+ * It writes only the six switch columns and never touches anything else on the row.
+ *
+ * Same cheap fast path as the hero configs: one SELECT decides whether any row is out of date, so
+ * a steady-state boot issues zero UPDATEs (deploy speed).
+ */
+async function updateExperienceTypeSwitches(
+  templates: Array<{ slug: string; switches: OccasionSwitches }>,
+) {
+  const bySlug = new Map(templates.map((t) => [t.slug, t.switches]));
+  try {
+    const rows = await db
+      .select({
+        slug: experienceTypes.slug,
+        defaultStops: experienceTypes.defaultStops,
+        defaultDuration: experienceTypes.defaultDuration,
+        defaultSchedule: experienceTypes.defaultSchedule,
+        defaultGuests: experienceTypes.defaultGuests,
+        vocabulary: experienceTypes.vocabulary,
+        defaultVisibility: experienceTypes.defaultVisibility,
+      })
+      .from(experienceTypes)
+      .where(inArray(experienceTypes.slug, templates.map((t) => t.slug)));
+
+    const stale = rows.filter((row) => {
+      const sw = bySlug.get(row.slug)!;
+      return (
+        row.defaultStops !== sw.stops ||
+        row.defaultDuration !== sw.duration ||
+        row.defaultSchedule !== sw.schedule ||
+        row.defaultGuests !== sw.guests ||
+        row.vocabulary !== sw.vocabulary ||
+        row.defaultVisibility !== sw.visibility
+      );
+    });
+
+    if (stale.length === 0) {
+      console.log("Experience type occasion switches already seeded — skipping.");
+      return;
+    }
+
+    for (const row of stale) {
+      const sw = bySlug.get(row.slug)!;
+      await db
+        .update(experienceTypes)
+        .set({
+          defaultStops: sw.stops,
+          defaultDuration: sw.duration,
+          defaultSchedule: sw.schedule,
+          defaultGuests: sw.guests,
+          vocabulary: sw.vocabulary,
+          defaultVisibility: sw.visibility,
+        })
+        .where(eq(experienceTypes.slug, row.slug));
+    }
+    console.log(`Experience type occasion switches seeded (${stale.length} row(s) updated).`);
+  } catch (err) {
+    // Columns may not exist yet in an environment that has not run migration 276 — the switches
+    // stay NULL, which every reader must already treat as "not set" and render as the plain-trip
+    // shape (§13). Never fabricate the values elsewhere to compensate.
+    console.log("Experience type occasion switches skipped (columns not present yet):", err);
+  }
 }
 
 async function updateExperienceTypeHeroConfigs() {
@@ -4977,7 +5128,11 @@ async function updateExperienceTypeHeroConfigs() {
         { key: "focus", label: "Retreat focus", placeholder: "e.g. Wellness, Team building, Leadership" },
       ],
     },
-    "corporate-retreats": {
+    // Keyed "corporate" — the slug the nav item "Corporate Retreats" actually links to
+    // (/experiences/corporate) and the one the seeder now writes. This config was written for a
+    // slug ("corporate-retreats") that no seeder ever wrote, so it applied to nothing; ledger
+    // `2026-09-03-occasion-switches` wires it to the row it was always meant for.
+    "corporate": {
       headcountLabel: "attendee",
       showKids: false,
       showOriginCity: "required",
@@ -4986,6 +5141,27 @@ async function updateExperienceTypeHeroConfigs() {
         { key: "team_size", label: "Team size", placeholder: "e.g. 20" },
         { key: "focus", label: "Retreat focus", placeholder: "e.g. Strategy, Team building, Leadership" },
       ],
+    },
+    // The other three occasions seeded by the same ledger row. Copy shape is taken from the
+    // nearest existing row rather than invented: `romance` from `anniversary-trip` (a couple's
+    // getaway), the two celebrations from `birthday`.
+    "romance": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    "milestone-birthday": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
+    },
+    "family-occasion": {
+      headcountLabel: "guest",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "City / neighborhood",
     },
     // --- Celebration / party templates ---
     "birthday": {
