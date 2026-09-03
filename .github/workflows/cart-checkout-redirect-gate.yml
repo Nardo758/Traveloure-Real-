@@ -51,7 +51,11 @@ jobs:
   static-redirect-check:
     name: static-redirect-check (source analysis)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 10, not 5: on 2026-09-03 a cold runner spent over five minutes inside `npm ci` and the job was
+    # cancelled before a single check ran (run 33813992606). The sibling browser job already gets 20;
+    # the other static-analysis jobs in this repo get 10. A timeout that fires inside install measures
+    # the runner, not the code.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
