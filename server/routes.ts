@@ -148,6 +148,7 @@ import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
+import { resolveItemEventLink } from "./services/item-event-link.service";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
@@ -207,6 +208,7 @@ import {
   insertTripTransactionSchema,
   insertItineraryItemSchema,
   itineraryItemBookingInputsSchema,
+  itineraryItemEventLinkSchema,
   insertTripEmergencyContactSchema,
   insertTripAlertSchema,
   insertProviderAvailabilityScheduleSchema,
@@ -10856,6 +10858,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
       if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
+      // Migration 277 (ledger 2026-09-03-item-event-link): each row carries `userExperienceId` —
+      // the EVENT inside the plan it is scheduled under — and it needs NO mapping here because
+      // this handler emits the ROWS themselves (`getItineraryItems` is a bare `db.select()`), so
+      // declaring the column in shared/schema.ts is what puts it on this response. Recorded
+      // explicitly so a future reader does not "add" it and end up with two shapes. NULL means the
+      // plan's ONE implicit unnamed event, never "unknown" (§13). Resolve ids against the
+      // plancard's `events` array.
       // WORKSTATION_LOCATION_MAP_SPEC Part A item 2/5: the SAME resolve-on-write backfill the
       // traveler-facing PlanCard already runs (trip-plan.service.ts) — reused here, not
       // reimplemented, so an item added without coordinates (e.g. a DMO pick whose source row
@@ -10990,6 +10999,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       for (const [key, value] of Object.entries(bookingInputs.data)) {
         if (value !== undefined) itemData[key] = value;
       }
+      // Ledger 2026-09-03-item-event-link (migration 277) — the item→EVENT link, admitted through
+      // its OWN pick-based allowlist for the same §19 reason as the booking inputs above:
+      // `insertItineraryItemSchema` omits `userExperienceId`, so the generic parse cannot grant a
+      // column that names a row in ANOTHER table. Shape is all the schema proves; the PAIRING —
+      // that the event exists AND sits on THIS trip — is re-read from the DB by the shared
+      // resolver (§14: never trust the client's pairing, the route's own auth only answered
+      // "may this caller write to this trip"). A cross-trip or nonexistent id is a visible 400,
+      // never a silently dropped link.
+      const eventLink = itineraryItemEventLinkSchema.safeParse(req.body);
+      if (!eventLink.success) {
+        return res.status(400).json({ message: "Invalid event link", errors: eventLink.error.errors });
+      }
+      const resolvedEvent = await resolveItemEventLink(
+        tripId,
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "userExperienceId"),
+        eventLink.data.userExperienceId,
+      );
+      if (!resolvedEvent.ok) return res.status(400).json({ message: resolvedEvent.message });
+      if (resolvedEvent.action === "set") itemData.userExperienceId = resolvedEvent.value;
       const item = await storage.createItineraryItem(itemData);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
 

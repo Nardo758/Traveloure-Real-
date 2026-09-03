@@ -289,6 +289,22 @@ export interface TripPlanActivity {
    */
   routingStatus?: RoutingStatus;
 
+  /**
+   * ADDITIVE (migration 277, ledger `2026-09-03-item-event-link`) — `itinerary_items.user_experience_id`,
+   * the EVENT inside the plan this item is scheduled under. PRESENT ONLY when the item really
+   * carries a link, so an unlinked item — which is every item on a single-event plan — is
+   * byte-identical to before this field existed (an absent key, not a null one), the same
+   * present-only-when-real posture as `booking` and `affiliateBooking` above.
+   *
+   * AN ABSENT KEY MEANS THE PLAN'S ONE IMPLICIT UNNAMED EVENT, never "unknown" (§13): NULL in the
+   * column IS that event. Resolve the id against the plancard payload's `events` array. The
+   * variant snapshot producer never emits it — a proposal has no events.
+   *
+   * READ-ONLY here: this assembler never writes the column. Its sole write rails are the two
+   * verified ones (POST/PATCH on the trip's itinerary items) — CLAUDE.md entry 29.
+   */
+  userExperienceId?: string;
+
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */
   type: string;

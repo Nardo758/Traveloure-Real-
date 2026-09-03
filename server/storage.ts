@@ -543,6 +543,8 @@ export interface IStorage {
   getUserExperiences(userId: string): Promise<UserExperience[]>;
 
   getUserExperienceById(experienceId: string): Promise<UserExperience | null>;
+  /** Migration 277 / CLAUDE.md entry 29 — the EVENTS inside one plan (`user_experiences.trip_id`). */
+  getUserExperiencesByTrip(tripId: string): Promise<UserExperience[]>;
 
   getUserExperience(id: string): Promise<UserExperience | undefined>;
 
@@ -3967,6 +3969,21 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select().from(userExperiences)
       .where(eq(userExperiences.id, experienceId)).limit(1);
     return row ?? null;
+  }
+
+  /**
+   * The EVENTS inside one plan (migration 277, ledger 2026-09-03-item-event-link). A plan is one
+   * `trips` row and each event inside it is one `user_experiences` row bound by the pre-existing
+   * nullable `trip_id` — there is no uniqueness on it, so many events per trip is the normal case
+   * and this deliberately returns a LIST. AUTHORIZATION IS THE CALLER'S: this reads by trip alone,
+   * exactly like `getItineraryItems`, and every caller gates the trip first.
+   * Ordered by eventDate then createdAt, with undated events last — a plan whose events have no
+   * dates yet still renders in a stable order rather than an arbitrary one.
+   */
+  async getUserExperiencesByTrip(tripId: string): Promise<UserExperience[]> {
+    return await db.select().from(userExperiences)
+      .where(eq(userExperiences.tripId, tripId))
+      .orderBy(sql`${userExperiences.eventDate} ASC NULLS LAST`, asc(userExperiences.createdAt));
   }
 
   async getUserExperience(id: string): Promise<UserExperience | undefined> {

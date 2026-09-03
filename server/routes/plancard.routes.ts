@@ -391,6 +391,31 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // asks for 'full'.
     const plan = await assembleTripPlan(tripId, "full", { viewerId: userId, tripRole });
 
+    // ── The plan's EVENTS (migration 277, ledger `2026-09-03-item-event-link`) ─────────────────
+    // A plan is one `trips` row; each event inside it is one `user_experiences` row bound by the
+    // pre-existing nullable `trip_id`. Each activity now carries `userExperienceId` (present only
+    // when really linked), and THIS is the list a consumer resolves those ids against — without it
+    // the id on the item would be an opaque key the client could only guess a label for (§13).
+    //
+    // READ HERE, NOT IN THE ASSEMBLER, ON PURPOSE: `assembleTripPlan` serves three redaction
+    // levels including the public share/teaser channels, and an event carries a guest count, a
+    // budget and a venue. Resolving it in THIS handler means it is gated by exactly the
+    // owner/assigned-advisor/author check above and can never leak into a channel that never
+    // asked for it. A plan with no `user_experiences` row returns `[]` — the honest "this plan has
+    // only its ONE implicit unnamed event" state, never a fabricated placeholder event.
+    //
+    // The projection is deliberately narrow: id, title, eventDate, location, guestCount,
+    // experienceTypeId. `preferences` / `stepData` / `mapData` are the wizard's own working state
+    // and are not part of this contract.
+    const events = (await storage.getUserExperiencesByTrip(tripId)).map((e) => ({
+      id: e.id,
+      title: e.title ?? null,
+      eventDate: e.eventDate ?? null,
+      location: e.location ?? null,
+      guestCount: e.guestCount ?? null,
+      experienceTypeId: e.experienceTypeId,
+    }));
+
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
       tripRole: plan.plancard.tripRole,
@@ -416,6 +441,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // first). Additive; this surface is gated above, and the share/teaser channels never
       // receive the field (owner diary, not public).
       recentTransitions: plan.recentTransitions,
+      // Migration 277 — the plan's events; see the assembly note above. ADDITIVE: every existing
+      // consumer ignores the key, and `days[].activities[].userExperienceId` (also additive, and
+      // present only when the item really carries a link) is what points into this list.
+      events,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {
