@@ -32,6 +32,7 @@ import {
   WeddingAnchorPresets,
 } from "@/components/logistics";
 import { GuestInviteManager } from "@/components/GuestInviteManager";
+import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import type { UserExperience } from "@shared/schema";
 
 const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
@@ -49,7 +50,21 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
     staleTime: 30_000,
   });
   const linkedExperience = allUserExperiences?.find((e) => e.tripId === tripId) ?? null;
-  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
+  /**
+   * HIDDEN OCCASIONS HAVE NO GUEST SURFACE (migration 276 `default_visibility`; ledger
+   * `2026-09-03-switch-readers`, CLAUDE.md Locked Decision 28). The proposal case is the whole
+   * point: a guest list and its invites are how the other person finds out. This gate sits BESIDE
+   * the existing event-trip test rather than replacing it — `isEventTrip` answers "does this plan
+   * have guests at all", `isHidden` answers "may we show them", and the two are independent
+   * switches by ruling.
+   *
+   * §13: an occasion the trip's event type does not uniquely identify, or one whose column is
+   * NULL, resolves to NOT hidden — the pre-switch behaviour, unchanged. Nothing disappears
+   * because a row was never given a value.
+   */
+  const { isHidden } = useOccasionSwitches(tripId);
+  const isEventTrip =
+    !isHidden && (!!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase()));
 
   const createGuestListMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/user-experiences", {
