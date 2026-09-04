@@ -1,6 +1,11 @@
-# Audit brief — ModalWhere (Plan modal · step 2 · Where — THIS is step 2, the naming hides it)
+# Audit brief — Step2Where (Plan modal · step 2 · Where)
 
-**Mock:** `docs/design/wedding-flow/ModalWhere.dc.html`. Modal titled "Your plan → Where is it
+> **Filename note:** this brief was written when the artboard was called `ModalWhere.dc.html` and was
+> titled "THIS is step 2, the naming hides it". The artboard has since been renamed to
+> `Step2Where.dc.html` (ledger `2026-09-04-golf-occasion-and-housekeeping`), which is what finding 1
+> below asked for. This brief FILE keeps its own name — audit filenames are stable references.
+
+**Mock:** `docs/design/wedding-flow/Step2Where.dc.html` (was `ModalWhere.dc.html`). Modal titled "Your plan → Where is it
 happening?" with the same 5-item step rail (Where active) and a "Wedding · change" pill up top.
 One field: **Destination** (prefilled "Kyoto, Japan"), plus "Add another stop — for road trips and
 multi-city plans", and a note: "A vendor outside this city will be flagged before it lands on your
@@ -15,8 +20,9 @@ exists. This brief covers only what is specific to the "Where" content.
 
 ## What the mock ratifies
 
-1. This step is titled "Where" and is step 2, even though the artboard filename is `ModalWhere`,
-   not `Step2Where` — the README explicitly calls this out as intentional, not a naming bug.
+1. This step is titled "Where" and is step 2. When this brief was written the artboard filename was
+   `ModalWhere`, not `Step2Where`, and the README called that out as intentional rather than a
+   naming bug; the rename has since been ratified and done.
 2. One destination field, prefillable, with an "Occasion pill · change" affordance to go back.
 3. "Add another stop" for road-trip/multi-city plans — an **ordered** stop list is implied.
 4. A vendor-location honesty note ("flagged before it lands on your plan").

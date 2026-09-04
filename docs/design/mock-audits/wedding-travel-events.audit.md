@@ -1,5 +1,13 @@
 # Audit brief — TravelEvents (Golf trip · step 5, tee times)
 
+> **This brief's headline finding is CLOSED** (ledger `2026-09-04-golf-occasion-and-housekeeping`).
+> Golf now has its own `golf-trip` occasion row with `schedule: true` and its own tee-time presets
+> (Round 1–4, Whisky bar), and the landing Moment points at it instead of the generic `travel`
+> occasion — so the step this artboard draws is REACHABLE for a golf trip. The findings table below
+> is left exactly as audited (report, don't repair; it is a dated record). Still open and unchanged:
+> the Event / Day / Time / Place TABLE, which needs the HELD time-of-day column, and the "Driver
+> between links" chip, which was not among the presets that lane authored.
+
 **Mock:** `docs/design/wedding-flow/TravelEvents.dc.html`. Modal titled "Your golf trip · May 14 to
 18 → What's on the schedule?" (step rail, What's happening active). Tickable chips: Round 1–4,
 Whisky bar, Driver between links, Something else. Once ticked, each becomes a row in a table:

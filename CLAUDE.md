@@ -395,16 +395,22 @@ This document captures architectural decisions to maintain consistency across co
     committed `--self-test` fixtures, §18d): no `.ts` under `server/` outside the author file may
     insert this row. It catches inserts, not updates — the guard states its own negative space.
     No schema change, no migration.
-    **Side findings recorded, not fixed here:** `expertAdvisorStatusEnum` in `shared/schema.ts`
-    omits `assigned`, which code writes and gates on (no DB CHECK, so it works — the enum is
-    stale); `/api/expert/assigned-trips` is defined in both `booking-actions.ts` and
-    `experts.routes.ts`, and the first shadows the second; `optimization_context.planSnapshot` is
-    written and never read; the template page re-POSTs a lead on every snapshot change.
+    **Side findings recorded, not fixed here.** The first two are now **FIXED** by ledger
+    `2026-09-04-golf-occasion-and-housekeeping`: (a) `expertAdvisorStatusEnum` in `shared/schema.ts`
+    omitted `assigned`, which code writes and gates on (no DB CHECK — verified against every
+    migration — so it worked; the enum was stale), and `assigned` is now declared; (b)
+    `/api/expert/assigned-trips` was defined in both `booking-actions.ts` and `experts.routes.ts`
+    with the first shadowing the second, and the dead `experts.routes.ts` twin — which was also
+    status-blind — has been DELETED, leaving the `booking-actions.ts` copy as the one definition.
+    Still open: `optimization_context.planSnapshot` is written and never read; the template page
+    re-POSTs a lead on every snapshot change.
 33. **ONE PLANNING MODAL, MANY DOORS (decision-maker ratified Sep 4, 2026 — ledger
     `2026-09-04-one-modal-many-doors`; option 1).** There is exactly ONE planning modal: the five
     ratified steps **Occasion → Where → When → Who → What's happening** (`docs/design/wedding-flow/`
-    `Step1Occasion` / `ModalWhere` — that IS step 2, the filename hides it — `Step3When`/`Step3Day`,
-    `Step4Who`/`Step4Variants`, `ModalEvents`). The OPENER is unchanged: every door still goes
+    `Step1Occasion` / `Step2Where` (formerly `ModalWhere`) / `Step3When`/`Step3Day`,
+    `Step4Who`/`Step4Variants`, `Step5Events` (formerly `ModalEvents`) — renamed by ledger
+    `2026-09-04-golf-occasion-and-housekeeping`, which resolved the "the filename hides that this IS
+    step 2" note this entry originally carried). The OPENER is unchanged: every door still goes
     through `usePlanning().open(source)` (ruling `2026-08-28-single-planning-entry`); what it
     RENDERS changed, and this entry **supersedes that ruling's chooser SCREEN only** — the
     single-opener rule stands untouched, and so does `scripts/check-planning-entry.cjs`. The
@@ -432,7 +438,7 @@ This document captures architectural decisions to maintain consistency across co
     shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
     included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
     while `PLUS_SALES_ENABLED` is off.
-    **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the ModalWhere "add another
+    **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the Step2Where "add another
     stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
     that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate
     budget-approver and family accessibility fields are NOT built (no column holds either — a

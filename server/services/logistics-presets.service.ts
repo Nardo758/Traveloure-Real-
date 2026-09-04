@@ -924,6 +924,89 @@ const REUNIONS_PRESETS: TemplatePresets = {
   ],
 };
 
+/**
+ * Golf trip: the ROUNDS are the schedule (ledger `2026-09-04-golf-occasion-and-housekeeping`).
+ *
+ * The only presets that lane authors, and the reason it authors any: a golf trip now has its own
+ * `experience_types` row with `schedule: true`, and the step-5 chips are read from THESE labels
+ * (`plan-modal.tsx` maps `GET /api/logistics/presets/:slug` anchors → chip labels), never from a
+ * list restated on the client. The labels are the ratified artboard's
+ * (`docs/design/wedding-flow/TravelEvents.dc.html`).
+ *
+ * Each round carries its OWN `anchorType`: `generatePresetsForTrip` de-duplicates by anchor type,
+ * so four rounds sharing one type would collapse into a single anchor and the plan would lose
+ * three of its four fixed points.
+ *
+ * The times are plain morning defaults, NOT the artboard's course-specific tee times — a preset
+ * states a starting point the traveler moves, and seeding "08:10 at the Old Course" would be the
+ * platform stating a booking nobody made (§13). Same reason no course name appears in any
+ * `description`: the round is the anchor, the venue is the traveler's answer.
+ */
+const GOLF_TRIP_PRESETS: TemplatePresets = {
+  anchors: [
+    {
+      anchorType: "tee_time_round_1",
+      label: "Round 1",
+      defaultBufferBefore: 45,
+      defaultBufferAfter: 270,
+      defaultTimeOfDay: "08:00",
+      dayOffset: 0,
+      // A booked tee time is the definition of a fixed point: the group makes it or loses it.
+      isImmovable: true,
+      description: "First round — tee time",
+    },
+    {
+      anchorType: "tee_time_round_2",
+      label: "Round 2",
+      defaultBufferBefore: 45,
+      defaultBufferAfter: 270,
+      defaultTimeOfDay: "08:00",
+      dayOffset: 1,
+      isImmovable: true,
+      description: "Second round — tee time",
+    },
+    {
+      anchorType: "tee_time_round_3",
+      label: "Round 3",
+      defaultBufferBefore: 45,
+      defaultBufferAfter: 270,
+      defaultTimeOfDay: "08:00",
+      dayOffset: 2,
+      isImmovable: true,
+      description: "Third round — tee time",
+    },
+    {
+      anchorType: "tee_time_round_4",
+      label: "Round 4",
+      defaultBufferBefore: 45,
+      defaultBufferAfter: 270,
+      defaultTimeOfDay: "08:00",
+      dayOffset: 3,
+      isImmovable: true,
+      description: "Fourth round — tee time",
+    },
+    {
+      anchorType: "whisky_bar",
+      label: "Whisky bar",
+      defaultBufferBefore: 15,
+      defaultBufferAfter: 120,
+      defaultTimeOfDay: "20:00",
+      dayOffset: 0,
+      isImmovable: false,
+      description: "Evening at the whisky bar after the round",
+    },
+  ],
+  dayBoundaries: [
+    {
+      dayOffset: 0,
+      latestActivityEnd: "23:00",
+      earliestActivityStart: "06:30",
+      mustReturnToHotel: false,
+      reason: "Early tee time — the round is the fixed point of the day",
+    },
+  ],
+};
+
 const TEMPLATE_PRESETS: Record<string, TemplatePresets> = {
   wedding: WEDDING_PRESETS,
   proposal: PROPOSAL_PRESETS,
@@ -968,6 +1051,11 @@ const TEMPLATE_PRESETS: Record<string, TemplatePresets> = {
   corporate: CORPORATE_PRESETS,          // "Corporate Retreats" — the corporate approval/agenda shape
   "milestone-birthday": BIRTHDAY_PRESETS,
   "family-occasion": BIRTHDAY_PRESETS,
+  // Golf trip (ledger `2026-09-04-golf-occasion-and-housekeeping`) — the ONE new preset set that
+  // lane authors, and the reason the occasion needed a row of its own: nothing that already
+  // existed anchors a round of golf, and pointing golf at TRAVEL_PRESETS would have offered the
+  // traveler "Hotel Check-in" where the artboard asks which round is when.
+  "golf-trip": GOLF_TRIP_PRESETS,
 };
 
 /**

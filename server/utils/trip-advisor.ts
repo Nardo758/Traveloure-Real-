@@ -24,7 +24,10 @@
  *   'pending'  — column DEFAULT (baseline DDL + shared/schema.ts), storage.createTripExpertAdvisor
  *                default, booking-actions.service.ts ensureTripAdvisorRow + assignExpertAdvisor
  *   'accepted' — storage.acceptTripAssignment, routes.ts booking-accept bridge
- *   'assigned' — admin-query.service.ts confirmLeadAssignmentTx, admin.routes.ts lead-confirm
+ *   'assigned' — admin-query.service.ts confirmLeadAssignmentTx, admin.routes.ts lead-confirm.
+ *                Declared in `expertAdvisorStatusEnum` since ledger
+ *                `2026-09-04-golf-occasion-and-housekeeping`; before that the enum omitted the one
+ *                status this module's write allow-list is built around.
  *   'rejected' — declared in shared/schema.ts `expertAdvisorStatusEnum`; NO code path
  *                currently writes it, but it is a first-class declared state and is
  *                explicitly DENIED here (it was the live over-grant).

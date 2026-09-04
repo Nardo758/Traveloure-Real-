@@ -29,21 +29,28 @@ Vite catch-all rather than 404.
 
 ## Flow order — the canvas does not show it
 
-`canvas.json` lists artboards in **creation order, not flow order**, and the step naming is
-inconsistent: steps 1/3/4 are `Step<N><Name>` while **step 2 is `ModalWhere.dc.html`** and step 5 is
-`ModalEvents.dc.html`. There is no `Step2*` file, which reads as a missing step — it is not missing.
+`canvas.json` lists artboards in **creation order, not flow order**. The step naming is now
+consistent: every step of the plan modal is `Step<N><Name>`. Two files were renamed by ledger
+`2026-09-04-golf-occasion-and-housekeeping` — `ModalWhere.dc.html` → **`Step2Where.dc.html`** and
+`ModalEvents.dc.html` → **`Step5Events.dc.html`** — because the old names read as a missing step 2
+and an out-of-band step 5, which is exactly how the first audit of step 2 came to be titled "THIS
+is step 2, the naming hides it". The canvas TITLES are unchanged; only the filenames moved.
 The real order:
 
 ```
 Landing        Before → Main → NavEntry → NavTuned
-Plan modal     Step1Occasion → ModalWhere (2) → Step3When / Step3Day (3)
-                 → Step4Who / Step4Variants (4) → ModalEvents (5)
+Plan modal     Step1Occasion → Step2Where (2) → Step3When / Step3Day (3)
+                 → Step4Who / Step4Variants (4) → Step5Events (5)
 Plan surfaces  StripLead → Slip → WhichEvent → Mismatch → Guests
 Variants       OccasionRow, SlipProposal, Planner, TravelWhere, TravelWhen, TravelEvents
 ```
 
-Renaming the two odd files is a **decision, not a tidy-up** — these are ratified artboards — so it is
-tracked as a lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` rather than done here.
+The rename was a **decision, not a tidy-up** — these are ratified artboards — which is why it was
+tracked as its own lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` and ratified before it
+was done. The audit briefs under `docs/design/mock-audits/` were updated to the new names in the
+same commit; their own FILENAMES are unchanged (an audit filename is a stable reference), and
+`docs/DECISIONS.md` was not touched at all — it is append-only, and a recorded row says what was
+true on the day it was written.
 
 ## The artboards
 
@@ -61,12 +68,12 @@ tracked as a lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` rather than 
 | Artboard | Title | Live surface | Fidelity |
 |---|---|---|---|
 | `Step1Occasion.dc.html` | Step 1 · Occasion | `client/src/components/trip/plan-modal.tsx`, step 1 | **built** — ledger `2026-09-04-one-modal-many-doors`, CLAUDE.md Locked Decision 33; the tile grid is the real `GET /api/experience-types` catalog (no hardcoded list; an empty fetch says so, §13) |
-| `ModalWhere.dc.html` | Step 2 · Where | `plan-modal.tsx`, step 2 | **built** — ledger `2026-09-04-one-modal-many-doors`; ONE destination, with the "add another stop" control **OMITTED (HELD)** rather than disabled — ordered stops need `trip_destinations`, which does not exist |
+| `Step2Where.dc.html` | Step 2 · Where | `plan-modal.tsx`, step 2 | **built** — ledger `2026-09-04-one-modal-many-doors`; ONE destination, with the "add another stop" control **OMITTED (HELD)** rather than disabled — ordered stops need `trip_destinations`, which does not exist |
 | `Step3When.dc.html` | Step 3 · When (event class) | `plan-modal.tsx`, step 3 | **built** — ledger `2026-09-04-one-modal-many-doors`; the artboard's own answer to the brief's "mutually exclusive branches": a RANGE-shaped occasion that HAS a schedule also gets the main-moment card, whose date is its own question (nothing is written until date AND time are given, §13) |
 | `Step3Day.dc.html` | Step 3 · a day, not a range | `plan-modal.tsx`, step 3 (`default_duration`) | **built** — ledger `2026-09-04-one-modal-many-doors`; the `durationShape()` "day" branch inside the step rail it was always drawn in |
 | `Step4Who.dc.html` | Step 4 · Who | `plan-modal.tsx`, step 4 (`vocabulary`) | **built** — ledger `2026-09-04-one-modal-many-doors`; two steppers writing the existing `trips.adults`/`trips.kids`, both starting at NOT SET ("—") with `travelers` derived from the pair by `partyTotal` |
 | `Step4Variants.dc.html` | Four occasions, one control | `plan-modal.tsx`, step 4 | **built — vocabulary control only; budget-approver/accessibility fields not built** (no column holds either, and they are deliberately NOT `trip_participants.accessibility_needs`, CLAUDE.md §24) — ledger `2026-09-04-one-modal-many-doors` |
-| `ModalEvents.dc.html` | Step 5 · What's happening | `plan-modal.tsx`, step 5; pen drained at mint by `pending-events.service.ts` | **built** — ledger `2026-09-03-switch-readers`, `2026-09-04-plan-mint`, `2026-09-04-one-modal-many-doors` (the chips moved into the step rail; the artboard's day/time/place table is NOT built — it needs the HELD time-of-day column) |
+| `Step5Events.dc.html` | Step 5 · What's happening | `plan-modal.tsx`, step 5; pen drained at mint by `pending-events.service.ts` | **built** — ledger `2026-09-03-switch-readers`, `2026-09-04-plan-mint`, `2026-09-04-one-modal-many-doors` (the chips moved into the step rail; the artboard's day/time/place table is NOT built — it needs the HELD time-of-day column) |
 | `StripLead.dc.html` | Trip Strip · one new chip | `client/src/components/trip/trip-strip.tsx` | **built** — `trip-strip-lead.test.tsx` 17/17 |
 | `Slip.dc.html` | The slip · day → event → items | `client/src/lib/slip-events.ts` + plancard | **built** — ledger `2026-09-04-slip-events`, 17/17 |
 | `WhichEvent.dc.html` | Add to Plan · which event? | `client/src/lib/which-event.ts`, `service-detail.tsx` | **built** — ledger `2026-09-04-which-event-picker`. **Two ruled omissions:** no clock time (`event_date` is a DATE with no time column), and the "suggested for florists" hint was left blank pending `experience_types.roles_needed` — **that column now exists** (migration 280, ledger `2026-09-04-roles-needed`), so the hint is buildable and is the one open piece of this artboard. |

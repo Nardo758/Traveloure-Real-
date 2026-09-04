@@ -14,16 +14,21 @@ own commit is how a "done" surface turns out never to have shipped.
 These were found while writing this file. They are stated up front because three of them are
 invisible from the artboards alone.
 
-### F1 — Step 2 exists; the naming hides it
+### F1 — Step 2 exists; the naming hides it — **RESOLVED** (ledger `2026-09-04-golf-occasion-and-housekeeping`)
 
-There is no `Step2*.dc.html`, which reads as a missing step. **Step 2 is `ModalWhere.dc.html`**,
-titled "Plan this moment → step 2 · Where". Steps 1/3/4 use `Step<N><Name>` while steps 2 and 5 use
-`Modal<Name>`, and `canvas.json` lists artboards in **creation order, not flow order**, so the
-sequence reads scrambled on the canvas.
+**As found:** there was no `Step2*.dc.html`, which read as a missing step. Step 2 was
+`ModalWhere.dc.html`, titled "Plan this moment → step 2 · Where"; steps 1/3/4 used `Step<N><Name>`
+while steps 2 and 5 used `Modal<Name>`, and `canvas.json` lists artboards in **creation order, not
+flow order**, so the sequence read scrambled on the canvas. It was left alone at the time because a
+rename of a ratified artboard is a decision, not a tidy-up.
 
-Renaming is deliberately **not** done here: these are ratified artboards and a rename is a decision,
-not a tidy-up. The flow order is stated in §1 instead. If a rename is ratified, it is one lane that
-touches the two filenames and their `canvas.json` entries together.
+**Resolved:** the rename was ratified and done as one lane — `ModalWhere.dc.html` →
+`Step2Where.dc.html`, `ModalEvents.dc.html` → `Step5Events.dc.html`, with their `canvas.json`
+entries moved in the same commit and the canvas TITLES left exactly as ratified. Every step of the
+plan modal is now `Step<N><Name>`. Briefs written before the rename cite the old names and were
+left as written — they are dated records, not live pointers; `docs/DECISIONS.md` likewise, being
+append-only. The flow order is still stated in §1, because `canvas.json` order is still creation
+order.
 
 ### F2 — the four commerce surfaces have NO planning entry
 
@@ -63,14 +68,22 @@ unknown, not as done.
 | no time-of-day column on `user_experiences` | clock times on `WhichEvent`; `TravelEvents` tee times | **CLEARED** — migration 282 (same ledger row) |
 | `experience_types.roles_needed` | `WhichEvent` role hint | **CLEARED** — migration 280 (#744) |
 
+**Golf now has an occasion row of its own** (ledger `2026-09-04-golf-occasion-and-housekeeping`):
+`golf-trip`, seeded with `schedule: true` and its own tee-time schedule presets (Round 1–4, Whisky
+bar), and the landing Moment points at it instead of the generic `travel` occasion. That closes the
+`wedding-travel-events.audit.md` headline finding — the step-5 chip step is now REACHABLE for a golf
+trip, where before `travel`'s `schedule: false` switched the whole step off. It does **not** clear
+row 9: the artboard's Event/Day/Time/Place table still needs the HELD time-of-day column, so the
+chips exist and the per-event clock time does not.
+
 ---
 
 ## 1. Flow order (what the canvas does not show)
 
 ```
 Landing              Before → Main → NavEntry → NavTuned
-Plan modal           Step1Occasion → ModalWhere (step 2) → Step3When / Step3Day (step 3)
-                       → Step4Who / Step4Variants (step 4) → ModalEvents (step 5)
+Plan modal           Step1Occasion → Step2Where (step 2) → Step3When / Step3Day (step 3)
+                       → Step4Who / Step4Variants (step 4) → Step5Events (step 5)
 Plan surfaces        StripLead → Slip → WhichEvent → Mismatch → Guests
 Variants             OccasionRow, SlipProposal, Planner, TravelWhere, TravelWhen, TravelEvents
 ```
@@ -173,15 +186,15 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 7 | `Mismatch` "add as a stop" | E | todo (schema landed) | — (cleared by migration 281) |
 | 8 | `TravelWhere` stop list | E | todo (schema landed) | — (cleared by migration 281) |
 | 9 | `TravelEvents` tee times | E | todo (schema landed) | — (cleared by migration 282) |
-| 10 | Artboard rename (F1) | — | todo | rename is a decision, not a tidy-up |
+| 10 | Artboard rename (F1) | — | built | — (ratified and done: ledger `2026-09-04-golf-occasion-and-housekeeping`) |
 | 11 | Planner third door + nav Wedding CTA | D | built | — |
 | 12 | Landing Wedding moment + "Planning your own?" callout | D | built | renders only once Kyoto has an attributed real photo (photo gate) |
 | 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops HELD; Step4Variants fields not built |
 | 14 | `trip_destinations` + `user_experiences.start_time` (schema + rails) | E | built | UI in follow-up lanes |
 
-Already `built`: `ModalEvents`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`
+Already `built`: `Step5Events`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`
 (minus "add as a stop"), `OccasionRow`. Already `ruled`: `SlipProposal`.
 
 Decisions needed before their lanes can start: **which event owns a plan's guest list** (row 5),
-**ordered `trip_destinations`** (rows 7–8), **a time-of-day column** (row 9), **the artboard rename**
-(row 10).
+**ordered `trip_destinations`** (rows 7–8), **a time-of-day column** (row 9). The artboard rename
+(row 10) was ratified and is done.
