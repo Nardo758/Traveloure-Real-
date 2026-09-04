@@ -960,7 +960,7 @@ export function PlanModal({
                       <button
                         type="button"
                         className={stepperButton}
-                        aria-label={`One fewer ${f.label.toLowerCase()}`}
+                        aria-label={`Decrease ${f.label}`}
                         disabled={f.value === ""}
                         onClick={() => {
                           setPartyTouched(true);
@@ -980,7 +980,7 @@ export function PlanModal({
                       <button
                         type="button"
                         className={stepperButton}
-                        aria-label={`One more ${f.label.toLowerCase()}`}
+                        aria-label={`Increase ${f.label}`}
                         onClick={() => {
                           setPartyTouched(true);
                           f.set(stepUp(f.value));
