@@ -251,7 +251,7 @@ This document captures architectural decisions to maintain consistency across co
     separate lane.
 
 30. **A PLAN CARRIES ITS OWN TIMEZONE, AND ITS EVENTS SURVIVE BEING PLANNED BEFORE IT EXISTS
-    (decision-maker ratified Sep 3, 2026 — ledger `2026-09-04-plan-mint`; migration 278).** One
+    (decision-maker ratified Sep 3, 2026 — ledger `2026-09-04-plan-mint`; migration 279).** One
     lane, because both halves are decided at the SAME moment: when a `trips` row is born.
     **(a) `trips.timezone` — ONE IANA zone per plan.** Until now nothing on a trip said what zone
     its times were in (`vendors.service_timezone` is a provider's own operating zone and is

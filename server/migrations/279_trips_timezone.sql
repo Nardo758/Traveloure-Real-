@@ -1,4 +1,4 @@
--- Migration 278: a PLAN CARRIES ITS OWN TIMEZONE.
+-- Migration 279: a PLAN CARRIES ITS OWN TIMEZONE.
 -- Ledger `2026-09-04-plan-mint`, CLAUDE.md entry 30. Additive, nullable, NO DEFAULT, NO CHECK,
 -- no backfill (the migration-181/195/273/275/276/277 posture — a CHECK over an app-enforced value
 -- set is exactly the publish-time drizzle-push failure CLAUDE.md's Coordination Prevention notes
@@ -43,4 +43,4 @@
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS timezone VARCHAR(64);
 
 COMMENT ON COLUMN trips.timezone IS
-  'IANA timezone the plan''s wall-clock item times are read in (migration 278, ledger 2026-09-04-plan-mint). NULL = not captured: readers keep floating/local-free behaviour and say so; never substitute UTC or the server zone. Server-derived from the destination at write time (never client-settable).';
+  'IANA timezone the plan''s wall-clock item times are read in (migration 279, ledger 2026-09-04-plan-mint). NULL = not captured: readers keep floating/local-free behaviour and say so; never substitute UTC or the server zone. Server-derived from the destination at write time (never client-settable).';

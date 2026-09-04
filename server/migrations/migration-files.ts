@@ -1411,5 +1411,5 @@ export const MIGRATION_FILES = [
   // today's floating output rather than guessing UTC (§13). `itinerary_items.start_time`/`end_time`
   // stay wall-clock varchars and are never converted. Declared in shared/schema.ts so the deploy
   // push cannot drop it; server-derived from the destination (§14), never client-settable.
-  "278_trips_timezone.sql",
+  "279_trips_timezone.sql",
 ] as const;

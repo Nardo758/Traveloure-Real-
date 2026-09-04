@@ -165,7 +165,7 @@ export const trips = pgTable("trips", {
   //     THIS column, and item_transition_log rows derive theirs via trip_id → this column (R15/L6).
   originMarket: varchar("origin_market", { length: 100 }),
   marketSlug: varchar("market_slug", { length: 40 }),
-  // The ONE IANA timezone this plan's WALL-CLOCK item times are read in (migration 278, ledger
+  // The ONE IANA timezone this plan's WALL-CLOCK item times are read in (migration 279, ledger
   // `2026-09-04-plan-mint`, CLAUDE.md entry 30). Additive nullable, no DEFAULT and no DB CHECK
   // (publish-trap posture — the IANA value set is app-enforced); declared HERE per the deploy-push
   // durability rule, since an object schema.ts does not declare is dropped at publish and, the
