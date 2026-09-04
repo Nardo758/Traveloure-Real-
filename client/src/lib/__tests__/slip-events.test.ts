@@ -238,3 +238,53 @@ describe("eventMetaLine — the ONE derivation of what an event row may say abou
     assert.equal(eventMetaLine({ id: "x", eventDate: "2026-10-02" }), "Fri, Oct 2");
   });
 });
+
+describe("G8 — eventMetaLine's SHORT form: one implementation, two callers (re-audit A18)", () => {
+  /**
+   * Both ratified artboards print the weekday alone — the slip because the day heading directly
+   * above already names the date, the "Which event?" picker because it lists one plan's events.
+   * The fix had to be an OPTION rather than a second function: the slip and the picker describe
+   * the same row, and a second copy is where a clock gets invented out of something that is not
+   * one (§18 rule 1). These hold that the two forms differ in EXACTLY one thing.
+   */
+  it("short prints the weekday alone; long (the default) prints the calendar day", () => {
+    assert.equal(eventMetaLine(CEREMONY), "Fri, Oct 2 · Kiyomizu-dera");
+    assert.equal(eventMetaLine(CEREMONY, { format: "short" }), "Fri · Kiyomizu-dera");
+    // An absent option object, and an explicit "long", are the same answer.
+    assert.equal(eventMetaLine(CEREMONY, {}), eventMetaLine(CEREMONY));
+    assert.equal(eventMetaLine(CEREMONY, { format: "long" }), eventMetaLine(CEREMONY));
+  });
+
+  it("the artboard's own line, verbatim: 'Sat 15:00 · Nanzen-ji'", () => {
+    assert.equal(
+      eventMetaLine(
+        { id: "ev-s", title: "Reception", eventDate: "2026-10-03", startTime: "15:00", location: "Nanzen-ji" },
+        { format: "short" },
+      ),
+      "Sat 15:00 · Nanzen-ji",
+    );
+  });
+
+  it("EVERY §13 silence survives the option — a short form invents nothing a long one would not", () => {
+    for (const format of ["long", "short"] as const) {
+      // No time ⇒ no clock, in either form.
+      assert.doesNotMatch(eventMetaLine(CEREMONY, { format }), /\d{2}:\d{2}/);
+      // A malformed clock is not rendered as one, in either form.
+      assert.doesNotMatch(
+        eventMetaLine({ id: "b", eventDate: "2026-10-04", startTime: "7pm", location: "Gion" }, { format }),
+        /\d{2}:\d{2}/,
+      );
+      // A row that has told us nothing says nothing.
+      assert.equal(eventMetaLine({ id: "bare" }, { format }), "");
+      assert.equal(eventMetaLine(null, { format }), "");
+      // A time with no day still renders alone.
+      assert.equal(eventMetaLine({ id: "t", startTime: "08:10" }, { format }), "08:10");
+      // A place with no day still renders alone.
+      assert.equal(eventMetaLine({ id: "p", location: "Gion" }, { format }), "Gion");
+    }
+  });
+
+  it("short still reads the bare DATE as a LOCAL day (F-1) — the weekday is never a day early", () => {
+    assert.equal(eventMetaLine({ id: "x", eventDate: "2026-10-02" }, { format: "short" }), "Fri");
+  });
+});

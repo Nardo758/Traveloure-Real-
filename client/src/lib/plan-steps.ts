@@ -49,6 +49,7 @@ import {
   durationShape,
   guestListSetting,
   showsSchedule,
+  stopsShape,
   type OccasionSwitchRow,
 } from "./occasion-switches";
 import { partyNoun } from "./plan-vocabulary";
@@ -235,4 +236,173 @@ export function homeCitySuggestion(input: {
   if (!home) return "";
   if ((input.currentDestination ?? "").trim() !== "") return "";
   return home;
+}
+
+// ── THE RE-AUDIT PREDICATES ───────────────────────────────────────────────────────────────────
+// Ledger `2026-09-04-reaudit-fixes`. Each one answers a question the modal previously answered
+// INLINE with a fixed tuple or a fixed sentence, and each one fails SILENTLY when it is wrong —
+// a golf trip is offered a wedding's anchor card, a corporate plan is asked how many kids are
+// coming — so they live here beside the door table, as pure functions with pinned tests, rather
+// than as conditions written into the JSX (§18 rule 1).
+//
+// Every one reads the occasion's OWN switch columns (migration 276) through the readers in
+// `occasion-switches.ts`. None of them keys on an occasion SLUG or on the presentation class:
+// `2026-09-03-occasion-switches` ruled that an occasion is a ROW carrying defaults, and Locked
+// Decision 31 warns specifically against answering a new question by growing a seventh switch.
+
+/** One stepper on step 4: which column it writes, and the word above it. */
+export interface PartyField {
+  key: "adults" | "kids";
+  label: string;
+}
+
+/**
+ * STEP 4's STEPPERS, built from the occasion's own party NOUN (re-audit A4).
+ *
+ * THE DEFECT THIS CLOSES: the two steppers were a fixed tuple — `[{adults, <Noun>}, {kids, "Kids"}]`
+ * — rendered for every occasion, so a corporate event asked "Attendees" and then, underneath it,
+ * "Kids". Nobody brings children to an attendee count, and the ratified `Step4Variants` artboard
+ * draws exactly one stepper on that panel.
+ *
+ * THE RULE: **attendees ⇒ ONE count, and the Kids stepper is OMITTED — never disabled.** An
+ * absent control asks nothing and writes nothing; a greyed-out one asserts that the question
+ * exists here and that the answer is unavailable, which is a different (and false) claim. That is
+ * the same posture the add-a-stop control already takes under `default_stops: one`.
+ *
+ * For every other noun the pair is the artboard's own **Adults / Kids**, which is what the three
+ * non-corporate panels draw. The occasion's noun is not repeated on the stepper because the step
+ * TITLE already carries it ("How many attendees?" / "Who is coming?" / "Who is traveling with
+ * you?"): a label saying "Guests" over a field that means "adults in the party" was the vaguer of
+ * the two readings, and step 4 counts the booking party, not the guest list.
+ *
+ * NULL / not set ⇒ `partyNoun` falls back to "travelers" ⇒ the Adults/Kids pair, the plain-plan
+ * shape (§13).
+ */
+export function partyFields(occasion?: OccasionSwitchRow | null): PartyField[] {
+  const noun = partyNoun(occasion?.vocabulary, guestListSetting(occasion));
+  if (noun === "attendees") return [{ key: "adults", label: "Attendees" }];
+  return [
+    { key: "adults", label: "Adults" },
+    { key: "kids", label: "Kids" },
+  ];
+}
+
+/** Does this occasion's step 4 ask a KIDS count at all? Derived from `partyFields`, never twice. */
+export function asksKidsCount(occasion?: OccasionSwitchRow | null): boolean {
+  return partyFields(occasion).some((f) => f.key === "kids");
+}
+
+/**
+ * DOES THIS PLAN HAVE A MAIN MOMENT? (re-audit A15; the resolution of the re-audit's open
+ * question **B4**, decision-maker delegated 2026-09-04.)
+ *
+ * THE DEFECT THIS CLOSES: the card's gate was `shape !== "day" && showsSchedule(...)`, so it
+ * rendered for a **golf trip** — `range` + `schedule: true` — and a golf plan that answered it
+ * acquired an unnamed "The main moment" `temporal_anchors` row beside its four tee-time anchors.
+ * A golf trip's fixed points ARE the four rounds; it has no single centre of gravity, and the
+ * anchor is read by the optimizer and the schedule validator, so this was a data consequence and
+ * not only a pixel one.
+ *
+ * THE PREDICATE, and why it needs no new column (Locked Decision 31 — do not grow a seventh
+ * switch to answer a new question):
+ *
+ *   - `default_duration = "day"` ⇒ **true**. A one-day occasion IS its moment: the step-3 date is
+ *     the moment's date and the optional Time beside it is the moment's time, so the question is
+ *     asked inline and the CARD is not drawn (the caller keeps the `shape !== "day"` half of its
+ *     own condition — the card would ask the same question twice).
+ *   - a RANGE ⇒ true only when the occasion HAS a schedule **and** its party noun is `guests` or
+ *     `attendees`. That combination is the occasions whose schedule is arranged around ONE fixed
+ *     point other people are invited to — a ceremony, a keynote — which is exactly what "the
+ *     anchor everything else is timed around" means. A `travelers` occasion's schedule is a LIST
+ *     of appointments (four tee times) with no single anchor among them.
+ *
+ * The noun is read through `partyNoun`, the same resolver step 4's own label uses, so an occasion
+ * that has ruled `default_guests: false` (golf) resolves to "travelers" and is answered here by
+ * the SAME rule that already refuses it guest wording — not by a second reading of that column
+ * (§18 rule 1).
+ *
+ * NULL / not set ⇒ `durationShape` falls back to "range" and `showsSchedule` to false ⇒ **false**:
+ * an occasion nobody has decided anything about is not given an anchor on its behalf (§13).
+ */
+export function showsMainMoment(occasion?: OccasionSwitchRow | null): boolean {
+  if (durationShape(occasion) === "day") return true;
+  if (!showsSchedule(occasion)) return false;
+  const noun = partyNoun(occasion?.vocabulary, guestListSetting(occasion));
+  return noun === "guests" || noun === "attendees";
+}
+
+/**
+ * IS THE STEP-3 "your own city, one evening" CAPTION TRUE OF THIS PLAN? (re-audit A3.)
+ *
+ * The ratified `Step3Day` artboard prints "Your own city, one evening. No stops, no range." The
+ * caption makes THREE claims, and a literal would assert all three for every day-shaped occasion —
+ * including one a traveler is flying to. So each is checked against what the plan actually holds:
+ *
+ *   1. "one evening"  ⇒ `default_duration = "day"`;
+ *   2. "no stops"     ⇒ `default_stops = "one"` (the stop list is absent for this occasion);
+ *   3. "your own city"⇒ the destination on screen IS the signed-in member's `users.home_city` —
+ *      the city lane G's `homeCitySuggestion` offers. Compared case-insensitively on the trimmed
+ *      strings and nothing cleverer: there is no geocoder here and no alias table, so "Kyoto" and
+ *      "Kyoto, Japan" are deliberately NOT matched. A false negative omits a caption; a false
+ *      positive tells a traveler that a city they typed is where they live (§13).
+ *
+ * Any of the three missing ⇒ **false** ⇒ the caption is omitted. A guest, or a member who never
+ * set a home city, therefore never sees it — which is correct, since nothing then knows where
+ * "own" is.
+ */
+export function showsHomeCityDayCaption(input: {
+  occasion?: OccasionSwitchRow | null;
+  homeCity?: string | null;
+  destination?: string | null;
+}): boolean {
+  if (durationShape(input.occasion) !== "day") return false;
+  if (stopsShape(input.occasion) !== "one") return false;
+  const home = (input.homeCity ?? "").trim();
+  const dest = (input.destination ?? "").trim();
+  if (!home || !dest) return false;
+  return home.toLowerCase() === dest.toLowerCase();
+}
+
+/**
+ * THE GUEST-LIST CLAUSE — ONE derivation, two callers (re-audit A9/A10).
+ *
+ * THE DEFECT THIS CLOSES: step 4's note ("Your guest list is separate and per event") and step 5's
+ * intro ("…with its own time, place and guest list") both promised a per-event guest list
+ * UNCONDITIONALLY. `golf-trip` seeds `default_guests: false`, so a golf plan was told twice that
+ * it has a guest list it will never have — while `partyNoun` was, one line away, correctly
+ * refusing that same plan every word of guest vocabulary.
+ *
+ * THE RULE: the clause is promised on an EXPLICIT `true` and omitted otherwise. `guestListSetting`
+ * is deliberately tri-state — `false` is an occasion that ruled it has no guest list, `null` is
+ * nobody having decided — and a promise is a CLAIM, so neither of those two is a licence to make
+ * it (§13). The omission is silent rather than a "no guest list on this plan" line: that sentence
+ * would be true of `false` and false of `null`, and one sentence cannot carry both.
+ *
+ * Returned as one object with all three sentences because they are one decision worn three ways. A
+ * second copy of "does this occasion have a guest list?" written at any call site is the
+ * derivation-drift class §18 rule 1 names — and it is precisely the drift that produced the defect.
+ */
+export interface GuestListCopy {
+  /** The explicit `true` — a guest list exists and may be named. */
+  on: boolean;
+  /** Step 4's note under the steppers, WITHOUT its final punctuation (the caller closes it). */
+  partyNote: string;
+  /** Step 5's intro sentence. */
+  eventsIntro: string;
+  /** Step 5's footer line, or "" when there is no guest list to describe. */
+  eventsFooter: string;
+}
+
+export function guestListCopy(occasion?: OccasionSwitchRow | null): GuestListCopy {
+  const on = guestListSetting(occasion) === true;
+  return {
+    on,
+    partyNote: on
+      ? "This is the party on your booking. Your guest list is separate and per event"
+      : "This is the party on your booking",
+    eventsIntro: on
+      ? "Tick what applies. Each becomes its own event on the plan, with its own day, time, place and guest list."
+      : "Tick what applies. Each becomes its own event on the plan, with its own day, time and place.",
+    eventsFooter: on ? "Guests are per event. Brunch can be family only." : "",
+  };
 }

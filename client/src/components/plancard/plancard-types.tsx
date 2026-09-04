@@ -302,7 +302,15 @@ export interface PlanCardLegData extends InlineTransportLegData {
 
 export interface PlanCardDay {
   dayNum: number;
+  /** The DISPLAY day, already localised by the producer ("Fri, Oct 2"). */
   date: string;
+  /**
+   * The MACHINE day, "YYYY-MM-DD", or null/absent when the plan has no start date to count from
+   * (ledger `2026-09-04-reaudit-fixes`). Optional because not every producer of this shape emits
+   * it; a consumer that needs a real calendar day must treat its absence as "not known" and fall
+   * back rather than parsing `date` back out of its own localisation (§13).
+   */
+  dateIso?: string | null;
   label: string;
   energyProfile?: string;
   activities: PlanCardActivity[];

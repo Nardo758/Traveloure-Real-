@@ -197,4 +197,40 @@ describe("occasion switches", () => {
       visibility: "shown",
     });
   });
+
+  // S6 — the two rows the post-build re-audit found disagreeing with the ratified
+  // `OccasionRow.dc.html` board (ledger `2026-09-04-reaudit-fixes`, items A24 and A25). Both are
+  // ONE column each, and both are the kind of divergence nothing else can catch: a wrong switch
+  // still renders a working modal, just one asking the wrong question. Pinned by value, because
+  // the seeder is the one author and a hand-edit here is exactly how they drifted.
+  it("S6a: girls-trip speaks GUESTS — the vocabulary agrees with its own guest-list switch", () => {
+    const row = seededRows().find((r) => r.slug === "girls-trip");
+    assert.ok(row, "`girls-trip` must be seeded");
+    assert.equal(
+      row!.switches.guests,
+      "true",
+      "the row has a guest list; that half was never in dispute",
+    );
+    assert.equal(
+      row!.switches.vocabulary,
+      "guests",
+      "`travelers` beside `guests: true` is the pair disagreeing with itself — step 4 asked " +
+        '"Who is traveling with you?" for an occasion whose shape is people being invited',
+    );
+  });
+
+  it("S6b: corporate-events lasts a DAY — the retreat is the multi-day product", () => {
+    const row = seededRows().find((r) => r.slug === "corporate-events");
+    assert.ok(row, "`corporate-events` must be seeded");
+    assert.equal(
+      row!.switches.duration,
+      "day",
+      "a corporate EVENT is a run of show inside one day; `range` made it indistinguishable in " +
+        "the flow from the separate `corporate` (Corporate Retreats) row",
+    );
+    // …and that separate row is still the range-shaped one, so the two really are distinct.
+    const retreat = seededRows().find((r) => r.slug === "corporate");
+    assert.ok(retreat, "`corporate` (Corporate Retreats) must be seeded");
+    assert.equal(retreat!.switches.duration, "range");
+  });
 });
