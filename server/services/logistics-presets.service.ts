@@ -935,6 +935,15 @@ const TEMPLATE_PRESETS: Record<string, TemplatePresets> = {
   "date-night": DATE_NIGHT_PRESETS,
   "anniversary-trip": ANNIVERSARY_TRIP_PRESETS,
   anniversary: ANNIVERSARY_PRESETS,
+  // `honeymoon` is now BOTH an eventTypeEnum member and a seeded `experience_types` slug (ledger
+  // `2026-09-03-occasion-hygiene`), and one entry serves both — the key space here is deliberately
+  // a union of the two vocabularies (see `vacation`/`adventure`/`date_night` above). The mapping
+  // is LEFT AT TRAVEL_PRESETS: the honeymoon's ratified switches are many stops over a date range,
+  // which is the multi-day trip shape TRAVEL_PRESETS already anchors. ANNIVERSARY_PRESETS is a
+  // single-evening celebration whose anchors are literally labelled "Anniversary Dinner" and
+  // "Anniversary photo shoot" — putting them on a honeymoon would be the platform stating an
+  // occasion the traveler never described (§13), and re-pointing a live key would silently change
+  // the anchors generated for every existing honeymoon trip.
   honeymoon: TRAVEL_PRESETS,
   adventure: TRAVEL_PRESETS,
   "bachelor-bachelorette": BACHELOR_BACHELORETTE_PRESETS,

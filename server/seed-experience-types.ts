@@ -153,7 +153,10 @@ const coreExperienceTypes = [
     typicalDurationMaxDays: 3
   },
   { 
-    name: "Wedding Anniversaries", 
+    // Singular since ledger `2026-09-03-occasion-hygiene` — kept in step with the tabs seeder,
+    // which is the row's name authority on an EXISTING row; this literal only ever reaches a
+    // fresh environment, where the two must not disagree.
+    name: "Wedding Anniversary", 
     slug: "wedding-anniversaries", 
     description: "Celebrate your love with a memorable anniversary",
     icon: "Heart",

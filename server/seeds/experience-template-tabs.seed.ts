@@ -4794,7 +4794,11 @@ export async function seedExperienceTemplateTabs() {
       switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
     { slug: "retreats", name: "Retreats", tabs: retreatsTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
-    { slug: "wedding-anniversaries", name: "Wedding Anniversaries", tabs: weddingAnniversariesTabs, universalFilters: standardUniversalFilters,
+    // Named SINGULAR ("Wedding Anniversary") since ledger `2026-09-03-occasion-hygiene`: the plural
+    // read as a category of anniversaries rather than the one occasion being planned, and the nav
+    // item already says "Wedding Anniversary". The SLUG is unchanged — it is the persisted key
+    // every mapping, preset and hero config is filed under, and renaming it would orphan them.
+    { slug: "wedding-anniversaries", name: "Wedding Anniversary", tabs: weddingAnniversariesTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
     { slug: "proposal", name: "Proposal", tabs: proposalTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "hidden" } },
@@ -4835,6 +4839,20 @@ export async function seedExperienceTemplateTabs() {
       switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
     { slug: "family-occasion", name: "Family Occasion", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+
+    // ── Honeymoon: one taxonomy (ledger `2026-09-03-occasion-hygiene`) ──────────────────────────
+    // The honeymoon existed in FOUR places with no `experience_types` row behind any of them: an
+    // `eventTypeEnum` member, a BRANCH_MAP entry ("trip"), a TEMPLATE_PRESETS key, a landing
+    // Moment, and a COUPLE_KEYWORDS string — five vocabularies agreeing on a word the ONE runtime
+    // catalog had never heard of, so the Moment's CTA seeded the generic `travel` occasion. This
+    // row is what makes the honeymoon an occasion instead of a keyword.
+    //
+    // Switches are the ratified shape (FLOW-SPEC v2 stress test): many stops over a date RANGE, no
+    // internal schedule and no guest list — a honeymoon is two people on a trip, not an event.
+    // That is byte-for-byte `anniversary-trip`'s shape, which is why it reuses that template's
+    // tabs and filters: this lane authors NO new filter content (§13), exactly as `romance` did.
+    { slug: "honeymoon", name: "Honeymoon", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
   ];
 
   // ── Deploy-speed fast path ─────────────────────────────────────────────────
@@ -4924,6 +4942,57 @@ export async function seedExperienceTemplateTabs() {
 
   // Migration 276 / ledger `2026-09-03-occasion-switches`: the six occasion switches.
   await updateExperienceTypeSwitches(templates);
+
+  // Ledger `2026-09-03-occasion-hygiene`: reconcile the DISPLAY NAME on rows that already exist.
+  await updateExperienceTypeNames(templates);
+}
+
+/**
+ * The occasion's DISPLAY NAME — written by UPDATE keyed on the row's natural key, `slug`
+ * (ledger `2026-09-03-occasion-hygiene`).
+ *
+ * WHY THIS EXISTS AT ALL. `name` is only ever read off the row by `getOrCreateExperienceType`,
+ * which returns early for a slug that already exists — and the deploy fast path skips a
+ * fully-seeded template before even that is reached. So editing a `name` in the `templates` array
+ * above lands in a FRESH environment and NEVER in production, where every row already exists. That
+ * is the same trap `updateExperienceTypeSwitches` and `updateExperienceTypeHeroConfigs` were
+ * written for, and this is the third face of it: the array is the INSERT half of an upsert, and
+ * each of these updaters is the UPDATE half for the columns it owns.
+ *
+ * It writes ONLY `name`, and only when the row disagrees with the array. The seeder is the sole
+ * author of this column — no admin surface or API edits it — so a difference is always the code
+ * being newer than the row, never an operator's edit being overwritten.
+ *
+ * Same cheap fast path as the other two: one SELECT decides, so a steady-state boot issues zero
+ * UPDATEs (deploy speed).
+ */
+async function updateExperienceTypeNames(templates: Array<{ slug: string; name: string }>) {
+  const nameBySlug = new Map(templates.map((t) => [t.slug, t.name]));
+  try {
+    const rows = await db
+      .select({ slug: experienceTypes.slug, name: experienceTypes.name })
+      .from(experienceTypes)
+      .where(inArray(experienceTypes.slug, templates.map((t) => t.slug)));
+
+    const stale = rows.filter((row) => row.name !== nameBySlug.get(row.slug));
+    if (stale.length === 0) {
+      console.log("Experience type names already current — skipping.");
+      return;
+    }
+
+    for (const row of stale) {
+      await db
+        .update(experienceTypes)
+        .set({ name: nameBySlug.get(row.slug)! })
+        .where(eq(experienceTypes.slug, row.slug));
+      console.log(`Experience type renamed: "${row.name}" -> "${nameBySlug.get(row.slug)}" (${row.slug})`);
+    }
+    console.log(`Experience type names reconciled (${stale.length} row(s) updated).`);
+  } catch (err) {
+    // Never fail a boot over a display name. A row that keeps its old name renders the old label,
+    // which is stale but honest — it is still the name of a real row (§13).
+    console.log("Experience type name reconciliation skipped:", err);
+  }
 }
 
 /**
@@ -5146,6 +5215,15 @@ async function updateExperienceTypeHeroConfigs() {
     // nearest existing row rather than invented: `romance` from `anniversary-trip` (a couple's
     // getaway), the two celebrations from `birthday`.
     "romance": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
+    // Ledger `2026-09-03-occasion-hygiene`. Copied from `anniversary-trip` — the row whose switch
+    // shape the honeymoon exactly matches — rather than invented, minus the "years together"
+    // context field, which is an anniversary's question and not a honeymoon's.
+    "honeymoon": {
       headcountLabel: "traveler",
       showKids: false,
       showOriginCity: "required",
