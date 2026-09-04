@@ -42,6 +42,33 @@ export interface MomentConfig {
 /** Ratified copy (MOMENTS_COPY.md). momentKey === key. */
 export const MOMENTS: MomentConfig[] = [
   {
+    // Ratified by ledger `2026-09-04-wedding-landing-moment` (artboard
+    // docs/design/wedding-flow/Main.dc.html). FIRST in the roster because roster order IS the
+    // order the live set is built in, and the section's rotation starts at index 0 — so the
+    // artboard's "Wedding active by default" is exactly this position, not a second concept.
+    //
+    // NO PHOTO IS SEEDED FOR THIS ROW, deliberately (§13 + the PHOTO GATE above): a moment goes
+    // live only when its city has ≥1 attributed real, non-stock, expert-curated gem photo. Kyoto
+    // has none in production today, so this row is configured and INVISIBLE until a real
+    // attributed photo exists. That is the honest state, not a gap to route around — the gate is
+    // never loosened to make a moment appear.
+    key: "wedding",
+    label: "Wedding",
+    eyebrow: "A wedding weekend in Kyoto",
+    headline:
+      "Three days, one plan — the rehearsal dinner Friday, the ceremony at three, the brunch nobody has to organize.",
+    pieces: [
+      "A local who knows which temple garden will hold a ceremony, and the hour the light is right for it.",
+      "Welcome drinks Friday, hair and makeup at seven, the reception at six — each its own event on one plan, one guest list.",
+      "Guests arriving from four countries land on the same slip, each with their own room and their own RSVP.",
+    ],
+    // One of the five frozen coarse keys the AI chooser accepts (ruling 2026-09-01-moment-key).
+    experienceType: "wedding",
+    // The seeded `experience_types` row (server/seed-experience-types.ts) — a real catalog slug.
+    experienceSlug: "wedding",
+    city: "Kyoto",
+  },
+  {
     key: "proposal",
     label: "Proposal",
     eyebrow: "A proposal in Kyoto",

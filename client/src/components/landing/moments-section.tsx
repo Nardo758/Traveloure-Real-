@@ -3,8 +3,9 @@
  * Visual of record: docs/design/landing-earn-mock-v2.5.html (the Moments section).
  *
  * ONE moment per slide. Data is GET /api/landing/moments: `moments` = the LIVE set (each with ≥1
- * attributed real photo — the TRUST-surface gate, 2026-09-01-photo-tiers), `roster` = all seven
- * for the tab strip's faint pills (server-owned, never restated here — §18 rule 1).
+ * attributed real photo — the TRUST-surface gate, 2026-09-01-photo-tiers), `roster` = the whole
+ * moment roster for the tab strip's faint pills (server-owned, never restated here — §18 rule 1;
+ * the count is deliberately not written down, so adding a moment cannot make this comment lie).
  *
  * EMPTY STATE B (2026-09-01-landing-moments): when the live set is empty the section renders
  * NOTHING and appears the moment the first attributed real photo lands. With today's data the
@@ -17,6 +18,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { SectionHeader, OpenSection } from "./section-header";
 import { useRotation } from "@/hooks/use-rotation";
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -278,6 +280,48 @@ export function MomentsSection() {
               </button>
             );
           })}
+        </div>
+
+        {/*
+          "Planning your own?" — the Event-Planner disambiguation (ledger
+          `2026-09-04-wedding-landing-moment`; artboard docs/design/wedding-flow/Main.dc.html).
+
+          It lives INSIDE MomentsSection and nowhere else, because its copy points at "Plan this
+          moment" — the CTA on the card immediately above. In the empty-state fallback
+          (moments-slot.tsx renders ExperiencesRail when the live set is empty) that CTA does not
+          exist, so neither does this note; there is nothing here to lift into the rail.
+
+          "Plan this moment" below is TEXT, not a control: the section already has exactly one
+          planning opener (the CTA above, `usePlanning().open`), and a second one here would be a
+          second entry into the same chooser (ruling 2026-08-28-single-planning-entry). Only the
+          "Event Planner" phrase is a link, to the existing supply-side fork at /start/events.
+        */}
+        <div
+          className="mt-1.5 flex flex-wrap items-center gap-3 rounded-[12px] border px-4 py-3 text-[13px]"
+          style={{
+            borderColor: "var(--earn-border, #E4E4DE)",
+            background: "var(--earn-card, #fff)",
+            color: "var(--earn-muted)",
+          }}
+          data-testid="moments-planning-callout"
+        >
+          <span
+            className="whitespace-nowrap text-[10.5px] uppercase tracking-[0.1em]"
+            style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}
+          >
+            Planning your own?
+          </span>
+          <span className="min-w-0">
+            The Earn page's{" "}
+            <Link href="/start/events" className="underline underline-offset-2" data-testid="link-event-planner-track">
+              "Event Planner"
+            </Link>{" "}
+            track is for people who <em>sell</em> event services. Couples start here:{" "}
+            <span className="font-semibold" style={{ color: "var(--earn-coral-ink)" }}>
+              Plan this moment
+            </span>{" "}
+            opens your plan with the occasion already set.
+          </span>
         </div>
       </OpenSection>
     </div>

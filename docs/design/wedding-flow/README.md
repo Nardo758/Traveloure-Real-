@@ -52,7 +52,7 @@ tracked as a lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` rather than 
 | Artboard | Title | Live surface | Fidelity |
 |---|---|---|---|
 | `Before.dc.html` | Moments section today | `client/src/components/landing/moments-section.tsx` | audited — 1 divergence ([brief](../mock-audits/wedding-before.audit.md)) — structure matches; live render is empty today (ruled §13 photo-gate empty state) |
-| `Main.dc.html` | Landing page with Wedding | `client/src/pages/landing.tsx`, `landing/moments-slot.tsx` | audited — 3 divergences ([brief](../mock-audits/wedding-main.audit.md)) — Wedding moment row and the "Planning your own?" callout are both NOT BUILT |
+| `Main.dc.html` | Landing page with Wedding | `client/src/pages/landing.tsx`, `landing/moments-slot.tsx` | **built** ([brief](../mock-audits/wedding-main.audit.md); ledger `2026-09-04-wedding-landing-moment`) — the Wedding `MomentConfig` row and the "Planning your own?" callout both exist. CAVEAT: no photo was fabricated, so the moment renders only once Kyoto has ≥1 attributed real (non-stock) expert-curated photo — with today's production data the whole Moments section is still the ruled §13 empty state |
 | `NavEntry.dc.html` | Nav · Experiences dropdown today | `client/src/lib/nav-config.ts` (`navGroupsConfig`) | audited — 1 divergence ([brief](../mock-audits/wedding-nav-entry.audit.md)) — this "today" baseline is itself stale; already superseded by the `2026-09-03-occasion-hygiene` reorg on `main` |
 | `NavTuned.dc.html` | Nav · tuned by class (proposal) | `client/src/lib/nav-config.ts` | audited — 1 divergence ([brief](../mock-audits/wedding-nav-tuned.audit.md)) — the proposed regrouping is **already built and matches**; only the per-row "Start a plan" hover CTA is missing |
 
