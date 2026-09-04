@@ -76,6 +76,7 @@ import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
 import {
+  eventMetaLine,
   groupItemsByEvent,
   IMPLICIT_EVENT_GROUP_KEY,
   type PlanEvent,
@@ -401,10 +402,10 @@ function SlipItemRow({
  * Fragment, with no heading at all (see `groupItemsByEvent`).
  */
 function SlipEventGroupBlock({ event, children }: { event: PlanEvent; children: ReactNode }) {
-  const date = safeDate(event.eventDate);
-  const meta = [date ? format(date, "EEE, MMM d") : null, event.location || null]
-    .filter(Boolean)
-    .join(" · ");
+  // ONE derivation, shared with the "Which event?" picker (ledger `2026-09-04-which-event-picker`):
+  // date-when-set · place-when-set, and never a clock time. Restating it here is the drift class
+  // §18 rule 1 names — and the second copy is exactly where a fabricated start time gets written.
+  const meta = eventMetaLine(event);
   const hasHeader = !!event.title || !!meta;
   return (
     <section

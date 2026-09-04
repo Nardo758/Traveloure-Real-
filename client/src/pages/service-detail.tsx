@@ -54,6 +54,11 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
 import { addLabel, addedTitle } from "@/lib/plan-vocabulary";
+// Ledger 2026-09-04-which-event-picker (migration 277; CLAUDE.md Locked Decision 29) — the
+// "Which event?" question, asked between the add click and the write. Every decision it makes
+// lives in the pure module; this page only supplies the plan's events and the subject card.
+import { eventsForTrip, shouldAskWhichEvent, type PlanEventRow } from "@/lib/which-event";
+import { WhichEventDialog } from "@/components/trip/which-event-dialog";
 // Ledger 2026-08-28-single-planning-entry: mid-planning continues on the PLANNING surface
 // (/plans/:tripId, the canonical slip). Used here so "Book on Traveloure" lands where the item
 // actually IS once the add goes to the plan rail rather than the cart.
@@ -345,6 +350,28 @@ interface StayAvailabilityResponse {
   nights: StayAvailabilityNight[];
 }
 
+/**
+ * The variables both plan-writing mutations on this page take.
+ *
+ * `userExperienceId` is DELIBERATELY three-state (ledger 2026-09-04-which-event-picker;
+ * migration 277). The server's resolver reads absent / null / a value as three different
+ * instructions, so this type keeps them distinguishable all the way to the request body:
+ *   · the key omitted ⇒ the "Which event?" question was never asked (the plan has fewer than two
+ *     events, so there is nothing to choose) — the link is left alone;
+ *   · `null` ⇒ the traveler chose the plan's ONE implicit unnamed event. A real answer, sent as a
+ *     real value, never as an omission;
+ *   · an id ⇒ that event, which the server re-reads and refuses unless it sits on THIS trip.
+ */
+interface AddVars {
+  proceed: boolean;
+  userExperienceId?: string | null;
+}
+
+/** The migration-277 body fragment for a set of add vars — present only when an answer exists. */
+function eventLinkBody(vars: AddVars): { userExperienceId?: string | null } {
+  return "userExperienceId" in vars ? { userExperienceId: vars.userExperienceId ?? null } : {};
+}
+
 export default function ServiceDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -419,6 +446,24 @@ export default function ServiceDetailPage() {
   const searchString = useSearch();
   const [tripCtx] = useTripContext();
   const targetTripId = resolveTargetTripId(searchString, tripCtx);
+
+  // ── "WHICH EVENT?" (ledger 2026-09-04-which-event-picker; migration 277) ─────────────────
+  // A plan is ONE `trips` row and an event inside it is ONE `user_experiences` row bound by
+  // `trip_id` (Locked Decision 29). The events come off the SAME `/api/user-experiences` query
+  // key the Trip Strip and the slip's guest-list surface already use — a cache read, not a second
+  // rail — and are narrowed to this plan by `eventsForTrip`, the ONE definition of "the events of
+  // this plan" (§18 rule 1). NO new endpoint and no new DTO field: the write rides the existing
+  // POST /api/trips/:tripId/itinerary-items allowlist, whose trip↔event pairing the server
+  // re-reads for itself (`resolveItemEventLink`) — nothing here re-implements that check.
+  const { data: userExperiences } = useQuery<PlanEventRow[]>({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!targetTripId && !!user,
+    staleTime: 30_000,
+  });
+  const planEvents = eventsForTrip(userExperiences, targetTripId);
+  // The add that is waiting on an answer. `null` = no question pending. `kind` says which of the
+  // page's two plan writes (a service, or a room's night range) the answer belongs to.
+  const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
   // Native "Book on Traveloure": capture a preferred date/time and carry it into the
   // cart (cart_items.scheduled_date → checkout bookingDetails). Optional — non-dated
   // services (e.g. a PDF deliverable) can book without it. This closes the gap where
@@ -447,7 +492,7 @@ export default function ServiceDetailPage() {
   const planRoute = targetTripId ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart";
 
   const addToCartMutation = useMutation({
-    mutationFn: async (_vars: { proceed: boolean }) => {
+    mutationFn: async (_vars: AddVars) => {
       if (targetTripId) {
         return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
           title: service?.serviceName ?? "Service",
@@ -470,6 +515,12 @@ export default function ServiceDetailPage() {
           // Migration-275 allowlist field: an INTENT marker. The capacity claim is still the
           // atomic `storage.bookSlot` at checkout (§15), never at add time.
           ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
+          // Migration-277 allowlist field, ledger 2026-09-04-which-event-picker. ABSENT and NULL
+          // are two different instructions to `resolveItemEventLink`: an omitted key means "the
+          // question was never asked, do not touch the link", while an explicit `null` means the
+          // traveler CHOSE the plan's one implicit unnamed event. So the key rides only when an
+          // answer exists, and a chosen `null` is sent as a real value (Locked Decision 29).
+          ...eventLinkBody(_vars),
         });
       }
       const scheduledDate = bookingDate
@@ -632,7 +683,7 @@ export default function ServiceDetailPage() {
   const [roomCheckOutOpen, setRoomCheckOutOpen] = useState(false);
 
   const addRoomToCartMutation = useMutation({
-    mutationFn: async (_vars: { proceed: boolean }) => {
+    mutationFn: async (_vars: AddVars) => {
       if (targetTripId) {
         // Same convergence as the service add above. `itemType: "accommodation"` is a real value
         // in `itineraryItemTypeEnum` — the stay renders AS a stay on the plan and feeds the
@@ -654,6 +705,8 @@ export default function ServiceDetailPage() {
           // arithmetic here would be a second derivation of the same number (§18 rule 1) and
           // would read as a claim the moment rates are mixed — an absent estimate is the honest
           // state (§13). The traveler still sees the real total at checkout, server-derived.
+          // Same migration-277 allowlist field, same absent-vs-null distinction as the add above.
+          ...eventLinkBody(_vars),
         });
       }
       return apiRequest("POST", "/api/cart", {
@@ -688,6 +741,40 @@ export default function ServiceDetailPage() {
       });
     },
   });
+
+  /**
+   * THE ONE DOOR both add buttons go through (ledger 2026-09-04-which-event-picker).
+   *
+   * Ask "Which event?" only when there is a real choice to make — `shouldAskWhichEvent` is the
+   * single home of that rule (zero or one event ⇒ no question; the mock's own footnote). When the
+   * question is skipped, the write carries NO `userExperienceId` key at all, which is how the
+   * server is told the link was never in play; it is not a silent "no event".
+   *
+   * Nothing here decides WHICH event anything belongs to. There is no mapping in this codebase
+   * from a service's category to an event, so nothing is pre-selected and no row is recommended
+   * — a suggestion would be the platform claiming knowledge it does not have (§13).
+   */
+  const beginAdd = (kind: "service" | "room", proceed: boolean) => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (targetTripId && shouldAskWhichEvent(planEvents)) {
+      setPendingAdd({ kind, proceed });
+      return;
+    }
+    if (kind === "room") addRoomToCartMutation.mutate({ proceed });
+    else addToCartMutation.mutate({ proceed });
+  };
+
+  /** The picker's answer — an event id, or an EXPLICIT null for the implicit unnamed event. */
+  const confirmPendingAdd = (userExperienceId: string | null) => {
+    if (!pendingAdd) return;
+    const { kind, proceed } = pendingAdd;
+    if (kind === "room") addRoomToCartMutation.mutate({ proceed, userExperienceId });
+    else addToCartMutation.mutate({ proceed, userExperienceId });
+    setPendingAdd(null);
+  };
 
   if (serviceLoading) {
     return (
@@ -1507,13 +1594,7 @@ export default function ServiceDetailPage() {
                     <>
                       <Button
                         className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addRoomToCartMutation.mutate({ proceed: true });
-                        }}
+                        onClick={() => beginAdd("room", true)}
                         disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
                         title={awayTitle}
                         data-testid="button-book-now"
@@ -1534,13 +1615,7 @@ export default function ServiceDetailPage() {
                       <Button
                         variant="outline"
                         className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addRoomToCartMutation.mutate({ proceed: false });
-                        }}
+                        onClick={() => beginAdd("room", false)}
                         disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
                         title={awayTitle}
                         data-testid="button-add-to-cart"
@@ -1558,13 +1633,7 @@ export default function ServiceDetailPage() {
                     <>
                       <Button
                         className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addToCartMutation.mutate({ proceed: true });
-                        }}
+                        onClick={() => beginAdd("service", true)}
                         disabled={isAway || addToCartMutation.isPending}
                         title={awayTitle}
                         data-testid="button-book-now"
@@ -1585,13 +1654,7 @@ export default function ServiceDetailPage() {
                       <Button
                         variant="outline"
                         className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addToCartMutation.mutate({ proceed: false });
-                        }}
+                        onClick={() => beginAdd("service", false)}
                         disabled={isAway || addToCartMutation.isPending}
                         title={awayTitle}
                         data-testid="button-add-to-cart"
@@ -1950,6 +2013,32 @@ export default function ServiceDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* "WHICH EVENT?" (ledger 2026-09-04-which-event-picker; migration 277). Mounted only while
+          an add is actually waiting on an answer, and only ever reached through `beginAdd`, which
+          is where the "is there a real choice here" rule lives. The subject line reuses THIS
+          page's own already-vetted strings — `priceLabel`, and the location with the stored
+          'Unknown' default filtered out exactly as the add itself filters it (FP-1/B3) — so the
+          card cannot print something the page has judged unsafe to show. No category chip: this
+          page has only `categoryId`, a raw id, and a listing's category NAME is not on the wire
+          here — an id rendered as a chip would be worse than the honest omission (§13). */}
+      <WhichEventDialog
+        open={!!pendingAdd}
+        onOpenChange={(next) => { if (!next) setPendingAdd(null); }}
+        subject={{
+          title: service.serviceName,
+          meta: [
+            service.location && service.location.trim() !== "Unknown" ? service.location : null,
+            priceLabel,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }}
+        events={planEvents}
+        submitting={addToCartMutation.isPending || addRoomToCartMutation.isPending}
+        onConfirm={confirmPendingAdd}
+        onCancel={() => setPendingAdd(null)}
+      />
     </Layout>
   );
 }
