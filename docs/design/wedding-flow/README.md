@@ -51,27 +51,27 @@ tracked as a lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` rather than 
 
 | Artboard | Title | Live surface | Fidelity |
 |---|---|---|---|
-| `Before.dc.html` | Moments section today | `client/src/components/landing/moments-section.tsx` | surface exists — UNAUDITED |
-| `Main.dc.html` | Landing page with Wedding | `client/src/pages/landing.tsx`, `landing/moments-slot.tsx` | surface exists — UNAUDITED |
-| `NavEntry.dc.html` | Nav · Experiences dropdown today | `client/src/lib/nav-config.ts` (`navGroupsConfig`) | surface exists — UNAUDITED |
-| `NavTuned.dc.html` | Nav · tuned by class (proposal) | `client/src/lib/nav-config.ts` | surface exists — UNAUDITED |
+| `Before.dc.html` | Moments section today | `client/src/components/landing/moments-section.tsx` | audited — 1 divergence ([brief](../mock-audits/wedding-before.audit.md)) — structure matches; live render is empty today (ruled §13 photo-gate empty state) |
+| `Main.dc.html` | Landing page with Wedding | `client/src/pages/landing.tsx`, `landing/moments-slot.tsx` | audited — 3 divergences ([brief](../mock-audits/wedding-main.audit.md)) — Wedding moment row and the "Planning your own?" callout are both NOT BUILT |
+| `NavEntry.dc.html` | Nav · Experiences dropdown today | `client/src/lib/nav-config.ts` (`navGroupsConfig`) | audited — 1 divergence ([brief](../mock-audits/wedding-nav-entry.audit.md)) — this "today" baseline is itself stale; already superseded by the `2026-09-03-occasion-hygiene` reorg on `main` |
+| `NavTuned.dc.html` | Nav · tuned by class (proposal) | `client/src/lib/nav-config.ts` | audited — 1 divergence ([brief](../mock-audits/wedding-nav-tuned.audit.md)) — the proposed regrouping is **already built and matches**; only the per-row "Start a plan" hover CTA is missing |
 
 ### Page 2 — Full flow
 
 | Artboard | Title | Live surface | Fidelity |
 |---|---|---|---|
-| `Step1Occasion.dc.html` | Step 1 · Occasion | plan modal, step 1 | surface exists — UNAUDITED |
-| `ModalWhere.dc.html` | Step 2 · Where | plan modal, step 2 | surface exists — UNAUDITED |
-| `Step3When.dc.html` | Step 3 · When (event class) | plan modal, step 3 | surface exists — UNAUDITED |
-| `Step3Day.dc.html` | Step 3 · a day, not a range | plan modal, step 3 (`default_duration`) | surface exists — UNAUDITED |
-| `Step4Who.dc.html` | Step 4 · Who | plan modal, step 4 (`vocabulary`) | surface exists — UNAUDITED |
-| `Step4Variants.dc.html` | Four occasions, one control | plan modal, step 4 | surface exists — UNAUDITED |
+| `Step1Occasion.dc.html` | Step 1 · Occasion | plan modal, step 1 | audited — 2 divergences ([brief](../mock-audits/wedding-step1-occasion.audit.md)) — **no stepped wizard exists anywhere**; the closest fragments are `EnhancedPlanningModal.tsx` (unstepped, hardcoded 5-type grid) and `EditTripPanel` (unstepped, real occasion catalog) |
+| `ModalWhere.dc.html` | Step 2 · Where | plan modal, step 2 | audited — 3 divergences ([brief](../mock-audits/wedding-modal-where.audit.md)) — no step-rail modal; ordered multi-stop is HELD (`trip_destinations` does not exist) |
+| `Step3When.dc.html` | Step 3 · When (event class) | plan modal, step 3 | audited — 2 divergences ([brief](../mock-audits/wedding-step3-when.audit.md)) — `durationShape()` logic is real and correctly resolves "range" for Wedding, but lives in `EditTripPanel`, not a step rail; wedding's range shape and this mock's main-moment time field are mutually exclusive branches in the live reader |
+| `Step3Day.dc.html` | Step 3 · a day, not a range | plan modal, step 3 (`default_duration`) | audited — 1 divergence ([brief](../mock-audits/wedding-step3-day.audit.md)) — of the six step mocks, the closest match to real logic (`durationShape()` "day" branch); only the step-rail shell is missing |
+| `Step4Who.dc.html` | Step 4 · Who | plan modal, step 4 (`vocabulary`) | audited — 1 divergence ([brief](../mock-audits/wedding-step4-who.audit.md)) — booking-party-vs-per-event-guests split is ratified (Locked Decisions 28/29), but the live field is ONE traveler-count input, not separate Adults/Kids |
+| `Step4Variants.dc.html` | Four occasions, one control | plan modal, step 4 | audited — 4 divergences ([brief](../mock-audits/wedding-step4-variants.audit.md)) — the `vocabulary` switch mechanism itself is real and shipped; the four concrete field variants (budget-approver, accessibility note, expert-authoring control) are not built |
 | `ModalEvents.dc.html` | Step 5 · What's happening | the chips; pen drained at mint by `pending-events.service.ts` | **built** — ledger `2026-09-03-switch-readers`, `2026-09-04-plan-mint` |
 | `StripLead.dc.html` | Trip Strip · one new chip | `client/src/components/trip/trip-strip.tsx` | **built** — `trip-strip-lead.test.tsx` 17/17 |
 | `Slip.dc.html` | The slip · day → event → items | `client/src/lib/slip-events.ts` + plancard | **built** — ledger `2026-09-04-slip-events`, 17/17 |
 | `WhichEvent.dc.html` | Add to Plan · which event? | `client/src/lib/which-event.ts`, `service-detail.tsx` | **built** — ledger `2026-09-04-which-event-picker`. **Two ruled omissions:** no clock time (`event_date` is a DATE with no time column), and the "suggested for florists" hint was left blank pending `experience_types.roles_needed` — **that column now exists** (migration 280, ledger `2026-09-04-roles-needed`), so the hint is buildable and is the one open piece of this artboard. |
 | `Mismatch.dc.html` | Location mismatch | `client/src/lib/location-mismatch.ts` | **built** — ledger `2026-09-04-location-mismatch`, 54/54. **One ruled omission:** the "add as a stop" action needs ordered `trip_destinations`, which does not exist; HELD pending ratification. |
-| `Guests.dc.html` | One list, a column per event | `client/src/components/logistics/participant-travel-tracker.tsx` | surface exists — **UNAUDITED, and the column-per-event layout is the least likely to be built.** The 2026-09-04 guest lane (`2026-09-04-guest-list-reconciliation`) fixed a dead participant write and diagnosed two divergent lists; it did **not** build this layout. |
+| `Guests.dc.html` | One list, a column per event | `client/src/components/logistics/participant-travel-tracker.tsx` — **CORRECTED by audit: this component is unmounted (zero consumers); the real live surface is `client/src/components/GuestInviteManager.tsx`** | audited — 3 divergences ([brief](../mock-audits/wedding-guests.audit.md)) — confirmed the largest gap: no per-event columns exist anywhere; the ledger's own diagnosis (`2026-09-04-guest-list-reconciliation`) states the layout "cannot yet be drawn honestly" pending an unratified `trip_participants.event_invite_id` proposal |
 | `SlipProposal.dc.html` | The slip · a private proposal | plancard under `default_visibility: hidden` | **ruled** — hidden occasions have no guest surface (`SlipLogisticsSection`, Locked Decision 28) |
 | `OccasionRow.dc.html` | An occasion is a row, not a class | `experience_types` switch columns | **built** — migration 276, Locked Decision 28 |
 
@@ -79,10 +79,10 @@ tracked as a lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` rather than 
 
 | Artboard | Title | Live surface | Fidelity |
 |---|---|---|---|
-| `Planner.dc.html` | `/start/events` · three doors | `client/src/pages/start-events.tsx` | surface exists — UNAUDITED |
-| `TravelWhere.dc.html` | Golf trip · Where (stops) | plan modal, step 2 under `default_stops: many` | surface exists — UNAUDITED. Ordered stops have **no `trip_destinations` table**; HELD. |
-| `TravelWhen.dc.html` | Golf trip · When (range only) | plan modal, step 3 under `default_duration: range` | surface exists — UNAUDITED |
-| `TravelEvents.dc.html` | Golf trip · step 5 (tee times) | the chips under `default_schedule` | surface exists — UNAUDITED. Note **tee times are clock times**, and `user_experiences` has no time-of-day column — the same constraint that kept clock times off `WhichEvent`. Rendering them would need a schema decision. |
+| `Planner.dc.html` | `/start/events` · three doors | `client/src/pages/start-events.tsx` | audited — 2 divergences ([brief](../mock-audits/wedding-planner.audit.md)) — the page still has only the TWO supply-side doors the mock's own footer says is the bug; the "I'm planning my own event" door does not exist |
+| `TravelWhere.dc.html` | Golf trip · Where (stops) | plan modal, step 2 under `default_stops: many` | audited — 4 divergences ([brief](../mock-audits/wedding-travel-where.audit.md)) — ordered stops HELD (no `trip_destinations`); golf has no seeded occasion row and resolves to generic `travel`, whose `schedule` switch is off (see TravelEvents) |
+| `TravelWhen.dc.html` | Golf trip · When (range only) | plan modal, step 3 under `default_duration: range` | audited — 1 divergence ([brief](../mock-audits/wedding-travel-when.audit.md)) — closest logic match of the date-step mocks; step-rail shell still missing |
+| `TravelEvents.dc.html` | Golf trip · step 5 (tee times) | the chips under `default_schedule` | audited — 3 divergences ([brief](../mock-audits/wedding-travel-events.audit.md)) — **the occasion this mock depicts (golf → generic `travel`) has `default_schedule: false`, so the whole step it draws is switched off today**; clock-time-per-event is also HELD (no time-of-day column) |
 
 ## Known blockers, carried from the ledger
 
