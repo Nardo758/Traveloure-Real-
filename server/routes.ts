@@ -1201,6 +1201,9 @@ export async function registerRoutes(
   // handler with IDOR logging, 403 for non-owners, and expertWorkspaceStatus enrichment.
   // The previous inline duplicate here shadowed that handler and suppressed security logging;
   // it has been removed so the tripsRoutes registration (mounted above) wins. See task fix.
+  // Migration 281 (Locked Decision 34) added the plan's ordered `destinations` array to that
+  // canonical handler. It is named here so the next reader of this file does not re-add an inline
+  // twin that would shadow it back into silence — there is deliberately NO copy at this address.
 
   // POST /api/trips — create a trip (guest or authenticated)
   // Guests get null userId; authenticated users get their userId.

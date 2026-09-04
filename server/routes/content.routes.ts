@@ -100,7 +100,7 @@ import {
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
-  insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema,
+  insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema, userExperienceStartTimeSchema,
   insertUserExperienceItemSchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -1740,6 +1740,7 @@ export const userExperienceBodySchema = insertUserExperienceSchema.pick({
   title: true,
   status: true,
   eventDate: true,
+  startTime: true,
   location: true,
   budget: true,
   guestCount: true,
@@ -1747,6 +1748,16 @@ export const userExperienceBodySchema = insertUserExperienceSchema.pick({
   stepData: true,
   currentStep: true,
   mapData: true,
+}).extend({
+  // Migration 282, ledger `2026-09-04-stops-and-event-time` (CLAUDE.md Locked Decision 35): the
+  // EVENT'S OWN wall-clock start time. Admitted through THIS pick — the one allowlist the POST and
+  // the PATCH already share — rather than a second admission rail for the same column (§19; the
+  // ruling-29 posture, one field, named deliberately).
+  //
+  // The narrowing comes from `userExperienceStartTimeSchema` in shared/schema.ts, which is the ONE
+  // format authority for the column (it carries no DB CHECK — publish-trap posture). Re-stating the
+  // regex here would be the second copy §18 rule 1 names.
+  startTime: userExperienceStartTimeSchema,
 });
 
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
