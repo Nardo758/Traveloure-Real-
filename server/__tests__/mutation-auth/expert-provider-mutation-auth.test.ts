@@ -128,7 +128,7 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "PATCH /api/expert/ready-made/build/:tripId": "Ready-made build editing is handler/resource-authorized; a real author fixture is required.",
   "POST /api/expert/ready-made/from-trip/:tripId": "Trip-to-ready-made conversion is handler/resource-authorized; a real authored trip fixture is required.",
   "POST /api/expert/reviews/:id/respond": "Review response is handler-owned by the reviewed service/expert; a real review fixture is required.",
-  "PATCH /api/expert/role": "Intentional role-application/self-service flow: ordinary users may request an expert role and Local Expert changes require review.",
+  "PATCH /api/expert/role": "Intentional role-application/self-service flow: ordinary users may request an expert role, and EVERY expert track switch requires admin review (ledger 2026-09-04-earn-role-safety).",
   "POST /api/expert/trips/:tripId/vendors": "Trip vendor write is trip-resource-authorized; a real non-owned trip fixture is required.",
   "DELETE /api/expert/vendors/:vendorId": "Trip vendor deletion is trip-resource-authorized; a real non-owned trip fixture is required.",
   "PUT /api/expert/vendors/:vendorId": "Trip vendor update is trip-resource-authorized; a real non-owned trip fixture is required.",

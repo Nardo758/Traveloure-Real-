@@ -18,6 +18,13 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
+// The ONE writer and the ONE reader of a plan's ordered stops (migration 281, Locked Decision 34).
+// The mirror rule — position 0's name IS `trips.destination` — lives there, not here.
+import {
+  getTripDestinations,
+  replaceTripDestinations,
+  tripDestinationsBodySchema,
+} from "../services/trip-destinations.service";
 import { redactMoneyForNonOwner } from "../utils/share-money-redaction";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -342,12 +349,67 @@ router.get(api.trips.get.path, async (req, res) => {
     // `shared_itineraries.expertNotes` column. `expertTravelerNote` (§21's traveler-facing
     // counterpart) is NOT redacted — it is meant for exactly this audience.
     const canSeePrivateExpertNotes = isExpert || isManagingEa;
+
+    // Migration 281 (ledger `2026-09-04-stops-and-event-time`, Locked Decision 34): the plan's
+    // ORDERED STOPS, additive — every existing consumer ignores the key. Gated by exactly the
+    // owner/expert/EA/share-token check above, and by nothing else.
+    //
+    // §13 — AN EMPTY ARRAY MEANS NOT CAPTURED, NOT "no destination". Legacy plans have no child
+    // rows (there is no backfill, deliberately), and `trips.destination` — carried unchanged in the
+    // `...trip` spread directly below — is still the plan's headline destination and the
+    // position-0 mirror of this list when the list exists. A reader that meets `[]` FALLS BACK TO
+    // `trip.destination` and says so; it must never render such a plan as having nowhere to go.
+    const destinations = await getTripDestinations(trip.id);
+
     res.json({
       ...trip,
       expertNotes: canSeePrivateExpertNotes ? trip.expertNotes : null,
       expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null,
+      destinations,
     });
   });
+
+
+/**
+ * PUT /api/trips/:tripId/destinations — the plan's ordered stops (migration 281, Locked
+ * Decision 34). Replace-list: the full ordered array in, positions derived server-side from its
+ * order, `trips.destination` re-mirrored from stop 0 by the one writer.
+ *
+ * OWNER-GATED, FAIL-CLOSED — deliberately NOT the §12 advisor posture that item mutations take.
+ * Stops are the plan's IDENTITY (they move its market, its timezone and its headline destination),
+ * not its contents, so an advisor with write access to items does not get to move the plan
+ * somewhere else. `verifyTripOwnership` answering false is a 403 with nothing else attempted.
+ *
+ * The body allowlist, the empty-list refusal, the 20 cap and the both-or-neither coordinate rule
+ * all live in the service — this handler holds no second copy of any of them (§18 rule 1).
+ */
+router.put("/api/trips/:tripId/destinations", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    if (!(await verifyTripOwnership(req.params.tripId, userId))) {
+      return res.status(403).json({ message: "Not your trip" });
+    }
+    const parsed = tripDestinationsBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid stops", errors: parsed.error.flatten() });
+    }
+    const result = await replaceTripDestinations(req.params.tripId, parsed.data.stops);
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+    res.json({ destinations: result.destinations });
+  } catch (err: any) {
+    // The FOR UPDATE lock in replaceTripDestinations serializes concurrent saves; a 23505 here is
+    // the residual race backstop — the list changed under this caller, and a fresh read + retry
+    // succeeds. Never a silent 500 either way.
+    const pgCode = err?.code ?? err?.cause?.code;
+    if (pgCode === "23505") {
+      return res.status(409).json({ message: "Stops changed elsewhere — reload and try again" });
+    }
+    console.error("[trip-destinations] save failed:", err);
+    res.status(500).json({ message: "Failed to save stops" });
+  }
+});
 
 
 // POST /api/trips — create a trip (guest or authenticated)

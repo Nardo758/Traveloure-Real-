@@ -125,10 +125,11 @@ import {
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
+import { RoleTransitionError } from "../services/role-transition";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
-  updateUserRole, getUserVerificationStatus, getUserCommissionOverride,
+  updateUserRole, assertUserRoleTransitionAllowed, getUserVerificationStatus, getUserCommissionOverride,
   setUserCommissionOverride, insertNotification, getAdminNotifications,
   getApprovedProviderForms, getProviderUserInfo, getProviderServicesForUser,
   getProviderUsersBulk, updateProviderServiceStatus, updateProviderServiceFeatured,
@@ -2385,10 +2386,35 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     }
     const { status, rejectionMessage } = req.body;
     const [existing] = await db
-      .select({ status: localExpertForms.status })
+      .select({
+        status: localExpertForms.status,
+        userId: localExpertForms.userId,
+        expertType: localExpertForms.expertType,
+      })
       .from(localExpertForms)
       .where(eq(localExpertForms.id, req.params.id));
     const priorStatus = existing?.status;
+
+    // ONE account, ONE earning role (ledger `2026-09-04-earn-role-safety`) — checked BEFORE the
+    // form-status flip so a refusal leaves the application row untouched. `updateUserRole`
+    // asserts the same thing inside its transaction (the guarantee); this is the pre-check that
+    // keeps the row from being half-updated. The target user comes from the FORM ROW, never from
+    // req.body (§14 — identity is server-derived).
+    if (status === "approved" && existing?.userId) {
+      const preExpertType = (existing as any).expertType;
+      const preRole = (expertTypeEnum as readonly string[]).includes(preExpertType)
+        ? preExpertType
+        : "expert";
+      try {
+        await assertUserRoleTransitionAllowed(existing.userId, preRole);
+      } catch (err: any) {
+        if (err instanceof RoleTransitionError) {
+          return res.status(err.statusCode).json({ message: err.message });
+        }
+        throw err;
+      }
+    }
+
     const updated = await storage.updateLocalExpertFormStatus(req.params.id, status, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
@@ -2418,6 +2444,11 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         await storage.updateLocalExpertFormStatus(req.params.id, priorStatus ?? "pending", rejectionMessage).catch((revertErr) => {
           console.error("[admin] CRITICAL: failed to revert form status after role-update failure:", revertErr);
         });
+        // The single-earning-role refusal keeps its own status and message so the admin sees WHICH
+        // role blocks the approval, not a generic 500 (ledger `2026-09-04-earn-role-safety`).
+        if (err instanceof RoleTransitionError) {
+          return res.status(err.statusCode).json({ message: err.message });
+        }
         return res.status(500).json({ message: "Role update failed; application status was reverted" });
       }
 
@@ -2677,10 +2708,24 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     }
     const { status, rejectionMessage } = req.body;
     const [existingProviderForm] = await db
-      .select({ status: serviceProviderForms.status })
+      .select({ status: serviceProviderForms.status, userId: serviceProviderForms.userId })
       .from(serviceProviderForms)
       .where(eq(serviceProviderForms.id, req.params.id));
     const priorProviderStatus = existingProviderForm?.status;
+
+    // ONE account, ONE earning role (ledger `2026-09-04-earn-role-safety`) — see the expert
+    // handler above; same pre-check, same shared predicate, target user read from the FORM ROW.
+    if (status === "approved" && existingProviderForm?.userId) {
+      try {
+        await assertUserRoleTransitionAllowed(existingProviderForm.userId, "service_provider");
+      } catch (err: any) {
+        if (err instanceof RoleTransitionError) {
+          return res.status(err.statusCode).json({ message: err.message });
+        }
+        throw err;
+      }
+    }
+
     const updated = await storage.updateServiceProviderFormStatus(req.params.id, status, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
@@ -2701,6 +2746,10 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         await storage.updateServiceProviderFormStatus(req.params.id, priorProviderStatus ?? "pending", rejectionMessage).catch((revertErr) => {
           console.error("[admin] CRITICAL: failed to revert provider form status after role-update failure:", revertErr);
         });
+        // Same as the expert handler: surface the single-earning-role refusal verbatim.
+        if (err instanceof RoleTransitionError) {
+          return res.status(err.statusCode).json({ message: err.message });
+        }
         return res.status(500).json({ message: "Role update failed; application status was reverted" });
       }
       // Notify the user to complete Stripe Connect setup

@@ -147,6 +147,7 @@ import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
 import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
 import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
 import { resolveOccasionTemplate } from "./services/occasion-templates";
+import { logger } from "./infrastructure/logger";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -1680,6 +1681,15 @@ export class DatabaseStorage implements IStorage {
     form = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     // Same clamp as createServiceProviderForm: offering_type_key FKs into expert_offering_types
     // (migration 107); an unknown key from a stale /earn link must not fail the application.
+    //
+    // THE CLAMP IS VISIBLE, NEVER SILENT (ledger `2026-09-04-earn-planner-roles`, CLAUDE.md
+    // Locked Decision 36). The NULL fallback stays — an applicant must not lose a signup because
+    // a link went stale — but a refused key is now logged with the row it was refused on, and the
+    // route derives an honest signal for the applicant by comparing what it sent against what
+    // came back (`offeringKeyUnrecorded`). Before this, a refused key and "picked no offering"
+    // were indistinguishable everywhere downstream, which is the §13 failure: an absent answer
+    // and a REFUSED answer are different facts.
+    const requestedOfferingTypeKey = form.offeringTypeKey ?? null;
     if (form.offeringTypeKey) {
       const [known] = await db.select({ k: expertOfferingTypes.offeringTypeKey })
         .from(expertOfferingTypes)
@@ -1687,6 +1697,12 @@ export class DatabaseStorage implements IStorage {
       if (!known) form = { ...form, offeringTypeKey: null };
     }
     const [newForm] = await db.insert(localExpertForms).values(form).returning();
+    if (requestedOfferingTypeKey && !newForm.offeringTypeKey) {
+      logger.warn(
+        { formId: newForm.id, rejectedOfferingTypeKey: requestedOfferingTypeKey, catalog: "expert_offering_types" },
+        "[expert-application] offering_type_key clamped to NULL — the key is not in the expert catalog (migration 107 FK). The applicant is told; nothing else records their choice.",
+      );
+    }
     return newForm;
   }
 
