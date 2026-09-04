@@ -496,10 +496,14 @@ function dbTabsToConfig(tabs: ExperienceTemplateTab[], templateSlug: string): Ta
   });
 }
 
-const slugAliases: Record<string, string> = {
-  "romance": "date-night",
-  "corporate": "corporate-events",
-};
+// Slug aliasing for slugs that have NO row of their own. EMPTY on purpose since ledger
+// `2026-09-03-occasion-hygiene`: `romance` and `corporate` used to alias to `date-night` /
+// `corporate-events`, which silently served the wrong template on `/experiences/romance` and
+// `/experiences/corporate` AND hid both rows from the list endpoint — the two occasions ledger
+// `2026-09-03-occasion-switches` seeded for the nav were unreachable by their own slug. A slug
+// may be added here ONLY while it has no `experience_types` row; `occasions.test.ts` O6 fails
+// the build if an alias key is ever a seeded slug.
+const slugAliases: Record<string, string> = {};
 
 function resolveSlug(slug: string): string {
   return slugAliases[slug] || slug;

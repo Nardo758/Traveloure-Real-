@@ -56,6 +56,15 @@ export const OCCASION_SLUG_TO_EVENT_TYPE: Record<string, EventType> = {
   // reviewable; borrowing "wedding" or "corporate" would silently buy this occasion the event
   // branch's fee semantics (§13 — an honest "we do not claim to know" beats a nearer-looking guess).
   "family-occasion": "other",
+  // ── Honeymoon (ledger `2026-09-03-occasion-hygiene`) ────────────────────────────────────────
+  // "honeymoon" IS an `eventTypeEnum` member, so `eventTypeForSlug` would already pass it through
+  // untouched; the entry is written out anyway because the pass-through is an accident of the two
+  // vocabularies sharing a spelling, and this is a FEE decision that must be visible where the
+  // other fee decisions are (§8/§14). BRANCH_MAP maps `honeymoon` -> "trip" — the same branch
+  // `vacation` and `anniversary` land in, which is the branch a multi-day couple's getaway
+  // belongs to. Deleting this line would not change today's behaviour; it would only hide the
+  // choice until the day someone drops "honeymoon" from the enum.
+  honeymoon: "honeymoon",
 };
 
 /**
@@ -124,6 +133,10 @@ export const OCCASION_CLASS_BY_SLUG: Record<string, OccasionClass> = {
   corporate: "event",
   "milestone-birthday": "event",
   "family-occasion": "event",
+  // Seeded by ledger `2026-09-03-occasion-hygiene`. Couple-class, which is what the keyword sniff
+  // already answered for the word "honeymoon" — so this is not a re-classification, it is the same
+  // answer moved into the table that can be checked against the seeder (O1).
+  honeymoon: "couple",
 };
 
 /**
@@ -139,12 +152,37 @@ const EVENT_KEYWORDS = [
 const COUPLE_KEYWORDS = ["proposal", "date night", "date-night", "anniversar", "honeymoon"];
 
 /**
- * Normalize a slug OR a display name to the slug shape ("Wedding Anniversaries" →
+ * Display names whose kebab-cased form is NOT the row's slug — the alias table that keeps a caller
+ * holding only `experienceType.name` on the explicit tables above.
+ *
+ * WHY IT EXISTS (ledger `2026-09-03-occasion-hygiene`). Kebab-casing the name is a HEURISTIC that
+ * happens to work while a row's name and slug agree. Renaming `wedding-anniversaries` from the
+ * plural "Wedding Anniversaries" to "Wedding Anniversary" broke it in the worst possible
+ * direction: "wedding-anniversary" misses `OCCASION_CLASS_BY_SLUG`, falls through to the keyword
+ * sniff, matches "anniversar" in COUPLE_KEYWORDS and comes back **couple** — re-creating exactly
+ * the two-products-one-word collision the explicit table was built to end (see O4). A name change
+ * must never be able to silently move an occasion between classes, so the names that do not
+ * kebab-case to their own slug are listed here instead of being left to luck.
+ *
+ * Keys are already-normalized (lowercase, hyphenated); values are real seeded slugs.
+ */
+const OCCASION_NAME_ALIASES: Record<string, string> = {
+  "wedding-anniversary": "wedding-anniversaries",
+  "romantic-getaways": "romance",
+  "romantic-getaway": "romance",
+  "corporate-retreats": "corporate",
+  "bachelor/bachelorette-party": "bachelor-bachelorette",
+};
+
+/**
+ * Normalize a slug OR a display name to the slug shape ("Wedding Anniversary" →
  * "wedding-anniversaries"), so a caller that only has `experienceType.name` still hits the explicit
- * table. Whitespace runs collapse to a single hyphen; case is folded.
+ * table. Whitespace runs collapse to a single hyphen; case is folded; a name that does not
+ * kebab-case to its own slug is then resolved through `OCCASION_NAME_ALIASES`.
  */
 export function normalizeOccasionKey(slugOrName: string): string {
-  return slugOrName.trim().toLowerCase().replace(/\s+/g, "-");
+  const kebab = slugOrName.trim().toLowerCase().replace(/\s+/g, "-");
+  return OCCASION_NAME_ALIASES[kebab] ?? kebab;
 }
 
 /**
