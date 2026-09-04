@@ -6799,6 +6799,60 @@ router.post("/api/fever/cache/refresh-all", isAuthenticated, requireDbAdmin, asy
 
   // --- Coordination / Participants Routes (using asyncHandler for consistent error handling) ---
 
+/**
+ * §19 ALLOWLIST for PATCH /api/participants/:id (ledger `2026-09-04-guest-list-reconciliation`).
+ *
+ * The sibling CREATE rail (`POST /api/trips/:tripId/participants`, server/routes.ts) already
+ * strips `userId` with an explicit L20 note — "a caller must never be able to assert which user
+ * ACCOUNT a participant row points at". This UPDATE rail parsed NOTHING: it handed `req.body`
+ * straight to `coordinationService.updateParticipant`, which spreads it into a Drizzle
+ * `.set()`. Every real column was therefore settable, `user_id` and `trip_id` included, by any
+ * caller who owns the participant's trip. §18 rule 2 — "update paths are checked as hard as
+ * inserts" — and §19's fix shape (a pick-based allowlist, so a column added later is unreachable
+ * until someone names it here) both point at exactly this.
+ *
+ * What is DELIBERATELY absent, and why (each exclusion is a rail that already owns the field —
+ * a second author of the same fact is the derivation-drift class §18 rule 1 names):
+ *   - `tripId` / `userId` — linkage & identity. Never client-settable (§14). `tripId` would
+ *     re-home a participant onto another plan; `userId` is the L20 authorization grant.
+ *   - `status` / `rsvpNotes` — owned by `PATCH /api/participants/:id/rsvp`, which also stamps
+ *     `respondedAt`. Admitting them here would let a caller move an RSVP without the stamp.
+ *   - `amountPaid` / `paymentStatus` / `paymentMethod` / `paymentNotes` — owned by
+ *     `POST /api/participants/:id/payment`, which DERIVES the running total and the status from
+ *     the stored row (`updatePayment`). A direct write would contradict that derivation.
+ *   - `amountOwed` — money-shaped with no client-reachable writer today (`setAmountOwed` is a
+ *     service method with no route). §18 rule 3: a field with no consumer is still stripped.
+ *   - `invitedAt` / `respondedAt` / `createdAt` / `updatedAt` — server-stamped facts.
+ *
+ * Exported so the negative test asserts against the REAL artifact, not a copy of it (the
+ * `userExperienceBodySchema` precedent above).
+ */
+export const tripParticipantPatchSchema = insertTripParticipantSchema
+  .pick({
+    name: true,
+    email: true,
+    phone: true,
+    role: true,
+    dietaryRestrictions: true,
+    accessibilityNeeds: true,
+    specialRequests: true,
+    emergencyContactName: true,
+    emergencyContactPhone: true,
+    emergencyContactRelation: true,
+    mobilityLevel: true,
+    mandatoryEventIds: true,
+    optionalEventIds: true,
+  })
+  .extend({
+    // Route-boundary coercion (the `anchorCreateInput` precedent in trips.routes.ts): JSON
+    // cannot carry a JS Date, so the Drizzle contract's strict `z.date()` is unsatisfiable over
+    // HTTP. `.nullable()` wraps the coercion so an explicit `null` — how the tracker clears a
+    // time — short-circuits instead of coercing to the epoch. A non-date still 400s.
+    arrivalDatetime: z.coerce.date().nullable().optional(),
+    departureDatetime: z.coerce.date().nullable().optional(),
+  })
+  .partial();
+
 router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -6806,12 +6860,20 @@ router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
       }
+      // OWNER-only, deliberately WITHOUT the §12 advisor branch: the participant row carries
+      // dietary/accessibility/phone/emergency-contact PII, and the live bulk-invite rail records
+      // the standing ruling as "L20 tier 4 — participant PII is OWNER-only, never an assigned
+      // expert". `verifyTripOwnership` resolves the trip from the STORED row, never from the URL.
       if (!await verifyTripOwnership(existing.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const participant = await coordinationService.updateParticipant(req.params.id, req.body);
+      const updates = tripParticipantPatchSchema.parse(req.body);
+      const participant = await coordinationService.updateParticipant(req.params.id, updates);
       res.json(participant);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
       res.status(500).json({ message: "Failed to update participant" });
     }
   });
