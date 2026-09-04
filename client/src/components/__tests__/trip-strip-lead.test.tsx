@@ -50,10 +50,18 @@ function renderWithContext(
    * NOT-SET path — a strip that never resolved an occasion row, which is the §13 fallback.
    */
   occasions?: Array<Record<string, unknown>>,
+  /**
+   * Rows as `GET /api/user-experiences` returns them (the user's own experiences, of which the
+   * ones bound to THIS trip are the plan's events — migration 277). Seeded the same way, for the
+   * same reason. Omit to render the strip that never resolved a list at all, which must read as
+   * the same absence as zero events.
+   */
+  planEvents?: Array<Record<string, unknown>>,
 ): string {
   store.set("experienceContext", JSON.stringify(ctx));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
   if (occasions) client.setQueryData(["/api/experience-types"], occasions);
+  if (planEvents) client.setQueryData(["/api/user-experiences"], planEvents);
   return renderToString(
     <QueryClientProvider client={client}>
       <Router ssrPath="/services">
@@ -66,6 +74,13 @@ function renderWithContext(
 /** The text inside the party chip, or "" when the chip does not render at all. */
 function partyChipText(html: string): string {
   const m = html.match(/data-testid="trip-strip-party"[^>]*>([\s\S]*?)<\/span>/);
+  if (!m) return "";
+  return m[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** The text inside the events chip, or "" when the chip does not render at all. */
+function eventsChipText(html: string): string {
+  const m = html.match(/data-testid="trip-strip-events"[^>]*>([\s\S]*?)<\/span>/);
   if (!m) return "";
   return m[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
@@ -174,5 +189,70 @@ describe("party chip — the vocabulary column, with the pre-switch label as the
       [{ slug: "wedding", name: "Wedding", vocabulary: "guests", defaultGuests: true }],
     );
     assert.equal(partyChipText(html), "");
+  });
+});
+
+/**
+ * THE EVENTS CHIP (ledger `2026-09-04-slip-events`; migration 277, CLAUDE.md entry 29). An event
+ * inside a plan is a `user_experiences` row bound by `trip_id`; the chip counts them. The
+ * interesting half is not the count — it is the three ways a count can be ABSENT, all of which
+ * must render the same nothing rather than a "0 events" that would look like a fact (§13).
+ */
+describe("events chip — the count of the plan's events, hidden whenever there is not one", () => {
+  it("counts only the rows bound to THIS trip", () => {
+    const html = renderWithContext(
+      { destination: "Kyoto, Japan", experienceType: "Wedding", tripId: "trip-1" },
+      undefined,
+      [
+        { id: "ev-1", tripId: "trip-1" },
+        { id: "ev-2", tripId: "trip-1" },
+        // Another plan's event, and a loose experience with no plan at all — neither is counted.
+        { id: "ev-3", tripId: "trip-2" },
+        { id: "ev-4", tripId: null },
+      ],
+    );
+    assert.equal(eventsChipText(html), "2 events");
+  });
+
+  it("agrees in number for a single event", () => {
+    const html = renderWithContext(
+      { destination: "Kyoto, Japan", experienceType: "Wedding", tripId: "trip-1" },
+      undefined,
+      [{ id: "ev-1", tripId: "trip-1" }],
+    );
+    assert.equal(eventsChipText(html), "1 event");
+  });
+
+  it("renders NO chip when the plan has no event rows (its one implicit event is not a row)", () => {
+    const html = renderWithContext(
+      { destination: "Kyoto, Japan", experienceType: "Wedding", tripId: "trip-1" },
+      undefined,
+      [{ id: "ev-3", tripId: "trip-2" }],
+    );
+    assert.equal(eventsChipText(html), "", "zero events must be silence, never \"0 events\"");
+  });
+
+  it("renders NO chip when the list never loaded — unknown is not zero, and neither is spoken", () => {
+    const html = renderWithContext({ destination: "Kyoto, Japan", experienceType: "Wedding", tripId: "trip-1" });
+    assert.equal(eventsChipText(html), "");
+  });
+
+  it("renders NO chip for a context with no plan yet, whatever else is cached", () => {
+    const html = renderWithContext(
+      { destination: "Kyoto, Japan", experienceType: "Wedding" },
+      undefined,
+      [{ id: "ev-1", tripId: "trip-1" }],
+    );
+    assert.equal(eventsChipText(html), "");
+  });
+
+  it("leaves the party chip and the lead untouched", () => {
+    const html = renderWithContext(
+      { destination: "Kyoto, Japan", experienceType: "Wedding", travelers: 8, tripId: "trip-1" },
+      undefined,
+      [{ id: "ev-1", tripId: "trip-1" }],
+    );
+    assert.equal(partyChipText(html), "8 guests");
+    assert.match(html, /Your Kyoto wedding/);
   });
 });
