@@ -272,6 +272,13 @@ jobs:
       # event-type lookup returns a row only on a UNIQUE match instead of guessing.
       - name: Occasion switch readers pin
         run: npx tsx --test client/src/lib/__tests__/occasion-switch-readers.test.ts
+      # 2026-09-04-location-mismatch: the add-to-plan confirm is an HONESTY surface — it measures
+      # nothing and must never overclaim. This pins the negatives that are the whole point: the
+      # "Unknown" sentinel and every empty spelling produce NO alert, a missing comparison target
+      # is silence, a ", Country" suffix still matches, "York" never matches "New York", and a
+      # shared trailing "Japan" never silences an Osaka-vs-Kyoto mismatch.
+      - name: Location mismatch reader pin
+        run: npx tsx --test client/src/lib/__tests__/location-mismatch.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
