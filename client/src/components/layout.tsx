@@ -6,10 +6,13 @@ import { useLocale } from "@/hooks/use-locale";
 import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { Button } from "@/components/ui/button";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { 
   Map,
+  ArrowRight,
   Compass,
   MessageSquare, 
   LogOut, 
@@ -167,6 +170,9 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   const recentCities = useRecentlyViewed();
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
+  // THE single planning entry (ruling 2026-08-28-single-planning-entry). The nav opens the same
+  // chooser every other surface opens — it never routes to a planning page of its own.
+  const planning = usePlanning();
   const [location] = useLocation();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -354,6 +360,52 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                         </div>
                       </>
                     );
+                    // FEATURED leaf (nav-config `featured`) — the row keeps its link and gains a
+                    // secondary affordance beside it. Rendered from the config key alone: no leaf
+                    // is named here, so a second featured row is a one-line data change and the
+                    // menu never grows a per-occasion branch (Locked Decision 28).
+                    //
+                    // The affordance is dimmed until hover/focus, NOT hidden: `opacity-0` keeps it
+                    // in the accessibility tree and in the tab order, and `focus:opacity-100`
+                    // paints it the moment a keyboard reaches it. `hidden`/`display:none` would
+                    // have taken it away from assistive tech entirely.
+                    if (child.featured && !(child.requiresAuth && !user)) {
+                      const featured = child.featured;
+                      return (
+                        <div key={child.name} className="group/featured flex items-center gap-1">
+                          <Link
+                            href={child.href || "#"}
+                            role="menuitem"
+                            className={cn(sharedClass, "min-w-0 flex-1")}
+                            data-testid={`link-nav-${slugify(child.name)}`}
+                            onClick={() => setIsOpen(false)}
+                          >
+                            {inner}
+                          </Link>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className={cn(
+                              "shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] whitespace-nowrap",
+                              "text-[color:var(--earn-teal-ink)] hover:bg-[color:var(--earn-teal-wash)]",
+                              "opacity-0 transition-opacity group-hover/featured:opacity-100 focus:opacity-100 focus-visible:opacity-100",
+                              FOCUS_RING
+                            )}
+                            style={{ fontFamily: CHROME_MONO }}
+                            onClick={() => {
+                              // Close the menu first, then open the chooser — the plan surface must
+                              // never be painted under an open dropdown.
+                              setIsOpen(false);
+                              planning.open(featured.source);
+                            }}
+                            data-testid={`button-nav-featured-${slugify(child.name)}`}
+                          >
+                            {featured.cta ?? START_PLAN_LABEL}
+                            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                          </button>
+                        </div>
+                      );
+                    }
                     if ((child as any).requiresAuth && !user) {
                       return (
                         <button

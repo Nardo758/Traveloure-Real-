@@ -11,6 +11,8 @@
  * reach production.
  */
 
+import type { PlanningSource } from "@/contexts/PlanningContext";
+
 /**
  * Ruling 60 Phase A (chrome i18n): every label-bearing entry gains an OPTIONAL `i18nKey` into
  * the `nav` namespace, and keeps its English `name`/`title`/`label` verbatim. The English
@@ -29,6 +31,34 @@ export interface NavLeafConfig {
   description?: string;
   descriptionI18nKey?: string;
   requiresAuth?: boolean;
+  featured?: NavLeafFeaturedConfig;
+}
+
+/**
+ * A FEATURED leaf carries a second, non-navigational affordance beside its link: the row still
+ * goes where it always went, and the affordance opens THE single planning entry
+ * (`usePlanning().open`, ruling `2026-08-28-single-planning-entry`) with the source below.
+ *
+ * IT IS A DATA FLAG, NOT A PER-OCCASION BRANCH. `layout.tsx` renders whatever leaf carries this
+ * key, generically — there is no `if (name === "Wedding")` anywhere. Locked Decision 28 is the
+ * reason the shape matters: an occasion's behaviour lives on its own `experience_types` row's
+ * switch columns, never in the menu, so the menu may say "this row is featured" and may hand the
+ * chooser an occasion identity, but must not grow a behaviour switch of its own.
+ *
+ * `source` is typed against `PlanningSource` through a TYPE-ONLY import, which is erased at
+ * compile time — this module stays pure data with no React or runtime dependency, as its header
+ * says, while still being unable to drift from the opener's contract.
+ */
+export interface NavLeafFeaturedConfig {
+  /**
+   * Optional label override. Omitted by the one leaf that uses this today, on purpose:
+   * `layout.tsx` falls back to the shared `START_PLAN_LABEL`, so the nav cannot drift into a
+   * second spelling of "Start a plan" (the drift `2026-09-04-entry-unification` closed one
+   * level down).
+   */
+  cta?: string;
+  /** Context the DOOR already answers. Never a guess — an absent field means "not known" (§13). */
+  source: PlanningSource;
 }
 
 export interface NavSectionConfig {
@@ -129,7 +159,21 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "CELEBRATIONS",
         i18nKey: "sections.celebrations",
         items: [
-          { name: "Wedding", i18nKey: "links.wedding", href: "/experiences/wedding", description: "Dream wedding planning" },
+          // The one FEATURED leaf today (ledger `2026-09-04-wedding-entry-doors`, ratified artboard
+          // `docs/design/wedding-flow/NavTuned.dc.html`). The link is untouched — browsing the
+          // wedding surface is still what the row does — and the hover/focus affordance beside it
+          // starts the plan. `experienceType` is one of the five FROZEN keys
+          // (`2026-09-01-moment-key`); `experienceSlug` is the seeded `experience_types` slug
+          // (`server/seed-experience-types.ts`), so the chooser records a real catalog occasion
+          // rather than nothing. Both are facts this door genuinely answers — the traveler clicked
+          // "Wedding" — which is the whole test for passing a source at all (§13).
+          {
+            name: "Wedding",
+            i18nKey: "links.wedding",
+            href: "/experiences/wedding",
+            description: "Dream wedding planning",
+            featured: { source: { experienceType: "wedding", experienceSlug: "wedding" } },
+          },
           { name: "Engagement Party", i18nKey: "links.engagementParty", href: "/experiences/engagement-party", description: "Celebrate your love" },
           { name: "Wedding Anniversary", i18nKey: "links.anniversary", href: "/experiences/wedding-anniversaries", description: "Celebrate your journey" },
           { name: "Baby Shower", i18nKey: "links.babyShower", href: "/experiences/baby-shower", description: "Welcome the new arrival" },
