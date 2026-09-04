@@ -13,9 +13,13 @@
  *     "local" navigates to /experts; "myself" gates a GUEST at sign-in (the slip
  *     route's existing identity gate) and, for an AUTHED user, mints the draft trip
  *     from the modal's own Where/When answers and lands on /plans/:tripId.
- *  4. The AI branch reaches the comparison: with /api/ai/generate-itinerary
- *     intercepted (the response contract Phase 0 verified — a 200 always carries
- *     comparisonId), generate navigates to /itinerary-comparison/:id.
+ *  4. The AI branch reaches the comparison FROM THE STEPS' OWN ANSWERS: the basics
+ *     are typed on step 2/3, the AI form shows them read-only (its duplicate fields
+ *     were removed by ledger `2026-09-04-golf-occasion-and-housekeeping`), and with
+ *     /api/ai/generate-itinerary intercepted (the response contract Phase 0 verified
+ *     — a 200 always carries comparisonId) generate navigates to
+ *     /itinerary-comparison/:id. Its "change" affordance re-opens THE plan modal
+ *     through the one opener, never a second modal.
  *  5. TripStrip's Continue/Edit routes to the PLANNING surface for an in-planning
  *     trip and to /trip/:id only for a past trip (date-derived per ruling 2).
  *  6. The Event Planner fork's third door (`/start/events`) opens the SAME modal,
@@ -246,18 +250,44 @@ test.describe("Single planning entry — authed branches", () => {
       }),
     );
     await openModalFromHero(page);
-    await gotoFinish(page);
-    await page.getByTestId("planning-option-ai").click();
-    const dest = page.getByTestId("input-destination");
-    await expect(dest).toBeVisible({ timeout: 10_000 });
-    await dest.fill("Kyoto");
-    await page.getByTestId("button-add-destination").click();
+    // The basics are answered ON THE STEPS, and only there (ledger
+    // `2026-09-04-golf-occasion-and-housekeeping` removed the AI form's duplicate fields). This
+    // walk is what a traveler actually does, which is the point: before the removal this test
+    // could pass while the steps collected nothing, because the AI form asked all over again.
     const start = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
     const end = new Date(Date.now() + 33 * 86400_000).toISOString().slice(0, 10);
-    await page.getByTestId("input-start-date").fill(start);
-    await page.getByTestId("input-end-date").fill(end);
+    await page.getByTestId("plan-step-where").click();
+    await page.getByTestId("input-etp-destination").fill("Kyoto, Japan");
+    await page.getByTestId("plan-step-when").click();
+    await page.getByTestId("input-etp-start-date").fill(start);
+    await page.getByTestId("input-etp-end-date").fill(end);
+    await gotoFinish(page);
+    await page.getByTestId("planning-option-ai").click();
+    // The AI form now SHOWS those answers instead of asking for them, and offers exactly one way
+    // to change them — back to the step that owns them.
+    const summary = page.getByTestId("planning-basics-summary");
+    await expect(summary).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("text-basics-destination")).toContainText("Kyoto");
+    await expect(page.getByTestId("text-basics-dates")).toContainText(start);
+    await expect(page.getByTestId("button-change-basics")).toBeVisible();
+    // The duplicate intake is GONE, not merely pre-filled.
+    await expect(page.getByTestId("input-destination")).toHaveCount(0);
+    await expect(page.getByTestId("input-start-date")).toHaveCount(0);
+    await expect(page.getByTestId("input-end-date")).toHaveCount(0);
     await page.getByTestId("button-generate-itinerary").click();
     await expect(page).toHaveURL(/\/itinerary-comparison\/e2e-cmp-1/, { timeout: 15_000 });
+  });
+
+  test("the AI form's “change” returns to THE plan modal, not a second one", async ({ page }) => {
+    await registerUser(page);
+    await openModalFromHero(page);
+    await gotoFinish(page);
+    await page.getByTestId("planning-option-ai").click();
+    await expect(page.getByTestId("planning-basics-summary")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("button-change-basics").click();
+    // ONE modal comes back — the same `plan-modal`, opened through the same `usePlanning().open`.
+    await expect(page.getByTestId("plan-modal")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("planning-basics-summary")).toHaveCount(0);
   });
 });
 

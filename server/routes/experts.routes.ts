@@ -612,52 +612,16 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
     return await storage.isExpertAssignedToTrip(tripId, userId);
   }
 
-
-
-  // === Expert Assigned Trips list (powers Dashboard + Assigned Trips page) ===
-
-router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const rows = await db
-        .select({
-          trip_id: tripExpertAdvisors.tripId,
-          trip_title: trips.title,
-          destination: trips.destination,
-          start_date: trips.startDate,
-          end_date: trips.endDate,
-          status: tripExpertAdvisors.status,
-          assigned_at: tripExpertAdvisors.assignedAt,
-          traveler_first: users.firstName,
-          traveler_last: users.lastName,
-          suggestion_count: sql<number>`(
-            SELECT COUNT(*) FROM trip_suggestions
-            WHERE trip_id = ${tripExpertAdvisors.tripId}
-            AND expert_id = ${userId}
-          )`,
-        })
-        .from(tripExpertAdvisors)
-        .innerJoin(trips, eq(tripExpertAdvisors.tripId, trips.id))
-        .leftJoin(users, eq(trips.userId, users.id))
-        .where(eq(tripExpertAdvisors.localExpertId, userId))
-        .orderBy(desc(tripExpertAdvisors.assignedAt));
-
-      res.json(rows.map(r => ({
-        trip_id: r.trip_id,
-        trip_title: r.trip_title || r.destination,
-        destination: r.destination,
-        start_date: r.start_date,
-        end_date: r.end_date,
-        traveler_name: [r.traveler_first, r.traveler_last].filter(Boolean).join(" ") || "Traveler",
-        status: r.status,
-        assigned_at: r.assigned_at,
-        suggestion_count: Number(r.suggestion_count) || 0,
-      })));
-    } catch (err) {
-      console.error("[Expert] assigned-trips error:", err);
-      res.status(500).json({ message: "Failed to fetch assigned trips" });
-    }
-  });
+  // === Expert Assigned Trips list — DELETED, it was a SHADOWED TWIN =============================
+  // A second `GET /api/expert/assigned-trips` lived here. It never served a request: `server/routes.ts`
+  // mounts `bookingActionsRoutes` at line ~955 and this router at ~1183, and Express serves the
+  // FIRST match — so `booking-actions.ts`'s copy (`getExpertAssignedTrips`) answered every call.
+  // The twin was also WRONGER: it filtered on `localExpertId` alone with no status predicate, so a
+  // `rejected` advisor would have appeared in the list — the exact status-blindness
+  // `server/utils/trip-advisor.ts` was written to end. Deleted rather than annotated (the
+  // migration-275 precedent applies to a shadowed twin that must STAY, not to a dead one that
+  // disagrees with the serving copy). Recorded as a side finding in CLAUDE.md Locked Decision 32;
+  // removed by ledger `2026-09-04-golf-occasion-and-housekeeping`. Do not re-add it here (§9).
 
   // === Trip Commission ===
 

@@ -93,8 +93,11 @@ export const MOMENTS: MomentConfig[] = [
       "Tee times booked in sequence, the whisky bar after each round already on the list.",
     ],
     experienceType: "travel",
-    // Golf has no seeded row of its own; a golf trip IS the generic travel occasion.
-    experienceSlug: "travel",
+    // Golf has its own seeded row since ledger `2026-09-04-golf-occasion-and-housekeeping`. It
+    // pointed at the generic `travel` occasion until then, whose `schedule: false` switch meant
+    // this Moment's own promise — "tee times booked in sequence" — could never be asked for: the
+    // step that collects them is only visible when the bound occasion says it has a schedule.
+    experienceSlug: "golf-trip",
     city: "Edinburgh",
   },
   {

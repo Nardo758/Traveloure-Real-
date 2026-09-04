@@ -17,7 +17,17 @@ export * from "./models/chat";
 // Jul 31, 2026) for the full record and the named future owner (the Phase 4 convert-to-ready-made
 // brief) if a real trip lifecycle is ever needed.
 export const tripStatusEnum = ["draft", "planning", "confirmed", "completed", "cancelled"] as const;
-export const expertAdvisorStatusEnum = ["pending", "accepted", "rejected"] as const;
+// `assigned` added by ledger `2026-09-04-golf-occasion-and-housekeeping` (side finding recorded in
+// CLAUDE.md Locked Decision 32). It was ALREADY the live fourth state — written by
+// `admin-query.service.ts::confirmLeadAssignmentTx` and the `admin.routes.ts` lead-confirm path,
+// and gated on by BOTH allow-lists in `server/utils/trip-advisor.ts`
+// (`TRIP_ADVISOR_ACCESS_STATUSES` and `TRIP_ADVISOR_WRITE_ACCESS_STATUSES`) — while this
+// declaration, the only place the value set is written down, did not mention it. There is NO DB
+// CHECK on `trip_expert_advisors.status` (verified against every migration), which is why the
+// omission was silent: the column accepted the value and only a reader of this line was misled.
+// Adding it changes no behaviour; it makes the declaration true. `rejected` remains declared with
+// no writer and is explicitly DENIED by the predicate.
+export const expertAdvisorStatusEnum = ["pending", "accepted", "assigned", "rejected"] as const;
 export const itineraryStatusEnum = ["pending", "generated", "failed"] as const;
 export const platformEnum = ["hotel", "car", "flight"] as const;
 export const feedbackStatusEnum = ["pending", "accepted", "rejected"] as const;

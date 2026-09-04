@@ -65,6 +65,13 @@ export const OCCASION_SLUG_TO_EVENT_TYPE: Record<string, EventType> = {
   // belongs to. Deleting this line would not change today's behaviour; it would only hide the
   // choice until the day someone drops "honeymoon" from the enum.
   honeymoon: "honeymoon",
+  // ── Golf trip (ledger `2026-09-04-golf-occasion-and-housekeeping`) ──────────────────────────
+  // A golf trip is a multi-day trip, so it lands in BRANCH_MAP's "trip" branch — the same branch
+  // `travel` and `romance` land in, and the same branch it already got while it WAS the `travel`
+  // occasion. Written out rather than left to the unmapped "other" fallback (which reaches the
+  // same branch today) because a mapping IS a fee decision (§8/§14) and belongs where the other
+  // fee decisions are readable.
+  "golf-trip": "vacation",
 };
 
 /**
@@ -137,6 +144,10 @@ export const OCCASION_CLASS_BY_SLUG: Record<string, OccasionClass> = {
   // already answered for the word "honeymoon" — so this is not a re-classification, it is the same
   // answer moved into the table that can be checked against the seeder (O1).
   honeymoon: "couple",
+  // Seeded by ledger `2026-09-04-golf-occasion-and-housekeeping`. Travel-class, which is what the
+  // keyword sniff already answered for a golf trip (no EVENT/COUPLE keyword matches "golf", so it
+  // fell to the travel last resort) — the same answer, moved into the table O1 can check.
+  "golf-trip": "travel",
 };
 
 /**

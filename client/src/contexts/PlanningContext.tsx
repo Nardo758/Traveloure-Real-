@@ -31,8 +31,11 @@
  *   - myself  → mints the draft trip through `mintTripSlip` (THE one traveler-owned client mint
  *               door) and lands on the slip (/plans/:tripId). Sign-in IS the existing gate — the
  *               slip route is a ProtectedRoute — and it is checked BEFORE anything is minted.
- *   - ai      → the EXISTING EnhancedPlanningModal, now handed the destination, dates, occasion
- *               and party the traveler just gave, so it no longer asks for them cold.
+ *   - ai      → the EXISTING EnhancedPlanningModal, handed the destination, dates, occasion and
+ *               party the traveler just gave. Since ledger
+ *               `2026-09-04-golf-occasion-and-housekeeping` it no longer carries fields for them
+ *               at all: it shows them read-only, and its "change" affordance comes back here
+ *               through `open(source)` — the one opener — rather than editing a second copy.
  *   - local   → /experts (?destination= prefilled when known).
  *   - occasion→ /plus/occasions — offered ONLY when PLUS_SALES_ENABLED (public flag on
  *               /api/pricing); hidden, never teased, when off.
@@ -263,14 +266,24 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           onClose={() => setAiOpen(false)}
           initialDestination={initialDestination}
           initialExperienceType={source?.experienceType}
-          // What the traveler just told the plan modal, so the AI form does not ask again
-          // (ledger `2026-09-04-one-modal-many-doors`). The AI modal keeps its own fields —
-          // removing them is a separate lane, recorded in that row — but they now arrive filled.
+          // What the traveler just told the plan modal (ledger `2026-09-04-one-modal-many-doors`).
+          // Since ledger `2026-09-04-golf-occasion-and-housekeeping` these are the AI form's ONLY
+          // source for the four basics — its duplicate destination/date/occasion/party fields are
+          // gone, and it shows a read-only summary of exactly what is passed here.
           initialStartDate={committed?.startDate}
           initialEndDate={committed?.endDate}
           initialTravelers={committed?.travelers}
           momentKey={source?.momentKey}
           userId={user?.id || ""}
+          // "change" on that summary. THE OPENER IS THE OPENER: this closes the AI form and calls
+          // the same `open(source)` every door on the site calls, so the traveler lands back in
+          // THE plan modal — not a second one — with the SAME door context it was opened with.
+          // Which step it opens on is `resolvePlanSteps`' answer and is not restated here: by this
+          // point the plan holds an occasion, so it re-opens at step 2 (Where), the first basic.
+          onChangeBasics={() => {
+            setAiOpen(false);
+            open(source ?? undefined);
+          }}
         />
       )}
     </PlanningContext.Provider>

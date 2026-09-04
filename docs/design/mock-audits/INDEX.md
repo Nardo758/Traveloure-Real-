@@ -58,7 +58,7 @@ that shape) — there is no companion `.report.md`.
 | `wedding-nav-entry.audit.md` | Nav · Experiences dropdown "today" (stale baseline) | Wedding / Landing |
 | `wedding-nav-tuned.audit.md` | Nav · tuned-by-activity regroup (**already shipped**) | Wedding / Landing |
 | `wedding-step1-occasion.audit.md` | Plan modal step 1 · Occasion | Wedding / Plan modal |
-| `wedding-modal-where.audit.md` | Plan modal step 2 · Where (`ModalWhere.dc.html` — the naming hides that this IS step 2) | Wedding / Plan modal |
+| `wedding-modal-where.audit.md` | Plan modal step 2 · Where (artboard `Step2Where.dc.html`, renamed from `ModalWhere.dc.html` by ledger `2026-09-04-golf-occasion-and-housekeeping`; the BRIEF filename is unchanged) | Wedding / Plan modal |
 | `wedding-step3-when.audit.md` | Plan modal step 3 · When (event class) | Wedding / Plan modal |
 | `wedding-step3-day.audit.md` | Plan modal step 3 · a day, not a range | Wedding / Plan modal |
 | `wedding-step4-who.audit.md` | Plan modal step 4 · Who | Wedding / Plan modal |
@@ -70,7 +70,7 @@ that shape) — there is no companion `.report.md`.
 | `wedding-guests.audit.md` | Guests · one list, a column per event | Wedding / Other |
 
 **Headline findings from this family** (see each brief for evidence):
-- **No stepped wizard exists.** All six `Step*`/`ModalWhere` plan-modal artboards describe one
+- **No stepped wizard exists.** All six `Step*` plan-modal artboards describe one
   multi-step modal (a persistent Occasion/Where/When/Who/What's-happening rail with "Next: X"
   progression) that is not built in any shape. The real live planning entry
   (`client/src/contexts/PlanningContext.tsx`) is a 2-tier chooser, and its "Plan with AI" branch

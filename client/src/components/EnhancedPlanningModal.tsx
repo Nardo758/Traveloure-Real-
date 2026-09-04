@@ -1,20 +1,51 @@
 /**
- * EnhancedPlanningModal - Proper integration with existing itinerary framework
- * Features:
- * - Progressive disclosure (only show relevant fields)
- * - Full user profiling (pace, dietary, mobility, budget, interests)
- * - Integrates with /api/ai/generate-itinerary
- * - Triggers optimization for 2 variants
- * - Redirects to comparison page
+ * EnhancedPlanningModal — the AI branch's own form, and NOTHING the plan modal already asked.
+ *
+ * WHAT THIS IS. The "Plan with AI" finish of the ONE planning modal (ledger
+ * `2026-09-04-one-modal-many-doors`, CLAUDE.md Locked Decision 33). It generates an itinerary from
+ * a plan the traveler has already described, and it asks only the questions the GENERATOR needs
+ * and the steps do not collect: pace, must-sees, interests, budget tier, dietary, mobility,
+ * special requests.
+ *
+ * WHAT WAS REMOVED, AND WHY (ledger `2026-09-04-golf-occasion-and-housekeeping`). This form used
+ * to ask for the destination, the dates, the occasion and the party a SECOND time. The one-modal
+ * lane pre-filled those four from the steps and recorded removing the fields as its own follow-up;
+ * this is that follow-up. A pre-filled duplicate is still a duplicate: two editable homes for one
+ * answer is the derivation-drift class §18 rule 1 names — a traveler who changed the dates here
+ * left the plan modal's copy, the trip context and this form disagreeing, with nothing to say
+ * which was meant. So the four basics are now a READ-ONLY summary of what was handed in, with one
+ * "change" affordance that goes back to the step that owns the answer.
+ *
+ * THE "CHANGE" LINK IS NOT A SECOND MODAL. It closes this form and re-opens THE plan modal through
+ * the single opener `usePlanning().open(source)` (ruling `2026-08-28-single-planning-entry`,
+ * untouched) — the provider owns that call and hands it down as `onChangeBasics`, so this
+ * component neither imports the context it is rendered by nor learns the step table. Which step it
+ * lands on is `resolvePlanSteps`' answer and no one else's: a plan that already names an occasion
+ * re-opens at step 2 (Where), the first of the basics.
+ *
+ * §13: the summary states only what it was GIVEN. A basic that arrived empty is rendered as "not
+ * set" with the change link beside it, never as a fabricated default — with the ONE documented
+ * exception of the party count, whose pre-existing `2` fallback is preserved verbatim because the
+ * generator has always required a number (see `travelers` below).
+ *
+ * Other features, unchanged: progressive disclosure of the preference groups, the neighborhood and
+ * hidden-gem refinements for a resolved city, `/api/ai/generate-itinerary`, the 2-variant
+ * optimization, and the redirect to the comparison page.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, CheckCircle, Gem, LogIn } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, Gem, LogIn } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from '@tanstack/react-query';
 import { getQueryFn } from '@/lib/queryClient';
 
+/**
+ * The five FROZEN coarse occasion keys the generator accepts (ruling `2026-09-01-moment-key`).
+ * This is a KEY MAP, no longer a picker: the occasion is chosen on step 1 of the plan modal from
+ * the real `experience_types` catalog, and this list only LABELS whichever coarse key arrived. It
+ * is deliberately not grown — it is not a second occasion vocabulary (§4 / `shared/occasions.ts`).
+ */
 const EXPERIENCE_TYPES = [
   { value: 'travel', label: 'Travel', emoji: '✈️', description: 'Leisure vacation' },
   { value: 'wedding', label: 'Wedding', emoji: '💒', description: 'Destination wedding' },
@@ -73,15 +104,14 @@ interface EnhancedPlanningModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialDestination?: Destination | null;
-  mode?: 'single' | 'multi';
   userId: string;
   /** Coarse machine key to prefill (Landing v2.5 Moment CTA). Falls back to 'travel'. */
   initialExperienceType?: string;
   /**
-   * What the plan modal already collected (ledger `2026-09-04-one-modal-many-doors`). This form
-   * asks for dates and a party of its own; those fields STAY (removing them is a separate lane,
-   * recorded in that ledger row), but they now arrive pre-filled from the steps the traveler just
-   * answered instead of being asked cold a second time.
+   * What the plan modal already collected (ledger `2026-09-04-one-modal-many-doors`). Since
+   * ledger `2026-09-04-golf-occasion-and-housekeeping` these are the ONLY source of the four
+   * basics — the duplicate fields that used to ask for them again are gone, and the summary is
+   * read-only.
    *
    * §13: each is optional and each falls back to EXACTLY the previous empty/`2` behaviour when
    * the door has no answer — an absent prop is "not stated", never a value.
@@ -92,19 +122,27 @@ interface EnhancedPlanningModalProps {
   /** Fine occasion identity (proposal|golf|…) — rides into the generation prompt so the brief
    *  carries the moment (ruling 2026-09-01-moment-key). */
   momentKey?: string;
+  /**
+   * Go back and change the basics. THE PROVIDER OWNS THIS CALL — it re-opens the ONE plan modal
+   * through `usePlanning().open(source)` (ledger `2026-09-04-golf-occasion-and-housekeeping`), so
+   * this component never opens a modal of its own and never decides which step to land on. Absent
+   * ⇒ the change affordance is not rendered at all, rather than rendered dead: an affordance that
+   * promises a capability nobody wired is the same dishonesty as a disabled control (§13).
+   */
+  onChangeBasics?: () => void;
 }
 
 export default function EnhancedPlanningModal({
   isOpen,
   onClose,
   initialDestination = null,
-  mode = 'single',
   userId,
   initialExperienceType,
   initialStartDate,
   initialEndDate,
   initialTravelers,
   momentKey,
+  onChangeBasics,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -114,22 +152,26 @@ export default function EnhancedPlanningModal({
   });
   const isAuthenticated = !!authUser?.id;
 
-  // Basic form state
-  const [destinations, setDestinations] = useState<Destination[]>(
-    initialDestination ? [initialDestination] : []
+  // ── The four basics — HANDED IN, never asked here ────────────────────────────────────────────
+  // They are derived straight from the props on every render rather than held in editable state:
+  // there is no control that can change them, so a second copy of the value would only be able to
+  // go stale (ledger `2026-09-04-golf-occasion-and-housekeeping`).
+  const destinations: Destination[] = useMemo(
+    () => (initialDestination ? [initialDestination] : []),
+    [initialDestination],
   );
-  const [cityInput, setCityInput] = useState('');
-  // Prefilled from the plan modal's When step when it has an answer; empty otherwise, exactly
-  // as before (ledger `2026-09-04-one-modal-many-doors`).
-  const [startDate, setStartDate] = useState(initialStartDate ?? '');
-  const [endDate, setEndDate] = useState(initialEndDate ?? '');
-  // Prefilled by a landing Moment CTA (coarse machine key); 'travel' otherwise.
-  const [experienceType, setExperienceType] = useState(initialExperienceType ?? 'travel');
-  // Prefilled from the plan modal's Who step. Its own default of 2 is UNCHANGED for the doors
-  // that pass nothing — this modal's generator has always required a count.
-  const [travelers, setTravelers] = useState(
-    typeof initialTravelers === 'number' && initialTravelers > 0 ? initialTravelers : 2,
-  );
+  // From the plan modal's When step; empty when the door had no answer — §13, never a made-up date.
+  const startDate = initialStartDate ?? '';
+  const endDate = initialEndDate ?? '';
+  // The coarse machine key the door carried (a landing Moment CTA, or step 1's occasion); 'travel'
+  // otherwise, exactly as before.
+  const experienceType = initialExperienceType ?? 'travel';
+  // From the plan modal's Who step. The pre-existing default of 2 is UNCHANGED for the doors that
+  // pass nothing — this modal's generator has always required a count, and that fallback predates
+  // this lane. It is the one basic whose empty state is a number, and the summary says so.
+  const travelers =
+    typeof initialTravelers === 'number' && initialTravelers > 0 ? initialTravelers : 2;
+  const travelersStated = typeof initialTravelers === 'number' && initialTravelers > 0;
 
   // Progressive disclosure toggles
   const [showPreferences, setShowPreferences] = useState(false);
@@ -152,77 +194,42 @@ export default function EnhancedPlanningModal({
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // City lookup state
-  const [pendingCityId, setPendingCityId] = useState<string | null>(null);
-  const [pendingCityName, setPendingCityName] = useState<string | null>(null);
-  const [cityLookupLoading, setCityLookupLoading] = useState(false);
+  // City-derived refinements (neighborhoods + hidden gems). These are AI-only inputs — they
+  // narrow the GENERATION, they are not a fifth basic — so they stay.
   const [neighborhoods, setNeighborhoods] = useState<{ id: string; name: string; slug: string; description: string | null }[]>([]);
   const [gems, setGems] = useState<{ id: string; placeName: string; placeType: string | null; description: string | null }[]>([]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState('');
-  const lookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced city lookup as user types
+  /**
+   * Fetch the neighborhood/gem refinements for the destination that was handed in.
+   *
+   * Keyed on the CITY NAME, not on a resolved `cityId`. The typed destination field used to
+   * resolve an id through `/api/cities/lookup` before adding a chip, and this effect then required
+   * `cityId !== null`; with the field gone the handed-in destination carries no id, so keeping
+   * that condition would have silently switched these refinements off for every traveler. Both
+   * endpoints already take `?city=<name>` — that is what they were always called with — and a city
+   * the catalog does not know answers with an empty list, which renders nothing (§13: the absence
+   * of local knowledge is shown by showing none, never by inventing some).
+   */
   useEffect(() => {
-    if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
-    const q = cityInput.split(',')[0].trim();
-    if (!q || q.length < 2) {
-      setPendingCityId(null);
-      setPendingCityName(null);
-      return;
-    }
-    lookupTimerRef.current = setTimeout(async () => {
-      setCityLookupLoading(true);
-      try {
-        const res = await fetch(`/api/cities/lookup?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        setPendingCityId(data.cityId ?? null);
-        setPendingCityName(data.cityName ?? null);
-      } catch {
-        setPendingCityId(null);
-        setPendingCityName(null);
-      } finally {
-        setCityLookupLoading(false);
-      }
-    }, 500);
-    return () => { if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current); };
-  }, [cityInput]);
-
-  // Fetch neighborhoods + gems whenever a resolved cityId is added to destinations
-  useEffect(() => {
-    const resolvedDest = destinations.find(d => d.cityId !== null);
-    if (!resolvedDest) {
+    const cityName = destinations[0]?.city?.trim();
+    if (!cityName) {
       setNeighborhoods([]);
       setGems([]);
       setSelectedNeighborhood('');
       return;
     }
-    const cityName = resolvedDest.city;
+    let cancelled = false;
     Promise.all([
       fetch(`/api/cities/neighborhoods?city=${encodeURIComponent(cityName)}`).then(r => r.json()),
       fetch(`/api/cities/gems?city=${encodeURIComponent(cityName)}&limit=5`).then(r => r.json()),
     ]).then(([nbh, gms]) => {
+      if (cancelled) return;
       setNeighborhoods(Array.isArray(nbh) ? nbh : []);
       setGems(Array.isArray(gms) ? gms : []);
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, [destinations]);
-
-  // Handle destination management
-  const handleAddDestination = () => {
-    if (!cityInput.trim()) return;
-    const parts = cityInput.split(',').map((s) => s.trim());
-    const city = parts[0];
-    const country = parts[1] || '';
-    const resolvedCityId = pendingCityId;
-    const newDest = { city, country, cityId: resolvedCityId };
-    setDestinations(prev => [...prev, newDest]);
-    setCityInput('');
-    setPendingCityId(null);
-    setPendingCityName(null);
-  };
-
-  const removeDestination = (index: number) => {
-    setDestinations(destinations.filter((_, i) => i !== index));
-  };
 
   // Toggle interest
   const toggleInterest = (value: string) => {
@@ -261,24 +268,40 @@ export default function EnhancedPlanningModal({
     return days > 0 ? `${days} days` : '';
   };
 
+  // ── The read-only summary's four labels ──────────────────────────────────────────────────────
+  // Each says what it was GIVEN and says so plainly when it was given nothing (§13). None of them
+  // guesses: an unstated destination reads "no destination yet", not the nearest city.
+  const destinationLabel = destinations.length
+    ? destinations.map((d) => (d.country ? `${d.city}, ${d.country}` : d.city)).join(' · ')
+    : 'No destination yet';
+  const datesLabel = startDate && endDate
+    ? `${startDate} → ${endDate}${getSuggestedDays() ? ` · ${getSuggestedDays()}` : ''}`
+    : 'No dates yet';
+  // The ONE place a number stands in for an unstated answer, and it is labelled as such rather
+  // than shown as the traveler's own. The `2` fallback itself predates this lane (the generator
+  // has always required a count) and is deliberately unchanged.
+  const travelersLabel = travelersStated
+    ? `${travelers} ${travelers === 1 ? 'traveler' : 'travelers'}`
+    : `${travelers} travelers (not stated)`;
+  const occasionType = EXPERIENCE_TYPES.find((t) => t.value === experienceType);
+  const occasionLabel = occasionType
+    ? `${occasionType.emoji} ${occasionType.label}`
+    : experienceType;
+
   // Handle form submission
   const handleGenerate = async () => {
-    // Validate
+    // Validate. The basics are no longer editable here, so every message points the traveler at
+    // the step that OWNS the answer instead of at a field this form no longer has.
     const newErrors: Record<string, string> = {};
     if (destinations.length === 0) {
-      newErrors.destinations = 'Please add at least one destination';
+      newErrors.destinations = 'This plan has no destination yet — use “change” to add one.';
     }
-    if (!startDate) {
-      newErrors.startDate = 'Start date is required';
-    }
-    if (!endDate) {
-      newErrors.endDate = 'End date is required';
-    }
-    if (new Date(startDate) >= new Date(endDate)) {
-      newErrors.dates = 'End date must be after start date';
-    }
-    if (new Date(startDate) < new Date()) {
-      newErrors.startDate = 'Start date must be in the future';
+    if (!startDate || !endDate) {
+      newErrors.dates = 'This plan has no dates yet — use “change” to set them.';
+    } else if (new Date(startDate) >= new Date(endDate)) {
+      newErrors.dates = 'The end date must be after the start date — use “change” to fix it.';
+    } else if (new Date(startDate) < new Date()) {
+      newErrors.dates = 'The start date is in the past — use “change” to fix it.';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -397,7 +420,7 @@ export default function EnhancedPlanningModal({
               Plan Your Perfect Trip
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              Tell us about your trip and we'll create personalized itineraries
+              A few preferences and we'll build personalized itineraries for the plan below
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition" data-testid="button-close-planning-modal">
@@ -407,70 +430,62 @@ export default function EnhancedPlanningModal({
 
         {/* Form */}
         <div className="px-6 py-6 space-y-6">
-          {/* Destinations */}
-          <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-              <MapPin className="w-4 h-4" />
-              Destination{mode === 'multi' ? 's' : ''}
-            </label>
-
-            {destinations.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {destinations.map((dest, index) => (
-                  <div
-                    key={index}
-                    className={`px-3 py-1 rounded-full text-sm flex items-center gap-2 ${dest.cityId ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'}`}
-                    data-testid={`chip-destination-${index}`}
-                  >
-                    {dest.cityId && <CheckCircle className="w-3 h-3 text-purple-600 shrink-0" />}
-                    {dest.city}
-                    {dest.country && `, ${dest.country}`}
-                    {(mode === 'multi' || destinations.length > 1) && (
-                      <button onClick={() => removeDestination(index)} className="hover:text-purple-900" data-testid={`button-remove-destination-${index}`}>
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+          {/* ── The plan, as the traveler already described it — READ-ONLY ─────────────────────
+              Ledger `2026-09-04-golf-occasion-and-housekeeping`. Destination, dates, party and
+              occasion are the plan modal's answers; this form shows them and offers ONE way to
+              change them — going back to the step that owns the answer. Nothing here is an input,
+              because a second editable home for one answer is how the two copies drift apart. */}
+          <div
+            className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
+            data-testid="planning-basics-summary"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                  Your plan
+                </p>
+                <p className="text-sm text-gray-900 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="inline-flex items-center gap-1" data-testid="text-basics-destination">
+                    <MapPin className="w-4 h-4 text-gray-500 shrink-0" />
+                    {destinationLabel}
+                  </span>
+                  <span className="text-gray-300">·</span>
+                  <span className="inline-flex items-center gap-1" data-testid="text-basics-dates">
+                    <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                    {datesLabel}
+                  </span>
+                  <span className="text-gray-300">·</span>
+                  <span className="inline-flex items-center gap-1" data-testid="text-basics-travelers">
+                    <Users className="w-4 h-4 text-gray-500 shrink-0" />
+                    {travelersLabel}
+                  </span>
+                  <span className="text-gray-300">·</span>
+                  <span data-testid="text-basics-occasion">{occasionLabel}</span>
+                </p>
               </div>
-            )}
-
-            {(mode === 'multi' || destinations.length === 0) && (
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={cityInput}
-                    onChange={(e) => setCityInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddDestination()}
-                    placeholder="City, Country (e.g., Paris, France)"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    data-testid="input-destination"
-                  />
-                  {cityLookupLoading && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">looking up…</span>
-                  )}
-                  {!cityLookupLoading && pendingCityId && cityInput.trim() && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-green-600" data-testid="text-city-matched">
-                      <CheckCircle className="w-3 h-3" /> matched
-                    </span>
-                  )}
-                </div>
+              {onChangeBasics && (
                 <button
-                  onClick={handleAddDestination}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-                  data-testid="button-add-destination"
+                  onClick={onChangeBasics}
+                  className="text-sm font-medium text-purple-600 hover:text-purple-800 underline underline-offset-2 shrink-0"
+                  data-testid="button-change-basics"
                 >
-                  Add
+                  change
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
-            {errors.destinations && (
-              <p className="text-red-500 text-sm mt-1">{errors.destinations}</p>
+            {(errors.destinations || errors.dates) && (
+              <p className="text-red-500 text-sm mt-2" data-testid="text-basics-error">
+                {errors.destinations || errors.dates}
+              </p>
             )}
+          </div>
 
-            {/* Neighborhoods dropdown — shown only when a destination has a resolved cityId */}
+          {/* City-derived refinements for the generator. Not a fifth basic — these narrow what the
+              AI proposes and have no home on any step. */}
+          <div>
+
+            {/* Neighborhoods — an AI-only refinement, shown when the destination's city has any */}
             {neighborhoods.length > 0 && (
               <div className="mt-3">
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">
@@ -490,7 +505,7 @@ export default function EnhancedPlanningModal({
               </div>
             )}
 
-            {/* Hidden gems chips — shown only when a destination has a resolved cityId */}
+            {/* Hidden gems — an AI-only refinement, shown when the destination's city has any */}
             {gems.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
@@ -511,103 +526,6 @@ export default function EnhancedPlanningModal({
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                <Calendar className="w-4 h-4" />
-                Start Date
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                data-testid="input-start-date"
-              />
-              {errors.startDate && (
-                <p className="text-red-500 text-sm mt-1">{errors.startDate}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                <Calendar className="w-4 h-4" />
-                End Date
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                min={startDate || new Date().toISOString().split('T')[0]}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                data-testid="input-end-date"
-              />
-              {errors.endDate && (
-                <p className="text-red-500 text-sm mt-1">{errors.endDate}</p>
-              )}
-            </div>
-          </div>
-
-          {getSuggestedDays() && (
-            <p className="text-sm text-gray-600">
-              Trip length: <span className="font-semibold">{getSuggestedDays()}</span>
-            </p>
-          )}
-
-          {errors.dates && <p className="text-red-500 text-sm">{errors.dates}</p>}
-
-          {/* Experience Type */}
-          <div>
-            <label className="text-sm font-semibold text-gray-700 mb-3 block">
-              What type of experience?
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {EXPERIENCE_TYPES.map((type) => (
-                <button
-                  key={type.value}
-                  onClick={() => setExperienceType(type.value)}
-                  className={`px-4 py-3 rounded-lg border-2 transition text-left ${
-                    experienceType === type.value
-                      ? 'border-purple-600 bg-purple-50 text-purple-900'
-                      : 'border-gray-200 hover:border-purple-300'
-                  }`}
-                  data-testid={`button-experience-${type.value}`}
-                >
-                  <div className="text-2xl mb-1">{type.emoji}</div>
-                  <div className="font-semibold text-sm">{type.label}</div>
-                  <div className="text-xs text-gray-600">{type.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Travelers */}
-          <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-              <Users className="w-4 h-4" />
-              Number of Travelers
-            </label>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setTravelers(Math.max(1, travelers - 1))}
-                className="w-10 h-10 rounded-full border-2 border-gray-300 hover:border-purple-600 transition flex items-center justify-center text-xl font-bold"
-                data-testid="button-travelers-decrease"
-              >
-                −
-              </button>
-              <span className="text-2xl font-semibold w-12 text-center" data-testid="text-travelers-count">{travelers}</span>
-              <button
-                onClick={() => setTravelers(Math.min(50, travelers + 1))}
-                className="w-10 h-10 rounded-full border-2 border-gray-300 hover:border-purple-600 transition flex items-center justify-center text-xl font-bold"
-                data-testid="button-travelers-increase"
-              >
-                +
-              </button>
-            </div>
           </div>
 
           {/* Progressive Disclosure: Trip Preferences */}

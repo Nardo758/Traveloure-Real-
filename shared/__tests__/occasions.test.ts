@@ -91,7 +91,16 @@ describe("occasion vocabulary", () => {
     // would make this test pass by having nothing left to check.
     // `honeymoon` joins them by ledger `2026-09-03-occasion-hygiene`: it was an eventTypeEnum
     // member, a BRANCH_MAP entry, a preset key and a landing Moment before it was ever a row.
-    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion", "honeymoon"]) {
+    // `golf-trip` joins them by ledger `2026-09-04-golf-occasion-and-housekeeping`: the landing
+    // Moment points at it by slug, and before the row existed it pointed at `travel`.
+    for (const slug of [
+      "romance",
+      "corporate",
+      "milestone-birthday",
+      "family-occasion",
+      "honeymoon",
+      "golf-trip",
+    ]) {
       assert.ok(slugs.includes(slug), `"${slug}" must still be seeded — a shipped surface links to it`);
       assert.ok(OCCASION_CLASS_BY_SLUG[slug], `"${slug}" has no explicit occasion class`);
     }
@@ -136,6 +145,10 @@ describe("occasion vocabulary", () => {
     // and BRANCH_MAP puts "honeymoon" in the "trip" branch.
     assert.equal(eventTypeForSlug("honeymoon"), "honeymoon");
     assert.equal(eventTypeForSlug("Honeymoon"), "honeymoon");
+    // Ledger `2026-09-04-golf-occasion-and-housekeeping` — a golf trip is a trip, and lands in the
+    // same fee/optimizer branch it landed in while it WAS the `travel` occasion.
+    assert.equal(eventTypeForSlug("golf-trip"), "vacation");
+    assert.equal(eventTypeForSlug("Golf trip"), "vacation");
     // Display names resolve too — a caller holding only `experienceType.name` gets the same answer.
     assert.equal(eventTypeForSlug("Corporate Events"), "corporate");
   });
@@ -201,5 +214,32 @@ describe("occasion vocabulary", () => {
         );
       }
     }
+  });
+
+  // O7 — a landing Moment may only name an occasion that HAS a row (ledger
+  // `2026-09-04-golf-occasion-and-housekeeping`). `MomentConfig.experienceSlug` already documents
+  // "only a slug the seeder actually writes may appear here, or null", but nothing checked it: the
+  // golf Moment pointed at `travel` for want of a row of its own, and the consequence — no
+  // schedule step for the one occasion whose product is the schedule — was invisible until an
+  // artboard audit found it. A `null` is still allowed; an invented slug is not.
+  it("O7: every landing Moment's experienceSlug is a seeded occasion (or null)", () => {
+    const slugs = new Set(seededSlugs());
+    const src = readFileSync(
+      path.resolve(HERE, "../../server/services/landing-moments.ts"),
+      "utf8",
+    );
+    const found = [...src.matchAll(/^\s*experienceSlug:\s*(?:"([^"]+)"|null)\s*,/gm)].map(
+      (m) => m[1] ?? null,
+    );
+    assert.ok(found.length >= 8, `parsed only ${found.length} Moment slugs — parser is broken`);
+    for (const slug of found) {
+      if (slug === null) continue;
+      assert.ok(
+        slugs.has(slug),
+        `a landing Moment names "${slug}", which the seeder does not write — seed the row or ` +
+          "carry null; a Moment that seeds an occasion nothing resolves renders an empty template",
+      );
+    }
+    assert.ok(found.includes("golf-trip"), "the golf Moment must point at its own seeded row");
   });
 });
