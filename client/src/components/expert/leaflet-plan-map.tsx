@@ -64,10 +64,13 @@ function candidateDivIcon(id: string): L.DivIcon {
   });
 }
 
-function dayDivIcon(dayNumber: number, selected: boolean): L.DivIcon {
+function dayDivIcon(id: string, dayNumber: number, selected: boolean): L.DivIcon {
+  // Testid parity with the keyed Google branch (workspace.tsx's MapMarker carries
+  // `map-pin-<id>`): the Leaflet fallback is the ACTIVE map on keyless deploys, so the
+  // journeys' pin assertions must hold on BOTH renderers, not just the keyed one.
   return L.divIcon({
     className: "",
-    html: `<div style="width:22px;height:22px;border-radius:50%;background:${BRAND};color:${CARD};border:2px solid ${selected ? CARD : "transparent"};box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">${dayNumber}</div>`,
+    html: `<div data-testid="map-pin-${id}" style="width:22px;height:22px;border-radius:50%;background:${BRAND};color:${CARD};border:2px solid ${selected ? CARD : "transparent"};box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">${dayNumber}</div>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
   });
@@ -152,7 +155,7 @@ export function LeafletPlanMap({
         <Marker
           key={item.id}
           position={[item.lat, item.lng]}
-          icon={dayDivIcon(item.dayNumber, selectedId === item.id)}
+          icon={dayDivIcon(item.id, item.dayNumber, selectedId === item.id)}
           eventHandlers={{
             click: () => onSelect(item.id),
             // Leaflet auto-closes the previously-open popup on a new marker click / map click —
