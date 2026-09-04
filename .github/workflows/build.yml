@@ -61,9 +61,16 @@ jobs:
       # errors in the touched server/client paths. Locked in here, same PR.
       # 156 measured 2026-08-25 while landing the Ready-Made completeness gate.
       # The ratchet detected the reduction and requires it to be locked in.
+      # 136 measured 2026-09-04 (ledger `2026-09-04-contract-stats-column`): fixing
+      # getContractStats to read `contractStatus` — the column that actually exists on
+      # vendor_contracts — removed the two TS2339 `Property 'status' does not exist`
+      # errors that had been sitting inside this baseline since it was first taken.
+      # Note the shape of that: the compiler KNEW the dashboard's "N active" tile could
+      # never be right, and a ceiling that only forbids the number going UP is why the
+      # two errors could live here indefinitely. Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '138'
+          TSC_BASELINE: '136'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"

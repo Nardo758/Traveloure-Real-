@@ -1458,4 +1458,20 @@ export const MIGRATION_FILES = [
   // NOTE: registered LAST. Another lane is landing 281/282 concurrently; registry order is
   // authoritative, and this row must stay after whatever they add.
   "283_expert_planner_offering_types.sql",
+  // Ledger `2026-09-04-venue-category`: `venue`, the 21st discipline in the service-category
+  // taxonomy, plus its two `service_offering_types` rows. Migration 034 stops being "the sole
+  // taxonomy authority" here — the authority becomes the committed REGISTRY in
+  // `scripts/lib/taxonomy-registry.cjs`, which both reachability guards and
+  // `shared/__tests__/roles-needed.test.ts` read. Data-only, idempotent (ON CONFLICT DO NOTHING),
+  // no ALTER and no CHECK, so there is no publish-time push trap.
+  // NOTE: registered LAST. Another lane is landing 284 concurrently — it is NOT on this branch at
+  // authoring time; registry order is authoritative, so 284 belongs before these two.
+  "285_venue_service_category.sql",
+  // Ledger `2026-09-04-retire-dead-plan-columns`: drops `trips.event_details` (zero readers, zero
+  // writers), whose declaration is removed from `shared/schema.ts` in the same commit so the
+  // deploy push cannot re-add what this drops. `DROP COLUMN IF EXISTS` only — no CHECK is touched,
+  // so `preflight-prod-constraints.cjs` is unaffected. `trip_participants.mandatory_event_ids` /
+  // `optional_event_ids` are deliberately NOT dropped: they still have a live writer (see the
+  // migration's header).
+  "286_retire_dead_plan_columns.sql",
 ] as const;

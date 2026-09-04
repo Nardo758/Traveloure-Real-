@@ -1,7 +1,7 @@
 /**
- * THE 20 ROLE KEYS, SPELLED OUT FOR READING.
- * Ledger `2026-09-04-which-event-hint`; cites `2026-09-04-roles-needed` (migration 280) and
- * CLAUDE.md Locked Decision 31.
+ * EVERY ROLE KEY, SPELLED OUT FOR READING (21 as of migration 285).
+ * Ledger `2026-09-04-which-event-hint`; cites `2026-09-04-roles-needed` (migration 280),
+ * `2026-09-04-venue-category` (migration 285) and CLAUDE.md Locked Decision 31.
  *
  * `experience_types.roles_needed` is a `text[]` of `service_categories.category_key` values, and a
  * key is a machine identifier: `private_transportation`, `hair_makeup`, `av_tech`. A surface that
@@ -13,7 +13,7 @@
  *  - **It is not a second taxonomy.** Locked Decision 31 admits `roles_needed` precisely because it
  *    POINTS INTO the existing catalog instead of founding a third vocabulary; nothing here adds a
  *    role, renames one, or groups them. Each entry is the same key written out — no key is given a
- *    meaning migration 034 did not already give it.
+ *    meaning a taxonomy-registry migration (034, 285) did not already give it.
  *
  *  - **It is not a source for any DECISION.** Whether an occasion wants a florist is answered ONLY
  *    by the `roles_needed` array the server sends on the event row. This map is consulted AFTER
@@ -52,6 +52,9 @@ export const OCCASION_ROLE_NOUNS: Record<OccasionRoleKey, string> = {
   private_transportation: "private transportation",
   rentals: "rentals",
   tour_guide: "tour guides",
+  // `venue` is a PLACE you hire (migration 285, ledger `2026-09-04-venue-category`) —
+  // deliberately worded apart from `dining_venue` above, which is a restaurant.
+  venue: "venues",
   videographer: "videographers",
 };
 

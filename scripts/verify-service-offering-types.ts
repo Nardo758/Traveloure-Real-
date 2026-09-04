@@ -49,9 +49,11 @@ const MIN_ACTIVE_SERVICE_PROVIDER_OFFERINGS = 30;
 
 /**
  * Minimum active event_planner-category rows in service_offering_types.
- * Migration 038 seeds ~26 rows across the 10 EVENT_CATEGORY_KEYS categories
+ * Migration 038 seeds ~26 rows across the EVENT_CATEGORY_KEYS categories
  * (event_coordinator, caterer, florist, officiant, videographer, hair_makeup,
- * av_tech, rentals, entertainment, printing_materials).
+ * av_tech, rentals, entertainment, printing_materials), and migration 285 adds
+ * two more under `venue`. The list itself lives in client/src/lib/earn-roles.ts
+ * and is read live above — this comment is orientation, never the source.
  * 8 is a safe lower bound — catches bulk deactivation, tolerates pruning.
  */
 const MIN_ACTIVE_EVENT_PLANNER_OFFERINGS = 8;

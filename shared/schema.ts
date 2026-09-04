@@ -118,7 +118,11 @@ export const trips = pgTable("trips", {
   kids: integer("kids"),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   preferences: jsonb("preferences").default({}),
-  eventDetails: jsonb("event_details").default({}),
+  // `eventDetails` (jsonb `event_details`) was RETIRED by migration 286 (ledger
+  // `2026-09-04-retire-dead-plan-columns`): zero readers and zero writers anywhere in server/,
+  // client/ or shared/, and since ruling 29 an event inside a plan is a `user_experiences` row,
+  // not a blob on the trip. The declaration is removed in the SAME commit as the DROP — schema
+  // and migration must agree, or the deploy push re-adds the column the migration just dropped.
   experienceType: varchar("experience_type", { length: 20 }),
   // momentKey (Landing v2.5, ruling 2026-09-01-moment-key): the FINE occasion identity when a
   // trip is born from a landing Moment CTA (proposal|golf|girls_trip|anniversary|honeymoon|
@@ -2617,6 +2621,11 @@ export const OCCASION_ROLE_KEYS = [
   "private_transportation",
   "rentals",
   "tour_guide",
+  // `venue` — the 21st discipline (migration 285, ledger `2026-09-04-venue-category`). Assigned by
+  // a TAXONOMY-REGISTRY migration, not by 034: the authority for this list is the committed
+  // registry in `scripts/lib/taxonomy-registry.cjs`, which both reachability guards and
+  // `shared/__tests__/roles-needed.test.ts` R3 read.
+  "venue",
   "videographer",
 ] as const;
 export type OccasionRoleKey = (typeof OCCASION_ROLE_KEYS)[number];
@@ -4429,6 +4438,12 @@ export const tripParticipants = pgTable("trip_participants", {
   arrivalDatetime: timestamp("arrival_datetime"), // when this participant arrives
   departureDatetime: timestamp("departure_datetime"), // when this participant departs
   mobilityLevel: varchar("mobility_level", { length: 20 }).default("high"), // high, medium, low
+  // Ledger `2026-09-04-retire-dead-plan-columns` proposed retiring these two as never set or read.
+  // KEPT: they have a LIVE WRITER — `tripParticipantPatchSchema` (server/routes/content.routes.ts)
+  // `.pick()`s both into the allowlisted body of the owner-gated `PATCH /api/participants/:id`,
+  // which passes them straight to `coordinationService.updateParticipant`. The ruling's own
+  // precondition ("verify zero readers/writers; if any exists, do not drop") therefore refuses
+  // them. Retiring them is a separate lane that must retire the writer first.
   mandatoryEventIds: jsonb("mandatory_event_ids").default([]), // itinerary item IDs they MUST attend
   optionalEventIds: jsonb("optional_event_ids").default([]), // itinerary item IDs they CAN attend
 
