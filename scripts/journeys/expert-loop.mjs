@@ -213,35 +213,30 @@ async function main() {
     // STEP 1 — traveler sends item A to their expert
     // ═══════════════════════════════════════════════════════════════════════════
     //
-    // ROUTE-FINDING NOTE (discovered building this journey, Aug 1 2026): the
-    // obvious candidate — `/itinerary/:id` — is a pure client-side REDIRECT to
-    // `/trip/:id?tab=itinerary` (client/src/App.tsx), which renders `trip-details.tsx`.
-    // That page passes PlanCard an explicit `days` prop built from the LEGACY
-    // `generated_itineraries.itineraryData` JSON blob (client/src/pages/trip-details.tsx
-    // ~line 728) — never from the canonical `itinerary_items` rows — so `routingStatus`
-    // is never populated on an activity there and the RoutingActions buttons/badges
-    // this journey needs can NEVER render on that page, for ANY trip, with or without a
-    // `generated_itineraries` row. This is a real, load-bearing product gap (the exact
-    // "TripPlan fragmentation" docs/EXECUTION_MAP.md §3 describes), confirmed live while
-    // authoring this script — not a script bug, not worked around here.
+    // ROUTE-FINDING NOTE (updated Sep 3 2026, post Trip Card rebuild — ledger
+    // 2026-08-31-manifest-is-the-boundary): the pre-rebuild version of this note claimed
+    // `/trip/:id` (trip-details.tsx) passed PlanCard a LEGACY `days` blob from
+    // `generated_itineraries.itineraryData` and could never render RoutingActions.
+    // Both halves of that are now stale. The rebuild made trip-details.tsx render
+    // `<PlanCard role="owner" stage="full">` off the canonical plancard DTO — BUT the
+    // same rebuild drew the manifest boundary: `/trip/:id` renders the Trip Card ONLY
+    // once a final has been cut (`plancardData.trip.finalVersion != null`,
+    // trip-details.tsx ~line 227); before that it shows a "Not final yet" notice and
+    // nothing else. Meanwhile `/dashboard` now renders PlanCard at `stage="summary"`
+    // (~line 399), which has no routing actions either.
     //
-    // The one traveler-reachable surface that actually calls `<PlanCard>` WITHOUT a
-    // `days` prop (so it self-fetches `/api/trips/:tripId/plancard` — the real TripPlan
-    // assembler, which DOES carry `routingStatus`) is `/dashboard`
-    // (client/src/pages/dashboard.tsx ~line 295). It picks the soonest-upcoming trip by
-    // default and offers a `trip-chip-<tripId>` picker when the traveler has 2+ active
-    // trips — so this step selects our fixture trip explicitly rather than relying on
-    // it happening to be soonest (proven live: it currently *is* soonest, but the click
-    // makes the journey correct regardless of what other trips exist in a shared DB).
+    // The canonical PLANNING surface — where an owner routes in_planning items — is
+    // the slip, `/plans/:tripId` (client/src/pages/slip-view.tsx → SlipView.tsx).
+    // SlipView reads the SAME `/api/trips/:id/plancard` DTO (so `routingStatus` is
+    // real), renders EVERY day (no DaySelector single-day gating like PlanCard), and
+    // renders the family's own RoutingActions (`button-route-send-expert-*` /
+    // `badge-routing-with-expert-*` etc.) for the owner on every unrouted row
+    // (SlipView.tsx ~line 352). That is what this step drives.
     await runStep(
       "Traveler: send item to expert (in_planning -> with_expert)",
       async () => {
-        await travelerPage.goto("/dashboard");
-        await waitVisible(travelerPage, "active-plans-section");
-        const chip = `[data-testid="trip-chip-${TRIP_ID}"]`;
-        if (await travelerPage.isVisible(chip)) {
-          await travelerPage.click(chip);
-        }
+        await travelerPage.goto(`/plans/${TRIP_ID}`);
+        await waitVisible(travelerPage, `slip-item-${ITEM_A}`);
         const btn = await waitVisible(travelerPage, `button-route-send-expert-${ITEM_A}`);
         await travelerPage.click(btn);
         await waitVisible(travelerPage, `badge-routing-with-expert-${ITEM_A}`);
@@ -255,7 +250,7 @@ async function main() {
           throw new Error(`expected routing_status='with_expert', got '${row?.routing_status}'`);
         }
         return {
-          ui: `badge-routing-with-expert-${ITEM_A} visible on /dashboard (PlanCard self-fetched plancard for ${TRIP_ID})`,
+          ui: `badge-routing-with-expert-${ITEM_A} visible on /plans/${TRIP_ID} (the slip — canonical owner planning surface)`,
           db: `itinerary_items.routing_status = 'with_expert' for ${ITEM_A}`,
         };
       },
@@ -270,17 +265,17 @@ async function main() {
       async () => {
         await expertPage.goto(`/expert/workspace/${TRIP_ID}`);
         await waitVisible(expertPage, "tab-right-add");
-        // Kyoto-market client trips default the canvas to the "Structure"
-        // (neighborhood-grouped) format view, not the day list — the embedded
-        // PlanCard (and its `activities-section-*` / `activity-row-*` testids) only
-        // renders under the quiet "Day list" toggle
-        // (client/src/components/build-formats/ClientFormatView.tsx). Proven live
-        // while authoring this journey: "Structure" is genuinely the default for this
-        // trip's resolved format, not a flake — switch to Day list explicitly.
-        const dayListToggle = `[data-testid="toggle-format-day-list"]`;
-        if (await expertPage.isVisible(dayListToggle)) {
-          await expertPage.click(dayListToggle);
-        }
+        // The workspace canvas defaults to the "Structure" (format-grouped) view for
+        // Kyoto-market client trips; the embedded PlanCard (with its
+        // `activities-section-*` / `activity-row-*` testids) only renders under the
+        // quiet "Day list" toggle (client/src/components/build-formats/
+        // ClientFormatView.tsx). WAIT for the toggle rather than probing with
+        // isVisible: the right panel's tab-right-add resolves before the canvas
+        // finishes rendering, so a non-waiting isVisible check raced and silently
+        // skipped the click (proven live Sep 3 2026 — Structure stayed active and
+        // activities-section-* never appeared).
+        await waitVisible(expertPage, "toggle-format-day-list");
+        await expertPage.click(`[data-testid="toggle-format-day-list"]`);
         await waitVisible(expertPage, `activities-section-${TRIP_ID}`);
         // The item we just routed with_expert must be visible on the expert's own
         // read of the plan (proves the trip_expert_advisors fixture row actually
@@ -424,6 +419,15 @@ async function main() {
           expertPage.click(`[data-testid="button-send-edits"]`),
         ]);
         await waitVisible(expertPage, "chip-dist-delivery");
+        // The PATCH resolving only proves the server accepted the transition; the
+        // chip text flips on the NEXT react-query invalidation/render, which can
+        // land a tick later (proven live: asserting immediately after the response
+        // intermittently read the stale "Client review" label). Wait for the text
+        // itself, not just the element's presence.
+        await expertPage.waitForFunction(
+          () => document.querySelector('[data-testid="chip-dist-delivery"]')?.textContent?.includes("Delivered"),
+          { timeout: 10000 },
+        );
         const chipText = await expertPage.textContent(`[data-testid="chip-dist-delivery"]`);
         if (!chipText || !chipText.includes("Delivered")) {
           throw new Error(`chip-dist-delivery does not read "Delivered": '${chipText}'`);
@@ -484,8 +488,12 @@ async function main() {
         // additive `expertWorkspaceStatus` field (server/routes.ts, the GAP-5 fix).
         // This step checks both, honestly, rather than asserting a UI element that
         // does not exist.
+        // R-G (Console Realign, Lane E4 — client/src/App.tsx ~line 675): /notifications
+        // now REDIRECTS to the unified Inbox's Updates tab (/inbox), which absorbed the
+        // old notifications page. Update cards render with `inbox-update-<id>` testids
+        // (client/src/pages/inbox.tsx ~line 373), not the retired `notification-*`.
         await travelerPage.goto("/notifications");
-        await travelerPage.waitForSelector(`[data-testid^="notification-"]`, { timeout: 10000 });
+        await travelerPage.waitForSelector(`[data-testid^="inbox-update-"]`, { timeout: 10000 });
         const bodyText = await travelerPage.textContent("body");
         if (!bodyText || !bodyText.toLowerCase().includes("delivered")) {
           throw new Error(`"/notifications" page does not mention "delivered": no matching text found`);
@@ -512,7 +520,7 @@ async function main() {
           throw new Error(`no "delivered" notification row found: ${JSON.stringify(notifRow)}`);
         }
         return {
-          ui: `/notifications page renders "${notifRow.title}"; GET /api/trips/${TRIP_ID} expertWorkspaceStatus='delivered' (fetched from the loaded traveler page)`,
+          ui: `/inbox Updates tab (via /notifications redirect) renders "${notifRow.title}"; GET /api/trips/${TRIP_ID} expertWorkspaceStatus='delivered' (fetched from the loaded traveler page)`,
           db: `notifications row: title='${notifRow.title}'`,
         };
       },
@@ -526,12 +534,8 @@ async function main() {
     await runStep(
       "Traveler: add item B to checkout (in_planning -> ready_for_checkout) -> cart projection",
       async () => {
-        await travelerPage.goto("/dashboard");
-        await waitVisible(travelerPage, "active-plans-section");
-        const chip = `[data-testid="trip-chip-${TRIP_ID}"]`;
-        if (await travelerPage.isVisible(chip)) {
-          await travelerPage.click(chip);
-        }
+        await travelerPage.goto(`/plans/${TRIP_ID}`);
+        await waitVisible(travelerPage, `slip-item-${ITEM_B}`);
         const btn = await waitVisible(travelerPage, `button-route-add-checkout-${ITEM_B}`);
         await travelerPage.click(btn);
         await waitVisible(travelerPage, `badge-routing-checkout-${ITEM_B}`);
@@ -553,7 +557,7 @@ async function main() {
         cartItemId = cartRow.id;
 
         return {
-          ui: `badge-routing-checkout-${ITEM_B} visible on /dashboard (PlanCard self-fetched plancard for ${TRIP_ID})`,
+          ui: `badge-routing-checkout-${ITEM_B} visible on /plans/${TRIP_ID} (the slip — canonical owner planning surface)`,
           db: `itinerary_items.routing_status='ready_for_checkout' + cart_items row (id=${cartItemId}) projected via itinerary_item_id`,
         };
       },
