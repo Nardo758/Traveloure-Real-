@@ -341,6 +341,40 @@ This document captures architectural decisions to maintain consistency across co
     picker's role hint — the two surfaces this unblocks, both shipped deliberately blank — are
     separate lanes. This one gives them something true to read.
 
+32. **NO EXPERT TOUCHPOINT EXISTS WITHOUT A SLIP; the slip is the intake, and the expert reads it
+    LIVE (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-slip-precondition`).** The
+    traveler enters the basics on the Trip/Plan slip, that mints the `trips` row, and only then can
+    an expert be hired or view the stated plan. This is a PRECONDITION, not a drain: no code ever
+    mints a trip from a lead, and `trip_expert_advisors` keeps its single author. It is what the
+    schema already says (`trip_expert_advisors.trip_id` NOT NULL; `trips.start_date`/`end_date`
+    NOT NULL, never invented — §13) and what the expert-request handler already states ("slip
+    content is NEVER copied into the jsonb — the workspace reads the trip LIVE"); rail 2 already
+    treats the `tripId` as "what authorizes the expert's plan-snapshot view". The ruling makes the
+    two callers that violate it conform, and names the one missing piece.
+    **(a) The `template_inquiry` lead (`experience-template.tsx`) MUST mint the slip first**, from
+    the basics that page already collects (destination, dates, travelers — the same door the
+    ladder's "Plan it myself" opens), and only then request. A lead with no trip today gets an
+    expert stamped on `expert_requests.assigned_expert_id` and NOTHING else — the advisor row,
+    notification and Assigned Trips entry all sit inside `if (tripId)`, the admin confirm path
+    refuses it (`400 "Request has no associated trip"`), completion is a status flip plus a money
+    split, and the traveler's POST is fire-and-forget behind a bare `catch {}`. It surfaces to no
+    one. Where the page's dates are absent, the traveler is ASKED — never a guessed date.
+    **(b) A storefront request (`POST /api/expert-booking-requests`) REQUIRES a `tripId`.** A
+    traveler without a slip is sent to make one through the existing ladder and returns with
+    `?tripId=` (the handoff `expert-detail.tsx` already implements). The request then creates the
+    advisor row the same way a routed lead does — one implementation (`ensureTripAdvisorRow`), one
+    more caller; a second copy is the derivation-drift class §18 rule 1 names.
+    **(c) THE MISSING PIECE is CHOOSING.** The slip hires only by auto-route today (`EscalationCTA`).
+    "Hire an expert" from the slip means slip → event → `experience_types.roles_needed` (Locked
+    Decision 31) → a picker of experts in those roles → the same advisor-row author. That is the
+    hire-an-expert-per-event flow, and it is a separate lane; this ruling gives it its
+    precondition.
+    **Side findings recorded, not fixed here:** `expertAdvisorStatusEnum` in `shared/schema.ts`
+    omits `assigned`, which code writes and gates on (no DB CHECK, so it works — the enum is
+    stale); `/api/expert/assigned-trips` is defined in both `booking-actions.ts` and
+    `experts.routes.ts`, and the first shadows the second; `optimization_context.planSnapshot` is
+    written and never read; the template page re-POSTs a lead on every snapshot change.
+
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
