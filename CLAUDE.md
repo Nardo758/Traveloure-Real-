@@ -302,6 +302,45 @@ This document captures architectural decisions to maintain consistency across co
     ready-made **clone** (the buyer bought a fixed plan; injecting their own held chips into a
     purchased product is content they did not ask that plan to carry). Those four still take the
     timezone — every mint site stamps the zone; only the traveler-owned ones drain the pen.
+31. **An occasion NAMES THE ROLES IT NEEDS, and the names come from the taxonomy authority — never a
+    new vocabulary (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-roles-needed`;
+    migration 280).** `experience_types.roles_needed` is a `text[]` of
+    **`service_categories.category_key`** values: the answer to "who do you hire for a wedding?" is
+    florist, photographer, caterer, officiant — and every one of those already exists as a category
+    key. The column is a POINTER INTO THE EXISTING CATALOG, not a third one: CLAUDE.md's FAQ refuses
+    a new service table and §4 refuses to merge the two offering catalogs, and referencing one
+    violates neither. **Migration 034 is the sole taxonomy authority** — the only assigner of
+    `category_key`, 24 rows — so it, and nothing else, defines the legal value set. The four `aff_*`
+    keys are affiliate SOURCES, not hireable roles, and are excluded: an occasion never "needs an
+    `aff_air_hotel`". That leaves the 20 discipline keys.
+    **A KEY THAT IS NOT REACHABLE IS THE BUG THIS COLUMN IS MOST LIKELY TO CAUSE, so it is guarded
+    at CI.** `scripts/check-roles-needed-reachability.cjs` fails when any key in the seeder is not
+    assigned by migration 034. This is the SAME failure `check-category-reachability.cjs` exists for
+    (ledger `2026-09-04-taxonomy-reconcile`), one table over: that guard exists because a
+    `category_key`-less row is a dead taxonomy that *looks* live, and it has already bitten twice
+    (`custom-other`; the ten `services-*` bundle rows). A `roles_needed` naming a key no category
+    carries would render a hire prompt that resolves to no provider — the same dead-but-live-looking
+    shape, arrived at from the other direction. The guard carries committed `--self-test` fixtures
+    (§18d) and states its negative space: it checks REACHABILITY of the key, not whether any
+    provider has actually listed in that category in a given market. Supply is a §13 honesty
+    question for the reader, not a taxonomy question.
+    **NULL = NOT SET ⇒ the reader omits the prompt and says why (§13).** Additive, nullable, **NO
+    DEFAULT and NO DB CHECK** (the publish-trap posture — migrations 181/195/273/275/276/277/279;
+    the value set is APP-enforced), **declared in `shared/schema.ts`** per the deploy-push
+    durability rule. NULL is never rendered as "this occasion needs nobody", which is a claim only
+    a planner can make. An EMPTY array is deliberately NOT introduced as a second empty state: two
+    ways to say nothing is how a reader ends up guessing which was meant.
+    **WRITES ARE ALLOWLIST-ONLY AND THE SEEDER IS THE ONE AUTHOR (§19).**
+    `experienceTypeRolesSchema` is `.pick()`-based; no writer route exists in this lane. The seeder
+    writes by **UPDATE keyed on `slug`**, idempotent and stale-only, exactly as
+    `updateExperienceTypeSwitches` does for ruling 28's six switches — a second author of the same
+    column is the derivation-drift class §18 rule 1 names. `roles_needed` is deliberately **NOT a
+    seventh switch**: ruling 28's six are booleans and enums a traveler flips inside the plan, while
+    this is a catalog reference list, and blurring them would invite a CHECK over a `text[]`.
+    **READ EXPOSURE ONLY in this lane.** The hire-an-expert-per-event flow and the WhichEvent
+    picker's role hint — the two surfaces this unblocks, both shipped deliberately blank — are
+    separate lanes. This one gives them something true to read.
+
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

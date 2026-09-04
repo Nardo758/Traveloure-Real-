@@ -1426,4 +1426,9 @@ export const MIGRATION_FILES = [
   // stay wall-clock varchars and are never converted. Declared in shared/schema.ts so the deploy
   // push cannot drop it; server-derived from the destination (§14), never client-settable.
   "279_trips_timezone.sql",
+  // `experience_types.roles_needed` — the disciplines an occasion typically hires, as
+  // `service_categories.category_key` values (ledger `2026-09-04-roles-needed`, CLAUDE.md 31).
+  // Additive text[], nullable, no DEFAULT and no CHECK (publish-trap posture); declared in
+  // shared/schema.ts so the deploy push cannot drop it.
+  "280_experience_type_roles_needed.sql",
 ] as const;

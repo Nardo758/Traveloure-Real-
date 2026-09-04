@@ -5,7 +5,8 @@ import {
   experienceTemplateFilters, 
   experienceTemplateFilterOptions,
   experienceUniversalFilters,
-  experienceUniversalFilterOptions
+  experienceUniversalFilterOptions,
+  type OccasionRoleKey
 } from "@shared/schema";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
@@ -4777,68 +4778,102 @@ export async function seedExperienceTemplateTabs() {
     // honest-but-useless state the nullable columns exist for — not something to arrive at by
     // forgetting. `experience-type-switches.test.ts` pins that every row here carries all six.
     switches: OccasionSwitches;
+    // The roles this occasion typically hires (migration 280, CLAUDE.md 31), as
+    // `service_categories.category_key` values. REQUIRED, not optional, for the same reason the
+    // switches are: a template that entered this array without stating them would seed a row the
+    // hire surfaces read as UNDECIDED — the honest-but-useless state the nullable column exists
+    // for, not something to arrive at by forgetting. `roles-needed.test.ts` pins that every row
+    // here carries a non-empty list, and `check-roles-needed-reachability.cjs` pins that every key
+    // resolves to a migration-034 category.
+    rolesNeeded: readonly OccasionRoleKey[];
   }> = [
     { slug: "bachelor-bachelorette", name: "Bachelor/Bachelorette Party", tabs: bachelorTabs, universalFilters: bachelorUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "entertainment", "private_transportation", "accommodation", "activity_provider"] },
     { slug: "anniversary-trip", name: "Anniversary Trip", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["accommodation", "dining_venue", "private_transportation", "tour_guide"] },
     { slug: "travel", name: "Travel", tabs: travelTabs, universalFilters: travelUniversalFilters, backfillControls: true,
-      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["accommodation", "tour_guide", "private_transportation", "activity_provider"] },
     { slug: "wedding", name: "Wedding", tabs: weddingTabs, universalFilters: standardUniversalFilters, backfillControls: true,
-      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "florist", "photography", "videographer", "caterer", "officiant", "hair_makeup", "entertainment", "printing_materials", "rentals", "private_transportation"] },
     { slug: "date-night", name: "Date Night", tabs: dateNightTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["dining_venue", "private_chef", "entertainment"] },
     { slug: "birthday", name: "Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "entertainment", "photography", "rentals"] },
     { slug: "corporate-events", name: "Corporate Events", tabs: corporateTabs, universalFilters: standardUniversalFilters, backfillControls: true,
-      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
+      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "av_tech", "caterer", "accommodation", "private_transportation", "printing_materials"] },
     { slug: "retreats", name: "Retreats", tabs: retreatsTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" },
+      rolesNeeded: ["accommodation", "activity_provider", "private_chef", "event_coordinator", "private_transportation"] },
     // Named SINGULAR ("Wedding Anniversary") since ledger `2026-09-03-occasion-hygiene`: the plural
     // read as a category of anniversaries rather than the one occasion being planned, and the nav
     // item already says "Wedding Anniversary". The SLUG is unchanged — it is the persisted key
     // every mapping, preset and hero config is filed under, and renaming it would orphan them.
     { slug: "wedding-anniversaries", name: "Wedding Anniversary", tabs: weddingAnniversariesTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["dining_venue", "photography", "florist", "private_chef"] },
     { slug: "proposal", name: "Proposal", tabs: proposalTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "hidden" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "hidden" },
+      rolesNeeded: ["photography", "florist", "private_chef", "videographer"] },
     { slug: "boys-trip", name: "Boys Trip", tabs: boysTripTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["accommodation", "activity_provider", "private_transportation", "entertainment"] },
     { slug: "girls-trip", name: "Girls Trip", tabs: girlsTripTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["accommodation", "activity_provider", "private_transportation", "hair_makeup"] },
     { slug: "reunions", name: "Reunions", tabs: reunionsTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "accommodation", "photography", "rentals"] },
     { slug: "baby-shower", name: "Baby Shower", tabs: babyShowerTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "florist", "photography", "rentals"] },
     { slug: "graduation-party", name: "Graduation Party", tabs: graduationTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "photography", "entertainment", "rentals"] },
     { slug: "engagement-party", name: "Engagement Party", tabs: engagementTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "florist", "photography", "caterer", "entertainment"] },
     { slug: "housewarming-party", name: "Housewarming Party", tabs: housewarmingTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: false, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: false, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["caterer", "florist", "entertainment"] },
     { slug: "retirement-party", name: "Retirement Party", tabs: retirementTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "photography", "entertainment", "rentals"] },
     { slug: "career-achievement-party", name: "Career Achievement Party", tabs: careerAchievementTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "photography", "av_tech"] },
     { slug: "farewell-party", name: "Farewell Party", tabs: farewellTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "photography", "entertainment"] },
     { slug: "holiday-party", name: "Holiday Party", tabs: holidayPartyTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "entertainment", "rentals", "florist"] },
     { slug: "sports-event", name: "Sports Event", tabs: sportsEventTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["private_transportation", "dining_venue", "accommodation"] },
 
     // ── The four occasions shipped surfaces already referenced with NO row behind them ──────────
     // (ledger `2026-09-03-occasion-switches`). Each reuses tabs and presets that already exist —
     // this lane authors NO new filter content (§13). Until they were seeded, two nav items linked
     // to template-less pages and two landing Moments had no occasion to seed.
     { slug: "romance", name: "Romantic Getaways", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
-      switches: { stops: "one", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "one", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["dining_venue", "private_chef", "accommodation", "photography"] },
     { slug: "corporate", name: "Corporate Retreats", tabs: corporateRetreatTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "av_tech", "caterer", "accommodation", "private_transportation", "activity_provider"] },
     { slug: "milestone-birthday", name: "Milestone Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "entertainment", "photography", "videographer", "rentals", "florist"] },
     { slug: "family-occasion", name: "Family Occasion", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" } },
+      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
+      rolesNeeded: ["event_coordinator", "caterer", "photography", "childcare_family", "rentals"] },
 
     // ── Honeymoon: one taxonomy (ledger `2026-09-03-occasion-hygiene`) ──────────────────────────
     // The honeymoon existed in FOUR places with no `experience_types` row behind any of them: an
@@ -4852,7 +4887,8 @@ export async function seedExperienceTemplateTabs() {
     // That is byte-for-byte `anniversary-trip`'s shape, which is why it reuses that template's
     // tabs and filters: this lane authors NO new filter content (§13), exactly as `romance` did.
     { slug: "honeymoon", name: "Honeymoon", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" } },
+      switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["accommodation", "private_transportation", "tour_guide", "dining_venue"] },
   ];
 
   // ── Deploy-speed fast path ─────────────────────────────────────────────────
@@ -4942,6 +4978,7 @@ export async function seedExperienceTemplateTabs() {
 
   // Migration 276 / ledger `2026-09-03-occasion-switches`: the six occasion switches.
   await updateExperienceTypeSwitches(templates);
+  await updateExperienceTypeRoles(templates);
 
   // Ledger `2026-09-03-occasion-hygiene`: reconcile the DISPLAY NAME on rows that already exist.
   await updateExperienceTypeNames(templates);
@@ -5065,6 +5102,62 @@ async function updateExperienceTypeSwitches(
     // stay NULL, which every reader must already treat as "not set" and render as the plain-trip
     // shape (§13). Never fabricate the values elsewhere to compensate.
     console.log("Experience type occasion switches skipped (columns not present yet):", err);
+  }
+}
+
+/**
+ * `experience_types.roles_needed` — the disciplines an occasion typically hires, written as
+ * `service_categories.category_key` values (migration 280, ledger `2026-09-04-roles-needed`,
+ * CLAUDE.md Locked Decision 31).
+ *
+ * THIS SEEDER IS THE ONE AUTHOR of the column: UPDATE keyed on the row's natural key `slug`, the
+ * same shape `updateExperienceTypeSwitches` uses above. A second author of the same column is the
+ * derivation-drift class §18 rule 1 names.
+ *
+ * The legal value set is migration 034's `category_key` assignments, mirrored app-side as
+ * `OCCASION_ROLE_KEYS` and held to 034 by `scripts/check-roles-needed-reachability.cjs` at CI — a
+ * key with no category behind it would render a hire prompt that resolves to no provider.
+ *
+ * Same cheap fast path as the switches: one SELECT decides whether any row is out of date, so a
+ * steady-state boot issues zero UPDATEs.
+ */
+async function updateExperienceTypeRoles(
+  templates: Array<{ slug: string; rolesNeeded: readonly OccasionRoleKey[] }>,
+) {
+  const bySlug = new Map(templates.map((t) => [t.slug, t.rolesNeeded]));
+  try {
+    const rows = await db
+      .select({ slug: experienceTypes.slug, rolesNeeded: experienceTypes.rolesNeeded })
+      .from(experienceTypes)
+      .where(inArray(experienceTypes.slug, templates.map((t) => t.slug)));
+
+    // Order is not meaningful in this column — it is a set of roles, not a ranking — so staleness
+    // compares sorted contents. Comparing raw order would rewrite every row on a cosmetic reorder.
+    const stale = rows.filter((row) => {
+      const want = [...bySlug.get(row.slug)!].sort();
+      const have = row.rolesNeeded ? [...row.rolesNeeded].sort() : null;
+      if (have === null) return true; // NULL = never set; this seeder is the one that sets it
+      return have.length !== want.length || have.some((k, i) => k !== want[i]);
+    });
+
+    if (stale.length === 0) {
+      console.log("Experience type roles_needed already seeded — skipping.");
+      return;
+    }
+
+    for (const row of stale) {
+      await db
+        .update(experienceTypes)
+        .set({ rolesNeeded: [...bySlug.get(row.slug)!] })
+        .where(eq(experienceTypes.slug, row.slug));
+    }
+    console.log(`Experience type roles_needed seeded (${stale.length} row(s) updated).`);
+  } catch (err) {
+    // The column may not exist yet in an environment that has not run migration 280. roles_needed
+    // stays NULL, which every reader must treat as NOT SET — omitting the hire prompt entirely and
+    // saying why (§13), never rendering "this occasion needs nobody". Do not fabricate the list
+    // elsewhere to compensate.
+    console.log("Experience type roles_needed skipped (column not present yet):", err);
   }
 }
 
