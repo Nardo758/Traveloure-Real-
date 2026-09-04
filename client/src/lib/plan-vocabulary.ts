@@ -65,6 +65,14 @@ export const ADD_TO_PLAN_LABEL = `Add to ${PLAN_NOUN}`;
 /** Button label for the trip-less / guest fallback, which genuinely is the cart. */
 export const ADD_TO_CART_LABEL = "Add to Cart";
 
+/**
+ * Button label for the ENTRY that starts a plan from a browse surface (ledger
+ * `2026-09-04-entry-unification`). Derived from `PLAN_NOUN` like every other label here, so the
+ * marketplace, experience and expert surfaces cannot drift into three different words for the same
+ * action — which is the drift this lane exists to close, one level up from the code.
+ */
+export const START_PLAN_LABEL = `Start a ${PLAN_NOUN_LOWER}`;
+
 /** Toast title for a successful add that landed on the plan. */
 export const ADDED_TO_PLAN_TITLE = `Added to your ${PLAN_NOUN_LOWER}`;
 /** Toast title for the trip-less / guest fallback. */

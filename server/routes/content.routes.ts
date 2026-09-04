@@ -32,6 +32,7 @@ import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../s
 import { getProviderHealth } from "../services/provider-health.service";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
 import { nightDatesInclusive } from "../services/availability-materializer.service";
+import { attachRolesNeeded } from "../services/occasion-roles.service";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
 // Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
@@ -1691,7 +1692,14 @@ router.get("/api/destinations", async (req, res) => {
 router.get("/api/user-experiences", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const experiences = await storage.getUserExperiences(userId);
-    res.json(experiences);
+    // Ledger `2026-09-04-which-event-hint` (migration 280, Locked Decision 31). ADDITIVE READ
+    // EXPOSURE: each row gains the `roles_needed` of the occasion it names, so the "Which event?"
+    // picker can mark the rows whose occasion actually asks for the discipline being added —
+    // reading the SERVER's list instead of restating a role→occasion table on the client (§18
+    // rule 1). `null` when the occasion is absent or its column is NOT SET, which every reader
+    // renders as no hint at all (§13). Resolved through the ONE shared reader the plancard
+    // `events` DTO also uses; ordering is untouched.
+    res.json(await attachRolesNeeded(experiences));
   });
 
   // Get single experience with items
@@ -2302,12 +2310,22 @@ router.get("/api/services/:id", async (req, res) => {
     // not a column on the listing itself, so there is no bare `service.neighborhoods` to spread; it
     // has to be joined. Non-sensitive (a coverage-area list, not PII) — no gate beyond the F2 one
     // already applied above. Absent category/coverage rows ⇒ an honest empty list, never a guess.
+    //
+    // Ledger `2026-09-04-which-event-hint`: the SAME lookup now also yields the listing's own
+    // `category_key`, which rides the response as `categoryKey`. The page had only `categoryId` —
+    // a raw id — so it could not tell whether a plan's event asks for this listing's discipline.
+    // The key is what `experience_types.roles_needed` is written in (migration 034 is the sole
+    // authority on both), so exposing it is what lets the client compare the two lists instead of
+    // inventing a mapping. A listing whose category predates the key column carries `null` and
+    // gets no hint anywhere (§13) — never a guess from the service's name or description.
+    let categoryKey: string | null = null;
     let neighborhoods: { slug: string; name: string }[] = [];
     if (service.categoryId) {
       const [cat] = await db
         .select({ categoryKey: serviceCategories.categoryKey })
         .from(serviceCategories)
         .where(eq(serviceCategories.id, service.categoryId));
+      categoryKey = cat?.categoryKey ?? null;
       if (cat?.categoryKey) {
         neighborhoods = await db
           .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name })
@@ -2445,6 +2463,7 @@ router.get("/api/services/:id", async (req, res) => {
         availabilityPatterns,
         surchargeTiers,
         neighborhoods,
+        categoryKey,
       }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
@@ -2474,7 +2493,7 @@ router.get("/api/services/:id", async (req, res) => {
       // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
       // confirmed booking's row exact (mirroring the /deliverable gate's status check).
       const jitteredProperty = applyPropertyLocationPrivacy(service);
-      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
+      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2503,9 +2522,9 @@ router.get("/api/services/:id", async (req, res) => {
         fallbackLat: property?.latitude ?? null,
         fallbackLon: property?.longitude ?? null,
       });
-      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
+      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey }));
     }
-    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
+    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.

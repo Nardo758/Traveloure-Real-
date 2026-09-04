@@ -17,6 +17,7 @@ import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
+import { attachRolesNeeded } from "../services/occasion-roles.service";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -405,16 +406,28 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // only its ONE implicit unnamed event" state, never a fabricated placeholder event.
     //
     // The projection is deliberately narrow: id, title, eventDate, location, guestCount,
-    // experienceTypeId. `preferences` / `stepData` / `mapData` are the wizard's own working state
-    // and are not part of this contract.
-    const events = (await storage.getUserExperiencesByTrip(tripId)).map((e) => ({
-      id: e.id,
-      title: e.title ?? null,
-      eventDate: e.eventDate ?? null,
-      location: e.location ?? null,
-      guestCount: e.guestCount ?? null,
-      experienceTypeId: e.experienceTypeId,
-    }));
+    // experienceTypeId, rolesNeeded. `preferences` / `stepData` / `mapData` are the wizard's own
+    // working state and are not part of this contract.
+    //
+    // `rolesNeeded` (ledger `2026-09-04-which-event-hint`; migration 280, Locked Decision 31) is
+    // the occasion's own `experience_types.roles_needed` — the disciplines it typically hires,
+    // as `service_categories.category_key` values. It rides here so a consumer can mark the event
+    // an added service is wanted by, by READING this list rather than restating a role→occasion
+    // table of its own (§18 rule 1). `null` means NOT SET (or no resolvable occasion) and every
+    // reader must then say nothing at all — never "this event needs nobody" (§13). Resolved by the
+    // ONE shared reader `GET /api/user-experiences` also uses, so the two payloads cannot disagree
+    // about the same event. It names no provider and makes no supply claim: whether anyone is
+    // actually listed in a role is a separate question this array does not answer.
+    const events = await attachRolesNeeded(
+      (await storage.getUserExperiencesByTrip(tripId)).map((e) => ({
+        id: e.id,
+        title: e.title ?? null,
+        eventDate: e.eventDate ?? null,
+        location: e.location ?? null,
+        guestCount: e.guestCount ?? null,
+        experienceTypeId: e.experienceTypeId,
+      })),
+    );
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.

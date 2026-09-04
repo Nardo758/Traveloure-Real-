@@ -30,6 +30,7 @@ import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { formatExpertResponseTime } from "@/lib/expert-response-time";
 
 // Continuity design tokens — the same values as artifacts/mockup-sandbox's
@@ -161,6 +162,7 @@ export default function ExpertDetailPage() {
   const { isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
+  const planning = usePlanning();
   const [offeringFilter, setOfferingFilter] = useState<Category>("All");
 
   // Sprint 2.1 plan handoff: arriving from the cart/planner with ?tripId=
@@ -260,9 +262,18 @@ export default function ExpertDetailPage() {
     },
   });
 
+  // Ruling 2026-09-04-slip-precondition (lane b): the server now REQUIRES a tripId on this
+  // endpoint — no expert touchpoint exists without a slip. Without the ?tripId= handoff there
+  // is nothing to request help WITH, so this opens the unified planning entry instead of firing
+  // a request that would 400. The traveler returns here via the existing handoff once they have
+  // a trip. Only real page context is passed — never an invented destination (§13).
   const handleRequestHelpWithPlan = () => {
     if (!isAuthenticated) {
       openSignInModal();
+      return;
+    }
+    if (!handoffTripId) {
+      planning.open({ city: heroLocation || undefined });
       return;
     }
     requestHelpMutation.mutate();
@@ -769,7 +780,7 @@ export default function ExpertDetailPage() {
                   </div>
                 )}
                 <div className="mt-4 flex flex-col gap-2">
-                  {handoffTripId && services.length > 0 && (
+                  {services.length > 0 && (
                     <button
                       className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
                       style={{ background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }}
@@ -778,13 +789,19 @@ export default function ExpertDetailPage() {
                       data-testid="button-request-help-with-plan"
                     >
                       <Briefcase className="h-3.5 w-3.5" />
-                      {requestHelpMutation.isSuccess ? "Request sent" : requestHelpMutation.isPending ? "Sending…" : "Share plan & request help"}
+                      {requestHelpMutation.isSuccess
+                        ? "Request sent"
+                        : requestHelpMutation.isPending
+                          ? "Sending…"
+                          : handoffTripId
+                            ? "Share plan & request help"
+                            : "Start a plan & request help"}
                     </button>
                   )}
                   <button
                     className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
                     style={
-                      handoffTripId && services.length > 0
+                      services.length > 0
                         ? { background: NAVY }
                         : { background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }
                     }

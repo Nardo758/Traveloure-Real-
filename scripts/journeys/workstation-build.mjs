@@ -208,14 +208,32 @@ async function main() {
 
     // ═══ Step 3 — Platform-content pill (with the sourced/dmo_content exclusion proven) ═══
     await runStep("Expert: add a Platform-content item; assert sourced/dmo_content excluded from the read", async () => {
-      const resp = await expertPage.request.get("/api/expert-workspace/platform-content?city=Kyoto");
+      // LIMIT-PROOF READS (learned on the Replit run, Sep 4 2026): the platform-content
+      // endpoint caps at 30 rows with NO ORDER BY (content-query.service.ts
+      // searchWorkstationPlatformContent) — on a content-rich database the seeded row
+      // falls outside an arbitrary 30-row window and the step fails deterministically
+      // without any code regression. Both reads below therefore use the endpoint's own
+      // free-text query to pin the fixture rows, making the assertions independent of
+      // how many OTHER published rows the database holds.
+      //
+      // Read 1: find the seeded platform-content row by its unique title fragment.
+      const resp = await expertPage.request.get("/api/expert-workspace/platform-content?city=Kyoto&q=Platform%20Content%20Pill");
       if (!resp.ok()) throw new Error(`platform-content read failed: ${resp.status()} ${await resp.text()}`);
       const body = await resp.json();
       const items = body.items ?? [];
       const target = items.find((i) => i.id === CONTENT_REGISTRY_ID);
-      if (!target) throw new Error(`seeded platform-content row ${CONTENT_REGISTRY_ID} not returned`);
-      const leaked = items.find((i) => i.id === DMO_DECOY_REGISTRY_ID);
+      if (!target) throw new Error(`seeded platform-content row ${CONTENT_REGISTRY_ID} not returned (title-pinned read)`);
+
+      // Read 2 (the §12 proof, limit-independent): query for the decoy BY ITS OWN TITLE.
+      // The decoy is status='published', city=Kyoto, and title-matches this query — the
+      // ONLY thing that can keep it out of the result is the sourced-origin exclusion
+      // itself. An empty result is therefore decisive; a hit is a hard invariant breach.
+      const decoyResp = await expertPage.request.get("/api/expert-workspace/platform-content?city=Kyoto&q=Journey%20DMO%20Decoy");
+      if (!decoyResp.ok()) throw new Error(`platform-content decoy read failed: ${decoyResp.status()}`);
+      const decoyItems = (await decoyResp.json()).items ?? [];
+      const leaked = decoyItems.find((i) => i.id === DMO_DECOY_REGISTRY_ID);
       if (leaked) throw new Error(`§12 invariant violated: the dmo_content decoy row leaked into the Platform-content read`);
+      if (decoyItems.length !== 0) throw new Error(`decoy-pinned read returned unexpected rows: ${decoyItems.map((i) => i.id).join(", ")}`);
 
       const createResp = await expertPage.request.post(`/api/trips/${tripId}/itinerary-items`, {
         data: { title: target.title, itemType: "activity", dayNumber: 1, locationName: target.title },
@@ -225,7 +243,7 @@ async function main() {
       dayOneItemIds.platformContent = item.id;
       return {
         ui: "N/A (API-driven)",
-        db: `itinerary_items row ${item.id} created from the content_registry item; decoy 'dmo_content' row ${DMO_DECOY_REGISTRY_ID} absent from the read (${items.length} items returned)`,
+        db: `itinerary_items row ${item.id} created from the content_registry item; decoy 'dmo_content' row ${DMO_DECOY_REGISTRY_ID} provably excluded (title-pinned read returned 0 rows — only the §12 sourced-origin filter can do that)`,
       };
     });
 

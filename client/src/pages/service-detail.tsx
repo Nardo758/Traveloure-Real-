@@ -108,6 +108,14 @@ interface Service {
   shortDescription: string;
   description: string;
   categoryId: string;
+  /**
+   * The listing's `service_categories.category_key`, resolved server-side on this read (ledger
+   * `2026-09-04-which-event-hint`). `categoryId` above is a raw id and compares against nothing;
+   * the KEY is the vocabulary `experience_types.roles_needed` is written in, which is what lets
+   * the "Which event?" picker mark the events that ask for this discipline. `null` for a category
+   * that predates the key column — then nothing is marked (§13).
+   */
+  categoryKey?: string | null;
   price: string;
   priceType: string | null;
   priceBasedOn: string | null;
@@ -757,9 +765,10 @@ export default function ServiceDetailPage() {
    * question is skipped, the write carries NO `userExperienceId` key at all, which is how the
    * server is told the link was never in play; it is not a silent "no event".
    *
-   * Nothing here decides WHICH event anything belongs to. There is no mapping in this codebase
-   * from a service's category to an event, so nothing is pre-selected and no row is recommended
-   * — a suggestion would be the platform claiming knowledge it does not have (§13).
+   * Nothing here decides WHICH event anything belongs to. The picker may now MARK the events
+   * whose occasion asks for this listing's discipline (ledger `2026-09-04-which-event-hint`), but
+   * that mark is drawn from the server's own `roles_needed` list and chooses nothing: the row is
+   * still un-selected until the traveler clicks it.
    */
   if (serviceLoading) {
     return (
@@ -866,9 +875,11 @@ export default function ServiceDetailPage() {
    *      or one event ⇒ no question). Skipping it sends NO `userExperienceId` key at all, which
    *      is how the server is told the link was never in play — not a silent "no event".
    *
-   * Nothing here decides WHICH event anything belongs to: no mapping from a service's category to
-   * an event exists in this codebase, so nothing is pre-selected and no row is recommended — a
-   * suggestion would be the platform claiming knowledge it does not have (§13).
+   * Nothing here decides WHICH event anything belongs to. The picker MARKS the events whose
+   * occasion names this listing's `category_key` in its own `roles_needed` (ledger
+   * `2026-09-04-which-event-hint`) — read from the server, decided in the pure module — and a
+   * mark is not a choice: nothing is pre-selected and the confirm stays disabled until the
+   * traveler picks a row. Anything the data cannot support is still simply not said (§13).
    *
    * Defined below `guardServiceAdd` because that reader needs `service`/`priceLabel`, which only
    * exist past the loading/error returns above.
@@ -2062,7 +2073,13 @@ export default function ServiceDetailPage() {
           'Unknown' default filtered out exactly as the add itself filters it (FP-1/B3) — so the
           card cannot print something the page has judged unsafe to show. No category chip: this
           page has only `categoryId`, a raw id, and a listing's category NAME is not on the wire
-          here — an id rendered as a chip would be worse than the honest omission (§13). */}
+          here — an id rendered as a chip would be worse than the honest omission (§13).
+
+          `serviceCategoryKey` is the listing's `category_key` exactly as the server sent it
+          (ledger `2026-09-04-which-event-hint`) — handed over raw and never composed here. It is
+          the picker's ONLY input for the role hint; whether any event actually wants it is
+          answered against each event row's own `rolesNeeded`, inside the pure module. Absent on a
+          listing whose category predates the key column, and then no row is marked. */}
       <WhichEventDialog
         open={!!pendingAdd}
         onOpenChange={(next) => { if (!next) setPendingAdd(null); }}
@@ -2076,6 +2093,7 @@ export default function ServiceDetailPage() {
             .join(" · "),
         }}
         events={planEvents}
+        serviceCategoryKey={service.categoryKey ?? null}
         submitting={addToCartMutation.isPending || addRoomToCartMutation.isPending}
         onConfirm={confirmPendingAdd}
         onCancel={() => setPendingAdd(null)}
