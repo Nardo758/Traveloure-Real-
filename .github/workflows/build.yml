@@ -285,6 +285,13 @@ jobs:
       # updating the enum fails HERE rather than at a traveler's screen.
       - name: Occasion roles-needed pin
         run: npx tsx --test shared/__tests__/roles-needed.test.ts
+      # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
+      # plan's events have ONE order rather than one per surface — which is only true if the server
+      # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
+      # created_at DESC. O1-O3 pin both readers to the same ORDER BY, and pin that the client has
+      # not quietly become a second authority by sorting.
+      - name: Plan event ordering pin
+        run: npx tsx --test server/__tests__/user-experience-order.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
@@ -485,6 +492,24 @@ jobs:
         run: node scripts/check-roles-needed-reachability.cjs --self-test
       - name: Roles-needed reachability guard
         run: node scripts/check-roles-needed-reachability.cjs
+
+  planning-entry-guard:
+    name: planning-entry-guard (ledger 2026-09-04-entry-unification)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The existing route gates (app-routes, navbar-links, auth-routes, footer-links) prove a route
+      # RENDERS. None proves a browse surface offers a way to START A PLAN — which is exactly how
+      # the four marketplace routes stayed dead ends while rendering perfectly and resolving every
+      # link. Rendering is not reachability of the next step.
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Planning-entry guard predicate self-test
+        run: node scripts/check-planning-entry.cjs --self-test
+      - name: Planning-entry guard
+        run: node scripts/check-planning-entry.cjs
 
   privileged-field-completeness-guard:
     name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)

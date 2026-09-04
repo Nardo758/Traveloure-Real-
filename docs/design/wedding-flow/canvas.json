@@ -1,0 +1,246 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Landing"
+    },
+    {
+      "id": "page-2",
+      "name": "Full flow"
+    },
+    {
+      "id": "page-3",
+      "name": "Other experiences"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Before.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 720,
+      "title": "Before · Moments section today",
+      "page": "page-1"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 860,
+      "w": 1440,
+      "h": 1300,
+      "title": "After · landing page with Wedding",
+      "page": "page-1"
+    },
+    {
+      "file": "ModalWhere.dc.html",
+      "x": 1560,
+      "y": 860,
+      "w": 600,
+      "h": 460,
+      "title": "Plan this moment → step 2 · Where",
+      "page": "page-1"
+    },
+    {
+      "file": "ModalEvents.dc.html",
+      "x": 1560,
+      "y": 1440,
+      "w": 600,
+      "h": 720,
+      "title": "Step 5 · What's happening",
+      "page": "page-1"
+    },
+    {
+      "file": "NavEntry.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 560,
+      "title": "Nav · Experiences dropdown today",
+      "page": "page-2"
+    },
+    {
+      "file": "NavTuned.dc.html",
+      "x": 0,
+      "y": 700,
+      "w": 1440,
+      "h": 520,
+      "title": "Nav · tuned by class (proposal)",
+      "page": "page-2"
+    },
+    {
+      "file": "Step1Occasion.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 600,
+      "h": 720,
+      "title": "Step 1 · Occasion",
+      "page": "page-2"
+    },
+    {
+      "file": "Step3When.dc.html",
+      "x": 2280,
+      "y": 0,
+      "w": 600,
+      "h": 620,
+      "title": "Step 3 · When (event class)",
+      "page": "page-2"
+    },
+    {
+      "file": "Step4Who.dc.html",
+      "x": 2280,
+      "y": 760,
+      "w": 600,
+      "h": 500,
+      "title": "Step 4 · Who",
+      "page": "page-2"
+    },
+    {
+      "file": "StripLead.dc.html",
+      "x": 0,
+      "y": 1360,
+      "w": 1440,
+      "h": 200,
+      "title": "Trip Strip · one new chip",
+      "page": "page-2"
+    },
+    {
+      "file": "Slip.dc.html",
+      "x": 0,
+      "y": 1700,
+      "w": 1440,
+      "h": 1240,
+      "title": "The slip · day → event → items",
+      "page": "page-2"
+    },
+    {
+      "file": "WhichEvent.dc.html",
+      "x": 1560,
+      "y": 1700,
+      "w": 600,
+      "h": 540,
+      "title": "Add to Plan · which event?",
+      "page": "page-2"
+    },
+    {
+      "file": "Mismatch.dc.html",
+      "x": 2280,
+      "y": 1700,
+      "w": 600,
+      "h": 420,
+      "title": "Location mismatch",
+      "page": "page-2"
+    },
+    {
+      "file": "Guests.dc.html",
+      "x": 0,
+      "y": 3080,
+      "w": 1440,
+      "h": 800,
+      "title": "Guests · one list, a column per event",
+      "page": "page-2"
+    },
+    {
+      "file": "Planner.dc.html",
+      "x": 0,
+      "y": 4020,
+      "w": 1440,
+      "h": 640,
+      "title": "/start/events · three doors",
+      "page": "page-2"
+    },
+    {
+      "file": "TravelWhere.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 600,
+      "h": 560,
+      "title": "Golf trip · Where (stops)",
+      "page": "page-3"
+    },
+    {
+      "file": "TravelWhen.dc.html",
+      "x": 720,
+      "y": 0,
+      "w": 600,
+      "h": 420,
+      "title": "Golf trip · When (range only)",
+      "page": "page-3"
+    },
+    {
+      "file": "Step4Variants.dc.html",
+      "x": 0,
+      "y": 4780,
+      "w": 1440,
+      "h": 560,
+      "title": "Step 4 · four occasions, one control",
+      "page": "page-2"
+    },
+    {
+      "file": "OccasionRow.dc.html",
+      "x": 0,
+      "y": 5460,
+      "w": 1440,
+      "h": 620,
+      "title": "An occasion is a row, not a class",
+      "page": "page-2"
+    },
+    {
+      "file": "SlipProposal.dc.html",
+      "x": 0,
+      "y": 6200,
+      "w": 1440,
+      "h": 520,
+      "title": "The slip · a private proposal",
+      "page": "page-2"
+    },
+    {
+      "file": "Step3Day.dc.html",
+      "x": 1440,
+      "y": 0,
+      "w": 600,
+      "h": 460,
+      "title": "Step 3 · a day, not a range",
+      "page": "page-3"
+    },
+    {
+      "file": "TravelEvents.dc.html",
+      "x": 720,
+      "y": 540,
+      "w": 600,
+      "h": 680,
+      "title": "Golf trip · step 5 (tee times)",
+      "page": "page-3"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "delta",
+      "x": 1560,
+      "y": 0,
+      "w": 520,
+      "page": "page-1",
+      "text": "What changed, and only this:\n\n1. Moments gains an eighth key, Wedding, and it leads. Hero and nav are untouched.\n2. Plan this moment opens the plan with the occasion already set, so the modal starts at Where.\n3. The modal gains a fifth step for event-class occasions: the weekend's events, from the wedding presets that already exist in the code.\n4. A one-line strip tells couples the Earn page's Event Planner track is for sellers.\n\nPhotos are placeholders. Names, handles and review counts are sample values."
+    },
+    {
+      "id": "one-flow",
+      "x": 1560,
+      "y": 1300,
+      "w": 560,
+      "page": "page-2",
+      "text": "One flow, many doors.\n\nEvery entry opens this same modal; only what arrives pre-filled differs.\n\nAn occasion is a row, not a class. It carries defaults for six switches — stops, duration, schedule, guests, vocabulary, visibility — and the user can flip any of them from inside the plan. Every plan has one implicit event, so a plain trip looks exactly as it does today."
+    },
+    {
+      "id": "cross-exp",
+      "x": 0,
+      "y": 700,
+      "w": 560,
+      "page": "page-3",
+      "text": "Same modal, different defaults.\n\nThe golf trip takes ordered stops at step 2, a plain range at step 3, and DOES see step 5 — tee times are timed appointments. No guest list. Nothing else changed."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-2"
+  }
+}

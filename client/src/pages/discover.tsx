@@ -90,6 +90,7 @@ const SERVICE_SORT_OPTIONS = [
 ] as const;
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
@@ -1317,6 +1318,17 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                       </Link>
                     );
                   })}
+                </div>
+                {/* Plan entry (ledger `2026-09-04-entry-unification`). ONE component across all
+                    six commerce routes; this file alone serves four of them (/destinations,
+                    /ready-made, /events, /services). `urlCity` is the ?city= deep-link state this
+                    page already reads — passed when present, and NOTHING passed when absent (§13),
+                    never a placeholder city to make the modal look better informed. */}
+                <div className="mt-3 flex md:justify-end">
+                  <PlanEntryCta
+                    source={urlCity ? { city: urlCity } : undefined}
+                    testId="button-plan-entry-marketplace"
+                  />
                 </div>
               </nav>
             </motion.div>
