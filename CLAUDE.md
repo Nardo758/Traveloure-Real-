@@ -345,7 +345,8 @@ This document captures architectural decisions to maintain consistency across co
     LIVE (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-slip-precondition`).** The
     traveler enters the basics on the Trip/Plan slip, that mints the `trips` row, and only then can
     an expert be hired or view the stated plan. This is a PRECONDITION, not a drain: no code ever
-    mints a trip from a lead, and `trip_expert_advisors` keeps its single author. It is what the
+    mints a trip from a lead, and no NEW author of `trip_expert_advisors` is introduced (the row
+    already has six insert sites on `main` — see the correction below). It is what the
     schema already says (`trip_expert_advisors.trip_id` NOT NULL; `trips.start_date`/`end_date`
     NOT NULL, never invented — §13) and what the expert-request handler already states ("slip
     content is NEVER copied into the jsonb — the workspace reads the trip LIVE"); rail 2 already
@@ -369,6 +370,14 @@ This document captures architectural decisions to maintain consistency across co
     Decision 31) → a picker of experts in those roles → the same advisor-row author. That is the
     hire-an-expert-per-event flow, and it is a separate lane; this ruling gives it its
     precondition.
+    **CORRECTION (same day, found by lane c):** this entry first said the advisor row "keeps its
+    single author". That was FALSE. On `main` `trip_expert_advisors` is inserted from six
+    production sites — `ensureTripAdvisorRow` and `assignExpertAdvisor` (both
+    `booking-actions.service.ts`), `confirmLeadAssignmentTx` (`admin-query.service.ts`),
+    `admin.routes.ts`, `ready-made.routes.ts`, `storage.ts` — and the UNIQUE (trip_id,
+    local_expert_id) index is the only thing keeping them consistent. The ruling's intent stands
+    unchanged: lanes (b) and (c) add CALLERS of `ensureTripAdvisorRow`, never a seventh insert.
+    Consolidating the six is a separate lane and a §18-rule-1 debt, recorded here, not fixed.
     **Side findings recorded, not fixed here:** `expertAdvisorStatusEnum` in `shared/schema.ts`
     omits `assigned`, which code writes and gates on (no DB CHECK, so it works — the enum is
     stale); `/api/expert/assigned-trips` is defined in both `booking-actions.ts` and
