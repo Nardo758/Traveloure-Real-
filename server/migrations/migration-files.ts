@@ -1402,6 +1402,20 @@ export const MIGRATION_FILES = [
   // what NULL means here), plus idx_itinerary_items_user_experience_id. Column AND index declared
   // in shared/schema.ts for publish durability.
   "277_itinerary_item_event_link.sql",
+  // Ledger 2026-09-04-taxonomy-reconcile: DATA-ONLY repair of the orphan-category defect. Ten
+  // "experience bundle" service_categories rows (services-wedding, services-corporate, …) were
+  // boot-seeded with NO `category_key`, which every offering-driven reader joins on, while their
+  // slugs already served as BUNDLE keys in shared/constants/providerCategories.ts — a dead taxonomy
+  // that looked live. The seeders are the durable fix (the ten rows are retired from
+  // server/seed-categories.ts; the Kyoto vendor map now points at migration-034 categories that
+  // carry a key). This migration repoints the four ALREADY-SEEDED Kyoto services that pointed at
+  // two of the orphans, scoped to the seed's own vendor emails, and corrects the Entertainment
+  // description to name the DJ/band offering its own catalog has carried since migration 038.
+  // NO schema change, no column, no CHECK, no index — nothing the deploy push can enforce or drop.
+  // Nothing is deleted or deactivated: provider_services.category_id is ON DELETE SET NULL, so a
+  // delete would strand listings, and getServiceCategories() does not filter is_active. Every
+  // statement is predicate-guarded and idempotent.
+  "278_taxonomy_reconcile_orphan_categories.sql",
   // Ledger 2026-09-04-plan-mint (CLAUDE.md entry 30): `trips.timezone` — the ONE IANA zone a
   // plan's wall-clock item times are read in. Until now no trip carried a zone at all, so the
   // .ics export emitted DTSTART/DTEND with no TZID and no `Z` — RFC 5545 floating time, rendered
