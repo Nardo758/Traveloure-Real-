@@ -217,6 +217,15 @@ export interface PlanCardActivity {
    * server lane (Phase 2b) stamps this. Absent on every non-affiliate item.
    */
   affiliateBooking?: AffiliateBookingInfo | null;
+  /**
+   * Migration 277 (ledger `2026-09-03-item-event-link`, CLAUDE.md entry 29) — the EVENT inside
+   * the plan this item is scheduled under, resolved against the plancard payload's `events`
+   * array. Mirrors `TripPlanActivity.userExperienceId` (shared/trip-plan.ts): PRESENT ONLY when
+   * the item really carries a link, so an ABSENT key and a NULL both mean the plan's ONE
+   * implicit unnamed event — never "unknown" (§13). Read-only on this contract; the column's
+   * sole write rails are the two server-verified item mutations.
+   */
+  userExperienceId?: string | null;
 }
 
 export interface PlanCardTransport {

@@ -172,3 +172,22 @@ export function partyCountLabel(
   const noun = partyNoun(vocabulary, hasGuestList);
   return `${count} ${count === 1 ? partyNounSingular(noun) : noun}`;
 }
+
+/**
+ * "3 events" / "1 event" — the count of a plan's EVENTS and its noun, agreeing in number
+ * (ledger `2026-09-04-slip-events`; migration 277's `user_experiences` rows bound by `trip_id`).
+ *
+ * The event noun is NOT occasion-vocabulary. Migration 276's `vocabulary` column answers "what
+ * are the PEOPLE on this plan called" (travelers | guests | attendees) and says nothing about
+ * the things they are attending, so `partyNoun` is deliberately not consulted here — borrowing
+ * it would print "3 guests" for three ceremonies. "Event" is the ruling's own word for a
+ * `user_experiences` row inside a plan (Locked Decision 29), and it lives here rather than in a
+ * component so a second spelling cannot be written by accident (§18 rule 1).
+ *
+ * Returns "" for a count of zero or one the caller never resolved, so a chip cannot print
+ * "0 events" — the same honest-or-absent posture `partyCountLabel` enforces above.
+ */
+export function eventCountLabel(count: number | null | undefined): string {
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return "";
+  return `${count} ${count === 1 ? "event" : "events"}`;
+}
