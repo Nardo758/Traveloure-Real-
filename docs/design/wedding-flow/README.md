@@ -27,6 +27,24 @@ An `UNAUDITED` row is not a claim of conformance. To turn one into a finding, wr
 particular *report, don't repair*, and the note that dead routes here return **200 + HTML** from the
 Vite catch-all rather than 404.
 
+## Flow order — the canvas does not show it
+
+`canvas.json` lists artboards in **creation order, not flow order**, and the step naming is
+inconsistent: steps 1/3/4 are `Step<N><Name>` while **step 2 is `ModalWhere.dc.html`** and step 5 is
+`ModalEvents.dc.html`. There is no `Step2*` file, which reads as a missing step — it is not missing.
+The real order:
+
+```
+Landing        Before → Main → NavEntry → NavTuned
+Plan modal     Step1Occasion → ModalWhere (2) → Step3When / Step3Day (3)
+                 → Step4Who / Step4Variants (4) → ModalEvents (5)
+Plan surfaces  StripLead → Slip → WhichEvent → Mismatch → Guests
+Variants       OccasionRow, SlipProposal, Planner, TravelWhere, TravelWhen, TravelEvents
+```
+
+Renaming the two odd files is a **decision, not a tidy-up** — these are ratified artboards — so it is
+tracked as a lane in `docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` rather than done here.
+
 ## The artboards
 
 ### Page 1 — Landing
