@@ -16,6 +16,16 @@
  *      (§19) and never hands `req.body` to the storage writer, and that allowlist names none of
  *      the fields owned by another rail (linkage/identity, the RSVP rail, the payment rail).
  *
+ * G3 — the CREATE rail is an ALLOWLIST too (ledger `2026-09-04-plan-islands`). The live copy —
+ *      the `server/routes.ts` monolith handler, which registers first and SHADOWS the
+ *      `trips.routes.ts` twin — parsed `insertTripParticipantSchema.omit({ userId: true })`, a
+ *      DENYLIST: it closed the one hole its author knew about and left every other column
+ *      reachable, `amount_owed` / `amount_paid` / `payment_status` / `payment_method` included.
+ *      §19: "a privileged column is client-settable BY DEFAULT under a denylist schema, and
+ *      nobody edits an omit list for a column that did not exist when it was written." G3 pins
+ *      the create schema to the PATCH allowlist it is DERIVED from — a second literal field list
+ *      is the drift §18 rule 1 names — and G3b pins the live handler to it.
+ *
  * Source-level because `server/routes/content.routes.ts` transitively imports `server/db`,
  * which throws at import without DATABASE_URL — these proofs must run in plain CI.
  *
@@ -144,4 +154,70 @@ test("G2b: the allowlist names no field another rail owns", () => {
       `${field} must be admitted with a nullable route-boundary date coercion`,
     );
   }
+});
+
+test("G3: the CREATE allowlist is DERIVED from the PATCH allowlist, never restated beside it", () => {
+  const src = read(CONTENT_ROUTES);
+  const decl = src.slice(src.indexOf("export const tripParticipantCreateSchema"));
+  assert.ok(decl.length > 0, "tripParticipantCreateSchema not found");
+  const body = decl.slice(0, decl.indexOf("});") + 3);
+
+  assert.ok(
+    /tripParticipantPatchSchema\.extend\(/.test(body),
+    "the create schema must extend the PATCH allowlist — a second literal field list is the " +
+      "derivation drift §18 rule 1 names",
+  );
+  // The two things a CREATE needs and an UPDATE does not, both taken from the Drizzle contract
+  // rather than re-stated as a fresh zod constraint (a second authority for the column).
+  for (const field of ["name", "tripId"]) {
+    assert.ok(
+      new RegExp(`${field}:\\s*insertTripParticipantSchema\\.shape\\.${field}`).test(body),
+      `${field} must be re-admitted from insertTripParticipantSchema.shape, not re-declared`,
+    );
+  }
+  // Nothing else may be extended in — in particular nothing from the money or identity families.
+  for (const forbidden of [
+    "userId",
+    "amountOwed",
+    "amountPaid",
+    "paymentStatus",
+    "paymentMethod",
+    "paymentNotes",
+    "status",
+    "invitedAt",
+    "respondedAt",
+  ]) {
+    assert.ok(
+      !new RegExp(`\\b${forbidden}\\s*:`).test(body),
+      `${forbidden} must not be admitted by the participant CREATE allowlist`,
+    );
+  }
+});
+
+test("G3b: the LIVE create handler parses through that allowlist, and the denylist is gone", () => {
+  const src = read("server/routes.ts");
+  const start = src.indexOf('app.post("/api/trips/:tripId/participants", isAuthenticated');
+  assert.ok(start > -1, "live POST /api/trips/:tripId/participants handler not found");
+  const nextRoute = src.indexOf("app.", start + 10);
+  const handler = src.slice(start, nextRoute > -1 ? nextRoute : undefined);
+
+  assert.ok(
+    /tripParticipantCreateSchema\.parse\(\{/.test(handler),
+    "the live create rail must admit its body through the pick-based allowlist (§19)",
+  );
+  // The denylist ADMISSION, not the word: the handler's own comment names the retired
+  // `insertTripParticipantSchema.omit({ userId: true })` to record what it replaced, and a
+  // predicate that cannot tell a citation from a call would forbid explaining the fix.
+  assert.ok(
+    !/insertTripParticipantSchema\s*\.omit\([^)]*\)\s*\.parse\(/.test(handler),
+    "the denylist (.omit(...).parse) admission must not come back on the live create rail",
+  );
+  // tripId is stamped from the route param AFTER the spread, so a body value can never win (§14).
+  const spread = handler.indexOf("...req.body");
+  const stamp = handler.indexOf("tripId: req.params.tripId");
+  assert.ok(spread > -1 && stamp > spread, "tripId must be stamped AFTER the body spread");
+  assert.ok(
+    /verifyTripOwnership\(\s*req\.params\.tripId/.test(handler),
+    "the trip must be ownership-checked before a participant is created on it",
+  );
 });
