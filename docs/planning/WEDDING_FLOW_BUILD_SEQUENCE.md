@@ -65,7 +65,7 @@ unknown, not as done.
 | Blocker | Blocks | State |
 |---|---|---|
 | ordered `trip_destinations` — table does not exist | `Mismatch` "add as a stop"; `TravelWhere` stop list | **CLEARED** — migration 281 (ledger `2026-09-04-stops-and-event-time`) |
-| no time-of-day column on `user_experiences` | clock times on `WhichEvent`; `TravelEvents` tee times | **CLEARED** — migration 282 (same ledger row) |
+| no time-of-day column on `user_experiences` | clock times on `WhichEvent`; `TravelEvents` tee times | **CLEARED** — migration 282 (same ledger row); both surfaces **BUILT** by ledger `2026-09-04-event-time-ui` |
 | `experience_types.roles_needed` | `WhichEvent` role hint | **CLEARED** — migration 280 (#744) |
 
 **Golf now has an occasion row of its own** (ledger `2026-09-04-golf-occasion-and-housekeeping`):
@@ -140,6 +140,14 @@ order. Do not pre-size this phase — that is guessing.
 `TravelEvents` tee times and any clock time (need a time-of-day column). Both need ratification
 first. **A schema decision is the decision-maker's** (CLAUDE.md Coordination Prevention).
 
+**Both blockers are now CLEARED and the clock half is BUILT.** Migration 281/282 landed the two
+columns (ledger `2026-09-04-stops-and-event-time`, Locked Decisions 34/35), and ledger
+`2026-09-04-event-time-ui` built the clock surfaces on top of them: step 5's Day · Time · Place
+table, the `WhichEvent` clock line and the `TravelEvents` tee times. The stop-list half (rows 7–8)
+is still todo. Note what did NOT change: `TravelEvents` draws a GOLF trip, and whether that
+occasion has a schedule step at all is still `experience_types.default_schedule` on whatever row
+golf resolves to — the audit's sharpest finding, and a seeding question, not a clock one.
+
 ---
 
 ## 3. How we ensure a surface actually surfaces
@@ -185,12 +193,13 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 6 | Phase A findings | D | todo | Phase A |
 | 7 | `Mismatch` "add as a stop" | E | todo (schema landed) | — (cleared by migration 281) |
 | 8 | `TravelWhere` stop list | E | todo (schema landed) | — (cleared by migration 281) |
-| 9 | `TravelEvents` tee times | E | todo (schema landed) | — (cleared by migration 282) |
+| 9 | `TravelEvents` tee times | E | built | — (ledger `2026-09-04-event-time-ui`; the occasion's own `default_schedule` still gates the step) |
 | 10 | Artboard rename (F1) | — | built | — (ratified and done: ledger `2026-09-04-golf-occasion-and-housekeeping`) |
 | 11 | Planner third door + nav Wedding CTA | D | built | — |
 | 12 | Landing Wedding moment + "Planning your own?" callout | D | built | renders only once Kyoto has an attributed real photo (photo gate) |
 | 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops HELD; Step4Variants fields not built |
 | 14 | `trip_destinations` + `user_experiences.start_time` (schema + rails) | E | built | UI in follow-up lanes |
+| 15 | Step 5 Day/Time/Place table, `WhichEvent` clock, `TravelEvents` tee times | E | built | ledger `2026-09-04-event-time-ui`; no `.ics` export of events (none exists — see the ledger row) |
 
 Already `built`: `Step5Events`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`
 (minus "add as a stop"), `OccasionRow`. Already `ruled`: `SlipProposal`.

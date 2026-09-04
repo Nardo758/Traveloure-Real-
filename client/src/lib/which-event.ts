@@ -51,10 +51,20 @@
  *        exactly the fabricated authority §13 forbids, and it is no more allowed now than it was
  *        when the hint had no source at all.
  *
- * 4. **NO CLOCK TIME, EVER.** A row's supporting line is `eventMetaLine` — the ONE derivation,
- *    shared with the slip's event heading — which renders the DATE when set and the PLACE when
- *    set and nothing else. `user_experiences.event_date` is a DATE column with no time-of-day
- *    column anywhere on the row, so a start time on any surface would be manufactured.
+ * 4. **A CLOCK TIME COMES FROM THE CLOCK COLUMN, OR NOT AT ALL.** A row's supporting line is
+ *    `eventMetaLine` — the ONE derivation, shared with the slip's event heading — which renders
+ *    the DAY when set, the TIME when set, and the PLACE when set.
+ *
+ *    This rule USED to read "no clock time, ever", and that was correct for as long as it was
+ *    true of the data: `user_experiences.event_date` is a DATE column, so the artboard's
+ *    "Sat 15:00 · Nanzen-ji" had no source and drawing it would have been a schedule the traveler
+ *    never gave us. Migration 282 (`user_experiences.start_time`, ledger
+ *    `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 35) gave it one, and ledger
+ *    `2026-09-04-event-time-ui` builds it. **What did NOT change is the reason the rule existed:**
+ *    the time may come from `start_time` and from nowhere else. It is never read out of
+ *    `event_date`, never inferred from the plan's main moment, never defaulted to midnight and
+ *    never rendered as "all day" — a row whose `start_time` is NULL shows its day and no clock,
+ *    exactly as every row did before this lane (§13).
  *
  * 5. **ORDERING IS THE SERVER'S.** `eventsForTrip` filters and never sorts; `whichEventChoices`
  *    preserves the order it is handed. The implicit choice LEADS, matching `groupItemsByEvent`'s
@@ -156,8 +166,9 @@ export interface WhichEventChoice {
    */
   label: string;
   /**
-   * Date-when-set · place-when-set, from the ONE shared derivation. `""` when the row has told us
-   * neither. NEVER a clock time — there is no time column on `user_experiences`.
+   * Day-and-time-when-set · place-when-set, from the ONE shared derivation. `""` when the row has
+   * told us none of them. The clock reads ONLY `user_experiences.start_time` (rule 4) — a row
+   * with no time set shows none, and never a midnight standing in for one.
    */
   meta: string;
   /**

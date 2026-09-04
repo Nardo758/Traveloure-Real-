@@ -19,6 +19,16 @@
  *     not be a fallback, it would be a CLAIM that the traveler's 16:00 means 16:00 in London, and
  *     the server's own zone would be an accident of where the process runs. §13: an honestly
  *     floating time beats a confidently wrong instant.
+ *
+ * WHAT THIS EXPORTER DOES NOT CARRY, STATED SO NOBODY ASSUMES IT DOES (ledger
+ * `2026-09-04-event-time-ui`): its `items` are the ITINERARY items of one comparison variant
+ * (`GET /api/my-itinerary/:id/calendar` → `getOrderedVariantItemsByVariantId`). A plan's EVENTS —
+ * the `user_experiences` rows an item can be linked to (Locked Decision 29), which gained their own
+ * `start_time` in migration 282 — are NOT exported here or anywhere else: no route turns an event
+ * into a VEVENT today. That lane deliberately did not add one, because an export nobody asked for
+ * is a second calendar surface to keep in sync with this one's time model. When one is built, it
+ * belongs HERE, in this function's zone decision, and an event with no `start_time` must be a
+ * DATE-only (all-day) VEVENT rather than a fabricated midnight (§13).
  */
 type IcsComparison = {
   startDate: string | Date;

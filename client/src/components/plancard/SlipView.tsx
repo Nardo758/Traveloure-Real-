@@ -467,6 +467,77 @@ function EventHireAffordance({
 }
 
 /**
+ * THE EVENT'S TIME, EDITED WHERE IT IS READ (ledger `2026-09-04-event-time-ui`; migration 282,
+ * CLAUDE.md Locked Decision 35).
+ *
+ * Owner-only, and deliberately the smallest thing that works: a time input that PATCHes the
+ * EXISTING owner-scoped `/api/user-experiences/:id` with `{ startTime }` and nothing else. No new
+ * route was opened for it — `startTime` already rides the pick-based allowlist that route's POST
+ * and PATCH share (`userExperienceBodySchema`), narrowed by the ONE format authority
+ * `userExperienceStartTimeSchema` (§19; a second admission rail for one column is exactly what
+ * that posture exists to prevent).
+ *
+ * THE THREE THINGS IT MAY NOT DO (§13):
+ *  - it never SHOWS a time the row does not have. An empty control is an event with no time set,
+ *    which is a real answer — not midnight, not "all day", not the plan's main moment standing in.
+ *  - CLEARING is a first-class action: an explicit `null` is how a traveler takes back a time they
+ *    set, which is why `userExperienceStartTimeSchema` is `.nullable()` and why an emptied input
+ *    sends null rather than omitting the key.
+ *  - it says NOTHING about the zone. The value is a wall clock read in the plan's `trips.timezone`
+ *    (ruling 30), and where that is NULL the time is honestly zone-less — a "local time" label
+ *    here would be a claim this component cannot check.
+ *
+ * The event heading is where the time is READ, so it is where it is written: the slip is what the
+ * step-5 copy points at ("change any of them now or later from the slip").
+ */
+function EventTimeAffordance({ tripId, event }: { tripId: string; event: PlanEvent }) {
+  const { toast } = useToast();
+  const [value, setValue] = useState(event.startTime ?? "");
+  // The row is the truth; a re-fetch that changes it (another tab, an expert) wins over a stale
+  // local echo. Keyed on the id too, so a remounted header for a DIFFERENT event never inherits
+  // the previous one's draft.
+  useEffect(() => setValue(event.startTime ?? ""), [event.id, event.startTime]);
+
+  const save = useMutation({
+    mutationFn: (startTime: string | null) =>
+      apiRequest("PATCH", `/api/user-experiences/${event.id}`, { startTime }),
+    onSuccess: () => {
+      // Both readers of this row: the plancard payload carries `events[]`, the user-scoped list
+      // feeds the "Which event?" picker. Refreshing one and not the other is how two surfaces of
+      // one plan start disagreeing about the same event.
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    onError: () => {
+      setValue(event.startTime ?? "");
+      toast({ title: "Could not save that time", variant: "destructive" });
+    },
+  });
+
+  const commit = (next: string) => {
+    const trimmed = next.trim();
+    if (trimmed === (event.startTime ?? "")) return;
+    // Empty ⇒ an EXPLICIT null (cleared), never an omitted key (which means "not mentioned").
+    if (!trimmed) return void save.mutate(null);
+    if (!/^\d{2}:\d{2}$/.test(trimmed)) return;
+    save.mutate(trimmed);
+  };
+
+  return (
+    <input
+      type="time"
+      value={value}
+      disabled={save.isPending}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={(e) => commit(e.target.value)}
+      aria-label={`Start time${event.title ? ` for ${event.title}` : ""}`}
+      className="mt-1 h-6 rounded border border-border bg-transparent px-1 text-[11px] text-muted-foreground disabled:opacity-50"
+      data-testid={`slip-event-time-${event.id}`}
+    />
+  );
+}
+
+/**
  * One EVENT inside the day (migration 277; ledger `2026-09-04-slip-events`). A bordered inset
  * around the items that name this `user_experiences` row — the same inset grammar
  * `ExpertNoteBlock` uses, drawn from theme tokens so it follows light/dark like everything else.
@@ -474,9 +545,10 @@ function EventHireAffordance({
  * WHAT IT MAY SAY, and what it may not (§13):
  *  - the event's TITLE when the row has one. A row with no title gets no title line — never an
  *    "Untitled event", which is a name nobody wrote.
- *  - its DATE and its PLACE when set. `user_experiences.event_date` is a DATE column with NO
- *    time-of-day anywhere on the row, so no clock time is rendered — a start time here would be
- *    manufactured, and this surface has no source for one.
+ *  - its DAY, its TIME and its PLACE when set, through the ONE shared `eventMetaLine`. The time
+ *    reads `user_experiences.start_time` (migration 282, ledger `2026-09-04-event-time-ui`) and
+ *    NOTHING else — never `event_date`, which is a DATE column, and never a default: a row with no
+ *    time set shows its day and no clock, exactly as every row did before that column existed.
  *  - nothing else. An event that has told us nothing renders as a bare inset: the grouping is
  *    still true (these items belong together), and no label is invented to decorate it.
  *
@@ -521,7 +593,12 @@ function SlipEventGroupBlock({
               {meta}
             </p>
           )}
-          {isOwner && <EventHireAffordance tripId={tripId} destination={destination} event={event} />}
+          {isOwner && (
+            <span className="flex flex-wrap items-center gap-2">
+              <EventTimeAffordance tripId={tripId} event={event} />
+              <EventHireAffordance tripId={tripId} destination={destination} event={event} />
+            </span>
+          )}
         </header>
       )}
       <div className="pb-1">{children}</div>
