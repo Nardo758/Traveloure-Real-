@@ -22,6 +22,14 @@
  *   M7  the two shared segments that must not silence the mock's own case: "Osaka, Japan" vs
  *       "Kyoto, Japan" share "japan" and MUST still flag.
  *   M8  the copy is derived from the decision, never restated at a call site.
+ *   M9  EVERY stop the plan names is compared (`trip_destinations`, migration 281) — a listing in
+ *       any one of them is silence, and a multi-stop plan is NOT exempted from the check. The
+ *       artboard's "plans with more than one stop are not flagged" footnote is the clause the
+ *       ledger overrode, and this is what keeps it overridden.
+ *   M10 an absent, empty or all-unusable stop list falls back EXPLICITLY to `trips.destination`
+ *       (§13: no rows = NOT CAPTURED, never "this plan has no cities").
+ *   M11 the copy for several cities is true of several cities, and the third action's label names
+ *       the listing's own city.
  *
  * Pure unit: no DOM, no DB, no fetch.
  * Run: npx tsx --test client/src/lib/__tests__/location-mismatch.test.ts
@@ -30,6 +38,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   MISMATCH_HONESTY_LINE,
+  addAsStopLabel,
+  comparisonTargets,
   displayCity,
   evaluateLocationMismatch,
   locationSegments,
@@ -253,5 +263,137 @@ describe("M8 — the copy is derived from the decision", () => {
       "Nothing is measured or guessed here. It is simply not in a city your plan names.",
     );
     assert.ok(!/\bkm\b|\bmiles?\b|\bminutes?\b|\bdistance\b/i.test(MISMATCH_HONESTY_LINE));
+  });
+});
+
+/**
+ * M9-M11 — the stop list (ledger `2026-09-04-plan-stops-ui`, migration 281).
+ *
+ * The reader compares against EVERY city the plan names. The interesting cases are all negatives:
+ * the count of stops must not become an exemption, an absent list must not become "no cities", and
+ * a plan that names three cities must not be described with a sentence about one.
+ */
+describe("M9 — every stop is compared, and the count is never an exemption", () => {
+  const STOPS = ["Edinburgh, Scotland", "St Andrews", "Dornoch"];
+
+  it("a listing in ANY stop is silence, not just the first", () => {
+    for (const listing of ["Edinburgh", "St Andrews, Scotland", "Dornoch"]) {
+      assert.deepEqual(
+        evaluateLocationMismatch({
+          listingLocation: listing,
+          planDestination: "Edinburgh, Scotland",
+          planStops: STOPS,
+        }),
+        { mismatch: false, reason: "match" },
+        `"${listing}" is a stop on this plan and must not alert`,
+      );
+    }
+  });
+
+  it("a listing in NONE of the stops still alerts — a multi-stop plan is not exempt", () => {
+    const alert = alertOf(
+      evaluateLocationMismatch({
+        listingLocation: "Glasgow, Scotland",
+        planDestination: "Edinburgh, Scotland",
+        planStops: STOPS,
+      }),
+    );
+    assert.equal(alert.listingCity, "Glasgow");
+    assert.deepEqual(alert.comparisonCities, ["Edinburgh", "St Andrews", "Dornoch"]);
+    // The ratified artboard's "plans with more than one stop are not flagged" footnote is the
+    // clause `2026-09-04-location-mismatch` overrode; this is the proof it stayed overridden.
+    assert.equal(alert.source, "plan");
+  });
+
+  it("a named EVENT still wins over the stop list", () => {
+    const alert = alertOf(
+      evaluateLocationMismatch({
+        listingLocation: "Dornoch",
+        eventLocation: "Edinburgh",
+        planDestination: "Edinburgh",
+        planStops: STOPS,
+      }),
+    );
+    assert.equal(alert.source, "event");
+    assert.deepEqual(alert.comparisonCities, ["Edinburgh"]);
+  });
+});
+
+describe("M10 — an absent or unusable stop list falls back to the destination, and says so", () => {
+  for (const stops of [undefined, [], [null, undefined, "", "   ", "Unknown"]] as Array<
+    Array<string | null | undefined> | undefined
+  >) {
+    it(`falls back to trips.destination for stops = ${JSON.stringify(stops)}`, () => {
+      const alert = alertOf(
+        evaluateLocationMismatch({
+          listingLocation: "Osaka, Japan",
+          planDestination: "Kyoto, Japan",
+          planStops: stops,
+        }),
+      );
+      assert.equal(alert.comparisonCity, "Kyoto");
+      assert.deepEqual(alert.comparisonCities, ["Kyoto"]);
+    });
+  }
+
+  it("stops with no location are DROPPED, never counted as a compared city", () => {
+    const alert = alertOf(
+      evaluateLocationMismatch({
+        listingLocation: "Osaka",
+        planDestination: "Kyoto",
+        planStops: ["Kyoto", "Unknown", "", null],
+      }),
+    );
+    assert.deepEqual(alert.comparisonCities, ["Kyoto"]);
+  });
+
+  it("no destination AND no usable stops is silence, not an empty-city alert", () => {
+    assert.deepEqual(
+      evaluateLocationMismatch({
+        listingLocation: "Osaka",
+        planDestination: "  ",
+        planStops: ["Unknown", ""],
+      }),
+      { mismatch: false, reason: "no_comparison_location" },
+    );
+  });
+});
+
+describe("M11 — the copy for several cities, and the third action's label", () => {
+  it("a multi-stop plan gets a sentence that is true of it", () => {
+    const alert = alertOf(
+      evaluateLocationMismatch({
+        listingLocation: "Glasgow",
+        planStops: ["Edinburgh", "St Andrews", "Dornoch"],
+      }),
+    );
+    assert.equal(mismatchSubline(alert), "Your plan stops in Edinburgh, St Andrews and Dornoch.");
+  });
+
+  it("a single-city plan keeps the sentence it always had", () => {
+    const alert = alertOf(
+      evaluateLocationMismatch({ listingLocation: "Osaka", planStops: ["Kyoto"] }),
+    );
+    assert.equal(mismatchSubline(alert), "Every event on your plan is in Kyoto.");
+  });
+
+  it("the add-as-stop label names the LISTING's city, in its own casing", () => {
+    const alert = alertOf(
+      evaluateLocationMismatch({ listingLocation: "OSAKA, Japan", planDestination: "Kyoto" }),
+    );
+    assert.equal(addAsStopLabel(alert), "Add OSAKA as a stop");
+    // No distance, no direction, no travel claim in the action either.
+    assert.ok(!/\bkm\b|\bmiles?\b|\bminutes?\b|\bdistance\b/i.test(addAsStopLabel(alert)));
+  });
+
+  it("comparisonTargets exposes the resolution order the dialog and the writer both read", () => {
+    assert.deepEqual(
+      comparisonTargets({ listingLocation: "x", planStops: ["A", "B"], planDestination: "A" }),
+      { source: "plan", targets: ["A", "B"] },
+    );
+    assert.deepEqual(
+      comparisonTargets({ listingLocation: "x", eventLocation: "E", planStops: ["A"] }),
+      { source: "event", targets: ["E"] },
+    );
   });
 });
