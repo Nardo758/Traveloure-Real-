@@ -23,6 +23,9 @@
  *       comes back ONLY on a unique match. The proposal case — the one `hidden` occasion, and the
  *       reason the slip needs the lookup — is proven to resolve; an ambiguous family is proven to
  *       resolve to nothing rather than to whichever row was listed first.
+ *   R6  `stopsShape` (the sixth column, first read by ledger `2026-09-04-plan-stops-ui`) falls
+ *       back to ONE — the opposite direction to `durationShape`, for a stated reason — and only
+ *       the exact string "many" opens the ordered stop list.
  *   R5  `guestListSetting` keeps `false` and `null` apart. Collapsing them to a boolean at the
  *       reader would erase the difference between "this occasion has no guests" and "nobody
  *       decided", which are opposite instructions to a surface.
@@ -37,6 +40,7 @@ import {
   guestListSetting,
   isHiddenOccasion,
   showsSchedule,
+  stopsShape,
   type OccasionSwitchRow,
 } from "../occasion-switches";
 import { partyCountLabel, partyNoun, partyNounSingular } from "../plan-vocabulary";
@@ -157,6 +161,50 @@ describe("R4 — the reverse lookup refuses to guess", () => {
     assert.equal(findOccasionByKey(ROWS, "Milestone Birthday")?.slug, "milestone-birthday");
     assert.equal(findOccasionByKey(ROWS, "Honeymoon"), null);
     assert.equal(findOccasionByKey(ROWS, ""), null);
+  });
+});
+
+/**
+ * R6 — `default_stops`, the sixth switch and the last one to get a reader (ledger
+ * `2026-09-04-plan-stops-ui`). It was deliberately unread until `trip_destinations` existed
+ * (migration 281): a control that collects an answer nothing can store is worse than an absent
+ * one. Its fallback points the OPPOSITE way to `durationShape`'s, and that is the interesting
+ * part — not offering the stop control discards nothing (the destination field still records the
+ * answer), whereas falling back to "many" would claim an undecided occasion is multi-city.
+ */
+describe("R6 — stopsShape falls back to ONE, and only an explicit \"many\" opens the list", () => {
+  it("every not-set spelling reads as one", () => {
+    for (const row of NOT_SET) {
+      assert.equal(stopsShape(row), "one", `not-set row must read as one: ${JSON.stringify(row)}`);
+    }
+    assert.equal(stopsShape({ defaultStops: null }), "one");
+    assert.equal(stopsShape({ defaultStops: undefined }), "one");
+  });
+
+  it("an unrecognised value is treated exactly like NULL (the columns carry no CHECK)", () => {
+    for (const value of ["MANY", "several", "multi", "2", "", " many "]) {
+      assert.equal(stopsShape({ defaultStops: value }), "one", `"${value}" must not open the list`);
+    }
+  });
+
+  it('only the exact value "many" opens the ordered stop list', () => {
+    assert.equal(stopsShape({ defaultStops: "many" }), "many");
+    assert.equal(stopsShape({ defaultStops: "one" }), "one");
+  });
+
+  it("reads independently of the other five switches", () => {
+    const row = {
+      defaultStops: "many",
+      defaultDuration: "day",
+      defaultSchedule: false,
+      defaultGuests: false,
+      vocabulary: "attendees",
+      defaultVisibility: "hidden",
+    };
+    assert.equal(stopsShape(row), "many");
+    assert.equal(durationShape(row), "day");
+    assert.equal(showsSchedule(row), false);
+    assert.equal(isHiddenOccasion(row), true);
   });
 });
 
