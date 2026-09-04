@@ -436,22 +436,25 @@ async function main() {
         await waitVisible(expertPage, "button-map-day-filter-1");
         await waitVisible(expertPage, "button-map-day-filter-2");
 
-        // The map itself: MAPS_KEY-gated. Assert whichever honest state actually renders —
-        // never assume one over the other (§13: a journey must not fabricate an environment).
+        // The map itself has THREE honest states now: Google pins (VITE_GOOGLE_MAPS_API_KEY
+        // set), Leaflet pins (keyless fallback — leaflet-plan-map.tsx, carries the same
+        // map-pin-* testids by parity), or text-plan-map-unavailable (no located items AND
+        // no destination geocode). Assert whichever actually renders — never assume one
+        // over the other (§13: a journey must not fabricate an environment).
         const unavailableSel = `[data-testid="text-plan-map-unavailable"]`;
         const pinSel = `[data-testid^="map-pin-"]`;
         await expertPage.waitForSelector(`${unavailableSel}, ${pinSel}`, { state: "visible", timeout: 10000 });
-        const mapsKeyConfigured = await expertPage.isVisible(pinSel);
+        const pinsRendered = await expertPage.isVisible(pinSel);
         const fallbackShown = await expertPage.isVisible(unavailableSel);
 
-        if (!mapsKeyConfigured && !fallbackShown) {
+        if (!pinsRendered && !fallbackShown) {
           throw new Error("neither a real map pin nor the honest unavailable fallback rendered");
         }
 
         return {
-          ui: `button-map-day-filter-all/1/2 all visible; ${mapsKeyConfigured ? "map-pin-* rendered (VITE_GOOGLE_MAPS_API_KEY configured)" : "text-plan-map-unavailable rendered (no VITE_GOOGLE_MAPS_API_KEY — honest fallback, not a failure)"}`,
+          ui: `button-map-day-filter-all/1/2 all visible; ${pinsRendered ? "map-pin-* rendered (Google or keyless Leaflet fallback — same testids by parity)" : "text-plan-map-unavailable rendered (no located items + no geocode — honest fallback, not a failure)"}`,
           db: "N/A (client-rendering assertion — the day-filter grouping reflects the day-1/day-2 itinerary_items already proven in DB by earlier steps)",
-          note: "map-candidate-pin-* (the W5-A discovery layer) is gated behind the SAME VITE_GOOGLE_MAPS_API_KEY and was not observed to render in this sandbox — documented, not faked; opening the DMO drawer alongside the map is skipped here since candidate pins cannot appear without the key regardless.",
+          note: "map-candidate-pin-* (the W5-A discovery layer) renders on the Leaflet fallback too, but only when the Add drawer is open with published candidates — not exercised here; documented, not faked.",
         };
       },
       { page: expertPage },

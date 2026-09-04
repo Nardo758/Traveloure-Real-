@@ -64,6 +64,10 @@ async function resetAndSeedFixtures(pg) {
   await pg.query("DELETE FROM notifications WHERE id = $1", [NOTIF_ID]);
   await pg.query("DELETE FROM notifications WHERE related_id = $1 AND related_type = 'trip'", [ITEM_ID]);
   await pg.query("DELETE FROM user_and_expert_chats WHERE id IN ($1, $2)", [CHAT_ID_TO_EXPERT, CHAT_ID_FROM_EXPERT]);
+  // Step 9 finalizes the trip (Trip Card is post-final only since the manifest-is-the-boundary
+  // rebuild) — reset the final state so every run re-proves the finalize from scratch.
+  await pg.query("DELETE FROM trip_finals WHERE trip_id = $1", [TRIP_ID]);
+  await pg.query("UPDATE trips SET finalized_at = NULL WHERE id = $1", [TRIP_ID]);
 
   await upsertTrip(pg, {
     id: TRIP_ID, userId: travelerId, title: "Journey: Traveler Comms", destination: "Kyoto, Japan",
@@ -204,7 +208,10 @@ async function main() {
           travelerPage.click(`[data-testid="button-open-update-${NOTIF_ID}"]`),
         ]);
         if (!resp.ok()) throw new Error(`PATCH mark-read failed: ${resp.status()}`);
-        await travelerPage.waitForURL(new RegExp(`/trip/${TRIP_ID}\\?tab=itinerary`), { timeout: 10000 });
+        // R-E (client/src/lib/notification-icons.tsx resolveNotificationLink): traveler-facing
+        // itinerary links (workspacePath starting "/trip/") now resolve to the SLIP —
+        // /plans/:tripId(?item=...) — not the Trip Card, which is gated on a final existing.
+        await travelerPage.waitForURL(new RegExp(`/plans/${TRIP_ID}`), { timeout: 10000 });
 
         const row = await dbOne(pg, "SELECT is_read FROM notifications WHERE id = $1", [NOTIF_ID]);
         if (row?.is_read !== true) throw new Error(`expected is_read=true after the click, got ${row?.is_read}`);
@@ -280,22 +287,37 @@ async function main() {
 
     // ═══ Step 9 — thread renders on the Trip Card (traveler) ═══
     await runStep(
-      "Browser: comment thread renders on the traveler's Trip Card (dashboard PlanCard)",
+      "Browser: comment thread renders on the traveler's Trip Card (/trip/:id, post-final)",
       async () => {
-        await travelerPage.goto("/dashboard");
-        await waitVisible(travelerPage, "active-plans-section");
-        const chip = `[data-testid="trip-chip-${TRIP_ID}"]`;
-        if (await travelerPage.isVisible(chip)) await travelerPage.click(chip);
+        // Manifest-is-the-boundary rebuild (ledger 2026-08-31): the Trip Card on /trip/:id
+        // — the ONLY traveler surface that renders PlanCard's per-row ItemComments — exists
+        // only AFTER a final is cut (plancardData.trip.finalVersion != null). The dashboard
+        // PlanCard is now stage="summary" (no activity rows at all) and the slip renders no
+        // comments UI. So this step first cuts a real final through the canonical endpoint
+        // (snapshots the seeded item into trip_finals), then asserts the thread on the card.
+        const finResp = await travelerPage.request.post(`/api/trips/${TRIP_ID}/finalize`);
+        if (!finResp.ok()) throw new Error(`finalize failed: ${finResp.status()} ${await finResp.text()}`);
+
+        await travelerPage.goto(`/trip/${TRIP_ID}`);
         await waitVisible(travelerPage, `activity-row-${ITEM_ID}`);
         const commentsSection = await waitVisible(travelerPage, `item-comments-${ITEM_ID}`);
         await travelerPage.click(`[data-testid="button-toggle-comments-${ITEM_ID}"]`);
         await waitVisible(travelerPage, `comment-thread-${ITEM_ID}`);
+        // Wait for thread CONTENT, not just the container — the thread mounts with a
+        // "Loading…" placeholder while the comments query is in flight (see step 10).
+        await travelerPage.waitForFunction(
+          (itemId) => document
+            .querySelector(`[data-testid="comment-thread-${itemId}"]`)
+            ?.textContent?.includes("swap it with the temple"),
+          ITEM_ID,
+          { timeout: 10000 },
+        );
         const threadText = await travelerPage.textContent(`[data-testid="comment-thread-${ITEM_ID}"]`);
         if (!threadText || !threadText.includes("swap it with the temple")) {
           throw new Error(`comment thread does not render the expert's comment: '${threadText}'`);
         }
         return {
-          ui: `item-comments-${ITEM_ID} + comment-thread-${ITEM_ID} visible on /dashboard, renders both comments`,
+          ui: `item-comments-${ITEM_ID} + comment-thread-${ITEM_ID} visible on /trip/${TRIP_ID} (finalized Trip Card), renders both comments`,
           db: "N/A (rendering assertion over the trip_item_comments rows already proven in Steps 5-6)",
         };
       },
@@ -308,8 +330,11 @@ async function main() {
       async () => {
         await expertPage.goto(`/expert/workspace/${TRIP_ID}`);
         await waitVisible(expertPage, "tab-right-add");
-        const dayListToggle = `[data-testid="toggle-format-day-list"]`;
-        if (await expertPage.isVisible(dayListToggle)) await expertPage.click(dayListToggle);
+        // Same toggle race fixed in J1 (expert-loop.mjs step 2): WAIT for the Day-list
+        // toggle — an isVisible probe fires before the canvas finishes rendering and
+        // silently skips the click, leaving the Structure view active.
+        await waitVisible(expertPage, "toggle-format-day-list");
+        await expertPage.click(`[data-testid="toggle-format-day-list"]`);
         await waitVisible(expertPage, `activities-section-${TRIP_ID}`);
         await waitVisible(expertPage, "button-toggle-item-editor");
         await expertPage.click(`[data-testid="button-toggle-item-editor"]`);
@@ -318,6 +343,16 @@ async function main() {
         await waitVisible(expertPage, `item-comments-${ITEM_ID}`);
         await expertPage.click(`[data-testid="button-toggle-comments-${ITEM_ID}"]`);
         await waitVisible(expertPage, `comment-thread-${ITEM_ID}`);
+        // The thread element mounts with a "Loading…" placeholder while the comments
+        // query is in flight — wait for the CONTENT, not just the container (proven
+        // live: reading textContent immediately raced the query and saw 'Loading…').
+        await expertPage.waitForFunction(
+          (itemId) => document
+            .querySelector(`[data-testid="comment-thread-${itemId}"]`)
+            ?.textContent?.includes("move this earlier"),
+          ITEM_ID,
+          { timeout: 10000 },
+        );
         const threadText = await expertPage.textContent(`[data-testid="comment-thread-${ITEM_ID}"]`);
         if (!threadText || !threadText.includes("move this earlier")) {
           throw new Error(`comment thread does not render the owner's comment: '${threadText}'`);
