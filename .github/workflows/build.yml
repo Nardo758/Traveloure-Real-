@@ -537,3 +537,23 @@ jobs:
         run: node scripts/check-privileged-field-completeness.cjs --self-test
       - name: Privileged-field completeness guard
         run: node scripts/check-privileged-field-completeness.cjs
+
+  advisor-row-author-guard:
+    name: advisor-row-author-guard (CLAUDE.md Locked Decision 32 — 2026-09-04-advisor-row-one-author)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # `trip_expert_advisors` was inserted from SIX production sites, each with its own idea of
+      # what a conflict means — one of which could DEMOTE an admin-confirmed advisor, two of which
+      # simply threw 23505. The UNIQUE (trip_id, local_expert_id) index was the only thing keeping
+      # them consistent, and it did that by throwing. Consolidating to one author is worth nothing
+      # if a seventh insert can land tomorrow; this is the thing that fails when it does. It catches
+      # INSERTS ONLY — updates are deliberately out of scope (see the script header's negative
+      # space). Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Advisor-row author guard predicate self-test
+        run: node scripts/check-advisor-row-author.cjs --self-test
+      - name: Advisor-row author guard
+        run: node scripts/check-advisor-row-author.cjs
