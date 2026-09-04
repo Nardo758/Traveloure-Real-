@@ -10,6 +10,12 @@
  *   P3  `classify` moved from trip-strip.tsx VERBATIM: the three classes, every keyword in both
  *       lists, and the travel-is-the-default fallback still resolve exactly as before, so the
  *       possessive occasion lead ("Your Kyoto wedding") is untouched by the label change.
+ *   P5  `eventCountLabel` (ledger `2026-09-04-slip-events`) agrees in number and says NOTHING for
+ *       a count of zero or one nobody resolved — the same honest-or-absent posture
+ *       `partyCountLabel` enforces, and the reason the Trip Strip's chip can be hidden by an
+ *       empty string alone. It is deliberately NOT the party vocabulary: an event is a thing,
+ *       not a person, so "3 guests" must never come out of it.
+ *
  *   P4  the two nouns agree with each other, so a future edit cannot leave the button saying one
  *       word and the toast another — which is precisely the split this lane found in the wild
  *       (title "…your trip", description "…on your plan").
@@ -21,6 +27,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ADDED_TO_CART_TITLE,
+  eventCountLabel,
   ADDED_TO_PLAN_TITLE,
   ADD_TO_CART_LABEL,
   ADD_TO_PLAN_FAILED_TITLE,
@@ -79,5 +86,25 @@ describe("plan vocabulary", () => {
     assert.equal(PLAN_NOUN.toLowerCase(), PLAN_NOUN_LOWER);
     assert.ok(ADD_TO_PLAN_LABEL.includes(PLAN_NOUN));
     assert.ok(ADDED_TO_PLAN_TITLE.includes(PLAN_NOUN_LOWER));
+  });
+});
+
+describe("P5 — the event noun (the Trip Strip's chip)", () => {
+  it("agrees in number", () => {
+    assert.equal(eventCountLabel(1), "1 event");
+    assert.equal(eventCountLabel(2), "2 events");
+    assert.equal(eventCountLabel(11), "11 events");
+  });
+
+  it("says nothing for a count that is zero, negative or never resolved", () => {
+    for (const n of [0, -1, undefined, null, NaN]) {
+      assert.equal(eventCountLabel(n as number), "", `must be silent for ${String(n)}`);
+    }
+  });
+
+  it("is the EVENT noun, never the party noun", () => {
+    // migration 276's `vocabulary` column names the PEOPLE on a plan; borrowing it here would
+    // print "3 guests" for three ceremonies.
+    assert.doesNotMatch(eventCountLabel(3), /guest|traveler|attendee/);
   });
 });
