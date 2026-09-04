@@ -1592,12 +1592,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Request expert booking assistance
   // Ruling 2026-09-04-slip-precondition (lane b), CLAUDE.md Locked Decision 32: no expert
-  // touchpoint exists without a slip — tripId is the intake and what authorizes the expert's
-  // view of the plan, so it is REQUIRED here, not optional. A traveler with no trip is sent
-  // through the existing planning ladder and returns via the existing `?tripId=` handoff
-  // (expert-detail.tsx). Validation + ownership authorization lives in
-  // expert-booking-request-guard.service.ts (a pure function, no DB) so it can be unit-tested
-  // directly; this handler is a thin caller.
+  // touchpoint exists without a slip — the tripId is what authorizes the expert's view of the
+  // plan. This endpoint is OVERLOADED by five client callers, some of them plain commerce with
+  // no trip involved (e.g. visa-help's service purchase), so tripId stays OPTIONAL on the
+  // schema — the ruling binds the ADVISOR ATTACHMENT below, not every caller. A tripId that IS
+  // supplied must still resolve to a trip the session owns (404/401), never silently downgraded
+  // to a trip-less request. The storefront (expert-detail.tsx) is the actual touchpoint this
+  // ruling closes: with no trip to share, it sends the traveler through the planning ladder and
+  // returns via the existing `?tripId=` handoff before ever calling this endpoint. Validation +
+  // ownership authorization lives in expert-booking-request-guard.service.ts (a pure function,
+  // no DB) so it can be unit-tested directly; this handler is a thin caller.
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!; // §14: acting user is the session, never req.body
@@ -1717,15 +1721,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         } as any);
         bookingId = booking.id;
 
-        // Ruling 2026-09-04-slip-precondition (lane b): a storefront request creates the
-        // trip_expert_advisors row the same way a routed lead does — ONE implementation
+        // Ruling 2026-09-04-slip-precondition (lane b): when the request named a tripId, it was
+        // already verified above to be owned by this session — that authorized tripId attaches
+        // the expert as an advisor the same way a routed lead does — ONE implementation
         // (ensureTripAdvisorRow, server/services/booking-actions.service.ts), one more caller
-        // (§18 rule 1). Without this row the expert can never see the trip in Assigned Trips
-        // or the workspace, even though tripId is now required above. providerId is the
-        // storefront's own expert/provider (resolved server-side from the service record,
-        // never from req.body — §14), so this is exactly the account the traveler requested
-        // help from.
-        if (providerId) {
+        // (§18 rule 1). A tripId-less request (plain commerce — e.g. visa-help's service
+        // purchase) creates the booking exactly as before and attaches NO advisor — this
+        // endpoint is overloaded by five callers and only the ones that actually share a plan
+        // are an expert touchpoint. providerId is the storefront's own expert/provider
+        // (resolved server-side from the service record, never from req.body — §14), so when
+        // a trip IS present this is exactly the account the traveler requested help from.
+        if (providerId && tripId) {
           await ensureTripAdvisorRow(tripId, providerId, notes || null).catch(err =>
             console.error("[ExpertBookingRequest] Failed to create advisor row:", err)
           );

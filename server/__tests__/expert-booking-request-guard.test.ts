@@ -3,26 +3,32 @@
  * Locked Decision 32: "no expert touchpoint exists without a slip; the tripId is what
  * authorizes the expert's view of the plan."
  *
- * Pure unit proofs over `authorizeExpertBookingRequest` — no Express app, no database. The
- * function under test takes the trip record as a plain stubbed value, exactly so this suite
- * can prove the three required behaviors without a DB:
+ * NARROWED (coordinator correction, same day): the ruling binds the ADVISOR ATTACHMENT, not
+ * every caller of this overloaded endpoint. `POST /api/expert-booking-requests` has five client
+ * callers; some (visa-help's plain service purchase) are ordinary commerce with no trip and no
+ * advisor involved. So `tripId` is OPTIONAL again on the schema — a trip-less request is
+ * authorized exactly as before (the pre-existing commerce behavior, unchanged) — while a
+ * SUPPLIED tripId still must resolve to a trip the session owns.
  *
- *   G1 — a request with no tripId is REFUSED with a 400 (was previously optional and silently
- *        accepted, per the pre-fix `expertBookingRequestSchema`).
+ * Pure unit proofs over `authorizeExpertBookingRequest` — no Express app, no database. The
+ * function under test takes the trip record as a plain stubbed value, exactly so this suite can
+ * prove the required behaviors without a DB:
+ *
+ *   G1 — a request with NO tripId is AUTHORIZED (the pre-existing commerce behavior; the
+ *        endpoint's other four callers, including visa-help's tripless service purchase, are
+ *        unaffected by construction).
  *   G2 — a tripId that resolves to a trip owned by someone else is REFUSED 401 (§14: ownership
  *        is decided from the session userId against the server's own trip record, never from
- *        the request body).
+ *        the request body). An unknown tripId is REFUSED 404 — a bad tripId is never silently
+ *        downgraded to a trip-less request.
  *   G3 — a tripId the session actually owns is AUTHORIZED, and — proving the route's own
- *        "create the advisor row the same way a routed lead does" clause — the caller then
- *        invokes `ensureTripAdvisorRow` exactly once with (tripId, expertUserId, notes). The
- *        real `ensureTripAdvisorRow` (server/services/booking-actions.service.ts) touches the
- *        DB, so it is stubbed here — the point of this proof is that the ROUTE decides to call
- *        it, once, with the right arguments; the DB write itself is that function's own
- *        concern, proven elsewhere against a disposable database
- *        (server/__tests__/expert-booking-request-rate.db.test.ts).
- *
- * Also proves the not-found case (tripId present but no such trip ⇒ 404, never treated as
- * "no trip" and silently allowed through).
+ *        "attach the expert as an advisor the same way a routed lead does" clause — the caller
+ *        then invokes `ensureTripAdvisorRow` exactly once with (tripId, expertUserId, notes).
+ *        The real `ensureTripAdvisorRow` (server/services/booking-actions.service.ts) touches
+ *        the DB, so it is stubbed here — the point of this proof is that the ROUTE decides to
+ *        call it, once, with the right arguments, and ONLY when a trip is present and owned;
+ *        the DB write itself is that function's own concern, proven elsewhere against a
+ *        disposable database (server/__tests__/expert-booking-request-rate.db.test.ts).
  *
  * Run: npx tsx --test server/__tests__/expert-booking-request-guard.test.ts
  */
@@ -37,28 +43,30 @@ const OWNER_ID = "user-owner-1";
 const OTHER_USER_ID = "user-other-2";
 const TRIP_ID = "trip-abc-123";
 
-test("G1: a request with no tripId is refused with a 400 and an honest message", () => {
-  const result = authorizeExpertBookingRequest({ notes: "please help" }, OWNER_ID, undefined);
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.status, 400);
-    assert.match(result.message, /trip/i, "the 400 message must say a trip is required, not a generic error");
+test("G1: a request with no tripId is AUTHORIZED (trip-less commerce, unchanged pre-existing behavior)", () => {
+  const result = authorizeExpertBookingRequest({ serviceId: "svc-visa", notes: "please help" }, OWNER_ID, undefined);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data.tripId, undefined, "no tripId was supplied, so none is present on the authorized data");
+    assert.equal(result.data.serviceId, "svc-visa");
   }
 });
 
-test("G1b: an empty-string tripId is refused with a 400 (min(1), not just presence)", () => {
+test("G1b: an empty-string tripId behaves like no tripId — authorized, no ownership check performed", () => {
+  // z.string().optional() treats "" as a present-but-empty string; the ROUTE only ever looks up
+  // and enforces ownership for a truthy tripId (mirrors `if (tripId)` in server/routes.ts), so an
+  // empty string is authorized the same as an absent one — never treated as "trip not found".
   const result = authorizeExpertBookingRequest({ tripId: "" }, OWNER_ID, undefined);
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.status, 400);
+  assert.equal(result.ok, true);
 });
 
-test("G1c: a non-string tripId is refused with a 400", () => {
+test("G1c: a non-string tripId is refused with a 400 (a malformed body, not a missing trip)", () => {
   const result = authorizeExpertBookingRequest({ tripId: 12345 }, OWNER_ID, undefined);
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.status, 400);
 });
 
-test("G2: a tripId owned by a DIFFERENT user is refused with 401, never 200", () => {
+test("G2: a tripId owned by a DIFFERENT user is refused with 401, never silently downgraded to trip-less", () => {
   const trip = { userId: OTHER_USER_ID };
   const result = authorizeExpertBookingRequest({ tripId: TRIP_ID }, OWNER_ID, trip);
   assert.equal(result.ok, false);
@@ -115,13 +123,14 @@ test("G3b: notes defaults to an empty string when omitted (schema default, not a
 
 // ── G4: the ROUTE's decision to create the advisor row, proven with a stubbed ensureTripAdvisorRow ──
 //
-// This mirrors the shape of server/routes.ts's handler for the owner-authorized + serviceId
-// branch: once `authorizeExpertBookingRequest` returns ok, and a service resolves to a
-// providerId, the route calls `ensureTripAdvisorRow(tripId, providerId, notes)` — the SAME
-// function the routed-lead caller in server/routes/booking-actions.ts uses (one implementation,
-// two callers, §18 rule 1). We stand up a tiny stand-in of just that decision here (no Express,
-// no DB) so the "advisor row created for an owned trip" behavior has a direct proof; the
-// production wiring itself is grepped for in G5 below.
+// This mirrors the shape of server/routes.ts's handler for the serviceId branch: once
+// `authorizeExpertBookingRequest` returns ok, and a service resolves to a providerId, the route
+// calls `ensureTripAdvisorRow(tripId, providerId, notes)` — the SAME function the routed-lead
+// caller in server/routes/booking-actions.ts uses (one implementation, two callers, §18 rule
+// 1) — but ONLY when tripId is present (`if (providerId && tripId)` in the real handler). A
+// trip-less authorized request (plain commerce) must create no advisor row at all. We stand up
+// a tiny stand-in of just that decision here (no Express, no DB) so both shapes have a direct
+// proof; the production wiring itself is grepped for in G5 below.
 async function handleAuthorizedRequest(
   body: unknown,
   sessionUserId: string,
@@ -136,7 +145,7 @@ async function handleAuthorizedRequest(
   let advisorRowCreated = false;
   if (serviceId) {
     const providerId = resolveProviderId(serviceId);
-    if (providerId) {
+    if (providerId && tripId) {
       await ensureTripAdvisorRowStub(tripId, providerId, notes || null);
       advisorRowCreated = true;
     }
@@ -185,6 +194,27 @@ test("G4b: unauthorized (non-owner) tripId never reaches the advisor-row step", 
   assert.equal(calls.length, 0, "the advisor row must never be created for a request that failed authorization");
 });
 
+test("G4c: a trip-less authorized request (plain commerce) creates NO advisor row", async () => {
+  // Mirrors visa-help.tsx: { serviceId, bookingMetadata }, no tripId. Must still 201 (the
+  // booking itself is created) but must never touch trip_expert_advisors.
+  const calls: unknown[] = [];
+  const stub = async (...args: unknown[]) => {
+    calls.push(args);
+  };
+
+  const result = await handleAuthorizedRequest(
+    { serviceId: "svc-visa", notes: "please handle my visa" },
+    OWNER_ID,
+    undefined,
+    () => "expert-user-9",
+    stub,
+  );
+
+  assert.equal(result.status, 201);
+  assert.equal(result.advisorRowCreated, false, "no trip was named, so no advisor is attached");
+  assert.equal(calls.length, 0, "ensureTripAdvisorRow must never be called for a trip-less request");
+});
+
 // ── G5: production wiring — the route calls the SAME shared ensureTripAdvisorRow, not a second
 //        raw INSERT into trip_expert_advisors (§18 rule 1: one implementation, one more caller) ──
 test("G5: server/routes.ts imports ensureTripAdvisorRow from booking-actions.service and calls it in the booking-request handler, with no second raw INSERT into trip_expert_advisors nearby", async () => {
@@ -217,8 +247,10 @@ test("G5: server/routes.ts imports ensureTripAdvisorRow from booking-actions.ser
   );
 });
 
-// Schema export sanity — importable on its own, no side effects.
-test("schema export: expertBookingRequestSchema rejects a body with no tripId", () => {
+// Schema export sanity — importable on its own, no side effects. tripId is OPTIONAL: the
+// endpoint is overloaded by five callers and not every one shares a trip (§14/coordinator
+// narrowing, same-day correction of this ruling's original "tripId REQUIRED" wording).
+test("schema export: expertBookingRequestSchema accepts a body with no tripId", () => {
   const parsed = expertBookingRequestSchema.safeParse({ notes: "x" });
-  assert.equal(parsed.success, false);
+  assert.equal(parsed.success, true);
 });
