@@ -32,9 +32,10 @@ import {
   Sparkles,
   Ticket,
   Undo2,
+  UserPlus,
   Users,
 } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -81,6 +82,7 @@ import {
   IMPLICIT_EVENT_GROUP_KEY,
   type PlanEvent,
 } from "@/lib/slip-events";
+import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { BuildAroundDialog } from "./BuildAroundDialog";
@@ -385,6 +387,86 @@ function SlipItemRow({
 }
 
 /**
+ * THE EVENT HEADER'S HIRE AFFORDANCE (ledger `2026-09-04-hire-from-slip`; clause (c) of
+ * `2026-09-04-slip-precondition`).
+ *
+ * Owner-only, and deliberately TWO states and no more:
+ *
+ *  - NO advisor on the plan yet => "Hire an expert", which opens the picker for THIS event
+ *    (`HireExpertDialog`); the event's occasion supplies the role chips (Locked Decision 31).
+ *  - AN advisor exists => their standing, said plainly. `pending` is "Request sent - awaiting
+ *    <name>": the invitation is out and the expert has accepted nothing, which is exactly what
+ *    Locked Decision 12 means when it says a PENDING advisor may not write. NO ETA is shown -
+ *    nothing on the platform knows when this expert will answer, and a guessed one would be the
+ *    §13 fabricated-claim class.
+ *
+ * IT SAYS "THIS PLAN", NOT "THIS EVENT", ON PURPOSE. `trip_expert_advisors` is keyed
+ * (trip, expert) and has no event column - this lane did not add one - so the row that exists is
+ * a PLAN-level advisor. The affordance sits on the event header because that is where the
+ * traveler decides, but the sentence never claims an expert belongs to the event. Where several
+ * experts are on one plan, `GET /api/trips/:id/expert-advisor` returns the most recent
+ * pending/accepted one, so this line is incomplete rather than wrong - recorded in the ledger.
+ */
+function EventHireAffordance({
+  tripId,
+  destination,
+  event,
+}: {
+  tripId: string;
+  destination: string | null | undefined;
+  event: PlanEvent;
+}) {
+  const [open, setOpen] = useState(false);
+  // The owner-gated advisor read the slip's own AssignExpertSlot already uses - one endpoint,
+  // one cache entry, no second query shape for the same fact.
+  const { data } = useQuery<{
+    advisor: { status?: string | null; first_name?: string | null; last_name?: string | null } | null;
+  }>({
+    queryKey: [`/api/trips/${tripId}/expert-advisor`],
+    enabled: !!tripId,
+  });
+  const advisor = data?.advisor ?? null;
+
+  if (advisor) {
+    const name = [advisor.first_name, advisor.last_name].filter(Boolean).join(" ").trim();
+    const label =
+      advisor.status === "pending"
+        ? `Request sent — awaiting ${name || "your expert"}`
+        : `${name || "An expert"} is advising this plan`;
+    return (
+      <p className="mt-1 text-[11px] text-muted-foreground" data-testid={`slip-event-advisor-${event.id}`}>
+        {label}
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="mt-1 h-6 px-1.5 text-[11px] text-primary hover:text-primary"
+        onClick={() => setOpen(true)}
+        data-testid={`slip-event-hire-${event.id}`}
+      >
+        <UserPlus className="w-3 h-3 mr-1" />
+        Hire an expert
+      </Button>
+      {open && (
+        <HireExpertDialog
+          tripId={tripId}
+          destination={destination}
+          event={event}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      )}
+    </>
+  );
+}
+
+/**
  * One EVENT inside the day (migration 277; ledger `2026-09-04-slip-events`). A bordered inset
  * around the items that name this `user_experiences` row — the same inset grammar
  * `ExpertNoteBlock` uses, drawn from theme tokens so it follows light/dark like everything else.
@@ -401,12 +483,26 @@ function SlipItemRow({
  * The plan's ONE implicit unnamed event never reaches this component — it renders as a bare
  * Fragment, with no heading at all (see `groupItemsByEvent`).
  */
-function SlipEventGroupBlock({ event, children }: { event: PlanEvent; children: ReactNode }) {
+function SlipEventGroupBlock({
+  event,
+  tripId,
+  destination,
+  isOwner,
+  children,
+}: {
+  event: PlanEvent;
+  tripId: string;
+  destination: string | null | undefined;
+  isOwner: boolean;
+  children: ReactNode;
+}) {
   // ONE derivation, shared with the "Which event?" picker (ledger `2026-09-04-which-event-picker`):
   // date-when-set · place-when-set, and never a clock time. Restating it here is the drift class
   // §18 rule 1 names — and the second copy is exactly where a fabricated start time gets written.
   const meta = eventMetaLine(event);
-  const hasHeader = !!event.title || !!meta;
+  // The hire affordance is an owner-only planning action, so an event with neither a title nor a
+  // meta line still gets a header for the owner — and still gets NO invented label (§13).
+  const hasHeader = !!event.title || !!meta || isOwner;
   return (
     <section
       className="my-2 rounded-lg border border-border bg-muted/20"
@@ -425,6 +521,7 @@ function SlipEventGroupBlock({ event, children }: { event: PlanEvent; children: 
               {meta}
             </p>
           )}
+          {isOwner && <EventHireAffordance tripId={tripId} destination={destination} event={event} />}
         </header>
       )}
       <div className="pb-1">{children}</div>
@@ -1201,7 +1298,13 @@ export function SlipView({
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
                   // not an "unassigned" bucket, and a label here would be a name nobody wrote (§13).
                   return group.event ? (
-                    <SlipEventGroupBlock key={group.key} event={group.event}>
+                    <SlipEventGroupBlock
+                      key={group.key}
+                      event={group.event}
+                      tripId={tripId}
+                      destination={data.trip?.destination}
+                      isOwner={isOwner}
+                    >
                       {rows}
                     </SlipEventGroupBlock>
                   ) : (
