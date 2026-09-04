@@ -5022,6 +5022,35 @@ export const itineraryItemEventLinkSchema = createInsertSchema(itineraryItems)
   .partial()
   .extend({ userExperienceId: z.string().min(1).nullish() });
 
+/**
+ * ALLOWLIST (§19) — the ONLY way a request body may reach `POST /api/trips/:tripId/advisors`,
+ * the slip's CHOOSE-an-expert rail (ledger `2026-09-04-hire-from-slip`, the missing piece named
+ * by `2026-09-04-slip-precondition` (c)). Pick-based on purpose: `trip_expert_advisors` carries
+ * `status`, `workspaceStatus`, `planApprovalStatus` and `expertResponse` — the expert's own
+ * answer and the platform's lifecycle state — and under an `.omit()` denylist every one of those
+ * would be client-settable BY DEFAULT, which is the standing class §19 names. Here the traveler
+ * may state exactly two things: WHICH expert, and WHAT they want to say.
+ *
+ * `tripId` is deliberately NOT pickable: it comes from the ROUTE, which is what the ownership
+ * check authorized (§14 — the acting user from the session, the record from the URL, never the
+ * body).
+ *
+ * `userExperienceId` is EXTENDED IN, not picked: there is NO advisor→event column, and this lane
+ * deliberately did not add one (a schema change needs the decision-maker first). The field names
+ * the event the traveler pressed "Hire an expert" ON, is VERIFIED server-side against the trip by
+ * the shared `resolveItemEventLink`, and is then used for exactly one thing — naming that event
+ * in the human-readable note the expert reads. It is never persisted as a link, and no surface
+ * may claim an expert is assigned to an event (§13).
+ */
+export const tripAdvisorHireSchema = createInsertSchema(tripExpertAdvisors)
+  .pick({ localExpertId: true, message: true })
+  .extend({
+    localExpertId: z.string().min(1, "localExpertId is required"),
+    message: z.string().max(2000).nullish(),
+    userExperienceId: z.string().min(1).nullish(),
+  });
+export type TripAdvisorHire = z.infer<typeof tripAdvisorHireSchema>;
+
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 

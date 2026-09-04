@@ -23,7 +23,9 @@ import { db } from '../db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
-import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, users, PLAN_APPROVAL_STATUSES } from '@shared/schema';
+import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, userExperiences, users, PLAN_APPROVAL_STATUSES, tripAdvisorHireSchema } from '@shared/schema';
+import { hireAdvisorFromSlip, type HireAdvisorEventResolution } from '../services/hire-advisor.service';
+import { resolveItemEventLink } from '../services/item-event-link.service';
 import { getExpertSplitRates } from '../services/commission';
 import { resolveDirectProviderRate, pickOwnerShareRate } from '../services/direct-charge-rate.service';
 import {
@@ -55,6 +57,9 @@ import {
   getTripDestination,
   getExpertQueuePosition,
   assignExpertAdvisor,
+  // The ONE author of a `trip_expert_advisors` row for an invited expert. The slip's
+  // choose-an-expert rail below is a CALLER of it, never a second INSERT (§18 rule 1).
+  ensureTripAdvisorRow,
   createExpertAssignmentNotification,
   getTripLabel,
   getExpertAssignedTrips,
@@ -736,6 +741,102 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   } catch (error: any) {
     console.error('Assign expert advisor error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/trips/:tripId/advisors — CHOOSING an expert from the slip.
+ *
+ * Ledger `2026-09-04-hire-from-slip`; the missing piece clause (c) of
+ * `2026-09-04-slip-precondition` named. Until now the slip could hire only by AUTO-ROUTE
+ * (`EscalationCTA` -> `POST /api/expert-requests` -> `lead-routing.service.ts`): the traveler
+ * could ask for AN expert, never THIS one. This is the choose rail, and it is deliberately the
+ * thinnest possible thing that can exist beside the routed one — the decisions live in
+ * `hire-advisor.service.ts` and the row is written by the SAME `ensureTripAdvisorRow` a routed
+ * lead uses. One author, one more caller (§18 rule 1).
+ *
+ * §14/§19 posture, spelled out because this endpoint takes an identity in its body:
+ *   · the acting user is the SESSION's, the plan is the URL's, and ownership is re-verified
+ *     server-side by the shared `verifyTripOwnership` — a body may not name either;
+ *   · the body is parsed by the pick-based ALLOWLIST `tripAdvisorHireSchema`, so `status`,
+ *     `workspaceStatus`, `planApprovalStatus` and `expertResponse` are unreachable from a request
+ *     no matter what a caller sends. The row is born `pending` and only the expert can move it
+ *     (Locked Decision 12: a PENDING advisor may not write to the plan);
+ *   · no money, no rate and no amount is decided here — an invitation costs nothing.
+ *
+ * The event id is VERIFIED and then used only to NAME the event in the note. There is no
+ * advisor->event column and this lane did not add one — see `hire-advisor.service.ts`.
+ */
+router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const parsed = tripAdvisorHireSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'localExpertId is required' });
+    }
+    const { tripId } = req.params;
+
+    const outcome = await hireAdvisorFromSlip(
+      {
+        verifyTripOwnership,
+        isExpertApproved,
+        // The event->trip pairing is answered by the SHARED resolver every item write rail uses
+        // (migration 277, Locked Decision 29). A second "does this event belong to this trip?"
+        // written here is the derivation-drift class §18 rule 1 names — and it is exactly where a
+        // cross-trip event id would eventually be let through. The title read that follows is for
+        // the note only, and happens ONLY once the pairing has been proven.
+        resolveEventOnTrip: async (tid, eventId): Promise<HireAdvisorEventResolution> => {
+          const link = await resolveItemEventLink(tid, true, eventId);
+          if (!link.ok) return { ok: false, message: link.message };
+          const [row] = await db
+            .select({ title: userExperiences.title })
+            .from(userExperiences)
+            .where(eq(userExperiences.id, eventId))
+            .limit(1);
+          return { ok: true, title: row?.title ?? null };
+        },
+        ensureTripAdvisorRow,
+      },
+      {
+        tripId,
+        userId,
+        localExpertId: parsed.data.localExpertId,
+        message: parsed.data.message ?? null,
+        userExperienceId: parsed.data.userExperienceId ?? null,
+      },
+    );
+
+    if (!outcome.ok) {
+      return res.status(outcome.httpStatus).json({ error: outcome.message });
+    }
+
+    // Ancillary, and never allowed to break the operation that authorized it (§15b): the expert
+    // is notified exactly as a routed lead notifies them, fire-and-forget.
+    getTripLabel(tripId)
+      .then(label => createExpertAssignmentNotification(outcome.expertUserId, tripId, label))
+      .catch(err => console.warn('Could not create expert assignment notification:', err));
+
+    return res.json({
+      success: true,
+      // Always `pending` — the invitation is sent, nothing is accepted. The traveler-facing copy
+      // says "awaiting <name>" and never promises a response time we do not have (§13).
+      status: outcome.status,
+      expertUserId: outcome.expertUserId,
+      eventTitle: outcome.eventTitle,
+    });
+  } catch (error: any) {
+    // `trip_expert_advisors` carries a UNIQUE (trip_id, local_expert_id) index while
+    // `ensureTripAdvisorRow` skips only PENDING/ACCEPTED rows — so re-inviting an expert who
+    // previously REJECTED this plan collides. That is a real traveler action, not a server fault,
+    // so it answers as a plain 409 instead of a 500. (The gap itself belongs to the shared
+    // author, not to this caller; recorded in the ledger, not patched here.)
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'That expert has already been asked about this plan.' });
+    }
+    console.error('Hire advisor from slip error:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
