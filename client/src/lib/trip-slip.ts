@@ -14,9 +14,12 @@
  *
  * THE RULES IT ENCODES, and why each one is a rule rather than a call-site habit:
  *
- * 1. **NO REQUEST WITHOUT A `tripId`.** `ensureSlipForExpertRequest` hands the trip id to
- *    `sendRequest` as a REQUIRED positional argument, so there is no shape of this flow in
- *    which a request goes out unbound. Every early return leaves `sendRequest` uncalled.
+ * 1. **NO TOUCHPOINT AND NO REQUEST WITHOUT A `tripId`.** Locked Decision 32 says no expert
+ *    TOUCHPOINT exists without a slip, and the Expert Help dialog — AI matching plus a live
+ *    advisor chat — is a touchpoint, not a preview of one. So the slip is resolved BEFORE
+ *    anything expert-facing opens: `onSlipReady` fires only once a slip is in hand, and
+ *    `sendRequest` takes the trip id as a REQUIRED positional argument, so there is no shape of
+ *    this flow in which either happens unbound. Every early return leaves both uncalled.
  *
  * 2. **DATES ARE NEVER INVENTED (§13).** `trips.start_date` / `trips.end_date` are NOT NULL.
  *    When the page has no dates the answer is to ASK the traveler — not `new Date()`, not
@@ -178,45 +181,82 @@ export async function mintTripSlip(
 export type ExpertRequestOutcome =
   /** The request went out, bound to `tripId`. `minted` says whether this call created the slip. */
   | { status: "sent"; tripId: string; minted: boolean }
-  /** No slip ⇒ NO mint attempt beyond what was refused, and NO request. Show `message`. */
+  /** A slip is in hand and the touchpoint is authorized, but nothing was sent — the caller asked
+   *  for the request to be skipped (an unchanged plan already shared). NOT a failure. */
+  | { status: "ready"; tripId: string; minted: boolean }
+  /** No slip ⇒ NO mint attempt beyond what was refused, NO touchpoint and NO request. Show
+   *  `message`. */
   | { status: "blocked"; reason: SlipRefusalReason; message: string }
   /** The slip exists; the request itself failed. The caller may retry against this same trip. */
   | { status: "request_failed"; tripId: string; minted: boolean; error: unknown };
 
-export interface EnsureSlipDeps {
+/** The slip half on its own: reuse, or mint, or refuse. */
+export type SlipResolution =
+  | { ok: true; tripId: string; minted: boolean }
+  | { ok: false; reason: SlipRefusalReason; message: string };
+
+export interface ResolveSlipDeps {
   /** Normally `mintTripSlip`. Injected so a caller (and a test) can supply its own poster. */
   mint: (basics: SlipBasics) => Promise<SlipMintOutcome>;
-  /** Sends the expert request. `tripId` is REQUIRED — rule 1 is enforced by this signature. */
-  sendRequest: (tripId: string) => Promise<unknown>;
   /** Fired only after a mint actually produced a slip, so the caller can bind it into trip
-   *  context before the request goes out. Never called for a reused trip. */
+   *  context. Never called for a reused trip. */
   onMinted?: (tripId: string) => void;
 }
 
+export interface EnsureSlipDeps extends ResolveSlipDeps {
+  /** Sends the expert request. `tripId` is REQUIRED — rule 1 is enforced by this signature. */
+  sendRequest: (tripId: string) => Promise<unknown>;
+  /** Fired once a slip is in hand (reused OR freshly minted) and BEFORE any request goes out.
+   *  This is where an expert TOUCHPOINT is opened — the Expert Help dialog, a chat, a picker.
+   *  Locked Decision 32 says no touchpoint exists without a slip, so a refusal must reach the
+   *  traveler with this hook never having fired. */
+  onSlipReady?: (tripId: string, minted: boolean) => void;
+  /** The slip is still REQUIRED and the touchpoint still opens, but the request is not
+   *  re-sent — the caller has already shared this exact plan. The dedupe belongs to the
+   *  request, never to the precondition: a second click on an unchanged plan must still be
+   *  able to open the touchpoint. Yields `status: "ready"`, never a false `"sent"`. */
+  skipRequest?: boolean;
+}
+
 /**
- * SLIP FIRST, THEN THE EXPERT. The whole of lane (a)'s decision, in one place:
+ * THE SLIP HALF, and the only implementation of it:
  *   - a slip already bound  ⇒ reuse it, mint nothing;
- *   - no slip, basics short ⇒ refuse: no mint, NO request, the traveler is asked;
- *   - no slip, basics good  ⇒ mint, bind, then request with the new id.
+ *   - no slip, basics short ⇒ refuse (§13: the traveler is asked, no date is invented);
+ *   - no slip, basics good  ⇒ mint and bind.
+ * Every expert touchpoint on this page goes through here, so "is there a slip?" is answered
+ * once — a second copy of it is the derivation-drift class CLAUDE.md §18 rule 1 names.
+ */
+export async function resolveSlipForExpertTouchpoint(
+  input: { existingTripId?: string | null; basics: SlipBasics },
+  deps: ResolveSlipDeps,
+): Promise<SlipResolution> {
+  if (hasBoundSlip(input.existingTripId)) {
+    return { ok: true, tripId: input.existingTripId.trim(), minted: false };
+  }
+  const outcome = await deps.mint(input.basics);
+  if (!outcome.ok) return { ok: false, reason: outcome.reason, message: outcome.message };
+  deps.onMinted?.(outcome.tripId);
+  return { ok: true, tripId: outcome.tripId, minted: true };
+}
+
+/**
+ * SLIP FIRST, THEN THE EXPERT — the whole of lane (a)'s ordering, in one place. Resolves the
+ * slip, opens the touchpoint only once one exists, and only then sends the request.
  */
 export async function ensureSlipForExpertRequest(
   input: { existingTripId?: string | null; basics: SlipBasics },
   deps: EnsureSlipDeps,
 ): Promise<ExpertRequestOutcome> {
-  let tripId: string;
-  let minted = false;
-
-  if (hasBoundSlip(input.existingTripId)) {
-    tripId = input.existingTripId.trim();
-  } else {
-    const outcome = await deps.mint(input.basics);
-    if (!outcome.ok) {
-      return { status: "blocked", reason: outcome.reason, message: outcome.message };
-    }
-    tripId = outcome.tripId;
-    minted = true;
-    deps.onMinted?.(tripId);
+  const slip = await resolveSlipForExpertTouchpoint(input, deps);
+  if (!slip.ok) {
+    // No slip ⇒ no touchpoint. `onSlipReady` has not fired and `sendRequest` never will.
+    return { status: "blocked", reason: slip.reason, message: slip.message };
   }
+
+  const { tripId, minted } = slip;
+  deps.onSlipReady?.(tripId, minted);
+
+  if (deps.skipRequest) return { status: "ready", tripId, minted };
 
   try {
     await deps.sendRequest(tripId);

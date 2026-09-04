@@ -20,6 +20,12 @@
  *   S6  Inverted dates are refused; a good range is not.
  *   S7  The mint body carries only stated values — no invented dates, no server-derived fields.
  *   S8  A blank/whitespace tripId is NOT a bound slip (it would forward as `""`).
+ *   S9  THE TOUCHPOINT ITSELF IS GATED, not only the request. Locked Decision 32 says no expert
+ *       TOUCHPOINT exists without a slip, and the Expert Help dialog (AI expert matching + a
+ *       live advisor chat) is one. So `onSlipReady` — the hook that opens it — never fires on
+ *       a refusal, fires on a reused slip WITHOUT minting, and fires on a fresh mint before
+ *       the request. A half-open dialog over a plan that cannot reach an expert is the exact
+ *       shape this lane exists to remove.
  *
  * Pure unit: no DOM, no DB, no fetch, no React. Every network dependency is injected.
  * Run: npx tsx --test client/src/lib/__tests__/trip-slip.test.ts
@@ -32,6 +38,7 @@ import {
   ensureSlipForExpertRequest,
   hasBoundSlip,
   mintTripSlip,
+  resolveSlipForExpertTouchpoint,
   SLIP_REFUSAL_MESSAGES,
   TRIP_MINT_ENDPOINT,
   type SlipBasics,
@@ -50,11 +57,17 @@ function spies(mintOutcome: SlipMintOutcome) {
   const mintCalls: SlipBasics[] = [];
   const requestCalls: string[] = [];
   const mintedCalls: string[] = [];
+  /** Stands in for `setExpertHelpDialogOpen(true)` — the expert touchpoint opening. */
+  const opened: string[] = [];
   return {
     mintCalls,
     requestCalls,
     mintedCalls,
+    opened,
     deps: {
+      onSlipReady: (tripId: string) => {
+        opened.push(tripId);
+      },
       mint: async (basics: SlipBasics) => {
         mintCalls.push(basics);
         return mintOutcome;
@@ -307,6 +320,161 @@ describe("S7 — the mint body carries only what the traveler stated", () => {
     assert.equal(buildTripMintBody({ ...GOOD, title: "Anniversary" }).title, "Anniversary");
     assert.equal(buildTripMintBody({ ...GOOD, title: "   " }).title, "Kyoto trip");
     assert.equal(buildTripMintBody(GOOD).title, "Kyoto trip");
+  });
+});
+
+describe("S9 — the touchpoint is gated, not only the request", () => {
+  it("does NOT open the dialog when the precondition refuses", async () => {
+    for (const basics of [
+      { destination: "Kyoto, Japan" }, // no dates
+      { destination: "Kyoto, Japan", startDate: "2026-10-01" }, // half a range
+      { startDate: "2026-10-01", endDate: "2026-10-08" }, // no destination
+      { destination: "Kyoto, Japan", startDate: "2026-10-08", endDate: "2026-10-01" },
+    ] as SlipBasics[]) {
+      const s = spies({ ok: true, tripId: "unused" });
+      const outcome = await ensureSlipForExpertRequest({ basics }, {
+        ...s.deps,
+        mint: (b) =>
+          mintTripSlip(b, async () => {
+            throw new Error("the mint door must not open for short basics");
+          }),
+      });
+
+      assert.equal(outcome.status, "blocked", `${JSON.stringify(basics)} must not open`);
+      assert.deepEqual(s.opened, [], "no expert touchpoint may open without a slip");
+      assert.deepEqual(s.requestCalls, []);
+      assert.ok(
+        outcome.status === "blocked" && outcome.message.length > 0,
+        "the traveler is told what is missing",
+      );
+    }
+  });
+
+  it("does NOT open the dialog when the mint itself fails or yields no id", async () => {
+    for (const poster of [
+      async () => {
+        throw new Error("503");
+      },
+      async () => ({}) as { id?: string },
+    ]) {
+      const s = spies({ ok: true, tripId: "unused" });
+      const outcome = await ensureSlipForExpertRequest({ basics: GOOD }, {
+        ...s.deps,
+        mint: (b) => mintTripSlip(b, poster),
+      });
+      assert.equal(outcome.status, "blocked");
+      assert.deepEqual(s.opened, [], "a failed mint is not a slip, so nothing opens");
+      assert.deepEqual(s.requestCalls, []);
+    }
+  });
+
+  it("opens on a freshly minted slip, bound to it, before the request", async () => {
+    const order: string[] = [];
+    const s = spies({ ok: true, tripId: "trip-new" });
+    const outcome = await ensureSlipForExpertRequest({ basics: GOOD }, {
+      mint: async (b) => {
+        order.push("mint");
+        s.mintCalls.push(b);
+        return { ok: true as const, tripId: "trip-new" };
+      },
+      onMinted: (tripId: string) => {
+        order.push("bind");
+        s.mintedCalls.push(tripId);
+      },
+      onSlipReady: (tripId: string) => {
+        order.push("open");
+        s.opened.push(tripId);
+      },
+      sendRequest: async (tripId: string) => {
+        order.push("send");
+        s.requestCalls.push(tripId);
+      },
+    });
+
+    assert.equal(outcome.status, "sent");
+    assert.deepEqual(s.opened, ["trip-new"]);
+    // The dialog opens only after a slip exists, and never after the request.
+    assert.deepEqual(order, ["mint", "bind", "open", "send"]);
+  });
+
+  it("opens on an existing slip WITHOUT minting anything", async () => {
+    const s = spies({ ok: true, tripId: "trip-should-not-exist" });
+    const outcome = await ensureSlipForExpertRequest(
+      { existingTripId: "trip-bound", basics: {} },
+      s.deps,
+    );
+
+    assert.equal(outcome.status, "sent");
+    assert.deepEqual(s.opened, ["trip-bound"]);
+    assert.deepEqual(s.mintCalls, [], "an existing slip must not be re-minted to open a dialog");
+    assert.deepEqual(s.mintedCalls, []);
+  });
+
+  it("still opens on a de-duplicated plan, and reports 'ready' rather than a false 'sent'", async () => {
+    // The dedupe governs the REQUEST. A second click on an unchanged plan must still be able to
+    // reach the expert touchpoint the traveler already earned.
+    const s = spies({ ok: true, tripId: "unused" });
+    const outcome = await ensureSlipForExpertRequest(
+      { existingTripId: "trip-bound", basics: GOOD },
+      { ...s.deps, skipRequest: true },
+    );
+
+    assert.equal(outcome.status, "ready");
+    assert.equal(outcome.status === "ready" && outcome.tripId, "trip-bound");
+    assert.deepEqual(s.opened, ["trip-bound"]);
+    assert.deepEqual(s.requestCalls, [], "nothing is re-sent for an unchanged plan");
+  });
+
+  it("skipRequest never rescues a refusal — no slip is still no touchpoint", async () => {
+    const s = spies({
+      ok: false,
+      reason: "dates_missing",
+      message: SLIP_REFUSAL_MESSAGES.dates_missing,
+    });
+    const outcome = await ensureSlipForExpertRequest(
+      { basics: { destination: "Kyoto, Japan" } },
+      { ...s.deps, skipRequest: true },
+    );
+
+    assert.equal(outcome.status, "blocked");
+    assert.deepEqual(s.opened, []);
+    assert.deepEqual(s.requestCalls, []);
+  });
+
+  it("the slip resolver alone makes the same three calls", async () => {
+    const minted: string[] = [];
+    // Reuse: no mint.
+    assert.deepEqual(
+      await resolveSlipForExpertTouchpoint(
+        { existingTripId: "trip-bound", basics: {} },
+        {
+          mint: async () => {
+            throw new Error("must not mint over an existing slip");
+          },
+        },
+      ),
+      { ok: true, tripId: "trip-bound", minted: false },
+    );
+    // Mint: binds first.
+    assert.deepEqual(
+      await resolveSlipForExpertTouchpoint(
+        { basics: GOOD },
+        {
+          mint: async () => ({ ok: true as const, tripId: "trip-new" }),
+          onMinted: (id: string) => minted.push(id),
+        },
+      ),
+      { ok: true, tripId: "trip-new", minted: true },
+    );
+    assert.deepEqual(minted, ["trip-new"]);
+    // Refuse: nothing bound.
+    const refused = await resolveSlipForExpertTouchpoint(
+      { basics: { destination: "Kyoto, Japan" } },
+      { mint: (b) => mintTripSlip(b, async () => ({ id: "x" })) },
+    );
+    assert.equal(refused.ok, false);
+    assert.equal(refused.ok === false && refused.reason, "dates_missing");
+    assert.deepEqual(minted, ["trip-new"], "a refusal binds nothing");
   });
 });
 
