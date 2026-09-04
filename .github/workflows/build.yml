@@ -292,6 +292,12 @@ jobs:
       # not quietly become a second authority by sorting.
       - name: Plan event ordering pin
         run: npx tsx --test server/__tests__/user-experience-order.test.ts
+      # 2026-09-04-wedding-landing-moment: the "Planning your own?" callout names "Plan this
+      # moment", the CTA on the card above it, so it is only true INSIDE MomentsSection. C2/C3 pin
+      # that it cannot appear in the empty-state fallback (the rail), and C4 pins that it did not
+      # become a second planning opener beside the one the section already has.
+      - name: Moments planning-callout pin
+        run: npx tsx --test client/src/components/__tests__/moments-callout.test.tsx
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
