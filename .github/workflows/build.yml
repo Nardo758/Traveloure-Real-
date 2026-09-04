@@ -285,6 +285,13 @@ jobs:
       # updating the enum fails HERE rather than at a traveler's screen.
       - name: Occasion roles-needed pin
         run: npx tsx --test shared/__tests__/roles-needed.test.ts
+      # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
+      # plan's events have ONE order rather than one per surface — which is only true if the server
+      # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
+      # created_at DESC. O1-O3 pin both readers to the same ORDER BY, and pin that the client has
+      # not quietly become a second authority by sorting.
+      - name: Plan event ordering pin
+        run: npx tsx --test server/__tests__/user-experience-order.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)

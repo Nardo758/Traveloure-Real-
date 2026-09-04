@@ -3988,10 +3988,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   // User Experiences Methods
+  /**
+   * The caller's own experiences. ORDER IS CANONICAL AND SHARED WITH `getUserExperiencesByTrip`
+   * (ledger `2026-09-04-event-order`; decision-maker ratified Sep 4 2026): `event_date ASC NULLS
+   * LAST`, then `created_at ASC`.
+   *
+   * WHY IT CHANGED. This list is where the which-event picker gets a plan's events
+   * (`/api/user-experiences` → `eventsForTrip`), while the slip's plancard DTO gets the same
+   * events from `getUserExperiencesByTrip`. The two readers disagreed — this one was
+   * `created_at DESC` — so the SAME events appeared in two different orders on two surfaces of the
+   * same plan. `which-event.ts` rule 5 puts ordering deliberately in the server's hands precisely
+   * so there is ONE authority for it; two server orderings is that rule defeated one layer down
+   * (§18 rule 1). Chronological is the ratified answer: a plan reads forward in time, and undated
+   * events sort last rather than jumping the queue on a NULL.
+   *
+   * This is a USER-scoped list, so it spans plans; the ordering is still well-defined because
+   * `created_at ASC` breaks every tie a shared or absent `event_date` leaves.
+   */
   async getUserExperiences(userId: string): Promise<UserExperience[]> {
     return await db.select().from(userExperiences)
       .where(eq(userExperiences.userId, userId))
-      .orderBy(desc(userExperiences.createdAt));
+      .orderBy(sql`${userExperiences.eventDate} ASC NULLS LAST`, asc(userExperiences.createdAt));
   }
 
   async getUserExperienceById(experienceId: string): Promise<UserExperience | null> {
