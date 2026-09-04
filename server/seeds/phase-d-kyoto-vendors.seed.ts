@@ -40,15 +40,32 @@ const CAT = {
 } as const;
 
 // ─── Map from key name → slug in service_categories ─────────────────────────
-// Slugs are guaranteed to exist after seedCategories() runs before this seed.
+// Every slug here is created either by migration 034 or by seedCategories(), both of which run
+// before this seed (server/index.ts: runMigrations() then runDatabaseSeeding()); resolveCategoryIds()
+// warns and SKIPS a service whose slug is absent rather than inventing one.
+//
+// Ledger 2026-09-04-taxonomy-reconcile: ATTIRE_FASHION and CORPORATE_SERVICES used to point at
+// "services-wedding" / "services-corporate" — boot-seeded rows with NO `category_key`, so the
+// four vendor services filed under them were unreachable from every offering-driven surface (the
+// provider offering picker groups by service_offering_types.category_key; /earn partitions on the
+// same key). Those two bundle rows are retired from server/seed-categories.ts by the same ruling.
+// Both repoints land on categories migration 034 creates WITH a key, and both keys are in
+// EVENT_CATEGORY_KEYS (client/src/lib/earn-roles.ts), which is the honest home for wedding and
+// corporate-event supply:
+//   ATTIRE_FASHION      → rental-services      (category_key `rentals`) — the one service under it
+//                         is "Bridal Kimono Rental & Dressing", and 034's own description for this
+//                         category names "costume … rentals".
+//   CORPORATE_SERVICES  → events-celebrations  (category_key `event_coordinator`) — the three
+//                         services under it are retreat planning, an executive offsite and event
+//                         logistics consultation: event coordination, all three.
 const CAT_KEY_TO_SLUG: Record<string, string> = {
-  ATTIRE_FASHION:       "services-wedding",
+  ATTIRE_FASHION:       "rental-services",
   BEAUTY_STYLING:       "beauty-styling",
   EVENTS_CELEBRATIONS:  "events-celebrations",
   FLORAL_DECORATION:    "events-celebrations",
   PHOTOGRAPHY_VIDEO:    "photography-videography",
   MUSIC_PERFORMANCE:    "events-celebrations",
-  CORPORATE_SERVICES:   "services-corporate",
+  CORPORATE_SERVICES:   "events-celebrations",
   CULTURAL_EDUCATIONAL: "tours-experiences",
   LANGUAGE_TRANSLATION: "language-translation",
   RENTAL_SERVICES:      "specialty-services",

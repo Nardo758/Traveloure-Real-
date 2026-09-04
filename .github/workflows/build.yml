@@ -438,6 +438,28 @@ jobs:
       - name: Duplicate-migration-prefix guard
         run: node scripts/check-duplicate-migration-prefixes.cjs
 
+  category-reachability-guard:
+    name: category-reachability-guard (ledger 2026-09-04-taxonomy-reconcile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Three writers seed service_categories and the code assumes two. Migration 034 is the only
+      # one that assigns `category_key` — the join key every offering-driven reader uses (the
+      # provider offering picker's groups, /api/service-categories/provider-counts, the /earn role
+      # partition) — so a row a TS seeder invents without one is unreachable from all of them. That
+      # produced the `custom-other` dead end (repaired on disk by migrations 189 + 208) and the ten
+      # "services-*" bundle rows, whose slugs were ALREADY the bundle-key namespace in
+      # shared/constants/providerCategories.ts. R1 keyed-or-declared, R2 no bundle-key collision,
+      # R3 every offering's category_key resolves. Node built-ins only — no npm ci, no DB. Predicate
+      # fixtures FIRST (§18d).
+      - name: Category-reachability guard predicate self-test
+        run: node scripts/check-category-reachability.cjs --self-test
+      - name: Category-reachability guard
+        run: node scripts/check-category-reachability.cjs
+
   privileged-field-completeness-guard:
     name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
     runs-on: ubuntu-latest
