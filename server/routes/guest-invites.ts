@@ -3,8 +3,9 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
-import { createRateLimiter } from "../infrastructure/rate-limiter";
+import { createRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import crypto from "crypto";
+import { buildInviteLink, sendExperienceInvites } from "../services/guest-invite-send.service";
 
 /**
  * GUEST INVITE SYSTEM — organizer invite management + public token-based guest RSVP.
@@ -18,6 +19,12 @@ import crypto from "crypto";
  *   the unguessable token (crypto.randomBytes(16), unique column); no userId/inviteId
  *   is ever accepted from the body. Bodies are zod-validated with length/size caps,
  *   and the public endpoints are rate-limited (unauthenticated DB writes).
+ * - SENDING (POST /api/events/:experienceId/invites/send, ledger `2026-09-04-invite-mailer`)
+ *   goes through the EXISTING email outbox — never a direct provider call from this file. The
+ *   recipient is the guest row's own stored address and the organizer is the session user; the
+ *   body names neither. `invite_sent_at` is stamped ONLY by the send rail's atomic claim, so it
+ *   is a fact rather than an assumption, and a hidden occasion (migration 276
+ *   `default_visibility`) is refused outright.
  * - The token GET returns a REDACTED view of the parent experience (title/destination/
  *   date only) — never the organizer's budget/preferences/stepData.
  */
@@ -50,6 +57,20 @@ const rsvpSchema = z.object({
   transportationNeeded: z.boolean().optional(),
   specialRequests: z.string().max(2000).optional(),
   message: z.string().max(2000).optional(),
+});
+
+/**
+ * The send route's body (ledger `2026-09-04-invite-mailer`).
+ *
+ * §19 ALLOWLIST. This is a hand-written `z.object`, not a `createInsertSchema(...).omit()`, so a
+ * column added to `event_invites` tomorrow is unreachable from this body until someone names it
+ * here. It carries NO recipient and NO acting identity: the address comes from the guest's own
+ * row and the organizer from the session (§14). `inviteIds` selects among rows the caller already
+ * owns; a foreign id simply matches nothing at the organizer-scoped claim.
+ */
+const sendInvitesSchema = z.object({
+  inviteIds: z.array(z.string().max(64)).max(200).optional(),
+  templateId: z.string().max(64).optional(),
 });
 
 const inviteTemplateSchema = z.object({
@@ -177,11 +198,14 @@ router.post("/api/events/:experienceId/invites", isAuthenticated, async (req: Re
         guestName: guest.name,
         guestPhone: guest.phone,
         uniqueToken,
-        inviteSentAt: new Date(),
+        // `invite_sent_at` IS NOT STAMPED HERE (ledger `2026-09-04-invite-mailer`). Creating a
+        // link is not sending it: this route used to stamp the column while calling no mailer at
+        // all, so every invite claimed a send that had never happened. The column is now written
+        // in exactly one place — the claim inside the send rail — and means what it says.
       });
       createdInvites.push({
         ...invite,
-        inviteLink: `${process.env.APP_URL || "https://traveloure.com"}/invite/${uniqueToken}`,
+        inviteLink: buildInviteLink(uniqueToken),
       });
     }
 
@@ -214,10 +238,26 @@ router.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Req
     }
 
     const invites = await storage.getInvitesByExperience(experienceId);
-    const invitesWithLinks = invites.map((invite) => ({
-      ...invite,
-      inviteLink: `${process.env.APP_URL || "https://traveloure.com"}/invite/${invite.uniqueToken}`,
-    }));
+
+    // The send record (ledger `2026-09-04-invite-mailer`). `invite_send_log` is the table of what
+    // actually went out; the host sees the most recent attempt per invite beside the row. It says
+    // ACCEPTED FOR DELIVERY and nothing more — no opened, no clicked, no received.
+    const sendLog = await storage.getSendLogByExperience(experienceId);
+    const lastSendByInvite = new Map<string, (typeof sendLog)[number]>();
+    for (const entry of sendLog) {
+      if (!lastSendByInvite.has(entry.inviteId)) lastSendByInvite.set(entry.inviteId, entry);
+    }
+
+    const invitesWithLinks = invites.map((invite) => {
+      const last = lastSendByInvite.get(invite.id);
+      return {
+        ...invite,
+        inviteLink: buildInviteLink(invite.uniqueToken),
+        lastSend: last
+          ? { status: last.status, sentAt: last.sentAt, errorMessage: last.errorMessage }
+          : null,
+      };
+    });
 
     return res.json({ invites: invitesWithLinks });
   } catch (error: any) {
@@ -225,6 +265,71 @@ router.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Req
     return res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * POST /api/events/:experienceId/invites/send
+ *
+ * Email the guests their own invite links (ledger `2026-09-04-invite-mailer`). Body:
+ * `{ inviteIds?: string[], templateId?: string }` — omit `inviteIds` to send to everyone the
+ * debounce window lets through.
+ *
+ * The gate is the same `verifyExperienceOwnership` every other organizer endpoint on this rail
+ * uses; the service re-checks it against the row it loads anyway, and the DB claim is scoped to
+ * `organizer_id` on top of that. Rate-limited with the EXISTING `strictRateLimiter` (5/min per
+ * IP+path, with the loopback escape hatch the rest of the app relies on in CI) because this is
+ * the one route here that causes outbound mail.
+ *
+ * Nothing in the response claims delivery: `enqueued` means the outbox accepted the message.
+ */
+router.post(
+  "/api/events/:experienceId/invites/send",
+  isAuthenticated,
+  strictRateLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { experienceId } = req.params;
+      const userId = sessionUserId(req);
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const validation = sendInvitesSchema.safeParse(req.body ?? {});
+      if (!validation.success) {
+        return res.status(400).json({ error: "Validation failed", details: validation.error.errors });
+      }
+
+      const isOwner = await verifyExperienceOwnership(experienceId, userId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You don't have permission to send invites for this experience" });
+      }
+
+      const outcome = await sendExperienceInvites({
+        experienceId,
+        organizerId: userId,
+        inviteIds: validation.data.inviteIds,
+        templateId: validation.data.templateId,
+      });
+
+      if (!outcome.ok) {
+        // A hidden occasion is a 409, not a 403: the caller has every right to the event, the
+        // event is the thing that cannot be mailed about. The client shows the reason verbatim.
+        const status =
+          outcome.refusal === "experience_not_found" ? 404 : outcome.refusal === "not_owner" ? 403 : 409;
+        return res.status(status).json({ error: outcome.message, refusal: outcome.refusal });
+      }
+
+      const enqueued = outcome.results.filter((r) => r.outcome === "enqueued").length;
+      const skipped = outcome.results.filter((r) => r.outcome === "skipped_recently_sent").length;
+      const failed = outcome.results.filter((r) => r.outcome === "enqueue_failed").length;
+
+      return res.json({ enqueued, skipped, failed, results: outcome.results });
+    } catch (error: any) {
+      console.error("Error sending invites:", error);
+      return res.status(500).json({ error: error.message });
+    }
+  },
+);
 
 /**
  * GET /api/events/:experienceId/invites/stats
