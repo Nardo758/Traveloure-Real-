@@ -110,3 +110,21 @@ export const OPERATING_MARKETS: readonly OperatingMarket[] = [
     countryCode:    'CO',
   },
 ] as const;
+
+/**
+ * "City, Country" labels for the 8 markets — DERIVED from the list above, never hand-listed,
+ * so a market added or renamed there cannot drift from what a signup surface offers.
+ *
+ * Added by ledger `2026-09-04-earn-contained-fixes` (gap 6 of the Ways-to-Earn audit): the
+ * expert application's destination picker carried its OWN hardcoded ten cities — Paris, Dubai,
+ * Sydney and seven more — and **Kyoto, the flagship launch market, was not among them**. An
+ * applicant could not state the one destination the platform most needs covered. This is that
+ * picker's source, and it is the module's own stated purpose (see the header: the client renders
+ * the market list from the SAME ratified source the trend engine uses, never a second copy).
+ *
+ * These are the markets the platform OPERATES in, not the only places an expert may know. A
+ * surface that offers only these must say so rather than implying the list is the world (§13).
+ */
+export const OPERATING_MARKET_DESTINATIONS: readonly string[] = OPERATING_MARKETS.map(
+  (m) => `${m.cityName}, ${m.country}`,
+);

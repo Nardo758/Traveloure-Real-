@@ -26,6 +26,8 @@ import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { formatExpertResponseTime } from "@/lib/expert-response-time";
+import { labelForExpertSpecialization, resolveExpertSpecializations } from "@shared/expert-vocabulary";
+import { useExpertOfferingLabels } from "@/lib/use-expert-offering-labels";
 
 // Continuity tokens — the same values as artifacts/mockup-sandbox's
 // _shared/continuity.css :root and the action-grammar mock's own badge tints
@@ -96,6 +98,9 @@ interface ExpertCardProps {
     specializations?: string[];
     expertForm?: {
       destinations?: string[];
+      /** `local_expert_forms.specializations` — the APPLICATION's answer. Historical; read only
+       *  as `resolveExpertSpecializations`'s documented last resort (gap 9). */
+      specializations?: string[];
       languages?: string[];
       yearsExperience?: string;
       responseTime?: string;
@@ -218,6 +223,9 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
 }
 
 export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant = "default" }: ExpertCardProps) {
+  // Gap 8: one shared, deduped read of the expert offering catalog (see the hook's header) —
+  // forty cards on a browse page make one request.
+  const offeringLabels = useExpertOfferingLabels();
   if (variant === "anchor") {
     return <ExpertAnchorCard expert={expert} detailQuery={detailQuery} />;
   }
@@ -247,11 +255,13 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
     || expert.verified === true;
   const superExpert = expert.superExpert || false;
 
-  // Empty array is TRUTHY in JS, so `expert.specialties || …` returned the empty
-  // `users.specialties` (default []) and the `specializations` fallback was dead
-  // code — the card never showed chips. Treat an empty array as absent so the
-  // populated `local_expert_forms.specializations` fallback actually fires (audit B2).
-  const specialties = (expert.specialties?.length ? expert.specialties : expert.specializations)?.slice(0, 2) || [];
+  // Gaps 8 + 9 (ledger `2026-09-04-earn-contained-fixes`). The empty-array-is-truthy fix
+  // (audit B2) survives inside `resolveExpertSpecializations`, which is now the ONE answer to
+  // "which store does an expert's specializations come from" — this card and `expert-detail.tsx`
+  // read the same function, so the browse card and the profile can no longer disagree. Each
+  // value is then rendered through the ONE label map: an enum slug becomes its human label, an
+  // offering key becomes that catalog row's display name, and anything else renders as-is.
+  const specialties = resolveExpertSpecializations(expert).slice(0, 2);
   const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
   const showNeighbourhoods = neighbourhoods.length > 0;
 
@@ -368,7 +378,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
               style={{ background: "#f5f7fa", color: "#667085" }}
               data-testid={`badge-specialty-${idx}`}
             >
-              {specialty}
+              {labelForExpertSpecialization(specialty, offeringLabels)}
             </span>
           ))}
           {languages.length > 0 && (
