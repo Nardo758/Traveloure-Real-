@@ -29,6 +29,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   countPlanEvents,
+  eventMetaLine,
   groupItemsByEvent,
   IMPLICIT_EVENT_GROUP_KEY,
   type EventLinkedItem,
@@ -179,5 +180,36 @@ describe("countPlanEvents — the chip's count, and what zero means", () => {
     assert.equal(countPlanEvents([]), 0);
     assert.equal(countPlanEvents(null), 0);
     assert.equal(countPlanEvents(undefined), 0);
+  });
+});
+
+describe("eventMetaLine — the ONE derivation of what an event row may say about itself", () => {
+  /**
+   * G6/G7 (ledger `2026-09-04-which-event-picker`). This was inline in `SlipEventGroupBlock`
+   * until the "Which event?" picker needed the same line; a second copy is exactly where a clock
+   * time gets invented, so the derivation moved here and both surfaces call it.
+   */
+  it("G6: renders the date when set and the place when set, and nothing when neither is", () => {
+    assert.equal(eventMetaLine(CEREMONY), "Fri, Oct 2 · Kiyomizu-dera");
+    assert.equal(eventMetaLine(RECEPTION), "Fri, Oct 2");
+    assert.equal(eventMetaLine({ id: "ev-p", title: "Brunch", eventDate: null, location: "Gion" }), "Gion");
+    // A row that has told us nothing gets NO meta — never "Date TBD", never a placeholder (§13).
+    assert.equal(eventMetaLine({ id: "ev-bare" }), "");
+    assert.equal(eventMetaLine(null), "");
+  });
+
+  it("G7: never emits a clock time — `user_experiences` has no time-of-day column", () => {
+    const clock = /\d{1,2}\s*[:.]\s*\d{2}|\b\d{1,2}\s*(?:am|pm)\b/i;
+    for (const event of [
+      CEREMONY,
+      RECEPTION,
+      { id: "ev-ts", title: "Welcome drinks", eventDate: "2026-10-01T19:00:00.000Z", location: "Pontocho" },
+    ]) {
+      assert.doesNotMatch(eventMetaLine(event), clock);
+    }
+  });
+
+  it("G7b: a bare DATE is read as a LOCAL day, so it never renders one day early (F-1)", () => {
+    assert.equal(eventMetaLine({ id: "x", eventDate: "2026-10-02" }), "Fri, Oct 2");
   });
 });

@@ -6,8 +6,9 @@
  * under, and the plancard payload already ships both halves of the pair — `events` (the trip's
  * `user_experiences` rows, behind the route's owner/advisor/author gate) and, on each activity,
  * `userExperienceId` present-only-when-set. Until this lane nothing read either. This module is
- * that reader: items + events in, grouped structure out. Pure — no React, no fetch, no DB — so
- * the rule below is testable on its own and cannot drift into a second copy at a call site
+ * that reader: items + events in, grouped structure out. Pure — no React, no fetch, no DB (its
+ * only imports are date formatting, for the ONE event meta-line derivation at the bottom) — so
+ * the rules below are testable on their own and cannot drift into a second copy at a call site
  * (§18 rule 1).
  *
  * THE ONE RULE (Locked Decision 29, and §13):
@@ -32,6 +33,8 @@
  * as the structure laid over it. No group is invented for an event with no items on the day
  * being grouped — an empty event card would claim a schedule the day does not have.
  */
+import { format } from "date-fns";
+import { parseTripDate } from "@/lib/calendar-date";
 
 /** The `events` projection the plancard route ships (id, title, eventDate, location, guestCount, experienceTypeId). */
 export interface PlanEvent {
@@ -119,4 +122,32 @@ export function groupItemsByEvent<T extends EventLinkedItem>(
  */
 export function countPlanEvents(events: readonly PlanEvent[] | null | undefined): number {
   return (events ?? []).length;
+}
+
+/**
+ * THE ONE DERIVATION OF AN EVENT'S META LINE — its DATE when set and its PLACE when set,
+ * joined, and NOTHING else.
+ *
+ * WHAT MAY APPEAR HERE (§13, and the reason this is a function rather than two inline copies):
+ *  - the DATE. `user_experiences.event_date` is a Postgres DATE column and there is **no
+ *    time-of-day column anywhere on the row** (`shared/schema.ts`). So the format string is a
+ *    calendar day and can never carry a clock: an event start time rendered on any surface would
+ *    be a schedule the traveler never gave us. Parsed with `parseTripDate` so a bare
+ *    "YYYY-MM-DD" lands on LOCAL midnight — `new Date()` would render the previous day west of
+ *    UTC (F-1).
+ *  - the PLACE, when the row has one.
+ *  - nothing else. A row that has told us neither returns `""`, and its caller draws a bare row:
+ *    no "Untitled event", no "Date TBD", no placeholder of any kind.
+ *
+ * It lives beside `groupItemsByEvent` because the slip's event heading and the "Which event?"
+ * picker (ledger `2026-09-04-which-event-picker`) must say the SAME thing about the same row —
+ * two surfaces deriving one label two ways is the drift class §18 rule 1 names, and the second
+ * copy is exactly where a clock time gets invented.
+ */
+export function eventMetaLine(event: PlanEvent | null | undefined): string {
+  if (!event) return "";
+  const date = parseTripDate(event.eventDate);
+  return [date ? format(date, "EEE, MMM d") : null, event.location || null]
+    .filter(Boolean)
+    .join(" · ");
 }
