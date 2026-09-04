@@ -383,6 +383,48 @@ This document captures architectural decisions to maintain consistency across co
     stale); `/api/expert/assigned-trips` is defined in both `booking-actions.ts` and
     `experts.routes.ts`, and the first shadows the second; `optimization_context.planSnapshot` is
     written and never read; the template page re-POSTs a lead on every snapshot change.
+33. **ONE PLANNING MODAL, MANY DOORS (decision-maker ratified Sep 4, 2026 — ledger
+    `2026-09-04-one-modal-many-doors`; option 1).** There is exactly ONE planning modal: the five
+    ratified steps **Occasion → Where → When → Who → What's happening** (`docs/design/wedding-flow/`
+    `Step1Occasion` / `ModalWhere` — that IS step 2, the filename hides it — `Step3When`/`Step3Day`,
+    `Step4Who`/`Step4Variants`, `ModalEvents`). The OPENER is unchanged: every door still goes
+    through `usePlanning().open(source)` (ruling `2026-08-28-single-planning-entry`); what it
+    RENDERS changed, and this entry **supersedes that ruling's chooser SCREEN only** — the
+    single-opener rule stands untouched, and so does `scripts/check-planning-entry.cjs`. The
+    Trip-Strip edit panel (`edit-trip-panel.tsx`) was RENAMED to `PlanModal`, not copied: it already
+    owned the ONE save (context write, `PATCH /api/trips/:tripId/occasion`, the main-moment anchor,
+    the per-event `user_experiences` rows, the pre-trip pen), and a second component with a second
+    save is the drift class §18 rule 1 names. Its three former importers — the Trip Strip, the cart
+    header, the experience-template page — now open it through the opener, so the modal has ONE
+    mount.
+    **DOORS DIFFER IN TWO THINGS ONLY: what arrives pre-filled, and which step opens first.** That
+    decision is ONE pure function, `resolvePlanSteps` (`client/src/lib/plan-steps.ts`, unit-tested):
+    hero / `/start/events` / marketplace → **step 1**; a Moment, the nav Wedding row or an
+    experience CTA carrying an occasion → **step 2** with an "<Occasion> · change" pill; a
+    city/destination **pre-fills** step 2 and never skips it; the Trip Strip's Edit → step 1 or 2 by
+    what the plan already holds, with every visible step reachable from the rail. Ready-made
+    purchases are untouched and still go straight to the slip.
+    **THE SKIP IS KEYED ON THE RESOLVED ROW, NOT A STRING (§13).** A door naming an occasion the
+    catalog cannot resolve does NOT skip — the question is asked rather than hidden under a pill
+    nothing could fill. Step 5 is visible only when `showsSchedule(row)` is true (NULL ⇒ not shown,
+    the plain-plan shape); steps 2 and 3 are NEVER skipped (`destination`/`start_date`/`end_date`
+    are NOT NULL); step 4 is always visible and always skippable — untouched ⇒ NULL, never 2.
+    **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
+    and not a first one:** you say what you are planning before you say who should build it. A
+    `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
+    shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
+    included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
+    while `PLUS_SALES_ENABLED` is off.
+    **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the ModalWhere "add another
+    stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
+    that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate
+    budget-approver and family accessibility fields are NOT built (no column holds either — a
+    separate decision, and deliberately NOT `trip_participants.accessibility_needs`, §24).
+    **NO SCHEMA CHANGE.** Step 4 writes the EXISTING `trips.adults`/`trips.kids` (de-masked by
+    migration 241) through the EXISTING owner-gated pick-based allowlist on
+    `PATCH /api/trips/:tripId/occasion`, extended by exactly those two nullable integers (§19
+    shape — no new route, no second admission rail); `travelers` stays DERIVED from the pair by one
+    `partyTotal`, so the Trip Strip's chip and the columns cannot disagree.
 
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)

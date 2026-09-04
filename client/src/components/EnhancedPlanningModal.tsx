@@ -77,6 +77,18 @@ interface EnhancedPlanningModalProps {
   userId: string;
   /** Coarse machine key to prefill (Landing v2.5 Moment CTA). Falls back to 'travel'. */
   initialExperienceType?: string;
+  /**
+   * What the plan modal already collected (ledger `2026-09-04-one-modal-many-doors`). This form
+   * asks for dates and a party of its own; those fields STAY (removing them is a separate lane,
+   * recorded in that ledger row), but they now arrive pre-filled from the steps the traveler just
+   * answered instead of being asked cold a second time.
+   *
+   * §13: each is optional and each falls back to EXACTLY the previous empty/`2` behaviour when
+   * the door has no answer — an absent prop is "not stated", never a value.
+   */
+  initialStartDate?: string;
+  initialEndDate?: string;
+  initialTravelers?: number;
   /** Fine occasion identity (proposal|golf|…) — rides into the generation prompt so the brief
    *  carries the moment (ruling 2026-09-01-moment-key). */
   momentKey?: string;
@@ -89,6 +101,9 @@ export default function EnhancedPlanningModal({
   mode = 'single',
   userId,
   initialExperienceType,
+  initialStartDate,
+  initialEndDate,
+  initialTravelers,
   momentKey,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
@@ -104,11 +119,17 @@ export default function EnhancedPlanningModal({
     initialDestination ? [initialDestination] : []
   );
   const [cityInput, setCityInput] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Prefilled from the plan modal's When step when it has an answer; empty otherwise, exactly
+  // as before (ledger `2026-09-04-one-modal-many-doors`).
+  const [startDate, setStartDate] = useState(initialStartDate ?? '');
+  const [endDate, setEndDate] = useState(initialEndDate ?? '');
   // Prefilled by a landing Moment CTA (coarse machine key); 'travel' otherwise.
   const [experienceType, setExperienceType] = useState(initialExperienceType ?? 'travel');
-  const [travelers, setTravelers] = useState(2);
+  // Prefilled from the plan modal's Who step. Its own default of 2 is UNCHANGED for the doors
+  // that pass nothing — this modal's generator has always required a count.
+  const [travelers, setTravelers] = useState(
+    typeof initialTravelers === 'number' && initialTravelers > 0 ? initialTravelers : 2,
+  );
 
   // Progressive disclosure toggles
   const [showPreferences, setShowPreferences] = useState(false);

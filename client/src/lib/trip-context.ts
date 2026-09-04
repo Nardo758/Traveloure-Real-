@@ -46,6 +46,20 @@ export interface TripContext {
   /** YYYY-MM-DD */
   endDate?: string;
   travelers?: number;
+  /**
+   * The plan modal's step-4 pair (ledger `2026-09-04-one-modal-many-doors`), mirroring
+   * `trips.adults` / `trips.kids`. `travelers` above stays the DERIVED total (`partyTotal` in
+   * plan-vocabulary.ts) so the Trip Strip's chip has one number to read; these two are the
+   * composition the traveler actually stated. Absent = never stated (§13, migration 241's
+   * de-masking) — never a fabricated 2 adults, and never split out of `travelers`.
+   *
+   * `0` HERE IS THE CLEARED MARKER, not a count. `updateTripContext` merges and cannot delete a
+   * key, so a field stepped back to "not set" is written as 0 rather than left stale; every reader
+   * turns it back into NOT SET through `travelersForSave`, and `trips.adults`/`trips.kids` are
+   * written NULL, never 0 — an unanswered party is not a party of none.
+   */
+  adults?: number;
+  kids?: number;
   eventType?: string;
   tripId?: string;
   userExperienceId?: string;
@@ -60,6 +74,15 @@ export interface TripContext {
    * holding pen. Absent = the traveler never gave one (§13) — never a fabricated time.
    */
   mainMomentTime?: string;
+  /**
+   * "YYYY-MM-DD" — the DATE of the main moment on a RANGE-shaped occasion that has a schedule
+   * (the ratified Step3When artboard; ledger `2026-09-04-one-modal-many-doors`). A single-day
+   * occasion needs no such field: its moment falls on the one date the plan already has. Held
+   * only while no trip row exists, exactly like `mainMomentTime` beside it; once `tripId` is
+   * bound the pair is written as a `temporal_anchors` row. Absent = the traveler never gave one
+   * (§13) — a moment inside a three-day range has no date the plan may derive for it.
+   */
+  mainMomentDate?: string;
   /**
    * The "What's happening" chips ticked before a trip row existed (step 5, migration 276
    * `default_schedule`). Once `tripId` is bound each becomes ONE `user_experiences` row (an event

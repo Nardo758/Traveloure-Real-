@@ -48,9 +48,13 @@ async function navigateCartToOptimizeStep(
 ) {
   await page.goto(`${BASE_URL}/cart`);
 
-  // Trip-Strip P3b: the cart header is now a read-only date summary — dates are
-  // set through the shared EditTripPanel behind the header's "Edit trip" button.
+  // Trip-Strip P3b: the cart header is now a read-only date summary — dates are set through the
+  // ONE plan modal behind the header's "Edit trip" button. Since ledger
+  // `2026-09-04-one-modal-many-doors` that modal is STEPPED, so the dates live on its When step;
+  // every visible step is reachable from the rail, and "Save" commits and closes from any of them
+  // (an edit door must not be made to answer "how should this be built?").
   await page.getByTestId("button-edit-trip").click();
+  await page.getByTestId("plan-step-when").click();
   await page.getByTestId("input-etp-start-date").fill(startDate);
   await page.getByTestId("input-etp-end-date").fill(endDate);
   await page.getByTestId("button-etp-save").click();

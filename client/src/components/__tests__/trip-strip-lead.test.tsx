@@ -22,6 +22,13 @@ import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TripStrip } from "../trip/trip-strip";
+// Ledger `2026-09-04-one-modal-many-doors`: the strip's "Edit ›" is a DOOR of the ONE planning
+// modal, so the component now calls `usePlanning()` and must be rendered inside its provider (and
+// inside the sign-in provider that provider itself consumes). Supplied here rather than mocked
+// away, for the same reason the harness supplies wouter and react-query: the component under test
+// stays the real one.
+import { PlanningProvider } from "../../contexts/PlanningContext";
+import { SignInModalProvider } from "../../contexts/SignInModalContext";
 
 // The strip's context comes from sessionStorage (client/src/lib/trip-context.ts). A plain
 // in-memory shim; installed before any render, and nothing reads it at import time.
@@ -65,7 +72,11 @@ function renderWithContext(
   return renderToString(
     <QueryClientProvider client={client}>
       <Router ssrPath="/services">
-        <TripStrip />
+        <SignInModalProvider>
+          <PlanningProvider>
+            <TripStrip />
+          </PlanningProvider>
+        </SignInModalProvider>
       </Router>
     </QueryClientProvider>,
   );

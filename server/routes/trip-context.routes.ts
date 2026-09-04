@@ -86,6 +86,15 @@ const tripContextSchema = z
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     travelers: z.number().int().min(1).max(500).optional(),
+    // Ledger `2026-09-04-one-modal-many-doors` — the plan modal's step-4 pair, mirroring
+    // `trips.adults` / `trips.kids`. `travelers` above stays the DERIVED total. Ordinary planning
+    // content authored by the session user about their own draft: no amount, no identity, no rate,
+    // so §14/§18/§19 have nothing to strip. Named explicitly on this hand-written ALLOWLIST —
+    // `.strip()` below drops anything unlisted, so an unnamed field does not persist at all.
+    // `0` is the CLEARED marker in this blob (the client merges and cannot delete a key); every
+    // reader turns it back into "not set" via `travelersForSave`, and the TRIP ROW is written NULL.
+    adults: z.number().int().min(0).max(500).optional(),
+    kids: z.number().int().min(0).max(500).optional(),
     eventType: str(120).optional(),
     tripId: str(64).optional(),
     userExperienceId: str(64).optional(),
@@ -98,6 +107,9 @@ const tripContextSchema = z
     // strip here. Added to this hand-written ALLOWLIST explicitly — `.strip()` below means an
     // unlisted key is silently dropped, so a field nobody names here does not persist at all.
     mainMomentTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    // The main moment's DATE on a range-shaped occasion (ledger
+    // `2026-09-04-one-modal-many-doors`). Same posture as its sibling above.
+    mainMomentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     pendingEventTitles: z.array(str(120)).max(20).optional(),
     contextFields: z.record(z.unknown()).optional(),
     selectedServices: z

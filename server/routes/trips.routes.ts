@@ -3300,16 +3300,36 @@ router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (
 // is `.omit()`-based — it happens to admit `eventType` today, but as an untyped varchar: any
 // string, including a raw experience-type slug, would be accepted and then read as a literal by
 // the fee/optimizer branches. Rather than widen or lean on that denylist, this is a PICK-based
-// body schema over exactly one column, re-typed to `eventTypeEnum`. Nothing else on `trips` is
-// reachable through it, so a future privileged column on the table is unreachable here by
-// construction.
+// body schema over a named handful of columns, `eventType` re-typed to `eventTypeEnum`. Nothing
+// else on `trips` is reachable through it, so a future privileged column on the table is
+// unreachable here by construction.
 //
-// Owner-gated with the shared `verifyTripOwnership` (fail-closed): the occasion is trip IDENTITY,
-// not itinerary content, so this is deliberately the OWNER gate and not the broader §12
-// advisor-write posture the item/note mutations use.
+// WHY THE PARTY PAIR RIDES THIS ROUTE (ledger `2026-09-04-one-modal-many-doors`, CLAUDE.md Locked
+// Decision 33). The plan modal's step 4 asks Adults and Kids, which are `trips.adults` /
+// `trips.kids` — columns that already exist and that migration 241 de-masked so an unanswered
+// party stays NULL. They needed an owner-gated, allowlisted way in. The choice was to EXTEND this
+// pick-based schema by exactly those two fields rather than open a second route or lean on the
+// `.omit()`-based `PATCH /api/trips/:id`, because a second admission rail for the same modal's
+// same save is the drift class §18 rule 1 names, and a denylist is the §19 shape this file
+// deliberately avoids. The route's PATH still says "occasion"; renaming it would be a new route
+// and would break its existing caller, so the name is kept and the contract is stated here: this
+// is the plan modal's ONE owner-gated write of the plan's own identity fields.
+//
+// EVERY FIELD IS OPTIONAL AND NULLABLE, and at least one must be present. Optional because the
+// modal sends only what the traveler actually answered; nullable because an explicitly emptied
+// party must be able to return to NULL — "not stated" is a value here, not the absence of one
+// (§13). A body naming nothing is a 400 rather than a silent no-op.
+//
+// Owner-gated with the shared `verifyTripOwnership` (fail-closed): these are trip IDENTITY, not
+// itinerary content, so this is deliberately the OWNER gate and not the broader §12 advisor-write
+// posture the item/note mutations use.
 const tripOccasionBody = createInsertSchema(trips)
-  .pick({ eventType: true })
-  .extend({ eventType: z.enum(eventTypeEnum) });
+  .pick({ eventType: true, adults: true, kids: true })
+  .extend({
+    eventType: z.enum(eventTypeEnum).optional(),
+    adults: z.coerce.number().int().min(1).max(500).nullable().optional(),
+    kids: z.coerce.number().int().min(0).max(500).nullable().optional(),
+  });
 
 router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) => {
   try {
@@ -3321,11 +3341,26 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
 
     const parsed = tripOccasionBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: "eventType must be one of: " + eventTypeEnum.join(", ") });
+      return res.status(400).json({
+        message:
+          "eventType must be one of: " +
+          eventTypeEnum.join(", ") +
+          "; adults/kids must be whole numbers or null",
+      });
     }
 
-    await storage.updateTrip(tripId, { eventType: parsed.data.eventType });
-    res.json({ ok: true, eventType: parsed.data.eventType });
+    // Build the patch from the keys the BODY actually carried — a field the modal did not send is
+    // a question the traveler was never asked, and must not be written as a null over a real value.
+    const patch: Record<string, unknown> = {};
+    if (parsed.data.eventType !== undefined) patch.eventType = parsed.data.eventType;
+    if ("adults" in (req.body ?? {})) patch.adults = parsed.data.adults ?? null;
+    if ("kids" in (req.body ?? {})) patch.kids = parsed.data.kids ?? null;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ message: "Nothing to update" });
+    }
+
+    await storage.updateTrip(tripId, patch as any);
+    res.json({ ok: true, ...patch });
   } catch (err: any) {
     console.error("[trips] set occasion failed:", err?.message);
     res.status(500).json({ message: "Failed to save the occasion" });

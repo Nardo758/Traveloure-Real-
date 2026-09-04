@@ -109,8 +109,7 @@ import { resolveTargetTripId } from "@/lib/trip-target";
 // "dates are asked for, never invented" checks and the slip-first ordering all live there.
 import { ensureSlipForExpertRequest, mintTripSlip } from "@/lib/trip-slip";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
-import { planningRouteForTrip } from "@/contexts/PlanningContext";
-import { EditTripPanel } from "@/components/trip/edit-trip-panel";
+import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 import { DestinationTransfersSection } from "@/components/destination-transfers-section";
 
 interface VenueResult {
@@ -911,9 +910,11 @@ export default function ExperienceTemplatePage() {
   // P3b: the global Trip Strip owns the destination/dates/party quartet — this
   // page no longer renders its own controls for them. State vars stay (many
   // downstream catalog queries + context writes read them); they now sync FROM
-  // the site-wide TripContext, and the shared EditTripPanel is the edit surface.
+  // the site-wide TripContext, and the one plan modal is the edit surface.
   const [tripCtx] = useTripContext();
-  const [editTripOpen, setEditTripOpen] = useState(false);
+  // Ledger `2026-09-04-one-modal-many-doors`: this page's "edit trip" affordances are DOORS of the
+  // one planning modal, opened through the one opener — not a second dialog this page mounts.
+  const { open: openPlanModal } = usePlanning();
   // Flips true once the mount-time context→local sync has run, so the persist
   // effect can't write stale local defaults over the strip's values first.
   const [ctxApplied, setCtxApplied] = useState(false);
@@ -1080,7 +1081,7 @@ export default function ExperienceTemplatePage() {
     // sort tweak too, but `destinationChanged` only trips when `destination`
     // itself differs from the live context, so unrelated fires just re-affirm
     // the same trip and dates/travelers changes alone still preserve it —
-    // the same preserve-vs-clear policy as edit-trip-panel.tsx's save()).
+    // the same preserve-vs-clear policy as the plan modal's commit).
     // experienceSlug isn't part of that identity set — merged separately.
     if (ctxApplied) {
       switchTripContextPreservingId({
@@ -3019,7 +3020,7 @@ export default function ExperienceTemplatePage() {
                 {/* P3b: destination/dates/travelers now live in the global Trip Strip */}
                 <button
                   type="button"
-                  onClick={() => setEditTripOpen(true)}
+                  onClick={() => openPlanModal()}
                   className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors text-left"
                   data-testid="button-template-edit-trip-mobile"
                 >
@@ -3344,8 +3345,8 @@ export default function ExperienceTemplatePage() {
                     variant="outline"
                     onClick={() => {
                       setAiItineraryDialogOpen(false);
-                      // P3b: the quartet lives in the Trip Strip — open the shared panel
-                      setEditTripOpen(true);
+                      // P3b: the quartet lives in the Trip Strip — open the one plan modal
+                      openPlanModal();
                     }}
                     data-testid="button-close-itinerary-dialog"
                   >
@@ -3407,8 +3408,6 @@ export default function ExperienceTemplatePage() {
           </DialogContent>
         </Dialog>
 
-        {/* P3b: shared edit surface for the strip-owned quartet (destination/dates/party) */}
-        <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
       </div>
     </Layout>
   );
