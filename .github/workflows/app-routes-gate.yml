@@ -109,7 +109,11 @@ jobs:
     name: app-routes-smoke (Playwright DOM gate)
     runs-on: ubuntu-latest
     needs: [setup]
-    timeout-minutes: 20
+    # 30, not 20: the test step itself takes ~13 minutes on every green run (three measured 2026-09-03),
+    # and a cold runner can spend 8 minutes in checkout/install/cache before it starts — run 33813994877
+    # was cancelled by the cap 12 minutes into the suite, with no test failure. A cap the pre-test setup
+    # can eat measures the runner, not the routes.
+    timeout-minutes: 30
     services:
       postgres:
         image: public.ecr.aws/docker/library/postgres:15
