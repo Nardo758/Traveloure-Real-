@@ -116,7 +116,6 @@ import {
   insertTripAlertSchema,
   insertProviderAvailabilityScheduleSchema,
   insertProviderBlackoutDateSchema,
-  tripExpertAdvisors,
 } from "@shared/schema";
 import { travelpayoutsCache } from "@shared/schema";
 import {
@@ -158,6 +157,10 @@ import {
   createServiceOfferingTypeRow, updateServiceOfferingTypeRow, deleteServiceOfferingTypeRow,
   getExpertOfferingTypesList, createExpertOfferingTypeRow, updateExpertOfferingTypeRow, deleteExpertOfferingTypeRow,
   getLeadRoutingLogs, overrideLeadRouting, getRoutingQueueItems, getExpertRequest,
+  // `confirmLeadAssignmentTx` is imported but has no caller in the tree (side finding, ledger
+  // `2026-09-04-advisor-row-one-author`): the confirm handler below carries its own copy of the
+  // same transaction. Both now go through the ONE advisor-row author; consolidating the two
+  // transactions themselves is a separate lane.
   confirmLeadAssignmentTx, reassignExpertRequest, getExpertNameById, getExpertRequestRow,
   getLocalKnowledgeNuggetCounts,
   getTravelPulseCitiesForAutoIndex, getTravelPulseCitiesList,
@@ -180,6 +183,10 @@ import {
   getRoleChangeAuditLogs,
   getAuditLogsForResource,
 } from "../services/admin-query.service";
+// THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
+// CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). The lead-confirm handler below calls it;
+// it never inserts the row itself.
+import { upsertTripAdvisorRow } from "../services/booking-actions.service";
 
 const router = Router();
 
@@ -7374,42 +7381,26 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
       // Lock the expert_requests row to serialise concurrent confirms
       await tx.execute(sql`SELECT id FROM expert_requests WHERE id = ${requestId} FOR UPDATE`);
 
-      // Idempotency: return the existing advisor row if one already exists
-      const [existing] = await tx.select().from(tripExpertAdvisors)
-        .where(and(
-          eq(tripExpertAdvisors.tripId, row.trip_id),
-          eq(tripExpertAdvisors.localExpertId, row.assigned_expert_id),
-        ))
-        .limit(1);
-
-      if (existing) return { assignment: existing, wasCreated: false };
-
-      // Insert; ON CONFLICT DO NOTHING handles the rare concurrent-insert race
-      const [created] = await tx.insert(tripExpertAdvisors)
-        .values({
-          tripId: row.trip_id,
-          localExpertId: row.assigned_expert_id,
-          status: "assigned",
-          workspaceStatus: "draft",
-          assignedAt: new Date(),
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      // If concurrent insert won the race, fetch the winning row
-      const result = created ?? await tx.select().from(tripExpertAdvisors)
-        .where(and(
-          eq(tripExpertAdvisors.tripId, row.trip_id),
-          eq(tripExpertAdvisors.localExpertId, row.assigned_expert_id),
-        ))
-        .then(r => r[0]);
+      // ONE author (ledger `2026-09-04-advisor-row-one-author`, §18 rule 1). This handler used to
+      // carry its own copy of the check-then-insert-then-refetch dance — a SELECT, an early
+      // return, an `ON CONFLICT DO NOTHING` insert and a re-SELECT for the racer's row. The shared
+      // upsert does all of it in ONE atomic statement, inside this transaction (`tx`) so the
+      // `FOR UPDATE` lock above still serialises concurrent confirms. `wasCreated` keeps its exact
+      // meaning — true only when THIS statement inserted the tuple — so the expert's
+      // "you have been assigned" notification below still fires once and a re-confirm stays silent.
+      const { row: result, created } = await upsertTripAdvisorRow({
+        tripId: row.trip_id,
+        localExpertId: row.assigned_expert_id,
+        status: "assigned",
+        tx,
+      });
 
       // Flip expert_requests status
       await tx.execute(sql`
         UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}
       `);
 
-      return { assignment: result, wasCreated: Boolean(created) };
+      return { assignment: result, wasCreated: created };
     });
 
     // Task 1113: notify the expert the moment they're assigned a trip. Fires only when a NEW
