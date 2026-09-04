@@ -499,6 +499,26 @@ jobs:
       - name: Roles-needed reachability guard
         run: node scripts/check-roles-needed-reachability.cjs
 
+  earn-planner-keys-guard:
+    name: earn-planner-keys-guard (ledger 2026-09-04-earn-planner-roles)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The /earn Event Planner track's EXPERT half is partitioned by an explicit key list
+      # (EVENT_PLANNER_OFFERING_KEYS) rather than by service_tier, because that column carries a
+      # DB CHECK over five values and the six planner rows had to land in the existing
+      # `coordination` tier. A list like that drifts both ways: a listed key nothing seeds never
+      # renders (and clamps to NULL at the migration-107 FK if a stale link carries it), and a
+      # seeded key nobody listed is filed under Trip Planner — silently, on the live page.
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Earn-planner-keys guard predicate self-test
+        run: node scripts/check-earn-planner-keys.cjs --self-test
+      - name: Earn-planner-keys guard
+        run: node scripts/check-earn-planner-keys.cjs
+
   planning-entry-guard:
     name: planning-entry-guard (ledger 2026-09-04-entry-unification)
     runs-on: ubuntu-latest

@@ -135,6 +135,7 @@ import { getStripeSecretKey } from "./utils/stripe-key";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { offeringKeyUnrecorded } from "./services/offering-type-clamp";
 import { sanitizeDeep } from "./utils/text-sanitizer";
 import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
@@ -2108,7 +2109,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
             .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
           // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
-          return res.status(200).json(pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS));
+          // Same honest clamp signal as the create path below. NOTE (recorded, not fixed here):
+          // `storage.updateLocalExpertForm` carries no clamp of its own, so on this resubmission
+          // rail an unknown key reaches the FK — this comparison reports what the row ended up
+          // with either way, and never invents a clamp that did not happen.
+          return res.status(200).json({
+            ...pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS),
+            offeringTypeKeyUnrecorded: offeringKeyUnrecorded(input.offeringTypeKey, form!.offeringTypeKey),
+          });
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
@@ -2138,7 +2146,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
         .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
       // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
-      res.status(201).json(pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS));
+      // The clamp is VISIBLE (ledger `2026-09-04-earn-planner-roles`): `offering_type_key` FKs into
+      // expert_offering_types (migration 107) and storage clamps an unknown key to NULL rather than
+      // failing the signup. When that happened, say so — the applicant picked something and the
+      // platform did not record it, which is a different fact from picking nothing (§13). Derived by
+      // comparing what we sent against what came back; the rule itself lives in the storage writer
+      // and is not restated here (§18 rule 1).
+      res.status(201).json({
+        ...pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS),
+        offeringTypeKeyUnrecorded: offeringKeyUnrecorded(input.offeringTypeKey, form.offeringTypeKey),
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });

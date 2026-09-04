@@ -490,6 +490,32 @@ This document captures architectural decisions to maintain consistency across co
     are not exported today, and if they ever are, the floating-time posture holds until a zone is
     captured.
 
+36. **Planner roles live in the EXPERT catalog, and the Event Planner track is partitioned by an
+    explicit KEY LIST on both sides (decision-maker ratified Sep 4, 2026 — ledger
+    `2026-09-04-earn-planner-roles`; migration 283).** The /earn Event Planner card listed
+    `service_offering_types` rows — the PROVIDER catalog — while its "I plan & coordinate events"
+    door went to the expert application, whose `local_expert_forms.offering_type_key` FKs into
+    `expert_offering_types` (migration 107). That table held NO planner rows, so every key the door
+    carried was clamped to NULL by `storage.createLocalExpertForm` — **silently**. Six rows now fill
+    the gap (`wedding_planner`, `wedding_day_of_coordinator`, `proposal_planner`, `party_planner`,
+    `corporate_event_coordinator`, `date_night_designer`), all in the **EXISTING `coordination`
+    tier**: `service_tier` carries a DB CHECK over five values and a sixth is exactly the
+    publish-time drizzle-push failure the Coordination Prevention rules warn about. **The two
+    catalogs are still never merged (§4)** — the card lists BOTH, provider categories for the event
+    VENDORS and expert keys for the event PLANNERS, and a row carries which side it came from
+    because the tables have separate key namespaces (`proposal_planner` is a row in each, and
+    /start/events forwards `?offeringTypeKey=` to whichever door the person picks).
+    **A tier cannot make this split, so an explicit list does:** `EVENT_PLANNER_OFFERING_KEYS`
+    (`client/src/lib/earn-roles.ts`), checked BEFORE the tier mapping, and guarded both directions
+    by `scripts/check-earn-planner-keys.cjs` (committed `--self-test` fixtures, stated negative
+    space — §18d). Same ruling: **`specialized` moves to Trip Planner** (Local Expert keeps
+    `advisory` + `live_support`), so relocation/pet-travel/content-scout consults stop landing in a
+    wizard whose required steps are a locality proof and a born-and-raised claim. The expert
+    application's role picker **reads the same rows live** and restates no names; and **the clamp
+    is now visible, never silent** — the NULL fallback stays (an application must not fail) but it
+    is `logger.warn`ed with the form id and the route returns `offeringTypeKeyUnrecorded` so the
+    applicant is told, because a refused answer and an absent one are different facts (§13).
+
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
