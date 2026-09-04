@@ -23,13 +23,33 @@
  * 2. **SKIP THE QUESTION WHEN THERE IS NOTHING TO ASK.** Zero or one named event ⇒ no picker;
  *    the add proceeds and never mentions the link at all. A one-option dialog is not a choice.
  *
- * 3. **NOTHING IS PRE-SELECTED.** `INITIAL_WHICH_EVENT_SELECTION` is `null` and stays `null`.
- *    A pre-selected row is a guess presented as the platform's answer, and this codebase has no
- *    source for one: **there is no mapping from a service's category to the event it belongs
- *    to.** The column that would carry it (`experience_types.roles_needed`) does not exist in
- *    this repo and is HELD pending decision-maker ratification, so the ratified mock's
- *    "suggested for florists" hint is deliberately NOT built — keyword-matching a category
- *    against an event title would be exactly the fabricated authority §13 forbids.
+ * 3. **NOTHING IS PRE-SELECTED — AND A HINT IS NOT A SELECTION.**
+ *    `INITIAL_WHICH_EVENT_SELECTION` is `null` and stays `null`. A pre-selected row is a guess
+ *    presented as the platform's answer, and no amount of evidence changes that: the traveler's
+ *    first click is still the first answer that exists.
+ *
+ *    What HAS changed since this module was written is the evidence available to MARK a row.
+ *    Migration 280 (`experience_types.roles_needed`, CLAUDE.md Locked Decision 31, ledger
+ *    `2026-09-04-roles-needed`) gave every occasion the list of disciplines it typically hires,
+ *    written in `service_categories.category_key` — the same vocabulary a listing's category is
+ *    written in. So the ratified mock's "suggested for florists" hint now has a real source and
+ *    is built here as `hintForEvent`. Three things about it must not be weakened:
+ *
+ *      · **It reads the SERVER's list and restates nothing.** The event row carries its occasion's
+ *        `rolesNeeded` on the wire (`GET /api/user-experiences`, and the plancard `events` DTO).
+ *        No role→occasion table exists in client code, and none may be added — a second copy of
+ *        that mapping is the derivation-drift class §18 rule 1 names, and it would be wrong the
+ *        day an occasion's roles are re-seeded.
+ *      · **It MARKS, it never CHOOSES.** The hint is a string a row may display. It is not a
+ *        field on `WhichEventChoice`, it does not order the rows, and nothing downstream reads it
+ *        — so it cannot quietly become a default. `whichEventChoices` still returns rows with no
+ *        preference on them at all.
+ *      · **Silence is the answer to every absence (§13).** No `rolesNeeded` (NOT SET, or no
+ *        resolvable occasion), no category on the listing, no match, or a matched key this build
+ *        cannot name — every one of those produces NO hint. Nothing is ever inferred from an
+ *        event's title, its date or its place: keyword-matching a category against a name is
+ *        exactly the fabricated authority §13 forbids, and it is no more allowed now than it was
+ *        when the hint had no source at all.
  *
  * 4. **NO CLOCK TIME, EVER.** A row's supporting line is `eventMetaLine` — the ONE derivation,
  *    shared with the slip's event heading — which renders the DATE when set and the PLACE when
@@ -42,6 +62,7 @@
  */
 import { eventMetaLine, IMPLICIT_EVENT_GROUP_KEY, type PlanEvent } from "@/lib/slip-events";
 import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { occasionRoleNoun } from "@shared/occasion-role-nouns";
 
 /**
  * A row as `GET /api/user-experiences` returns it — the caller's own experiences, of which the
@@ -140,7 +161,10 @@ export interface WhichEventChoice {
  * handed (rule 5). A duplicate id is collapsed to its first occurrence, exactly as
  * `groupItemsByEvent` collapses it, so the same row cannot be offered twice.
  *
- * No row carries a "suggested" or "recommended" mark and none is pre-selected — see rule 3.
+ * A choice carries NO preference of any kind and none is pre-selected (rule 3). The role hint is
+ * deliberately NOT a field here: it is computed per row by `hintForEvent`, which needs the listing
+ * being added and this function has no business knowing about. Keeping it off the shape is what
+ * stops a mark from being mistaken for — or quietly promoted into — a default selection.
  */
 export function whichEventChoices(
   events: readonly PlanEvent[] | null | undefined,
@@ -167,6 +191,50 @@ export function whichEventChoices(
     });
   }
   return choices;
+}
+
+/**
+ * The hint's fixed opening. Kept as a constant so the ONE claim this surface makes is stated in
+ * ONE place: the occasion SUGGESTS this kind of listing. Never "best for", never "recommended",
+ * never "the right event" — the platform is reporting what the occasion asks for, not judging the
+ * traveler's plan.
+ */
+export const ROLE_HINT_PREFIX = "suggested for";
+
+/**
+ * RULE 3's MARK — does THIS event's occasion ask for the discipline being added?
+ *
+ * The whole decision, in one pure function, so the picker cannot grow a second copy of it at the
+ * call site (§18 rule 1) and so every way of answering "no" is pinned by a test.
+ *
+ * @param event               the row being marked, or `null` for the plan's implicit unnamed
+ *                            event — which is not an occasion and therefore asks for nothing.
+ * @param serviceCategoryKey  the LISTING's `service_categories.category_key`, as the server sends
+ *                            it. Never a name, a slug or a description: the key is the only thing
+ *                            `roles_needed` is written in, and comparing anything else would be a
+ *                            keyword guess.
+ * @returns the hint to display, e.g. `"suggested for florists"`, or `null` for SAY NOTHING.
+ *
+ * Every "no" is silence, never a negative claim (§13). An event whose occasion does not list this
+ * discipline is not "wrong" for it — a traveler may put a florist under the farewell brunch, and
+ * this surface must not argue. So there is no "not suggested" counterpart and there never will be.
+ */
+export function hintForEvent(
+  event: PlanEvent | null | undefined,
+  serviceCategoryKey: string | null | undefined,
+): string | null {
+  // The implicit event, or no listing category at all (a listing whose category predates the key
+  // column, or a shape that has none) ⇒ there is nothing to compare.
+  if (!event || !serviceCategoryKey) return null;
+  const roles = event.rolesNeeded;
+  // NOT SET, or no resolvable occasion behind the row. Never read as "needs nobody".
+  if (!Array.isArray(roles) || roles.length === 0) return null;
+  if (!roles.includes(serviceCategoryKey)) return null;
+  // A match we cannot put into words stays unsaid — the column has no DB CHECK, so a value this
+  // build has never heard of is possible, and printing the raw key at a traveler is worse than
+  // printing nothing.
+  const noun = occasionRoleNoun(serviceCategoryKey);
+  return noun ? `${ROLE_HINT_PREFIX} ${noun}` : null;
 }
 
 /** Find a choice by its render key. `null` for a key that is not on the list. */

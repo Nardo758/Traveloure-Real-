@@ -2,13 +2,15 @@
  * WHICH EVENT? — the picker's decisions, and the six ways they can fabricate something.
  * Ledger `2026-09-04-which-event-picker`; migration 277; CLAUDE.md Locked Decision 29.
  *
- * WHY THIS EXISTS. The ratified mock for this surface draws TWO things the data cannot support:
- * clock times ("Fri 19:00") for rows whose only temporal column is a bare DATE, and a
- * "suggested for florists" hint that presumes a category→event mapping which does not exist
- * anywhere in this repo. Both are the kind of thing that gets re-added by the next person
- * reading the mock, and neither breaks a happy-path render — a fabricated time looks exactly
- * like a real one. So the negatives are pinned here, in the module both the picker and its
- * confirm read from.
+ * WHY THIS EXISTS. The ratified mock for this surface draws things the data may or may not be
+ * able to support, and a fabricated one looks exactly like a real one on a happy-path render.
+ * Clock times ("Fri 19:00") it still cannot support — the only temporal column is a bare DATE —
+ * and that negative is pinned below forever. The "suggested for florists" hint it CAN now
+ * support: `experience_types.roles_needed` (migration 280, ledger `2026-09-04-roles-needed`)
+ * gives every occasion the disciplines it hires, in the same `category_key` vocabulary a listing
+ * carries. Ledger `2026-09-04-which-event-hint` builds it — so this file's job for the hint moved
+ * from "prove it is absent" to "prove it appears ONLY when the server's own list says so, and
+ * that it never becomes a selection".
  *
  * What these hold:
  *   W1  ZERO events ⇒ no picker. The plan has only its ONE implicit unnamed event; there is
@@ -23,6 +25,12 @@
  *   W6  ORDERING is the server's. `eventsForTrip` filters without sorting; `whichEventChoices`
  *       preserves the order it was handed, implicit first.
  *   W7  NO CLOCK TIME is ever emitted, for any event, in any shape the column can hold.
+ *   W8  THE ROLE HINT. It appears ONLY on an event whose occasion's own `rolesNeeded` names the
+ *       listing's `category_key`, and every other case — NULL/absent roles, an empty array, no
+ *       category on the listing, a plain non-match, the implicit event, a matched key this build
+ *       cannot put into words — is SILENCE, never a negative claim and never a raw key on screen.
+ *       And a hint MARKS: it is not a field on a choice, it does not reorder anything, and the
+ *       initial selection is still `null` whichever way it lands.
  *
  * Pure unit: no DOM, no DB, no fetch, no React.
  * Run: npx tsx --test client/src/lib/__tests__/which-event.test.ts
@@ -32,12 +40,14 @@ import assert from "node:assert/strict";
 import {
   eventsForTrip,
   findWhichEventChoice,
+  hintForEvent,
   shouldAskWhichEvent,
   whichEventChoices,
   whichEventCtaLabel,
   IMPLICIT_EVENT_CHOICE_LABEL,
   IMPLICIT_EVENT_GROUP_KEY,
   INITIAL_WHICH_EVENT_SELECTION,
+  ROLE_HINT_PREFIX,
   type PlanEvent,
   type PlanEventRow,
 } from "../which-event";
@@ -74,9 +84,10 @@ describe("W3 — the picker opens with nothing chosen and nothing recommended", 
   it("W3b: the initial selection is null, and no choice carries a suggestion", () => {
     assert.equal(INITIAL_WHICH_EVENT_SELECTION, null);
     const choices = whichEventChoices([REHEARSAL, CEREMONY, RECEPTION]);
-    // Nothing on a choice can mark it as preferred: the shape has no such field, and none of the
-    // rendered strings carries a hint. A category→event mapping does not exist in this codebase
-    // (`experience_types.roles_needed` is absent and HELD), so a suggestion would be invented.
+    // Nothing on a CHOICE can mark it as preferred: the shape has no such field, and neither the
+    // label nor the meta carries a hint. The role hint is computed separately, per row, against
+    // the listing being added (W8) — keeping it off this shape is what stops a mark from being
+    // mistaken for, or quietly promoted into, a default selection.
     for (const choice of choices) {
       assert.deepEqual(
         Object.keys(choice).sort(),
@@ -208,5 +219,118 @@ describe("W7 — NO CLOCK TIME is ever emitted, for any event", () => {
     // them, so the meta line for a dated event is a bare calendar day.
     const [, ceremony] = whichEventChoices([CEREMONY]);
     assert.equal(ceremony.meta, "Fri, Oct 2 · Nanzen-ji");
+  });
+});
+
+/**
+ * W8 — THE ROLE HINT (ledger `2026-09-04-which-event-hint`; migration 280, Locked Decision 31).
+ *
+ * The fixtures below carry `rolesNeeded` exactly as the server ships it on the event row. NOTHING
+ * in this file maps a role to an occasion, and nothing may: the whole point of the column is that
+ * the mapping lives in the DB and travels on the wire. A test that hard-coded "a wedding wants a
+ * florist" would be asserting the very second copy §18 rule 1 forbids.
+ */
+const CEREMONY_WITH_ROLES: PlanEvent = {
+  ...CEREMONY,
+  rolesNeeded: ["event_coordinator", "florist", "photography", "officiant"],
+};
+/** The occasion behind this row was never given a roles list — NOT SET, the column's own NULL. */
+const RECEPTION_NULL_ROLES: PlanEvent = { ...RECEPTION, rolesNeeded: null };
+/** No `rolesNeeded` key at all — the absent-vs-null spelling of the same absence. */
+const REHEARSAL_NO_ROLES: PlanEvent = { ...REHEARSAL };
+
+describe("W8 — a hint appears only where the server's own list puts one", () => {
+  it("W8a: a listing whose category the occasion names gets the artboard's mark", () => {
+    assert.equal(hintForEvent(CEREMONY_WITH_ROLES, "florist"), "suggested for florists");
+    // The claim is SUGGESTION, never a judgement — the prefix is the one place it is worded.
+    assert.equal(ROLE_HINT_PREFIX, "suggested for");
+    assert.doesNotMatch(
+      hintForEvent(CEREMONY_WITH_ROLES, "florist")!,
+      /best|right|should|must|recommend/i,
+      "the hint reports what the occasion asks for; it does not judge the traveler's plan",
+    );
+    // A different discipline on the same occasion reads in its own words, not the florist's.
+    assert.equal(hintForEvent(CEREMONY_WITH_ROLES, "photography"), "suggested for photography");
+  });
+
+  it("W8b: NULL roles_needed ⇒ NO hint, and never a claim about what the event needs", () => {
+    assert.equal(hintForEvent(RECEPTION_NULL_ROLES, "florist"), null);
+    // Absent and null are the same absence here, and an EMPTY array is not a second empty state
+    // that means something else — Locked Decision 31 refuses that reading explicitly.
+    assert.equal(hintForEvent(REHEARSAL_NO_ROLES, "florist"), null);
+    assert.equal(hintForEvent({ ...CEREMONY, rolesNeeded: [] }, "florist"), null);
+  });
+
+  it("W8c: a listing with NO category_key ⇒ NO hint, on any event", () => {
+    for (const key of [null, undefined, ""]) {
+      assert.equal(hintForEvent(CEREMONY_WITH_ROLES, key), null);
+    }
+  });
+
+  it("W8d: a plain non-match is silence — there is no 'not suggested'", () => {
+    const hint = hintForEvent(CEREMONY_WITH_ROLES, "accommodation");
+    assert.equal(hint, null, "an event that does not list a discipline says nothing about it");
+  });
+
+  it("W8e: the implicit unnamed event is not an occasion and asks for nothing", () => {
+    // The picker's first row has `event: null` — the plan's own unnamed event. It has no
+    // occasion, so there is no roles list and never a hint on it.
+    const [implicit] = whichEventChoices([CEREMONY_WITH_ROLES, RECEPTION_NULL_ROLES]);
+    assert.equal(implicit.event, null);
+    assert.equal(hintForEvent(implicit.event, "florist"), null);
+    assert.equal(hintForEvent(undefined, "florist"), null);
+  });
+
+  it("W8f: a matched key this build cannot name prints NOTHING, never the raw key", () => {
+    // `roles_needed` has no DB CHECK (publish-trap posture), so an unknown value can reach a
+    // reader. Showing `aff_air_hotel` or a typo'd key to a traveler is worse than silence (§13).
+    const odd: PlanEvent = { ...CEREMONY, rolesNeeded: ["aff_air_hotel", "not_a_real_role"] };
+    assert.equal(hintForEvent(odd, "aff_air_hotel"), null);
+    assert.equal(hintForEvent(odd, "not_a_real_role"), null);
+  });
+
+  it("W8g: no keyword guessing — the title, date and place are never evidence", () => {
+    // An event literally CALLED "Florist meeting", whose occasion does not list the role, gets no
+    // hint. The only evidence is the array the server sent.
+    const named: PlanEvent = {
+      id: "ev-f",
+      title: "Florist meeting",
+      eventDate: "2026-10-02",
+      location: "Floral & Decoration",
+    };
+    assert.equal(hintForEvent(named, "florist"), null);
+  });
+
+  it("W8h: a hint MARKS and never CHOOSES", () => {
+    // The selection is still nothing, and the rows are the same rows in the same order whether or
+    // not a listing category is in play — a mark must not reorder, add or remove a choice.
+    assert.equal(INITIAL_WHICH_EVENT_SELECTION, null);
+    const events = [REHEARSAL_NO_ROLES, CEREMONY_WITH_ROLES, RECEPTION_NULL_ROLES];
+    const choices = whichEventChoices(events);
+    assert.deepEqual(
+      choices.map((c) => c.key),
+      [IMPLICIT_EVENT_GROUP_KEY, "ev-rehearsal", "ev-ceremony", "ev-reception"],
+    );
+    for (const choice of choices) {
+      assert.deepEqual(
+        Object.keys(choice).sort(),
+        ["event", "key", "label", "meta", "value"],
+        "the hint must never become a field on a choice — that is how a mark turns into a default",
+      );
+    }
+    // Exactly ONE row is marked here, and the marked row is still not the selected one.
+    const marked = choices.filter((c) => hintForEvent(c.event, "florist") !== null);
+    assert.equal(marked.length, 1);
+    assert.equal(marked[0].key, "ev-ceremony");
+    assert.equal(findWhichEventChoice(choices, INITIAL_WHICH_EVENT_SELECTION), null);
+    // And the confirm still names no event with nothing chosen.
+    assert.equal(whichEventCtaLabel(null), ADD_TO_PLAN_LABEL);
+  });
+
+  it("W8i: a hint carries no clock time and no fabricated figure (W7, one surface over)", () => {
+    const hint = hintForEvent(CEREMONY_WITH_ROLES, "florist")!;
+    assert.doesNotMatch(hint, CLOCK_RE);
+    // It names a DISCIPLINE, never a provider, a price or a count — this array is not supply.
+    assert.doesNotMatch(hint, /\$|\d/);
   });
 });

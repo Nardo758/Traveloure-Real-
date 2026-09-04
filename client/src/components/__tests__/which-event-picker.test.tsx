@@ -3,16 +3,23 @@
  * Ledger `2026-09-04-which-event-picker`; migration 277; CLAUDE.md Locked Decision 29.
  *
  * The pure module (`client/src/lib/__tests__/which-event.test.ts`) pins the decisions. This pins
- * the render, because the two failures this lane exists to prevent are both things a component
- * can add on its own after the module has done everything right: a clock time hardcoded into the
- * row, and a "suggested" badge on one of them. Neither breaks anything visible on happy-path data.
+ * the render, because the failures this lane exists to prevent are things a component can add on
+ * its own after the module has done everything right: a clock time hardcoded into the row, or a
+ * "suggested" badge put on a row the module never marked. Neither breaks anything visible on
+ * happy-path data.
+ *
+ * The hint itself is now REAL (ledger `2026-09-04-which-event-hint`; migration 280) — the picker
+ * marks an event whose occasion's `roles_needed` names the listing's `category_key`. So R3 no
+ * longer asserts its absence; it asserts the component draws EXACTLY what `hintForEvent` returns,
+ * on exactly the rows it returns it for, and that a marked row is still not a chosen one.
  *
  * What these hold:
  *   R1  NOTHING is pre-selected — every row renders `aria-checked="false"` and the confirm is
  *       disabled, so the dialog cannot commit an answer the traveler never gave.
  *   R2  NO CLOCK TIME anywhere in the rendered markup, for any event shape.
- *   R3  NO suggestion/recommendation marking on any row (there is no category→event mapping in
- *       this codebase to base one on — `experience_types.roles_needed` is absent and HELD).
+ *   R3  The role hint renders ONLY where the module put one: no listing category ⇒ no hint
+ *       anywhere; a match ⇒ that ONE row marked and every other row silent; and the marked row is
+ *       still unchecked with the confirm still disabled.
  *   R4  A bare event (no title, no date, no place) renders as a bare, still-selectable row —
  *       never "Untitled event", never a fabricated date.
  *   R5  The implicit choice is offered and reads as a choice, not a failure state.
@@ -34,21 +41,36 @@ import { IMPLICIT_EVENT_CHOICE_LABEL, type PlanEvent } from "@/lib/which-event";
 // `React.createElement` transform and every rendered component file needs React in scope.
 (globalThis as any).React = React;
 
+// `rolesNeeded` is the occasion's own list as the SERVER sends it on the row — never derived here.
+// Two of these rows deliberately have none, which is the ordinary shape: NULL (never set) and the
+// key simply absent from the payload.
 const EVENTS: PlanEvent[] = [
   { id: "ev-rehearsal", title: "Rehearsal dinner", eventDate: "2026-10-01", location: null },
-  { id: "ev-ceremony", title: "Ceremony", eventDate: "2026-10-02", location: "Nanzen-ji" },
-  { id: "ev-reception", title: "Reception", eventDate: "2026-10-02", location: null },
+  {
+    id: "ev-ceremony",
+    title: "Ceremony",
+    eventDate: "2026-10-02",
+    location: "Nanzen-ji",
+    rolesNeeded: ["event_coordinator", "florist", "photography"],
+  },
+  { id: "ev-reception", title: "Reception", eventDate: "2026-10-02", location: null, rolesNeeded: null },
   { id: "ev-bare", title: null, eventDate: null, location: null },
 ];
 
 /** Anything that looks like a wall-clock reading. */
 const CLOCK_RE = /\d{1,2}\s*[:.]\s*\d{2}|\b\d{1,2}\s*(?:am|pm)\b/i;
 
-function render(events: PlanEvent[] = EVENTS): string {
+/**
+ * @param serviceCategoryKey the listing's `category_key`. DEFAULT `undefined` — the shape of every
+ *        add before this lane, and of any listing whose category predates the key column. Passing
+ *        it is what turns the hint on, so every assertion below states which case it is testing.
+ */
+function render(events: PlanEvent[] = EVENTS, serviceCategoryKey?: string | null): string {
   return renderToString(
     <WhichEventPicker
       subject={{ title: "Hanamizuki Florals", meta: "Kyoto · from $420" }}
       events={events}
+      serviceCategoryKey={serviceCategoryKey}
       onConfirm={() => {}}
       onCancel={() => {}}
     />,
@@ -94,10 +116,51 @@ describe("R2 — no clock time reaches the screen", () => {
   });
 });
 
-describe("R3 — nothing is suggested, because nothing knows", () => {
-  it("R3a: no row carries a suggestion, recommendation or role hint", () => {
-    const text = render().replace(/<[^>]*>/g, " ");
-    assert.doesNotMatch(text, /suggest|recommend|best for|for florists/i);
+describe("R3 — the hint marks exactly what the module marked, and nothing else", () => {
+  it("R3a: a listing with NO category_key marks nothing at all", () => {
+    // The pre-lane shape, and the shape of any listing whose category predates the key column.
+    // Nothing to compare ⇒ nothing said, on every row (§13).
+    const html = render();
+    assert.equal(html.includes("which-event-hint-"), false, "a row was marked with no listing category");
+    assert.doesNotMatch(html.replace(/<[^>]*>/g, " "), /suggest|recommend|best for/i);
+  });
+
+  it("R3b: a matching listing marks THAT row, in the artboard's words, and no other", () => {
+    const html = render(EVENTS, "florist");
+    // Exactly one mark, on the occasion whose own roles_needed names the key.
+    assert.match(html, /data-testid="which-event-hint-ev-ceremony"/);
+    assert.equal(html.split("which-event-hint-").length - 1, 1, "more than one row was marked");
+    assert.match(html.replace(/<[^>]*>/g, " "), /suggested for florists/);
+    // The rows the module did not mark say nothing — no "not suggested" counterpart exists.
+    for (const id of ["ev-rehearsal", "ev-reception", "ev-bare", "__implicit_event__"]) {
+      assert.equal(html.includes(`which-event-hint-${id}`), false, `${id} was marked`);
+    }
+  });
+
+  it("R3c: a listing in a discipline nobody asked for marks nothing", () => {
+    const html = render(EVENTS, "accommodation");
+    assert.equal(html.includes("which-event-hint-"), false);
+  });
+
+  it("R3d: a MARKED row is still not a CHOSEN row", () => {
+    // The whole risk of adding a mark: it becomes a default. Nothing is checked, the confirm is
+    // still disabled, and the CTA still names no event.
+    const html = render(EVENTS, "florist");
+    assert.equal(html.includes('aria-checked="true"'), false, "the marked row was pre-selected");
+    assert.match(html, /disabled=""\s+data-testid="which-event-confirm"/);
+    assert.match(html, /data-testid="which-event-confirm">Add to Plan</);
+  });
+
+  it("R3e: the mark never becomes a bare row's name", () => {
+    // An event with no title, no date and no place whose occasion DOES want the discipline: the
+    // hint renders, but the row is still described as a control, never named by its hint.
+    const bareButWanted: PlanEvent[] = [
+      EVENTS[0],
+      { id: "ev-bare", title: null, eventDate: null, location: null, rolesNeeded: ["florist"] },
+    ];
+    const html = render(bareButWanted, "florist");
+    assert.match(html, /data-testid="which-event-hint-ev-bare"/);
+    assert.match(html, /aria-label="An event on this plan"/);
   });
 });
 
