@@ -61,7 +61,7 @@ Everything below is read from the code, not guessed; the source is cited.
 
 | Variable | Value | Why — source |
 |---|---|---|
-| `ALLOW_TEST_ACCOUNTS` | `1` | The opt-in that makes the boot **seed** instead of **purge**. `server/index.ts:439`; also required by the seed's own fail-safe, `server/seeds/e2e-test-accounts.seed.ts:44-52`. |
+| `ALLOW_TEST_ACCOUNTS` | `1` | The opt-in that makes the boot **seed** instead of **purge**. `server/index.ts:439`; also required by the seed's own fail-safe, `server/seeds/e2e-test-accounts.seed.ts:44-52`. **It is also what enables the test-seed endpoints** (`POST /api/transport-booking-options/seed/test-variant`, used by `e2e/specs/journey-6.spec.ts`): they are refused with a 503 on a production-strict boot — `server/middleware/test-only-endpoint.ts`, audit finding 11. Same predicate (`isProdStrictEnv`), so nothing extra to configure: where the seeded accounts can log in, the seed endpoints answer. |
 | `ENVIRONMENT` | **must NOT be `PROD`** (leave unset) | `ENVIRONMENT === "PROD"` overrides `ALLOW_TEST_ACCOUNTS` and forces the purge branch — `server/index.ts:440` and `e2e-test-accounts.seed.ts:45`. |
 | `DATABASE_URL` | staging's own Postgres | See 2.1. |
 | `E2E_TEST_PASSWORD` | the password the seeded accounts get | `e2e-test-accounts.seed.ts:19` — `process.env.E2E_TEST_PASSWORD \|\| "TestPass123!"`. **Must equal** the GitHub secret in 2.3. If you set neither side, both default to `TestPass123!` and it still works. |

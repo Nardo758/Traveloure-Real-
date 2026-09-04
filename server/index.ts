@@ -65,6 +65,7 @@ import {
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
 import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
+import { createCorsMiddleware } from "./middleware/cors-origins";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
 
@@ -131,31 +132,19 @@ app.use("/api/auth", authRateLimiter as RequestHandler);
 // 30 deliberate 401s — keeps passing unmodified.
 app.use("/internal", internalJobsLimiter as RequestHandler);
 
-// CORS — explicit header control for all API routes.
-// Allowed origins are the Replit-hosted domains for this repl; fall back to the
-// request's own host so same-origin browser calls are always permitted.
-const _corsAllowedOrigins: Set<string> = new Set(
-  (process.env.REPLIT_DOMAINS || "")
-    .split(",")
-    .map((d) => d.trim())
-    .filter(Boolean)
-    .flatMap((d) => [`https://${d}`, `http://${d}`])
-);
-app.use("/api", (req: Request, res: Response, next: NextFunction) => {
-  const origin = req.headers.origin as string | undefined;
-  if (origin && (_corsAllowedOrigins.has(origin) || _corsAllowedOrigins.size === 0)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return;
-  }
-  next();
-});
+// CORS — explicit, DENY-BY-DEFAULT header control for all API routes.
+//
+// Audit finding 13 (ledger `2026-09-03-security-9-11-13`). This block used to reflect the caller's
+// Origin when `_corsAllowedOrigins.has(origin) || _corsAllowedOrigins.size === 0` — so an EMPTY
+// allowlist (the state on any non-Replit deployment, which §11 says is now supported) reflected
+// EVERY origin, while `Access-Control-Allow-Credentials: true` was set unconditionally. An
+// allowlist that fails open plus credentials is a credentialed wildcard.
+//
+// The policy now lives in ONE place (`server/middleware/cors-origins.ts`, which documents every
+// origin source it draws on and is what the test suite mounts): an unknown origin gets NO
+// `Access-Control-Allow-Origin` at all, `*` is never emitted, credentials are sent only alongside
+// an allowed origin, and `Vary: Origin` is set on every response.
+app.use("/api", createCorsMiddleware() as RequestHandler);
 
 
 export function log(message: string, source = "express") {
