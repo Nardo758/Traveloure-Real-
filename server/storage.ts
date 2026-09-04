@@ -152,9 +152,11 @@ import {
   eventInvites,
   guestTravelPlans,
   inviteTemplates,
+  inviteSendLog,
   type EventInvite,
   type GuestTravelPlan,
   type InviteTemplate,
+  type InviteSendLog,
 } from "../shared/guest-invites-schema";
 
 // QA-2 (ledger 96, migration 209): the durable-notification shape a caller of
@@ -7953,7 +7955,8 @@ export class DatabaseStorage implements IStorage {
     guestName: string;
     guestPhone?: string;
     uniqueToken: string;
-    inviteSentAt: Date;
+    // NO `inviteSentAt` (ledger 2026-09-04-invite-mailer). Creating a link is not sending it —
+    // the column is written in exactly one place, `claimInviteSend`, and nowhere else.
   }): Promise<EventInvite> {
     const [row] = await db.insert(eventInvites).values(values).returning();
     return row;
@@ -7961,6 +7964,168 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEventInvite(inviteId: string): Promise<void> {
     await db.delete(eventInvites).where(eq(eventInvites.id, inviteId));
+  }
+
+  // ── Invite sending (ledger 2026-09-04-invite-mailer) ────────────────────────────────────────
+  //
+  // The four methods below are the DB half of the guest-invite send rail. The decision half —
+  // who may send, whether the occasion is sendable, what the message says — lives in
+  // server/services/guest-invite-send.service.ts; nothing here decides anything.
+
+  /**
+   * The single row the send rail needs about a plan's event, joined to its occasion type so the
+   * `default_visibility` switch (migration 276) can be read SERVER-SIDE. The client already hides
+   * the whole guest surface for a hidden occasion; this is the layer that makes that a rule rather
+   * than a rendering choice.
+   *
+   * Returns null when the experience does not exist. `defaultVisibility` is null when the occasion
+   * row has never been given a value — NOT SET, which the caller resolves explicitly.
+   */
+  async getExperienceSendContext(experienceId: string): Promise<{
+    id: string;
+    ownerId: string | null;
+    title: string | null;
+    location: string | null;
+    eventDate: string | null;
+    defaultVisibility: string | null;
+  } | null> {
+    const [row] = await db
+      .select({
+        id: userExperiences.id,
+        ownerId: userExperiences.userId,
+        title: userExperiences.title,
+        location: userExperiences.location,
+        eventDate: userExperiences.eventDate,
+        defaultVisibility: experienceTypes.defaultVisibility,
+      })
+      .from(userExperiences)
+      .leftJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+      .where(eq(userExperiences.id, experienceId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * ATOMICALLY CLAIM one invite for sending (§15: the state transition IS the guard, never a
+   * check-then-update). The UPDATE matches only when
+   *
+   *   · the row belongs to this experience AND to this organizer — the acting user comes from the
+   *     session and is carried into the predicate, so a non-owner matches zero rows at the DB even
+   *     if every layer above it were bypassed (§14); and
+   *   · `invite_sent_at` is NULL (never sent) or older than `notSentSince` — the debounce window.
+   *
+   * A double click therefore claims ONCE: the second request's UPDATE matches no row and the
+   * caller enqueues nothing. A deliberate re-send after the window is allowed and re-stamps.
+   *
+   * Returns the claimed row plus the `invite_sent_at` it REPLACED, so a caller that fails to reach
+   * the outbox can put the old value back (see releaseInviteSendClaim). Null = not claimed.
+   */
+  async claimInviteSend(params: {
+    inviteId: string;
+    experienceId: string;
+    organizerId: string;
+    notSentSince: Date;
+    claimedAt: Date;
+  }): Promise<{ invite: EventInvite; previousSentAt: Date | null } | null> {
+    return await db.transaction(async (tx) => {
+      // SELECT ... FOR UPDATE takes the row lock FIRST, so a concurrent claimer blocks here and
+      // only proceeds once this transaction has committed its new invite_sent_at — at which point
+      // its own predicate below fails. The read is therefore not a check-then-update: the lock,
+      // not the read, is what makes the pair atomic, and the UPDATE still carries the full
+      // predicate so a caller that reaches it by any other path is still refused.
+      const locked = await tx.execute(sql`
+        SELECT invite_sent_at
+        FROM   event_invites
+        WHERE  id            = ${params.inviteId}
+          AND  experience_id = ${params.experienceId}
+          AND  organizer_id  = ${params.organizerId}
+        FOR UPDATE
+      `);
+      const lockedRow = (locked.rows ?? [])[0] as { invite_sent_at: string | Date | null } | undefined;
+      if (!lockedRow) return null; // no such row for this experience/organizer pair
+
+      const raw = lockedRow.invite_sent_at;
+      const previousSentAt = raw == null ? null : raw instanceof Date ? raw : new Date(raw);
+
+      const updated = await tx.execute(sql`
+        UPDATE event_invites
+        SET    invite_sent_at = ${params.claimedAt},
+               updated_at     = NOW()
+        WHERE  id            = ${params.inviteId}
+          AND  experience_id = ${params.experienceId}
+          AND  organizer_id  = ${params.organizerId}
+          AND  (invite_sent_at IS NULL OR invite_sent_at < ${params.notSentSince})
+        RETURNING id
+      `);
+      if ((updated.rows ?? []).length === 0) return null;
+
+      const [invite] = await tx.select().from(eventInvites).where(eq(eventInvites.id, params.inviteId)).limit(1);
+      return invite ? { invite, previousSentAt } : null;
+    });
+  }
+
+  /**
+   * Put `invite_sent_at` back when the enqueue did NOT happen — conditional on the row still
+   * carrying the exact timestamp this claim wrote, so a concurrent later send is never rolled
+   * back over. `inviteSentAt` must be truthful: a stamp with no outbox row behind it is a claim
+   * the platform cannot support (§13).
+   */
+  async releaseInviteSendClaim(inviteId: string, claimedAt: Date, previousSentAt: Date | null): Promise<void> {
+    await db.execute(sql`
+      UPDATE event_invites
+      SET    invite_sent_at = ${previousSentAt},
+             updated_at     = NOW()
+      WHERE  id             = ${inviteId}
+        AND  invite_sent_at = ${claimedAt}
+    `);
+  }
+
+  /**
+   * Append ONE `invite_send_log` row per enqueue attempt. This table is the record of what the
+   * host actually sent; it had no reader and no writer before this lane.
+   *
+   * `status` records what the OUTBOX did — 'sent' means accepted for delivery, 'failed' means no
+   * durable row was written. It never means delivered, opened or clicked: the schema's
+   * `opened_at`/`clicked_at` columns stay NULL because nothing in this codebase observes those
+   * events, and writing a guess into them would be inventing delivery status (§13).
+   */
+  async recordInviteSendLog(values: {
+    inviteId: string;
+    method: string;
+    recipientAddress: string;
+    status: string;
+    errorMessage?: string | null;
+  }): Promise<InviteSendLog> {
+    const [row] = await db.insert(inviteSendLog).values(values).returning();
+    return row;
+  }
+
+  /** The send history for every invite on one event, newest first — the host-facing read. */
+  async getSendLogByExperience(experienceId: string): Promise<InviteSendLog[]> {
+    return db
+      .select({
+        id: inviteSendLog.id,
+        inviteId: inviteSendLog.inviteId,
+        method: inviteSendLog.method,
+        recipientAddress: inviteSendLog.recipientAddress,
+        status: inviteSendLog.status,
+        errorMessage: inviteSendLog.errorMessage,
+        sentAt: inviteSendLog.sentAt,
+        openedAt: inviteSendLog.openedAt,
+        clickedAt: inviteSendLog.clickedAt,
+      })
+      .from(inviteSendLog)
+      .innerJoin(eventInvites, eq(inviteSendLog.inviteId, eventInvites.id))
+      .where(eq(eventInvites.experienceId, experienceId))
+      .orderBy(desc(inviteSendLog.sentAt));
+  }
+
+  /** One template, self-scoped: a template is only readable by the user who authored it (§14). */
+  async getInviteTemplateForUser(templateId: string, userId: string): Promise<InviteTemplate | null> {
+    const [row] = await db.select().from(inviteTemplates)
+      .where(and(eq(inviteTemplates.id, templateId), eq(inviteTemplates.userId, userId)))
+      .limit(1);
+    return row ?? null;
   }
 
   async trackInviteView(token: string, firstViewedAt: Date | null): Promise<void> {

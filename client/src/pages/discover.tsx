@@ -4,6 +4,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
+import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1109,7 +1111,29 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     },
   });
 
+  // LOCATION MISMATCH (ledger 2026-09-04-location-mismatch). `handleAddToCart` is the ONE place an
+  // add is confirmed on this grid — every card's button lands here — so the gate wraps it once.
+  // The SAME reader runs on the listing page (client/src/pages/service-detail.tsx); a second copy
+  // of the decision at the second surface is the derivation-drift class §18 rule 1 names.
+  const mismatchGate = useLocationMismatchGate(targetTripId);
+
   const handleAddToCart = (serviceId: string) => {
+    const svc = result?.services?.find((s) => s.id === serviceId);
+    // Meta is the category name this grid ALREADY shows on the card (`serviceType`); no price is
+    // restated here, because restating it would be a second derivation of the card's own display
+    // value (§18 rule 1) — and §13 says an absent meta line is honest, a placeholder is not.
+    mismatchGate.guardAdd(
+      {
+        // RAW: the "Unknown" sentinel is the reader's to recognise, not the caller's to pre-filter.
+        location: svc?.location,
+        name: svc?.serviceName || "Service",
+        meta: getCategoryById(svc?.categoryId ?? "")?.name ?? null,
+      },
+      () => runAddToCart(serviceId),
+    );
+  };
+
+  const runAddToCart = (serviceId: string) => {
     // A resolved active trip means "add to THAT trip's plan" (cart-is-slip), not the generic cart.
     if (targetTripId) {
       addToTripMutation.mutate(serviceId);
@@ -1913,6 +1937,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         </section>
       </div>
       <TripQueueIndicator />
+      <LocationMismatchDialog
+        alert={mismatchGate.alert}
+        listingName={mismatchGate.listing?.name ?? ""}
+        listingMeta={mismatchGate.listing?.meta ?? null}
+        onAddAnyway={mismatchGate.confirm}
+        onCancel={mismatchGate.cancel}
+      />
     </>
   );
 }

@@ -6,6 +6,10 @@ import { useTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { planningRouteForTrip } from "@/contexts/PlanningContext";
 import { classify, eventCountLabel, partyCountLabel } from "@/lib/plan-vocabulary";
+// Ledger 2026-09-04-which-event-picker: "the events of THIS plan" now has ONE definition, shared
+// with the picker that writes the link. The strip filtered inline before that module existed; two
+// copies of the same filter is the drift class §18 rule 1 names.
+import { eventsForTrip } from "@/lib/which-event";
 import { findOccasionByKey } from "@shared/occasions";
 import type { ExperienceType, UserExperience } from "@shared/schema";
 
@@ -178,9 +182,7 @@ export function TripStrip() {
    * noun comes from `eventCountLabel` in plan-vocabulary.ts, the one home of the platform's
    * presentation nouns, never spelled out here.
    */
-  const eventCount = ctx.tripId
-    ? (planEvents ?? []).filter((e) => e.tripId === ctx.tripId).length
-    : 0;
+  const eventCount = eventsForTrip(planEvents, ctx.tripId).length;
   const eventLabel = eventCountLabel(eventCount);
 
   const singleDay = ctx.startDate && ctx.startDate === ctx.endDate;

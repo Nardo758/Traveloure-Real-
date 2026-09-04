@@ -20,6 +20,7 @@
 
 import { Resend } from "resend";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
+import { escHtml, stripCrLf } from "../utils/email-escape";
 
 let cachedClient: Resend | null = null;
 function getClient(): Resend | null {
@@ -50,30 +51,10 @@ export function getAppBaseUrl(): string {
   return "http://localhost:5000";
 }
 
-/**
- * Escape a string for safe interpolation inside an HTML email body.
- * Converts the five characters that have special meaning in HTML so that
- * user-controlled values cannot inject markup or attributes.
- */
-function escHtml(raw: string | null | undefined): string {
-  if (raw == null) return "";
-  return String(raw)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
- * Strip carriage-return and line-feed characters from a value before it is
- * interpolated into an email `subject` header.  A bare CR or LF in a header
- * value is the classic "email header injection" vector.
- */
-function stripCrLf(raw: string | null | undefined): string {
-  if (raw == null) return "";
-  return String(raw).replace(/[\r\n]/g, "");
-}
+// escHtml / stripCrLf moved to ../utils/email-escape (ledger `2026-09-04-invite-mailer`) so a
+// PURE payload builder can share them without importing this module, which reaches the DB through
+// platform-flags. Re-exported so any existing deep import keeps resolving; call sites unchanged.
+export { escHtml, stripCrLf } from "../utils/email-escape";
 
 // ─── Generic sendEmail ──────────────────────────────────────────────────────
 
