@@ -279,6 +279,12 @@ jobs:
       # shared trailing "Japan" never silences an Osaka-vs-Kyoto mismatch.
       - name: Location mismatch reader pin
         run: npx tsx --test client/src/lib/__tests__/location-mismatch.test.ts
+      # 2026-09-04-roles-needed: `experience_types.roles_needed` carries no DB CHECK (publish-trap
+      # posture), so R1-R6 are where "app-enforced" stops being a claim. R3 in particular pins the
+      # OCCASION_ROLE_KEYS mirror to migration 034 itself, so a category renamed there without
+      # updating the enum fails HERE rather than at a traveler's screen.
+      - name: Occasion roles-needed pin
+        run: npx tsx --test shared/__tests__/roles-needed.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
@@ -466,6 +472,26 @@ jobs:
         run: node scripts/check-category-reachability.cjs --self-test
       - name: Category-reachability guard
         run: node scripts/check-category-reachability.cjs
+
+  roles-needed-reachability-guard:
+    name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # `experience_types.roles_needed` names disciplines as `service_categories.category_key`
+      # values, and migration 034 is the SOLE assigner of that column. A key with no category behind
+      # it renders a hire prompt that resolves to NO PROVIDER — the same dead-path-that-looks-live
+      # shape the category-reachability guard above exists for, reached from the other direction.
+      # The DB deliberately carries no CHECK on this column (publish-trap posture), so this job and
+      # shared/__tests__/roles-needed.test.ts are the whole of the enforcement.
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Roles-needed guard predicate self-test
+        run: node scripts/check-roles-needed-reachability.cjs --self-test
+      - name: Roles-needed reachability guard
+        run: node scripts/check-roles-needed-reachability.cjs
 
   privileged-field-completeness-guard:
     name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)

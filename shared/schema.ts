@@ -1795,6 +1795,25 @@ export const experienceTypes = pgTable("experience_types", {
   defaultGuests: boolean("default_guests"),                      // the Guests page, per-event columns, invites, "N attending"
   vocabulary: varchar("vocabulary", { length: 20 }),             // "travelers" | "guests" | "attendees" — step 4's noun, strip chip, slip panels
   defaultVisibility: varchar("default_visibility", { length: 10 }), // "shown" | "hidden" — hidden suppresses Guests/Share/invites (the proposal case)
+  // ── Roles an occasion NEEDS (migration 280, ledger `2026-09-04-roles-needed`, CLAUDE.md 31) ──
+  // A text[] of `service_categories.category_key` values — the disciplines this occasion typically
+  // hires (a wedding: florist / photography / caterer / officiant). A POINTER INTO the existing
+  // catalog, never a third vocabulary: the FAQ refuses a new service table and §4 refuses to merge
+  // the two offering catalogs; a reference violates neither.
+  //
+  // Migration 034 is the SOLE authority on the legal values — the only assigner of `category_key`.
+  // `scripts/check-roles-needed-reachability.cjs` fails CI on a seeded key 034 does not assign,
+  // because an unreachable key renders a hire prompt that resolves to no provider (the same
+  // dead-taxonomy-that-looks-live shape `check-category-reachability.cjs` exists for).
+  //
+  // NULLABLE, NO DEFAULT, NO DB CHECK — publish-trap posture; the set is app-enforced by
+  // `experienceTypeRolesSchema` below. **NULL means NOT SET**: the reader OMITS the hire prompt and
+  // says why (§13), never "this occasion needs nobody" — a claim only a planner can make. An EMPTY
+  // array is deliberately NOT a second empty state.
+  //
+  // Deliberately NOT a seventh switch: the six above are booleans/enums a traveler flips inside the
+  // plan; this is a catalog reference list, and blurring them would invite a CHECK over a text[].
+  rolesNeeded: text("roles_needed").array(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2503,6 +2522,64 @@ export const experienceTypeSwitchesSchema = createInsertSchema(experienceTypes)
   })
   .partial();
 export type ExperienceTypeSwitches = z.infer<typeof experienceTypeSwitchesSchema>;
+
+/**
+ * The 20 hireable role keys an occasion may name (migration 280, ledger `2026-09-04-roles-needed`,
+ * CLAUDE.md Locked Decision 31). These are `service_categories.category_key` values, and migration
+ * 034 — the SOLE assigner of that column, 24 rows — is the authority that defines them. This
+ * constant is a mirror of 034 for app-side validation, NOT a second source of truth:
+ * `scripts/check-roles-needed-reachability.cjs` fails CI if the two ever disagree, so a key added
+ * here without a category behind it cannot land.
+ *
+ * The four `aff_*` keys 034 also assigns are deliberately ABSENT: they are affiliate SOURCES, not
+ * disciplines anyone hires. An occasion never "needs an aff_air_hotel".
+ */
+export const OCCASION_ROLE_KEYS = [
+  "accessibility_specialist",
+  "accommodation",
+  "activity_provider",
+  "av_tech",
+  "caterer",
+  "childcare_family",
+  "concierge_vip",
+  "dining_venue",
+  "entertainment",
+  "event_coordinator",
+  "florist",
+  "hair_makeup",
+  "officiant",
+  "photography",
+  "printing_materials",
+  "private_chef",
+  "private_transportation",
+  "rentals",
+  "tour_guide",
+  "videographer",
+] as const;
+export type OccasionRoleKey = (typeof OCCASION_ROLE_KEYS)[number];
+
+/**
+ * `experience_types.roles_needed` as an ALLOWLIST body schema — a `.pick()` of exactly that one
+ * column, never an `.omit()` of everything else (§19: under a denylist a privileged column is
+ * client-settable BY DEFAULT, and nobody edits an omit list for a column that did not exist when it
+ * was written). Same posture as `experienceTypeSwitchesSchema` above.
+ *
+ * NO WRITER ROUTE EXISTS IN THIS LANE. The seeder
+ * (`server/seeds/experience-template-tabs.seed.ts`) is the ONE author, writing by UPDATE keyed on
+ * `slug` — a second author of this column is the derivation-drift class §18 rule 1 names. The enum
+ * is the app-side enforcement of the value set the DB deliberately does not CHECK (a CHECK here is
+ * the publish-time drizzle-push failure the Coordination Prevention rules warn about).
+ *
+ * `.nullable()` is load-bearing: NULL means NOT SET, and the reader omits the hire prompt for it
+ * (§13). An empty array is deliberately not a second empty state.
+ */
+export const experienceTypeRolesSchema = createInsertSchema(experienceTypes)
+  .pick({ rolesNeeded: true })
+  .extend({
+    rolesNeeded: z.array(z.enum(OCCASION_ROLE_KEYS)).nullable(),
+  })
+  .partial();
+export type ExperienceTypeRoles = z.infer<typeof experienceTypeRolesSchema>;
 export const insertExperienceTemplateStepSchema = createInsertSchema(experienceTemplateSteps).omit({ id: true, createdAt: true });
 export const insertExpertExperienceTypeSchema = createInsertSchema(expertExperienceTypes).omit({ id: true, createdAt: true });
 export const insertUserExperienceSchema = createInsertSchema(userExperiences).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

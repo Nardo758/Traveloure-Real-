@@ -1,0 +1,39 @@
+-- 280 — An occasion NAMES THE ROLES IT NEEDS.
+-- Ledger `2026-09-04-roles-needed`, CLAUDE.md Locked Decision 31.
+--
+-- WHAT THIS IS
+-- ────────────
+-- `experience_types.roles_needed` is a text[] of `service_categories.category_key` values — the
+-- disciplines an occasion typically hires: a wedding needs florist / photography / caterer /
+-- officiant. Every one of those ALREADY exists as a category key, so this column is a POINTER INTO
+-- THE EXISTING CATALOG, not a third one (the CLAUDE.md FAQ refuses a new service table; §4 refuses
+-- to merge the two offering catalogs; a reference violates neither).
+--
+-- WHERE THE LEGAL VALUES COME FROM
+-- ────────────────────────────────
+-- Migration 034 is the SOLE taxonomy authority — the only assigner of `category_key`, 24 rows. It
+-- and nothing else defines the legal set. The four `aff_*` keys are affiliate SOURCES rather than
+-- hireable roles (an occasion never "needs an aff_air_hotel"), which leaves the 20 discipline keys.
+-- `scripts/check-roles-needed-reachability.cjs` fails CI when a seeded key is not assigned by 034 —
+-- an unreachable key would render a hire prompt that resolves to no provider, the same
+-- dead-taxonomy-that-looks-live shape `check-category-reachability.cjs` exists for.
+--
+-- ADDITIVE, NULLABLE, NO DEFAULT, NO CHECK — deliberately
+-- ──────────────────────────────────────────────────────
+-- The publish-trap posture (migrations 181 / 195 / 273 / 275 / 276 / 277 / 279): a CHECK added over
+-- a column prod rows can violate fails the Replit deploy push MID-PUSH and offers the destructive
+-- "copy dev database over production". The value set is APP-enforced instead
+-- (`experienceTypeRolesSchema` in shared/schema.ts).
+--
+-- **NULL MEANS NOT SET.** A reader OMITS the hire prompt for a NULL row and says why (§13). NULL is
+-- never rendered as "this occasion needs nobody" — that is a claim only a planner can make. An
+-- EMPTY array is deliberately not introduced as a second empty state: two ways to say nothing is
+-- how a reader ends up guessing which was meant.
+--
+-- The column is DECLARED in shared/schema.ts (deploy-push durability rule — an object that file
+-- does not declare is dropped at publish and never recreated, because this migration is already
+-- stamped by then). No backfill: the seeder is the one author and writes by UPDATE keyed on slug.
+--
+-- Idempotent; safe to re-run.
+
+ALTER TABLE experience_types ADD COLUMN IF NOT EXISTS roles_needed text[];
