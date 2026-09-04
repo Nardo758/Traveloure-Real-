@@ -12,8 +12,8 @@
 import { db } from "../db";
 import { storage } from "../storage";
 import { users } from "@shared/models/auth";
-import { trips, tripCollaborators } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { trips, tripCollaborators, providerServices, vendorAvailabilitySlots } from "@shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { resolveTripTimezone } from "../services/trip-timezone";
 
@@ -170,6 +170,103 @@ async function seedE2EAccounts() {
     }
     await db.update(users).set(patch).where(eq(users.id, row.id));
     console.log(`  + Backfilled fixture owner ${fixture.email} (${Object.keys(patch).filter((k) => k !== "updatedAt").join(", ")})`);
+  }
+
+  // ── Provider storefront readiness backfill (F-3, Sep 3 2026) ─────────────────────────────
+  // The persona drives + provider-console specs authenticate as kyoto-photography expecting a
+  // LIVE storefront, but the base account row above is only an identity. The storefront gate
+  // (server/routes/storefront.routes.ts's /api/me/business-setup) needs four more legs: a handle
+  // (the public /s/<handle> URL), payouts connected, one APPROVED offering, and a future
+  // availability slot. A fresh seed left all four empty, so every provider-POV drive dead-ended
+  // at the setup checklist. IDEMPOTENT + NON-DESTRUCTIVE, same contract as the login backfill:
+  // NULL-only fills on the account row, approve-one-only-when-none-approved on services, slot
+  // insert only when no future unblocked slot exists. Identity verification is intentionally
+  // NOT faked — the platform_settings.storefront_require_verified switch stays authoritative
+  // (currently "false", so the gate does not require it).
+  {
+    const PROVIDER_EMAIL = "kyoto-photography@traveloure.test";
+    const provider = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, PROVIDER_EMAIL))
+      .then((r) => r[0]);
+
+    if (!provider) {
+      console.log(`  ! ${PROVIDER_EMAIL} not found — storefront readiness backfill skipped`);
+    } else {
+      // Legs 1+2: handle + payouts, NULL-only.
+      const patch: Record<string, unknown> = {};
+      if (!provider.handle) {
+        const taken = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.handle, "kyoto-photography"))
+          .then((r) => r[0]);
+        if (taken) {
+          console.log("  ! handle @kyoto-photography already belongs to another account — left as-is");
+        } else {
+          patch.handle = "kyoto-photography";
+        }
+      }
+      if (!provider.stripeAccountStatus) patch.stripeAccountStatus = "active";
+      if (Object.keys(patch).length > 0) {
+        patch.updatedAt = new Date();
+        await db.update(users).set(patch).where(eq(users.id, provider.id));
+        console.log(`  + Storefront readiness: ${PROVIDER_EMAIL} (${Object.keys(patch).filter((k) => k !== "updatedAt").join(", ")})`);
+      }
+
+      // Leg 3: exactly one approved + active offering — approve the oldest submitted one ONLY
+      // when the account has nothing approved (never overrides a real admin rejection, never
+      // double-approves).
+      const approved = await db
+        .select({ id: providerServices.id })
+        .from(providerServices)
+        .where(and(eq(providerServices.userId, provider.id), eq(providerServices.approvalStatus, "approved")))
+        .limit(1);
+      let storefrontServiceId: string | null = approved[0]?.id ?? null;
+      if (!storefrontServiceId) {
+        const [submitted] = await db
+          .select({ id: providerServices.id })
+          .from(providerServices)
+          .where(and(eq(providerServices.userId, provider.id), eq(providerServices.approvalStatus, "submitted")))
+          .orderBy(providerServices.createdAt)
+          .limit(1);
+        if (submitted) {
+          await db
+            .update(providerServices)
+            .set({ approvalStatus: "approved", status: "active", reviewedAt: new Date(), updatedAt: new Date() })
+            .where(eq(providerServices.id, submitted.id));
+          storefrontServiceId = submitted.id;
+          console.log(`  + Storefront readiness: approved service ${submitted.id} for ${PROVIDER_EMAIL}`);
+        } else {
+          console.log(`  ! ${PROVIDER_EMAIL} has no submitted service to approve — catalog/availability legs skipped`);
+        }
+      }
+
+      // Leg 4: one future, non-blocked availability slot on that offering.
+      if (storefrontServiceId) {
+        const [slot] = await db
+          .select({ id: vendorAvailabilitySlots.id })
+          .from(vendorAvailabilitySlots)
+          .where(and(eq(vendorAvailabilitySlots.providerId, provider.id), sql`${vendorAvailabilitySlots.date} >= CURRENT_DATE`, sql`${vendorAvailabilitySlots.status} <> 'blocked'`))
+          .limit(1);
+        if (!slot) {
+          const slotDate = new Date();
+          slotDate.setDate(slotDate.getDate() + 14);
+          const iso = slotDate.toISOString().slice(0, 10);
+          await db.insert(vendorAvailabilitySlots).values({
+            id: "e2e-slot-kyoto-photography-1",
+            serviceId: storefrontServiceId,
+            providerId: provider.id,
+            date: iso,
+            startTime: "10:00",
+            endTime: "12:00",
+            status: "available",
+          }).onConflictDoNothing();
+          console.log(`  + Storefront readiness: availability slot ${iso} 10:00-12:00 for ${PROVIDER_EMAIL}`);
+        }
+      }
+    }
   }
 
   // Seed one upcoming Kyoto trip for the traveler so /my-trips shows a card
