@@ -13,7 +13,7 @@
  *  - optimizer-attributed logistics rows: a leg whose `suggestedBy === "ai"` (the
  *    assembler's real unsettled-machine-leg marker) carries "added by optimizer".
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
@@ -74,6 +74,12 @@ import { AssignExpertSlot } from "./AssignExpertDialog";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
+import { showsSchedule } from "@/lib/occasion-switches";
+import {
+  groupItemsByEvent,
+  IMPLICIT_EVENT_GROUP_KEY,
+  type PlanEvent,
+} from "@/lib/slip-events";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { BuildAroundDialog } from "./BuildAroundDialog";
@@ -112,6 +118,14 @@ export interface SlipData extends PlanCardData {
   trip?: SlipTrip;
   /** The §4 diary — last 20 log rows, newest first. Absent on pre-BUILD-1 responses. */
   recentTransitions?: TripPlanTransition[];
+  /**
+   * Migration 277 (ledger `2026-09-04-slip-events`) — the plan's EVENTS, exactly as the plancard
+   * route already ships them (its narrow projection of the trip's `user_experiences` rows, behind
+   * the same owner/advisor/author gate as the rest of this DTO). Nothing new is requested for
+   * this lane: the key was already on the wire with no reader. Absent/empty ⇒ the plan has only
+   * its ONE implicit unnamed event, and the slip renders its flat day list unchanged.
+   */
+  events?: PlanEvent[];
   meta?: PlanCardData["meta"] & {
     deliveredBy?: { expertId: string; name: string | null; avatar: string | null } | null;
   };
@@ -366,6 +380,54 @@ function SlipItemRow({
         <RoutingBadge activity={a} showPlanning />
       </div>
     </div>
+  );
+}
+
+/**
+ * One EVENT inside the day (migration 277; ledger `2026-09-04-slip-events`). A bordered inset
+ * around the items that name this `user_experiences` row — the same inset grammar
+ * `ExpertNoteBlock` uses, drawn from theme tokens so it follows light/dark like everything else.
+ *
+ * WHAT IT MAY SAY, and what it may not (§13):
+ *  - the event's TITLE when the row has one. A row with no title gets no title line — never an
+ *    "Untitled event", which is a name nobody wrote.
+ *  - its DATE and its PLACE when set. `user_experiences.event_date` is a DATE column with NO
+ *    time-of-day anywhere on the row, so no clock time is rendered — a start time here would be
+ *    manufactured, and this surface has no source for one.
+ *  - nothing else. An event that has told us nothing renders as a bare inset: the grouping is
+ *    still true (these items belong together), and no label is invented to decorate it.
+ *
+ * The plan's ONE implicit unnamed event never reaches this component — it renders as a bare
+ * Fragment, with no heading at all (see `groupItemsByEvent`).
+ */
+function SlipEventGroupBlock({ event, children }: { event: PlanEvent; children: ReactNode }) {
+  const date = safeDate(event.eventDate);
+  const meta = [date ? format(date, "EEE, MMM d") : null, event.location || null]
+    .filter(Boolean)
+    .join(" · ");
+  const hasHeader = !!event.title || !!meta;
+  return (
+    <section
+      className="my-2 rounded-lg border border-border bg-muted/20"
+      aria-label={event.title || undefined}
+      data-testid={`slip-event-${event.id}`}
+    >
+      {hasHeader && (
+        <header className="px-3 pt-2 pb-0.5">
+          {event.title && (
+            <p className="text-sm font-semibold text-foreground" data-testid={`slip-event-title-${event.id}`}>
+              {event.title}
+            </p>
+          )}
+          {meta && (
+            <p className="text-[11px] text-muted-foreground" data-testid={`slip-event-meta-${event.id}`}>
+              {meta}
+            </p>
+          )}
+        </header>
+      )}
+      <div className="pb-1">{children}</div>
+    </section>
   );
 }
 
@@ -1006,6 +1068,26 @@ export function SlipView({
 
   const sortedDays = [...days].sort((a, b) => a.dayNum - b.dayNum);
 
+  // ── DAY → EVENT → ITEMS (migration 277; ledger `2026-09-04-slip-events`) ──────────────────
+  // TWO conditions, both real, and neither is guessed:
+  //
+  //  (1) THE OCCASION SAYS THIS PLAN HAS AN INTERNAL SCHEDULE — `experience_types.default_schedule`,
+  //      read through the ONE switch reader (`showsSchedule`, Locked Decision 28). The column is
+  //      nullable with no DB CHECK, so NULL / an unresolved occasion / an unreadable trip all mean
+  //      NOT SET, and `showsSchedule` falls back to FALSE — the plain-plan shape, which here is the
+  //      flat day list this surface has always rendered (§13). Grouping a plan nobody said has a
+  //      schedule would put structure in the row's mouth.
+  //
+  //  (2) THE PLAN ACTUALLY HAS EVENTS. An empty `events` array is the honest state of every plan
+  //      that exists today — one implicit unnamed event, no rows — and it renders EXACTLY as
+  //      before, not as a degraded version of something else.
+  //
+  // When either is false the day renders its items flat, in the same Fragment-wrapped single
+  // group, so the un-grouped DOM is byte-identical to the pre-lane render.
+  const { occasion } = useOccasionSwitches(tripId);
+  const planEvents: PlanEvent[] = data.events ?? [];
+  const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
+
   return (
     <div className="max-w-2xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
@@ -1087,27 +1169,46 @@ export function SlipView({
           )}
           {sortedDays.map((day) => {
             const dayActivities = [...day.activities].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+            // Ungrouped: ONE implicit group holding the whole day, rendered as a bare Fragment —
+            // the same rows in the same order with no extra wrapper, so nothing about the flat
+            // day list changes for a plan with no events.
+            const groups = groupByEvent
+              ? groupItemsByEvent(dayActivities, planEvents)
+              : [{ key: IMPLICIT_EVENT_GROUP_KEY, event: null, items: dayActivities }];
             return (
               <div key={day.dayNum} className="py-2 first:pt-0 last:pb-0">
                 <p className="px-3 pt-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Day {day.dayNum}
                   {day.date ? ` · ${day.date}` : ""}
                 </p>
-                {dayActivities.map((a) => (
-                  <SlipItemRow
-                    key={a.id}
-                    tripId={tripId}
-                    activity={a}
-                    isOwner={isOwner}
-                    isExpertViewer={isExpertViewer}
-                    expertName={expertName}
-                    hasOptimized={hasOptimized}
-                    highlighted={highlighted === a.id}
-                    rowRef={(el) => {
-                      rowRefs.current[a.id] = el;
-                    }}
-                  />
-                ))}
+                {groups.map((group) => {
+                  const rows = group.items.map((a) => (
+                    <SlipItemRow
+                      key={a.id}
+                      tripId={tripId}
+                      activity={a}
+                      isOwner={isOwner}
+                      isExpertViewer={isExpertViewer}
+                      expertName={expertName}
+                      hasOptimized={hasOptimized}
+                      highlighted={highlighted === a.id}
+                      rowRef={(el) => {
+                        rowRefs.current[a.id] = el;
+                      }}
+                    />
+                  ));
+                  // The implicit group carries NO heading — NULL is the plan's own unnamed event,
+                  // not an "unassigned" bucket, and a label here would be a name nobody wrote (§13).
+                  return group.event ? (
+                    <SlipEventGroupBlock key={group.key} event={group.event}>
+                      {rows}
+                    </SlipEventGroupBlock>
+                  ) : (
+                    <Fragment key={group.key}>{rows}</Fragment>
+                  );
+                })}
+                {/* Logistics stay at DAY level: a leg connects two stops and carries no event link
+                    of its own, so it is never filed under one (§13). */}
                 {(day.transports ?? []).map((leg) => (
                   <LogisticsRow key={leg.id} leg={leg} />
                 ))}

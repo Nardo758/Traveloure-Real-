@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Calendar, Users, ShoppingCart, Lock, Heart } from "lucide-react";
+import { MapPin, Calendar, CalendarDays, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { planningRouteForTrip } from "@/contexts/PlanningContext";
-import { classify, partyCountLabel } from "@/lib/plan-vocabulary";
+import { classify, eventCountLabel, partyCountLabel } from "@/lib/plan-vocabulary";
 import { findOccasionByKey } from "@shared/occasions";
-import type { ExperienceType } from "@shared/schema";
+import type { ExperienceType, UserExperience } from "@shared/schema";
 
 /**
  * TripStrip — the ratified Option A global trip bar (Trip-Strip program P3).
@@ -68,6 +68,24 @@ export function TripStrip() {
   const { data: occasions } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
     enabled: !!(ctx.experienceSlug || ctx.experienceType),
+  });
+
+  /**
+   * THE PLAN'S EVENTS (migration 277; ledger `2026-09-04-slip-events`, CLAUDE.md entry 29). An
+   * event inside a plan is a `user_experiences` row bound by `trip_id` — the same rows the slip's
+   * guest-list surface already reads, on the SAME `/api/user-experiences` query key, so this
+   * costs a cache lookup rather than a second fetch and the two surfaces can never disagree on
+   * how many events a plan has. NO new route and no new DTO field: the strip has no plancard
+   * fetch of its own (that DTO is trip-gated and far heavier than a chrome bar should pull), so
+   * the user-scoped list it shares with the slip is the reuse, not a parallel rail.
+   *
+   * Fetched only once the context carries a real `tripId` — a browser mid-intake has no plan to
+   * count events on, and the strip must not add a request to every marketing page.
+   */
+  const { data: planEvents } = useQuery<UserExperience[]>({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!ctx.tripId,
+    staleTime: 30_000,
   });
 
   // External (affiliate) items live only in sessionStorage, keyed by slug.
@@ -151,6 +169,20 @@ export function TripStrip() {
           : `${ctx.travelers} traveler${ctx.travelers === 1 ? "" : "s"}`)
     : "";
 
+  /**
+   * "3 events" — hidden at zero, and hidden while unknown (§13). A plan with no
+   * `user_experiences` row has only its ONE implicit unnamed event, which is not a row and is
+   * never counted as one, so the chip does not render; and a list that never loaded (an
+   * unauthenticated strip, a failed fetch) leaves `planEvents` undefined, which reads as the
+   * same absence — the strip says nothing rather than claiming a count it does not have. The
+   * noun comes from `eventCountLabel` in plan-vocabulary.ts, the one home of the platform's
+   * presentation nouns, never spelled out here.
+   */
+  const eventCount = ctx.tripId
+    ? (planEvents ?? []).filter((e) => e.tripId === ctx.tripId).length
+    : 0;
+  const eventLabel = eventCountLabel(eventCount);
+
   const singleDay = ctx.startDate && ctx.startDate === ctx.endDate;
   const dateLabel = ctx.startDate
     ? singleDay
@@ -223,6 +255,17 @@ export function TripStrip() {
           >
             <Users className="w-3 h-3 text-[color:var(--earn-faint)]" />
             {partyLabel}
+          </span>
+        )}
+
+        {eventLabel && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs"
+            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-muted)" }}
+            data-testid="trip-strip-events"
+          >
+            <CalendarDays className="w-3 h-3 text-[color:var(--earn-faint)]" />
+            {eventLabel}
           </span>
         )}
 
