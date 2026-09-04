@@ -28,12 +28,18 @@
  * routes into signup carrying ?offeringTypeKey=… (the one canonical param).
  */
 
-import { useQuery, useQueries } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { useSignInModal } from "@/contexts/SignInModalContext";
-import { Star, ArrowRight, AlertCircle, PackageOpen } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
+import { Star, ArrowRight, AlertCircle, PackageOpen, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   EARN_ROLES,
   EA_SIGNUP,
@@ -184,6 +190,51 @@ export default function EarnPage() {
   const searchString = useSearch();
   const [, navigate] = useLocation();
   const { openSignInModal } = useSignInModal();
+  const { isAuthenticated } = useAuth();
+
+  // ── Gap 14 (ledger `2026-09-04-earn-contained-fixes`): "Don't see your trade?" ──────────
+  // The catalog is finite and admin-edited, and a person whose trade is not on it had nowhere
+  // to say so — they either picked a wrong-but-close row or left. The queue for exactly this
+  // already exists (`offering_type_requests`, migration 189, surfaced on /admin/categories and
+  // /admin/content-ops), and the provider wizard already files into it. This is the SAME rail —
+  // `POST /api/me/offering-requests`, no new route, no new table — reached one step earlier,
+  // before signup rather than mid-listing.
+  //
+  // AUTH: the endpoint is under `/api/me` and is `isAuthenticated`. /earn is a PUBLIC
+  // pre-signup surface, so a guest is routed through the existing sign-in modal with a
+  // `returnTo` back here — never allowed to type a request that would 401 on submit (§13: we
+  // ask before the work, not after it).
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestName, setRequestName] = useState("");
+  const [requestDescription, setRequestDescription] = useState("");
+  const [requestSubmitted, setRequestSubmitted] = useState<string | null>(null);
+
+  const offeringRequestMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", "/api/me/offering-requests", {
+        requestedName: requestName.trim(),
+        description: requestDescription.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setRequestSubmitted(requestName.trim());
+      setRequestOpen(false);
+      setRequestName("");
+      setRequestDescription("");
+    },
+  });
+
+  const openOfferingRequest = () => {
+    if (!isAuthenticated) {
+      openSignInModal({
+        title: "Sign in to tell us about your trade",
+        description: "We route these to the team that adds new offering types — we just need to know who to follow up with.",
+        returnTo: window.location.pathname + window.location.search,
+      });
+      return;
+    }
+    setRequestSubmitted(null);
+    setRequestOpen(true);
+  };
 
   // URL is the single source of truth for the selected role (deep-linkable).
   // Legacy ?track= deep links map onto the role layer.
@@ -446,6 +497,94 @@ export default function EarnPage() {
                 ))}
               </div>
             )}
+
+            {/* Gap 14: the catalog is finite. Say so, and give the person whose trade is not on
+                it somewhere to go — the EXISTING offering-request queue. Rendered whatever the
+                catalog's state is: "not listed" is exactly as true when the list failed to load
+                or is empty as when it loaded fine. */}
+            <div className="mt-3" data-testid="earn-trade-request">
+              {requestSubmitted ? (
+                <p
+                  className="inline-flex items-start gap-1.5 text-xs text-[#0F6E56]"
+                  data-testid="earn-trade-request-done"
+                >
+                  <Check className="w-3.5 h-3.5 mt-[1px] flex-shrink-0" />
+                  <span>
+                    Thanks — we've logged <span className="font-medium">{requestSubmitted}</span>. We review these
+                    by hand and will follow up by email. We can't promise a date.
+                  </span>
+                </p>
+              ) : requestOpen ? (
+                <form
+                  className="rounded-lg border border-[#E7E4DD] bg-white p-3.5 max-w-md"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!requestName.trim()) return;
+                    offeringRequestMutation.mutate();
+                  }}
+                  data-testid="earn-trade-request-form"
+                >
+                  <Label htmlFor="earn-request-name" className="text-[13px] font-medium text-[#1F2733]">
+                    What do you do?
+                  </Label>
+                  <Input
+                    id="earn-request-name"
+                    value={requestName}
+                    onChange={(e) => setRequestName(e.target.value)}
+                    placeholder="e.g. Kimono dressing, Sound bath facilitator"
+                    maxLength={120}
+                    className="mt-1.5"
+                    data-testid="earn-trade-request-name"
+                  />
+                  <Label htmlFor="earn-request-desc" className="mt-3 block text-[13px] font-medium text-[#1F2733]">
+                    Anything else? (optional)
+                  </Label>
+                  <Textarea
+                    id="earn-request-desc"
+                    value={requestDescription}
+                    onChange={(e) => setRequestDescription(e.target.value)}
+                    placeholder="Who it's for, how you deliver it, what travellers ask you for."
+                    rows={3}
+                    className="mt-1.5"
+                    data-testid="earn-trade-request-description"
+                  />
+                  {offeringRequestMutation.isError && (
+                    <p className="mt-2 text-xs text-[#C0392B]" data-testid="earn-trade-request-error">
+                      We couldn't send that. Please try again.
+                    </p>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={!requestName.trim() || offeringRequestMutation.isPending}
+                      className="bg-[#0F6E56] hover:bg-[#0F6E56]/90 text-white"
+                      data-testid="earn-trade-request-submit"
+                    >
+                      {offeringRequestMutation.isPending ? "Sending…" : "Send"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setRequestOpen(false)}
+                      data-testid="earn-trade-request-cancel"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openOfferingRequest}
+                  className="text-xs font-medium text-[#0F6E56] hover:underline"
+                  data-testid="earn-trade-request-open"
+                >
+                  Don't see your trade? Tell us →
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
