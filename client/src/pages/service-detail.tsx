@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { ServiceLocationMap, parseLatLng } from "@/components/service-location-map";
+import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
+import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -419,6 +421,11 @@ export default function ServiceDetailPage() {
   const searchString = useSearch();
   const [tripCtx] = useTripContext();
   const targetTripId = resolveTargetTripId(searchString, tripCtx);
+  // LOCATION MISMATCH (ledger 2026-09-04-location-mismatch). ONE gate for every add on this page:
+  // the four buttons below (Book now / Add, and the room rung's twins) are four confirm points for
+  // the SAME add, so they share one reader rather than each carrying a copy of the decision
+  // (§18 rule 1). Advisory only — it never blocks, never writes, and nothing is persisted.
+  const mismatchGate = useLocationMismatchGate(targetTripId);
   // Native "Book on Traveloure": capture a preferred date/time and carry it into the
   // cart (cart_items.scheduled_date → checkout bookingDetails). Optional — non-dated
   // services (e.g. a PDF deliverable) can book without it. This closes the gap where
@@ -768,6 +775,16 @@ export default function ServiceDetailPage() {
     : priceNum > 0
     ? "per service"
     : "contact the provider for pricing";
+
+  // The dialog echoes the listing with the category/price line this page ALREADY renders
+  // (`priceLabel`, above) — no second price derivation, no fee literal (§8/§18 rule 1). The
+  // location is handed over RAW: the "Unknown" sentinel is the reader's to recognise, not the
+  // caller's to pre-filter.
+  const guardServiceAdd = (add: () => void) =>
+    mismatchGate.guardAdd(
+      { location: service.location, name: service.serviceName || "Service", meta: priceLabel },
+      add,
+    );
 
   // Direct-Booking trust panel (mockup "custody-label"): every line is gated on a real
   // field — identity/business verification (public-verification), meeting point, and
@@ -1512,7 +1529,7 @@ export default function ServiceDetailPage() {
                             openSignInModal();
                             return;
                           }
-                          addRoomToCartMutation.mutate({ proceed: true });
+                          guardServiceAdd(() => addRoomToCartMutation.mutate({ proceed: true }));
                         }}
                         disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
                         title={awayTitle}
@@ -1539,7 +1556,7 @@ export default function ServiceDetailPage() {
                             openSignInModal();
                             return;
                           }
-                          addRoomToCartMutation.mutate({ proceed: false });
+                          guardServiceAdd(() => addRoomToCartMutation.mutate({ proceed: false }));
                         }}
                         disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
                         title={awayTitle}
@@ -1563,7 +1580,7 @@ export default function ServiceDetailPage() {
                             openSignInModal();
                             return;
                           }
-                          addToCartMutation.mutate({ proceed: true });
+                          guardServiceAdd(() => addToCartMutation.mutate({ proceed: true }));
                         }}
                         disabled={isAway || addToCartMutation.isPending}
                         title={awayTitle}
@@ -1590,7 +1607,7 @@ export default function ServiceDetailPage() {
                             openSignInModal();
                             return;
                           }
-                          addToCartMutation.mutate({ proceed: false });
+                          guardServiceAdd(() => addToCartMutation.mutate({ proceed: false }));
                         }}
                         disabled={isAway || addToCartMutation.isPending}
                         title={awayTitle}
@@ -1950,6 +1967,13 @@ export default function ServiceDetailPage() {
           </div>
         </div>
       </div>
+      <LocationMismatchDialog
+        alert={mismatchGate.alert}
+        listingName={mismatchGate.listing?.name ?? ""}
+        listingMeta={mismatchGate.listing?.meta ?? null}
+        onAddAnyway={mismatchGate.confirm}
+        onCancel={mismatchGate.cancel}
+      />
     </Layout>
   );
 }
