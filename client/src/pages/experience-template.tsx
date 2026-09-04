@@ -105,6 +105,9 @@ import { updateTripContext, useTripContext, switchTripContextPreservingId, getTr
 // §18 rule 1: the "URL first, then the active TripContext" order is written ONCE, in
 // client/src/lib/trip-target.ts, and every marketplace add resolves through it.
 import { resolveTargetTripId } from "@/lib/trip-target";
+// Locked Decision 32 lane (a): no expert touchpoint without a slip. The mint door, the §13
+// "dates are asked for, never invented" checks and the slip-first ordering all live there.
+import { ensureSlipForExpertRequest, mintTripSlip } from "@/lib/trip-slip";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { planningRouteForTrip } from "@/contexts/PlanningContext";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
@@ -1409,44 +1412,110 @@ export default function ExperienceTemplatePage() {
   });
 
   const openExpertChat = async () => {
-    // Open the Expert Help dialog with AI matching + chat tabs.
-    setExpertHelpDialogOpen(true);
-
-    // Hand the traveler's current planning work to the expert queue so the
-    // expert can help with the plan-in-progress, not a blank slate. Best-effort
-    // and de-duplicated: only sends when signed in, a destination is set, and
-    // the plan changed since the last share.
-    if (!user || !destination.trim()) return;
+    // THE SLIP IS THE PRECONDITION FOR THE TOUCHPOINT ITSELF, not just for the lead (Locked
+    // Decision 32 lane (a), ledger `2026-09-04-template-inquiry-slip`). The Expert Help dialog
+    // is AI expert matching plus a live advisor chat — an expert touchpoint — so it does not
+    // open until a slip exists. A `template_inquiry` with no `tripId` is a DEAD END that
+    // surfaces to nobody: the advisor row, the expert's notification and the Assigned Trips
+    // entry all sit inside `if (tripId)` in booking-actions.ts, and the admin confirm path
+    // answers 400 "Request has no associated trip" — while this page's own bare `catch` told
+    // the traveler it had been "shared". So the slip is resolved FIRST from the basics already
+    // on this page; the dialog opens only once one is in hand, and the request only goes out
+    // bound to it. A trip already in trip context is REUSED, never duplicated. Every one of
+    // those decisions lives in `@/lib/trip-slip` — none is restated here.
+    if (!user) {
+      // Minting a slip needs an account, so a signed-out traveler has no honest way through
+      // this door yet. Saying so beats opening a dialog whose expert can never be reached.
+      toast({
+        title: "Sign in to get expert help",
+        description: "Your plan is saved to your account before an expert can pick it up.",
+        variant: "destructive",
+      });
+      return;
+    }
     const snapshot = buildPlanSnapshot();
     // Dedup key includes the cart summary (count/total) so a changed plan still re-sends even
-    // though item content no longer rides the snapshot itself.
+    // though item content no longer rides the snapshot itself. It governs the REQUEST only —
+    // a second click on an unchanged plan must still be able to open the dialog, which is why
+    // it rides in as `skipRequest` rather than short-circuiting the precondition.
     const sig = JSON.stringify({ ...snapshot, cartCount: cart.length, cartTotal });
-    if (sig === lastSharedPlanRef.current) return;
-    lastSharedPlanRef.current = sig;
-    try {
-      await fetch("/api/expert-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+    const alreadyShared = sig === lastSharedPlanRef.current;
+    if (!alreadyShared) lastSharedPlanRef.current = sig;
+
+    const outcome = await ensureSlipForExpertRequest(
+      {
+        existingTripId: getTripContext().tripId,
+        basics: {
           destination,
-          requestType: "template_inquiry",
-          notes: `Traveler is planning a ${experienceType?.name || "trip"} to ${destination}` +
-            (cart.length ? ` with ${cart.length} selected item(s) (~$${cartTotal}).` : "."),
-          // The slip REFERENCE (when a trip is bound — Server-truth mode): the expert
-          // workspace reads the plan live through it; nothing is copied.
-          ...(getTripContext().tripId ? { tripId: getTripContext().tripId } : {}),
-          optimizationContext: { planSnapshot: snapshot },
-        }),
-      });
+          // The snapshot's own YYYY-MM-DD dates — absent when the traveler has not set them,
+          // and absent is where this stops. Never a defaulted "today"/"+7 days" (§13).
+          startDate: snapshot.startDate,
+          endDate: snapshot.endDate,
+        },
+      },
+      {
+        skipRequest: alreadyShared,
+        mint: (basics) => mintTripSlip(basics),
+        onMinted: (tripId) => {
+          // Bind the new slip to this page's context so the rest of the session (and the
+          // expert's live read) points at the trip the traveler is actually filling in.
+          updateTripContext({ tripId });
+        },
+        onSlipReady: () => {
+          // A slip exists (reused or just minted) — the touchpoint is authorized. This is the
+          // ONLY place the Expert Help dialog opens.
+          setExpertHelpDialogOpen(true);
+        },
+        sendRequest: async (tripId) => {
+          const res = await fetch("/api/expert-requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              destination,
+              requestType: "template_inquiry",
+              notes: `Traveler is planning a ${experienceType?.name || "trip"} to ${destination}` +
+                (cart.length ? ` with ${cart.length} selected item(s) (~$${cartTotal}).` : "."),
+              // The slip REFERENCE (Server-truth mode): the expert workspace reads the plan
+              // live through it; nothing is copied. Never optional any more.
+              tripId,
+              optimizationContext: { planSnapshot: snapshot },
+            }),
+          });
+          // `fetch` does not reject on a 4xx/5xx, and the old bare `catch` therefore toasted
+          // "Shared with an expert" for a request the server refused. A claim the platform
+          // cannot back is the §13 class this whole lane is about, so a non-OK answer is a
+          // failure here rather than a silent success.
+          if (!res.ok) throw new Error(`expert-requests responded ${res.status}`);
+          return res;
+        },
+      },
+    );
+
+    if (outcome.status === "sent") {
       toast({
         title: "Shared with an expert",
         description: "Your current plan was sent so an expert can jump right in.",
       });
-    } catch {
-      // Non-fatal — the dialog is already open; allow a retry on the next click.
-      lastSharedPlanRef.current = "";
+      return;
     }
+    // The dialog is open on an unchanged plan already in the queue — nothing to say, and
+    // nothing to re-send. `lastSharedPlanRef` is deliberately left alone here.
+    if (outcome.status === "ready") return;
+
+    // Nothing was sent. Let the next click try again.
+    lastSharedPlanRef.current = "";
+    if (outcome.status === "blocked") {
+      // The dialog did NOT open: there is no slip, so there is no touchpoint. The traveler is
+      // told exactly which basic is missing — never a guessed date to make the flow proceed.
+      toast({
+        title: "Your plan needs a few basics first",
+        description: outcome.message,
+        variant: "destructive",
+      });
+    }
+    // `request_failed` keeps the previous non-fatal behaviour: the dialog is already open and
+    // the slip now exists, so the next click retries against the same trip.
   };
   
   const openAiItineraryBuilder = () => {

@@ -39,6 +39,17 @@
  * 5. **ORDERING IS THE SERVER'S.** `eventsForTrip` filters and never sorts; `whichEventChoices`
  *    preserves the order it is handed. The implicit choice LEADS, matching `groupItemsByEvent`'s
  *    group order — one ordering rule across both surfaces, not two.
+ *
+ *    The CANONICAL server order is **`event_date ASC NULLS LAST`, then `created_at ASC`**
+ *    (ledger `2026-09-04-event-order`; decision-maker ratified Sep 4 2026). A plan reads forward
+ *    in time, and an undated event sorts last rather than jumping the queue on a NULL. When this
+ *    module shipped, the two servers disagreed — `getUserExperiencesByTrip` (the slip's DTO) was
+ *    already chronological while `getUserExperiences` (`/api/user-experiences`, which feeds this
+ *    picker) was `created_at DESC` — so the same events rendered in two orders on two surfaces of
+ *    one plan. Putting ordering in the server's hands is only ONE authority if the server has one
+ *    answer; both readers now share it. **Do not "fix" an ordering complaint by sorting here** —
+ *    a client-side sort would make this module a second authority, which is the drift rule 5
+ *    exists to prevent (§18 rule 1).
  */
 import { eventMetaLine, IMPLICIT_EVENT_GROUP_KEY, type PlanEvent } from "@/lib/slip-events";
 import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";

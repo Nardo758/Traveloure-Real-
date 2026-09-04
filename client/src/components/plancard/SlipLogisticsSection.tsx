@@ -49,7 +49,24 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
     enabled: !!tripId,
     staleTime: 30_000,
   });
-  const linkedExperience = allUserExperiences?.find((e) => e.tripId === tripId) ?? null;
+  /**
+   * THIS PICK IS EXPLICIT, NOT THE ENDPOINT'S INCIDENTAL ORDER (ledger `2026-09-04-event-order`).
+   * It used to be a bare `.find`, which silently took whatever `/api/user-experiences` happened to
+   * return first — `created_at DESC` at the time, i.e. the most recently created event bound to
+   * this plan. That endpoint's order is now the canonical `event_date ASC NULLS LAST`, so a bare
+   * `.find` would have quietly started returning a DIFFERENT event here. Sorting explicitly keeps
+   * today's behaviour exactly and removes the hidden coupling rather than moving it.
+   *
+   * KNOWN AMBIGUITY, deliberately NOT resolved here: a plan can hold many events (migration 277
+   * put no uniqueness on `user_experiences.trip_id`), and "the plan's guest list" does not say
+   * which one it means. Most-recently-created is what this surface has always used; whether the
+   * guest list should instead belong to the event the traveler minted it on is a product decision,
+   * not something to settle as a side effect of an ordering fix.
+   */
+  const linkedExperience =
+    allUserExperiences
+      ?.filter((e) => e.tripId === tripId)
+      .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())[0] ?? null;
   /**
    * HIDDEN OCCASIONS HAVE NO GUEST SURFACE (migration 276 `default_visibility`; ledger
    * `2026-09-03-switch-readers`, CLAUDE.md Locked Decision 28). The proposal case is the whole

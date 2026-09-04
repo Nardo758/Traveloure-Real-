@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FAFAF8; color: #1F2733; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #1F2733; text-decoration: none; } a:hover { color: #E85D55; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+<div style="width: 600px; padding: 24px; background: rgba(31,39,51,0.35);"><div style="background: #FAFAF8; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 20px 60px rgba(31,39,51,0.25); padding: 28px; display: flex; flex-direction: column; gap: 18px;">
+  <div style="display: flex; align-items: flex-start; gap: 14px;">
+    <span style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #FFF4F4; flex-shrink: 0;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E85D55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+    </span>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <h3 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 600; color: #1E3A5F;">This is in Osaka.</h3>
+      <span style="font-size: 14px; color: #1F2733;">Every event on your plan is in Kyoto.</span>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #E7E4DD; border-radius: 10px; background: #FFFFFF; font-size: 14px;">
+    <span style="font-weight: 600; color: #1F2733;">Osaka Sweets Studio</span>
+    <span style="color: #6A7480;">Wedding cake · from $310</span>
+  </div>
+  <span style="font-size: 13px; color: #6A7480;">Nothing is measured or guessed here. It is simply not in a city your plan names.</span>
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <span style="display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; border: 1px solid #E4E4DE; background: #FFFFFF; color: #1F2733; font-size: 13px; font-weight: 600;">Add anyway</span>
+    <span style="display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; border: 1px solid #E4E4DE; background: #FFFFFF; color: #1F2733; font-size: 13px; font-weight: 600;">Add Osaka as a stop</span>
+    <span style="display: inline-flex; align-items: center; padding: 8px 14px; font-size: 13px; font-weight: 500; color: #6A7480;">Cancel</span>
+  </div>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #9AA1A9; padding-top: 4px; border-top: 1px solid #E8E8E2;">Shown only when the listing has a location. Plans with more than one stop are not flagged.</span>
+</div></div>
+</x-dc>
+</body>
+</html>
