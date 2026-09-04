@@ -42,10 +42,23 @@ export interface PlanEvent {
   title?: string | null;
   /**
    * `user_experiences.event_date` — a DATE column, so a bare "YYYY-MM-DD" with NO time of day.
-   * There is no time column on the row: a renderer shows the date and nothing else, and never
-   * manufactures a clock time for an event (§13).
+   * The time of day is its OWN column (`startTime`, below) and is never read out of this one: a
+   * value that somehow arrives here carrying a timestamp still renders as a calendar day, because
+   * a clock read off a DATE column is manufactured (§13).
    */
   eventDate?: string | null;
+  /**
+   * `user_experiences.start_time` — the event's OWN wall-clock "HH:MM" (migration 282, ledger
+   * `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 35). Read in the plan's
+   * `trips.timezone` (ruling 30); where that is NULL the time is honestly zone-less and a reader
+   * keeps its zone-free behaviour rather than substituting UTC.
+   *
+   * `null` / absent = NOT SET, and it is NEVER rendered as midnight, "00:00" or "all day" — all
+   * three are claims nobody made. This is the column whose absence kept clock times off the
+   * `WhichEvent` and `TravelEvents` artboards; it is not the plan's main moment, which stays a
+   * `temporal_anchors` row.
+   */
+  startTime?: string | null;
   location?: string | null;
   guestCount?: number | null;
   experienceTypeId?: string | null;
@@ -136,29 +149,46 @@ export function countPlanEvents(events: readonly PlanEvent[] | null | undefined)
 }
 
 /**
- * THE ONE DERIVATION OF AN EVENT'S META LINE — its DATE when set and its PLACE when set,
- * joined, and NOTHING else.
+ * THE ONE DERIVATION OF AN EVENT'S META LINE — its DAY and TIME when set, its PLACE when set,
+ * and NOTHING else.
  *
- * WHAT MAY APPEAR HERE (§13, and the reason this is a function rather than two inline copies):
- *  - the DATE. `user_experiences.event_date` is a Postgres DATE column and there is **no
- *    time-of-day column anywhere on the row** (`shared/schema.ts`). So the format string is a
- *    calendar day and can never carry a clock: an event start time rendered on any surface would
- *    be a schedule the traveler never gave us. Parsed with `parseTripDate` so a bare
+ * WHAT MAY APPEAR HERE (§13, and the reason this is a function rather than three inline copies):
+ *  - the DATE. `user_experiences.event_date` is a Postgres DATE column, so the format string is a
+ *    calendar day and a clock is never read out of it. Parsed with `parseTripDate` so a bare
  *    "YYYY-MM-DD" lands on LOCAL midnight — `new Date()` would render the previous day west of
  *    UTC (F-1).
+ *  - the TIME, and ONLY from `start_time` (migration 282, ledger `2026-09-04-event-time-ui`).
+ *    This is the one thing that changed here: until that column existed the answer to "what time
+ *    is this event?" was that nothing on the row could say, so the ratified `WhichEvent` and
+ *    `TravelEvents` clock times ("Sat 15:00 · Nanzen-ji", the tee times) were a ruled omission
+ *    rather than a gap. They are now read from the column and NOWHERE else — a row with
+ *    `startTime` null renders exactly as it did before, with the day and no clock, and is NEVER
+ *    given a midnight or an "all day" (§13). It is printed VERBATIM, as the wall clock it is: no
+ *    conversion, no zone suffix, because the zone it is read in is the PLAN's (`trips.timezone`,
+ *    ruling 30) and this line does not have the plan.
  *  - the PLACE, when the row has one.
- *  - nothing else. A row that has told us neither returns `""`, and its caller draws a bare row:
- *    no "Untitled event", no "Date TBD", no placeholder of any kind.
+ *  - nothing else. A row that has told us none of them returns `""`, and its caller draws a bare
+ *    row: no "Untitled event", no "Date TBD", no placeholder of any kind.
+ *
+ * The day and the time are ONE segment ("Sat, Oct 3 15:00") because they are one fact — WHEN —
+ * and the place is the next. A time with no day still renders, alone: "15:00" is true of a row
+ * that was given an hour and no date, and hiding it would lose an answer the traveler gave.
  *
  * It lives beside `groupItemsByEvent` because the slip's event heading and the "Which event?"
  * picker (ledger `2026-09-04-which-event-picker`) must say the SAME thing about the same row —
  * two surfaces deriving one label two ways is the drift class §18 rule 1 names, and the second
- * copy is exactly where a clock time gets invented.
+ * copy is exactly where a clock time gets invented out of something that is not a clock.
  */
 export function eventMetaLine(event: PlanEvent | null | undefined): string {
   if (!event) return "";
   const date = parseTripDate(event.eventDate);
-  return [date ? format(date, "EEE, MMM d") : null, event.location || null]
-    .filter(Boolean)
-    .join(" · ");
+  const day = date ? format(date, "EEE, MMM d") : null;
+  // Shape-checked before it is shown: the column carries no DB CHECK (publish-trap posture), so a
+  // value that is not a wall clock is not rendered as one. A malformed row shows its day and its
+  // place, exactly as a row with no time does.
+  const time = /^\d{2}:\d{2}$/.test((event.startTime || "").trim())
+    ? (event.startTime as string).trim()
+    : null;
+  const when = [day, time].filter(Boolean).join(" ");
+  return [when || null, event.location || null].filter(Boolean).join(" · ");
 }

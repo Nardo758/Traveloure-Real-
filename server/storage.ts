@@ -4008,7 +4008,18 @@ export class DatabaseStorage implements IStorage {
   async getUserExperiences(userId: string): Promise<UserExperience[]> {
     return await db.select().from(userExperiences)
       .where(eq(userExperiences.userId, userId))
-      .orderBy(sql`${userExperiences.eventDate} ASC NULLS LAST`, asc(userExperiences.createdAt));
+      .orderBy(
+        sql`${userExperiences.eventDate} ASC NULLS LAST`,
+        // Ledger `2026-09-04-event-time-ui` (migration 282). WITHIN a day, a plan reads forward by
+        // the clock — the ratified WhichEvent/TravelEvents artboards list the day's events in tee
+        // order, not in the order somebody happened to tick them. NULLS LAST for the same reason
+        // the date does it: an event with no time stated has not claimed a slot in the day's
+        // sequence, so it sorts after the ones that have, rather than jumping the queue on a NULL.
+        // It is a TIE-BREAK only — it can never reorder two different days — and `created_at ASC`
+        // still settles two events on the same day at the same time.
+        sql`${userExperiences.startTime} ASC NULLS LAST`,
+        asc(userExperiences.createdAt),
+      );
   }
 
   async getUserExperienceById(experienceId: string): Promise<UserExperience | null> {
@@ -4029,7 +4040,18 @@ export class DatabaseStorage implements IStorage {
   async getUserExperiencesByTrip(tripId: string): Promise<UserExperience[]> {
     return await db.select().from(userExperiences)
       .where(eq(userExperiences.tripId, tripId))
-      .orderBy(sql`${userExperiences.eventDate} ASC NULLS LAST`, asc(userExperiences.createdAt));
+      .orderBy(
+        sql`${userExperiences.eventDate} ASC NULLS LAST`,
+        // Ledger `2026-09-04-event-time-ui` (migration 282). WITHIN a day, a plan reads forward by
+        // the clock — the ratified WhichEvent/TravelEvents artboards list the day's events in tee
+        // order, not in the order somebody happened to tick them. NULLS LAST for the same reason
+        // the date does it: an event with no time stated has not claimed a slot in the day's
+        // sequence, so it sorts after the ones that have, rather than jumping the queue on a NULL.
+        // It is a TIE-BREAK only — it can never reorder two different days — and `created_at ASC`
+        // still settles two events on the same day at the same time.
+        sql`${userExperiences.startTime} ASC NULLS LAST`,
+        asc(userExperiences.createdAt),
+      );
   }
 
   async getUserExperience(id: string): Promise<UserExperience | undefined> {

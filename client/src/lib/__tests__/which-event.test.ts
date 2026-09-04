@@ -4,8 +4,11 @@
  *
  * WHY THIS EXISTS. The ratified mock for this surface draws things the data may or may not be
  * able to support, and a fabricated one looks exactly like a real one on a happy-path render.
- * Clock times ("Fri 19:00") it still cannot support — the only temporal column is a bare DATE —
- * and that negative is pinned below forever. The "suggested for florists" hint it CAN now
+ * Clock times ("Fri 19:00") it CAN now support: migration 282 gave `user_experiences` its own
+ * `start_time` (ledger `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 35) and ledger
+ * `2026-09-04-event-time-ui` reads it here. So W7's job moved — from "prove no clock is ever
+ * emitted" to "prove a clock comes from the CLOCK COLUMN and from nowhere else, and that a row
+ * without one still shows none". The "suggested for florists" hint it CAN now
  * support: `experience_types.roles_needed` (migration 280, ledger `2026-09-04-roles-needed`)
  * gives every occasion the disciplines it hires, in the same `category_key` vocabulary a listing
  * carries. Ledger `2026-09-04-which-event-hint` builds it — so this file's job for the hint moved
@@ -24,7 +27,9 @@
  *       invented for it, and it is never called "Untitled event".
  *   W6  ORDERING is the server's. `eventsForTrip` filters without sorting; `whichEventChoices`
  *       preserves the order it was handed, implicit first.
- *   W7  NO CLOCK TIME is ever emitted, for any event, in any shape the column can hold.
+ *   W7  A CLOCK TIME COMES FROM `start_time` AND FROM NOWHERE ELSE (migration 282). A row without
+ *       one — absent, null, or malformed — shows its day and no clock, and a timestamp sitting in
+ *       the DATE column is still never read as one. The time prints verbatim, claiming no zone.
  *   W8  THE ROLE HINT. It appears ONLY on an event whose occasion's own `rolesNeeded` names the
  *       listing's `category_key`, and every other case — NULL/absent roles, an empty array, no
  *       category on the listing, a plain non-match, the implicit event, a matched key this build
@@ -191,34 +196,54 @@ describe("W6 — ordering is the server's, and only this plan's rows are offered
   });
 });
 
-describe("W7 — NO CLOCK TIME is ever emitted, for any event", () => {
-  it("W7a: no choice's meta carries a wall-clock reading", () => {
+describe("W7 — a clock time comes from the clock column, or not at all", () => {
+  it("W7a: NO row without `startTime` gets a clock — including one carrying a timestamp", () => {
     const battery: PlanEvent[] = [
       REHEARSAL,
       CEREMONY,
       RECEPTION,
       BARE,
-      // `user_experiences.event_date` is a DATE column, so this is the only shape it can hold —
-      // but a row that somehow carried a timestamp must STILL render only its calendar day: the
-      // picker has no source for a start time and must not manufacture one (§13).
+      // `user_experiences.event_date` is a DATE column. A row that somehow carries a timestamp in
+      // it must STILL render only its calendar day: the time of day lives in its own column, and
+      // reading a clock out of this one would be manufacturing it (§13). This is the assertion
+      // that did NOT relax when migration 282 landed.
       { id: "ev-ts", title: "Welcome drinks", eventDate: "2026-10-01T19:00:00.000Z", location: "Pontocho" },
       { id: "ev-space", title: "  ", eventDate: "2026-10-03", location: "  " },
+      // NULL is not midnight and not "all day" — an explicit null start time shows no clock.
+      { id: "ev-null", title: "Farewell brunch", eventDate: "2026-10-04", startTime: null },
+      // Neither is a malformed one: the column has no DB CHECK, so a value whose shape this build
+      // cannot vouch for is not rendered as a time at all.
+      { id: "ev-bad", title: "Photos", eventDate: "2026-10-03", startTime: "3pm" },
     ];
     for (const choice of whichEventChoices(battery)) {
       assert.doesNotMatch(
         choice.meta,
         CLOCK_RE,
-        `"${choice.meta}" reads as a clock time; user_experiences has no time-of-day column`,
+        `"${choice.meta}" reads as a clock time, but no row here has a start_time`,
       );
       assert.doesNotMatch(choice.label, CLOCK_RE);
     }
   });
 
-  it("W7b: the mock's own times are not reproducible from this data", () => {
-    // The artboard draws "Fri 19:00" / "Sat 15:00" / "Sun 10:30". Nothing on the row can produce
-    // them, so the meta line for a dated event is a bare calendar day.
-    const [, ceremony] = whichEventChoices([CEREMONY]);
-    assert.equal(ceremony.meta, "Fri, Oct 2 · Nanzen-ji");
+  it("W7b: the mock's own times ARE now reproducible — from `start_time`, and only from it", () => {
+    // The artboard draws "Sat 15:00 · Nanzen-ji". Migration 282 gave that a source, so the row
+    // that HAS one renders it; the identical row without one renders exactly as it did before.
+    const [, timed] = whichEventChoices([{ ...CEREMONY, startTime: "15:00" }]);
+    assert.equal(timed.meta, "Fri, Oct 2 15:00 · Nanzen-ji");
+    const [, untimed] = whichEventChoices([CEREMONY]);
+    assert.equal(untimed.meta, "Fri, Oct 2 · Nanzen-ji");
+  });
+
+  it("W7c: a time with no date still renders — hiding it would lose an answer the traveler gave", () => {
+    const [, choice] = whichEventChoices([{ id: "ev-t", title: "Round 1", startTime: "08:10" }]);
+    assert.equal(choice.meta, "08:10");
+  });
+
+  it("W7d: the clock is printed VERBATIM, with no zone claimed for it", () => {
+    // The value is a wall clock read in the PLAN's `trips.timezone` (ruling 30), which this module
+    // does not have. So it says the time and nothing about where — no "local", no offset, no Z.
+    const [, choice] = whichEventChoices([{ ...CEREMONY, startTime: "15:00" }]);
+    assert.doesNotMatch(choice.meta, /local|UTC|GMT|[+-]\d{2}:\d{2}|\bZ\b/i);
   });
 });
 

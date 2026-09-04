@@ -489,6 +489,15 @@ This document captures architectural decisions to maintain consistency across co
     plancard `events` array carry it as-is. The `.ics` export is **untouched** in this lane; events
     are not exported today, and if they ever are, the floating-time posture holds until a zone is
     captured.
+    **THE CLIENT RAIL LANDED WITH LEDGER `2026-09-04-event-time-ui`:** step 5's ratified Day · Time ·
+    Place table, the `WhichEvent` / slip clock line (ONE derivation, `eventMetaLine`, reading
+    `start_time` and never `event_date`), an owner-only time edit on the slip's event header through
+    the SAME `/api/user-experiences/:id` PATCH (no second rail), the pre-trip pen widened from
+    `pendingEventTitles: string[]` to `pendingEvents: {title, eventDate?, startTime?, location?}[]`
+    (the old key read for one release, both cleared together), and `start_time ASC NULLS LAST` added
+    as a tie-break AFTER the date in BOTH storage readers. A day or place the traveler did not answer
+    inherits the PLAN's at CREATE through ONE shared `planEventRowValues` (`shared/plan-events.ts`);
+    the TIME inherits nothing, and NULL is still never midnight. Events remain unexported to `.ics`.
 
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)

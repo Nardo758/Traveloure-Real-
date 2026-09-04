@@ -198,15 +198,40 @@ describe("eventMetaLine — the ONE derivation of what an event row may say abou
     assert.equal(eventMetaLine(null), "");
   });
 
-  it("G7: never emits a clock time — `user_experiences` has no time-of-day column", () => {
+  it("G7: a clock is emitted ONLY from `start_time` — never read out of the DATE column", () => {
+    // Migration 282 (ledger `2026-09-04-event-time-ui`) gave the row a time of its own. What did
+    // NOT change: `event_date` is a DATE column and a timestamp that lands in it is still rendered
+    // as a calendar day. A row with no `startTime` reads exactly as it did before this lane, and
+    // NULL is never shown as midnight or "all day" (§13, Locked Decision 35).
     const clock = /\d{1,2}\s*[:.]\s*\d{2}|\b\d{1,2}\s*(?:am|pm)\b/i;
     for (const event of [
       CEREMONY,
       RECEPTION,
       { id: "ev-ts", title: "Welcome drinks", eventDate: "2026-10-01T19:00:00.000Z", location: "Pontocho" },
+      { id: "ev-null", title: "Brunch", eventDate: "2026-10-04", startTime: null },
+      // No DB CHECK stands behind the column, so a shape this build cannot vouch for is not shown
+      // as a time at all — the row keeps its day and its place.
+      { id: "ev-bad", title: "Photos", eventDate: "2026-10-04", startTime: "7pm", location: "Gion" },
     ]) {
       assert.doesNotMatch(eventMetaLine(event), clock);
     }
+    assert.equal(eventMetaLine({ id: "ev-bad2", eventDate: "2026-10-04", startTime: "7pm", location: "Gion" }), "Sun, Oct 4 · Gion");
+  });
+
+  it("G7c: with a `startTime` set, the day and the clock are ONE segment and the place the next", () => {
+    assert.equal(
+      eventMetaLine({ ...CEREMONY, startTime: "15:00" }),
+      "Fri, Oct 2 15:00 · Kiyomizu-dera",
+    );
+    // A time with no day still renders: "08:10" is true of a row given an hour and no date, and
+    // dropping it would lose an answer the traveler gave.
+    assert.equal(eventMetaLine({ id: "ev-t", title: "Round 1", startTime: "08:10" }), "08:10");
+    // Verbatim, with no zone claimed for it — the zone is the PLAN's (`trips.timezone`, ruling 30)
+    // and this derivation does not have the plan.
+    assert.doesNotMatch(
+      eventMetaLine({ ...CEREMONY, startTime: "15:00" }),
+      /local|UTC|GMT|[+-]\d{2}:\d{2}|\bZ\b/i,
+    );
   });
 
   it("G7b: a bare DATE is read as a LOCAL day, so it never renders one day early (F-1)", () => {

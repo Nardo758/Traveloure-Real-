@@ -292,6 +292,22 @@ jobs:
       # not quietly become a second authority by sorting.
       - name: Plan event ordering pin
         run: npx tsx --test server/__tests__/user-experience-order.test.ts
+      # 2026-09-04-event-time-ui: step 5 shows the plan's day and place as DEFAULTS. A shown default
+      # and a chosen value render identically, so E1 pins that an untouched row carries neither, and
+      # E7 pins the ONE place the plan's values are inherited (create, not the pen). P5 pins the same
+      # rule on the drain side, including that the TIME has no fallback — NULL is not midnight.
+      - name: Step-5 event rows pin
+        run: npx tsx --test client/src/lib/__tests__/plan-events.test.ts
+      - name: Pre-trip event pen pin
+        run: npx tsx --test server/__tests__/pending-events.test.ts
+      # Same ledger: `which-event.ts` rule 4 moved from "no clock time, ever" to "only from
+      # start_time". W7 is the rewritten negative — a timestamp in the DATE column, a NULL and a
+      # malformed value all still render NO clock — and G7 holds the same line one surface over, on
+      # the ONE shared derivation both read.
+      - name: Event clock-source pin
+        run: |
+          npx tsx --test client/src/lib/__tests__/which-event.test.ts
+          npx tsx --test client/src/lib/__tests__/slip-events.test.ts
       # 2026-09-04-wedding-landing-moment: the "Planning your own?" callout names "Plan this
       # moment", the CTA on the card above it, so it is only true INSIDE MomentsSection. C2/C3 pin
       # that it cannot appear in the empty-state fallback (the rail), and C4 pins that it did not

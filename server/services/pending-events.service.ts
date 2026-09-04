@@ -11,6 +11,15 @@
  * stating its own gap out loud: **nothing ever drained the pen**, so a traveler who chose their
  * events before the plan existed silently lost them. This is the drain.
  *
+ * ── THE PEN IS RICHER NOW (ledger `2026-09-04-event-time-ui`) ────────────────────────────────
+ * Step 5 draws each ticked chip as a ROW — Event · Day · Time · Place — which it could not do
+ * until migration 282 gave `user_experiences` a `start_time`. So the pen holds
+ * `pendingEvents: { title, eventDate?, startTime?, location? }[]` from this release on, and the
+ * legacy `pendingEventTitles: string[]` is READ for one release (a pen written before the deploy)
+ * and never written again. Both keys are read and both are cleared together; the reading is the
+ * ONE shared `heldEventsFromContext` in `pending-events.pure.ts`, so this drain and the client
+ * that writes the pen cannot disagree about what a held row means.
+ *
  * ── RULES THAT MUST NOT BE WEAKENED ─────────────────────────────────────────────────────────
  * 1. **ONE implementation, many callers.** Every mint site calls this function; none of them
  *    re-derives "what a held chip becomes". A second copy is the derivation-drift class §18
@@ -26,7 +35,9 @@
  *    the operation that authorizes it, and a lost pen would be exactly the silent loss this
  *    function exists to end.
  * 4. **Idempotent.** A held title that already has an event of that name on this trip is SKIPPED,
- *    and the pen is cleared once every title has a row — so a second run creates nothing.
+ *    and the pen is cleared once every title has a row — so a second run creates nothing. TITLE is
+ *    the identity: a row's day, time or place is never part of that test, so re-running a drain
+ *    can never fork one event into two because a time was edited between runs.
  * 5. **An occasion is never invented (§13).** `user_experiences.experience_type_id` is NOT NULL,
  *    so an event cannot be created without one. When the held context names no resolvable
  *    `experience_types` row, this creates NOTHING and leaves the pen for a later mint — filing a
@@ -39,12 +50,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { logger } from "../infrastructure/logger";
-
-/** The pen's key inside the `trip_contexts.context` jsonb blob. */
-const PEN_KEY = "pendingEventTitles";
-/** Mirrors the `PUT /api/trip-context` allowlist cap (`z.array(str(120)).max(20)`). */
-const MAX_TITLES = 20;
-const MAX_TITLE_LEN = 120;
+import { drainRowValues, heldEventsFromContext, LEGACY_PEN_KEY, PEN_KEY } from "./pending-events.pure";
 
 export type DrainOutcome = {
   created: number;
@@ -63,10 +69,11 @@ export type DrainOutcome = {
  *
  * @param userId      the trip's OWNER (from the mint site's own server-side value, never a body)
  * @param tripId      the trip row that was just created for that owner
- * @param destination the trip's destination — becomes the event's `location`, exactly as the
- *                    panel's own POST does
- * @param startDate   the trip's start date (YYYY-MM-DD) — becomes the event's `eventDate`, again
- *                    matching the panel
+ * @param destination the trip's destination — INHERITED as the event's `location` by a row the
+ *                    traveler gave no place of its own, exactly as the panel's own POST does
+ * @param startDate   the trip's start date (YYYY-MM-DD) — inherited as the event's `eventDate` on
+ *                    the same terms. A row that named its OWN day or place keeps it; a row that
+ *                    named neither is the only one these fill (`planEventRowValues`).
  */
 export async function drainPendingEventsIntoTrip(input: {
   userId: string | null | undefined;
@@ -87,25 +94,17 @@ export async function drainPendingEventsIntoTrip(input: {
     const context: any = (penRows as any).rows?.[0]?.context;
     if (!context || typeof context !== "object") return { created: 0, skipped: 0, reason: "no_pen" };
 
-    const held: unknown = context[PEN_KEY];
-    if (!Array.isArray(held) || held.length === 0) return { created: 0, skipped: 0, reason: "no_titles" };
-
-    // Normalize exactly as the write route would have: trim, drop empties, cap length and count,
-    // and collapse duplicates within the pen itself (two identical chips are one event).
-    const seen = new Set<string>();
-    const titles: string[] = [];
-    for (const raw of held) {
-      if (typeof raw !== "string") continue;
-      const title = raw.trim().slice(0, MAX_TITLE_LEN);
-      if (!title) continue;
-      const key = title.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      titles.push(title);
-      if (titles.length >= MAX_TITLES) break;
-    }
-    if (titles.length === 0) {
-      await clearPen(userId);
+    // Normalized by the ONE shared reader — trims, drops an empty or malformed row, collapses
+    // duplicates within the pen itself (two identical chips are one event), caps the count, and
+    // accepts BOTH pen spellings: the rich `pendingEvents` rows this release writes, and the
+    // legacy `pendingEventTitles` bare strings a pen written before it still holds
+    // (`pending-events.pure.ts`). A held day or time whose SHAPE is wrong is dropped there rather
+    // than passed on to a column with no CHECK behind it (§13).
+    const held = heldEventsFromContext(context);
+    if (held.length === 0) {
+      // The pen exists but says nothing usable. Clearing it is right ONLY when it actually held a
+      // key: an untouched context has nothing to clear and must not be rewritten on every mint.
+      if (PEN_KEY in context || LEGACY_PEN_KEY in context) await clearPen(userId);
       return { created: 0, skipped: 0, reason: "no_titles" };
     }
 
@@ -121,7 +120,7 @@ export async function drainPendingEventsIntoTrip(input: {
     const experienceTypeId = await resolveExperienceTypeId(storage, context);
     if (!experienceTypeId) {
       logger.warn(
-        { userId, tripId, heldTitles: titles.length },
+        { userId, tripId, heldTitles: held.length },
         "[pending-events] pen held but its occasion does not resolve — creating nothing, pen kept for a later mint",
       );
       return { created: 0, skipped: 0, reason: "occasion_unresolved" };
@@ -140,19 +139,30 @@ export async function drainPendingEventsIntoTrip(input: {
 
     let created = 0;
     let skipped = 0;
-    for (const title of titles) {
-      if (existing.has(title.toLowerCase())) {
+    for (const draft of held) {
+      if (existing.has(draft.title.toLowerCase())) {
         skipped++;
         continue;
       }
+      // Rule 6 (ledger `2026-09-04-event-time-ui`): a held row's OWN day, time and place are what
+      // the traveler answered on step 5, and a field they did not answer inherits the PLAN's day
+      // and destination through the ONE shared `planEventRowValues` — the same rule the modal's
+      // own POST applies when a trip already exists, so a chip ticked before the plan and the same
+      // chip ticked after it produce the same row. The TIME has no fallback and never gains one:
+      // absent stays NULL, never midnight and never "all day" (Locked Decision 35, §13).
+      const values = drainRowValues(draft, {
+        startDate: input.startDate,
+        destination: input.destination,
+      });
       // The SAME storage writer and the SAME field set as POST /api/user-experiences (rule 2).
       await storage.createUserExperience({
         userId,
         tripId,
         experienceTypeId,
-        title,
-        eventDate: input.startDate || null,
-        location: input.destination || null,
+        title: values.title,
+        eventDate: values.eventDate,
+        startTime: values.startTime,
+        location: values.location,
       } as any);
       created++;
     }
@@ -168,11 +178,16 @@ export async function drainPendingEventsIntoTrip(input: {
   }
 }
 
-/** Remove ONLY the pen key; every other held planning field (dates, title, origin) is untouched. */
+/**
+ * Remove ONLY the pen's two keys; every other held planning field (dates, title, origin) is
+ * untouched. BOTH spellings go together: leaving the legacy list behind after draining the rich
+ * one would let a stale pen replay on the next mint, and leaving the rich one behind after
+ * draining a legacy pen would do the same in the other direction.
+ */
 async function clearPen(userId: string): Promise<void> {
   await db.execute(sql`
     UPDATE trip_contexts
-    SET context = context - ${PEN_KEY}, updated_at = NOW()
+    SET context = context - ${PEN_KEY} - ${LEGACY_PEN_KEY}, updated_at = NOW()
     WHERE user_id = ${userId} AND trip_id IS NULL
   `);
 }
