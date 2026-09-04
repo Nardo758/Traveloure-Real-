@@ -174,6 +174,9 @@ const ItineraryComparisonPage = lazy(() => import("@/pages/itinerary-comparison"
 // Slip dispatch §4 Spec A: the slip's canonical address (/plans/:tripId). Parameterised
 // route — deliberately NOT in role-routes-config.ts (that registry is static-paths-only).
 const SlipViewPage = lazy(() => import("@/pages/slip-view"));
+// Ledger `2026-09-04-guests-per-event`: the plan's guest roster — one row per person, one column
+// per event. Parameterised, so like the slip it is deliberately NOT in role-routes-config.ts.
+const PlanGuestsPage = lazy(() => import("@/pages/plan-guests"));
 const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
 const TransportationBookingPage = lazy(() => import("@/pages/transportation-booking"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
@@ -647,6 +650,17 @@ function Router() {
       </Route>
       {/* Slip (Spec A/B) — the ONE canonical slip address; messages/My Plans rows link here.
           Auth is the session (server-side plancard gate) — the URL grants nothing. */}
+      {/* The plan's guest list (ledger `2026-09-04-guests-per-event`). Registered BEFORE
+          /plans/:tripId so the more specific path is never shadowed. Same auth posture: the
+          server's owner-tier gate on GET /api/trips/:tripId/guests decides, the URL grants
+          nothing. */}
+      <Route path="/plans/:tripId/guests">
+        {() => (
+          <PageErrorBoundary fallbackHeading="Guest List Not Found">
+            <DashboardLayout><ProtectedRoute component={PlanGuestsPage} /></DashboardLayout>
+          </PageErrorBoundary>
+        )}
+      </Route>
       <Route path="/plans/:tripId">
         {() => (
           <PageErrorBoundary fallbackHeading="Plan Not Found">

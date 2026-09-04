@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { guardedDeleteProviderService } from "./service-delete-guard";
+import { assertRoleTransitionAllowed } from "./role-transition";
 import {
   users, contactSubmissions, notifications, accessAuditLogs,
   serviceBookings, providerServices, serviceReviews, reviewModerationLogs,
@@ -183,6 +184,14 @@ export async function updateUserRole(
     const [current] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId));
     const oldRole = current?.role ?? null;
 
+    // ONE account, ONE earning role (ledger `2026-09-04-earn-role-safety`). `users.role` is a
+    // single varchar, so a second approval on an account that already earns under the OTHER
+    // family used to silently DESTROY the first role. This is the enforcement point — inside the
+    // transaction, so no caller can bypass it and a refusal leaves nothing written. The two
+    // approval handlers additionally PRE-CHECK the same helper before flipping form status, so
+    // the form row is never half-updated; this throw is the backstop for every other caller.
+    assertRoleTransitionAllowed(oldRole, role);
+
     await tx.update(users).set({ role }).where(eq(users.id, userId));
 
     await tx.insert(accessAuditLogs).values({
@@ -199,6 +208,20 @@ export async function updateUserRole(
       },
     } as any);
   });
+}
+
+/**
+ * Approval-handler PRE-CHECK for the single-earning-role rule (ledger `2026-09-04-earn-role-safety`).
+ *
+ * `updateUserRole` enforces the same rule inside its transaction, but that fires only AFTER the
+ * approval handlers have already flipped the application's form status — the revert path then has
+ * to undo it. This reads the account's current role and delegates to the SAME predicate
+ * (`assertRoleTransitionAllowed`, one implementation) so the handler can refuse with a 409 BEFORE
+ * writing anything. It is a pre-check, never the guarantee: the in-transaction assertion stays.
+ */
+export async function assertUserRoleTransitionAllowed(userId: string, nextRole: string) {
+  const [current] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  assertRoleTransitionAllowed(current?.role ?? null, nextRole);
 }
 
 export async function getUserVerificationStatus(userId: string) {

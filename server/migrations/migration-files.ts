@@ -1431,4 +1431,31 @@ export const MIGRATION_FILES = [
   // Additive text[], nullable, no DEFAULT and no CHECK (publish-trap posture); declared in
   // shared/schema.ts so the deploy push cannot drop it.
   "280_experience_type_roles_needed.sql",
+  // `trip_destinations` — a plan's ORDERED stops (ledger `2026-09-04-stops-and-event-time`,
+  // CLAUDE.md Locked Decision 34). Child rows of `trips` on the service_route_points/
+  // dmo_extracted_places pattern: ON DELETE CASCADE, UNIQUE (trip_id, "position"), positions
+  // server-derived from array order. `trips.destination` STAYS and is the position-0 MIRROR,
+  // written by the one writer through `storage.updateTrip` so market_slug/timezone re-derive.
+  // lat/lng nullable — an unlocated stop stays flagged and is never guessed onto a map (§13).
+  // No CHECK (publish-trap posture) and no backfill: no rows = NOT CAPTURED, and readers fall
+  // back to `trips.destination`. Table + UNIQUE + index are declared in shared/schema.ts so the
+  // deploy push cannot drop them.
+  "281_trip_destinations.sql",
+  // `user_experiences.start_time` — an EVENT's own wall-clock "HH:MM", read in `trips.timezone`
+  // and never converted (ledger `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 35).
+  // NOT the plan's main moment, which stays a `temporal_anchors` row. Additive nullable
+  // varchar(5), NO DEFAULT and NO CHECK (publish-trap posture — the format is app-enforced by the
+  // pick-based allowlist the POST/PATCH already share). NULL = not set and is never rendered as
+  // midnight or "all day" (§13). Declared in shared/schema.ts.
+  "282_user_experiences_start_time.sql",
+  // Ledger `2026-09-04-earn-planner-roles` (CLAUDE.md Locked Decision 36): the six PLANNER rows
+  // in `expert_offering_types`, in the EXISTING `coordination` tier. The /earn Event Planner
+  // card's planner door FKs into this table (migration 107) and the table held no planner rows,
+  // so every key that door carried was clamped to NULL by `storage.createLocalExpertForm`.
+  // NO new service_tier — that column carries a DB CHECK and a sixth value would be the
+  // publish-time push failure the Coordination Prevention rules warn about. Data-only, idempotent
+  // (ON CONFLICT DO NOTHING), no schema change and therefore no publish trap.
+  // NOTE: registered LAST. Another lane is landing 281/282 concurrently; registry order is
+  // authoritative, and this row must stay after whatever they add.
+  "283_expert_planner_offering_types.sql",
 ] as const;

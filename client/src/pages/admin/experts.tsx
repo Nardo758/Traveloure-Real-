@@ -25,6 +25,7 @@ import {
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 
 interface ExpertApplication {
@@ -247,10 +248,13 @@ export default function AdminExperts() {
           : "The application has been rejected.",
       });
     },
-    onError: (error: any) => {
+    // ONE account, ONE earning role (ledger `2026-09-04-earn-role-safety`): approving an applicant
+    // who already holds a provider or EA role is REFUSED with a 409 naming that role. Parse the
+    // server's own message out of the thrown `"409: {json}"` rather than showing the raw string.
+    onError: (error: unknown) => {
       toast({
         title: "Action failed",
-        description: error.message || "Failed to update application status.",
+        description: parseApiErrorMessage(error, "Failed to update application status."),
         variant: "destructive",
       });
     },

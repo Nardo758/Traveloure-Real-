@@ -204,6 +204,44 @@ export const trips = pgTable("trips", {
   index("idx_trips_market_slug").on(table.marketSlug).where(sql`market_slug IS NOT NULL`),
 ]);
 
+// A plan's ORDERED STOPS — ledger `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 34
+// (migration 281). Child rows of `trips` on the `service_route_points` pattern (ruling 22, itself
+// the `dmo_extracted_places` pattern): ON DELETE CASCADE, composite UNIQUE on (trip_id, position),
+// positions SERVER-DERIVED from array order by the ONE replace-list writer
+// (`server/services/trip-destinations.service.ts`, reached by PUT /api/trips/:tripId/destinations)
+// — never client-numbered.
+//
+// `trips.destination` STAYS and is NOT deprecated: it is the single string every existing reader
+// uses, and it is the POSITION-0 MIRROR of this list. The mirror rule (position 0's `name` equals
+// `trips.destination`) is enforced in that one writer, which writes it through `storage.updateTrip`
+// so the market_slug/timezone derivations (ruling 30) re-run — deliberately NOT a trigger, which
+// would be a second author of `trips.destination` (§18 rule 1) and could not re-derive anyway.
+//
+// POSITIONS ARE 0-BASED here, unlike `service_route_points`' 1-based pins, precisely BECAUSE of the
+// mirror: position 0 IS the primary destination.
+//
+// lat/lng NULLABLE — a stop the traveler typed but never placed has no coordinates, stays visibly
+// flagged as unlocated, and is NEVER guessed onto a map (§13: no city-center fallback, no
+// geocode-on-read). NO rows at all = NOT CAPTURED: readers fall back to `trips.destination`
+// explicitly and say so. No CHECK (publish-trap posture); shape is enforced by the route's
+// pick-based allowlist (§19). Table + UNIQUE + index are declared HERE per the deploy-push
+// durability rule — an object this file does not declare is dropped at publish and never recreated.
+export const tripDestinations = pgTable("trip_destinations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 0-based; position 0 mirrors trips.destination
+  name: varchar("name", { length: 255 }).notNull(), // the place as the traveler typed/picked it
+  city: varchar("city", { length: 255 }),
+  country: varchar("country", { length: 255 }),
+  lat: decimal("lat", { precision: 10, scale: 7 }),
+  lng: decimal("lng", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("trip_destinations_trip_position_unique").on(table.tripId, table.position),
+  index("trip_destinations_trip_idx").on(table.tripId),
+]);
+export type TripDestination = typeof tripDestinations.$inferSelect;
+
 export const generatedItineraries = pgTable("generated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
@@ -1984,6 +2022,21 @@ export const userExperiences = pgTable("user_experiences", {
   title: varchar("title", { length: 255 }),
   status: varchar("status", { length: 20 }).default("draft"), // draft, planning, confirmed, completed, cancelled
   eventDate: date("event_date"),
+  // The EVENT'S OWN wall-clock start time, "HH:MM" (migration 282, ledger
+  // `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 35). Stored exactly as entered and
+  // NEVER converted — the same wall-clock posture `itinerary_items.start_time`/`end_time` take. The
+  // zone it is READ IN is the plan's `trips.timezone` (migration 279, ruling 30); where that is
+  // NULL the time is honestly zone-less and a reader keeps its zone-free behaviour rather than
+  // substituting UTC or the server's zone (§13).
+  //
+  // NOT the plan's MAIN MOMENT: that stays a `temporal_anchors` row written by the plan modal's
+  // existing path — one anchor for the whole plan. This is the start time of ONE event among the
+  // several a plan can hold. Do not merge or re-point the two.
+  //
+  // NULL = NOT SET, and is never rendered as midnight or "all day" — both are claims nobody made.
+  // No DEFAULT and no DB CHECK (publish-trap posture); the `^\d{2}:\d{2}$` format is app-enforced
+  // by the pick-based allowlist `userExperienceBodySchema` shares between POST and PATCH (§19).
+  startTime: varchar("start_time", { length: 5 }),
   location: varchar("location", { length: 255 }),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   guestCount: integer("guest_count"),
@@ -2593,6 +2646,30 @@ export type ExperienceTypeRoles = z.infer<typeof experienceTypeRolesSchema>;
 export const insertExperienceTemplateStepSchema = createInsertSchema(experienceTemplateSteps).omit({ id: true, createdAt: true });
 export const insertExpertExperienceTypeSchema = createInsertSchema(expertExperienceTypes).omit({ id: true, createdAt: true });
 export const insertUserExperienceSchema = createInsertSchema(userExperiences).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+/**
+ * THE FORMAT AUTHORITY for `user_experiences.start_time` (migration 282, ledger
+ * `2026-09-04-stops-and-event-time`, CLAUDE.md Locked Decision 35).
+ *
+ * The column carries NO DB CHECK — the publish-trap posture — so this regex IS the only thing
+ * standing between the wire and the row, and it is stated ONCE, here, rather than at the route
+ * (§18 rule 1: a second copy would drift the day one of them is loosened). The route's pick-based
+ * allowlist `.extend()`s exactly this schema onto the field.
+ *
+ * IT IS A SHAPE CHECK ONLY: "HH:MM", two digits, a colon, two digits, stored verbatim and never
+ * converted (the zone it is read in is the plan's `trips.timezone`, ruling 30). RANGE IS
+ * DELIBERATELY NOT VALIDATED — "25:00" parses. Nothing reads or does arithmetic on this value yet,
+ * and a range rule invented by an admission schema becomes a second authority the day a real time
+ * model arrives; when a reader needs one, it belongs with that reader, stated once.
+ *
+ * `.nullable()` is load-bearing: an explicit `null` is how a traveler CLEARS a time they set.
+ * `.optional()` keeps an untouched field absent, which under the PATCH's `.partial()` means "not
+ * mentioned" — a different answer from `null` meaning "cleared" (§13, two states kept as two).
+ */
+export const userExperienceStartTimeSchema = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/, 'startTime must be a wall-clock "HH:MM"')
+  .nullable()
+  .optional();
 export const insertUserExperienceItemSchema = createInsertSchema(userExperienceItems).omit({ id: true, createdAt: true });
 
 export type ExperienceType = typeof experienceTypes.$inferSelect;

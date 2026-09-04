@@ -529,7 +529,10 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
               ) : (() => {
                 const currentExpertType = (expertProfile as any)?.expertForm?.expertType ?? user?.role ?? "travel_expert";
                 const isRoleUnchanged = selectedRole === currentExpertType;
-                const requiresReview = selectedRole === "local_expert" && currentExpertType !== "local_expert";
+                // EVERY expert track switch goes through admin review (ledger
+                // `2026-09-04-earn-role-safety`) — the server refuses all of them with 403 +
+                // requiresReview, so the control says so up front instead of only Local Expert.
+                const requiresReview = selectedRole !== currentExpertType;
                 return (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -542,12 +545,18 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                           <SelectValue placeholder="Select your role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="travel_expert">Trip Planner</SelectItem>
+                          <SelectItem value="travel_expert">
+                            Trip Planner{currentExpertType !== "travel_expert" ? " (requires review)" : ""}
+                          </SelectItem>
                           <SelectItem value="local_expert">
                             Local Expert{currentExpertType !== "local_expert" ? " (requires review)" : ""}
                           </SelectItem>
-                          <SelectItem value="event_planner">Event Planner</SelectItem>
-                          <SelectItem value="executive_assistant">Executive Assistant</SelectItem>
+                          <SelectItem value="event_planner">
+                            Event Planner{currentExpertType !== "event_planner" ? " (requires review)" : ""}
+                          </SelectItem>
+                          <SelectItem value="executive_assistant">
+                            Executive Assistant{currentExpertType !== "executive_assistant" ? " (requires review)" : ""}
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                       <Button
@@ -571,7 +580,9 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                       >
                         <Info className="mt-0.5 h-4 w-4 shrink-0" />
                         <span>
-                          Switching to <strong>Local Expert</strong> requires admin review. Your current role was vetted for a different category. Please contact support to have your application re-evaluated.
+                          Changing your expert track is <strong>submitted for admin review</strong> — it is not applied
+                          immediately. Each track is vetted separately, so your current role stays in effect until an
+                          admin re-evaluates your application. Please contact support to start that review.
                         </span>
                       </div>
                     )}
