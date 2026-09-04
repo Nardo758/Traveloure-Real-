@@ -31,6 +31,7 @@ import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { resolveTripTimezone } from "../services/trip-timezone";
 
 const router = Router();
 
@@ -97,6 +98,11 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
         title,
         destination,
         trackingNumber,
+        // Ledger `2026-09-04-plan-mint` (CLAUDE.md entry 30): every mint site stamps the plan's IANA
+        // zone through the ONE shared derivation; NULL outside the operating markets, honoured as
+        // "not captured" (§13). The pre-trip EVENT pen is NOT drained here — an authoring build has
+        // userId NULL by design, so there is no traveler principal whose pen it could be.
+        timezone: resolveTripTimezone(destination),
         startDate: fmt(start),
         endDate: fmt(end),
         status: "draft",

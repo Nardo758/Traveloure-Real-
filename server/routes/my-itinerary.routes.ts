@@ -17,6 +17,7 @@ import {
 } from "../services/smart-sequencing.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { generateIcsContent } from "../utils/ics-calendar";
+import { resolveTripTimezone } from "../services/trip-timezone";
 
 const router = Router();
 
@@ -248,8 +249,29 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     // Get all items
     const items = await storage.getOrderedVariantItemsByVariantId(variant.id);
     
+    // ── The plan's timezone (ledger `2026-09-04-plan-mint`, CLAUDE.md entry 30) ──────────────
+    // Item times are WALL-CLOCK strings in the plan's zone. Without a zone the exporter emits RFC
+    // 5545 floating time, which every calendar client renders in the READER's own zone — a 16:00
+    // ceremony in Tuscany showing as 16:00 in Sydney. So resolve the zone and hand it over:
+    //
+    //   1. the linked trip's stored `timezone` — the plan's own answer, stamped at its mint;
+    //   2. failing that, the SAME server-side derivation that mint would have applied, run on this
+    //      comparison's own destination. This is not a second implementation and not a guess: it is
+    //      `resolveTripTimezone` — one module, two callers (§18 rule 1) — and it is what makes the
+    //      fix reach rows that predate the column, with no backfill inventing values on disk.
+    //
+    // Both can answer null (no trip, or a destination outside the operating markets), and null is
+    // a finished answer: the exporter then keeps today's floating output exactly, because UTC or
+    // the server's zone would be a claim rather than a fallback (§13).
+    let planTimezone: string | null = null;
+    if (comparison.tripId) {
+      const trip = await storage.getTrip(comparison.tripId);
+      planTimezone = trip?.timezone ?? null;
+    }
+    if (!planTimezone) planTimezone = resolveTripTimezone(comparison.destination);
+
     // Generate .ics content
-    const icsContent = generateIcsContent(comparison, items);
+    const icsContent = generateIcsContent({ ...comparison, timezone: planTimezone }, items);
     
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="traveloure-${id}.ics"`);

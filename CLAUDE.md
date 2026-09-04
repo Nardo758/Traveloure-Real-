@@ -250,6 +250,59 @@ This document captures architectural decisions to maintain consistency across co
     same owner/advisor/author gate the plancard already has. Grouping the slip by event is a
     separate lane.
 
+30. **A PLAN CARRIES ITS OWN TIMEZONE, AND ITS EVENTS SURVIVE BEING PLANNED BEFORE IT EXISTS
+    (decision-maker ratified Sep 3, 2026 — ledger `2026-09-04-plan-mint`; migration 278).** One
+    lane, because both halves are decided at the SAME moment: when a `trips` row is born.
+    **(a) `trips.timezone` — ONE IANA zone per plan.** Until now nothing on a trip said what zone
+    its times were in (`vendors.service_timezone` is a provider's own operating zone and is
+    unrelated), so `server/utils/ics-calendar.ts` emitted `DTSTART`/`DTEND` with no TZID and no
+    `Z` — RFC 5545 **floating time**, which every calendar client renders in the *reader's* own
+    zone. A 16:00 ceremony in Tuscany showed as 16:00 in Sydney. `itinerary_items.start_time` /
+    `end_time` stay `varchar(10)` **WALL-CLOCK strings and are never converted** — the column
+    added here is the zone those strings are READ IN, not a re-encoding of them; no stored value
+    moves and no backfill runs. Additive nullable `varchar(64)`, **NO DEFAULT, NO CHECK** (the
+    publish-trap posture, migrations 181/195/273/275/276/277 — the IANA value set is
+    app-enforced), **declared in `shared/schema.ts`** per the deploy-push durability rule.
+    **NULL = NOT CAPTURED, and the .ics then keeps EXACTLY today's floating output with the
+    reason said out loud (§13)** — never UTC, never the server's zone, never the nearest guess;
+    a wrong zone is worse than an honest floating time because it looks authoritative.
+    **THE ZONE IS SERVER-DERIVED, NEVER CLIENT-SETTABLE (§14 posture applied to a
+    render-affecting fact).** `insertTripSchema` `.omit()`s it beside `marketSlug`, and
+    `storage.createTrip`/`updateTrip` derive it from `trips.destination` exactly as they already
+    derive `market_slug`. The derivation is ONE module — `server/services/trip-timezone.ts`,
+    `resolveTripTimezone()` — which is a **LAUNCH-MARKET LOOKUP, NOT A GEOCODER**: it resolves the
+    destination through the existing `resolveMarketSlug` and reads the existing `MARKET_TIMEZONES`
+    map for the 8 operating markets. **No network call, no third-party lookup, and no new city
+    list** (§13 forbids a second hardcoded one). A destination outside the 8 returns NULL. It is
+    deliberately NOT `timezoneForMarket()`, whose "UTC for an unknown market" answer is right for
+    the demand rollup's grain and wrong here — for a plan, UTC would be a claim.
+    **(b) The pending-events pen is DRAINED at mint.** `2026-09-03-switch-readers` shipped the
+    "What's happening" chips and stated its own gap: with no trip row yet, ticked chips are HELD
+    in `trip_contexts` as `pendingEventTitles` and nothing ever promoted them, so a traveler who
+    chose their events before the plan existed lost them. At mint the pen is drained — **one held
+    title ⇒ ONE `user_experiences` row bound to the new trip** (entry 29: an event IS a
+    `user_experiences` row; no new artifact type) — through **ONE implementation**,
+    `server/services/pending-events.service.ts`, called from every mint site (a second copy of
+    this decision is the derivation-drift class §18 rule 1 names). Rules that must not be
+    weakened: the write reuses the SAME owner-scoped `storage.createUserExperience` the
+    `.pick()`-allowlisted `POST /api/user-experiences` uses, with `userId` from the mint's own
+    owner and the trip owned by construction — the route's ownership rule is never bypassed;
+    **a failed drain NEVER fails the trip mint** (logged, pen left intact — §15b's "an
+    ancillary effect may not break the operation that authorizes it"); draining is **idempotent**
+    (an existing same-title event on that trip is skipped, and the pen is cleared on success, so
+    a second run creates nothing); and **an occasion that does not resolve is not invented** —
+    `user_experiences.experience_type_id` is NOT NULL, so when the held context names no
+    resolvable `experience_types` row the drain creates NOTHING and leaves the pen for a later
+    mint (§13), rather than filing the traveler's events under a nearest-looking occasion.
+    **Drained at traveler-owned mints only:** `storage.createTrip` (every door that funnels
+    through it — R-B), the AI snapshot (`saveGeneratedItinerarySnapshot`) and the two
+    `booking.service.ts` raw-SQL mints (cart auto-trip, saved-trip conversion). **NOT** at the
+    expert **authoring** builds (`ready-made.routes.ts`, `expert-workspace.routes.ts` — `userId`
+    is NULL by design, there is no traveler principal whose pen it could be) and **NOT** at the
+    ready-made **clone** (the buyer bought a fixed plan; injecting their own held chips into a
+    purchased product is content they did not ask that plan to carry). Those four still take the
+    timezone — every mint site stamps the zone; only the traveler-owned ones drain the pen.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

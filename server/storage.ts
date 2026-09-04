@@ -139,6 +139,8 @@ import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition, type TransitionActorType } from "./services/item-transition-log.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
+import { resolveTripTimezone } from "./services/trip-timezone";
+import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
@@ -1393,9 +1395,15 @@ export class DatabaseStorage implements IStorage {
     // the 8 operating markets (R13 unmapped bucket, §13). originMarket rides through from the body
     // as ordinary owner-authored capture data.
     const marketSlug = resolveMarketSlug(trip.destination);
+    // Ledger `2026-09-04-plan-mint` (CLAUDE.md entry 30): the plan's IANA timezone is derived from
+    // the destination at write time by the SAME posture as market_slug directly above — server-
+    // side, never off req.body (insertTripSchema omits it). A destination outside the operating
+    // markets resolves to NULL, which stays NULL: "not captured" is the honest answer and every
+    // reader (the .ics export above all) keeps its zone-free behaviour rather than guessing (§13).
+    const timezone = resolveTripTimezone(trip.destination);
     const [newTrip] = await db
       .insert(trips)
-      .values({ ...trip, marketSlug, trackingNumber })
+      .values({ ...trip, marketSlug, timezone, trackingNumber })
       .returning();
 
     // Write the owner's trip_collaborators row in the same operation that creates the
@@ -1421,7 +1429,18 @@ export class DatabaseStorage implements IStorage {
       status: newTrip.status === 'draft' ? 'draft' : 'published',
       metadata: { destination: newTrip.destination, eventType: newTrip.eventType },
     });
-    
+
+    // Ledger `2026-09-04-plan-mint` (b): the plan now exists, so the pre-trip holding pen can be
+    // promoted into real event rows. ONE implementation for every mint site; it never throws and
+    // never fails the mint (a drain failure leaves the pen intact for the next one). Placed here
+    // rather than at each caller because R-B routes all trip creation through this method.
+    await drainPendingEventsIntoTrip({
+      userId: newTrip.userId,
+      tripId: newTrip.id,
+      destination: newTrip.destination,
+      startDate: typeof newTrip.startDate === "string" ? newTrip.startDate : null,
+    });
+
     return newTrip;
   }
 
@@ -1429,8 +1448,16 @@ export class DatabaseStorage implements IStorage {
     // 2A.3 / R8: keep market_slug consistent with the destination. When an edit changes the
     // destination, re-derive server-side (never client-set — insertTripSchema omits market_slug).
     // A destination that resolves to none of the 8 markets clears it back to NULL (R13/§13).
-    const derived: Partial<InsertTrip> & { marketSlug?: string | null } =
-      updates.destination !== undefined ? { marketSlug: resolveMarketSlug(updates.destination) } : {};
+    // Ledger `2026-09-04-plan-mint`: the timezone rides the same derivation as market_slug — a
+    // destination edit re-derives both, and a destination outside the operating markets clears the
+    // zone back to NULL rather than leaving the previous city's zone attached to a new place.
+    const derived: Partial<InsertTrip> & { marketSlug?: string | null; timezone?: string | null } =
+      updates.destination !== undefined
+        ? {
+            marketSlug: resolveMarketSlug(updates.destination),
+            timezone: resolveTripTimezone(updates.destination),
+          }
+        : {};
     const [updatedTrip] = await db
       .update(trips)
       .set({ ...updates, ...derived, updatedAt: new Date() })

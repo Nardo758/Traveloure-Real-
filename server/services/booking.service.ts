@@ -20,6 +20,8 @@ import { getStripeSecretKey } from '../utils/stripe-key';
 import { resolveTravelerServiceFee } from './fee-resolution.service';
 import { coversAction } from './trip-entitlement.service';
 import { recordLegacyBookingTravelerFeeLedger } from './fee-ledger.service';
+import { resolveTripTimezone } from './trip-timezone';
+import { drainPendingEventsIntoTrip } from './pending-events.service';
 
 const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -101,9 +103,14 @@ class BookingService {
 
     // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
     const trackingNumber = await storage.generateTrackingNumber('TRV');
+    // Ledger `2026-09-04-plan-mint` (CLAUDE.md entry 30): a plan carries its own IANA zone, derived
+    // server-side from the destination by the ONE shared module (never from a request body). NULL
+    // outside the operating markets — "not captured", which every reader honours rather than
+    // guessing a zone (§13). Raw SQL here because this whole mint path is raw SQL.
+    const timezone = resolveTripTimezone(destination);
     await db.execute(sql`
-      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, created_at)
-      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, NOW())
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, timezone, created_at)
+      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, ${timezone}, NOW())
     `);
 
     // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
@@ -117,6 +124,11 @@ class BookingService {
       ON CONFLICT (trip_id, user_id) DO NOTHING
     `);
     
+    // Ledger `2026-09-04-plan-mint` (b): a plan now exists for this traveler, so the pre-trip
+    // holding pen is promoted into real event rows. Never throws; a failure leaves the pen intact
+    // and this mint untouched.
+    await drainPendingEventsIntoTrip({ userId, tripId, destination, startDate });
+
     console.log(`Created trip ${tripId} for ${cartItems.length} booking items`);
     return tripId;
   }
@@ -1116,14 +1128,16 @@ class BookingService {
 
     // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
     const trackingNumber = await storage.generateTrackingNumber('TRV');
+    // Ledger `2026-09-04-plan-mint`: same server-side derivation as every other mint site.
+    const timezone = resolveTripTimezone(destination);
     await db.execute(sql`
       INSERT INTO trips (
         id, user_id, title, destination, start_date, end_date,
-        number_of_travelers, budget, status, tracking_number, created_at, updated_at
+        number_of_travelers, budget, status, tracking_number, timezone, created_at, updated_at
       ) VALUES (
         ${tripId}, ${userId}, ${`Trip to ${destination}`}, ${destination},
         ${startDate}, ${endDate}, ${travelers}, ${budget},
-        'planning', ${trackingNumber}, NOW(), NOW()
+        'planning', ${trackingNumber}, ${timezone}, NOW(), NOW()
       )
     `);
 
@@ -1137,6 +1151,10 @@ class BookingService {
       VALUES (gen_random_uuid()::text, ${tripId}, ${userId}, 'owner', NOW())
       ON CONFLICT (trip_id, user_id) DO NOTHING
     `);
+
+    // Ledger `2026-09-04-plan-mint` (b): drain the pre-trip holding pen — same one implementation
+    // as every other traveler-owned mint site. Never throws.
+    await drainPendingEventsIntoTrip({ userId, tripId, destination, startDate });
 
     return { tripId };
   }
