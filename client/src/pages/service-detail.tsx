@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { ServiceLocationMap, parseLatLng } from "@/components/service-location-map";
+import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
+import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -464,6 +466,11 @@ export default function ServiceDetailPage() {
   // The add that is waiting on an answer. `null` = no question pending. `kind` says which of the
   // page's two plan writes (a service, or a room's night range) the answer belongs to.
   const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
+  // LOCATION MISMATCH (ledger 2026-09-04-location-mismatch). ONE gate for every add on this page:
+  // the four buttons below (Book now / Add, and the room rung's twins) are four confirm points for
+  // the SAME add, so they share one reader rather than each carrying a copy of the decision
+  // (§18 rule 1). Advisory only — it never blocks, never writes, and nothing is persisted.
+  const mismatchGate = useLocationMismatchGate(targetTripId);
   // Native "Book on Traveloure": capture a preferred date/time and carry it into the
   // cart (cart_items.scheduled_date → checkout bookingDetails). Optional — non-dated
   // services (e.g. a PDF deliverable) can book without it. This closes the gap where
@@ -754,28 +761,6 @@ export default function ServiceDetailPage() {
    * from a service's category to an event, so nothing is pre-selected and no row is recommended
    * — a suggestion would be the platform claiming knowledge it does not have (§13).
    */
-  const beginAdd = (kind: "service" | "room", proceed: boolean) => {
-    if (!user) {
-      openSignInModal();
-      return;
-    }
-    if (targetTripId && shouldAskWhichEvent(planEvents)) {
-      setPendingAdd({ kind, proceed });
-      return;
-    }
-    if (kind === "room") addRoomToCartMutation.mutate({ proceed });
-    else addToCartMutation.mutate({ proceed });
-  };
-
-  /** The picker's answer — an event id, or an EXPLICIT null for the implicit unnamed event. */
-  const confirmPendingAdd = (userExperienceId: string | null) => {
-    if (!pendingAdd) return;
-    const { kind, proceed } = pendingAdd;
-    if (kind === "room") addRoomToCartMutation.mutate({ proceed, userExperienceId });
-    else addToCartMutation.mutate({ proceed, userExperienceId });
-    setPendingAdd(null);
-  };
-
   if (serviceLoading) {
     return (
       <Layout>
@@ -855,6 +840,62 @@ export default function ServiceDetailPage() {
     : priceNum > 0
     ? "per service"
     : "contact the provider for pricing";
+
+  // The dialog echoes the listing with the category/price line this page ALREADY renders
+  // (`priceLabel`, above) — no second price derivation, no fee literal (§8/§18 rule 1). The
+  // location is handed over RAW: the "Unknown" sentinel is the reader's to recognise, not the
+  // caller's to pre-filter.
+  const guardServiceAdd = (add: () => void) =>
+    mismatchGate.guardAdd(
+      { location: service.location, name: service.serviceName || "Service", meta: priceLabel },
+      add,
+    );
+
+  /**
+   * THE ONE DOOR for both of this page's plan writes (the service add, and the room rung's night
+   * range). Two lanes landed a guard on these same four buttons — the location-mismatch confirm
+   * (ledger `2026-09-04-location-mismatch`) and this picker (`2026-09-04-which-event-picker`) —
+   * so they are COMPOSED here rather than each wrapping the buttons separately, which is how a
+   * later edit ends up applying one and dropping the other (§18 rule 1).
+   *
+   * Order is deliberate and reads as two different questions:
+   *   1. `guardServiceAdd` — SHOULD this be added at all? The listing is not in a city the plan
+   *      names. Advisory: it never blocks, and when there is nothing to say it calls straight
+   *      through.
+   *   2. `shouldAskWhichEvent` — WHERE does it go? Asked only when there is a real choice (zero
+   *      or one event ⇒ no question). Skipping it sends NO `userExperienceId` key at all, which
+   *      is how the server is told the link was never in play — not a silent "no event".
+   *
+   * Nothing here decides WHICH event anything belongs to: no mapping from a service's category to
+   * an event exists in this codebase, so nothing is pre-selected and no row is recommended — a
+   * suggestion would be the platform claiming knowledge it does not have (§13).
+   *
+   * Defined below `guardServiceAdd` because that reader needs `service`/`priceLabel`, which only
+   * exist past the loading/error returns above.
+   */
+  const beginAdd = (kind: "service" | "room", proceed: boolean) => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    guardServiceAdd(() => {
+      if (targetTripId && shouldAskWhichEvent(planEvents)) {
+        setPendingAdd({ kind, proceed });
+        return;
+      }
+      if (kind === "room") addRoomToCartMutation.mutate({ proceed });
+      else addToCartMutation.mutate({ proceed });
+    });
+  };
+
+  /** The picker's answer — an event id, or an EXPLICIT null for the implicit unnamed event. */
+  const confirmPendingAdd = (userExperienceId: string | null) => {
+    if (!pendingAdd) return;
+    const { kind, proceed } = pendingAdd;
+    if (kind === "room") addRoomToCartMutation.mutate({ proceed, userExperienceId });
+    else addToCartMutation.mutate({ proceed, userExperienceId });
+    setPendingAdd(null);
+  };
 
   // Direct-Booking trust panel (mockup "custody-label"): every line is gated on a real
   // field — identity/business verification (public-verification), meeting point, and
@@ -2038,6 +2079,13 @@ export default function ServiceDetailPage() {
         submitting={addToCartMutation.isPending || addRoomToCartMutation.isPending}
         onConfirm={confirmPendingAdd}
         onCancel={() => setPendingAdd(null)}
+      />
+      <LocationMismatchDialog
+        alert={mismatchGate.alert}
+        listingName={mismatchGate.listing?.name ?? ""}
+        listingMeta={mismatchGate.listing?.meta ?? null}
+        onAddAnyway={mismatchGate.confirm}
+        onCancel={mismatchGate.cancel}
       />
     </Layout>
   );

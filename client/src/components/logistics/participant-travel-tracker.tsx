@@ -58,8 +58,20 @@ export function ParticipantTravelTracker({
   const [mobilityLevel, setMobilityLevel] = useState("high");
 
   const updateMutation = useMutation({
+    /**
+     * The write rail is `PATCH /api/participants/:id` (server/routes/content.routes.ts) — the
+     * ONE participant-update endpoint that exists. This component previously posted to
+     * `PATCH /api/trips/:tripId/participants/:participantId`, which was never declared anywhere
+     * in server/, so every save failed (`app.use("/api", notFoundHandler)` in server/index.ts
+     * answers an unmatched /api path with a 404, which surfaced here as an opaque
+     * "Update failed" toast). Ledger `2026-09-04-guest-list-reconciliation`.
+     *
+     * The trip is NOT in the path by design: the server resolves the participant's `tripId`
+     * from the stored row and owner-gates on that, so ownership can never be asserted by the
+     * URL. `tripId` is still needed here for the read key it invalidates.
+     */
     mutationFn: async ({ participantId, updates }: { participantId: string; updates: Record<string, unknown> }) => {
-      const response = await apiRequest("PATCH", `/api/trips/${tripId}/participants/${participantId}`, updates);
+      const response = await apiRequest("PATCH", `/api/participants/${participantId}`, updates);
       return response.json();
     },
     onSuccess: () => {

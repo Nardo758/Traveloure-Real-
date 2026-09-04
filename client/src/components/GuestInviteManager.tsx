@@ -35,14 +35,32 @@ import {
   Calendar,
   Trash2,
   Eye,
-  BarChart3
+  BarChart3,
+  Send,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { PLAN_NOUN_LOWER } from '@/lib/plan-vocabulary';
 
 interface Guest {
   email: string;
   name: string;
   phone?: string;
+}
+
+/**
+ * The most recent `invite_send_log` row for this invite, as the server reports it.
+ *
+ * `status: 'sent'` means THE OUTBOX ACCEPTED THE MESSAGE — the platform will try, with retries.
+ * It is NOT a delivery, open or read receipt, and nothing on this surface may say otherwise
+ * (ledger `2026-09-04-invite-mailer`). `'failed'` means no durable outbox row was written, which
+ * is why the invite is still shown as un-sent and can be sent again immediately.
+ */
+interface InviteLastSend {
+  status: string;
+  sentAt?: string | null;
+  errorMessage?: string | null;
 }
 
 interface Invite {
@@ -57,6 +75,9 @@ interface Invite {
   inviteViewedAt?: string;
   viewCount: number;
   createdAt: string;
+  /** Stamped server-side by the send rail's claim, and by nothing else. Null ⇒ never sent. */
+  inviteSentAt?: string | null;
+  lastSend?: InviteLastSend | null;
 }
 
 interface Props {
@@ -72,6 +93,8 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
   const [isLoading, setIsLoading] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [sendingIds, setSendingIds] = useState<string[]>([]);
+  const [isSendingAll, setIsSendingAll] = useState(false);
   const { toast } = useToast();
   
   // Guest form state
@@ -161,6 +184,82 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
     setGuests(updated);
   }
   
+  /**
+   * Ask the server to email these invites. `inviteIds` omitted ⇒ everyone the server's own
+   * debounce lets through, which is how "send to whoever hasn't had one" is expressed: the
+   * decision is the server's claim, never a filter restated here.
+   *
+   * The response counts are reported verbatim. A queued message is queued — this surface never
+   * upgrades that to delivered, received or opened.
+   */
+  async function sendInvites(inviteIds?: string[]) {
+    const scope = inviteIds ?? [];
+    if (inviteIds) setSendingIds((prev) => [...prev, ...scope]);
+    else setIsSendingAll(true);
+
+    try {
+      const response = await fetch(`/api/events/${experienceId}/invites/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inviteIds ? { inviteIds } : {}),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        toast({
+          title: response.status === 429 ? 'Too many sends, briefly' : "Couldn't send",
+          description:
+            data?.error ||
+            (response.status === 429
+              ? 'Give it a minute and try again.'
+              : 'The invites were not sent.'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const enqueued = Number(data?.enqueued ?? 0);
+      const skipped = Number(data?.skipped ?? 0);
+      const failed = Number(data?.failed ?? 0);
+
+      if (enqueued === 0 && failed === 0) {
+        toast({
+          title: 'Nothing to send',
+          description:
+            skipped > 0
+              ? `${skipped} ${skipped === 1 ? 'invite was' : 'invites were'} emailed moments ago — try again in a few minutes.`
+              : 'No guests were selected.',
+        });
+      } else {
+        toast({
+          title: enqueued > 0 ? 'Queued for sending' : "Couldn't send",
+          description: [
+            enqueued > 0
+              ? `${enqueued} ${enqueued === 1 ? 'invite is' : 'invites are'} on the way.`
+              : null,
+            skipped > 0 ? `${skipped} skipped (sent moments ago).` : null,
+            failed > 0 ? `${failed} could not be queued.` : null,
+          ]
+            .filter(Boolean)
+            .join(' '),
+          variant: enqueued > 0 ? undefined : 'destructive',
+        });
+      }
+
+      fetchInvites();
+      fetchStats();
+    } catch (error: any) {
+      toast({
+        title: "Couldn't send",
+        description: error?.message || 'The invites were not sent.',
+        variant: 'destructive',
+      });
+    } finally {
+      if (inviteIds) setSendingIds((prev) => prev.filter((id) => !scope.includes(id)));
+      else setIsSendingAll(false);
+    }
+  }
+
   async function copyInviteLink(inviteLink: string, token: string) {
     try {
       await navigator.clipboard.writeText(inviteLink);
@@ -202,6 +301,31 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
     }
   }
   
+  /**
+   * The send state of one row, in the three honest states the data actually has. There is no
+   * fourth "delivered" state because the platform does not observe delivery.
+   */
+  function renderSendState(invite: Invite) {
+    if (invite.lastSend?.status === 'failed' && !invite.inviteSentAt) {
+      return (
+        <span className="flex items-center gap-1 text-sm text-red-600" title={invite.lastSend.errorMessage || undefined}>
+          <AlertCircle className="h-3 w-3" />
+          Send failed
+        </span>
+      );
+    }
+    if (invite.inviteSentAt) {
+      return (
+        <span className="text-sm text-muted-foreground">
+          Sent {new Date(invite.inviteSentAt).toLocaleString()}
+        </span>
+      );
+    }
+    return <span className="text-sm text-muted-foreground">Never sent</span>;
+  }
+
+  const unsentCount = invites.filter((i) => !i.inviteSentAt).length;
+
   function getRsvpBadgeColor(status: string) {
     switch (status) {
       case 'accepted': return 'bg-green-500';
@@ -220,8 +344,39 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
           <p className="text-muted-foreground">
             {eventName} • {eventDestination} • {new Date(eventDate).toLocaleDateString()}
           </p>
+          {/* The container noun comes from plan-vocabulary — never "trip", which is only one of
+              the things a traveler plans here. */}
+          <p className="text-sm text-muted-foreground">
+            Everyone on this list gets their own invitation page for this {PLAN_NOUN_LOWER}.
+          </p>
         </div>
         
+        <div className="flex items-center gap-2">
+          {invites.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => sendInvites()}
+              disabled={isSendingAll || unsentCount === 0}
+              data-testid="button-send-all-invites"
+              title={
+                unsentCount === 0
+                  ? 'Every guest has already been emailed their invitation'
+                  : undefined
+              }
+            >
+              {isSendingAll ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              {isSendingAll
+                ? 'Sending…'
+                : unsentCount === 0
+                  ? 'All invites emailed'
+                  : `Email ${unsentCount} un-sent ${unsentCount === 1 ? 'invite' : 'invites'}`}
+            </Button>
+          )}
+
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
           <DialogTrigger asChild>
             <Button>
@@ -233,7 +388,9 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
             <DialogHeader>
               <DialogTitle>Add Guest Invites</DialogTitle>
               <DialogDescription>
-                Create personalized invite links for your guests. Each guest will receive travel recommendations based on their city of origin.
+                Create personalized invite links for your guests. Adding a guest does not email them —
+                use <strong>Email invite</strong> on the row (or the button above) when you're ready to send.
+                Each guest gets travel recommendations based on the city they're coming from.
               </DialogDescription>
             </DialogHeader>
             
@@ -290,6 +447,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
       
       {/* Stats Cards */}
@@ -340,7 +498,9 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
         <CardHeader>
           <CardTitle>All Invites</CardTitle>
           <CardDescription>
-            Manage your guest invites and track RSVPs
+            Manage your guest invites and track RSVPs. &ldquo;Sent&rdquo; means we&rsquo;ve queued the email
+            and will keep trying — we can&rsquo;t tell you whether a guest opened it. You can still copy a
+            link and share it yourself.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -349,6 +509,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
               <Users className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p className="text-lg mb-2">No invites yet</p>
               <p className="text-sm">Click "Add Guests" to create your first invite</p>
+              <p className="text-sm mt-1">They&rsquo;ll show up here, ready to email or share as a link.</p>
             </div>
           ) : (
             <Table>
@@ -359,6 +520,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
                   <TableHead>RSVP Status</TableHead>
                   <TableHead>Guests</TableHead>
                   <TableHead>Views</TableHead>
+                  <TableHead>Invite Sent</TableHead>
                   <TableHead>Invite Link</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -394,6 +556,9 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
                         {invite.viewCount}
                       </div>
                     </TableCell>
+                    <TableCell data-testid={`invite-send-state-${invite.id}`}>
+                      {renderSendState(invite)}
+                    </TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"
@@ -408,13 +573,32 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
                       </Button>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteInvite(invite.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => sendInvites([invite.id])}
+                          disabled={sendingIds.includes(invite.id)}
+                          data-testid={`button-send-invite-${invite.id}`}
+                          title={invite.inviteSentAt ? 'Email this invitation again' : 'Email this invitation'}
+                        >
+                          {sendingIds.includes(invite.id) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          <span className="sr-only">
+                            {invite.inviteSentAt ? 'Email invite again' : 'Email invite'}
+                          </span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteInvite(invite.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

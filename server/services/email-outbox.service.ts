@@ -49,6 +49,10 @@ import {
   type SendEmailParams,
   type SendEmailResult,
 } from "./email.service";
+import {
+  buildGuestInviteEmailPayload,
+  type GuestInviteEmailParams,
+} from "./guest-invite-email";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -352,6 +356,39 @@ export async function enqueueBookingConfirmationEmail(
     html:      payload.html,
     text:      payload.text,
     metadata:  { bookingId: params.bookingId, confirmationCode: params.confirmationCode },
+  });
+}
+
+// ── Guest invite ──────────────────────────────────────────────────────────────
+
+/**
+ * Enqueue ONE guest's invite email through the outbox (ledger 2026-09-04-invite-mailer).
+ *
+ * The guest-invite rail has no mail path of its own: it enqueues here like every other
+ * transactional email, so the platform kill switch, the retry schedule and the admin
+ * dead-letter view all apply unchanged (§18 rule 1 — one mail implementation, many callers).
+ *
+ * Returns the outbox row id, or null when NO durable row could be written. The caller treats
+ * null as "not enqueued" and must not stamp the invite as sent — an email with no outbox row is
+ * never retried, so calling it sent would be a claim the platform cannot support (§13).
+ *
+ * ENQUEUED IS NOT DELIVERED. A non-null id means the outbox accepted the message, nothing more.
+ * Never report it to a host as received, opened or read.
+ */
+export async function enqueueGuestInviteEmail(params: {
+  toEmail: string;
+  inviteId: string;
+  experienceId: string;
+  email: GuestInviteEmailParams;
+}): Promise<number | null> {
+  const payload = buildGuestInviteEmailPayload(params.email);
+  return enqueueEmail({
+    emailType: "guest_invite",
+    to:        params.toEmail,
+    subject:   payload.subject,
+    html:      payload.html,
+    text:      payload.text,
+    metadata:  { inviteId: params.inviteId, experienceId: params.experienceId },
   });
 }
 
