@@ -4536,7 +4536,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               opt-in moved off this step into the post-creation "Pricing & fees" drawer (listing
               home) — moved, not duplicated. `formData.cancellationPolicy(Type)` and the four
               `deposit*` fields stay in state/payload purely for never-clobber round-trip fidelity
-              (hydrated, sent unedited on every save); no control here writes them any more. */}
+              (hydrated, sent unedited on every save); no control here writes them any more.
+
+              CHECKED AND LEFT AS-IS by ledger `2026-09-04-earn-contained-fixes` (audit item 12,
+              "the Deposit Schedule tab is inert"). There is no such tab in this component or
+              anywhere in the provider console: the deposit config has ONE live write path —
+              `PricingFeesDrawer` → the existing `PATCH /api/provider/services/:id` allowlist,
+              which already accepts all four `deposit*` columns — and the traveler side already
+              renders it (`resolveDepositPreview` on `/services/:id` and the catalog map view).
+              So there was nothing to wire and nothing to remove. The only "Deposit Schedule" in
+              the repo is a TRAVELER-side template filter option on the group-trip planning
+              template (`server/seeds/experience-template-tabs.seed.ts`), which is a different
+              subject and a different table — do not conflate the two. */}
           <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-cancellation-deposit-moved">
             Cancellation policy and deposit are set in <b>Pricing &amp; fees</b>, on this listing's
             home page — available once you've saved a draft. Not required to go live.

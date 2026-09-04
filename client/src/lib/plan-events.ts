@@ -5,7 +5,7 @@
  * CLAUDE.md Locked Decision 35) and `2026-09-04-plan-mint` (Locked Decision 30 (b)).
  *
  * ── WHAT CHANGED, AND WHY IT COULD NOT BE BUILT BEFORE ──────────────────────────────────────
- * The ratified artboards (`ModalEvents.dc.html`, `TravelEvents.dc.html`) draw each ticked chip as
+ * The ratified artboards (`Step5Events.dc.html`, `TravelEvents.dc.html`) draw each ticked chip as
  * a ROW — Event · Day · Time · Place — and `TravelEvents` is entirely about the TIME column (tee
  * times: 08:10, 09:00, 08:30, 10:20). `user_experiences` had no time-of-day column, so the step
  * shipped as chips alone and the audits recorded the table as HELD rather than drawing a clock

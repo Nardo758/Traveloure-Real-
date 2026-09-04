@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Clock, MapPin, Minus, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Calendar, Clock, MapPin, Minus, Plus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,20 @@ import { apiRequest } from "@/lib/queryClient";
 import { parseTripDate } from "@/lib/calendar-date";
 import { eventTypeForSlug, findOccasionByKey } from "@shared/occasions";
 import { partyNoun, partyTotal, travelersForSave } from "@/lib/plan-vocabulary";
-import { durationShape, guestListSetting, showsSchedule } from "@/lib/occasion-switches";
+import { durationShape, guestListSetting, showsSchedule, stopsShape } from "@/lib/occasion-switches";
+import {
+  MAX_PLAN_STOPS,
+  addStop,
+  isLocatedStop,
+  moveStop,
+  namedStops,
+  removeStopAt,
+  renameStopAt,
+  seedStops,
+  stopSequence,
+  type PlanStop,
+} from "@/lib/plan-stops";
+import { savePlanStops } from "@/lib/plan-stops-writer";
 import {
   eventsToCreate,
   hasEventRow,
@@ -89,12 +102,31 @@ import type { ExperienceType } from "@shared/schema";
  * NULL means NOT SET everywhere: the plain-plan shape, never a fabricated answer wearing the
  * row's authority.
  *
- * ── STEP 2 IS ONE PLACE (HELD) ────────────────────────────────────────────────────────────────
- * The Step2Where artboard (formerly ModalWhere) draws "Add another stop". An ordered stop list needs a
- * `trip_destinations` table that does not exist, and that is ruled HELD
- * (`docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4). The control is OMITTED rather than
- * rendered disabled: a disabled affordance still promises a capability, and this one has not been
- * ratified. `default_stops` is deliberately not read for the same reason.
+ * ── STEP 2 CAN BE A LIST NOW (ledger `2026-09-04-plan-stops-ui`) ──────────────────────────────
+ * The Step2Where artboard (formerly ModalWhere) draws "Add another stop" and TravelWhere draws
+ * the same step holding three of them; both were OMITTED (never disabled) while
+ * `trip_destinations` did not exist,
+ * because a control that collects an answer nothing can store is worse than an absent one. The
+ * table exists (migration 281, Locked Decision 34), so `default_stops` is read — the SIXTH switch
+ * and the last one — through `stopsShape`, and step 2 is:
+ *
+ *   "many" ⇒ an ORDERED list whose ROW 1 IS THE DESTINATION FIELD. That is not a layout choice:
+ *            `trips.destination` is the POSITION-0 MIRROR of the stop rows, so moving another city
+ *            to the front really does change the plan's headline destination, its market and its
+ *            IANA zone — and the server re-derives all three when it re-mirrors. Rows reorder with
+ *            buttons (no drag library) and position IS array order; the server numbers them.
+ *   "one"  ⇒ exactly the single field this step has always shown. NOTHING is written to
+ *            `trip_destinations` in that shape: the flow asked no stop question, so it states no
+ *            answer, and `[]` stays the honest NOT CAPTURED with `trips.destination` as the plan's
+ *            one city (§13). It also means a stop added elsewhere — the location-mismatch dialog's
+ *            "add this city as a stop" — is never silently erased by a later save under a
+ *            single-stop occasion.
+ *
+ * COORDINATES ARE NOT COLLECTED HERE and are never derived from a name: this lane builds no map
+ * and no geocoder, so a stop the traveler has not placed stays UNLOCATED and says so on its own
+ * row. The summary renders the list as a SEQUENCE ("A → B → C") and claims no route, distance or
+ * duration (Locked Decision 22c). A trip's stops are written through the ONE client writer
+ * (`plan-stops-writer.ts`) that the mismatch dialog also uses — never a second rail.
  *
  * ── STEP 4 IS ADULTS + KIDS, AND UNTOUCHED STILL MEANS NULL ───────────────────────────────────
  * `trips.adults` / `trips.kids` exist and were de-masked by migration 241 precisely so an
@@ -216,7 +248,29 @@ export function PlanModal({
 }: PlanModalProps) {
   const [ctx] = useTripContext();
   const [title, setTitle] = useState("");
-  const [destination, setDestination] = useState("");
+  /**
+   * THE PLAN'S STOPS, and the destination field with them: index 0 IS the destination (the
+   * position-0 mirror of `trip_destinations` — Locked Decision 34), so `destination` below is a
+   * DERIVED view of `stops[0].name` rather than a second piece of state. One list, one source of
+   * truth; the alternative — a `destination` string beside a separate tail list — is two authors
+   * of the same fact, which is how the field and the first row come to disagree (§18 rule 1).
+   */
+  const [stops, setStops] = useState<PlanStop[]>([{ name: "" }]);
+  const destination = stops[0]?.name ?? "";
+  const setDestination = (value: string) => setStops((prev) => renameStopAt(prev, 0, value));
+  /**
+   * Has the traveler touched the list in THIS open? Guards the one-shot seed from the plan row
+   * below, so a late cache fill can never overwrite stops they are in the middle of typing.
+   */
+  const [stopsTouched, setStopsTouched] = useState(false);
+  /**
+   * REPLACE-LIST SAFETY. `PUT /api/trips/:tripId/destinations` deletes whatever it is not sent, so
+   * a save must never write a list it could not first READ: a guest 401, a 403, an offline tab
+   * would otherwise turn "I could not see your stops" into "you have none". Set only when the
+   * plan's own rows have actually been read (or when the trip was minted in this very click, and
+   * therefore provably has none yet). A ref, because `commitPlan` reads it outside React's render.
+   */
+  const stopsReadOk = useRef(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   /**
@@ -257,6 +311,18 @@ export function PlanModal({
     enabled: open,
   });
 
+  /**
+   * The city THIS DOOR names, if it names one. Hoisted out of the open-effect because the stop
+   * list is seeded twice — once from the context on open, once from the plan's own rows when they
+   * arrive — and the door's answer has to win row 1 in both, from one derivation (§18 rule 1).
+   */
+  const doorDestination = useMemo(
+    () =>
+      source?.destination ||
+      (source?.city ? [source.city, source.country].filter(Boolean).join(", ") : ""),
+    [source],
+  );
+
   // Seed the form from the live context each time the modal opens, then let the door's own source
   // pre-fill over it — a door that names a city is describing the plan the traveler just asked for.
   useEffect(() => {
@@ -265,10 +331,19 @@ export function PlanModal({
     setFinishError(null);
     setStep("occasion");
     setTitle(ctx.title || "");
-    const sourceDestination =
-      source?.destination ||
-      (source?.city ? [source.city, source.country].filter(Boolean).join(", ") : "");
-    setDestination(sourceDestination || ctx.destination || "");
+    const sourceDestination = doorDestination;
+    /**
+     * The stop list, seeded from what the context already holds: the pre-trip pen (`ctx.stops`)
+     * when there is one, otherwise the single `ctx.destination` — the §13 fallback, stated once in
+     * `seedStops` and never re-derived here. A door that NAMES a city then overrides row 1, exactly
+     * as it always overrode the destination field, because a door naming a city is describing the
+     * plan the traveler just asked for. A bound plan's OWN rows arrive in the effect below and
+     * replace this seed — they are the truth once one exists.
+     */
+    const seeded = seedStops(ctx.destination, ctx.stops);
+    setStops(sourceDestination ? renameStopAt(seeded, 0, sourceDestination) : seeded);
+    setStopsTouched(false);
+    stopsReadOk.current = false;
     setStartDate(ctx.startDate || "");
     setEndDate(ctx.endDate || "");
     // A real stored count seeds a stepper; NO stored count leaves it EMPTY. Never a default of 2 —
@@ -336,6 +411,46 @@ export function PlanModal({
   const wantsSchedule = showsSchedule(selectedOccasion);
   const hasGuestList = guestListSetting(selectedOccasion);
   const noun = partyNoun(selectedOccasion?.vocabulary, hasGuestList);
+  /** Step 2's shape. NULL / not set ⇒ "one", the single field — see `stopsShape` for why. */
+  const stopsMany = stopsShape(selectedOccasion) === "many";
+
+  /**
+   * THE PLAN'S OWN STOPS, when a plan exists. Read only for a `many` occasion, because that is the
+   * only shape that writes them back and a replace-list writer must have read what it replaces.
+   * The rows are the truth once a trip is bound: they outrank the pre-trip pen, and they carry
+   * stops added elsewhere (the location-mismatch dialog's "add this city as a stop") that this
+   * modal would otherwise not know about — and would then delete on the next save.
+   *
+   * A failed read (guest 401, non-owner 403, offline) leaves `data` undefined, `stopsReadOk` false
+   * and the save silently skips the stop write. Losing an edit is recoverable; deleting a list we
+   * could not see is not (§13).
+   */
+  const contextTripId = ctx.tripId ?? "";
+  const { data: boundTrip } = useQuery<{
+    destination?: string | null;
+    destinations?: Array<{
+      name?: string | null;
+      city?: string | null;
+      country?: string | null;
+      lat?: string | number | null;
+      lng?: string | number | null;
+    }> | null;
+  }>({
+    queryKey: ["/api/trips", contextTripId],
+    enabled: open && stopsMany && contextTripId !== "",
+  });
+
+  useEffect(() => {
+    if (!open || !stopsMany || !boundTrip) return;
+    const alreadySeeded = stopsReadOk.current;
+    // The list has now been READ, whether or not it is safe to overwrite what is on screen —
+    // that is what authorizes the save to replace it.
+    stopsReadOk.current = true;
+    if (alreadySeeded || stopsTouched) return;
+    const fromTrip = seedStops(boundTrip.destination, boundTrip.destinations);
+    setStops(doorDestination ? renameStopAt(fromTrip, 0, doorDestination) : fromTrip);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stopsMany, boundTrip]);
 
   /**
    * The visible steps track the CURRENTLY chosen occasion, not the one the door arrived with —
@@ -634,6 +749,37 @@ export function PlanModal({
         pendingEventTitles: [],
       });
     }
+
+    /**
+     * ── THE STOPS (ledger `2026-09-04-plan-stops-ui`) ────────────────────────────────────────
+     * Written HERE, in the one save, through the one client writer — the same
+     * `savePlanStops` the location-mismatch dialog's "add this city as a stop" calls. A second
+     * writer is the derivation-drift class §18 rule 1 names, and these two are the kind that
+     * would drift: only one of them is exercised on any given click.
+     *
+     * ONLY UNDER `many`. A single-stop occasion never asked the stop question, so it states no
+     * answer: `trip_destinations` stays honestly NOT CAPTURED with `trips.destination` as the
+     * plan's one city (§13). It also means a stop added from the mismatch dialog survives a later
+     * save under a single-stop occasion instead of being silently replaced away.
+     *
+     * ONLY WHEN THE LIST COULD BE REPLACED SAFELY. The `boundTripId` PARAMETER present ⇒ the trip
+     * was minted in this very click and provably has no rows yet; otherwise the plan's own rows
+     * must have been READ first (`stopsReadOk`), because the route is a replace-list and sending a
+     * list we could not see would delete stops the traveler never asked to lose.
+     *
+     * Best-effort and awaited, like the anchor and the events above: a refusal is logged and the
+     * rest of the save stands.
+     */
+    if (stopsMany) {
+      const canReplaceStops = !tripId || !!boundTripId || stopsReadOk.current;
+      if (canReplaceStops) {
+        const result = await savePlanStops(tripId, stops);
+        if (!result.ok && result.reason === "request_failed") {
+          // eslint-disable-next-line no-console
+          console.warn("[plan-modal] stops not saved:", result.message);
+        }
+      }
+    }
     return tripId;
   }
 
@@ -729,7 +875,12 @@ export function PlanModal({
 
   const stepNote: Record<PlanStepId, string> = {
     occasion: "Pick one to continue.",
-    where: "A vendor outside this city is flagged when you add it to the plan.",
+    // The mismatch confirm compares a listing against EVERY city the plan names (ledger
+    // `2026-09-04-plan-stops-ui`), so the note says "these cities" exactly when the plan can have
+    // several — it never promises a check narrower or wider than the one that actually runs.
+    where: stopsMany
+      ? "A vendor outside the cities you list is flagged when you add it to the plan."
+      : "A vendor outside this city is flagged when you add it to the plan.",
     when:
       shape === "day"
         ? "Occasions that last a day ask for a date and a time, never a range."
@@ -887,20 +1038,148 @@ export function PlanModal({
             </div>
           )}
 
-          {/* ── STEP 2 · Where — ONE destination. Ordered stops are HELD; see the header note. */}
+          {/* ── STEP 2 · Where — one destination, or an ordered list. See the header note. ─── */}
           {step === "where" && (
             <div className="space-y-1.5" data-testid="plan-step-where-body">
               <Label htmlFor="etp-destination" className="flex items-center gap-2">
                 <MapPin className="h-3.5 w-3.5" style={{ color: "var(--earn-muted)" }} />
                 Destination
               </Label>
+              {/* ROW 1 IS THE DESTINATION FIELD in both shapes, and keeps its id and its testid:
+                  under `many` it is simply the first row of the list (the position-0 mirror). */}
               <Input
                 id="etp-destination"
                 value={destination}
-                onChange={(e) => setDestination(e.target.value)}
+                onChange={(e) => {
+                  setStopsTouched(true);
+                  setDestination(e.target.value);
+                }}
                 placeholder="Kyoto, Japan"
+                aria-label={stopsMany ? "Stop 1" : undefined}
                 data-testid="input-etp-destination"
               />
+
+              {stopsMany && (
+                <div className="space-y-2 pt-1" data-testid="plan-stops-list">
+                  {stops.slice(1).map((stop, i) => {
+                    // `index` is the row's real position in the list; `i` counts only the rows
+                    // BELOW the destination field, which is rendered above as row 1.
+                    const index = i + 1;
+                    const named = stop.name.trim() !== "";
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-start gap-2"
+                        data-testid={`plan-stop-row-${index}`}
+                      >
+                        <span
+                          className="pt-2.5 text-[10.5px] tabular-nums"
+                          style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
+                        >
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <Input
+                            value={stop.name}
+                            onChange={(e) => {
+                              setStopsTouched(true);
+                              setStops((prev) => renameStopAt(prev, index, e.target.value));
+                            }}
+                            placeholder="Another city"
+                            aria-label={`Stop ${index + 1}`}
+                            data-testid={`input-plan-stop-${index}`}
+                          />
+                          {/* §13: a stop nobody placed is UNLOCATED and says so. It is never
+                              guessed onto a map, and this lane collects no coordinates at all. */}
+                          {named && !isLocatedStop(stop) && (
+                            <span
+                              className="block text-[10.5px]"
+                              style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
+                              data-testid={`text-plan-stop-unlocated-${index}`}
+                            >
+                              not located — no pin has been placed for this stop
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className={stepperButton}
+                          aria-label={`Move stop ${index + 1} up`}
+                          onClick={() => {
+                            setStopsTouched(true);
+                            setStops((prev) => moveStop(prev, index, "up"));
+                          }}
+                          data-testid={`button-plan-stop-up-${index}`}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className={stepperButton}
+                          aria-label={`Move stop ${index + 1} down`}
+                          disabled={index === stops.length - 1}
+                          onClick={() => {
+                            setStopsTouched(true);
+                            setStops((prev) => moveStop(prev, index, "down"));
+                          }}
+                          data-testid={`button-plan-stop-down-${index}`}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className={stepperButton}
+                          aria-label={`Remove stop ${index + 1}`}
+                          onClick={() => {
+                            setStopsTouched(true);
+                            setStops((prev) => removeStopAt(prev, index));
+                          }}
+                          data-testid={`button-plan-stop-remove-${index}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-[13px] font-semibold disabled:opacity-40"
+                    style={{ color: "var(--earn-teal-ink)" }}
+                    disabled={stops.length >= MAX_PLAN_STOPS}
+                    onClick={() => {
+                      setStopsTouched(true);
+                      setStops((prev) => addStop(prev));
+                    }}
+                    data-testid="button-plan-add-stop"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add another stop
+                    <span className="text-[11px] font-normal" style={{ fontFamily: MONO, color: "var(--earn-muted)" }}>
+                      for road trips and multi-city plans
+                    </span>
+                  </button>
+
+                  {/* THE SEQUENCE, AND NOTHING MORE. An order — no route, no distance, no travel
+                      time (Locked Decision 22c). Shown only once more than one stop is named:
+                      a "sequence" of one is not a sequence. */}
+                  {namedStops(stops).length > 1 && (
+                    <div className="space-y-0.5 pt-1">
+                      <p
+                        className="text-[12px]"
+                        style={{ color: "var(--earn-ink)" }}
+                        data-testid="text-plan-stop-sequence"
+                      >
+                        {stopSequence(stops)}
+                      </p>
+                      <p className="text-[10.5px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
+                        the order you'll visit them — no route, distance or travel time is calculated
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Label htmlFor="etp-title" className="pt-2 block">Plan name (optional)</Label>
               <Input
                 id="etp-title"
@@ -1118,7 +1397,7 @@ export function PlanModal({
               />
 
               {/* ── THE RATIFIED TABLE — Event · Day · Time · Place ────────────────────────────
-                  `ModalEvents.dc.html` and `TravelEvents.dc.html` both draw this, and both were
+                  `Step5Events.dc.html` and `TravelEvents.dc.html` both draw this, and both were
                   recorded as HELD because `user_experiences` had no time-of-day column. Migration
                   282 gave it one (Locked Decision 35), so the table is built here.
 

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+// Type only — the stop list's SHAPE has one definition (§18 rule 1), in the pure reducer module
+// that also owns its rules. Nothing is imported at runtime, so this adds no module to the graph.
+import type { PlanStopPayload } from "./plan-stops";
 import type { PlanEventDraft } from "@shared/plan-events";
 
 /**
@@ -92,6 +95,19 @@ export interface TripContext {
    * nothing they chose is lost. The server drain reads both keys and clears both together.
    */
   pendingEventTitles?: string[];
+  /**
+   * The plan's ORDERED STOPS while no trip row exists yet (ledger `2026-09-04-plan-stops-ui`;
+   * `trip_destinations`, migration 281, CLAUDE.md Locked Decision 34). Index 0 is the destination
+   * field — the position-0 mirror — so this list and `destination` above always agree on the first
+   * city. Once `tripId` is bound the ROWS are the truth and this pen is cleared to `[]`; the one
+   * writer of both halves is `client/src/lib/plan-stops-writer.ts`.
+   *
+   * Absent = the stop question was never asked (an occasion whose `default_stops` is not "many"),
+   * which is NOT the same as "this plan has one stop" — a reader falls back to `destination` and
+   * says so (§13). Coordinates appear ONLY when a stop was explicitly placed; a stop without them
+   * is unlocated and stays visibly so, never guessed onto a map.
+   */
+  stops?: PlanStopPayload[];
   /**
    * The pen from this release on — step 5's ratified table (Event · Day · Time · Place), held
    * while no trip row exists. Ledger `2026-09-04-event-time-ui`; the row shape is

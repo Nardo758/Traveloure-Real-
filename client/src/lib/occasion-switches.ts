@@ -88,3 +88,28 @@ export function guestListSetting(row?: OccasionSwitchRow | null): boolean | null
 export function isHiddenOccasion(row?: OccasionSwitchRow | null): boolean {
   return row?.defaultVisibility === "hidden";
 }
+
+/** Step 2's shape: ONE destination, or an ordered list of stops. */
+export type StopsShape = "one" | "many";
+
+/**
+ * Step 2 — `default_stops` (migration 276), read for the FIRST time by ledger
+ * `2026-09-04-plan-stops-ui`. `2026-09-04-one-modal-many-doors` deliberately left this column
+ * unread: the ordered-stop control it drives had no home to write to until `trip_destinations`
+ * landed (migration 281, CLAUDE.md Locked Decision 34), and a control that collects an answer
+ * nothing can store is worse than an omitted one.
+ *
+ * "many" ⇒ the destination field is stop 1 of an ordered, reorderable list ("Add another stop —
+ * for road trips and multi-city plans", the ratified ModalWhere / TravelWhere artboards).
+ * "one"  ⇒ exactly the single destination field, unchanged.
+ *
+ * NULL / unrecognised ⇒ **"one"**, the PLAIN-PLAN shape. This is the safe direction here, and it
+ * points the OPPOSITE way to `durationShape`'s fallback for a reason worth stating: collapsing an
+ * unset DURATION would discard a date the traveler had already typed, whereas not offering the
+ * stop control discards nothing — the destination field still records their answer and stops can
+ * be added later. Falling back to "many" would be this module claiming an undecided occasion is a
+ * multi-city one, which is a guess wearing the row's authority (§13).
+ */
+export function stopsShape(row?: OccasionSwitchRow | null): StopsShape {
+  return row?.defaultStops === "many" ? "many" : "one";
+}

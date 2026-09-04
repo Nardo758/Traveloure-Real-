@@ -1891,7 +1891,12 @@ export default function DiscoverLocationPage() {
     const offering = recruitmentPool[idx % Math.max(recruitmentPool.length, 1)];
     return {
       offeringLabel: offering?.display_name ?? "Local expert guide",
-      offeringKey: offering?.offering_type_key ?? "guide",
+      // Gap 15: the old fallback here was the literal `"guide"`, which is not an
+      // `expert_offering_types` key. It matched nothing in the demand lookup below (silently
+      // returning 0) and, once the recruitment CTA started forwarding the key, would have sent
+      // a value the migration-107 FK cannot hold. EMPTY is the honest "the catalog has not
+      // answered yet" state: the demand lookup skips it and the CTA omits the param (§13).
+      offeringKey: offering?.offering_type_key ?? "",
       neighborhoodName: nbName,
       city,
       neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
@@ -1899,7 +1904,9 @@ export default function DiscoverLocationPage() {
   });
 
   // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
-  const wantedOfferingKeys = Array.from(new Set(rawWantedSlotsData.map((s) => s.offeringKey)));
+  const wantedOfferingKeys = Array.from(
+    new Set(rawWantedSlotsData.map((s) => s.offeringKey).filter(Boolean)),
+  );
   const { data: demandCounts } = useQuery<Record<string, number>>({
     queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
     queryFn: async () => {
@@ -2179,8 +2186,11 @@ export default function DiscoverLocationPage() {
                 <p className="text-xs text-muted-foreground mb-3">
                   Know this city well? Travellers are looking for guides, advisors, and service providers here.
                 </p>
+                {/* Gap 15: name the track. Without `type=` the wizard fell back to its
+                    `travel_expert` default, so a "local experts wanted" card opened the Trip
+                    Planner flow. This card has no neighbourhood or offering to carry. */}
                 <a
-                  href={`/become-expert?city=${encodeURIComponent(city)}`}
+                  href={`/become-expert?type=local_expert&city=${encodeURIComponent(city)}`}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
                   data-testid="link-expert-recruitment-earn"
                 >
