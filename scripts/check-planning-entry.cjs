@@ -44,6 +44,10 @@
  *   • Supply-recruitment pages are not listed and must not be: `/become-expert`, `/expert/apply`
  *     (travel-experts.tsx) and `/become-provider`, `/provider/new-service` (service-providers.tsx)
  *     recruit providers. A "start a plan" CTA there would be wrong, not missing.
+ *     `/start/events` (start-events.tsx) IS listed and is not a counter-example: it is the FORK in
+ *     front of those two forms, reached by every "Event Planner" link on the site, and the couple
+ *     who follows one arrives there as a TRAVELER. That is exactly why it carries the entry and
+ *     the two forms it forks into do not (ledger `2026-09-04-wedding-entry-doors`).
  */
 
 const fs = require("fs");
@@ -65,6 +69,11 @@ const ENTRY_SURFACES = [
     file: "client/src/pages/experiences.tsx",
     routes: ["/experiences"],
     why: "the experience browse surface; carries the ruled page-local IntakePanel",
+  },
+  {
+    file: "client/src/pages/start-events.tsx",
+    routes: ["/start/events"],
+    why: "the Event Planner fork — its third door is the HOST, and without an entry a couple is offered only two ways to sell",
   },
 ];
 
@@ -105,9 +114,13 @@ function selfTest() {
   const helperOnly = 'import { planningRouteForTrip } from "@/contexts/PlanningContext";';
   const bare = "export default function Page(){ return <div/>; }";
 
-  const files = (a, b) => ({
+  // One entry per ENTRY_SURFACES row. A surface added to the list without a fixture here would
+  // make EVERY case fail on "does not exist" rather than on its own predicate — which is the
+  // fixture set telling the truth, so keep the third argument in step with the list.
+  const files = (a, b, c = withCta) => ({
     "client/src/pages/discover.tsx": a,
     "client/src/pages/experiences.tsx": b,
+    "client/src/pages/start-events.tsx": c,
   });
 
   const cases = [
@@ -117,6 +130,7 @@ function selfTest() {
     ["planningRouteForTrip alone is NOT an entry", () => check(files(helperOnly, withIntake)).some((e) => e.includes("ROUTE HELPER"))],
     ["a missing file fails loudly", () => check({ "client/src/pages/experiences.tsx": withIntake }).some((e) => e.includes("does not exist"))],
     ["an IntakePanel with no opener is not an entry", () => check(files("<IntakePanel open={o} />", withIntake)).some((e) => e.includes("discover.tsx"))],
+    ["the fork page is held to the same bar", () => check(files(withCta, withIntake, bare)).some((e) => e.includes("start-events.tsx"))],
   ];
 
   let failed = 0;

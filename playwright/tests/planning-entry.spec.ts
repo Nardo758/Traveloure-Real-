@@ -13,6 +13,9 @@
  *     comparisonId), generate navigates to /itinerary-comparison/:id.
  *  4. TripStrip's Continue/Edit routes to the PLANNING surface for an in-planning
  *     trip and to /trip/:id only for a past trip (date-derived per ruling 2).
+ *  5. The Event Planner fork's third door (`/start/events`) opens the SAME chooser,
+ *     and the two supply doors beside it still route to their own signups
+ *     (ledger 2026-09-04-wedding-entry-doors).
  *
  * The occasion row is asserted ABSENT while PLUS_SALES_ENABLED is off (default) —
  * hidden, never teased.
@@ -112,6 +115,29 @@ test.describe("Marketplace surfaces offer a plan entry (2026-09-04-entry-unifica
     await btn.scrollIntoViewIfNeeded();
     await btn.click();
     await expect(page.getByTestId("dialog-planning-chooser")).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+test.describe("The Event Planner fork's third door (2026-09-04-wedding-entry-doors)", () => {
+  // `/start/events` forked only between two SUPPLY signups: a couple following any "Event Planner"
+  // link was offered nothing but two ways to sell. The host door is the traveler's, and it opens
+  // THE chooser rather than a third form.
+  test("/start/events offers the host door, and it opens the chooser", async ({ page }) => {
+    await page.goto(`${BASE_URL}/start/events`, { waitUntil: "domcontentloaded" });
+    const btn = page.getByTestId("button-start-events-plan");
+    await btn.scrollIntoViewIfNeeded();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
+    await btn.click();
+    await expect(page.getByTestId("dialog-planning-chooser")).toBeVisible({ timeout: 10_000 });
+  });
+
+  // The two supply doors are untouched by the third — they still route to their own signups.
+  test("the two supply doors still route to their signup forms", async ({ page }) => {
+    await page.goto(`${BASE_URL}/start/events`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("option-vendor")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("option-planner")).toBeVisible();
+    await page.getByTestId("option-vendor").click();
+    await expect(page).toHaveURL(/\/become-provider/, { timeout: 10_000 });
   });
 });
 

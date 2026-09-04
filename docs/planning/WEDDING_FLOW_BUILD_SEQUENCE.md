@@ -172,6 +172,7 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 8 | `TravelWhere` stop list | E | blocked | `trip_destinations` |
 | 9 | `TravelEvents` tee times | E | blocked | time-of-day column |
 | 10 | Artboard rename (F1) | — | todo | rename is a decision, not a tidy-up |
+| 11 | Planner third door + nav Wedding CTA | D | built | — |
 
 Already `built`: `ModalEvents`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`
 (minus "add as a stop"), `OccasionRow`. Already `ruled`: `SlipProposal`.
