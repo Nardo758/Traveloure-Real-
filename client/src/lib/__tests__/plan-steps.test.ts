@@ -28,6 +28,9 @@ import assert from "node:assert/strict";
 import {
   PLAN_STEP_LABELS,
   PLAN_STEP_ORDER,
+  asksAccessibilityNote,
+  asksBudgetApprover,
+  homeCitySuggestion,
   nextPlanStep,
   previousPlanStep,
   resolvePlanSteps,
@@ -218,5 +221,139 @@ describe("the step vocabulary is written once", () => {
       assert.ok(PLAN_STEP_LABELS[s].length > 0);
     }
     assert.equal(PLAN_STEP_ORDER.length, 5);
+  });
+});
+
+// ── STEP 4's SECOND QUESTION, AND STEP 2's SUGGESTED CITY ────────────────────────────────────
+// Ledger `2026-09-04-step4-variants-fields`; CLAUDE.md Locked Decision 38 (migration 284).
+//
+// Same reason the door table is pinned here: these are rules that fail SILENTLY. A step 4 that
+// asks the wrong second question still renders, still saves, and only shows up as a wedding plan
+// carrying a budget approver — or, worse, as a corporate plan that never asked who signs off.
+
+/** Corporate/retreat shape: the people are ATTENDEES, and there IS a guest list. */
+const CORPORATE: OccasionSwitchRow = {
+  defaultDuration: "range",
+  defaultSchedule: true,
+  defaultGuests: true,
+  vocabulary: "attendees",
+  defaultVisibility: "shown",
+};
+
+/** Date night: a DAY-shaped occasion with no guest list — the home-city case. */
+const DATE_NIGHT: OccasionSwitchRow = {
+  defaultStops: "one",
+  defaultDuration: "day",
+  defaultSchedule: true,
+  defaultGuests: false,
+  vocabulary: "travelers",
+  defaultVisibility: "shown",
+};
+
+describe("V1 — the budget approver is asked exactly when the party noun is ATTENDEES", () => {
+  it("a corporate occasion asks it", () => {
+    assert.equal(asksBudgetApprover(CORPORATE), true);
+  });
+
+  it("a wedding does not — its people are guests, and its planner is not an approver", () => {
+    assert.equal(asksBudgetApprover(WEDDING), false);
+  });
+
+  it("a plain travel occasion does not", () => {
+    assert.equal(asksBudgetApprover(TRAVEL), false);
+  });
+
+  it("§13 — every NOT-SET spelling falls back to travelers and therefore does NOT ask", () => {
+    for (const row of NOT_SET) assert.equal(asksBudgetApprover(row), false);
+    assert.equal(asksBudgetApprover(null), false);
+    assert.equal(asksBudgetApprover(undefined), false);
+  });
+
+  it("an unrecognised vocabulary is treated as NOT SET, never half-honoured", () => {
+    assert.equal(asksBudgetApprover({ vocabulary: "delegates" }), false);
+    assert.equal(asksBudgetApprover({ vocabulary: "ATTENDEE" }), false);
+  });
+
+  it("it reads `partyNoun`, so `default_guests: false` overriding the column overrides here too", () => {
+    // `partyNoun` refuses guest/attendee wording outright for an occasion that ruled it has no
+    // guest list (Locked Decision 28). Asking that occasion for a budget approver under an
+    // "attendees" label nothing renders would be the two readers disagreeing (§18 rule 1).
+    assert.equal(asksBudgetApprover({ vocabulary: "attendees", defaultGuests: false }), false);
+    assert.equal(asksBudgetApprover({ vocabulary: "attendees", defaultGuests: null }), true);
+  });
+});
+
+describe("V2 — the accessibility note is asked exactly when the occasion HAS a guest list", () => {
+  it("a wedding asks it", () => {
+    assert.equal(asksAccessibilityNote(WEDDING), true);
+  });
+
+  it("a corporate occasion asks it too — the two questions are independent switches", () => {
+    // Locked Decision 28: the switches are INDEPENDENT capabilities, not a class. An occasion can
+    // want both, and neither predicate may suppress the other.
+    assert.equal(asksAccessibilityNote(CORPORATE), true);
+    assert.equal(asksBudgetApprover(CORPORATE), true);
+  });
+
+  it("an occasion that RULED it has no guest list does not ask", () => {
+    assert.equal(asksAccessibilityNote(DATE_NIGHT), false);
+    assert.equal(asksAccessibilityNote(TRAVEL), false);
+  });
+
+  it("§13 — NOT SET is not a ruling: null/absent/unrecognised do NOT ask", () => {
+    for (const row of NOT_SET) assert.equal(asksAccessibilityNote(row), false);
+    assert.equal(asksAccessibilityNote({ defaultGuests: null }), false);
+    assert.equal(asksAccessibilityNote(null), false);
+    assert.equal(asksAccessibilityNote(undefined), false);
+    // Only an explicit boolean true. A truthy non-boolean is not a decision anyone recorded.
+    assert.equal(asksAccessibilityNote({ defaultGuests: "yes" } as never), false);
+  });
+});
+
+describe("V3 — the home-city suggestion: a shown default is not a chosen value", () => {
+  it("a day-shaped occasion with a home city and an empty field suggests the home city", () => {
+    assert.equal(
+      homeCitySuggestion({ occasion: DATE_NIGHT, homeCity: "Kyoto", currentDestination: "" }),
+      "Kyoto",
+    );
+  });
+
+  it("a RANGE-shaped occasion suggests nothing — a trip goes somewhere else", () => {
+    assert.equal(
+      homeCitySuggestion({ occasion: WEDDING, homeCity: "Kyoto", currentDestination: "" }),
+      "",
+    );
+    for (const row of NOT_SET) {
+      // NOT SET falls back to "range" (`durationShape`), so it suggests nothing either.
+      assert.equal(homeCitySuggestion({ occasion: row, homeCity: "Kyoto" }), "");
+    }
+  });
+
+  it("a guest, or a member with no home city, gets no suggestion — never a guessed city", () => {
+    for (const home of [undefined, null, "", "   "]) {
+      assert.equal(
+        homeCitySuggestion({ occasion: DATE_NIGHT, homeCity: home, currentDestination: "" }),
+        "",
+      );
+    }
+  });
+
+  it("a field that already holds an answer is never overwritten", () => {
+    assert.equal(
+      homeCitySuggestion({ occasion: DATE_NIGHT, homeCity: "Kyoto", currentDestination: "Osaka" }),
+      "",
+    );
+    // Even a single typed character is an answer in progress.
+    assert.equal(
+      homeCitySuggestion({ occasion: DATE_NIGHT, homeCity: "Kyoto", currentDestination: "O" }),
+      "",
+    );
+  });
+
+  it("the suggestion is trimmed, and a whitespace-only destination still counts as empty", () => {
+    assert.equal(
+      homeCitySuggestion({ occasion: DATE_NIGHT, homeCity: "  Kyoto  ", currentDestination: "   " }),
+      "Kyoto",
+    );
   });
 });

@@ -8,7 +8,15 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { storage } from "../storage";
 import { chatStorage } from "../replit_integrations/chat/storage";
-import { eventTypeEnum } from "@shared/schema";
+import {
+  eventTypeEnum,
+  // Ledger `2026-09-04-step4-variants-fields` — the ONE field authority for migration 284's three
+  // step-4 columns, shared with `PATCH /api/trips/:tripId/occasion` so the pen and the row cannot
+  // disagree about what a legal answer is (§18 rule 1).
+  tripBudgetApproverNameSchema,
+  tripBudgetApproverEmailSchema,
+  tripAccessibilityNoteSchema,
+} from "@shared/schema";
 import { aiRateLimit } from "../middleware/rateLimiter";
 // The stop cap has ONE definition (§18 rule 1). Imported from the DB-free half of the trip
 // destinations service so this route pulls in no database at import time.
@@ -98,6 +106,25 @@ const tripContextSchema = z
     // reader turns it back into "not set" via `travelersForSave`, and the TRIP ROW is written NULL.
     adults: z.number().int().min(0).max(500).optional(),
     kids: z.number().int().min(0).max(500).optional(),
+    /**
+     * Ledger `2026-09-04-step4-variants-fields` (CLAUDE.md Locked Decision 38, migration 284) —
+     * step 4's SECOND question, held while NO trip row exists yet. Which one is asked is the
+     * occasion row's own answer: the approver pair for an "attendees" vocabulary, the note for an
+     * occasion that has a guest list.
+     *
+     * Same posture as `mainMomentTime` / `pendingEvents` / `stops` above: ordinary planning
+     * content the session user authored about their own draft — no amount, identity, rate or
+     * grant — so §14/§18/§19 have nothing to strip, and they are named EXPLICITLY here because
+     * `.strip()` below drops anything unlisted. The VALIDATION is not restated: these are the same
+     * `shared/schema.ts` field schemas `PATCH /api/trips/:tripId/occasion` extends onto its
+     * pick-based body, so the pen and the row can never disagree about what a legal answer is
+     * (§18 rule 1). `null` is the CLEARED marker here (the client merges and cannot delete a key)
+     * and every reader turns it back into "not asked" — the TRIP ROW is written NULL either way,
+     * and NULL is never rendered as "no approver" or "no accessibility needs" (§13).
+     */
+    budgetApproverName: tripBudgetApproverNameSchema,
+    budgetApproverEmail: tripBudgetApproverEmailSchema,
+    accessibilityNote: tripAccessibilityNoteSchema,
     eventType: str(120).optional(),
     tripId: str(64).optional(),
     userExperienceId: str(64).optional(),

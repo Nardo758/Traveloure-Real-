@@ -322,6 +322,18 @@ jobs:
       # unioned rather than silently picked, and `countries` omitted rather than shown as 0.
       - name: Plan guest roster derivation pin
         run: npx tsx --test server/__tests__/plan-guest-roster.test.ts
+      # 2026-09-04-step4-variants-fields (migration 284): step 4 asks a SECOND question and the
+      # occasion's own switches choose it. Three things fail silently here and are therefore pinned:
+      # the admission schemas (no DB CHECK behind these columns, so zod IS the only guard — T1 email,
+      # T2/T3 null-vs-absent, T4 blank⇒null, T6 the allowlist strip, T8 the mint body cannot carry
+      # them); the two visibility predicates plus the home-city suggestion (V1-V3, where a wrong
+      # answer still renders a step); and the golf preset table, the only thing standing between the
+      # ratified board and what a traveler can tick (G1-G5, incl. the sixth chip).
+      - name: Step-4 variant fields + predicates + golf presets pin
+        run: |
+          npx tsx --test shared/__tests__/trip-party-fields.test.ts
+          npx tsx --test client/src/lib/__tests__/plan-steps.test.ts
+          npx tsx --test server/services/__tests__/golf-presets.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)

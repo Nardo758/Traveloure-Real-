@@ -6,7 +6,14 @@
  * that users can customize.
  */
 
-import { storage } from "../storage";
+// `storage` is imported LAZILY inside the two functions that write (ledger
+// `2026-09-04-step4-variants-fields`), not at the top level. This module's larger half is the
+// committed PRESET TABLE — pure data that the plan modal's step-5 chips are rendered from, and the
+// only thing standing between a ratified board and what a traveler can tick — so it needs to be
+// readable without a database. A top-level `import { storage }` pulled in `server/db.ts`, which
+// throws unless `DATABASE_URL` is set, so the table could not be pinned by a DB-free unit test.
+// Same pattern and same reason as `server/services/pending-events.service.ts`'s lazy storage
+// import; the two write paths are already `async`, so nothing else changes.
 import type { InsertTemporalAnchor, InsertDayBoundary } from "@shared/schema";
 
 interface AnchorPreset {
@@ -995,6 +1002,32 @@ const GOLF_TRIP_PRESETS: TemplatePresets = {
       isImmovable: false,
       description: "Evening at the whisky bar after the round",
     },
+    {
+      // The SIXTH chip of the ratified `TravelEvents.dc.html` golf board (ledger
+      // `2026-09-04-step4-variants-fields`). The five above shipped with the tee-time lane; this
+      // one is the transfer BETWEEN courses that a multi-course trip actually turns on, and it had
+      // no preset, so the plan modal's step 5 could not offer it.
+      //
+      // Its own `anchorType`, deliberately — `tee_time_round_*` is a round, `whisky_bar` is an
+      // evening, and folding a transfer into either would make the label lie about what the anchor
+      // IS. `anchor_type` is a plain varchar with no CHECK (see `temporalAnchorTypeEnum`'s note),
+      // and every anchorType in this file is already outside that enum, so a new value is additive
+      // and carries no publish-trap.
+      //
+      // MOVABLE (`isImmovable: false`): a car between two links is arranged around the rounds, it
+      // is not the fixed point they are arranged around — that is what "immovable" means to the
+      // schedule validator, and only a booked tee time earns it.
+      anchorType: "driver_between_links",
+      label: "Driver between links",
+      defaultBufferBefore: 20,
+      defaultBufferAfter: 20,
+      // Between a morning round finishing and the next course — a DEFAULT the traveler edits, and
+      // one the modal only ever shows as a placeholder until they pick a time (§13).
+      defaultTimeOfDay: "14:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Car between courses on a multi-course trip",
+    },
   ],
   dayBoundaries: [
     {
@@ -1086,6 +1119,8 @@ export async function generatePresetsForTrip(
   let anchorsCreated = 0;
   let boundariesCreated = 0;
 
+  const { storage } = await import("../storage");
+
   // Load existing data upfront to ensure idempotency
   const [existingAnchors, existingBoundaries] = await Promise.all([
     storage.getTemporalAnchors(tripId),
@@ -1154,6 +1189,7 @@ export async function detectAnchorImpacts(
   tripId: string,
   changedAnchorId: string
 ): Promise<Array<{ type: string; message: string; severity: 'warning' | 'critical' }>> {
+  const { storage } = await import("../storage");
   const anchors = await storage.getTemporalAnchors(tripId);
   const changed = anchors.find(a => a.id === changedAnchorId);
   if (!changed) return [];
