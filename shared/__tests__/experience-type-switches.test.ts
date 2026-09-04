@@ -17,9 +17,12 @@
  *   S2  `proposal` is the ONLY occasion with `visibility: "hidden"`. Hidden suppresses the Guests
  *       page, Share and every invite link, so a second row acquiring it by copy-paste would
  *       silently delete those surfaces for an occasion that needs them.
- *   S3  the four occasions this ledger row seeded are present — `romance` and `corporate` are the
+ *   S3  the occasions the seeding ledger rows added are present — `romance` and `corporate` are the
  *       targets of two nav items that linked to template-less pages, and `milestone-birthday` /
- *       `family-occasion` are the two landing Moments that had no occasion to seed.
+ *       `family-occasion` are the two landing Moments that had no occasion to seed. `honeymoon`
+ *       joined them by ledger `2026-09-03-occasion-hygiene` — a word five vocabularies already
+ *       knew and the ONE runtime catalog did not.
+ *   S4  the honeymoon's ratified switch shape, named value by value.
  *
  * Pure unit: no DB, no fetch, no React, and the seed is NEVER executed. The only I/O is reading
  * the seed file as TEXT — the same technique `occasions.test.ts` O1 uses, and for the same reason:
@@ -94,7 +97,7 @@ describe("occasion switches", () => {
         "every row must state all six (the nullable columns exist for rows nobody has decided, " +
         "not for rows the seeder forgot)",
     );
-    assert.ok(rows.length >= 26, `expected the full seeded template set, parsed ${rows.length}`);
+    assert.ok(rows.length >= 27, `expected the full seeded template set, parsed ${rows.length}`);
 
     for (const { slug, switches } of rows) {
       for (const [key, allowed] of Object.entries(ALLOWED)) {
@@ -145,11 +148,28 @@ describe("occasion switches", () => {
     );
   });
 
-  // S3 — the four rows this ledger row exists to seed.
-  it("S3: the four newly seeded occasions exist", () => {
+  // S3 — the rows the seeding ledger rows exist to add.
+  it("S3: the newly seeded occasions exist", () => {
     const slugs = seededSlugs();
-    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion"]) {
+    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion", "honeymoon"]) {
       assert.ok(slugs.includes(slug), `"${slug}" must be seeded — a surface already links to it`);
     }
+  });
+
+  // S4 — the honeymoon's ratified switch shape, spelled out (ledger `2026-09-03-occasion-hygiene`).
+  // It is the whole reason the row exists rather than the word continuing to resolve to `travel`:
+  // many stops over a date RANGE, and NEITHER an internal schedule NOR a guest list. A copy-paste
+  // from a celebration row would turn a honeymoon into an event with an invite list.
+  it("S4: honeymoon is a multi-stop, multi-day couple's trip with no schedule and no guest list", () => {
+    const row = seededRows().find((r) => r.slug === "honeymoon");
+    assert.ok(row, "`honeymoon` must be seeded");
+    assert.deepEqual(row!.switches, {
+      stops: "many",
+      duration: "range",
+      schedule: "false",
+      guests: "false",
+      vocabulary: "travelers",
+      visibility: "shown",
+    });
   });
 });

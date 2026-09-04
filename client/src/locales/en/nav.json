@@ -36,6 +36,9 @@
     "celebrations": "CELEBRATIONS",
     "lifeMilestones": "LIFE MILESTONES",
     "groupEvents": "GROUP EVENTS",
+    "trips": "TRIPS",
+    "nightsOutAndGetaways": "NIGHTS OUT & GETAWAYS",
+    "work": "WORK",
     "tools": "TOOLS",
     "explore": "EXPLORE"
   },
@@ -63,6 +66,8 @@
     "boysTrip": "Boys Trip",
     "girlsTrip": "Girls Trip",
     "reunions": "Reunions",
+    "honeymoon": "Honeymoon",
+    "anniversaryTrip": "Anniversary Trip",
     "aiPlanPlanner": "AI Plan Planner",
     "visaHelp": "Visa Help",
     "liveIntel": "Live Intel",
