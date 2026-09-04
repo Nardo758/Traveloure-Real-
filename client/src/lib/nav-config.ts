@@ -103,43 +103,59 @@ export const navGroupsConfig: NavGroupConfig[] = [
     name: "Experiences",
     i18nKey: "groups.experiences",
     sections: [
+      // ── Grouped by WHAT YOU'RE DOING, not by switch (ledger `2026-09-03-occasion-hygiene`) ──
+      // The four sections mirror the decision-maker's tuned-nav frame. The old split had
+      // "Romantic Getaways" and "Date Night" filed beside "Travel Planning" under one
+      // TRAVEL & GETAWAYS heading, a lone "Birthday Party" under CELEBRATIONS, and Boys/Girls Trip
+      // under GROUP EVENTS beside corporate work — three headings that described the platform's
+      // internal classes rather than the thing the traveler is planning. The stress test ruled the
+      // grouping is by ACTIVITY; an occasion's flow shape lives on its own row's switch columns
+      // (migration 276), never in the menu.
+      //
+      // Every href is `/experiences/<slug>` for a slug the seeder writes, and nothing was dropped:
+      // all fifteen previous items survive, joined by Honeymoon and Anniversary Trip — the couple's
+      // getaway, which had a seeded row and a preset set but no way into it from the navbar.
       {
-        title: "TRAVEL & GETAWAYS",
-        i18nKey: "sections.travelAndGetaways",
+        title: "TRIPS",
+        i18nKey: "sections.trips",
         items: [
           { name: "Travel Planning", i18nKey: "links.travelPlanning", href: "/experiences/travel", description: "Plan your perfect trip" },
-          { name: "Romantic Getaways", i18nKey: "links.romanticGetaways", href: "/experiences/romance", description: "Special romantic escapes" },
-          { name: "Date Night", i18nKey: "links.dateNight", href: "/experiences/date-night", description: "Perfect evening plans" },
           { name: "Retreats", i18nKey: "links.retreats", href: "/experiences/retreats", description: "Relaxation & wellness" },
+          { name: "Honeymoon", i18nKey: "links.honeymoon", href: "/experiences/honeymoon", description: "The trip after the wedding" },
+          { name: "Reunions", i18nKey: "links.reunions", href: "/experiences/reunions", description: "Reconnect & celebrate" },
         ],
       },
       {
         title: "CELEBRATIONS",
         i18nKey: "sections.celebrations",
         items: [
-          { name: "Birthday Party", i18nKey: "links.birthdayParty", href: "/experiences/birthday", description: "Unforgettable celebrations" },
-        ],
-      },
-      {
-        title: "LIFE MILESTONES",
-        i18nKey: "sections.lifeMilestones",
-        items: [
           { name: "Wedding", i18nKey: "links.wedding", href: "/experiences/wedding", description: "Dream wedding planning" },
-          { name: "Proposal", i18nKey: "links.proposal", href: "/experiences/proposal", description: "Perfect proposal moment" },
           { name: "Engagement Party", i18nKey: "links.engagementParty", href: "/experiences/engagement-party", description: "Celebrate your love" },
-          { name: "Baby Shower", i18nKey: "links.babyShower", href: "/experiences/baby-shower", description: "Welcome the new arrival" },
           { name: "Wedding Anniversary", i18nKey: "links.anniversary", href: "/experiences/wedding-anniversaries", description: "Celebrate your journey" },
+          { name: "Baby Shower", i18nKey: "links.babyShower", href: "/experiences/baby-shower", description: "Welcome the new arrival" },
+          { name: "Birthday Party", i18nKey: "links.birthdayParty", href: "/experiences/birthday", description: "Unforgettable celebrations" },
+          { name: "Proposal", i18nKey: "links.proposal", href: "/experiences/proposal", description: "Perfect proposal moment" },
         ],
       },
       {
-        title: "GROUP EVENTS",
-        i18nKey: "sections.groupEvents",
+        title: "NIGHTS OUT & GETAWAYS",
+        i18nKey: "sections.nightsOutAndGetaways",
+        items: [
+          { name: "Date Night", i18nKey: "links.dateNight", href: "/experiences/date-night", description: "Perfect evening plans" },
+          { name: "Romantic Getaways", i18nKey: "links.romanticGetaways", href: "/experiences/romance", description: "Special romantic escapes" },
+          // The COUPLE'S anniversary getaway — a different product from "Wedding Anniversary"
+          // above, which is the party. Both are seeded rows; the labels are what tell them apart.
+          { name: "Anniversary Trip", i18nKey: "links.anniversaryTrip", href: "/experiences/anniversary-trip", description: "A getaway for the two of you" },
+          { name: "Girls Trip", i18nKey: "links.girlsTrip", href: "/experiences/girls-trip", description: "Getaways with friends" },
+          { name: "Boys Trip", i18nKey: "links.boysTrip", href: "/experiences/boys-trip", description: "Epic adventures" },
+        ],
+      },
+      {
+        title: "WORK",
+        i18nKey: "sections.work",
         items: [
           { name: "Corporate Events", i18nKey: "links.corporateEvents", href: "/experiences/corporate-events", description: "Team events & meetings" },
           { name: "Corporate Retreats", i18nKey: "links.corporateRetreats", href: "/experiences/corporate", description: "Team building retreats" },
-          { name: "Boys Trip", i18nKey: "links.boysTrip", href: "/experiences/boys-trip", description: "Epic adventures" },
-          { name: "Girls Trip", i18nKey: "links.girlsTrip", href: "/experiences/girls-trip", description: "Getaways with friends" },
-          { name: "Reunions", i18nKey: "links.reunions", href: "/experiences/reunions", description: "Reconnect & celebrate" },
         ],
       },
     ],
