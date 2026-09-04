@@ -120,6 +120,8 @@ import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
+import { ensureTripAdvisorRow } from "./services/booking-actions.service";
+import { authorizeExpertBookingRequest } from "./services/expert-booking-request-guard.service";
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
@@ -1589,32 +1591,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Request expert booking assistance
-  const expertBookingRequestSchema = z.object({
-    tripId: z.string().optional(),
-    notes: z.string().optional().default(""),
-    serviceId: z.string().optional(),
-    bookingMetadata: z.record(z.any()).optional(),
-  });
-
+  // Ruling 2026-09-04-slip-precondition (lane b), CLAUDE.md Locked Decision 32: no expert
+  // touchpoint exists without a slip — tripId is the intake and what authorizes the expert's
+  // view of the plan, so it is REQUIRED here, not optional. A traveler with no trip is sent
+  // through the existing planning ladder and returns via the existing `?tripId=` handoff
+  // (expert-detail.tsx). Validation + ownership authorization lives in
+  // expert-booking-request-guard.service.ts (a pure function, no DB) so it can be unit-tested
+  // directly; this handler is a thin caller.
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const validation = expertBookingRequestSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: validation.error.errors[0]?.message || "Invalid request body" 
-        });
+      const userId = getUserId(req)!; // §14: acting user is the session, never req.body
+
+      // A tripId that isn't even a non-empty string never resolves to a trip; the lookup is
+      // skipped in that case and the guard's own schema check reports the honest 400.
+      const rawTripId = typeof (req.body as any)?.tripId === "string" ? (req.body as any).tripId : undefined;
+      const trip = rawTripId ? await storage.getTrip(rawTripId) : undefined;
+
+      // req.body here supplies only tripId/notes/serviceId/bookingMetadata to the schema — userId
+      // is the session value bound above, not read off the body (§14).
+      const auth = authorizeExpertBookingRequest(req.body, userId, trip); // money-derive-ok
+      if (!auth.ok) {
+        return res.status(auth.status).json({ message: auth.message });
       }
-      
-      const { tripId, notes, serviceId, bookingMetadata } = validation.data;
-      const userId = getUserId(req)!;
-      
-      // Only validate trip ownership when a tripId is provided
-      if (tripId) {
-        const trip = await storage.getTrip(tripId);
-        if (trip && trip.userId !== userId) {
-          return res.status(401).json({ message: "Unauthorized" });
-        }
-      }
+      const { tripId, notes, serviceId, bookingMetadata } = auth.data;
 
       let bookingId: string | undefined;
 
@@ -1717,6 +1716,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           ...(bookingMetadata ? { bookingMetadata } : {}),
         } as any);
         bookingId = booking.id;
+
+        // Ruling 2026-09-04-slip-precondition (lane b): a storefront request creates the
+        // trip_expert_advisors row the same way a routed lead does — ONE implementation
+        // (ensureTripAdvisorRow, server/services/booking-actions.service.ts), one more caller
+        // (§18 rule 1). Without this row the expert can never see the trip in Assigned Trips
+        // or the workspace, even though tripId is now required above. providerId is the
+        // storefront's own expert/provider (resolved server-side from the service record,
+        // never from req.body — §14), so this is exactly the account the traveler requested
+        // help from.
+        if (providerId) {
+          await ensureTripAdvisorRow(tripId, providerId, notes || null).catch(err =>
+            console.error("[ExpertBookingRequest] Failed to create advisor row:", err)
+          );
+        }
 
         // Fire-and-forget: T6 funnel event
         trackFunnelEvent({

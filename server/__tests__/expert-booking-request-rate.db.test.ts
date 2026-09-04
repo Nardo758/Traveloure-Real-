@@ -45,6 +45,7 @@ let providerId: string;
 let expertId: string;
 let serviceId: string;
 let traveler: { id: string; cookie: string };
+let travelerTripId: string;
 let bandOriginalRate: number;
 const createdServiceIds: string[] = [];
 const createdUserIds: string[] = [];
@@ -116,7 +117,9 @@ async function readBookingEconomics(id: string): Promise<{ total: number; fee: n
 }
 /** POST a booking request as the traveler and return the created booking id + response economics. */
 async function requestBooking(): Promise<{ bookingId: string; body: any }> {
-  const res = await api("/api/expert-booking-requests", traveler.cookie, "POST", { serviceId });
+  // Ruling 2026-09-04-slip-precondition (lane b): tripId is now required — the traveler's
+  // own trip stands in for the slip these B-tests never otherwise needed.
+  const res = await api("/api/expert-booking-requests", traveler.cookie, "POST", { serviceId, tripId: travelerTripId });
   const text = await res.text();
   assert.equal(res.status, 201, `expert-booking-request must succeed: ${res.status} ${text}`);
   const body = JSON.parse(text);
@@ -151,6 +154,12 @@ before(async () => {
   createdUserIds.push(expertId);
 
   traveler = await registerUser("trav");
+  const travelerTrip = await db.insert(trips).values({
+    userId: traveler.id, title: `EBR rate trip ${RUN}`, destination: "Kyoto",
+    startDate: "2026-09-01", endDate: "2026-09-05",
+  } as any).returning({ id: trips.id });
+  travelerTripId = String(travelerTrip[0].id);
+  createdTripIds.push(travelerTripId);
 
   // The service under booking-request test: a provider-owned $100 listing in the banded category.
   const svc = await storage.createProviderService({
