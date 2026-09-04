@@ -151,7 +151,14 @@ describe("occasion switches", () => {
   // S3 — the rows the seeding ledger rows exist to add.
   it("S3: the newly seeded occasions exist", () => {
     const slugs = seededSlugs();
-    for (const slug of ["romance", "corporate", "milestone-birthday", "family-occasion", "honeymoon"]) {
+    for (const slug of [
+      "romance",
+      "corporate",
+      "milestone-birthday",
+      "family-occasion",
+      "honeymoon",
+      "golf-trip",
+    ]) {
       assert.ok(slugs.includes(slug), `"${slug}" must be seeded — a surface already links to it`);
     }
   });
@@ -167,6 +174,24 @@ describe("occasion switches", () => {
       stops: "many",
       duration: "range",
       schedule: "false",
+      guests: "false",
+      vocabulary: "travelers",
+      visibility: "shown",
+    });
+  });
+
+  // S5 — the golf trip's ratified switch shape (ledger `2026-09-04-golf-occasion-and-housekeeping`).
+  // `schedule: true` is the WHOLE point of the row: golf resolved to `travel` (`schedule: false`),
+  // so `showsSchedule()` answered false and the tee-times step the artboard draws could never
+  // render. `guests: false` matters just as much — a golf trip is a group of travelers, and
+  // copy-pasting a celebration row's switches would hang an invite list off it.
+  it("S5: golf-trip is a multi-stop, multi-day trip WITH a schedule and no guest list", () => {
+    const row = seededRows().find((r) => r.slug === "golf-trip");
+    assert.ok(row, "`golf-trip` must be seeded");
+    assert.deepEqual(row!.switches, {
+      stops: "many",
+      duration: "range",
+      schedule: "true",
       guests: "false",
       vocabulary: "travelers",
       visibility: "shown",

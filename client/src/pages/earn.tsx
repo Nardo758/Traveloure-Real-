@@ -10,7 +10,14 @@
  * The role→offering mapping lives in lib/earn-roles.ts (single source of
  * truth, partition-by-construction; see its completeness test). Roles are a
  * presentation layer over the two delivery tracks: in-person = provider
- * catalog by category, remote = expert catalog by service_tier.
+ * catalog by category, remote = expert catalog by service_tier — EXCEPT the
+ * Event Planner card, which is fed by BOTH catalogs (ledger
+ * `2026-09-04-earn-planner-roles`): the event VENDORS from the provider
+ * catalog and the six event PLANNERS from the expert catalog, partitioned by
+ * the explicit EVENT_PLANNER_OFFERING_KEYS list. The catalogs are still never
+ * merged (§4) — a row carries which side it came from, because that decides
+ * which door /start/events sends it through and because the two tables have
+ * separate key namespaces (`proposal_planner` exists in both).
  *
  * Earning indicators are config-driven: each category's commissionBandKey
  * (/api/service-categories) resolved through /api/fee-bands/:bandKey, and
@@ -32,7 +39,7 @@ import {
   EA_SIGNUP,
   isAffiliateCategory,
   roleForProviderCategory,
-  roleForExpertTier,
+  roleForExpertOffering,
   type EarnRole,
   type ExpertTier,
   type RoleKey,
@@ -235,23 +242,39 @@ export default function EarnPage() {
       .filter((c) => c.categoryKey && roleForProviderCategory(c.categoryKey) === role.key)
       .map((c) => (c.commissionBandKey ? bandRates.get(c.commissionBandKey) : undefined))
       .filter((r): r is number => r !== undefined);
+    // Event Planner spans BOTH catalogs, so its ceiling must consider the expert
+    // floor band too — a "keep up to N%" derived from the provider half alone
+    // would be a claim about offerings it does not govern (§13). Still config —
+    // no rate is written here (§8).
+    if (role.key === "event_planner") {
+      const expertRate = bandRates.get(EXPERT_FLOOR_BAND);
+      if (expertRate !== undefined) rates.push(expertRate);
+    }
     if (rates.length === 0) return null;
     return formatKeep(Math.min(...rates), "up_to");
   };
 
   // ── Role → offerings (partition functions from the config module) ────────
-  const offeringsForRole = (key: RoleKey): { key: string; name: string; tagline: string | null }[] => {
-    const role = EARN_ROLES.find((r) => r.key === key)!;
-    if (role.track === "in-person") {
-      return (providerOfferings ?? [])
-        .filter((o) => !isAffiliateCategory(o.category_key) && roleForProviderCategory(o.category_key) === key)
-        .map((o) => ({ key: o.offering_type_key, name: o.display_name, tagline: o.tagline }));
-    }
-    return (expertOfferings ?? [])
-      .filter((o) => roleForExpertTier(o.service_tier) === key)
-      .map((o) => ({ key: o.offering_type_key, name: o.display_name, tagline: o.tagline }));
-  };
+  // Both catalogs are asked for every card and the partition functions decide.
+  // For three of the four cards exactly one side answers; for Event Planner
+  // both do, which is the whole point of that card. `catalog` rides along
+  // because the two tables have SEPARATE key namespaces — `proposal_planner`
+  // is a row in each — so it is what keeps React keys and test ids unique.
+  const offeringsForRole = (
+    key: RoleKey
+  ): { key: string; catalog: "provider" | "expert"; name: string; tagline: string | null }[] => [
+    ...(providerOfferings ?? [])
+      .filter((o) => !isAffiliateCategory(o.category_key) && roleForProviderCategory(o.category_key) === key)
+      .map((o) => ({ key: o.offering_type_key, catalog: "provider" as const, name: o.display_name, tagline: o.tagline })),
+    ...(expertOfferings ?? [])
+      .filter((o) => roleForExpertOffering(o.service_tier, o.offering_type_key) === key)
+      .map((o) => ({ key: o.offering_type_key, catalog: "expert" as const, name: o.display_name, tagline: o.tagline })),
+  ];
 
+  // Every Event Planner row — vendor or planner — still lands on the /start/events
+  // fork, which asks which side of the event you are on and FORWARDS the offering
+  // params to the door you pick. That is why the key may be shared between the two
+  // catalogs: each door resolves it against its own table.
   const handleSelect = (role: EarnRole, offeringKey: string, displayName: string) => {
     const sep = role.signupPath.includes("?") ? "&" : "?";
     navigate(
@@ -261,11 +284,12 @@ export default function EarnPage() {
 
   // Featured strip: surprising rows from both catalogs, clickable into the
   // owning role's signup.
-  const surprising: { key: string; name: string; role: EarnRole }[] = [
+  const surprising: { key: string; catalog: "provider" | "expert"; name: string; role: EarnRole }[] = [
     ...(providerOfferings ?? [])
       .filter((o) => o.is_surprising && !isAffiliateCategory(o.category_key))
       .map((o) => ({
         key: o.offering_type_key,
+        catalog: "provider" as const,
         name: o.display_name,
         role: EARN_ROLES.find((r) => r.key === roleForProviderCategory(o.category_key))!,
       })),
@@ -273,14 +297,34 @@ export default function EarnPage() {
       .filter((o) => o.is_surprising)
       .map((o) => ({
         key: o.offering_type_key,
+        catalog: "expert" as const,
         name: o.display_name,
-        role: EARN_ROLES.find((r) => r.key === roleForExpertTier(o.service_tier))!,
+        role: EARN_ROLES.find((r) => r.key === roleForExpertOffering(o.service_tier, o.offering_type_key))!,
       })),
   ];
 
-  const catalogLoading = activeRole.track === "in-person" ? loadingProv : loadingExp;
-  const catalogError = activeRole.track === "in-person" ? errProv : errExp;
-  const catalogRefetch = activeRole.track === "in-person" ? refetchProv : refetchExp;
+  // Event Planner reads BOTH catalogs, so it is loading while either is and broken
+  // if either is — showing half a card as if it were the whole list would be the
+  // dishonest failure mode (§13).
+  const spansBothCatalogs = activeKey === "event_planner";
+  const catalogLoading = spansBothCatalogs
+    ? loadingProv || loadingExp
+    : activeRole.track === "in-person"
+    ? loadingProv
+    : loadingExp;
+  const catalogError = spansBothCatalogs
+    ? errProv ?? errExp
+    : activeRole.track === "in-person"
+    ? errProv
+    : errExp;
+  const catalogRefetch = spansBothCatalogs
+    ? () => {
+        void refetchProv();
+        void refetchExp();
+      }
+    : activeRole.track === "in-person"
+    ? refetchProv
+    : refetchExp;
   const catalog = offeringsForRole(activeKey);
 
   return (
@@ -393,10 +437,10 @@ export default function EarnPage() {
               <div className="grid gap-2" data-testid="earn-catalog">
                 {catalog.map((o) => (
                   <OfferingRow
-                    key={o.key}
+                    key={`${o.catalog}:${o.key}`}
                     name={o.name}
                     tagline={o.tagline}
-                    testId={`earn-offering-${o.key}`}
+                    testId={`earn-offering-${o.catalog}-${o.key}`}
                     onClick={() => handleSelect(activeRole, o.key, o.name)}
                   />
                 ))}
@@ -418,11 +462,11 @@ export default function EarnPage() {
             <div className="flex flex-wrap gap-2" data-testid="earn-surprising-row">
               {surprising.map((s) => (
                 <button
-                  key={s.key}
+                  key={`${s.catalog}:${s.key}`}
                   type="button"
                   onClick={() => handleSelect(s.role, s.key, s.name)}
                   className="text-xs text-[#2E8B8B] bg-[#2E8B8B]/10 px-2.5 py-1 rounded-md hover:bg-[#2E8B8B]/20 transition-colors inline-flex items-center gap-1"
-                  data-testid={`earn-surprising-${s.key}`}
+                  data-testid={`earn-surprising-${s.catalog}-${s.key}`}
                 >
                   {s.name}
                   <ArrowRight className="w-3 h-3" />

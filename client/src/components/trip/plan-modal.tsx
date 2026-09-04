@@ -90,7 +90,7 @@ import type { ExperienceType } from "@shared/schema";
  * row's authority.
  *
  * ── STEP 2 IS ONE PLACE (HELD) ────────────────────────────────────────────────────────────────
- * The ModalWhere artboard draws "Add another stop". An ordered stop list needs a
+ * The Step2Where artboard (formerly ModalWhere) draws "Add another stop". An ordered stop list needs a
  * `trip_destinations` table that does not exist, and that is ruled HELD
  * (`docs/planning/WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4). The control is OMITTED rather than
  * rendered disabled: a disabled affordance still promises a capability, and this one has not been

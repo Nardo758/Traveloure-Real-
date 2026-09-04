@@ -314,6 +314,14 @@ jobs:
       # become a second planning opener beside the one the section already has.
       - name: Moments planning-callout pin
         run: npx tsx --test client/src/components/__tests__/moments-callout.test.tsx
+      # 2026-09-04-guests-per-event: an invite belongs to ONE event and a plan holds many, so the
+      # plan's roster is DERIVED — one row per person, one column per event. R1-R6 pin the rules a
+      # plausible-looking implementation gets wrong: dedupe by normalised email only (no name
+      # matching, refused by ruling), an email-less guest never merged, column order left to the
+      # server's one ordering authority, not_invited kept distinct from pending, dietary notes
+      # unioned rather than silently picked, and `countries` omitted rather than shown as 0.
+      - name: Plan guest roster derivation pin
+        run: npx tsx --test server/__tests__/plan-guest-roster.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
@@ -515,6 +523,26 @@ jobs:
       - name: Roles-needed reachability guard
         run: node scripts/check-roles-needed-reachability.cjs
 
+  earn-planner-keys-guard:
+    name: earn-planner-keys-guard (ledger 2026-09-04-earn-planner-roles)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The /earn Event Planner track's EXPERT half is partitioned by an explicit key list
+      # (EVENT_PLANNER_OFFERING_KEYS) rather than by service_tier, because that column carries a
+      # DB CHECK over five values and the six planner rows had to land in the existing
+      # `coordination` tier. A list like that drifts both ways: a listed key nothing seeds never
+      # renders (and clamps to NULL at the migration-107 FK if a stale link carries it), and a
+      # seeded key nobody listed is filed under Trip Planner — silently, on the live page.
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Earn-planner-keys guard predicate self-test
+        run: node scripts/check-earn-planner-keys.cjs --self-test
+      - name: Earn-planner-keys guard
+        run: node scripts/check-earn-planner-keys.cjs
+
   planning-entry-guard:
     name: planning-entry-guard (ledger 2026-09-04-entry-unification)
     runs-on: ubuntu-latest
@@ -553,3 +581,23 @@ jobs:
         run: node scripts/check-privileged-field-completeness.cjs --self-test
       - name: Privileged-field completeness guard
         run: node scripts/check-privileged-field-completeness.cjs
+
+  advisor-row-author-guard:
+    name: advisor-row-author-guard (CLAUDE.md Locked Decision 32 — 2026-09-04-advisor-row-one-author)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # `trip_expert_advisors` was inserted from SIX production sites, each with its own idea of
+      # what a conflict means — one of which could DEMOTE an admin-confirmed advisor, two of which
+      # simply threw 23505. The UNIQUE (trip_id, local_expert_id) index was the only thing keeping
+      # them consistent, and it did that by throwing. Consolidating to one author is worth nothing
+      # if a seventh insert can land tomorrow; this is the thing that fails when it does. It catches
+      # INSERTS ONLY — updates are deliberately out of scope (see the script header's negative
+      # space). Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Advisor-row author guard predicate self-test
+        run: node scripts/check-advisor-row-author.cjs --self-test
+      - name: Advisor-row author guard
+        run: node scripts/check-advisor-row-author.cjs

@@ -31,6 +31,7 @@ import {
   deleteLocalKnowledgeNugget,
 } from "../services/experts-query.service";
 import { proposeNuggetAsGem } from "../services/gem-promotion.service";
+import { expertTrackSwitchRequiresReview } from "../services/role-transition";
 
 const router = Router();
 
@@ -91,11 +92,21 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
       return res.status(400).json({ message: "Invalid expert type" });
     }
 
-    // Local Expert requires specific vetting — only allow if already a local_expert.
-    if (expertType === "local_expert" && form.expertType !== "local_expert") {
+    // EVERY expert track switch goes through admin review (ledger `2026-09-04-earn-role-safety`,
+    // decision-maker ratified Sep 4 2026). This endpoint writes `users.role` — each expert type is
+    // a separately vetted track, and `executive_assistant` additionally grants the /ea/* console —
+    // so self-service promotion between tracks was an unreviewed privilege change. Only
+    // `local_expert` was gated before; the gate now covers all of `expertTypeEnum`, expressed
+    // through the SAME mechanism that branch already used (403 + `requiresReview: true`, which the
+    // client renders as the review notice) rather than a second review rail.
+    // Re-saving the CURRENT type stays a no-op pass-through, so the audit write below still runs
+    // on the one path that changes nothing — it is not a track switch and needs no review.
+    if (expertTrackSwitchRequiresReview(form.expertType, expertType)) {
       return res.status(403).json({
         message:
-          "Switching to Local Expert requires admin review. Please contact support to have your application re-evaluated.",
+          `Switching to ${ROLE_LABELS[expertType] ?? expertType} is submitted for admin review. ` +
+          "Each expert track is vetted separately, so the change is not applied immediately. " +
+          "Please contact support to have your application re-evaluated for this track.",
         requiresReview: true,
       });
     }

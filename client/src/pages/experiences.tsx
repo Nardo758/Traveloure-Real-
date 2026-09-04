@@ -14,6 +14,11 @@ import {
 import type { ExperienceType } from "@shared/schema";
 import { SEOHead } from "@/components/seo-head";
 import { IntakePanel } from "@/components/intake-panel";
+// The ONE word for this action (ledger `2026-09-04-entry-unification`). This page's CTA said
+// "Start a new plan" while every other entry said `START_PLAN_LABEL` — the exact three-words-for-
+// one-action drift that constant exists to prevent (§18 rule 1). The button keeps its
+// `data-testid`; only the copy is now derived.
+import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 
 // Step counts per experience type
 const stepCounts: Record<string, number> = {
@@ -132,7 +137,7 @@ export default function Experiences() {
                   onClick={() => setIntakeOpen(true)}
                   data-testid="button-experiences-start-plan"
                 >
-                  Start a new plan
+                  {START_PLAN_LABEL}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
