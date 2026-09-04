@@ -16,8 +16,9 @@
  * exactly as trip-details did — SlipView's slim DTO does not carry those.
  */
 import { useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Loader2, Plane, UserPlus, Users } from "lucide-react";
+import { ArrowRight, ChevronRight, Loader2, Plane, UserPlus, Users } from "lucide-react";
 import { calendarDateToIso } from "@/lib/calendar-date";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -143,12 +144,31 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-3">
             {linkedExperience ? (
-              <GuestInviteManager
-                experienceId={linkedExperience.id}
-                eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
-                eventDestination={linkedExperience.location || trip?.destination || ""}
-                eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
-              />
+              <div className="space-y-3">
+                {/*
+                  THE PLAN-LEVEL ANSWER TO THE AMBIGUITY NOTED ABOVE (ledger
+                  `2026-09-04-guests-per-event`). The manager below still edits ONE event's invites,
+                  which is correct — an invite belongs to an event. What was missing was the view
+                  across all of them, and this link is it: /plans/:tripId/guests is one row per
+                  person with a column per event. It does not replace this block; it is where "who
+                  is coming to what" is actually answerable.
+                */}
+                <Link href={`/plans/${tripId}/guests`}>
+                  <a
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                    data-testid="link-open-guest-list"
+                  >
+                    Open guest list
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                </Link>
+                <GuestInviteManager
+                  experienceId={linkedExperience.id}
+                  eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
+                  eventDestination={linkedExperience.location || trip?.destination || ""}
+                  eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
+                />
+              </div>
             ) : (
               <div className="py-10 flex flex-col items-center gap-4 text-center">
                 <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">

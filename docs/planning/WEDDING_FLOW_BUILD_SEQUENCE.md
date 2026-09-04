@@ -109,10 +109,12 @@ Guarded by §3 below, or it regresses the first time someone adds a page.
 1. **`WhichEvent` role hint** — unblocked today by migration 280. Reads `roles_needed` and marks
    matching rows. **Reads the server's list; never restates it client-side** (the derivation-drift
    class §18 rule 1 names). Nothing is pre-selected — rule 3 of `which-event.ts` stands.
-2. **`Guests` column-per-event** — the largest genuine gap. **Blocked on a product decision:** a
-   plan can hold many events (migration 277 put no uniqueness on `user_experiences.trip_id`) and
-   "the plan's guest list" does not say which one it means. See the open question recorded in ledger
-   `2026-09-04-event-order`. Do not start until that is ratified.
+2. **`Guests` column-per-event** — **BUILT** (ledger `2026-09-04-guests-per-event`). The blocker
+   ("a plan can hold many events and 'the plan's guest list' does not say which one it means") was
+   dissolved rather than answered: the roster is **DERIVED**, one row per person deduplicated by
+   normalised email with one column per event, so no single event owns it and nothing new is
+   stored. `GET /api/trips/:tripId/guests` (owner tier) →
+   `server/services/plan-guest-roster.service.ts` → `client/src/pages/plan-guests.tsx`.
 
 ### Phase D — whatever Phase A found
 
@@ -166,7 +168,7 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 2 | Entry unification, 4 surfaces | B | todo | — |
 | 3 | `check-planning-entry.cjs` + CI job | B | todo | — |
 | 4 | `WhichEvent` role hint | C | todo | — (cleared by #744) |
-| 5 | `Guests` column-per-event | C | blocked | which event owns the guest list |
+| 5 | `Guests` column-per-event | C | built | — (ratified `2026-09-04-guests-per-event`: the roster is DERIVED, so no event "owns" it) |
 | 6 | Phase A findings | D | todo | Phase A |
 | 7 | `Mismatch` "add as a stop" | E | blocked | `trip_destinations` |
 | 8 | `TravelWhere` stop list | E | blocked | `trip_destinations` |

@@ -426,6 +426,30 @@ This document captures architectural decisions to maintain consistency across co
     shape — no new route, no second admission rail); `travelers` stays DERIVED from the pair by one
     `partyTotal`, so the Trip Strip's chip and the columns cannot disagree.
 
+37. **THE GUEST LIST BELONGS TO THE EVENT; THE PLAN'S ROSTER IS DERIVED (decision-maker ratified
+    Sep 4, 2026 — ledger `2026-09-04-guests-per-event`). NO SCHEMA CHANGE.** An invite already
+    belongs to ONE event (`event_invites.experience_id` → a `user_experiences` row, ruling 29) and
+    a plan holds many events (`user_experiences.trip_id`, no uniqueness), so the plan-level list is
+    **computed, never stored**: ONE row per PERSON, deduplicated by **normalised email** (lowercase,
+    trimmed), with ONE COLUMN per event carrying that event's own RSVP —
+    attending / declined / pending / **not_invited**, and those last two are deliberately different
+    answers. There is **NO name matching and no fuzzy match of any kind** (ledger
+    `2026-09-04-guest-list-reconciliation` refuses it), so a guest with no email is its OWN row and
+    is never merged. ONE implementation, `server/services/plan-guest-roster.service.ts`
+    (`buildPlanGuestRoster`, pure) behind `GET /api/trips/:tripId/guests`; event ORDER stays
+    `storage.getUserExperiencesByTrip`'s (`2026-09-04-event-order`) and is never restated (§18
+    rule 1). The gate is the shared **owner tier** (`authorizeTripOwnerTier`), narrower than the
+    plancard's, because the response carries guest emails and dietary notes — the PII class L20
+    tier 4 keeps from an assigned expert. **`trip_participants` is the TRAVELLING PARTY, a different
+    population under a different predicate, and is NEVER merged into this roster**; the unratified
+    `trip_participants.event_invite_id` link is not built and is not needed. **§13: nothing is
+    zero-filled** — an event with no invites still renders a column (every cell `not_invited`),
+    `from`/`dietary` are blank when unstated (never "Unknown"/"None"), `totals.countries` is
+    OMITTED rather than 0 when no origin country exists, and no event start TIME is emitted because
+    `user_experiences` has no time-of-day column. Surface: `client/src/pages/plan-guests.tsx` at
+    `/plans/:tripId/guests`; per-event invites keep their ONE writer (`GuestInviteManager`), and a
+    `default_visibility: hidden` occasion has no guest surface at all (ruling 28, `SlipProposal`).
+
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
