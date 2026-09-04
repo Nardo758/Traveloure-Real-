@@ -669,6 +669,14 @@ test.describe('city-feed bento — /discover/location', () => {
     expect(offerHref).toContain('/become-expert');
     expect(offerHref).toContain('city=');
     expect(offerHref).toContain('neighborhood=');
+    // Ledger 2026-09-04-earn-contained-fixes (gap 15): a neighbourhood-scoped wanted slot
+    // recruits for the LOCAL EXPERT track. Without type= the wizard fell back to its
+    // travel_expert default and opened the Trip Planner flow instead.
+    expect(offerHref).toContain('type=local_expert');
+    // The legacy `offering=` param is retired — the wizard never read it. A real catalog key
+    // rides as `offeringTypeKey=`; an unresolved one emits NOTHING rather than a placeholder,
+    // so this asserts absence of the dead param, not presence of the new one.
+    expect(offerHref).not.toContain('offering=');
     // Earn routes → /earn.
     await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
     await expect(page.getByTestId('btn-earn-provider')).toHaveAttribute('href', '/earn');
