@@ -19,6 +19,11 @@
  *   P4  the two nouns agree with each other, so a future edit cannot leave the button saying one
  *       word and the toast another — which is precisely the split this lane found in the wild
  *       (title "…your trip", description "…on your plan").
+ *   P6  `partyTotal` (ledger `2026-09-04-one-modal-many-doors`) is the ONE derivation of the plan
+ *       modal's Adults+Kids pair into the single `travelers` count the Trip Strip's chip reads,
+ *       and it keeps the empty state: neither field stated ⇒ NOT SET, never 0 and never 2. The
+ *       "0 = cleared" marker the modal writes into the trip-context blob reads back as NOT SET
+ *       here, so a cleared field can never become a count of none.
  *
  * Pure unit, no DOM and no DB.
  * Run: npx tsx --test client/src/lib/__tests__/plan-vocabulary.test.ts
@@ -28,6 +33,7 @@ import assert from "node:assert/strict";
 import {
   ADDED_TO_CART_TITLE,
   eventCountLabel,
+  partyTotal,
   ADDED_TO_PLAN_TITLE,
   ADD_TO_CART_LABEL,
   ADD_TO_PLAN_FAILED_TITLE,
@@ -106,5 +112,41 @@ describe("P5 — the event noun (the Trip Strip's chip)", () => {
     // migration 276's `vocabulary` column names the PEOPLE on a plan; borrowing it here would
     // print "3 guests" for three ceremonies.
     assert.doesNotMatch(eventCountLabel(3), /guest|traveler|attendee/);
+  });
+});
+
+describe("P6 — the party total (Adults + Kids, one derivation)", () => {
+  it("adds the two halves the traveler stated", () => {
+    assert.equal(partyTotal("2", "1"), 3);
+    assert.equal(partyTotal(2, 1), 3);
+    assert.equal(partyTotal("2", ""), 2);
+    assert.equal(partyTotal("", "1"), 1);
+  });
+
+  it("NEITHER stated ⇒ NOT SET — never 0, never a fabricated 2 (§13, migration 241)", () => {
+    for (const [a, k] of [
+      ["", ""],
+      [undefined, undefined],
+      [null, null],
+      ["  ", ""],
+      ["abc", "xyz"],
+    ] as Array<[unknown, unknown]>) {
+      assert.equal(
+        partyTotal(a as string, k as string),
+        undefined,
+        `unanswered party must be undefined, got a=${String(a)} k=${String(k)}`,
+      );
+    }
+  });
+
+  it("reads the modal's '0 = cleared' blob marker back as NOT SET, never as a count of none", () => {
+    assert.equal(partyTotal(0, 0), undefined);
+    assert.equal(partyTotal("0", "0"), undefined);
+    // A cleared kids field beside a real adults count contributes nothing.
+    assert.equal(partyTotal("2", 0), 2);
+  });
+
+  it("never tops a stated kids count up with an assumed adult", () => {
+    assert.equal(partyTotal(undefined, "2"), 2);
   });
 });

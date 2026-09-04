@@ -125,6 +125,41 @@ export function travelersForSave(raw: string | number | undefined | null): numbe
 }
 
 /**
+ * THE PARTY TOTAL — one derivation of "how many people is this plan for", never two
+ * (ledger `2026-09-04-one-modal-many-doors`; CLAUDE.md Locked Decision 33).
+ *
+ * The plan modal's step 4 asks TWO questions (Adults and Kids — `trips.adults` / `trips.kids`,
+ * both de-masked to NULL by migration 241), while the Trip Strip's party chip and the trip
+ * context read ONE number (`travelers`). That is a derivation, and a derivation with two authors
+ * is the drift class §18 rule 1 names — so it is written here, beside `travelersForSave`, and the
+ * modal calls it for the context write.
+ *
+ * §13 — the empty state survives the addition. `travelersForSave` already turns every spelling of
+ * "they did not answer" into `undefined`; this function keeps that: with NEITHER field stated the
+ * total is `undefined` (NOT SET), never 0 and never a fabricated 2. A stated kids count with no
+ * adults is honoured as given rather than being topped up with an assumed adult — assuming one is
+ * exactly the masking migration 241 removed. Neither field carries an explicit ZERO: "not set" and
+ * "zero" are different answers, and only the first is true of a control nobody touched.
+ *
+ * The addition matches what the server already does with the same two columns on the trip-create
+ * path (`numberOfTravelers = adults + (kids ?? 0)`), so the client's chip and the row's own
+ * derived count cannot disagree about the same party.
+ */
+export function partyTotal(
+  adults: string | number | undefined | null,
+  kids: string | number | undefined | null,
+): number | undefined {
+  // BOTH halves go through `travelersForSave`, so every spelling of "they did not answer" —
+  // empty, whitespace, non-numeric, zero, negative — reads the same on both, and the plan modal's
+  // "0 means cleared" marker in the trip-context blob is read back as NOT SET here rather than as
+  // a count of none.
+  const a = travelersForSave(adults);
+  const k = travelersForSave(kids);
+  if (a === undefined && k === undefined) return undefined;
+  return (a ?? 0) + (k ?? 0);
+}
+
+/**
  * THE PARTY NOUN (ledger `2026-09-03-switch-readers`; migration 276's `vocabulary` column).
  *
  * The occasion ROW says what to call the people on the plan — `experience_types.vocabulary`,

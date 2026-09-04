@@ -1,10 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MapPin, Calendar, CalendarDays, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
-import { EditTripPanel } from "@/components/trip/edit-trip-panel";
-import { planningRouteForTrip } from "@/contexts/PlanningContext";
+import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 import { classify, eventCountLabel, partyCountLabel } from "@/lib/plan-vocabulary";
 // Ledger 2026-09-04-which-event-picker: "the events of THIS plan" now has ONE definition, shared
 // with the picker that writes the link. The strip filtered inline before that module existed; two
@@ -25,7 +24,8 @@ import type { ExperienceType, UserExperience } from "@shared/schema";
  * - Edit-locked on /checkout, /payment, /booking/confirmation.
  * - "Continue planning ›" label on marketing pages.
  * - Browse never writes: this component only displays; writes happen through
- *   the EditTripPanel or explicit page actions.
+ *   the ONE plan modal (usePlanning().open, ledger `2026-09-04-one-modal-many-doors`)
+ *   or explicit page actions.
  */
 
 // Chrome earn grammar (ruling 2026-08-28-chrome-alignment): mono for eyebrow/counts,
@@ -55,7 +55,10 @@ function formatDate(ymd?: string): string {
 export function TripStrip() {
   const [ctx] = useTripContext();
   const [location] = useLocation();
-  const [editOpen, setEditOpen] = useState(false);
+  // "Edit ›" is a DOOR of the one planning modal, not a dialog this strip mounts. The modal opens
+  // at step 1 or step 2 depending on whether the plan already names an occasion, with every
+  // visible step reachable from its rail (`resolvePlanSteps`; CLAUDE.md Locked Decision 33).
+  const { open: openPlanModal } = usePlanning();
 
   const { data: cart } = useQuery<{ itemCount: number; total: string }>({
     queryKey: ["/api/cart"],
@@ -311,7 +314,7 @@ export function TripStrip() {
           ) : (
             <button
               type="button"
-              onClick={() => setEditOpen(true)}
+              onClick={() => openPlanModal()}
               className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
               data-testid="trip-strip-edit"
             >
@@ -320,7 +323,6 @@ export function TripStrip() {
           )}
         </span>
       </div>
-      <EditTripPanel open={editOpen} onOpenChange={setEditOpen} />
     </div>
   );
 }

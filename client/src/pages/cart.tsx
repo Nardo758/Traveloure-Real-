@@ -6,7 +6,6 @@ import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optim
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
-import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -406,11 +406,13 @@ export default function CartPage() {
   // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
   // Seeded from the experience context so an experience-template flow's up-front dates carry over.
   // Live trip context (P2): dates derive from the shared TripContext hook so an
-  // edit anywhere (EditTripPanel, another surface) reflects here immediately.
+  // edit anywhere (the plan modal, another surface) reflects here immediately.
   const [liveTripCtx] = useTripContext();
   const tripStartDate = liveTripCtx.startDate || "";
   const tripEndDate = liveTripCtx.endDate || "";
-  const [editTripOpen, setEditTripOpen] = useState(false);
+  // Ledger `2026-09-04-one-modal-many-doors`: the cart header's "Edit trip" is a DOOR of the one
+  // planning modal, opened through the one opener — not a second dialog this page mounts itself.
+  const { open: openPlanModal } = usePlanning();
   const [tripTravelers, setTripTravelers] = useState(() => {
     const t = getTripContext().travelers;
     return t && t > 0 ? t : 2;
@@ -1181,7 +1183,7 @@ export default function CartPage() {
         experienceType: ctxAtResolve.experienceType,
       });
 
-      // Trip Details step removed (Trip-Strip P3): the strip + EditTripPanel own
+      // Trip Details step removed (Trip-Strip P3): the strip + the plan modal own
       // trip state, so Continue goes straight into the optimization preview.
       await fetchPreview();
     } catch (err: any) {
@@ -1214,7 +1216,7 @@ export default function CartPage() {
     const effStart = effectiveTripStartDate;
     const effEnd = effectiveTripEndDate;
     if (!effStart || !effEnd) {
-      setEditTripOpen(true);
+      openPlanModal();
       toast({ title: "Add your travel dates", description: "Set your trip dates to continue." });
       return;
     }
@@ -1579,7 +1581,7 @@ export default function CartPage() {
         </div>
 
         {/* Trip-date header — read-only summary of the strip-owned trip dates (P3b).
-            Edits go through the shared EditTripPanel; the dates derive live from TripContext. */}
+            Edits go through the one plan modal; the dates derive live from TripContext. */}
         {flowStep === "cart" && totalItemCount > 0 && (
           <div
             className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
@@ -1600,14 +1602,13 @@ export default function CartPage() {
               variant="outline"
               size="sm"
               className="shrink-0"
-              onClick={() => setEditTripOpen(true)}
+              onClick={() => openPlanModal()}
               data-testid="button-edit-trip"
             >
               Edit trip
             </Button>
           </div>
         )}
-        <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
 
         {/* Guest nudge — only shown when unauthenticated and there are items. `totalItemCount`
             alone under-counts here: it's server-cart-derived (cart?.itemCount) plus external

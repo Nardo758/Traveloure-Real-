@@ -272,6 +272,15 @@ test('full booking checkout with Stripe test card 4242', { timeout: 120_000 }, a
     await page.waitForTimeout(1500);
   }
 
+  // Ledger `2026-09-04-one-modal-many-doors`: the edit surface is the ONE stepped plan modal, so
+  // the dates live on its "When" step. Guarded like everything else in this smoke path — a rail
+  // that is not there is skipped rather than failing the browser check.
+  const whenStep = page.locator('[data-testid="plan-step-when"]').first();
+  if (await whenStep.count()) {
+    await whenStep.click().catch(() => {});
+    await page.waitForTimeout(500);
+  }
+
   let dateInput = page.locator('[data-testid="input-etp-start-date"]').first();
   if (!(await dateInput.count())) dateInput = page.locator('input[type="date"]').first();
 
