@@ -15,6 +15,7 @@ import { users } from "@shared/models/auth";
 import { trips, tripCollaborators } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
+import { resolveTripTimezone } from "../services/trip-timezone";
 
 const PASSWORD = process.env.E2E_TEST_PASSWORD || "TestPass123!";
 
@@ -204,6 +205,10 @@ async function seedE2EAccounts() {
         trackingNumber,
         title: "Kyoto Discovery Trip",
         destination: "Kyoto, Japan",
+        // Ledger `2026-09-04-plan-mint`: the seeded trip carries a zone like any other plan, via
+        // the ONE shared derivation (Kyoto → Asia/Tokyo) rather than a literal typed here. No pen
+        // drain: a seeded account has no pre-trip holding pen.
+        timezone: resolveTripTimezone("Kyoto, Japan"),
         startDate: fmt(start),
         endDate: fmt(end),
         status: "planning",

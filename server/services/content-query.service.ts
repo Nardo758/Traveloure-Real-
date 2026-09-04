@@ -22,6 +22,8 @@ import {
 import { contentOriginFor } from "@shared/content-origin";
 import { storage } from "../storage";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import { resolveTripTimezone } from "./trip-timezone";
+import { drainPendingEventsIntoTrip } from "./pending-events.service";
 import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
 import { flagReviewSignal } from "./review-mutation.service";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
@@ -353,7 +355,7 @@ export async function saveGeneratedItinerarySnapshot(
   // tracking numbers may have gaps after a rollback, but are never reused.
   const trackingNumber = input.tripId ? null : await storage.generateTrackingNumber("TRV");
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     let trip: any;
     if (input.tripId) {
       const locked = await tx.execute(sql`
@@ -382,6 +384,11 @@ export async function saveGeneratedItinerarySnapshot(
         // is unchanged (D-1 / itineraryItemRebuildDeletable).
         momentKey: input.trip.momentKey ?? null,
         marketSlug: resolveMarketSlug(input.trip.destination),
+        // Ledger `2026-09-04-plan-mint` (CLAUDE.md entry 30): every mint site stamps the plan's
+        // IANA zone, derived server-side from the destination by the SAME one module as
+        // storage.createTrip. Outside the operating markets this is NULL — "not captured", which
+        // readers honour rather than guessing a zone (§13).
+        timezone: resolveTripTimezone(input.trip.destination),
       } as any).returning();
 
       await tx.insert(tripCollaborators).values({
@@ -461,8 +468,23 @@ export async function saveGeneratedItinerarySnapshot(
       tripId,
     } as any).returning();
 
-    return { trip, savedItinerary, insertedItems, comparison };
+    return { trip, savedItinerary, insertedItems, comparison, mintedTrip: !input.tripId };
   });
+
+  // Ledger `2026-09-04-plan-mint` (b): drain the pre-trip holding pen once a plan is BORN — never
+  // on a re-apply onto an existing trip (`input.tripId`), whose events were already settled at its
+  // own mint. Deliberately AFTER the transaction commits and outside it: the drain uses `db` (not
+  // `tx`) and must never be able to roll back the snapshot it follows. It never throws.
+  if (result.mintedTrip) {
+    await drainPendingEventsIntoTrip({
+      userId: input.userId,
+      tripId: result.trip.id,
+      destination: input.trip.destination,
+      startDate: typeof input.trip.startDate === "string" ? input.trip.startDate : null,
+    });
+  }
+
+  return result;
 }
 
 export async function getAiItinerariesForUser(userId: string): Promise<any[]> {

@@ -16,6 +16,7 @@ import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnin
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
+import { resolveTripTimezone } from "./trip-timezone";
 
 export interface FulfillResult {
   purchase: typeof readyMadePurchases.$inferSelect;
@@ -88,6 +89,12 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       trackingNumber,
       // §21: the traveler-facing expert note travels with the plan (private expertNotes does not).
       expertTravelerNote: sourceTrip?.expertTravelerNote ?? null,
+      // Ledger `2026-09-04-plan-mint` (CLAUDE.md entry 30): the clone carries the plan's IANA zone,
+      // derived server-side from the listing's market by the ONE shared module. NULL when the
+      // market resolves to none of the operating markets — "not captured", honoured as such (§13).
+      // The pre-trip EVENT pen is deliberately NOT drained here: the buyer bought a fixed plan, and
+      // injecting their own held chips into a purchased product is content that plan never claimed.
+      timezone: resolveTripTimezone(listing.market),
       // Placeholder window sized to the plan; the buyer re-dates it in their own planner.
       startDate: fmt(start),
       endDate: fmt(end),

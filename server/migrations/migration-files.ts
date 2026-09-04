@@ -1416,4 +1416,14 @@ export const MIGRATION_FILES = [
   // delete would strand listings, and getServiceCategories() does not filter is_active. Every
   // statement is predicate-guarded and idempotent.
   "278_taxonomy_reconcile_orphan_categories.sql",
+  // Ledger 2026-09-04-plan-mint (CLAUDE.md entry 30): `trips.timezone` — the ONE IANA zone a
+  // plan's wall-clock item times are read in. Until now no trip carried a zone at all, so the
+  // .ics export emitted DTSTART/DTEND with no TZID and no `Z` — RFC 5545 floating time, rendered
+  // in each READER's own zone (a 16:00 ceremony in Tuscany showed as 16:00 in Sydney). Additive
+  // nullable, NO DEFAULT and NO CHECK (publish-trap posture, 181/195/273/275/276/277 precedent —
+  // the IANA value set is app-enforced), no backfill: NULL means NOT CAPTURED and readers keep
+  // today's floating output rather than guessing UTC (§13). `itinerary_items.start_time`/`end_time`
+  // stay wall-clock varchars and are never converted. Declared in shared/schema.ts so the deploy
+  // push cannot drop it; server-derived from the destination (§14), never client-settable.
+  "279_trips_timezone.sql",
 ] as const;

@@ -33,6 +33,7 @@ import {
   isConcludedEmptyMarker,
 } from "../services/dmo-extracted-places.service";
 import { classifyDmoShape, runPlaceExtraction } from "../services/dmo-place-extraction.service";
+import { resolveTripTimezone } from "../services/trip-timezone";
 
 const router = Router();
 
@@ -651,6 +652,11 @@ router.post(
           title: draftTitle,
           destination: city,
           trackingNumber,
+          // Ledger `2026-09-04-plan-mint` (CLAUDE.md entry 30): same ONE derivation as every other
+          // mint site; NULL outside the operating markets, honoured as "not captured" (§13). The
+          // pre-trip EVENT pen is NOT drained here — an authoring build has userId NULL by design,
+          // so there is no traveler principal whose pen it could be.
+          timezone: resolveTripTimezone(city),
           startDate: fmt(start),
           endDate: fmt(end),
           status: "draft",

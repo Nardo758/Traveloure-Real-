@@ -165,6 +165,23 @@ export const trips = pgTable("trips", {
   //     THIS column, and item_transition_log rows derive theirs via trip_id → this column (R15/L6).
   originMarket: varchar("origin_market", { length: 100 }),
   marketSlug: varchar("market_slug", { length: 40 }),
+  // The ONE IANA timezone this plan's WALL-CLOCK item times are read in (migration 279, ledger
+  // `2026-09-04-plan-mint`, CLAUDE.md entry 30). Additive nullable, no DEFAULT and no DB CHECK
+  // (publish-trap posture — the IANA value set is app-enforced); declared HERE per the deploy-push
+  // durability rule, since an object schema.ts does not declare is dropped at publish and, the
+  // migration already being stamped, never recreated.
+  //
+  // itineraryItems.startTime/endTime stay varchar wall-clock strings and are NEVER converted —
+  // this column says what zone those strings MEAN. **NULL = NOT CAPTURED**, a finished answer:
+  // the .ics exporter then keeps its pre-existing RFC 5545 FLOATING output and says why, rather
+  // than substituting UTC, the server's zone, or the nearest-looking market (§13 — a wrong zone
+  // is worse than an honest floating time because it looks authoritative).
+  //
+  // SERVER-DERIVED, never client-settable (§14 posture, same placement as marketSlug above):
+  // insertTripSchema omits it and storage.createTrip/updateTrip derive it from `destination` via
+  // server/services/trip-timezone.ts (a launch-market lookup over the existing 8-market config —
+  // not a geocoder, no network call).
+  timezone: varchar("timezone", { length: 64 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -2000,6 +2017,11 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // client-settable — a false market_slug would misroute demand). originMarket is NOT omitted:
   // it is ordinary owner-authored capture data (no privilege), accepted from the body.
   marketSlug: true,
+  // Ledger `2026-09-04-plan-mint`: same posture, one derivative over. The zone is a
+  // RENDER-AFFECTING fact (it decides the instant every exported calendar event lands on), so it
+  // is derived server-side from the destination in storage.createTrip/updateTrip and is never
+  // read off req.body — a client-supplied zone would silently move every guest's calendar.
+  timezone: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
