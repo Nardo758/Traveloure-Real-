@@ -29,6 +29,7 @@ import {
   Star,
   Sparkles,
   Calendar,
+  CalendarHeart,
   Briefcase,
   XCircle,
   AlertTriangle,
@@ -43,6 +44,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { CLAIM_PROMPTS, type Daypart } from "@shared/neighborhood-claims";
+import { isEventPlannerOfferingKey } from "@/lib/earn-roles";
 import {
   ClaimCaptureForm,
   captureCompleteness,
@@ -198,6 +200,12 @@ export default function TravelExpertsPage() {
   
   // Map expert type to display title
   const isLocalExpert = expertTypeFromUrl === "local_expert";
+  // The Event Planner track (ledger `2026-09-04-earn-planner-roles`, CLAUDE.md Locked Decision 36).
+  // Its planner ROLE is a real `expert_offering_types` row (migration 283) and this wizard is the
+  // only place it gets chosen — before this, the door carried a PROVIDER-catalog key that the
+  // migration-107 FK could not hold, so `storage.createLocalExpertForm` clamped it to NULL and
+  // nothing recorded what the applicant plans.
+  const isEventPlanner = expertTypeFromUrl === "event_planner";
   const steps = isLocalExpert ? localExpertSteps : defaultSteps;
 
   const expertTypeTitles: Record<string, string> = {
@@ -229,6 +237,10 @@ export default function TravelExpertsPage() {
     responseTime: "",
     hourlyRate: "",
     expertType: expertTypeFromUrl,
+    // Event Planner only: the chosen `expert_offering_types.offering_type_key`. Empty means NOT
+    // CHOSEN — never a default (§13). Pre-filled below only when the /earn link carried a key that
+    // the expert catalog actually holds.
+    plannerOfferingKey: "",
     agreeToTerms: false,
     // Local Expert specific fields
     neighborhoods: [] as string[],
@@ -287,6 +299,47 @@ export default function TravelExpertsPage() {
     setFormData((prev) => ({ ...prev, neighborhoodClaims: nextClaims, neighborhoods: nextClaims.map((c) => c.name) }));
   };
   const firstClaim = formData.neighborhoodClaims[0] ?? null;
+
+  // Event Planner role picker source: the EXPERT catalog, read live from the same public endpoint
+  // /earn reads, then narrowed by the ONE partition list (EVENT_PLANNER_OFFERING_KEYS). The list is
+  // the only thing restated here; the rows, their names and their order all come from the server —
+  // a hardcoded copy of the six would be wrong the day an admin renames one.
+  const { data: expertOfferingRows, isLoading: loadingPlannerRoles, isError: plannerRolesFailed } = useQuery<
+    Array<{ offering_type_key: string; display_name: string; tagline: string | null }>
+  >({
+    queryKey: ["/api/offering-types/experts", "event-planner"],
+    queryFn: async () => {
+      const res = await fetch("/api/offering-types/experts?tier=coordination", { credentials: "include" });
+      if (!res.ok) throw new Error("Couldn't load planner roles");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: isEventPlanner,
+  });
+  const plannerRoleOptions = useMemo(
+    () => (expertOfferingRows ?? []).filter((o) => isEventPlannerOfferingKey(o.offering_type_key)),
+    [expertOfferingRows],
+  );
+  // Preselect ONLY the offering that actually brought them here — and only once the catalog has
+  // confirmed it exists. A key the expert catalog does not hold preselects NOTHING (§13): the same
+  // stale-link case the storage clamp exists for, answered by asking rather than by guessing.
+  useEffect(() => {
+    if (!isEventPlanner || formData.plannerOfferingKey || plannerRoleOptions.length === 0) return;
+    if (offeringKeyFromUrl && plannerRoleOptions.some((o) => o.offering_type_key === offeringKeyFromUrl)) {
+      setFormData((prev) => ({ ...prev, plannerOfferingKey: offeringKeyFromUrl }));
+    }
+  }, [isEventPlanner, plannerRoleOptions, offeringKeyFromUrl, formData.plannerOfferingKey]);
+  /**
+   * The offering key this application is submitted against. On the Event Planner track that is the
+   * applicant's own pick from the expert catalog; everywhere else it is whatever the /earn link
+   * carried, unchanged. Empty means NOTHING IS SENT — the column stays NULL because no offering was
+   * chosen, which is a different fact from one that was chosen and refused (§13).
+   */
+  const chosenOfferingKey = isEventPlanner ? formData.plannerOfferingKey : offeringKeyFromUrl;
+  /** The chosen offering's display name, read from the catalog row rather than the URL. */
+  const chosenOfferingName = isEventPlanner
+    ? plannerRoleOptions.find((o) => o.offering_type_key === chosenOfferingKey)?.display_name ?? ""
+    : offeringNameFromUrl;
 
   // Fetch user data if authenticated via social login
   const { data: userData } = useQuery<any>({
@@ -409,6 +462,10 @@ export default function TravelExpertsPage() {
       case 1:
         return formData.firstName && formData.lastName && formData.email && formData.phone;
       case 2:
+        // Event Planner: the role is REQUIRED — it is the one field that decides which
+        // `expert_offering_types` row this application is against. When the catalog itself could
+        // not be read the step is not held hostage to it (the server still clamps honestly).
+        if (isEventPlanner && plannerRoleOptions.length > 0 && !formData.plannerOfferingKey) return false;
         return formData.destinations.length > 0 && formData.specialties.length > 0 && formData.languages.length > 0 && formData.experienceTypes.length > 0;
       case 3:
         return formData.selectedServices.length > 0;
@@ -466,8 +523,10 @@ export default function TravelExpertsPage() {
 
       const applicationData = {
         expertType: formData.expertType,
-        // The /earn card's canonical selection (migration 107) — was read but never sent.
-        ...(offeringKeyFromUrl ? { offeringTypeKey: offeringKeyFromUrl } : {}),
+        // The canonical selection (migration 107) — was read but never sent. On the Event Planner
+        // track the applicant's own pick wins: it is an EXPERT-catalog key and therefore the only
+        // value the FK can actually hold, where the /earn link may have carried a provider one.
+        ...(chosenOfferingKey ? { offeringTypeKey: chosenOfferingKey } : {}),
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -478,8 +537,10 @@ export default function TravelExpertsPage() {
         specialties: formData.specialties,
         languages: formData.languages,
         experienceTypes: formData.experienceTypes,
-        specializations: offeringNameFromUrl
-          ? Array.from(new Set([offeringNameFromUrl, ...formData.specializations]))
+        // The offering's own words, from the row we actually chose — not the name the link
+        // carried, which on the Event Planner track may name a different (provider-catalog) row.
+        specializations: chosenOfferingName
+          ? Array.from(new Set([chosenOfferingName, ...formData.specializations]))
           : formData.specializations,
         selectedServices: formData.selectedServices,
         yearsOfExperience: formData.yearsExperience,
@@ -530,9 +591,17 @@ export default function TravelExpertsPage() {
           });
         }
       }
-      return res;
+      // The body carries `offeringTypeKeyUnrecorded` when the server refused the offering key
+      // (an unknown key is clamped to NULL rather than failing the signup, migration-107 FK).
+      // Parsed here so onSuccess can say so — a parse failure must never turn a successful
+      // submission into an error, so it degrades to "nothing to report".
+      try {
+        return (await res.json()) as { offeringTypeKeyUnrecorded?: string | null };
+      } catch {
+        return {};
+      }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/service-templates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expert/neighborhood-claims"] });
       // Gating the status query on isAuthenticated (below) means it can fetch and
@@ -541,10 +610,21 @@ export default function TravelExpertsPage() {
       // reload) would serve that stale cache instead of the just-submitted form.
       queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] });
       clearApplicationDraft(DRAFT_KEY);
-      toast({
-        title: "Application submitted!",
-        description: "We'll review your application and follow up by email.",
-      });
+      // §13: a REFUSED offering and a never-chosen one are different facts, and the applicant is
+      // the only person who can repair the first. Say it out loud rather than filing a silent NULL.
+      const unrecorded = result?.offeringTypeKeyUnrecorded;
+      toast(
+        unrecorded
+          ? {
+              title: "Application submitted — one thing we couldn't record",
+              description:
+                "We couldn't record the offering you picked, so it isn't on your application. Tell us what you offer in your application or reply to our email and we'll add it.",
+            }
+          : {
+              title: "Application submitted!",
+              description: "We'll review your application and follow up by email.",
+            }
+      );
       // /expert-status is auth-only (no role required), so a fresh applicant
       // with no role yet can view it — unlike /dashboard, it acknowledges the
       // application that was just submitted instead of ignoring it.
@@ -1215,6 +1295,66 @@ export default function TravelExpertsPage() {
                 <CardTitle className="text-2xl text-foreground">Your Expertise</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Event Planner: which planner role. Reads the EXPERT catalog live
+                    (`expert_offering_types`, the six coordination rows migration 283 seeds) — this
+                    page holds no copy of the names, so an admin rename shows up without a deploy.
+                    Single-select: `local_expert_forms.offering_type_key` is one column. */}
+                {isEventPlanner && (
+                  <div data-testid="planner-role-picker">
+                    <Label className="text-[#374151] mb-1 block">
+                      <CalendarHeart className="w-4 h-4 inline mr-2" />
+                      Which kind of planner are you?
+                    </Label>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Pick the one you'd lead with. It's what we match you to — you can offer more later.
+                    </p>
+                    {loadingPlannerRoles ? (
+                      <p className="text-sm text-muted-foreground">Loading planner roles…</p>
+                    ) : plannerRoleOptions.length === 0 ? (
+                      /* No rows reached us — the catalog failed, or this database has not run the
+                         seed. Say which, and do NOT block the application on it: the server records
+                         no offering and tells us so, rather than us inventing a role (§13). */
+                      <p className="text-sm text-muted-foreground" data-testid="planner-role-unavailable">
+                        {plannerRolesFailed
+                          ? "We couldn't load the planner roles just now, so we can't ask here. Tell us which kind of planner you are in your bio and we'll set it up with you."
+                          : "No planner roles are published yet. Tell us which kind of planner you are in your bio and we'll set it up with you."}
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {plannerRoleOptions.map((opt) => {
+                          const selected = formData.plannerOfferingKey === opt.offering_type_key;
+                          return (
+                            <button
+                              key={opt.offering_type_key}
+                              type="button"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  // Clicking the chosen one again clears it — "" is NOT CHOSEN,
+                                  // and there is no way back to a default because there is none.
+                                  plannerOfferingKey: selected ? "" : opt.offering_type_key,
+                                }))
+                              }
+                              aria-pressed={selected}
+                              className={cn(
+                                "text-left rounded-lg border px-3.5 py-2.5 transition-colors",
+                                selected
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border hover:border-primary"
+                              )}
+                              data-testid={`planner-role-${opt.offering_type_key}`}
+                            >
+                              <span className="block text-sm font-medium text-foreground">{opt.display_name}</span>
+                              {opt.tagline && (
+                                <span className="block text-xs text-muted-foreground mt-0.5">{opt.tagline}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <Label className="text-[#374151] mb-3 block">
                     <Globe className="w-4 h-4 inline mr-2" />

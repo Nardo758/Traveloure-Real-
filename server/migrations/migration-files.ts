@@ -1431,4 +1431,14 @@ export const MIGRATION_FILES = [
   // Additive text[], nullable, no DEFAULT and no CHECK (publish-trap posture); declared in
   // shared/schema.ts so the deploy push cannot drop it.
   "280_experience_type_roles_needed.sql",
+  // Ledger `2026-09-04-earn-planner-roles` (CLAUDE.md Locked Decision 36): the six PLANNER rows
+  // in `expert_offering_types`, in the EXISTING `coordination` tier. The /earn Event Planner
+  // card's planner door FKs into this table (migration 107) and the table held no planner rows,
+  // so every key that door carried was clamped to NULL by `storage.createLocalExpertForm`.
+  // NO new service_tier — that column carries a DB CHECK and a sixth value would be the
+  // publish-time push failure the Coordination Prevention rules warn about. Data-only, idempotent
+  // (ON CONFLICT DO NOTHING), no schema change and therefore no publish trap.
+  // NOTE: registered LAST. Another lane is landing 281/282 concurrently; registry order is
+  // authoritative, and this row must stay after whatever they add.
+  "283_expert_planner_offering_types.sql",
 ] as const;
