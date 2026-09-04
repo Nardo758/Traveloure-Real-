@@ -55,12 +55,12 @@ per-screen mock work in §1.
 was found at that path by grep; **nobody has compared it to the artboard.** Treat those rows as
 unknown, not as done.
 
-### F4 — two blockers are real, one just cleared
+### F4 — all three blockers are now cleared (the last two by lane A, migrations 281/282)
 
 | Blocker | Blocks | State |
 |---|---|---|
-| ordered `trip_destinations` — table does not exist | `Mismatch` "add as a stop"; `TravelWhere` stop list | HELD — needs ratification |
-| no time-of-day column on `user_experiences` | clock times on `WhichEvent`; `TravelEvents` tee times | HELD — needs ratification |
+| ordered `trip_destinations` — table does not exist | `Mismatch` "add as a stop"; `TravelWhere` stop list | **CLEARED** — migration 281 (ledger `2026-09-04-stops-and-event-time`) |
+| no time-of-day column on `user_experiences` | clock times on `WhichEvent`; `TravelEvents` tee times | **CLEARED** — migration 282 (same ledger row) |
 | `experience_types.roles_needed` | `WhichEvent` role hint | **CLEARED** — migration 280 (#744) |
 
 ---
@@ -109,10 +109,12 @@ Guarded by §3 below, or it regresses the first time someone adds a page.
 1. **`WhichEvent` role hint** — unblocked today by migration 280. Reads `roles_needed` and marks
    matching rows. **Reads the server's list; never restates it client-side** (the derivation-drift
    class §18 rule 1 names). Nothing is pre-selected — rule 3 of `which-event.ts` stands.
-2. **`Guests` column-per-event** — the largest genuine gap. **Blocked on a product decision:** a
-   plan can hold many events (migration 277 put no uniqueness on `user_experiences.trip_id`) and
-   "the plan's guest list" does not say which one it means. See the open question recorded in ledger
-   `2026-09-04-event-order`. Do not start until that is ratified.
+2. **`Guests` column-per-event** — **BUILT** (ledger `2026-09-04-guests-per-event`). The blocker
+   ("a plan can hold many events and 'the plan's guest list' does not say which one it means") was
+   dissolved rather than answered: the roster is **DERIVED**, one row per person deduplicated by
+   normalised email with one column per event, so no single event owns it and nothing new is
+   stored. `GET /api/trips/:tripId/guests` (owner tier) →
+   `server/services/plan-guest-roster.service.ts` → `client/src/pages/plan-guests.tsx`.
 
 ### Phase D — whatever Phase A found
 
@@ -166,15 +168,16 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 2 | Entry unification, 4 surfaces | B | todo | — |
 | 3 | `check-planning-entry.cjs` + CI job | B | todo | — |
 | 4 | `WhichEvent` role hint | C | todo | — (cleared by #744) |
-| 5 | `Guests` column-per-event | C | blocked | which event owns the guest list |
+| 5 | `Guests` column-per-event | C | built | — (ratified `2026-09-04-guests-per-event`: the roster is DERIVED, so no event "owns" it) |
 | 6 | Phase A findings | D | todo | Phase A |
-| 7 | `Mismatch` "add as a stop" | E | blocked | `trip_destinations` |
-| 8 | `TravelWhere` stop list | E | blocked | `trip_destinations` |
-| 9 | `TravelEvents` tee times | E | blocked | time-of-day column |
+| 7 | `Mismatch` "add as a stop" | E | todo (schema landed) | — (cleared by migration 281) |
+| 8 | `TravelWhere` stop list | E | todo (schema landed) | — (cleared by migration 281) |
+| 9 | `TravelEvents` tee times | E | todo (schema landed) | — (cleared by migration 282) |
 | 10 | Artboard rename (F1) | — | todo | rename is a decision, not a tidy-up |
 | 11 | Planner third door + nav Wedding CTA | D | built | — |
 | 12 | Landing Wedding moment + "Planning your own?" callout | D | built | renders only once Kyoto has an attributed real photo (photo gate) |
 | 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops HELD; Step4Variants fields not built |
+| 14 | `trip_destinations` + `user_experiences.start_time` (schema + rails) | E | built | UI in follow-up lanes |
 
 Already `built`: `ModalEvents`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`
 (minus "add as a stop"), `OccasionRow`. Already `ruled`: `SlipProposal`.

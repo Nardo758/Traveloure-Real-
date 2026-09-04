@@ -18,6 +18,7 @@ import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.s
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
 import { attachRolesNeeded } from "../services/occasion-roles.service";
+import { getTripDestinations } from "../services/trip-destinations.service";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -405,7 +406,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // asked for it. A plan with no `user_experiences` row returns `[]` — the honest "this plan has
     // only its ONE implicit unnamed event" state, never a fabricated placeholder event.
     //
-    // The projection is deliberately narrow: id, title, eventDate, location, guestCount,
+    // The projection is deliberately narrow: id, title, eventDate, startTime, location, guestCount,
     // experienceTypeId, rolesNeeded. `preferences` / `stepData` / `mapData` are the wizard's own
     // working state and are not part of this contract.
     //
@@ -423,11 +424,29 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
         id: e.id,
         title: e.title ?? null,
         eventDate: e.eventDate ?? null,
+        // Migration 282 (ledger `2026-09-04-stops-and-event-time`): the EVENT'S OWN wall-clock
+        // "HH:MM", carried as-is and read in the plan's `trips.timezone` (ruling 30). `null` means
+        // NOT SET and every reader must then show the day and NO time — never midnight, never
+        // "all day" (§13). It is not the plan's main moment, which stays a temporal anchor.
+        startTime: e.startTime ?? null,
         location: e.location ?? null,
         guestCount: e.guestCount ?? null,
         experienceTypeId: e.experienceTypeId,
       })),
     );
+
+    // Migration 281 (ledger `2026-09-04-stops-and-event-time`, Locked Decision 34) — the plan's
+    // ORDERED STOPS. READ HERE, NOT IN THE ASSEMBLER, for the same reason `events` is: the
+    // assembler serves three redaction levels including the public share/teaser channels, and a
+    // stop list with coordinates is owner-side capture. Resolving it in THIS handler keeps it
+    // behind exactly the owner/assigned-advisor/author gate above.
+    //
+    // §13 — `[]` MEANS NOT CAPTURED, NOT "no destination". Legacy plans have no child rows (no
+    // backfill, deliberately) and `trip.destination` — already on the unchanged `trip` passthrough
+    // below — remains the plan's headline destination and the position-0 mirror of this list where
+    // the list exists. A consumer that meets `[]` FALLS BACK TO `trip.destination` and says so.
+    // A stop with null lat/lng is UNLOCATED and stays visibly flagged; it is never placed on a map.
+    const destinations = await getTripDestinations(tripId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
@@ -458,6 +477,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // consumer ignores the key, and `days[].activities[].userExperienceId` (also additive, and
       // present only when the item really carries a link) is what points into this list.
       events,
+      // Migration 281 — the plan's ordered stops; see the assembly note above. ADDITIVE: every
+      // existing consumer ignores the key.
+      destinations,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {

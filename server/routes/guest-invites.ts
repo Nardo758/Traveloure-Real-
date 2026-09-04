@@ -6,6 +6,8 @@ import { storage } from "../storage";
 import { createRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import crypto from "crypto";
 import { buildInviteLink, sendExperienceInvites } from "../services/guest-invite-send.service";
+import { loadPlanGuestRoster } from "../services/plan-guest-roster.service";
+import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
 
 /**
  * GUEST INVITE SYSTEM — organizer invite management + public token-based guest RSVP.
@@ -216,6 +218,49 @@ router.post("/api/events/:experienceId/invites", isAuthenticated, async (req: Re
   } catch (error: any) {
     console.error("Error creating invites:", error);
     return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/trips/:tripId/guests
+ *
+ * THE PLAN'S ROSTER — one row per person, one column per event (ledger
+ * `2026-09-04-guests-per-event`, CLAUDE.md Locked Decision 37). Every other organizer route on
+ * this rail is keyed by ONE `experienceId`, which is correct for an event's own invite list and is
+ * exactly why the plan-level question had no answer: a plan holds many events, and a traveler
+ * looking at "my guests" wants the union with the per-event answer beside each name.
+ *
+ * DERIVED, NEVER STORED. Nothing here writes, and no schema changed: the roster is assembled by
+ * the ONE implementation `buildPlanGuestRoster` from the two lists that already exist. See that
+ * module for the identity rule (normalised email only — no fuzzy matching, by ruling) and the §13
+ * omissions.
+ *
+ * THE GATE IS THE OWNER TIER, AND THAT IS DELIBERATELY NARROWER THAN THE PLANCARD'S.
+ * `authorizeTripOwnerTier` (owner ‖ trip author ‖ audit-logged admin) is the SHARED helper — no
+ * second copy of a gate here (§18 rule 1). It is used in preference to `authorizeTripLogistics`
+ * because this response carries guest EMAIL ADDRESSES and DIETARY NOTES, which is the same PII
+ * class the L20 tier table keeps away from an assigned expert ("participant PII is OWNER-only,
+ * never an assigned expert"), and because every existing `event_invites` read on this rail is
+ * gated on OWNING the event. Widening guest PII to advisors would be a new exposure, and this lane
+ * is not ratified to create one.
+ *
+ * A missing or unreadable trip lands on the same 403 as any other unauthorized caller — the plan's
+ * existence is not confirmed to someone who cannot read it.
+ */
+router.get("/api/trips/:tripId/guests", isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { tripId } = req.params;
+    const denied = await authorizeTripOwnerTier(
+      tripId,
+      sessionUserId(req),
+      "GET /api/trips/:tripId/guests",
+    );
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+
+    return res.json(await loadPlanGuestRoster(tripId));
+  } catch (error: any) {
+    console.error("Error building plan guest roster:", error);
+    return res.status(500).json({ error: "Failed to load the guest list" });
   }
 });
 
