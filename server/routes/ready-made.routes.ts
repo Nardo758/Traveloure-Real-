@@ -32,6 +32,10 @@ import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { resolveTripTimezone } from "../services/trip-timezone";
+// THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
+// §18 rule 1). This file READS the table freely; the concierge-revision grant below is a CALLER
+// of the shared upsert and never inserts the row itself.
+import { upsertTripAdvisorRow } from "../services/booking-actions.service";
 
 const router = Router();
 
@@ -1592,18 +1596,18 @@ router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated, a
       .where(eq(readyMadeTrips.id, purchase.readyMadeTripId))
       .limit(1);
     if (listing?.authorId) {
-      await db
-        .insert(tripExpertAdvisors)
-        .values({
-          tripId: purchase.cloneTripId,
-          localExpertId: listing.authorId,
-          status: "accepted",
-          message: note ?? "Concierge revision requested by the buyer.",
-        } as any)
-        .onConflictDoUpdate({
-          target: [tripExpertAdvisors.tripId, tripExpertAdvisors.localExpertId],
-          set: { status: "accepted" },
-        });
+      // ONE author (ledger `2026-09-04-advisor-row-one-author`, §18 rule 1). This used to be its
+      // own `ON CONFLICT DO UPDATE SET status='accepted'`, which OVERWROTE the stored status
+      // unconditionally — an admin-confirmed `assigned` row was silently rewritten to `accepted`.
+      // The shared author never downgrades and treats equal-rank as a no-op, so the grant still
+      // lifts a `pending`/`rejected` row to write access (which is the point — the seller must be
+      // able to make the paid revision) and leaves an already-write-access row exactly as it is.
+      await upsertTripAdvisorRow({
+        tripId: purchase.cloneTripId,
+        localExpertId: listing.authorId,
+        status: "accepted",
+        message: note ?? "Concierge revision requested by the buyer.",
+      });
     }
 
     res.json({ purchase: { purchaseId: claimed.id, revisionStatus: claimed.revisionStatus, revisionRequestedAt: claimed.revisionRequestedAt } });

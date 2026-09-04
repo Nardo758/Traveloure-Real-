@@ -8,9 +8,13 @@ import {
   trips, expertServiceCategories, expertServiceOfferings, localExpertForms,
   localKnowledgeNuggets, travelPulseCities, affiliateProducts, contentRegistry,
   cityNeighborhoods, expertNeighborhoods, neighborhoodCoverageTarget,
-  serviceCategories, tripExpertAdvisors, generatedItineraries,
+  serviceCategories, generatedItineraries,
   insertServiceOfferingTypeSchema, insertExpertOfferingTypeSchema,
 } from "@shared/schema";
+// `trip_expert_advisors` has exactly ONE author (ledger `2026-09-04-advisor-row-one-author`,
+// §18 rule 1) — this file calls it and never inserts the row itself, which is why the table is
+// no longer imported here.
+import { upsertTripAdvisorRow } from "./booking-actions.service";
 import {
   eq, and, or, like, sql, desc, count, inArray, isNotNull, asc,
 } from "drizzle-orm";
@@ -960,27 +964,19 @@ export async function confirmLeadAssignmentTx(requestId: string, tripId: string,
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM expert_requests WHERE id = ${requestId} FOR UPDATE`);
 
-    const [existing] = await tx.select().from(tripExpertAdvisors)
-      .where(and(
-        eq(tripExpertAdvisors.tripId, tripId),
-        eq(tripExpertAdvisors.localExpertId, assignedExpertId),
-      )).limit(1);
-
-    if (existing) return existing;
-
-    const [created] = await tx.insert(tripExpertAdvisors).values({
+    // ONE author (ledger `2026-09-04-advisor-row-one-author`, §18 rule 1). This used to be a
+    // check-then-insert — a SELECT, an early return, an `ON CONFLICT DO NOTHING` insert and a
+    // re-SELECT for the racer's row: the TOCTOU shape §15 names, four statements deciding what one
+    // atomic upsert decides. The shared author runs INSIDE this transaction (`tx`), so the
+    // `FOR UPDATE` lock above still serialises concurrent confirms, and its precedence rule means
+    // an expert who has already ACCEPTED is not silently re-stamped `assigned` (equal rank ⇒
+    // no-op) — the previous early-return produced the same outcome, by luck rather than by rule.
+    const { row: result } = await upsertTripAdvisorRow({
       tripId,
       localExpertId: assignedExpertId,
       status: "assigned",
-      workspaceStatus: "draft",
-      assignedAt: new Date(),
-    }).onConflictDoNothing().returning();
-
-    const result = created ?? await tx.select().from(tripExpertAdvisors)
-      .where(and(
-        eq(tripExpertAdvisors.tripId, tripId),
-        eq(tripExpertAdvisors.localExpertId, assignedExpertId),
-      )).then(r => r[0]);
+      tx,
+    });
 
     await tx.execute(sql`
       UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}

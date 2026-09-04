@@ -828,10 +828,18 @@ router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
     });
   } catch (error: any) {
     // `trip_expert_advisors` carries a UNIQUE (trip_id, local_expert_id) index while
-    // `ensureTripAdvisorRow` skips only PENDING/ACCEPTED rows — so re-inviting an expert who
-    // previously REJECTED this plan collides. That is a real traveler action, not a server fault,
-    // so it answers as a plain 409 instead of a 500. (The gap itself belongs to the shared
-    // author, not to this caller; recorded in the ledger, not patched here.)
+    // `ensureTripAdvisorRow` skipped only PENDING/ACCEPTED rows — so re-inviting an expert who
+    // previously REJECTED this plan collided. That was a real traveler action, not a server fault,
+    // so it answers as a plain 409 instead of a 500.
+    //
+    // THE GAP IS CLOSED AT THE SHARED AUTHOR, as this comment predicted (ledger
+    // `2026-09-04-advisor-row-one-author`): `upsertTripAdvisorRow` absorbs the collision — the
+    // stored status simply outranks the invitation and the write is a no-op — so this arm is now
+    // near-unreachable and stands only as belt-and-braces for any other unique collision.
+    // NAMED, NOT TAKEN (§13): the success response above still reports the INVITATION (`pending`),
+    // not the row's RESOLVED status, so a re-invite of an already-accepted expert now answers
+    // "awaiting" where it used to answer 409. Surfacing the resolved status means widening
+    // `HireAdvisorOutcome` and its stubs, which is this route's lane, not the author's.
     if (error?.code === '23505') {
       return res.status(409).json({ error: 'That expert has already been asked about this plan.' });
     }

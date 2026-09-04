@@ -5,9 +5,14 @@
  */
 
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { getTableColumns, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { tripExpertAdvisors } from "@shared/schema";
 import { isTripAdvisor } from "../utils/trip-advisor";
+import {
+  buildTripAdvisorStatusRankSql,
+  type TripAdvisorRowStatus,
+} from "../utils/trip-advisor-status";
 import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
 
 // ─── Expert Requests ──────────────────────────────────────────────────────────
@@ -583,30 +588,136 @@ export async function assignExpertAdvisorToRequest(
   `);
 }
 
+// ─── trip_expert_advisors — THE ONE AUTHOR ────────────────────────────────────
+
+/**
+ * `upsertTripAdvisorRow` is the ONE AND ONLY author of `trip_expert_advisors` rows.
+ *
+ * Ledger `2026-09-04-advisor-row-one-author`; CLAUDE.md Locked Decision 32 CORRECTION paragraph,
+ * §18 rule 1 ("one implementation, N callers"), §15 (the transition itself is the guard).
+ *
+ * WHAT THIS REPLACED. The row was inserted from SIX production sites — `ensureTripAdvisorRow`
+ * and `assignExpertAdvisor` here, `confirmLeadAssignmentTx` (`admin-query.service.ts`), the
+ * lead-confirm handler (`admin.routes.ts`), the concierge-revision grant (`ready-made.routes.ts`)
+ * and `storage.createTripExpertAdvisor` — each with its OWN idea of what a conflict means: a
+ * `WHERE NOT EXISTS` over two statuses, nothing at all (a raw 23505), `ON CONFLICT DO NOTHING`
+ * behind a check-then-insert (the TOCTOU shape §15 names), and an `ON CONFLICT DO UPDATE` that
+ * blindly overwrote `status`. The UNIQUE (trip_id, local_expert_id) index was the only thing
+ * keeping the six consistent — it did so by THROWING, which is how the hire-from-slip route came
+ * to need a `23505 → 409` translation for a re-invite.
+ *
+ * THE CONFLICT RULE — A CONFLICT NEVER DOWNGRADES.
+ * The write is a single atomic `INSERT … ON CONFLICT (trip_id, local_expert_id) DO UPDATE`; the
+ * statement IS the concurrency guard (§15), never a read followed by a decision. On conflict:
+ *   • `status` moves ONLY UP the ladder in `server/utils/trip-advisor-status.ts` — `accepted`
+ *     and `assigned` (the §12 WRITE-access statuses, rank 2) are NEVER overwritten by a `pending`
+ *     invitation (rank 1); `pending` and `rejected` share rank 1, so a re-invite never clears an
+ *     expert's refusal; equal rank is a NO-OP, which is what makes every caller idempotent. The
+ *     SQL `CASE` is GENERATED from the same map the TypeScript predicate reads, so the two cannot
+ *     drift (§18 rule 1 applied to the rule itself).
+ *   • `message` is `COALESCE(existing, incoming)` — an existing note is NEVER clobbered, an
+ *     absent one is filled. (This preserves the ready-made grant's previous behaviour, whose
+ *     `DO UPDATE` set `status` only.)
+ *   • NOTHING ELSE IS TOUCHED. `workspace_status` (a `delivered` workspace must never be reset to
+ *     `draft`), `assigned_at` (the original assignment time is a recorded fact), `expert_response`
+ *     and the whole plan-approval handshake (`plan_approval_status`/`plan_approved_at`/
+ *     `plan_review_note`) are insert-only here and are owned by their own update paths. There is
+ *     no `accepted_at` column on this table — acceptance is recorded in `status` itself plus
+ *     `expert_response`, and the rule above is what stops either being lost.
+ *
+ * `created` is derived from `xmax` — 0 on a freshly inserted tuple, non-zero when the row already
+ * existed and the DO UPDATE arm ran. It is exact and needs no second query, which matters because
+ * the lead-confirm handler fires the expert's "you have been assigned" notification ONLY on a real
+ * creation; a re-confirm must stay silent.
+ *
+ * @param tx  Optional drizzle transaction handle, so a caller already inside a transaction
+ *            (`confirmLeadAssignmentTx`, the admin lead-confirm handler) writes the row INSIDE its
+ *            own transaction rather than opening a second connection alongside it.
+ */
+export interface UpsertTripAdvisorRowInput {
+  tripId: string;
+  /** The expert's USER id (`trip_expert_advisors.local_expert_id`). */
+  localExpertId: string;
+  /** From the §12 vocabulary. `rejected` is not writable here — see trip-advisor-status.ts. */
+  status: TripAdvisorRowStatus;
+  /** The traveler's/admin's note. Never overwrites a note already on the row. */
+  message?: string | null;
+  /** Optional transaction handle; defaults to the pool. */
+  tx?: TripAdvisorRowExecutor;
+}
+
+/** `db`, or the handle drizzle hands a `db.transaction(...)` callback. */
+export type TripAdvisorRowExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export async function upsertTripAdvisorRow(
+  input: UpsertTripAdvisorRowInput,
+): Promise<{ row: any; created: boolean }> {
+  // The tx handle exposes the same query-builder surface as `db`; the cast keeps the union from
+  // splitting the builder's call signatures without changing which connection runs the statement.
+  const exec = (input.tx ?? db) as typeof db;
+
+  const incomingRank = buildTripAdvisorStatusRankSql("excluded.status");
+  const storedRank = buildTripAdvisorStatusRankSql("trip_expert_advisors.status");
+
+  const [result] = await exec
+    .insert(tripExpertAdvisors)
+    .values({
+      tripId: input.tripId,
+      localExpertId: input.localExpertId,
+      status: input.status,
+      workspaceStatus: "draft",
+      message: input.message ?? null,
+      assignedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [tripExpertAdvisors.tripId, tripExpertAdvisors.localExpertId],
+      set: {
+        status: sql.raw(
+          `CASE WHEN (${incomingRank}) > (${storedRank}) THEN excluded.status ELSE trip_expert_advisors.status END`,
+        ),
+        message: sql.raw("COALESCE(trip_expert_advisors.message, excluded.message)"),
+      },
+    })
+    .returning({
+      ...getTableColumns(tripExpertAdvisors),
+      // `xmax = 0` ⇔ this tuple was INSERTed by this statement rather than UPDATEd by its
+      // conflict arm. Cast through text so no `xid`-vs-integer operator resolution is involved.
+      advisorRowCreated: sql<boolean>`(xmax::text::bigint = 0)`,
+    });
+
+  const { advisorRowCreated, ...row } = (result ?? {}) as any;
+  return { row, created: advisorRowCreated === true };
+}
+
 /**
  * F1 (workstation-flows audit, ratified 2026-07-26): materialize a routed lead in the expert's
  * request inbox. The auto-routed path stamped only `expert_requests.assigned_expert_id` — but
  * Assigned Trips reads `trip_expert_advisors`, and workspace auth requires the advisor row, so a
  * PAID request never reached the workstation (the notification pointed at work the expert could
  * not open). This creates the same `pending` advisor row the direct-pick path
- * (`assignExpertAdvisor`) writes, idempotently: an existing pending/accepted advisor row for
- * this (trip, expert) pair short-circuits, so re-routing or a direct pick + a routed lead never
- * duplicates the assignment.
+ * (`assignExpertAdvisor`) writes, idempotently.
+ *
+ * INVITE-SHAPED WRAPPER over the one author (ledger `2026-09-04-advisor-row-one-author`). Its
+ * four callers (the routed-lead bridge, the storefront booking request, hire-from-slip and the
+ * `routes.ts` monolith copy) all mean the same thing: "invite this expert, do not promote them".
+ * The old implementation skipped only PENDING/ACCEPTED rows and therefore COLLIDED (23505) on an
+ * `assigned` or `rejected` row; the shared author absorbs that conflict instead — an already
+ * higher-ranked row keeps its status and the re-invite is a no-op (§12: an invitation may not
+ * promote anyone, and it equally may not demote them).
  */
 export async function ensureTripAdvisorRow(
   tripId: string,
   expertUserId: string,
   message?: string | null,
 ): Promise<void> {
-  await db.execute(sql`
-    INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
-    SELECT ${crypto.randomUUID()}, ${tripId}, ${expertUserId}, 'pending', ${message ?? null}, NOW()
-    WHERE NOT EXISTS (
-      SELECT 1 FROM trip_expert_advisors
-      WHERE trip_id = ${tripId} AND local_expert_id = ${expertUserId}
-        AND status IN ('pending', 'accepted')
-    )
-  `);
+  await upsertTripAdvisorRow({
+    tripId,
+    localExpertId: expertUserId,
+    status: "pending",
+    message: message ?? null,
+  });
 }
 
 export async function assignExpertAdvisor(values: {
@@ -618,7 +729,9 @@ export async function assignExpertAdvisor(values: {
   message?: string | null;
 }): Promise<{ expertRequestId: string; advisorId: string }> {
   const expertRequestId = crypto.randomUUID();
-  const advisorId = crypto.randomUUID();
+  // The advisor row's id is now minted by the ONE author (schema `$defaultFn`) rather than here,
+  // because on a conflict the id that must be returned is the EXISTING row's, not a fresh one.
+  let advisorId = "";
 
   await db.execute(sql`BEGIN`);
   try {
@@ -633,10 +746,17 @@ export async function assignExpertAdvisor(values: {
         ${values.expertUserId}, NOW()
       )
     `);
-    await db.execute(sql`
-      INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
-      VALUES (${advisorId}, ${values.tripId}, ${values.expertUserId}, 'pending', ${values.message ?? null}, NOW())
-    `);
+    // ONE author (ledger `2026-09-04-advisor-row-one-author`): this used to be a bare INSERT that
+    // threw 23505 whenever the pair already existed. It is now the shared upsert, so a direct pick
+    // onto an already-advised trip returns the standing row instead of failing the whole
+    // assignment — and cannot demote an expert who has already accepted or been confirmed.
+    const { row } = await upsertTripAdvisorRow({
+      tripId: values.tripId,
+      localExpertId: values.expertUserId,
+      status: "pending",
+      message: values.message ?? null,
+    });
+    advisorId = row?.id ?? "";
     await db.execute(sql`COMMIT`);
   } catch (err) {
     await db.execute(sql`ROLLBACK`);

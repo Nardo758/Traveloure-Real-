@@ -378,6 +378,23 @@ This document captures architectural decisions to maintain consistency across co
     local_expert_id) index is the only thing keeping them consistent. The ruling's intent stands
     unchanged: lanes (b) and (c) add CALLERS of `ensureTripAdvisorRow`, never a seventh insert.
     Consolidating the six is a separate lane and a §18-rule-1 debt, recorded here, not fixed.
+    **THAT DEBT IS NOW PAID (ledger `2026-09-04-advisor-row-one-author`).** The ONE author is
+    **`upsertTripAdvisorRow` in `server/services/booking-actions.service.ts`**; the other five
+    sites are CALLERS, and `ensureTripAdvisorRow` survives as the invite-shaped wrapper over it
+    (its four callers are untouched). It takes an optional drizzle `tx` handle so a caller already
+    inside a transaction writes the row inside it. **A CONFLICT NEVER DOWNGRADES:** one atomic
+    `INSERT … ON CONFLICT (trip_id, local_expert_id) DO UPDATE` — the statement is the guard
+    (§15), never a check-then-insert — in which `status` moves only UP a rank ladder
+    (`accepted`/`assigned` rank 2, `pending`/`rejected` rank 1, NULL/unknown 0), equal rank is a
+    no-op (so every caller is idempotent by construction), `rejected` sits at `pending`'s rank so
+    a re-invite cannot clear a refusal while a deliberate grant still outranks one, `message` is
+    `COALESCE(existing, incoming)`, and **nothing else is touched** — `workspace_status`,
+    `assigned_at`, `expert_response` and the plan-approval columns are insert-only there. The
+    ladder is written down ONCE (`server/utils/trip-advisor-status.ts`) and the upsert's SQL
+    `CASE` is GENERATED from it. Guarded by `scripts/check-advisor-row-author.cjs` (own CI job,
+    committed `--self-test` fixtures, §18d): no `.ts` under `server/` outside the author file may
+    insert this row. It catches inserts, not updates — the guard states its own negative space.
+    No schema change, no migration.
     **Side findings recorded, not fixed here.** The first two are now **FIXED** by ledger
     `2026-09-04-golf-occasion-and-housekeeping`: (a) `expertAdvisorStatusEnum` in `shared/schema.ts`
     omitted `assigned`, which code writes and gates on (no DB CHECK — verified against every

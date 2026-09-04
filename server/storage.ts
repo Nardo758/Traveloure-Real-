@@ -3,6 +3,12 @@ import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
+// THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
+// CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). `createTripExpertAdvisor` below is a
+// CALLER of it, not a second insert. (booking-actions.service imports storage DYNAMICALLY, so
+// this static edge introduces no import cycle.)
+import { upsertTripAdvisorRow } from "./services/booking-actions.service";
+import type { TripAdvisorRowStatus } from "./utils/trip-advisor-status";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
 import type { TripListItem } from "@shared/routes";
@@ -1001,7 +1007,7 @@ export interface IStorage {
 
   deleteProviderBlackoutDate(id: string, providerId: string): Promise<boolean>;
 
-  createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any>;
+  createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: TripAdvisorRowStatus }): Promise<any>;
 
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
 
@@ -6681,15 +6687,21 @@ export class DatabaseStorage implements IStorage {
     return isTripAdvisorWithWriteAccess(tripId, expertId);
   }
 
-  async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
-    const [created] = await db.insert(tripExpertAdvisors).values({
+  // ONE author (ledger `2026-09-04-advisor-row-one-author`, §18 rule 1). This used to be a bare
+  // INSERT with no conflict handling at all, so a second call for the same (trip, expert) pair
+  // threw 23505 — its one caller (the booking-accept bridge in `server/routes.ts`) guarded that
+  // with a check-then-insert, the TOCTOU shape §15 names. It now delegates to the shared upsert:
+  // the transition is the guard, and a status already at or above the requested one is preserved.
+  // `status` is still accepted from the caller and still defaults to `pending`; a value outside the
+  // §12 write vocabulary is a type error at every call site rather than a silent row.
+  async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: TripAdvisorRowStatus }): Promise<any> {
+    const { row } = await upsertTripAdvisorRow({
       tripId: data.tripId,
       localExpertId: data.localExpertId,
       status: data.status ?? "pending",
-      workspaceStatus: "draft",
-      message: data.message,
-    }).returning();
-    return created;
+      message: data.message ?? null,
+    });
+    return row;
   }
 
   async getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]> {
