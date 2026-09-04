@@ -28,18 +28,29 @@ const coreCategories = [
   // migration 034 before this seeder ever sees it. Do not drop this field.
   { name: "Custom / Other", slug: "custom-other", categoryKey: "custom_other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
   { name: "Visa Assistance", slug: "visa-assistance", description: "Expert visa guidance, document preparation, application support, and embassy appointment scheduling", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "license", "references"], priceRange: { min: 75, max: 800 }, sortOrder: 16 , commissionBandKey: "moderate" },
-  
-  // Experience-specific service bundles
-  { name: "Travel Services", slug: "services-travel", description: "Travel insurance, visa assistance, guides, translation, photography for travelers", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 50, max: 500 }, sortOrder: 20 , commissionBandKey: "moderate" },
-  { name: "Wedding Services", slug: "services-wedding", description: "Planners, coordinators, officiants, rentals, beauty, transportation for weddings", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["portfolio", "insurance", "license"], priceRange: { min: 200, max: 5000 }, sortOrder: 21 , commissionBandKey: "limited" },
-  { name: "Proposal Services", slug: "services-proposal", description: "Planners, musicians, lighting, signage, transportation for proposals", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["portfolio", "insurance"], priceRange: { min: 100, max: 2000 }, sortOrder: 22 , commissionBandKey: "limited" },
-  { name: "Birthday Services", slug: "services-birthday", description: "Planners, performers, face painters, balloon artists, rentals for parties", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 50, max: 1000 }, sortOrder: 23 , commissionBandKey: "limited" },
-  { name: "Trip Services", slug: "services-trip", description: "Guides, photographers, transportation, concierge for group trips", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 75, max: 800 }, sortOrder: 24 , commissionBandKey: "moderate" },
-  { name: "Romance Services", slug: "services-romance", description: "Photographers, musicians, transportation, flowers, gifts for romantic occasions", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 50, max: 500 }, sortOrder: 25 , commissionBandKey: "limited" },
-  { name: "Corporate Services", slug: "services-corporate", description: "Registration, transportation, swag, speakers, A/V support for corporate events", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 5000 }, sortOrder: 26 , commissionBandKey: "limited" },
-  { name: "Retreat Services", slug: "services-retreat", description: "Facilitators, instructors, transportation, wellness coordinators for retreats", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["certification", "insurance"], priceRange: { min: 100, max: 1500 }, sortOrder: 27 , commissionBandKey: "limited" },
-  { name: "Event Services", slug: "services-event", description: "Photographers, transportation, coordinators, rentals for general events", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 75, max: 1000 }, sortOrder: 28 , commissionBandKey: "limited" },
-  { name: "Party Services", slug: "services-party", description: "Photographers, rentals, coordinators, DJs, performers for parties", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 50, max: 800 }, sortOrder: 29 , commissionBandKey: "limited" },
+
+  // ─── RETIRED (ledger 2026-09-04-taxonomy-reconcile) ─────────────────────────────────────────
+  // Ten "Experience-specific service bundle" rows lived here — services-travel / -wedding /
+  // -proposal / -birthday / -trip / -romance / -corporate / -retreat / -event / -party. They are
+  // NOT categories and were never reachable as such:
+  //
+  //   • They carried NO `categoryKey`, and every offering-driven reader joins on that key —
+  //     service_offering_types.category_key (the provider offering picker's group headers,
+  //     ServiceForm.tsx), /api/service-categories/provider-counts, and the /earn role partition
+  //     (client/src/lib/earn-roles.ts). A key-less row can never be the target of an offering,
+  //     so no offering could ever point at one and no picker could ever show one.
+  //   • Their slugs are already spoken for in a DIFFERENT namespace: `servicesCategoryMapping`
+  //     in shared/constants/providerCategories.ts uses "services-wedding" et al. as BUNDLE KEYS
+  //     that FAN OUT to real discipline slugs (`primarySlugs`: photography-videography,
+  //     beauty-styling, events-celebrations, …). The bundle is the thing; the category row behind
+  //     it was a namespace collision that made a dead taxonomy look live.
+  //
+  // Seeding them therefore created rows that only a raw category <Select> could reach and that no
+  // offering, picker group, provider count or /earn card could. Removing them here stops new rows
+  // being born; rows already on disk are left INTACT and still resolve for anything pointing at
+  // them (provider_services.category_id is ON DELETE SET NULL — deleting would strand data, so
+  // nothing is deleted). `scripts/check-category-reachability.cjs` fails CI if a key-less or
+  // bundle-key-colliding category is seeded again.
 ];
 
 export async function seedCategories(): Promise<{ created: number; existing: number }> {
