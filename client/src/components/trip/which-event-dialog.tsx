@@ -8,7 +8,7 @@
  * makes — whether to ask at all, what each row may say, what the confirm sends — lives in
  * `@/lib/which-event`, so it is testable without a DOM and cannot be restated here (§18 rule 1).
  *
- * TWO THINGS THE RATIFIED MOCK DRAWS THAT THIS DELIBERATELY DOES NOT BUILD:
+ * ONE THING THE RATIFIED MOCK DRAWS THAT THIS DELIBERATELY DOES NOT BUILD:
  *
  *  - **CLOCK TIMES ("Fri 19:00").** They do not exist. `user_experiences.event_date` is a DATE
  *    column and there is no time-of-day column anywhere on the row (`shared/schema.ts`), so a
@@ -16,12 +16,17 @@
  *    event's date when set and its place when set — `eventMetaLine`, the same derivation the
  *    slip's event heading uses — and nothing else.
  *
- *  - **A "suggested for florists" HINT.** That implies a mapping from a service's category to
- *    the event it belongs to, and **no such mapping exists in this codebase**: the column that
- *    would carry it (`experience_types.roles_needed`) is absent from the repo and HELD pending
- *    decision-maker ratification. Inventing one — keyword-matching a category against an event
- *    title — would be the platform claiming knowledge it does not have. So no row is marked,
- *    and no row is pre-selected on a guess.
+ * AND ONE IT NOW DOES (ledger `2026-09-04-which-event-hint`; migration 280, Locked Decision 31):
+ *
+ *  - **THE "suggested for florists" HINT.** This shipped blank because no mapping existed from a
+ *    listing's category to the events that want it. `experience_types.roles_needed` is that
+ *    mapping, and it now rides each event row on the wire, so a row can be marked from the
+ *    SERVER's own list. The decision is `hintForEvent` in `@/lib/which-event` — this component
+ *    only renders what that returns and never compares a key itself (§18 rule 1). It is a MARK,
+ *    not a choice: no row is pre-selected, the confirm stays disabled until the traveler clicks,
+ *    and a marked row is reordered by nothing. An event with no roles, a listing with no
+ *    category, or no match at all draws no hint and says nothing (§13) — there is no "not
+ *    suggested" and no argument with a traveler who files a florist under the brunch.
  *
  * The subject card is passed in by the caller as a title and an already-composed meta line: this
  * component never reaches for a listing's fields itself, so it cannot decide to print something
@@ -39,6 +44,7 @@ import {
 import { Loader2 } from "lucide-react";
 import {
   findWhichEventChoice,
+  hintForEvent,
   whichEventChoices,
   whichEventCtaLabel,
   INITIAL_WHICH_EVENT_SELECTION,
@@ -61,6 +67,13 @@ export interface WhichEventPickerProps {
   subject: WhichEventSubject;
   /** The plan's events, already filtered to the plan and in the SERVER's order (never re-sorted). */
   events: readonly PlanEvent[];
+  /**
+   * The LISTING's `service_categories.category_key`, straight off the server's read of the row —
+   * the one input to the role hint (ledger `2026-09-04-which-event-hint`). Optional and often
+   * absent: a listing whose category predates the key column has none, and then no row is marked.
+   * This component never derives it from a name or a description.
+   */
+  serviceCategoryKey?: string | null;
   /** True while the add is in flight. */
   submitting?: boolean;
   /**
@@ -78,6 +91,7 @@ export interface WhichEventPickerProps {
 export function WhichEventPicker({
   subject,
   events,
+  serviceCategoryKey,
   submitting,
   onConfirm,
   onCancel,
@@ -132,6 +146,8 @@ export function WhichEventPicker({
           <WhichEventRow
             key={choice.key}
             choice={choice}
+            // The decision is made ONCE, in the pure module. This component compares no keys.
+            hint={hintForEvent(choice.event, serviceCategoryKey)}
             selected={selectedKey === choice.key}
             onSelect={() => setSelectedKey(choice.key)}
           />
@@ -179,13 +195,18 @@ export function WhichEventPicker({
  */
 function WhichEventRow({
   choice,
+  hint,
   selected,
   onSelect,
 }: {
   choice: WhichEventChoice;
+  /** `hintForEvent`'s answer for THIS row and the listing being added. `null` = say nothing. */
+  hint: string | null;
   selected: boolean;
   onSelect: () => void;
 }) {
+  // A hint is not a name and not a date: a row carrying only a hint is still a BARE row, and still
+  // gets the description of the control rather than borrowing the hint as its label.
   const bare = !choice.label && !choice.meta;
   return (
     <button
@@ -217,6 +238,22 @@ function WhichEventRow({
       {choice.label ? (
         <span className="text-[14px] font-medium" style={{ color: "var(--earn-ink)" }}>
           {choice.label}
+        </span>
+      ) : null}
+      {/*
+        The artboard's mark: mono, small caps-by-transform, teal — beside the event's name and
+        clearly not part of it. Rendered ONLY when `hintForEvent` returned something, so an event
+        with no roles, a listing with no category, or a plain non-match draws nothing at all.
+        It is not a button, not a link and not focusable: clicking it selects the row like any
+        other part of the row, because the mark is information, not a second control.
+      */}
+      {hint ? (
+        <span
+          className="font-mono text-[10px] uppercase tracking-[0.06em]"
+          style={{ color: "var(--earn-teal-ink)" }}
+          data-testid={`which-event-hint-${choice.key}`}
+        >
+          {hint}
         </span>
       ) : null}
       {choice.meta ? (

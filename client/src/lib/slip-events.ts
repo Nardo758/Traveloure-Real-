@@ -49,6 +49,17 @@ export interface PlanEvent {
   location?: string | null;
   guestCount?: number | null;
   experienceTypeId?: string | null;
+  /**
+   * `experience_types.roles_needed` for the occasion this event names — the disciplines it
+   * typically hires, as `service_categories.category_key` values (migration 280, CLAUDE.md Locked
+   * Decision 31, ledger `2026-09-04-which-event-hint`). The SERVER resolves it and ships it on the
+   * row; no client reader may reconstruct it from an occasion slug, a title or a keyword.
+   *
+   * `null` / absent = NOT SET, or no resolvable occasion behind the event ⇒ the reader says NOTHING
+   * about roles for this event. It is never read as "this event needs nobody" (§13), and it is
+   * never a supply claim: it names disciplines, not providers.
+   */
+  rolesNeeded?: readonly string[] | null;
 }
 
 /** The structural subset of a plan item this module reads (kept import-free so the test is pure). */
