@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { updateTripContext, useTripContext } from "@/lib/trip-context";
-import { apiRequest } from "@/lib/queryClient";
+import { mintTripSlip } from "@/lib/trip-slip";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -191,36 +191,28 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createDraftTrip = useCallback(async () => {
-    const destination = myselfDestination.trim();
-    if (!destination) {
-      setCreateError("Where are you going? A destination starts the plan.");
-      return;
-    }
-    // trips.startDate/endDate are NOT NULL — the schema demands real dates, so the
-    // step asks for them rather than inventing any (§13).
-    if (!myselfStart || !myselfEnd) {
-      setCreateError("Pick your dates — the plan needs a start and an end.");
-      return;
-    }
-    if (new Date(myselfEnd) < new Date(myselfStart)) {
-      setCreateError("The end date can't be before the start date.");
-      return;
-    }
+    // The destination/date checks and the mint body both live in `@/lib/trip-slip` —
+    // `mintTripSlip` is THE traveler-owned client mint door, shared with the template page's
+    // expert-request precondition (Locked Decision 32 lane (a), ledger
+    // `2026-09-04-template-inquiry-slip`). Duplicating either here is the derivation-drift
+    // class §18 rule 1 names; in particular the §13 "dates are asked for, never invented"
+    // rule must have exactly one author. `mintTripSlip` refuses before it calls the server,
+    // so a short answer still costs no request.
     setCreating(true);
     setCreateError(null);
     try {
-      const res = await apiRequest("POST", "/api/trips", {
-        title: `${destination.split(",")[0].trim()} trip`,
-        destination,
+      const outcome = await mintTripSlip({
+        destination: myselfDestination,
         startDate: myselfStart,
         endDate: myselfEnd,
       });
-      const trip = await res.json();
+      if (!outcome.ok) {
+        setCreateError(outcome.message);
+        return;
+      }
       setChooserOpen(false);
       setStep("choose");
-      setLocation(`/plans/${trip.id}`);
-    } catch (err: any) {
-      setCreateError(err?.message || "Couldn't create the trip. Please try again.");
+      setLocation(`/plans/${outcome.tripId}`);
     } finally {
       setCreating(false);
     }
