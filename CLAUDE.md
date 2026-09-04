@@ -426,6 +426,70 @@ This document captures architectural decisions to maintain consistency across co
     shape — no new route, no second admission rail); `travelers` stays DERIVED from the pair by one
     `partyTotal`, so the Trip Strip's chip and the columns cannot disagree.
 
+34. **A PLAN'S STOPS ARE ORDERED CHILD ROWS, AND `trips.destination` IS THEIR POSITION-0 MIRROR
+    (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-stops-and-event-time`; migration
+    281).** `trip_destinations` is the child-row home for a plan's ordered stops, on the
+    `service_route_points` pattern (ruling 22, itself the `dmo_extracted_places` pattern): FK →
+    `trips(id)` **ON DELETE CASCADE**, `UNIQUE (trip_id, "position")`, an index on `trip_id`, and
+    **table + UNIQUE + index all declared in `shared/schema.ts`** (deploy-push durability rule — an
+    object that file does not declare is dropped at publish and never recreated). Additive, **NO DB
+    CHECK** (publish-trap posture, migrations 181/195/273/275/276/277/279/280); shape is
+    app-enforced by a pick-based allowlist (§19).
+    **`trips.destination` STAYS and is NOT deprecated.** It is the single string every existing
+    reader uses and it stays NOT NULL, so it is the **POSITION-0 MIRROR** of the list: when the list
+    is written, position 0's `name` IS `trips.destination`. Positions are **0-based** here (unlike
+    route points' 1-based pins) precisely because of that. The mirror is enforced in the **ONE
+    writer** and deliberately **NOT by a trigger** — a trigger would be a second author of
+    `trips.destination` (§18 rule 1) and could not re-run the `market_slug`/`timezone` derivations
+    that hang off it (ruling 30), which is why the mirror is written **through
+    `storage.updateTrip`**.
+    **ONE WRITER, OWNER-GATED, REPLACE-LIST.** `PUT /api/trips/:tripId/destinations` →
+    `server/services/trip-destinations.service.ts` `replaceTripDestinations`. Owner-gated
+    (`verifyTripOwnership`, fail-closed) and deliberately **NOT the §12 advisor posture**: stops are
+    the plan's IDENTITY — they move its market, its zone and its headline destination — not its
+    contents. Positions are derived server-side from array order; `position`/`id`/`tripId` are not
+    in the allowlist, which is `.strict()` and **refuses** an unknown key rather than silently
+    stripping it. Cap 20. Child rows replace in ONE transaction under a `FOR UPDATE` lock on the
+    parent (the route-points race).
+    **§13 — THE ABSENCES ARE ANSWERS.** **No rows = NOT CAPTURED**: there is no backfill
+    (manufacturing a position-0 row for every legacy trip would turn "we never asked" into "the
+    traveler said one stop"), and every reader falls back to `trips.destination` **explicitly and
+    says so** — never "this plan has nowhere to go". **lat/lng NULL = UNLOCATED**: the stop stays
+    visibly flagged and is never guessed onto a map (no city-center fallback, no geocode-on-read); a
+    HALF coordinate is refused. **An EMPTY list is a 400** — `trips.destination` is NOT NULL, so zero
+    stops is not a state the schema can hold. **READ EXPOSURE ONLY in this lane:**
+    `GET /api/trips/:id` (the `trips.routes.ts` copy — the monolith's inline twin was already
+    removed and is annotated so it is not re-added) and the plancard payload each carry
+    `destinations: [...]` behind their existing gates. The stop-list UI is a separate lane.
+
+35. **AN EVENT CARRIES ITS OWN WALL-CLOCK TIME, AND THE PLAN'S MAIN MOMENT STAYS AN ANCHOR
+    (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-stops-and-event-time`; migration
+    282).** An event inside a plan is one `user_experiences` row (ruling 29). It already carried
+    `event_date` — the DAY — and nothing at all for the TIME OF DAY, so "ceremony at 15:00" and
+    "tee time 07:40" had no column and the flow never asked. `user_experiences.start_time` is
+    additive nullable `varchar(5)`, **"HH:MM" WALL-CLOCK, stored verbatim and NEVER converted** —
+    the same posture `itinerary_items.start_time`/`end_time` take. The zone it is **read in** is the
+    plan's `trips.timezone` (ruling 30); where that is NULL the time is honestly zone-less and a
+    reader keeps its zone-free behaviour rather than substituting UTC or the server's zone (§13).
+    **NO DEFAULT, NO DB CHECK** (publish-trap posture), **declared in `shared/schema.ts`**.
+    **NULL = NOT SET, and is NEVER rendered as midnight or "all day"** — both are claims nobody
+    made; a reader shows the day and no time.
+    **IT IS NOT THE PLAN'S MAIN MOMENT.** That stays a `temporal_anchors` row written by the plan
+    modal's existing path — ONE anchor for the plan's centre of gravity. This is the start time of
+    ONE event among the several a plan can hold. Do not merge or re-point the two.
+    **ADMISSION IS THE EXISTING ALLOWLIST, EXTENDED BY ONE FIELD (§19).** `userExperienceBodySchema`
+    (`content.routes.ts`) is already `.pick()`-based and already shared by `POST /api/user-experiences`
+    and its PATCH; `startTime` is added to **that** pick rather than given a second admission rail.
+    The format authority is `userExperienceStartTimeSchema` in `shared/schema.ts`, stated ONCE and
+    `.extend()`ed onto the field — a re-stated regex at the route is the drift §18 rule 1 names. It
+    is a **SHAPE check only**: `^\d{2}:\d{2}$`, and **range is deliberately NOT validated** ("25:00"
+    parses) because nothing reads or does arithmetic on the value yet and a range rule invented by
+    an admission schema becomes a second authority the day a real time model arrives. **READ
+    EXPOSURE ONLY:** `GET /api/user-experiences` (full-row select — it rides automatically) and the
+    plancard `events` array carry it as-is. The `.ics` export is **untouched** in this lane; events
+    are not exported today, and if they ever are, the floating-time posture holds until a zone is
+    captured.
+
 36. **Planner roles live in the EXPERT catalog, and the Event Planner track is partitioned by an
     explicit KEY LIST on both sides (decision-maker ratified Sep 4, 2026 — ledger
     `2026-09-04-earn-planner-roles`; migration 283).** The /earn Event Planner card listed
