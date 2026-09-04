@@ -9,6 +9,9 @@
  *     FINISH of the last visible step, not its first screen: a door that carries no
  *     occasion opens on step 1 (the real `experience_types` tile grid), and the
  *     finish CTAs are unreachable until the traveler is on the last step.
+ *  2b. Step 2's shape follows the occasion's `default_stops`: the ordered-stop control appears
+ *     for a many-stop occasion and is ABSENT (not disabled) for a one-stop one
+ *     (ledger 2026-09-04-plan-stops-ui).
  *  3. The branches, unchanged downstream: AI opens the existing EnhancedPlanningModal;
  *     "local" navigates to /experts; "myself" gates a GUEST at sign-in (the slip
  *     route's existing identity gate) and, for an AUTHED user, mints the draft trip
@@ -81,6 +84,29 @@ test.describe("Single planning entry — the one modal", () => {
     await expect(page.getByTestId("planning-option-local")).toBeVisible();
     // PLUS_SALES_ENABLED defaults off — the occasion branch is hidden, never teased.
     await expect(page.getByTestId("planning-option-occasion")).toHaveCount(0);
+  });
+
+  /**
+   * Step 2's shape is the occasion's own `default_stops` (ledger `2026-09-04-plan-stops-ui`,
+   * migration 276 read for the first time). Both tiles here are seeded rows with opposite values:
+   * `travel` is "many", `wedding` is "one" (server/seeds/experience-template-tabs.seed.ts). The
+   * control is OMITTED under "one", never rendered disabled — a disabled affordance still promises
+   * a capability the occasion does not have.
+   */
+  test("step 2 offers stops for a many-stop occasion and NOT for a one-stop one", async ({ page }) => {
+    await openModalFromHero(page);
+    await page.getByTestId("option-occasion-travel").click();
+    await page.getByTestId("plan-step-where").click();
+    await expect(page.getByTestId("input-etp-destination")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("button-plan-add-stop")).toBeVisible();
+
+    // Back to step 1 through the occasion pill, and onto an occasion whose row says ONE stop.
+    await page.getByTestId("plan-modal-occasion-pill").click();
+    await page.getByTestId("option-occasion-wedding").click();
+    await page.getByTestId("plan-step-where").click();
+    await expect(page.getByTestId("input-etp-destination")).toBeVisible();
+    await expect(page.getByTestId("button-plan-add-stop")).toHaveCount(0);
+    await expect(page.getByTestId("plan-stops-list")).toHaveCount(0);
   });
 
   test("AI branch opens the existing planning modal (guest sees its own sign-in gate)", async ({ page }) => {

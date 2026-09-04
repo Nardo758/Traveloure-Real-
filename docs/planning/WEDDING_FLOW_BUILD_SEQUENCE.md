@@ -119,11 +119,13 @@ Guarded by §3 below, or it regresses the first time someone adds a page.
 Sized once the audits exist. Anything Phase A reports as a divergence becomes a lane here, in flow
 order. Do not pre-size this phase — that is guessing.
 
-### Phase E — blocked, do not start
+### Phase E — unblocked; the stop half is built
 
-`Mismatch` "add as a stop" and the `TravelWhere` stop list (need `trip_destinations`);
-`TravelEvents` tee times and any clock time (need a time-of-day column). Both need ratification
-first. **A schema decision is the decision-maker's** (CLAUDE.md Coordination Prevention).
+`Mismatch` "add as a stop" and the `TravelWhere` stop list are **built** (ledger
+`2026-09-04-plan-stops-ui`) on the `trip_destinations` table lane A landed. `TravelEvents` tee
+times and any clock time have their column (migration 282) and are **still to build**.
+**A schema decision is the decision-maker's** (CLAUDE.md Coordination Prevention) — both were
+ratified before either lane started.
 
 ---
 
@@ -168,18 +170,19 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 4 | `WhichEvent` role hint | C | todo | — (cleared by #744) |
 | 5 | `Guests` column-per-event | C | blocked | which event owns the guest list |
 | 6 | Phase A findings | D | todo | Phase A |
-| 7 | `Mismatch` "add as a stop" | E | todo (schema landed) | — (cleared by migration 281) |
-| 8 | `TravelWhere` stop list | E | todo (schema landed) | — (cleared by migration 281) |
+| 7 | `Mismatch` "add as a stop" | E | built | — (ledger `2026-09-04-plan-stops-ui`) |
+| 8 | `TravelWhere` stop list | E | built | — (ledger `2026-09-04-plan-stops-ui`) |
 | 9 | `TravelEvents` tee times | E | todo (schema landed) | — (cleared by migration 282) |
 | 10 | Artboard rename (F1) | — | todo | rename is a decision, not a tidy-up |
 | 11 | Planner third door + nav Wedding CTA | D | built | — |
 | 12 | Landing Wedding moment + "Planning your own?" callout | D | built | renders only once Kyoto has an attributed real photo (photo gate) |
-| 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops HELD; Step4Variants fields not built |
+| 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops built by row 8; Step4Variants fields not built |
 | 14 | `trip_destinations` + `user_experiences.start_time` (schema + rails) | E | built | UI in follow-up lanes |
 
-Already `built`: `ModalEvents`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`
-(minus "add as a stop"), `OccasionRow`. Already `ruled`: `SlipProposal`.
+Already `built`: `ModalEvents`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`,
+`ModalWhere`, `TravelWhere`, `OccasionRow`. Already `ruled`: `SlipProposal`.
 
-Decisions needed before their lanes can start: **which event owns a plan's guest list** (row 5),
-**ordered `trip_destinations`** (rows 7–8), **a time-of-day column** (row 9), **the artboard rename**
-(row 10).
+Decisions needed before their lanes can start: **which event owns a plan's guest list** (row 5) and
+**the artboard rename** (row 10). Ordered stops (rows 7–8) and the time-of-day column (row 9) were
+ratified by `2026-09-04-stops-and-event-time`; rows 7–8 are built, row 9 is open work, not a
+decision.

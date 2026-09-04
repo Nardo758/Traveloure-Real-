@@ -461,6 +461,12 @@ This document captures architectural decisions to maintain consistency across co
     `GET /api/trips/:id` (the `trips.routes.ts` copy — the monolith's inline twin was already
     removed and is annotated so it is not re-added) and the plancard payload each carry
     `destinations: [...]` behind their existing gates. The stop-list UI is a separate lane.
+    **The client rail landed with ledger `2026-09-04-plan-stops-ui`:** `default_stops` finally has
+    a reader (`stopsShape`, NULL ⇒ `one`), the plan modal's step 2 is that ordered list under
+    `many` (row 1 IS the destination field), the location-mismatch alert compares EVERY stop and
+    can add the listing's city as one, and both surfaces write through the single client writer
+    `client/src/lib/plan-stops-writer.ts` — never a second rail, and never a list the caller did
+    not first read.
 
 35. **AN EVENT CARRIES ITS OWN WALL-CLOCK TIME, AND THE PLAN'S MAIN MOMENT STAYS AN ANCHOR
     (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-stops-and-event-time`; migration

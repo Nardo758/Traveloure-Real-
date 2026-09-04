@@ -10,6 +10,9 @@ import { storage } from "../storage";
 import { chatStorage } from "../replit_integrations/chat/storage";
 import { eventTypeEnum } from "@shared/schema";
 import { aiRateLimit } from "../middleware/rateLimiter";
+// The stop cap has ONE definition (§18 rule 1). Imported from the DB-free half of the trip
+// destinations service so this route pulls in no database at import time.
+import { MAX_TRIP_DESTINATIONS } from "../services/trip-destinations.pure";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
 
 /**
@@ -111,6 +114,30 @@ const tripContextSchema = z
     // `2026-09-04-one-modal-many-doors`). Same posture as its sibling above.
     mainMomentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     pendingEventTitles: z.array(str(120)).max(20).optional(),
+    // Ledger `2026-09-04-plan-stops-ui` — the plan's ORDERED STOPS while no trip row exists yet.
+    // Same posture as the two fields above: ordinary planning content the session user authored
+    // about their own draft (a place name they typed and, only if they explicitly placed one, a
+    // coordinate) — no amount, no identity, no rate, so §14/§18/§19 have nothing to strip. Named
+    // explicitly on this hand-written ALLOWLIST, and the inner object is `.strip()`ped by default
+    // exactly like the blob, so a key nobody names here does not persist.
+    //
+    // The CAP IS THE SERVER'S OWN (`MAX_TRIP_DESTINATIONS`), imported rather than restated: this
+    // pen is drained into `PUT /api/trips/:tripId/destinations`, and a pen that could hold more
+    // than that route accepts would be a second, quietly disagreeing limit (§18 rule 1). An empty
+    // array is the CLEARED marker (the client merges and cannot delete a key) — never "this plan
+    // has no stops", which `trips.destination` being NOT NULL makes impossible anyway (§13).
+    stops: z
+      .array(
+        z.object({
+          name: str(255),
+          city: str(255).optional(),
+          country: str(255).optional(),
+          lat: z.number().min(-90).max(90).optional(),
+          lng: z.number().min(-180).max(180).optional(),
+        }),
+      )
+      .max(MAX_TRIP_DESTINATIONS)
+      .optional(),
     contextFields: z.record(z.unknown()).optional(),
     selectedServices: z
       .array(
