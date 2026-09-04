@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 
 interface ProviderApplication {
@@ -176,6 +177,16 @@ export default function AdminProviders() {
         description: variables.status === "approved"
           ? "The provider is now active on the platform."
           : "The application has been rejected.",
+      });
+    },
+    // ONE account, ONE earning role (ledger `2026-09-04-earn-role-safety`): approving an applicant
+    // who already holds an expert-family or EA role is REFUSED with a 409 naming that role. Show
+    // the server's own message — it is the only place that knows which role blocks the approval.
+    onError: (error: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Action failed",
+        description: parseApiErrorMessage(error, "Failed to update application status."),
       });
     },
   });
