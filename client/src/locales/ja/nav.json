@@ -36,6 +36,9 @@
     "celebrations": "お祝い",
     "lifeMilestones": "人生の節目",
     "groupEvents": "グループイベント",
+    "trips": "旅行",
+    "nightsOutAndGetaways": "お出かけ・小旅行",
+    "work": "仕事",
     "tools": "ツール",
     "explore": "見つける"
   },
@@ -63,6 +66,8 @@
     "boysTrip": "男旅",
     "girlsTrip": "女子旅",
     "reunions": "同窓会・再会",
+    "honeymoon": "新婚旅行",
+    "anniversaryTrip": "記念日の旅",
     "aiPlanPlanner": "AI プランナー",
     "visaHelp": "ビザのサポート",
     "liveIntel": "現地のリアルタイム情報",
