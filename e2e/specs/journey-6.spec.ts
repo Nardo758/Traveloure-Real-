@@ -79,6 +79,13 @@ test.describe("Journey 6 — Transport Booking", () => {
     // The seed + click endpoints are isAuthenticated (server/routes/transport-hub.routes.ts).
     // Authenticate first, then drive them through page.request so the session cookie rides
     // along — a bare `request` fixture carries no session and the server correctly 401s.
+    //
+    // The seed endpoint is ALSO refused (503) on a production-strict boot since audit finding 11
+    // (`server/middleware/test-only-endpoint.ts`). No change is needed here: this suite targets
+    // STAGING, which must run with `ALLOW_TEST_ACCOUNTS=1` and `ENVIRONMENT` unset for
+    // `loginAsTestAccount` above to work at all (docs/STAGING.md §2.2) — the same predicate that
+    // enables the seed endpoint. If this line ever 503s, the target is a production boot and the
+    // login on the line above could not have succeeded either.
     await loginAsTestAccount(page, "traveler");
 
     // Create a test transport booking option via seed endpoint
