@@ -113,6 +113,12 @@ const tripContextSchema = z
     // The main moment's DATE on a range-shaped occasion (ledger
     // `2026-09-04-one-modal-many-doors`). Same posture as its sibling above.
     mainMomentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    /**
+     * THE LEGACY PEN SPELLING — bare titles, all it could hold before migration 282 gave an event
+     * a time. Still admitted so a pen written before the `2026-09-04-event-time-ui` deploy round
+     * trips rather than being stripped out from under a traveler mid-flight; the client reads both
+     * and writes only the rich shape below, and the drain clears both together.
+     */
     pendingEventTitles: z.array(str(120)).max(20).optional(),
     // Ledger `2026-09-04-plan-stops-ui` — the plan's ORDERED STOPS while no trip row exists yet.
     // Same posture as the two fields above: ordinary planning content the session user authored
@@ -137,6 +143,33 @@ const tripContextSchema = z
         }),
       )
       .max(MAX_TRIP_DESTINATIONS)
+      .optional(),
+    /**
+     * Ledger `2026-09-04-event-time-ui` — step 5's ratified table (Event · Day · Time · Place),
+     * held while NO trip row exists. Same posture as its two siblings above: ordinary planning
+     * content authored by the session user about their own draft — no amount, no identity, no
+     * rate — so §14/§18/§19 have nothing to strip, and it is named EXPLICITLY on this hand-written
+     * allowlist because `.strip()` below drops anything unlisted.
+     *
+     * The two shapes are the SAME shapes their destinations enforce: `eventDate` is the
+     * `user_experiences.event_date` calendar day, and `startTime` is the "HH:MM" wall clock
+     * `userExperienceStartTimeSchema` (`shared/schema.ts`) is the format authority for — a shape
+     * check only, never a range (a range rule invented here would be a second authority). `title`
+     * is the only required field: a row with no title is not an event. An OMITTED day/time/place
+     * means the traveler did not answer, and NOTHING here fills one in — the plan's own day and
+     * destination are inherited at CREATE, in the one place both create rails share
+     * (`planEventRowValues`, `shared/plan-events.ts`), never written into the pen as if chosen.
+     */
+    pendingEvents: z
+      .array(
+        z.object({
+          title: str(120),
+          eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+          location: str(255).optional(),
+        }),
+      )
+      .max(20)
       .optional(),
     contextFields: z.record(z.unknown()).optional(),
     selectedServices: z

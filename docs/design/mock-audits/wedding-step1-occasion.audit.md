@@ -5,7 +5,7 @@ you planning?" with a **5-item step rail** (Occasion | Where | When | Who | What
 Occasion active) and a grid of occasion tiles: Travel Planning, **Wedding**, Proposal, Honeymoon,
 Anniversary, Birthday Party, Corporate Retreat, Girls Trip. Footer: "Or start from a Moment on the
 home page — the occasion arrives already set." / "Pick one to continue." / "Next: Where →".
-**Status:** Read this brief together with ModalWhere / Step3When / Step3Day / Step4Who /
+**Status:** Read this brief together with Step2Where (formerly ModalWhere) / Step3When / Step3Day / Step4Who /
 Step4Variants — all six describe **one stepped wizard** (Occasion→Where→When→Who→What's-happening,
 with a persistent step rail and "Next: X" progression) that **does not exist anywhere in the
 client** in this shape. Two separate, unconnected live components each implement a *fragment* of

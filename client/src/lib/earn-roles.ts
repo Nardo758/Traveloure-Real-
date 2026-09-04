@@ -10,9 +10,23 @@
  *   • Provider categories partition via complement — a category is
  *     event_planner iff it's in EVENT_CATEGORY_KEYS, otherwise
  *     service_provider. No category can be orphaned or double-shown.
- *   • Expert tiers partition the same way — a tier is trip_planner iff in
- *     TRIP_PLANNER_TIERS, otherwise local_expert. LOCAL_EXPERT_TIERS is
- *     derived as the complement, never hand-listed.
+ *   • Expert offerings partition in TWO steps (ledger
+ *     `2026-09-04-earn-planner-roles`, CLAUDE.md Locked Decision 36): an
+ *     offering is event_planner iff its KEY is in EVENT_PLANNER_OFFERING_KEYS
+ *     — checked FIRST, and by key rather than by tier — otherwise its TIER
+ *     decides, trip_planner iff in TRIP_PLANNER_TIERS and local_expert
+ *     otherwise. LOCAL_EXPERT_TIERS is derived as the complement, never
+ *     hand-listed.
+ *
+ * WHY THE EXPERT SIDE IS KEYED, NOT TIERED. The six planner rows
+ * (migration 283) live in the EXISTING `coordination` tier: that column
+ * carries a DB CHECK over five values and a sixth would be the publish-time
+ * drizzle-push failure the Coordination Prevention rules warn about. A tier
+ * therefore cannot separate a wedding planner from a Reservation Lifeline,
+ * and an explicit key list is what does. The Event Planner card is the one
+ * card fed by BOTH catalogs — provider categories for the event VENDORS,
+ * expert keys for the event PLANNERS — and they are still never merged (§4).
+ *
  * The companion test (__tests__/earn-roles.test.ts) asserts the partition
  * properties — the brief's hard gate.
  *
@@ -57,11 +71,46 @@ export const EVENT_CATEGORY_KEYS = [
 ] as const;
 
 /**
- * Expert tiers that belong to the Trip Planner card (planning the trip,
- * done-for-you coordination). The remaining tiers — advisory, live_support,
- * specialized — belong to Local Expert (sell what you know, be reachable).
+ * Expert offering KEYS that belong to the Event Planner card, checked BEFORE
+ * the tier mapping below (ledger `2026-09-04-earn-planner-roles`). These are
+ * the six `expert_offering_types` rows migration 283 seeds into the EXISTING
+ * `coordination` tier — a planner who RUNS the event, as distinct from the
+ * event VENDORS the same card lists out of the provider catalog.
+ *
+ * This list is the partition rule, and `scripts/check-earn-planner-keys.cjs`
+ * fails CI if it and migration 283 ever disagree in either direction.
+ *
+ * Keys are UNSUFFIXED on purpose: `expert_offering_types` and
+ * `service_offering_types` are separate tables with separate
+ * UNIQUE(offering_type_key) constraints, so `proposal_planner`,
+ * `party_planner` and `date_night_designer` exist in both — and because
+ * /start/events forwards `?offeringTypeKey=` to BOTH doors, a shared key
+ * resolves in whichever catalog the chosen door reads.
  */
-export const TRIP_PLANNER_TIERS: readonly ExpertTier[] = ["planning", "coordination"] as const;
+export const EVENT_PLANNER_OFFERING_KEYS = [
+  "wedding_planner",
+  "wedding_day_of_coordinator",
+  "proposal_planner",
+  "party_planner",
+  "corporate_event_coordinator",
+  "date_night_designer",
+] as const;
+export type EventPlannerOfferingKey = (typeof EVENT_PLANNER_OFFERING_KEYS)[number];
+
+/**
+ * Expert tiers that belong to the Trip Planner card (planning the trip,
+ * done-for-you coordination, and the specialist consults). The remaining
+ * tiers — advisory, live_support — belong to Local Expert (sell what you
+ * know, be reachable).
+ *
+ * `specialized` moved here by the same ruling: relocation consults, pet-travel
+ * planning, content-creator location scouting and corporate/incentive advice
+ * are paid planning engagements for people who may have no claim on the city
+ * at all, and routing them to Local Expert put them in front of a wizard whose
+ * required steps are a locality proof, a born-and-raised claim and a
+ * three-answer knowledge test. That was a funnel hole, not a taxonomy nicety.
+ */
+export const TRIP_PLANNER_TIERS: readonly ExpertTier[] = ["planning", "coordination", "specialized"] as const;
 
 /** Derived complement — never hand-listed, so the partition cannot drift. */
 export const LOCAL_EXPERT_TIERS: readonly ExpertTier[] = EXPERT_TIERS.filter(
@@ -139,7 +188,30 @@ export function roleForProviderCategory(categoryKey: string): RoleKey {
     : "service_provider";
 }
 
-/** Total function: every expert tier resolves to exactly one role. */
+/** True iff this expert-catalog key is one of the six planner roles (migration 283). */
+export function isEventPlannerOfferingKey(offeringTypeKey: string): boolean {
+  return (EVENT_PLANNER_OFFERING_KEYS as readonly string[]).includes(offeringTypeKey);
+}
+
+/**
+ * Total function: every expert offering resolves to exactly one role.
+ *
+ * The KEY is checked first and wins — the six planner keys sit inside the
+ * `coordination` tier, which otherwise maps to Trip Planner. Callers that hold
+ * only a tier (no key) may omit the second argument and get the tier answer,
+ * which is the pre-planner behaviour verbatim.
+ */
+export function roleForExpertOffering(tier: ExpertTier, offeringTypeKey?: string): RoleKey {
+  if (offeringTypeKey && isEventPlannerOfferingKey(offeringTypeKey)) return "event_planner";
+  return TRIP_PLANNER_TIERS.includes(tier) ? "trip_planner" : "local_expert";
+}
+
+/**
+ * Tier-only resolver, kept as the narrow question it always was: "which of the
+ * two REMOTE cards does this tier belong to?" It cannot answer event_planner
+ * (that is a key-level fact), so a caller holding a key must use
+ * `roleForExpertOffering` instead.
+ */
 export function roleForExpertTier(tier: ExpertTier): RoleKey {
   return TRIP_PLANNER_TIERS.includes(tier) ? "trip_planner" : "local_expert";
 }

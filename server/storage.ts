@@ -3,6 +3,12 @@ import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
+// THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
+// CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). `createTripExpertAdvisor` below is a
+// CALLER of it, not a second insert. (booking-actions.service imports storage DYNAMICALLY, so
+// this static edge introduces no import cycle.)
+import { upsertTripAdvisorRow } from "./services/booking-actions.service";
+import type { TripAdvisorRowStatus } from "./utils/trip-advisor-status";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
 import type { TripListItem } from "@shared/routes";
@@ -147,6 +153,7 @@ import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
 import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
 import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
 import { resolveOccasionTemplate } from "./services/occasion-templates";
+import { logger } from "./infrastructure/logger";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -1000,7 +1007,7 @@ export interface IStorage {
 
   deleteProviderBlackoutDate(id: string, providerId: string): Promise<boolean>;
 
-  createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any>;
+  createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: TripAdvisorRowStatus }): Promise<any>;
 
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
 
@@ -1680,6 +1687,15 @@ export class DatabaseStorage implements IStorage {
     form = stripFormVerificationFields(form as Record<string, unknown>) as typeof form;
     // Same clamp as createServiceProviderForm: offering_type_key FKs into expert_offering_types
     // (migration 107); an unknown key from a stale /earn link must not fail the application.
+    //
+    // THE CLAMP IS VISIBLE, NEVER SILENT (ledger `2026-09-04-earn-planner-roles`, CLAUDE.md
+    // Locked Decision 36). The NULL fallback stays — an applicant must not lose a signup because
+    // a link went stale — but a refused key is now logged with the row it was refused on, and the
+    // route derives an honest signal for the applicant by comparing what it sent against what
+    // came back (`offeringKeyUnrecorded`). Before this, a refused key and "picked no offering"
+    // were indistinguishable everywhere downstream, which is the §13 failure: an absent answer
+    // and a REFUSED answer are different facts.
+    const requestedOfferingTypeKey = form.offeringTypeKey ?? null;
     if (form.offeringTypeKey) {
       const [known] = await db.select({ k: expertOfferingTypes.offeringTypeKey })
         .from(expertOfferingTypes)
@@ -1687,6 +1703,12 @@ export class DatabaseStorage implements IStorage {
       if (!known) form = { ...form, offeringTypeKey: null };
     }
     const [newForm] = await db.insert(localExpertForms).values(form).returning();
+    if (requestedOfferingTypeKey && !newForm.offeringTypeKey) {
+      logger.warn(
+        { formId: newForm.id, rejectedOfferingTypeKey: requestedOfferingTypeKey, catalog: "expert_offering_types" },
+        "[expert-application] offering_type_key clamped to NULL — the key is not in the expert catalog (migration 107 FK). The applicant is told; nothing else records their choice.",
+      );
+    }
     return newForm;
   }
 
@@ -4008,7 +4030,18 @@ export class DatabaseStorage implements IStorage {
   async getUserExperiences(userId: string): Promise<UserExperience[]> {
     return await db.select().from(userExperiences)
       .where(eq(userExperiences.userId, userId))
-      .orderBy(sql`${userExperiences.eventDate} ASC NULLS LAST`, asc(userExperiences.createdAt));
+      .orderBy(
+        sql`${userExperiences.eventDate} ASC NULLS LAST`,
+        // Ledger `2026-09-04-event-time-ui` (migration 282). WITHIN a day, a plan reads forward by
+        // the clock — the ratified WhichEvent/TravelEvents artboards list the day's events in tee
+        // order, not in the order somebody happened to tick them. NULLS LAST for the same reason
+        // the date does it: an event with no time stated has not claimed a slot in the day's
+        // sequence, so it sorts after the ones that have, rather than jumping the queue on a NULL.
+        // It is a TIE-BREAK only — it can never reorder two different days — and `created_at ASC`
+        // still settles two events on the same day at the same time.
+        sql`${userExperiences.startTime} ASC NULLS LAST`,
+        asc(userExperiences.createdAt),
+      );
   }
 
   async getUserExperienceById(experienceId: string): Promise<UserExperience | null> {
@@ -4029,7 +4062,18 @@ export class DatabaseStorage implements IStorage {
   async getUserExperiencesByTrip(tripId: string): Promise<UserExperience[]> {
     return await db.select().from(userExperiences)
       .where(eq(userExperiences.tripId, tripId))
-      .orderBy(sql`${userExperiences.eventDate} ASC NULLS LAST`, asc(userExperiences.createdAt));
+      .orderBy(
+        sql`${userExperiences.eventDate} ASC NULLS LAST`,
+        // Ledger `2026-09-04-event-time-ui` (migration 282). WITHIN a day, a plan reads forward by
+        // the clock — the ratified WhichEvent/TravelEvents artboards list the day's events in tee
+        // order, not in the order somebody happened to tick them. NULLS LAST for the same reason
+        // the date does it: an event with no time stated has not claimed a slot in the day's
+        // sequence, so it sorts after the ones that have, rather than jumping the queue on a NULL.
+        // It is a TIE-BREAK only — it can never reorder two different days — and `created_at ASC`
+        // still settles two events on the same day at the same time.
+        sql`${userExperiences.startTime} ASC NULLS LAST`,
+        asc(userExperiences.createdAt),
+      );
   }
 
   async getUserExperience(id: string): Promise<UserExperience | undefined> {
@@ -6665,15 +6709,21 @@ export class DatabaseStorage implements IStorage {
     return isTripAdvisorWithWriteAccess(tripId, expertId);
   }
 
-  async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
-    const [created] = await db.insert(tripExpertAdvisors).values({
+  // ONE author (ledger `2026-09-04-advisor-row-one-author`, §18 rule 1). This used to be a bare
+  // INSERT with no conflict handling at all, so a second call for the same (trip, expert) pair
+  // threw 23505 — its one caller (the booking-accept bridge in `server/routes.ts`) guarded that
+  // with a check-then-insert, the TOCTOU shape §15 names. It now delegates to the shared upsert:
+  // the transition is the guard, and a status already at or above the requested one is preserved.
+  // `status` is still accepted from the caller and still defaults to `pending`; a value outside the
+  // §12 write vocabulary is a type error at every call site rather than a silent row.
+  async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: TripAdvisorRowStatus }): Promise<any> {
+    const { row } = await upsertTripAdvisorRow({
       tripId: data.tripId,
       localExpertId: data.localExpertId,
       status: data.status ?? "pending",
-      workspaceStatus: "draft",
-      message: data.message,
-    }).returning();
-    return created;
+      message: data.message ?? null,
+    });
+    return row;
   }
 
   async getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]> {

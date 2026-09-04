@@ -949,7 +949,12 @@ export default function ExpertsPage() {
             heading: "Are You an Event Planner?",
             body: "Plan weddings, proposals, and group celebrations. Join our network of specialist event planners and reach clients worldwide.",
             cta: "Become an Event Planner",
-            href: "/become-expert?type=event_planner",
+            // The single Event Planner door is /start/events (ledger `2026-09-04-wedding-entry-doors`;
+            // ratified again by `2026-09-04-earn-planner-roles`). This link used to jump the fork
+            // straight into the expert application — the one bypass left after the /earn card and
+            // the nav were unified — so an event VENDOR arriving here was pushed into the
+            // coordinator wizard with no chance to say which side of the event they are on.
+            href: "/start/events",
           },
           local_expert: {
             heading: "Are You a Local Expert?",

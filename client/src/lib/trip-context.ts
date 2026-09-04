@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 // Type only — the stop list's SHAPE has one definition (§18 rule 1), in the pure reducer module
 // that also owns its rules. Nothing is imported at runtime, so this adds no module to the graph.
 import type { PlanStopPayload } from "./plan-stops";
+import type { PlanEventDraft } from "@shared/plan-events";
 
 /**
  * TripContext — the single typed owner of the site-wide trip details blob.
@@ -87,11 +88,11 @@ export interface TripContext {
    */
   mainMomentDate?: string;
   /**
-   * The "What's happening" chips ticked before a trip row existed (step 5, migration 276
-   * `default_schedule`). Once `tripId` is bound each becomes ONE `user_experiences` row (an event
-   * inside the plan, Locked Decision 29) and this list is not used. **KNOWN GAP, stated rather
-   * than hidden (§13):** no trip-mint path drains this list today — see the note on
-   * `pendingEventTitles` in edit-trip-panel.tsx.
+   * THE LEGACY PEN — the "What's happening" chips as BARE TITLES, all this pen could hold before
+   * migration 282 gave an event a time of day. **Read for one release, never written again**
+   * (ledger `2026-09-04-event-time-ui`): a traveler who ticked chips before that deploy still has
+   * this key, and `readPendingEvents` (`@/lib/plan-events`) accepts it as title-only drafts so
+   * nothing they chose is lost. The server drain reads both keys and clears both together.
    */
   pendingEventTitles?: string[];
   /**
@@ -107,6 +108,16 @@ export interface TripContext {
    * is unlocated and stays visibly so, never guessed onto a map.
    */
   stops?: PlanStopPayload[];
+  /**
+   * The pen from this release on — step 5's ratified table (Event · Day · Time · Place), held
+   * while no trip row exists. Ledger `2026-09-04-event-time-ui`; the row shape is
+   * `PlanEventDraft` (`shared/plan-events.ts`), and an ABSENT day/time/place means the traveler
+   * did not answer, never a default written as if they had (§13). Once `tripId` is bound each row
+   * becomes ONE `user_experiences` row (an event inside the plan, Locked Decision 29); the pen is
+   * DRAINED at every traveler-owned mint by `server/services/pending-events.service.ts` (Locked
+   * Decision 30 (b)) — the gap this field's predecessor was documented as having is closed.
+   */
+  pendingEvents?: PlanEventDraft[];
   contextFields?: Record<string, unknown>;
   selectedServices?: Array<{ name?: string; provider?: string; price?: number; category?: string }>;
 }

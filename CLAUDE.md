@@ -378,16 +378,39 @@ This document captures architectural decisions to maintain consistency across co
     local_expert_id) index is the only thing keeping them consistent. The ruling's intent stands
     unchanged: lanes (b) and (c) add CALLERS of `ensureTripAdvisorRow`, never a seventh insert.
     Consolidating the six is a separate lane and a §18-rule-1 debt, recorded here, not fixed.
-    **Side findings recorded, not fixed here:** `expertAdvisorStatusEnum` in `shared/schema.ts`
-    omits `assigned`, which code writes and gates on (no DB CHECK, so it works — the enum is
-    stale); `/api/expert/assigned-trips` is defined in both `booking-actions.ts` and
-    `experts.routes.ts`, and the first shadows the second; `optimization_context.planSnapshot` is
-    written and never read; the template page re-POSTs a lead on every snapshot change.
+    **THAT DEBT IS NOW PAID (ledger `2026-09-04-advisor-row-one-author`).** The ONE author is
+    **`upsertTripAdvisorRow` in `server/services/booking-actions.service.ts`**; the other five
+    sites are CALLERS, and `ensureTripAdvisorRow` survives as the invite-shaped wrapper over it
+    (its four callers are untouched). It takes an optional drizzle `tx` handle so a caller already
+    inside a transaction writes the row inside it. **A CONFLICT NEVER DOWNGRADES:** one atomic
+    `INSERT … ON CONFLICT (trip_id, local_expert_id) DO UPDATE` — the statement is the guard
+    (§15), never a check-then-insert — in which `status` moves only UP a rank ladder
+    (`accepted`/`assigned` rank 2, `pending`/`rejected` rank 1, NULL/unknown 0), equal rank is a
+    no-op (so every caller is idempotent by construction), `rejected` sits at `pending`'s rank so
+    a re-invite cannot clear a refusal while a deliberate grant still outranks one, `message` is
+    `COALESCE(existing, incoming)`, and **nothing else is touched** — `workspace_status`,
+    `assigned_at`, `expert_response` and the plan-approval columns are insert-only there. The
+    ladder is written down ONCE (`server/utils/trip-advisor-status.ts`) and the upsert's SQL
+    `CASE` is GENERATED from it. Guarded by `scripts/check-advisor-row-author.cjs` (own CI job,
+    committed `--self-test` fixtures, §18d): no `.ts` under `server/` outside the author file may
+    insert this row. It catches inserts, not updates — the guard states its own negative space.
+    No schema change, no migration.
+    **Side findings recorded, not fixed here.** The first two are now **FIXED** by ledger
+    `2026-09-04-golf-occasion-and-housekeeping`: (a) `expertAdvisorStatusEnum` in `shared/schema.ts`
+    omitted `assigned`, which code writes and gates on (no DB CHECK — verified against every
+    migration — so it worked; the enum was stale), and `assigned` is now declared; (b)
+    `/api/expert/assigned-trips` was defined in both `booking-actions.ts` and `experts.routes.ts`
+    with the first shadowing the second, and the dead `experts.routes.ts` twin — which was also
+    status-blind — has been DELETED, leaving the `booking-actions.ts` copy as the one definition.
+    Still open: `optimization_context.planSnapshot` is written and never read; the template page
+    re-POSTs a lead on every snapshot change.
 33. **ONE PLANNING MODAL, MANY DOORS (decision-maker ratified Sep 4, 2026 — ledger
     `2026-09-04-one-modal-many-doors`; option 1).** There is exactly ONE planning modal: the five
     ratified steps **Occasion → Where → When → Who → What's happening** (`docs/design/wedding-flow/`
-    `Step1Occasion` / `ModalWhere` — that IS step 2, the filename hides it — `Step3When`/`Step3Day`,
-    `Step4Who`/`Step4Variants`, `ModalEvents`). The OPENER is unchanged: every door still goes
+    `Step1Occasion` / `Step2Where` (formerly `ModalWhere`) / `Step3When`/`Step3Day`,
+    `Step4Who`/`Step4Variants`, `Step5Events` (formerly `ModalEvents`) — renamed by ledger
+    `2026-09-04-golf-occasion-and-housekeeping`, which resolved the "the filename hides that this IS
+    step 2" note this entry originally carried). The OPENER is unchanged: every door still goes
     through `usePlanning().open(source)` (ruling `2026-08-28-single-planning-entry`); what it
     RENDERS changed, and this entry **supersedes that ruling's chooser SCREEN only** — the
     single-opener rule stands untouched, and so does `scripts/check-planning-entry.cjs`. The
@@ -415,7 +438,7 @@ This document captures architectural decisions to maintain consistency across co
     shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
     included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
     while `PLUS_SALES_ENABLED` is off.
-    **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the ModalWhere "add another
+    **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the Step2Where "add another
     stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
     that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate
     budget-approver and family accessibility fields are NOT built (no column holds either — a
@@ -495,6 +518,65 @@ This document captures architectural decisions to maintain consistency across co
     plancard `events` array carry it as-is. The `.ics` export is **untouched** in this lane; events
     are not exported today, and if they ever are, the floating-time posture holds until a zone is
     captured.
+    **THE CLIENT RAIL LANDED WITH LEDGER `2026-09-04-event-time-ui`:** step 5's ratified Day · Time ·
+    Place table, the `WhichEvent` / slip clock line (ONE derivation, `eventMetaLine`, reading
+    `start_time` and never `event_date`), an owner-only time edit on the slip's event header through
+    the SAME `/api/user-experiences/:id` PATCH (no second rail), the pre-trip pen widened from
+    `pendingEventTitles: string[]` to `pendingEvents: {title, eventDate?, startTime?, location?}[]`
+    (the old key read for one release, both cleared together), and `start_time ASC NULLS LAST` added
+    as a tie-break AFTER the date in BOTH storage readers. A day or place the traveler did not answer
+    inherits the PLAN's at CREATE through ONE shared `planEventRowValues` (`shared/plan-events.ts`);
+    the TIME inherits nothing, and NULL is still never midnight. Events remain unexported to `.ics`.
+
+36. **Planner roles live in the EXPERT catalog, and the Event Planner track is partitioned by an
+    explicit KEY LIST on both sides (decision-maker ratified Sep 4, 2026 — ledger
+    `2026-09-04-earn-planner-roles`; migration 283).** The /earn Event Planner card listed
+    `service_offering_types` rows — the PROVIDER catalog — while its "I plan & coordinate events"
+    door went to the expert application, whose `local_expert_forms.offering_type_key` FKs into
+    `expert_offering_types` (migration 107). That table held NO planner rows, so every key the door
+    carried was clamped to NULL by `storage.createLocalExpertForm` — **silently**. Six rows now fill
+    the gap (`wedding_planner`, `wedding_day_of_coordinator`, `proposal_planner`, `party_planner`,
+    `corporate_event_coordinator`, `date_night_designer`), all in the **EXISTING `coordination`
+    tier**: `service_tier` carries a DB CHECK over five values and a sixth is exactly the
+    publish-time drizzle-push failure the Coordination Prevention rules warn about. **The two
+    catalogs are still never merged (§4)** — the card lists BOTH, provider categories for the event
+    VENDORS and expert keys for the event PLANNERS, and a row carries which side it came from
+    because the tables have separate key namespaces (`proposal_planner` is a row in each, and
+    /start/events forwards `?offeringTypeKey=` to whichever door the person picks).
+    **A tier cannot make this split, so an explicit list does:** `EVENT_PLANNER_OFFERING_KEYS`
+    (`client/src/lib/earn-roles.ts`), checked BEFORE the tier mapping, and guarded both directions
+    by `scripts/check-earn-planner-keys.cjs` (committed `--self-test` fixtures, stated negative
+    space — §18d). Same ruling: **`specialized` moves to Trip Planner** (Local Expert keeps
+    `advisory` + `live_support`), so relocation/pet-travel/content-scout consults stop landing in a
+    wizard whose required steps are a locality proof and a born-and-raised claim. The expert
+    application's role picker **reads the same rows live** and restates no names; and **the clamp
+    is now visible, never silent** — the NULL fallback stays (an application must not fail) but it
+    is `logger.warn`ed with the form id and the route returns `offeringTypeKeyUnrecorded` so the
+    applicant is told, because a refused answer and an absent one are different facts (§13).
+
+37. **THE GUEST LIST BELONGS TO THE EVENT; THE PLAN'S ROSTER IS DERIVED (decision-maker ratified
+    Sep 4, 2026 — ledger `2026-09-04-guests-per-event`). NO SCHEMA CHANGE.** An invite already
+    belongs to ONE event (`event_invites.experience_id` → a `user_experiences` row, ruling 29) and
+    a plan holds many events (`user_experiences.trip_id`, no uniqueness), so the plan-level list is
+    **computed, never stored**: ONE row per PERSON, deduplicated by **normalised email** (lowercase,
+    trimmed), with ONE COLUMN per event carrying that event's own RSVP —
+    attending / declined / pending / **not_invited**, and those last two are deliberately different
+    answers. There is **NO name matching and no fuzzy match of any kind** (ledger
+    `2026-09-04-guest-list-reconciliation` refuses it), so a guest with no email is its OWN row and
+    is never merged. ONE implementation, `server/services/plan-guest-roster.service.ts`
+    (`buildPlanGuestRoster`, pure) behind `GET /api/trips/:tripId/guests`; event ORDER stays
+    `storage.getUserExperiencesByTrip`'s (`2026-09-04-event-order`) and is never restated (§18
+    rule 1). The gate is the shared **owner tier** (`authorizeTripOwnerTier`), narrower than the
+    plancard's, because the response carries guest emails and dietary notes — the PII class L20
+    tier 4 keeps from an assigned expert. **`trip_participants` is the TRAVELLING PARTY, a different
+    population under a different predicate, and is NEVER merged into this roster**; the unratified
+    `trip_participants.event_invite_id` link is not built and is not needed. **§13: nothing is
+    zero-filled** — an event with no invites still renders a column (every cell `not_invited`),
+    `from`/`dietary` are blank when unstated (never "Unknown"/"None"), `totals.countries` is
+    OMITTED rather than 0 when no origin country exists, and no event start TIME is emitted because
+    `user_experiences` has no time-of-day column. Surface: `client/src/pages/plan-guests.tsx` at
+    `/plans/:tripId/guests`; per-event invites keep their ONE writer (`GuestInviteManager`), and a
+    `default_visibility: hidden` occasion has no guest surface at all (ruling 28, `SlipProposal`).
 
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)

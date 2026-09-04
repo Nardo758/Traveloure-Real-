@@ -4889,6 +4889,23 @@ export async function seedExperienceTemplateTabs() {
     { slug: "honeymoon", name: "Honeymoon", tabs: anniversaryTabs, universalFilters: anniversaryUniversalFilters,
       switches: { stops: "many", duration: "range", schedule: false, guests: false, vocabulary: "travelers", visibility: "shown" },
       rolesNeeded: ["accommodation", "private_transportation", "tour_guide", "dining_venue"] },
+
+    // ── Golf trip: its own row, because the schedule is the product ─────────────────────────────
+    // (ledger `2026-09-04-golf-occasion-and-housekeeping`). Until this row existed a golf trip
+    // resolved to the generic `travel` occasion (`server/services/landing-moments.ts`), whose
+    // `schedule: false` switch means `showsSchedule()` answers false — so the tee-times step the
+    // ratified artboard draws (`docs/design/wedding-flow/TravelEvents.dc.html`) could NEVER render
+    // for the one occasion whose whole point is which round is when. The landing Moment now points
+    // here; the `travel` row is untouched.
+    //
+    // Switches: MANY stops (four courses in four places), a date RANGE, an internal SCHEDULE (the
+    // rounds), and NO guest list — a golf trip is a group of travelers, not an invited event.
+    // Tabs and filters are `travel`'s, unchanged: that is exactly the filter content golf trips
+    // already got as `travel`, so this lane authors NO new filter content (§13) and the only thing
+    // that moves is the row's own identity, its switches and its schedule presets.
+    { slug: "golf-trip", name: "Golf trip", tabs: travelTabs, universalFilters: travelUniversalFilters,
+      switches: { stops: "many", duration: "range", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["accommodation", "activity_provider", "private_transportation", "concierge_vip", "dining_venue"] },
   ];
 
   // ── Deploy-speed fast path ─────────────────────────────────────────────────

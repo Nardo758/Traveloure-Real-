@@ -18,7 +18,9 @@ import {
   updateTripContext,
   useTripContext,
 } from "@/lib/trip-context";
+import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
+import { parseTripDate } from "@/lib/calendar-date";
 import { eventTypeForSlug, findOccasionByKey } from "@shared/occasions";
 import { partyNoun, partyTotal, travelersForSave } from "@/lib/plan-vocabulary";
 import { durationShape, guestListSetting, showsSchedule, stopsShape } from "@/lib/occasion-switches";
@@ -35,6 +37,16 @@ import {
   type PlanStop,
 } from "@/lib/plan-stops";
 import { savePlanStops } from "@/lib/plan-stops-writer";
+import {
+  eventsToCreate,
+  hasEventRow,
+  planDayOptions,
+  planEventRowValues,
+  readPendingEvents,
+  setEventDetail,
+  toggleEventRow,
+  type PlanEventDraft,
+} from "@/lib/plan-events";
 import {
   PLAN_STEP_LABELS,
   nextPlanStep,
@@ -91,8 +103,9 @@ import type { ExperienceType } from "@shared/schema";
  * row's authority.
  *
  * ── STEP 2 CAN BE A LIST NOW (ledger `2026-09-04-plan-stops-ui`) ──────────────────────────────
- * The ModalWhere artboard draws "Add another stop" and TravelWhere draws the same step holding
- * three of them; both were OMITTED (never disabled) while `trip_destinations` did not exist,
+ * The Step2Where artboard (formerly ModalWhere) draws "Add another stop" and TravelWhere draws
+ * the same step holding three of them; both were OMITTED (never disabled) while
+ * `trip_destinations` did not exist,
  * because a control that collects an answer nothing can store is worse than an absent one. The
  * table exists (migration 281, Locked Decision 34), so `default_stops` is read — the SIXTH switch
  * and the last one — through `stopsShape`, and step 2 is:
@@ -204,6 +217,17 @@ function stepDown(raw: string): string {
   if (!Number.isFinite(n)) return "";
   return n <= 1 ? "" : String(n - 1);
 }
+/**
+ * A plan day as the Day cell reads it — "Fri, Oct 2", the same words the artboards use and the
+ * same words the slip's event meta line uses. Parsed with `parseTripDate` so a bare "YYYY-MM-DD"
+ * lands on LOCAL midnight: `new Date()` would render the previous day west of UTC (F-1). An
+ * unparseable value renders as itself rather than as a fabricated date.
+ */
+function dayLabel(ymd: string): string {
+  const date = parseTripDate(ymd);
+  return date ? format(date, "EEE, MMM d") : ymd;
+}
+
 function stepUp(raw: string): string {
   if (raw === "") return "1";
   const n = Number(raw);
@@ -263,8 +287,15 @@ export function PlanModal({
   const [mainMomentTime, setMainMomentTime] = useState("");
   /** "YYYY-MM-DD" for the main moment of a RANGE-shaped occasion. "" = never given (§13). */
   const [mainMomentDate, setMainMomentDate] = useState("");
-  /** Step-5 chip labels the traveler ticked. Each becomes ONE event (a `user_experiences` row). */
-  const [pickedEvents, setPickedEvents] = useState<string[]>([]);
+  /**
+   * Step-5 ROWS — the ratified table (Event · Day · Time · Place), one per ticked chip. Each
+   * becomes ONE event (a `user_experiences` row). Ledger `2026-09-04-event-time-ui`: this was a
+   * bare `string[]` of chip labels until migration 282 gave an event a `start_time`, which is why
+   * the artboards' Day/Time/Place columns shipped unbuilt. A row's day/time/place stay ABSENT
+   * until the traveler answers them (§13) — the plan's own day and destination are shown as
+   * PLACEHOLDERS and inherited only at create.
+   */
+  const [pickedEvents, setPickedEvents] = useState<PlanEventDraft[]>([]);
   /** The "Something else" free-text chip — an occasion's presets can never cover everything. */
   const [customEvent, setCustomEvent] = useState("");
   const [saving, setSaving] = useState(false);
@@ -324,7 +355,10 @@ export function PlanModal({
     setPartyTouched(false);
     setMainMomentTime(ctx.mainMomentTime || "");
     setMainMomentDate(ctx.mainMomentDate || "");
-    setPickedEvents(Array.isArray(ctx.pendingEventTitles) ? [...ctx.pendingEventTitles] : []);
+    // Reads BOTH pen spellings — the rich rows this release writes and the legacy bare titles a
+    // pen written before it still holds — through the ONE shared reader, so nothing a traveler
+    // ticked before the deploy is dropped on the floor.
+    setPickedEvents(readPendingEvents(ctx));
     setCustomEvent("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -458,18 +492,41 @@ export function PlanModal({
     return Array.from(new Set(labels));
   }, [presets]);
 
-  const toggleChip = (label: string) =>
-    setPickedEvents((prev) =>
-      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label],
-    );
+  const toggleChip = (label: string) => setPickedEvents((prev) => toggleEventRow(prev, label));
 
-  /** Everything that would become an event on save — ticked chips plus a typed "something else". */
-  const eventTitles = useMemo(() => {
-    const extra = customEvent.trim();
-    const all = extra ? [...pickedEvents, extra] : pickedEvents;
-    return Array.from(new Set(all));
-  }, [pickedEvents, customEvent]);
-  const eventCount = wantsSchedule ? eventTitles.length : 0;
+  /**
+   * Turn the confirmed free text into a ROW. Deliberately NOT `toggleEventRow` alone: re-confirming
+   * a title that is already a row would UNTICK it, which is the opposite of what pressing Enter
+   * means. An already-present title is simply absorbed.
+   */
+  const commitCustomEvent = () => {
+    const title = customEvent.trim();
+    if (!title) return;
+    setPickedEvents((prev) => (hasEventRow(prev, title) ? prev : toggleEventRow(prev, title)));
+    setCustomEvent("");
+  };
+
+  /**
+   * Everything that would become an event on save — ticked rows plus a typed "something else".
+   * ONE derivation, so the CTA's count and what the save actually writes cannot disagree.
+   */
+  const eventRows = useMemo(
+    () => eventsToCreate(pickedEvents, customEvent),
+    [pickedEvents, customEvent],
+  );
+  const eventCount = wantsSchedule ? eventRows.length : 0;
+
+  /**
+   * The days an event may be dated to — the PLAN's own days, never a free calendar (an event
+   * inside a plan cannot fall outside it). A plan whose range is not yet readable offers none,
+   * and the Day cell then simply does not ask (§13).
+   */
+  const dayOptions = useMemo(
+    () => planDayOptions(startDate, shape === "day" ? startDate : endDate),
+    [startDate, endDate, shape],
+  );
+  /** The DEFAULT day, shown as a placeholder and never written until the traveler picks it. */
+  const defaultDay = dayOptions[0] ?? "";
 
   // ── THE SAVE — one implementation, every door ────────────────────────────────────────────────
 
@@ -626,8 +683,8 @@ export function PlanModal({
     // time there is no anchor to write (§13).
     const momentDate = shape === "day" ? start || "" : mainMomentDate.trim();
     const momentTime = mainMomentTime.trim();
-    const titlesToCreate = wantsSchedule ? eventTitles : [];
-    if (tripId && ((momentDate && momentTime) || titlesToCreate.length > 0)) {
+    const rowsToCreate = wantsSchedule ? eventRows : [];
+    if (tripId && ((momentDate && momentTime) || rowsToCreate.length > 0)) {
       setSaving(true);
       try {
         if (momentDate && momentTime) {
@@ -636,23 +693,35 @@ export function PlanModal({
             console.warn("[plan-modal] main moment not saved as an anchor:", err?.message);
           });
         }
-        // ONE event per ticked chip. An event inside a plan IS a `user_experiences` row bound to
+        // ONE event per ticked row. An event inside a plan IS a `user_experiences` row bound to
         // the trip (Locked Decision 29) — there is no second event artifact, and this posts to the
         // SAME owner-scoped, allowlist-bodied route the slip's "set up guest list" already uses.
-        for (const t of titlesToCreate) {
+        // `startTime` rides the SAME pick-based allowlist (`userExperienceBodySchema`), narrowed by
+        // the one format authority `userExperienceStartTimeSchema` (migration 282, Locked
+        // Decision 35) — no second admission rail was opened for it.
+        for (const row of rowsToCreate) {
+          // The ONE inheritance rule, shared with the pre-trip pen drain: a day or place the
+          // traveler answered is kept, one they did not is the PLAN's own (§18 rule 1 — a second
+          // copy here is how the two doors would start disagreeing). The TIME has no fallback:
+          // absent stays null, never midnight and never "all day" (§13).
+          const values = planEventRowValues(row, { startDate: start, destination: trimmedDestination });
           await apiRequest("POST", "/api/user-experiences", {
             tripId,
-            title: t,
-            eventDate: start,
-            location: trimmedDestination,
+            title: values.title,
+            eventDate: values.eventDate,
+            startTime: values.startTime,
+            location: values.location,
             experienceTypeId: selectedOccasion?.id,
           }).catch((err) => {
             // eslint-disable-next-line no-console
-            console.warn(`[plan-modal] event "${t}" not created:`, err?.message);
+            console.warn(`[plan-modal] event "${values.title}" not created:`, err?.message);
           });
         }
         // They exist as rows now; the pre-trip holding pen must not replay them on the next save.
+        // BOTH spellings are emptied: the legacy list is read for one release, so a stale one left
+        // behind here would be drained again at the next mint.
         updateTripContext({
+          pendingEvents: [],
           pendingEventTitles: [],
           mainMomentTime: undefined,
           mainMomentDate: undefined,
@@ -674,7 +743,10 @@ export function PlanModal({
       updateTripContext({
         mainMomentTime: momentTime || undefined,
         mainMomentDate: shape === "day" ? undefined : momentDate || undefined,
-        pendingEventTitles: titlesToCreate,
+        // The rich shape from this release on; the legacy list is emptied in the same write so a
+        // pen written before the deploy cannot drain twice, once through each key.
+        pendingEvents: rowsToCreate,
+        pendingEventTitles: [],
       });
     }
 
@@ -1287,7 +1359,7 @@ export function PlanModal({
               </p>
               <div className="flex flex-wrap gap-2">
                 {chipLabels.map((label) => {
-                  const picked = pickedEvents.includes(label);
+                  const picked = hasEventRow(pickedEvents, label);
                   return (
                     <button
                       key={label}
@@ -1306,12 +1378,116 @@ export function PlanModal({
                   );
                 })}
               </div>
+              {/* "Something else" becomes a ROW as soon as it is confirmed, so it gets the same
+                  Day/Time/Place cells every ticked chip gets — an occasion's presets can never
+                  cover everything, and a free-text event with no way to say WHEN would be a
+                  second-class one. Text left un-confirmed in the box is still saved: `eventsToCreate`
+                  folds it in, so nothing typed is lost by not pressing Enter. */}
               <Input
                 value={customEvent}
                 onChange={(e) => setCustomEvent(e.target.value)}
+                onBlur={commitCustomEvent}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  commitCustomEvent();
+                }}
                 placeholder="Something else…"
                 data-testid="input-etp-custom-event"
               />
+
+              {/* ── THE RATIFIED TABLE — Event · Day · Time · Place ────────────────────────────
+                  `Step5Events.dc.html` and `TravelEvents.dc.html` both draw this, and both were
+                  recorded as HELD because `user_experiences` had no time-of-day column. Migration
+                  282 gave it one (Locked Decision 35), so the table is built here.
+
+                  EVERY CELL IS OPTIONAL AND EVERY EMPTY CELL MEANS "NOT ANSWERED" (§13). The Day
+                  select's first option and the Place input's placeholder show the PLAN's own
+                  answers as DEFAULTS — visible, and not written: they are inherited at create by
+                  the one shared `planEventRowValues`, which is also what the pre-trip pen drain
+                  uses, so a chip ticked before the plan existed lands identically. The Time has no
+                  default at all — a plan carries no hour, and midnight is not "no time given". */}
+              {pickedEvents.length > 0 && (
+                <div className="space-y-1.5 pt-1" data-testid="etp-step5-rows">
+                  <div
+                    className="grid grid-cols-[1fr_auto_auto] gap-2 text-[10.5px] uppercase tracking-[0.12em]"
+                    style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
+                  >
+                    <span>Event</span>
+                    <span>Day &amp; time</span>
+                    <span>Place</span>
+                  </div>
+                  {pickedEvents.map((row) => (
+                    <div
+                      key={row.title}
+                      className="grid grid-cols-[1fr_auto_auto] items-center gap-2"
+                      data-testid={`etp-event-row-${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                    >
+                      <span className="truncate text-[13px]" style={{ color: "var(--earn-ink)" }}>
+                        {row.title}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        {/* A SELECT of the plan's own days, not a free calendar: an event inside a
+                            plan cannot fall outside it, and `trips.start_date`/`end_date` are the
+                            range. No days readable yet ⇒ the cell is omitted rather than asking a
+                            question with no answers. */}
+                        {dayOptions.length > 0 && (
+                          <select
+                            value={row.eventDate ?? ""}
+                            onChange={(e) =>
+                              setPickedEvents((prev) =>
+                                setEventDetail(prev, row.title, { eventDate: e.target.value }),
+                              )
+                            }
+                            aria-label={`Day for ${row.title}`}
+                            className="h-8 rounded-md border border-[color:var(--earn-border)] bg-transparent px-1.5 text-[12px]"
+                            style={{ color: row.eventDate ? "var(--earn-ink)" : "var(--earn-faint)" }}
+                            data-testid={`select-etp-event-day-${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                          >
+                            {/* The default, SHOWN and not written — until it is chosen, this row
+                                has no day of its own and the plan's first day is inherited at
+                                create. The two states stay distinguishable. */}
+                            <option value="">{dayLabel(defaultDay)} (default)</option>
+                            {dayOptions.map((day) => (
+                              <option key={day} value={day}>
+                                {dayLabel(day)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <Input
+                          type="time"
+                          value={row.startTime ?? ""}
+                          onChange={(e) =>
+                            setPickedEvents((prev) =>
+                              setEventDetail(prev, row.title, { startTime: e.target.value }),
+                            )
+                          }
+                          aria-label={`Start time for ${row.title}`}
+                          className="h-8 w-[6.5rem] text-[12px]"
+                          data-testid={`input-etp-event-time-${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                        />
+                      </span>
+                      <Input
+                        value={row.location ?? ""}
+                        onChange={(e) =>
+                          setPickedEvents((prev) =>
+                            setEventDetail(prev, row.title, { location: e.target.value }),
+                          )
+                        }
+                        aria-label={`Place for ${row.title}`}
+                        placeholder={destination.trim() || "Add a place"}
+                        className="h-8 w-[9rem] text-[12px]"
+                        data-testid={`input-etp-event-place-${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                      />
+                    </div>
+                  ))}
+                  <p className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
+                    Days and places default to your plan. Change any of them now or later from the
+                    slip. A time is only ever the one you set.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
