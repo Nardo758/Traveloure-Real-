@@ -298,6 +298,14 @@ jobs:
       # become a second planning opener beside the one the section already has.
       - name: Moments planning-callout pin
         run: npx tsx --test client/src/components/__tests__/moments-callout.test.tsx
+      # 2026-09-04-guests-per-event: an invite belongs to ONE event and a plan holds many, so the
+      # plan's roster is DERIVED — one row per person, one column per event. R1-R6 pin the rules a
+      # plausible-looking implementation gets wrong: dedupe by normalised email only (no name
+      # matching, refused by ruling), an email-less guest never merged, column order left to the
+      # server's one ordering authority, not_invited kept distinct from pending, dietary notes
+      # unioned rather than silently picked, and `countries` omitted rather than shown as 0.
+      - name: Plan guest roster derivation pin
+        run: npx tsx --test server/__tests__/plan-guest-roster.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
