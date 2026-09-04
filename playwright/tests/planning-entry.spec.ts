@@ -88,6 +88,33 @@ test.describe("Single planning entry — chooser", () => {
   }
 });
 
+test.describe("Marketplace surfaces offer a plan entry (2026-09-04-entry-unification)", () => {
+  // The four marketplace routes are ONE component (pages/discover.tsx, `surface` prop) and
+  // carried NO plan entry: they rendered perfectly, every link resolved, and a traveler standing
+  // on any of them could not start a plan. Rendering is not reachability of the next step, which
+  // is why the existing route gates never caught it.
+  for (const path of ["/destinations", "/ready-made", "/events", "/services"]) {
+    test(`${path} offers the plan entry, and it opens the chooser`, async ({ page }) => {
+      await page.goto(`${BASE_URL}${path}`, { waitUntil: "domcontentloaded" });
+      const btn = page.getByTestId("button-plan-entry-marketplace");
+      await btn.scrollIntoViewIfNeeded();
+      await expect(btn).toBeVisible({ timeout: 10_000 });
+      await btn.click();
+      await expect(page.getByTestId("dialog-planning-chooser")).toBeVisible({ timeout: 10_000 });
+    });
+  }
+
+  // §13: the entry passes only context the page HOLDS. A bare surface with no ?city= must still
+  // open the chooser — passing nothing is the honest answer, not a reason to withhold the entry.
+  test("the entry works with no city context at all", async ({ page }) => {
+    await page.goto(`${BASE_URL}/services`, { waitUntil: "domcontentloaded" });
+    const btn = page.getByTestId("button-plan-entry-marketplace");
+    await btn.scrollIntoViewIfNeeded();
+    await btn.click();
+    await expect(page.getByTestId("dialog-planning-chooser")).toBeVisible({ timeout: 10_000 });
+  });
+});
+
 test.describe("No route auto-opens the intake (walkthrough F-T1, 2026-08-30)", () => {
   // Ruling 2026-08-28-single-planning-entry extended: a ROUTE never auto-opens the
   // planning chooser/intake. /experiences is a browse surface first; the intake panel

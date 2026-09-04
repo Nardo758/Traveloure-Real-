@@ -486,6 +486,24 @@ jobs:
       - name: Roles-needed reachability guard
         run: node scripts/check-roles-needed-reachability.cjs
 
+  planning-entry-guard:
+    name: planning-entry-guard (ledger 2026-09-04-entry-unification)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The existing route gates (app-routes, navbar-links, auth-routes, footer-links) prove a route
+      # RENDERS. None proves a browse surface offers a way to START A PLAN — which is exactly how
+      # the four marketplace routes stayed dead ends while rendering perfectly and resolving every
+      # link. Rendering is not reachability of the next step.
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Planning-entry guard predicate self-test
+        run: node scripts/check-planning-entry.cjs --self-test
+      - name: Planning-entry guard
+        run: node scripts/check-planning-entry.cjs
+
   privileged-field-completeness-guard:
     name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
     runs-on: ubuntu-latest
