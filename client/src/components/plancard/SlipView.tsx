@@ -82,6 +82,7 @@ import {
   IMPLICIT_EVENT_GROUP_KEY,
   type PlanEvent,
 } from "@/lib/slip-events";
+import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
@@ -538,6 +539,95 @@ function EventTimeAffordance({ tripId, event }: { tripId: string; event: PlanEve
 }
 
 /**
+ * THE EVENT'S BUDGET, EDITED WHERE IT IS READ (ledger `2026-09-04-event-budget`; CLAUDE.md Locked
+ * Decision 29). The sibling of `EventTimeAffordance` above, and deliberately built to the same
+ * shape: owner-only, one field, PATCHing the EXISTING owner-scoped `/api/user-experiences/:id`
+ * with `{ budget }` and nothing else. No new route and no second admission rail — `budget` already
+ * rides the pick-based allowlist that route's POST and PATCH share (`userExperienceBodySchema`),
+ * narrowed by the ONE shape authority `userExperienceBudgetSchema` (§19).
+ *
+ * WHY THE BUDGET IS ASKED HERE AND NOT AT INTAKE. Step 5 of the planning modal does NOT ask for a
+ * budget: at intake the events do not exist yet, and a single number typed before them would be a
+ * PLAN-level budget — the second stored number this lane exists to avoid. The question is asked
+ * once there is an event to attach it to.
+ *
+ * THE THINGS IT MAY NOT DO (§13):
+ *  - it never SHOWS a number the row does not have. An empty control is an event with no budget
+ *    stated, which is a real answer — not 0, not "free", not the plan's total divided up.
+ *  - CLEARING is a first-class action: an explicit `null` is how a traveler takes back a budget
+ *    they stated, which is why the shape authority is `.nullable()` and why an emptied input sends
+ *    null rather than omitting the key.
+ *  - it makes no claim about what anything COSTS. This is the traveler's stated intention; it is
+ *    read by no charge, fee, payout or rate path (§14), and the slip's own cost lines are a
+ *    different fact from a different source.
+ */
+function EventBudgetAffordance({ tripId, event }: { tripId: string; event: PlanEvent }) {
+  const { toast } = useToast();
+  // The ONE parse of a stored budget, shared with the plan total — a second reading of the same
+  // column here is how the field and the total would start disagreeing (§18 rule 1).
+  const stored = statedEventBudget(event.budget);
+  const [value, setValue] = useState(stored === null ? "" : String(stored));
+  // The row is the truth; a re-fetch wins over a stale local echo. Keyed on the id too, so a
+  // remounted header for a DIFFERENT event never inherits the previous one's draft.
+  useEffect(() => {
+    const next = statedEventBudget(event.budget);
+    setValue(next === null ? "" : String(next));
+  }, [event.id, event.budget]);
+
+  const save = useMutation({
+    mutationFn: (budget: number | null) =>
+      apiRequest("PATCH", `/api/user-experiences/${event.id}`, { budget }),
+    onSuccess: () => {
+      // Both readers of this row: the plancard payload carries `events[]` (which is what the plan
+      // total is derived from), the user-scoped list feeds the "Which event?" picker.
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    onError: () => {
+      const current = statedEventBudget(event.budget);
+      setValue(current === null ? "" : String(current));
+      toast({ title: "Could not save that budget", variant: "destructive" });
+    },
+  });
+
+  const commit = (next: string) => {
+    const trimmed = next.trim();
+    const current = statedEventBudget(event.budget);
+    // Empty ⇒ an EXPLICIT null (cleared), never an omitted key (which means "not mentioned").
+    if (!trimmed) {
+      if (current === null) return;
+      return void save.mutate(null);
+    }
+    const parsed = Number(trimmed);
+    // The server refuses these too — this only avoids a round-trip that would be rejected, and is
+    // NOT a second authority on the shape: it invents no bound the schema does not already state.
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setValue(current === null ? "" : String(current));
+      return;
+    }
+    if (current !== null && parsed === current) return;
+    save.mutate(parsed);
+  };
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      min={0}
+      step="0.01"
+      value={value}
+      disabled={save.isPending}
+      placeholder="Budget"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={(e) => commit(e.target.value)}
+      aria-label={`Budget${event.title ? ` for ${event.title}` : ""}`}
+      className="mt-1 h-6 w-24 rounded border border-border bg-transparent px-1 text-[11px] text-muted-foreground disabled:opacity-50"
+      data-testid={`slip-event-budget-${event.id}`}
+    />
+  );
+}
+
+/**
  * One EVENT inside the day (migration 277; ledger `2026-09-04-slip-events`). A bordered inset
  * around the items that name this `user_experiences` row — the same inset grammar
  * `ExpertNoteBlock` uses, drawn from theme tokens so it follows light/dark like everything else.
@@ -596,6 +686,10 @@ function SlipEventGroupBlock({
           {isOwner && (
             <span className="flex flex-wrap items-center gap-2">
               <EventTimeAffordance tripId={tripId} event={event} />
+              {/* Ledger `2026-09-04-event-budget`: the event is the BUDGET UNIT, so the field sits
+                  on the event's own header beside its time — and the plan's total below the list
+                  is derived from these, never stored. */}
+              <EventBudgetAffordance tripId={tripId} event={event} />
               <EventHireAffordance tripId={tripId} destination={destination} event={event} />
             </span>
           )}
@@ -1263,6 +1357,18 @@ export function SlipView({
   const planEvents: PlanEvent[] = data.events ?? [];
   const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
 
+  // ── THE PLAN'S BUDGET TOTAL (ledger `2026-09-04-event-budget`) ────────────────────────────
+  // DERIVED from the events, never stored — one pure helper, so the line and the fields it sums
+  // cannot drift apart (§18 rule 1). `null` when NO event states a budget, and the line is then
+  // OMITTED entirely: "$0" is a claim the traveler never made, and an absence rendered as a
+  // measurement is the §13 class this whole surface is built against.
+  //
+  // NOT gated on `groupByEvent`. That switch decides whether the DAY LIST is grouped by event; a
+  // budget stated on an event is true whether or not the occasion asks for an internal schedule,
+  // and hiding a number the traveler entered because of an unrelated switch would lose an answer
+  // they gave.
+  const budgetLine = planBudgetLine(planEvents);
+
   return (
     <div className="max-w-2xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
@@ -1398,6 +1504,16 @@ export function SlipView({
           })}
         </CardContent>
       </Card>
+      )}
+
+      {/* The plan's budget total — the sum of what its EVENTS state, and nothing the plan itself
+          stores. Rendered only when at least one event states one (see `budgetLine` above); the
+          count is part of the claim, so a plan with three events and one stated budget cannot be
+          read as a total for all three. */}
+      {budgetLine && (
+        <p className="text-xs text-muted-foreground" data-testid="slip-plan-budget">
+          {budgetLine}
+        </p>
       )}
 
       {/* Row 12 (relocated): one link, not a grid — browse the marketplace scoped to THIS trip.
