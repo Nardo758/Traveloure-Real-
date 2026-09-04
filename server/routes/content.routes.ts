@@ -3690,8 +3690,20 @@ router.post("/api/cache/checkout-verify", isAuthenticated, async (req, res) => {
   });
 
   // Optimize itinerary using Claude
+  //
+  // AI RATE LIMIT (audit finding 9, ledger 2026-09-03-security-9-11-13): every /api/claude/* and
+  // /api/grok/* handler below carries the SHARED `aiRateLimiter` (infrastructure/rate-limiter,
+  // 10/min/IP) as its FIRST middleware — the same limiter and the same limiter-before-auth
+  // placement the five already-covered AI routes use (advisor.routes.ts, demand.routes.ts,
+  // trip-context.routes.ts, /api/transport-packages/generate below, routes.ts's itinerary
+  // recommendations). ONE limiter, never a second implementation (§18 rule 1).
+  // These paths are NOT under the /api/ai prefix, so `app.use("/api/ai", aiRateLimiter)` in
+  // server/index.ts never matched them and only the general 100/min IP limiter applied — which
+  // made POST /api/grok/chat (arbitrary `messages` + `systemContext` forwarded to the model) an
+  // open LLM proxy on the platform's keys for anyone with an account.
+  // Pinned by server/__tests__/ai-rate-limit-coverage.test.ts.
 
-router.post("/api/claude/optimize-itinerary", isAuthenticated, async (req, res) => {
+router.post("/api/claude/optimize-itinerary", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = claudeOptimizeSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3725,7 +3737,7 @@ router.post("/api/claude/optimize-itinerary", isAuthenticated, async (req, res) 
 
   // Analyze transportation needs
 
-router.post("/api/claude/transportation-analysis", isAuthenticated, async (req, res) => {
+router.post("/api/claude/transportation-analysis", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = claudeTransportSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3884,7 +3896,7 @@ Respond with this exact JSON structure:
 
   // Full itinerary graph analysis (Airport → Hotel → Activities → Hotel → Airport)
 
-router.post("/api/claude/full-itinerary-graph", isAuthenticated, async (req, res) => {
+router.post("/api/claude/full-itinerary-graph", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const schema = z.object({
         flightInfo: z.object({
@@ -3932,7 +3944,7 @@ router.post("/api/claude/full-itinerary-graph", isAuthenticated, async (req, res
 
   // Get travel recommendations
 
-router.post("/api/claude/recommendations", isAuthenticated, async (req, res) => {
+router.post("/api/claude/recommendations", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = claudeRecommendationsSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4082,7 +4094,7 @@ router.post("/api/geocode", async (req, res) => {
   });
 
 
-router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
+router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = expertMatchSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4256,7 +4268,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
+router.post("/api/grok/content/generate", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = contentGenerationSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4283,7 +4295,7 @@ router.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
+router.post("/api/grok/intelligence", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = intelligenceSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4343,7 +4355,7 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) => {
+router.post("/api/grok/itinerary/generate", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = autonomousItinerarySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4405,7 +4417,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
     preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
   });
 
-router.post("/api/grok/chat", isAuthenticated, async (req, res) => {
+router.post("/api/grok/chat", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = chatSchema.safeParse(req.body);
       if (!parsed.success) {

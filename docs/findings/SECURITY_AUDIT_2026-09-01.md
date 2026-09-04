@@ -27,11 +27,11 @@ Line numbers are `as-of` the SHA above and will drift.
 | P2 | 6 | `GET /api/user-experiences/:id` read IDOR | **PR #712** |
 | P2 | 7 | Custom venue owner was a body field (§19 denylist schema) | **PR #706** |
 | P2 | 8 | Admin tier on `GET /api/bookings/:id` reads a 7-day-stale session role | **PR #714** |
-| P2 | 9 | Nine LLM endpoints with no AI rate limit and no budget enforcement | open |
+| P2 | 9 | Nine LLM endpoints with no AI rate limit and no budget enforcement | **PR #731** (rate limit; budget still open) |
 | P3 | 10 | Seven unauthorized trip-mutation twins in `trips.routes.ts` (shadowed today) | open |
-| P3 | 11 | A CI-only seed endpoint is live in production | open |
+| P3 | 11 | A CI-only seed endpoint is live in production | **PR #731** |
 | P3 | 12 | Five unannotated affiliate margin literals, invisible to the fee gate | open |
-| P3 | 13 | CORS fails open when `REPLIT_DOMAINS` is empty | open |
+| P3 | 13 | CORS fails open when `REPLIT_DOMAINS` is empty | **PR #731** |
 | P3 | 14 | Two admin checks read `req.user.role` instead of the DB | **PR #714** |
 | P3 | 15 | `POST /api/optimization-preview` accepts an unbounded `items` array | open |
 | P3 | 16 | Landing moment attribution drops every email-auth user | open |
@@ -43,7 +43,9 @@ unfixed code. Everything marked *open* is left for prioritisation — no fix was
 
 ---
 
-**Close-out 2026-09-02 (as-of `4124963`):** findings 2, 4, 6, 8 and 14 landed via PRs #711, #712 and #714 (each with negative tests; see the PR bodies for proofs and stated negative space). #714 also converted nine further session-role authorization sites of the same shape and filed the ~20 `admin.routes.ts` `claims.role` checks behind the blanket guard as a functional follow-up (OIDC admins likely 403). Still open: 9, 10, 11, 12, 13, 15, 16, 17.
+**Close-out 2026-09-03 (as-of `72d48dc`):** findings **9, 11 and 13** landed via **PR #731** (ledger `2026-09-03-security-9-11-13`), each with a negative test verified to fail against the unfixed code. **9** — the nine `/api/claude/*` + `/api/grok/*` endpoints now carry the SAME shared `aiRateLimiter` the five covered AI routes use, in the same limiter-before-auth position; the `/api/ai` prefix mount is left alone and no covered endpoint's limit changed. **The budget half of finding 9 is NOT closed**: `aiUsageService` still logs spend and nothing enforces a quota — a quota is a design, not a limiter, and stays open. **11** — the test-variant seed endpoint is refused (503) on a production-strict boot by `server/middleware/test-only-endpoint.ts`, gated on the repo's existing `isProdStrictEnv` rather than a bare `NODE_ENV` check (every CI gate and staging boot the production bundle deliberately) and therefore needing no new env var, no secret and no workflow change; the sibling `/seed/:variantId` stays authorization-gated by design. **13** — CORS is deny-by-default in one pure module (`server/middleware/cors-origins.ts`) that `server/index.ts` and the tests both mount; `*` is never emitted, credentials ride only with an allowed origin, `Vary: Origin` is always set, and `REPLIT_DOMAINS` remains an origin source verbatim so nothing that worked stops. **The confidence caveat on 13 stands**: this session still could not reach `www.traveloure.com`, so the deployed `REPLIT_DOMAINS`/`APP_BASE_URL` values are unverified — the fix makes an empty allowlist a deny either way. Still open: 10, 12, 15, 16, 17, and finding 9's budget enforcement.
+
+**Close-out 2026-09-02 (as-of `4124963`):** findings 2, 4, 6, 8 and 14 landed via PRs #711, #712 and #714 (each with negative tests; see the PR bodies for proofs and stated negative space). #714 also converted nine further session-role authorization sites of the same shape and filed the ~20 `admin.routes.ts` `claims.role` checks behind the blanket guard as a functional follow-up (OIDC admins likely 403). Still open at that time: 9, 10, 11, 12, 13, 15, 16, 17 (9, 11 and 13 closed the next day — see above).
 
 ## P1
 
@@ -146,7 +148,7 @@ so **a demoted admin keeps the tier for up to a week**, and the same stale value
 is now an in-repo precedent for the fix three lines long: `content.routes.ts:7321` does exactly this with the
 comment *"role from the DB (§2 posture — never the session's possibly-stale/absent role string)"*.
 
-### 9. Nine LLM endpoints with no AI rate limit — **open**
+### 9. Nine LLM endpoints with no AI rate limit — **PR #731** (rate limit closed; budget still open)
 
 `server/routes/content.routes.ts:3574, 3608, 3767, 3815` (`/api/claude/*`), `3965, 4139, 4166, 4226, 4288`
 (`/api/grok/*`)
@@ -177,7 +179,7 @@ Seven trip sub-resource handlers (`participants/bulk-invite`, `contracts`, `tran
 money-between-people ledger the moment someone follows it. The stated blocker is that
 `authorizeTripOwnerTier` is private to `routes.ts`; exporting it, or deleting the shadowed copies now, closes it.
 
-### 11. A CI-only seed endpoint is live in production — **open**
+### 11. A CI-only seed endpoint is live in production — **PR #731**
 
 `server/routes/transport-hub.routes.ts:504`
 
@@ -198,7 +200,7 @@ stays visible on every run; an unannotated literal does not.
 
 *Rule:* §8 (grep-gated every phase), §18d (a guard states its negative space).
 
-### 13. CORS fails open — **open**
+### 13. CORS fails open — **PR #731**
 
 `server/index.ts:125–140`
 
