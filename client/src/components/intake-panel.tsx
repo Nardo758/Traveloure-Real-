@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { useCreateTrip } from "@/hooks/use-trips";
 import { updateTripContext } from "@/lib/trip-context";
+import { trackEvent } from "@/lib/analytics";
 import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
 
@@ -171,6 +172,10 @@ export function IntakePanel({
 
     createTrip.mutate(payload, {
       onSuccess: (trip) => {
+        trackEvent("trip_created", {
+          surface: "intake_panel",
+          creation_method: "destination_intake",
+        });
         reset();
         onOpenChange(false);
         navigate(`/plans/${trip.id}`);

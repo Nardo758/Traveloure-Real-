@@ -37,6 +37,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { parseTripDate } from '@/lib/calendar-date';
 import { getTripContext, updateTripContext } from '@/lib/trip-context';
 
 interface Invite {
@@ -279,6 +280,8 @@ export function GuestInvitePage() {
     );
   }
   
+  const experienceDay = parseTripDate(experience.startDate);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white py-12 px-4">
       <div className="max-w-4xl mx-auto">
@@ -291,10 +294,17 @@ export function GuestInvitePage() {
               <MapPin className="h-4 w-4" />
               <span>{experience.destination}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
-              <span>{new Date(experience.startDate).toLocaleDateString()}</span>
-            </div>
+            {/* QA F3 — `startDate` is `user_experiences.event_date`, a Postgres DATE, so it
+                arrives as a bare "YYYY-MM-DD"; `new Date()` would read it as UTC midnight and
+                show every guest west of UTC the day BEFORE the one they were invited to.
+                §13 — the column is nullable, so an absent day omits the line rather than
+                rendering `new Date(null)`, which is the epoch. */}
+            {experienceDay && (
+              <div className="flex items-center gap-1">
+                <Calendar className="h-4 w-4" />
+                <span data-testid="text-invite-event-date">{experienceDay.toLocaleDateString()}</span>
+              </div>
+            )}
           </div>
         </div>
         

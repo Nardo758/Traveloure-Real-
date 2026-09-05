@@ -1,9 +1,9 @@
 /**
  * Tourism Analytics Tracking
- * Lightweight fire-and-forget tracking for tourism data capture
+ * Lightweight fire-and-forget tracking for the project's existing analytics API.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env?.VITE_API_URL || "";
 
 interface SearchEventData {
   destination: string;
@@ -12,7 +12,7 @@ interface SearchEventData {
   endDate?: string;
   travelers?: number;
   experienceType?: string;
-  searchContext?: 'discover' | 'experience-template' | 'quick-start';
+  searchContext?: "discover" | "experience-template" | "quick-start";
   contextFields?: Record<string, string>;
 }
 
@@ -23,76 +23,85 @@ interface ItineraryGeneratedData {
   duration?: number;
   travelers?: number;
   budget?: number;
-  variationType?: 'user_plan' | 'weather_optimized' | 'best_value';
+  variationType?: "user_plan" | "weather_optimized" | "best_value";
   experienceType?: string;
 }
 
 interface BookingEventData {
-  type: 'hotel' | 'activity' | 'flight' | 'service' | 'transport';
+  type: "hotel" | "activity" | "flight" | "service" | "transport";
   destination?: string;
   price?: number;
   travelers?: number;
   tripId?: string;
   itemId?: string;
-  provider?: 'amadeus' | 'viator' | 'platform' | 'external';
-  bookingStatus?: 'initiated' | 'confirmed' | 'pending';
+  provider?: "amadeus" | "viator" | "platform" | "external";
+  bookingStatus?: "initiated" | "confirmed" | "pending";
 }
 
-/**
- * Fire-and-forget analytics tracking
- * Does not block UI - silently fails on error
- */
-const sendAnalyticsEvent = async (endpoint: string, data: Record<string, unknown>): Promise<void> => {
+const sendAnalyticsEvent = async (
+  endpoint: string,
+  data: object,
+): Promise<void> => {
   try {
-    // Use navigator.sendBeacon for better reliability on page unload, fallback to fetch
     const payload = JSON.stringify(data);
     const url = `${API_BASE}${endpoint}`;
-    
-    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      const blob = new Blob([payload], { type: 'application/json' });
+
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
       navigator.sendBeacon(url, blob);
     } else {
-      // Fallback: async fetch with no await to avoid blocking
       fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: payload,
-        credentials: 'include',
+        credentials: "include",
         keepalive: true,
       }).catch(() => {
-        // Silently ignore errors - analytics should never break UX
+        // Existing analytics must never break the app.
       });
     }
   } catch {
-    // Silently ignore - analytics should never break UX
+    // Existing analytics must never break the app.
   }
 };
 
-/**
- * Track destination search events
- */
 export const trackSearchEvent = (data: SearchEventData): void => {
-  sendAnalyticsEvent('/api/analytics/search-event', data);
+  void sendAnalyticsEvent("/api/analytics/search-event", data);
 };
 
-/**
- * Track itinerary generation events
- */
 export const trackItineraryGenerated = (data: ItineraryGeneratedData): void => {
-  sendAnalyticsEvent('/api/analytics/itinerary-generated', data);
+  void sendAnalyticsEvent("/api/analytics/itinerary-generated", data);
 };
 
-/**
- * Track booking events
- */
 export const trackBookingEvent = (data: BookingEventData): void => {
-  sendAnalyticsEvent('/api/analytics/booking', data);
+  void sendAnalyticsEvent("/api/analytics/booking", data);
 };
+
+export type AnalyticsData = Record<string, string | number | boolean>;
+
+declare global {
+  interface Window {
+    umami?: {
+      track(name: string, data?: AnalyticsData): void;
+    };
+  }
+}
+
+export function trackEvent(name: string, data?: AnalyticsData): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.umami?.track(name, data);
+  } catch {
+    // Analytics must never break the app.
+  }
+}
 
 export const analytics = {
   trackSearchEvent,
   trackItineraryGenerated,
   trackBookingEvent,
+  trackEvent,
 };
 
 export default analytics;
