@@ -68,6 +68,11 @@ export const EVENT_CATEGORY_KEYS = [
   "rentals",
   "entertainment",
   "printing_materials",
+  // `venue` (migration 285, ledger `2026-09-04-venue-category`) — the place itself is an event
+  // VENDOR, and the most-booked one: a wedding, a corporate event and a reunion all hire it. It
+  // belongs on the Event Planner card beside the caterer and the florist, not on Service Provider
+  // via the complement rule, which is where it would land if this list stayed silent.
+  "venue",
 ] as const;
 
 /**

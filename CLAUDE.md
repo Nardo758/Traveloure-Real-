@@ -309,13 +309,19 @@ This document captures architectural decisions to maintain consistency across co
     florist, photographer, caterer, officiant — and every one of those already exists as a category
     key. The column is a POINTER INTO THE EXISTING CATALOG, not a third one: CLAUDE.md's FAQ refuses
     a new service table and §4 refuses to merge the two offering catalogs, and referencing one
-    violates neither. **Migration 034 is the sole taxonomy authority** — the only assigner of
-    `category_key`, 24 rows — so it, and nothing else, defines the legal value set. The four `aff_*`
-    keys are affiliate SOURCES, not hireable roles, and are excluded: an occasion never "needs an
-    `aff_air_hotel`". That leaves the 20 discipline keys.
+    violates neither. **The taxonomy REGISTRY is the authority** — `TAXONOMY_MIGRATIONS` in
+    `scripts/lib/taxonomy-registry.cjs`, today `034` (24 rows) and `285` (`venue`) — and it, and
+    nothing else, defines the legal value set. **A new category is a REGISTRY ENTRY plus a
+    migration, never an ad-hoc INSERT** (amended Sep 4, 2026 — ledger `2026-09-04-venue-category`;
+    this entry originally read "migration 034 is the sole taxonomy authority", true only for as
+    long as 034 was the only assigner). ONE list, required by both reachability guards and by
+    `shared/__tests__/roles-needed.test.ts` R3 — a second copy is the derivation-drift class §18
+    rule 1 names, and the registry refuses a `category_key` claimed by two migrations (a fork, not
+    a union). The four `aff_*` keys are affiliate SOURCES, not hireable roles, and are excluded: an
+    occasion never "needs an `aff_air_hotel`". That leaves the 21 discipline keys.
     **A KEY THAT IS NOT REACHABLE IS THE BUG THIS COLUMN IS MOST LIKELY TO CAUSE, so it is guarded
     at CI.** `scripts/check-roles-needed-reachability.cjs` fails when any key in the seeder is not
-    assigned by migration 034. This is the SAME failure `check-category-reachability.cjs` exists for
+    assigned by a registry migration. This is the SAME failure `check-category-reachability.cjs` exists for
     (ledger `2026-09-04-taxonomy-reconcile`), one table over: that guard exists because a
     `category_key`-less row is a dead taxonomy that *looks* live, and it has already bitten twice
     (`custom-other`; the ten `services-*` bundle rows). A `roles_needed` naming a key no category
@@ -624,6 +630,27 @@ This document captures architectural decisions to maintain consistency across co
     **never inferred from the viewer's role** (an expert planning their own holiday is a traveler),
     it grants nothing, and no door sets it today — the expert authoring builds are server rails with
     no plan-modal surface yet.
+
+39. **EVERY ADD SURFACE IS A VIEW OF `itinerary_items`, AND THE CART IS ONE OF THEM (decision-maker
+    ratified Sep 4, 2026 — ledger rows `2026-09-03-slip-convergence`, `2026-09-03-trip-pdf`,
+    `2026-09-03-plan-vocabulary`, `2026-09-03-expert-templates-consumer-sunset`). NO SCHEMA CHANGE.**
+    There is ONE store of a plan's contents — `itinerary_items` — and every surface that adds to a
+    plan (Discover, the slip, a service page, a ready-made clone, the AI rail) writes there. The
+    **cart is the `ready_for_checkout` PROJECTION of that store, not a second store**: adding is a
+    write to the slip, and carting is a STATUS CHANGE on a row that already exists. There is no
+    separate cart table to reconcile, and no surface may invent one.
+    **ONE COPY-DOWN.** `syncItemProjection` is the single place a booked service's facts are copied
+    onto its item row, and it carries the slot and the stay dates (migration 275). A second copier —
+    a route that spreads its own subset onto the row — is the derivation-drift class §18 rule 1
+    names, and it is how a slip and a cart start disagreeing about the same booking.
+    **THE TRIP-LESS GUEST CART IS SANCTIONED, and it is a FALLBACK.** A visitor with no plan yet
+    still has somewhere to put a thing; that path stays until G2 (guest trips) replaces it, and G2
+    is HELD as its own architecture (ledger `2026-09-04-held-decisions`). It is not a licence to
+    build cart-only features off to one side.
+    **"PLAN" IS THE UNIVERSAL NOUN.** Trip, itinerary and event are the shapes a plan takes; the
+    word the traveler reads is *plan*, on every surface including the PDF. The retired
+    `expert_templates` consumer lane is gone from this vocabulary entirely — `ready_made_trips` is
+    the single store lane.
 
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
