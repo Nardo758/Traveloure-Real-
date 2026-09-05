@@ -86,6 +86,15 @@ import {
   insertContentImpression, getDemandCountsForCity,
   filterOutAwayOwners,
 } from "../services/content-query.service";
+import { trackAICost } from "../services/ai-cost-tracker";
+import {
+  resolveAiDraftEligibility,
+  aiDraftRefusalBody,
+  isAiDraftSlipHasItemsError,
+  AI_DRAFT_REFUSAL_ERROR,
+  AI_DRAFT_REFUSAL_MESSAGE,
+  AI_DRAFT_REFUSAL_STATUS,
+} from "../services/ai-draft-eligibility";
 import { hasExistingConversation, isBlockedBetween } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
@@ -4719,6 +4728,19 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           return res.status(403).json({ message: "Forbidden: you do not own this trip" });
         }
         resolvedTripId = tripIdParam;
+
+        // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: the FREE draft runs only on an
+        // EMPTY slip. With a tripId this handler re-applies through
+        // `saveGeneratedItinerarySnapshot`, whose rebuild delete replaces the trip's items — a
+        // free re-optimize of a plan the traveler already built. A slip holding ANY item is
+        // refused with a 409 the client routes to Optimize. ONE predicate, one place (§18 rule 1).
+        // Placed BEFORE the Grok call so a refused request costs zero AI tokens; the snapshot
+        // itself carries the second, in-transaction copy of the same check.
+        const draftEligibility = await resolveAiDraftEligibility(tripIdParam);
+        if (!draftEligibility.eligible) {
+          return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
+        }
+
         [tripAnchors, tripBoundaries] = await Promise.all([
           storage.getTemporalAnchors(tripIdParam),
           storage.getDayBoundaries(tripIdParam),
@@ -4761,8 +4783,11 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // FAILURE_THRESHOLD used to leave open.
       let result: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["result"];
       let usage: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["usage"];
+      // LD 41 (c): which model actually produced the draft (Grok, or the Anthropic draft-tier
+      // fallback) — reported by the generator, never guessed here, because the cost row names it.
+      let draftModelUsed: string;
       try {
-        ({ result, usage } = await dedupedRequest(dedupKey, () =>
+        ({ result, usage, model: draftModelUsed } = await dedupedRequest(dedupKey, () =>
           callWithCircuitBreaker(() =>
             grokService.generateAutonomousItinerary({
               destination,
@@ -4837,6 +4862,29 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       const savedItinerary = snapshot.savedItinerary;
       const insertedItems = snapshot.insertedItems;
       const comparison = snapshot.comparison;
+
+      // LD 41 (c) / ledger `2026-09-05-draft-cost-tracking-and-tier`: THE PRIMARY GENERATE PATH
+      // WRITES `ai_cost_tracking`. This is the surface every draft door funnels through
+      // (EnhancedPlanningModal, PlanningWithBooking), and it wrote `ai_interactions` only — so the
+      // admin cost breakdown, which reads `ai_cost_tracking`, could not see the platform's single
+      // largest free-AI spend at all. Same writer and same shape as the trip-context extractor
+      // (`trackAICost`, `server/services/ai-cost-tracker.ts`); the model is the one the generator
+      // says it used, never assumed. `estimatedCost` is the generator's own figure, so no pricing
+      // table is restated here (§18 rule 1). A tracking failure NEVER fails the generation —
+      // `trackAICost` swallows its own errors and the `.catch` below covers the call itself
+      // (§15b: an ancillary effect may not break the operation that authorizes it).
+      const draftTokensIn = usage.promptTokens ?? 0;
+      const draftTokensOut = usage.completionTokens ?? 0;
+      if (draftTokensIn > 0 || draftTokensOut > 0) {
+        trackAICost({
+          sourceType: "ai_itinerary",
+          modelUsed: draftModelUsed,
+          userId,
+          costUsd: usage.estimatedCost ?? 0,
+          tokensIn: draftTokensIn,
+          tokensOut: draftTokensOut,
+        }).catch((err) => console.error("[cost-tracker] ai_itinerary:", err));
+      }
 
       // Analytics is deliberately outside the snapshot transaction. It remains
       // best-effort and cannot roll back (or partially commit) itinerary state.
@@ -4962,6 +5010,18 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         status: savedItinerary.status
       });
     } catch (error: any) {
+      // LD 41 (b): the snapshot's in-transaction second layer refused. The pre-check above is not
+      // inside that transaction, so a slip that gained an item in between lands here — answer the
+      // same honest 409 rather than a 500 that reads like a platform fault (§13).
+      if (isAiDraftSlipHasItemsError(error)) {
+        return res.status(AI_DRAFT_REFUSAL_STATUS).json({
+          error: AI_DRAFT_REFUSAL_ERROR,
+          message: AI_DRAFT_REFUSAL_MESSAGE,
+          optimize: true,
+          itemCount: error.itemCount,
+          tripId: error.tripId,
+        });
+      }
       // Defense in depth: the primary AI call above is already caught and
       // sanitized inline, but keep this branch as a safety net in case a
       // breaker-open error surfaces from elsewhere in the handler.
@@ -5152,6 +5212,19 @@ router.post("/api/ai/itineraries/:id/save-as-trip", isAuthenticated, async (req,
         return res.status(422).json({ message: "This generation has no activities to save." });
       }
 
+      // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: a stored generation whose row is
+      // already stamped with a trip RE-APPLIES into that trip, and the snapshot's rebuild delete
+      // replaces what is there. That is the free re-optimize the ruling closes, so a slip holding
+      // ANY item is refused with the same 409. Note what this changes: the first save of a
+      // generation still materializes (`row.tripId` is NULL ⇒ `new_trip` ⇒ a mint), and a REPEAT
+      // save onto the trip that first save created is now refused rather than silently rebuilding
+      // it — the behaviour this endpoint's header called "repeat saves re-apply into the same
+      // trip". No model call happens here at all, so the placement is about the DELETE, not tokens.
+      const draftEligibility = await resolveAiDraftEligibility(row.tripId || null);
+      if (!draftEligibility.eligible) {
+        return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
+      }
+
       const snapshot = await saveGeneratedItinerarySnapshot({
         userId,
         // A row already materialized (or generated FOR a trip) re-applies into that
@@ -5208,6 +5281,16 @@ router.post("/api/ai/itineraries/:id/save-as-trip", isAuthenticated, async (req,
         itemCount: snapshot.insertedItems.length,
       });
     } catch (error: any) {
+      // LD 41 (b): same in-transaction second-layer refusal as the generate rail — a 409, not a 500.
+      if (isAiDraftSlipHasItemsError(error)) {
+        return res.status(AI_DRAFT_REFUSAL_STATUS).json({
+          error: AI_DRAFT_REFUSAL_ERROR,
+          message: AI_DRAFT_REFUSAL_MESSAGE,
+          optimize: true,
+          itemCount: error.itemCount,
+          tripId: error.tripId,
+        });
+      }
       console.error("Error saving AI itinerary as trip:", error);
       res.status(500).json({ message: "Failed to save itinerary as a trip" });
     }

@@ -246,7 +246,23 @@ export default function Experiences() {
         </div>
       </div>
 
-      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
+      {/* Locked Decision 42 (D13), ledger `2026-09-05-doors-source-fields`: A DOOR PASSES WHAT IT
+          HOLDS. This page already parses `?destination=` and `?country=` — `buildExperienceLink`
+          threads both into every card link — and then handed the intake panel nothing, so a
+          traveler arriving from a city surface was asked for the city they had just come from.
+          `destinationParam` is a CITY-shaped value here (it is what the city surfaces put on the
+          query string); it is passed through verbatim and nothing is parsed out of it (§13).
+          `null` from `URLSearchParams.get` becomes `undefined` — an absent prop is how the panel is
+          told "not known", never an empty string standing in for an answer.
+
+          PROPS ONLY: Locked Decision 42 (D11) collapses this panel into the ONE modal and turns its
+          mounts into doors of it. That is a wave-3 lane and is NOT started here. */}
+      <IntakePanel
+        open={intakeOpen}
+        onOpenChange={setIntakeOpen}
+        city={destinationParam ?? undefined}
+        country={countryParam ?? undefined}
+      />
     </DashboardLayout>
   );
 }

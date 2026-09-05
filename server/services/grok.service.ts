@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import { resolveAiDraftModel } from "./ai-draft-model";
+import { parseAiJsonObjectOrThrow } from "../utils/ai-json";
 import { aiUsageService } from "./ai-usage.service";
 import { formatGeneratedItinerarySpecialRequests } from "../utils/generated-itinerary";
 
@@ -550,7 +552,14 @@ Provide current, actionable information.`;
     }
   }
 
-  async generateAutonomousItinerary(request: AutonomousItineraryRequest): Promise<{ result: AutonomousItineraryResult; usage: GrokUsageStats }> {
+  /**
+   * LD 41 (c) / ledger `2026-09-05-draft-cost-tracking-and-tier`: the return now names the MODEL
+   * that actually produced the plan (Grok, or the Anthropic draft-tier fallback). The caller
+   * writes `ai_cost_tracking`, and a cost row that names the wrong model — or names none while
+   * pretending to — is worse than no row (§13); the caller cannot know which branch ran, so this
+   * function says.
+   */
+  async generateAutonomousItinerary(request: AutonomousItineraryRequest): Promise<{ result: AutonomousItineraryResult; usage: GrokUsageStats; model: string }> {
     // E2E stub: CI and the explicitly provisioned staging deployment run the
     // itinerary-generation journey without a live LLM call, so the real AI call
     // would throw and the flow would never reach the comparison/redirect the test
@@ -567,7 +576,9 @@ Provide current, actionable information.`;
       (process.env.NODE_ENV !== "production" ||
         (process.env.ALLOW_TEST_ACCOUNTS === "1" && process.env.ENVIRONMENT !== "PROD"));
     if (e2eAiStubEnabled) {
-      return { result: buildStubItinerary(request), usage: STUB_USAGE };
+      // LD 41 (c): the stub names itself as the model, so a cost row born from an E2E run is
+      // never attributed to a real vendor model that was never called (§13).
+      return { result: buildStubItinerary(request), usage: STUB_USAGE, model: "e2e-ai-stub" };
     }
 
     const systemPrompt = `You are an autonomous trip planning AI for Traveloure. Create comprehensive, day-by-day itineraries that travelers can follow or use as a starting point for expert refinement.
@@ -725,16 +736,24 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
         throw new Error("Empty response from Grok");
       }
 
-      const result = JSON.parse(content) as AutonomousItineraryResult;
+      // ONE parse implementation (§18 rule 1, ledger `2026-09-05-draft-cost-tracking-and-tier`):
+      // fence-tolerant and brace-matched, and it never repairs a truncated response into an object
+      // the model did not produce (§13). Failure still throws, exactly as `JSON.parse` did.
+      const result = parseAiJsonObjectOrThrow<AutonomousItineraryResult>(content, "Grok itinerary");
       const usage = this.extractUsageStats(response);
 
-      return { result, usage };
+      return { result, usage, model: GROK_MODEL };
     } catch (grokError: any) {
       console.warn("Grok autonomous itinerary failed, falling back to Anthropic:", grokError.message);
 
       try {
+        // LD 41 (c): the free draft's tier is a COST decision (`resolveAiDraftModel()` —
+        // env-configurable, defaulted to the cheaper current tier), never a product claim and
+        // never surfaced to the traveler. This is the DRAFT's fallback generator; the paid
+        // optimizer keeps its own Sonnet-class id and is not read from here.
+        const draftModel = resolveAiDraftModel();
         const anthropicResponse = await getAnthropicClient().messages.create({
-          model: "claude-sonnet-4-5",
+          model: draftModel,
           max_tokens: 8192,
           system: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only — no markdown, no explanation.",
           messages: [{ role: "user", content: userPrompt }],
@@ -745,9 +764,10 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
           : null;
         if (!content) throw new Error("Empty response from Anthropic");
 
-        // Strip any markdown code fences just in case
-        const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-        const result = JSON.parse(cleaned) as AutonomousItineraryResult;
+        const result = parseAiJsonObjectOrThrow<AutonomousItineraryResult>(
+          content,
+          "Anthropic itinerary fallback",
+        );
 
         const usage: GrokUsageStats = {
           promptTokens: anthropicResponse.usage.input_tokens,
@@ -756,7 +776,7 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
           estimatedCost: (anthropicResponse.usage.input_tokens * 0.000003) + (anthropicResponse.usage.output_tokens * 0.000015),
         };
 
-        return { result, usage };
+        return { result, usage, model: anthropicResponse.model ?? draftModel };
       } catch (anthropicError: any) {
         console.error("Anthropic fallback also failed:", anthropicError.message);
         throw new Error(`Autonomous itinerary generation failed: ${anthropicError.message}`);

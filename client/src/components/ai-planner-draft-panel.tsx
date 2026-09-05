@@ -95,8 +95,11 @@ export function AiPlannerDraftPanel({
       destination,
       startDate,
       endDate,
-      ...(travelers ? { numberOfTravelers: travelers, adults: travelers } : {}),
-      kids: 0,
+      // Locked Decision 42 (D11 interim) / ledger `2026-09-05-mint-market-slug-invariant`: the AI
+      // context carries a party TOTAL, never a split, so only the total is sent. `adults: travelers`
+      // plus an UNCONDITIONAL `kids: 0` fabricated a split nobody stated — and the `kids: 0` was
+      // sent even when the traveler count itself was unknown. adults/kids stay NULL (§13).
+      ...(travelers ? { numberOfTravelers: travelers } : {}),
       ...(eventType ? { eventType } : {}),
     } as InsertTrip;
 

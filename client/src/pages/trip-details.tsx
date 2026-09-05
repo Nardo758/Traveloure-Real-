@@ -489,7 +489,21 @@ export default function TripDetails() {
                       <div className="flex justify-center">
                         <Button
                           variant="outline"
-                          onClick={() => openPlanning({ branch: "ai", destination: trip?.destination, tripId: trip?.id })}
+                          onClick={() =>
+                            // Locked Decision 42 (D13), ledger `2026-09-05-doors-source-fields`:
+                            // a door passes what it HOLDS. This one holds the trip row, so it adds
+                            // the occasion the plan already carries — `trips.experience_type`, the
+                            // coarse machine key (D1's `experience_type_id` is a wave-3 lane and
+                            // this row does not have it yet). §13: `experienceType` is nullable and
+                            // is passed through AS IS — undefined when the plan never stated one,
+                            // never a nearest-looking key chosen here to fill the field.
+                            openPlanning({
+                              branch: "ai",
+                              destination: trip?.destination,
+                              tripId: trip?.id,
+                              experienceType: trip?.experienceType ?? undefined,
+                            })
+                          }
                           data-testid="button-plan-with-preferences"
                         >
                           <MapPin className="w-4 h-4 mr-2" />

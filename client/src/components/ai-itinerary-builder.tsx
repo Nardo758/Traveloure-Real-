@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from "@/lib/ai-draft-refusal";
 import { useMutation } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -290,6 +291,8 @@ export function AIItineraryBuilder({
     },
   });
 
+  const [draftRefusal, setDraftRefusal] = useState<AiDraftRefusal | null>(null);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!optimizationResult) throw new Error("No itinerary to save");
@@ -304,28 +307,52 @@ export function AIItineraryBuilder({
         throw new Error("This generation can't be saved — please regenerate and try again.");
       }
 
-      const response = await apiRequest("POST", `/api/ai/itineraries/${variationId}/save-as-trip`, {
-        travelers,
-        eventType: experienceType || "vacation",
-        preferences: {
-          interests,
-          pacePreference,
-          mustSeeAttractions: mustSeeAttractions.split(",").map(s => s.trim()).filter(Boolean),
-          dietaryRestrictions,
-          mobilityConsiderations,
-        },
+      // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: a REPEAT save re-applies into the
+      // trip the first save created, and the server now refuses that with a 409 when the slip
+      // holds items. `apiRequest` throws on any non-ok response, which would render this as a
+      // generic failure — so this one call uses `fetch` directly in order to READ the refusal
+      // body and route the traveler to Optimize instead. Same credentials/headers posture.
+      const response = await fetch(`/api/ai/itineraries/${variationId}/save-as-trip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          travelers,
+          eventType: experienceType || "vacation",
+          preferences: {
+            interests,
+            pacePreference,
+            mustSeeAttractions: mustSeeAttractions.split(",").map(s => s.trim()).filter(Boolean),
+            dietaryRestrictions,
+            mobilityConsiderations,
+          },
+        }),
       });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        // ONE shared reader (§18 rule 1) — never a second copy of the discriminator.
+        const refusal = readSlipHasItemsRefusal(response.status, body);
+        if (refusal) return { refusal };
+        throw new Error((body as any)?.message || "Failed to save this plan.");
+      }
       const saved = await response.json();
-      return { id: saved.tripId };
+      return { id: saved.tripId as string };
     },
-    onSuccess: (trip) => {
-      if (onSave) {
-        onSave(trip.id);
+    onSuccess: (result) => {
+      if ("refusal" in result && result.refusal) {
+        setDraftRefusal(result.refusal);
+        return;
+      }
+      if (onSave && "id" in result && result.id) {
+        onSave(result.id);
       }
     },
   });
 
+  // LD 41 (b): the free re-apply refusal, held as its own state — a routing answer that carries a
+  // destination, not a failure.
   const handleSaveItinerary = () => {
+    setDraftRefusal(null);
     saveMutation.mutate();
   };
 
@@ -1053,6 +1080,28 @@ export function AIItineraryBuilder({
               </>
             )}
           </Button>
+        </div>
+      )}
+
+      {/* LD 41 (b): the plan this generation belongs to already holds items, so a free re-apply
+          would rebuild work the traveler already has. Not an error — the server's own sentence,
+          plus a link to the slip whose existing Optimize button runs the ONE pay gate. No link
+          when the refusal named no trip (§13). */}
+      {draftRefusal && (
+        <div
+          className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          data-testid="ai-draft-slip-has-items"
+        >
+          <p>{draftRefusal.message}</p>
+          {slipHref(draftRefusal) && (
+            <a
+              href={slipHref(draftRefusal)!}
+              className="mt-2 inline-block font-medium underline"
+              data-testid="ai-draft-optimize-instead"
+            >
+              Optimize this plan instead
+            </a>
+          )}
         </div>
       )}
     </div>

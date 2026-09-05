@@ -491,6 +491,13 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
             context: JSON.stringify(comparisonContext || {}),
           },
           description: `Traveloure AI Optimization (${tier})`,
+          // LD 43(c): the optimizer-run charge offers wallets like every other platform charge.
+          // This site previously specified NEITHER `payment_method_types` NOR
+          // `automatic_payment_methods`, so what it offered was whatever Stripe's API-version
+          // default happened to be — stating it is the point. `allow_redirects: 'never'` because
+          // the pay sheet confirms in place with `redirect: 'if_required'` and the run starts
+          // immediately after; wallets are not redirect methods and are unaffected.
+          automatic_payment_methods: { enabled: true, allow_redirects: "never" as const },
         },
         // §15 (MONEY_MAP F-3): same deterministic key format as the saved-card path above —
         // a retried/duplicate Elements-path request can't mint a second uncaptured PI.
