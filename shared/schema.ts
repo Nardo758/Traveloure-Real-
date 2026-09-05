@@ -4488,6 +4488,33 @@ export type InsertExperienceUniversalFilterOption = z.infer<typeof insertExperie
 // === Logistics Intelligence Layer ===
 
 // Enums for logistics
+// ── TRIP-PARTICIPANT ROLE VOCABULARY (ledger `2026-09-04-cost-split-phase-one`) ────────────────
+// `trip_participants.role` is free-text `varchar(50)` with NO DB CHECK, and until this ruling its
+// vocabulary lived ONLY in a trailing comment on the column — which is why the client and the
+// server had no shared name for any of it and every surface re-typed the string. This const is
+// that one name: both sides read it, neither re-spells it.
+//
+// `payer` is the value cost-split phase one adds: a `trip_participants` row whose `user_id` is the
+// session user and whose `role` is exactly `payer` may settle a deposit-paid booking's OUTSTANDING
+// BALANCE on that participant's trip (`server/services/balance-payer.service.ts`, the ONE
+// authorization helper). It grants nothing else — not ownership of the booking, not a refund
+// destination, not a read of anyone's PII.
+//
+// APP-ENFORCED, DB-PERMISSIVE, and deliberately NOT wired into a zod refinement on the insert
+// schema: the column already holds free-text values written before this const existed, and
+// constraining it here would reject rows the platform wrote itself (and, on a publish, is exactly
+// the drizzle-push CHECK trap the Coordination Prevention rules warn about). The role is assigned
+// by the TRIP OWNER through the existing owner-gated `PATCH /api/participants/:id` allowlist,
+// which already `.pick()`s `role`.
+export const tripParticipantRoleEnum = ["organizer", "co-organizer", "guest", "vendor_contact", "payer"] as const;
+export type TripParticipantRole = (typeof tripParticipantRoleEnum)[number];
+/**
+ * The ONE spelling of the balance-paying collaborator role. Server authorization and any client
+ * affordance read THIS — a second copy of the literal is the derivation-drift class §18 rule 1
+ * names, on a string that decides who may move money.
+ */
+export const TRIP_PARTICIPANT_ROLE_PAYER: TripParticipantRole = "payer";
+
 export const participantStatusEnum = ["invited", "pending", "confirmed", "declined", "maybe", "cancelled"] as const;
 export const paymentStatusEnum = ["unpaid", "partial", "paid", "refunded", "overdue"] as const;
 export const contractStatusEnum = ["draft", "sent", "negotiating", "signed", "active", "completed", "cancelled", "disputed"] as const;

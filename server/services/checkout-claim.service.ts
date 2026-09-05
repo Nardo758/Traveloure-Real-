@@ -1115,21 +1115,134 @@ async function recordReconciliationException(
 //     `stripe_balance_intent_id`, so a double signal (webhook + inline confirm) is exactly ONE flip.
 
 /**
+ * The `booking_details` key that records WHICH USER authorized (and therefore pays) the balance.
+ * Ledger `2026-09-04-cost-split-phase-one`: with the owner no longer the only possible payer, "who
+ * paid the balance?" stopped being answerable from `traveler_id`. Recorded on the booking row —
+ * inside the SAME atomic conditional that stamps the balance PI — so the promotion can name the
+ * payer on its diary row whichever signal arrives first, including the webhook, which has no
+ * session to ask. NO new table and no schema change: `booking_details` is the row's existing jsonb.
+ */
+export const BALANCE_PAYER_DETAIL_KEY = "balancePaidByUserId";
+
+/** Read the recorded balance payer off a booking row's `booking_details`, or NULL. */
+export function recordedBalancePayer(bookingDetails: unknown): string | null {
+  if (!bookingDetails || typeof bookingDetails !== "object") return null;
+  const value = (bookingDetails as Record<string, unknown>)[BALANCE_PAYER_DETAIL_KEY];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+export interface BalancePayerClaimResult {
+  /** This payer now holds the balance leg (freshly, or because they already held it). */
+  claimed: boolean;
+  /** Another user holds it — the caller must refuse rather than create a second PaymentIntent. */
+  heldBy: string | null;
+  /** The row is no longer an unclaimed balance (not `deposit_paid`, or already stamped). */
+  notClaimable: boolean;
+}
+
+/**
+ * BALANCE PAYER CLAIM — the §15 "claim the row atomically FIRST, then make the external call"
+ * ordering, applied to the balance leg by ledger `2026-09-04-cost-split-phase-one`.
+ *
+ * WHY THIS EXISTS, and why the widening could not land without it. The balance route calls Stripe
+ * BEFORE it stamps, and `createPaymentIntent` on the saved-card branch sends
+ * `off_session: true, confirm: true` — a REAL CHARGE at creation. While the owner was the only
+ * possible payer that was safe: two concurrent calls carried the SAME idempotency key, so Stripe
+ * returned ONE PaymentIntent and there was one charge. The moment a second payer exists, the key
+ * must differ by actor (it is built from the actor's customer and saved card — see
+ * `buildBalanceIdempotencyKey`), and two DIFFERENT keys mean two PaymentIntents, which on the
+ * saved-card branch is TWO REAL CHARGES for one balance. The post-Stripe stamp cannot undo a
+ * charge that already happened; only a claim taken BEFORE the call can prevent it.
+ *
+ * So the claim is the guard, and it is ONE atomic conditional (§15 — never a check-then-update):
+ *   `status='deposit_paid' AND stripe_balance_intent_id IS NULL AND (no payer recorded OR it is me)`
+ * The `COALESCE(recorded, me) = me` predicate expresses all three admissible cases in one clause,
+ * so an unclaimed row and this payer's OWN re-entry both pass (the claim is idempotent — a retry
+ * or double-click re-claims and proceeds to the SAME idempotency key), while a different user
+ * matches zero rows and is refused without a Stripe call ever being made.
+ *
+ * NOTHING EVER RELEASES A CLAIM, and that is the ruling, not an omission. `createPaymentIntent`
+ * RETURNS (rather than throws) whenever Stripe attaches a PaymentIntent to the error, so a thrown
+ * error is exactly the case where we cannot prove a PaymentIntent does not exist — a timeout after
+ * Stripe created and (on the saved-card branch) CHARGED it is indistinguishable from a call that
+ * never landed. Releasing there would hand a second payer a second charge for one balance: §15b's
+ * "never void a row whose PaymentIntent may exist", one leg over. So a claim is cleared only by the
+ * balance actually being paid (the row leaves `deposit_paid`). The cost is a LIVENESS limit, never
+ * a money-safety one: a payer who claims and walks away holds the balance leg, and the booking's
+ * owner is answered `balance_payment_in_progress` until that payer finishes. It self-heals for the
+ * one person it affects — their retry rebuilds the SAME idempotency key and gets the SAME
+ * PaymentIntent. A TTL reclaim is phase two's problem, where a real split needs an expiry model
+ * anyway; inventing one here would be a fourth writer on the money path (§17's "detect, don't
+ * repair" posture) with no evidence to act on.
+ */
+export async function claimBalancePayer(
+  bookingId: string,
+  payerUserId: string,
+): Promise<BalancePayerClaimResult> {
+  const payer = typeof payerUserId === "string" ? payerUserId.trim() : "";
+  if (!bookingId || !payer) return { claimed: false, heldBy: null, notClaimable: true };
+
+  const claimed = await db.execute(sql`
+    UPDATE service_bookings
+    SET booking_details = COALESCE(booking_details, '{}'::jsonb)
+                            || jsonb_build_object(${BALANCE_PAYER_DETAIL_KEY}::text, ${payer}::text),
+        updated_at = NOW()
+    WHERE id = ${bookingId}
+      AND status = 'deposit_paid'
+      AND stripe_balance_intent_id IS NULL
+      AND COALESCE(booking_details->>${BALANCE_PAYER_DETAIL_KEY}::text, ${payer}::text) = ${payer}::text
+    RETURNING id
+  `);
+  if (claimed.rows.length === 1) return { claimed: true, heldBy: null, notClaimable: false };
+
+  // Zero rows has two very different meanings, and the caller answers them differently. Read the
+  // row back to say which — a diagnostic read AFTER the atomic decision, never a pre-check.
+  const cur = await db.execute(sql`
+    SELECT status, stripe_balance_intent_id, booking_details->>${BALANCE_PAYER_DETAIL_KEY}::text AS payer
+    FROM service_bookings WHERE id = ${bookingId}
+  `);
+  const row = cur.rows[0] as any;
+  const holder = typeof row?.payer === "string" && row.payer.trim() !== "" ? (row.payer as string).trim() : null;
+  const stillOpen = row?.status === "deposit_paid" && !row?.stripe_balance_intent_id;
+  if (stillOpen && holder && holder !== payer) {
+    return { claimed: false, heldBy: holder, notClaimable: false };
+  }
+  return { claimed: false, heldBy: null, notClaimable: true };
+}
+
+/**
  * BALANCE AUTHORIZE gate — the atomic conditional stamp of the balance PI on a deposit-paid row.
  * Mirrors `stampAuthorization`, on the balance column. Returns false when the row is no longer an
  * unauthorized balance claim (already stamped, or no longer `deposit_paid`) — the caller must then
  * refuse to promote and reconcile against the already-stamped PI instead.
+ *
+ * `payerUserId` is the SESSION user of the authorizing call (§14 — never a body value), already
+ * authorized by `canPayBalance` and already holding the claim above. When given it also NARROWS the
+ * predicate to that claim holder, so this statement can never stamp on behalf of a payer who does
+ * not hold the row — defence in depth behind `claimBalancePayer`, not a second copy of it. The
+ * payer is merged into `booking_details`, never assigned over it, so every other key
+ * (`stripeAttemptAt`, `itineraryItemId`, …) survives. An omitted payer leaves `booking_details`
+ * byte-identical and the predicate exactly as it was before this ruling — the pre-ruling behaviour
+ * every other caller keeps — rather than writing a null that would read as "nobody paid it".
  */
 export async function stampBalanceAuthorization(
   bookingId: string,
   paymentIntentId: string,
+  payerUserId?: string | null,
 ): Promise<boolean> {
+  const payer = typeof payerUserId === "string" && payerUserId.trim() !== "" ? payerUserId.trim() : null;
+  const detailsAssignment = payer
+    ? sql`, booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(${BALANCE_PAYER_DETAIL_KEY}::text, ${payer}::text)`
+    : sql``;
+  const payerPredicate = payer
+    ? sql` AND COALESCE(booking_details->>${BALANCE_PAYER_DETAIL_KEY}::text, ${payer}::text) = ${payer}::text`
+    : sql``;
   const stamped = await db.execute(sql`
     UPDATE service_bookings
-    SET stripe_balance_intent_id = ${paymentIntentId}, updated_at = NOW()
+    SET stripe_balance_intent_id = ${paymentIntentId}, updated_at = NOW()${detailsAssignment}
     WHERE id = ${bookingId}
       AND status = 'deposit_paid'
-      AND stripe_balance_intent_id IS NULL
+      AND stripe_balance_intent_id IS NULL${payerPredicate}
     RETURNING id
   `);
   return stamped.rows.length === 1;
@@ -1204,6 +1317,16 @@ export async function promoteBalancePayment(opts: {
       const tripId = claimedRow.trip_id ?? null;
       if (tripId) {
         const details = (claimedRow.booking_details ?? {}) as Record<string, unknown>;
+        // WHO PAID (ledger `2026-09-04-cost-split-phase-one`). The caller's own `actorId` wins when
+        // it has one (the inline confirm, which knows its session user); otherwise the diary falls
+        // back to the payer recorded on the row at authorization time. That fallback is the whole
+        // point: the WEBHOOK promotes with no session, and before this ruling its diary row carried
+        // `actorId: null` — with two possible payers, "the balance was paid" without a payer is no
+        // longer an answer. Still NULL when neither is known — honestly blank, never guessed (§13).
+        const recordedPayer =
+          typeof details[BALANCE_PAYER_DETAIL_KEY] === "string" && (details[BALANCE_PAYER_DETAIL_KEY] as string).trim() !== ""
+            ? (details[BALANCE_PAYER_DETAIL_KEY] as string)
+            : null;
         await logItemTransition(tx, {
           tripId,
           itemId: typeof details.itineraryItemId === "string" ? (details.itineraryItemId as string) : null,
@@ -1211,7 +1334,7 @@ export async function promoteBalancePayment(opts: {
           fromStatus: "deposit_paid",
           toStatus: "confirmed",
           actorType: diaryActorType(actor),
-          actorId: opts.actorId ?? null,
+          actorId: opts.actorId ?? recordedPayer,
         });
         result.diaryRows = 1;
       }
