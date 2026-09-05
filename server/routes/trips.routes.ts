@@ -18,6 +18,14 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
+// Ledger `2026-09-05-slip-own-your-plan` (review R14): the ONE row-level answer to "is this row
+// money?", re-exported by the rebuild guard so the set-level WHERE clause and this single-row test
+// are read together (§18 rule 1). Imported from the guard module rather than from `@shared`
+// directly, so the relationship between the two is visible at the call site.
+import {
+  itineraryItemIsMoneyCommitted,
+} from "../services/itinerary-rebuild-guard";
+import { ITEM_BOOKED_DELETE_ERROR } from "@shared/itinerary-item-money";
 // The ONE writer and the ONE reader of a plan's ordered stops (migration 281, Locked Decision 34).
 // The mirror rule — position 0's name IS `trips.destination` — lives there, not here.
 import {
@@ -3311,6 +3319,19 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
+      // A BOOKED ROW IS MONEY, AND NO ROLE MAY DELETE IT (ledger `2026-09-05-slip-own-your-plan`,
+      // review R14; §15). Deleting a row that carries a `booking_id` — or that the routing machine
+      // says is `purchased` — severs a real `service_bookings` row from the only plan surface that
+      // can see it, and NOTHING in this repo puts it back. The slip hides its ✕ on such a row, but
+      // a render rule is never what keeps a write out (§14 posture, D16): this is.
+      //
+      // REGARDLESS OF ROLE, and deliberately AFTER the authorization above: a stranger still gets
+      // the 403 they always got (this refusal must not become an oracle for which items exist), and
+      // the owner, a §12 WRITE-status advisor, the trip's author and an admin all get the same
+      // sentence. ONE predicate, shared with the rebuild guard and with the slip's own tools.
+      if (itineraryItemIsMoneyCommitted(existing)) {
+        return res.status(409).json(ITEM_BOOKED_DELETE_ERROR);
+      }
       // R15 (ledger 2026-08-17-partner-demand-r15-transition-log): record WHO removed the item on
       // the same-transaction `item_removed` diary row. The actor is derived from the trip
       // authorization above (never req.body): an assigned expert acting on the plan ⇒ "expert",

@@ -95,6 +95,16 @@ import {
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
 import { eventCountLabel, partyLabelForOccasion } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
+// LD 42 rows 1.6 / S1 / S2 / D16 (ledger `2026-09-05-slip-own-your-plan`): the owner's own hands on
+// their own plan. The RULES are pure and live in `@/lib/slip-item-tools`; the buttons and the four
+// existing rails they call live in `SlipItemTools.tsx`. Nothing here restates either (§18 rule 1).
+import { SlipAddItemControl, SlipItemTools } from "./SlipItemTools";
+import {
+  resolveAddDayNumber,
+  slipItemTools,
+  SLIP_ADD_DAY_LABEL,
+  SLIP_ADD_EVENT_LABEL,
+} from "@/lib/slip-item-tools";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 // LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
@@ -453,6 +463,9 @@ function SlipItemRow({
   hasOptimized,
   highlighted,
   rowRef,
+  dayNumber,
+  dayItemIds,
+  groupItemIds,
 }: {
   tripId: string;
   activity: PlanCardActivity;
@@ -462,10 +475,24 @@ function SlipItemRow({
   hasOptimized: boolean;
   highlighted: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
+  /** The plan day this row sits on — `null` for a slot the events alone brought into being. */
+  dayNumber: number | null;
+  /** The DAY's ordered ids (what the reorder rail rewrites) and this row's GROUP's ordered ids
+   *  (what "up" and "down" mean on screen). Both are needed; see `reorderedDayItemIds`. */
+  dayItemIds: readonly string[];
+  groupItemIds: readonly string[];
 }) {
   const a = activity;
   const purchased = isPurchasedRow(a);
   const secondary = secondaryLine(a, expertName);
+  // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
+  // tools at all, a booked row keeps reorder and edit and loses ✕. Decided by the ONE shared
+  // predicate the DELETE rail refuses on (`@shared/itinerary-item-money`), never a second copy.
+  const tools = slipItemTools({
+    isOwner,
+    routingStatus: a.routingStatus ?? null,
+    bookingId: a.booking?.id ?? null,
+  });
   const showActions =
     (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
 
@@ -511,6 +538,16 @@ function SlipItemRow({
               />
             </div>
           )}
+          {/* S2 — ↑ ↓ ✎ ✕. The component renders nothing at all when the toolset is empty, so an
+              advisor's row and a paid row are byte-identical to what they were before this lane. */}
+          <SlipItemTools
+            tripId={tripId}
+            itemId={a.id}
+            tools={tools}
+            dayNumber={dayNumber}
+            dayItemIds={dayItemIds}
+            groupItemIds={groupItemIds}
+          />
         </div>
         {/* Status pill right-aligned — the SAME RoutingBadge every surface renders (ruling 8);
             the slip shows the neutral Planning pill too (showPlanning). */}
@@ -783,12 +820,19 @@ function SlipEventGroupBlock({
   tripId,
   destination,
   isOwner,
+  addDayNumber,
   children,
 }: {
   event: PlanEvent;
   tripId: string;
   destination: string | null | undefined;
   isOwner: boolean;
+  /**
+   * S1 — the day a "+ Add something to this event" row would land on, already resolved by the
+   * caller (`resolveAddDayNumber`). `null` means the plan has not told us one, and the control is
+   * replaced by the reason rather than filing the item on a day nobody chose (§13).
+   */
+  addDayNumber: number | null;
   children: ReactNode;
 }) {
   // ONE derivation, shared with the "Which event?" picker (ledger `2026-09-04-which-event-picker`):
@@ -842,6 +886,16 @@ function SlipEventGroupBlock({
                   is derived from these, never stored. */}
               <EventBudgetAffordance tripId={tripId} event={event} />
               <EventHireAffordance tripId={tripId} destination={destination} event={event} />
+              {/* S1 — the add control the ratified artboards draw on every event header. It writes
+                  the EXISTING LD 39 add rail with this event's id on the LD 29 allowlist, so the
+                  row lands under the event that was pressed. */}
+              <SlipAddItemControl
+                tripId={tripId}
+                dayNumber={addDayNumber}
+                userExperienceId={event.id}
+                label={SLIP_ADD_EVENT_LABEL}
+                testId={`slip-event-add-${event.id}`}
+              />
             </span>
           )}
         </header>
@@ -1607,8 +1661,15 @@ export function SlipView({
         sortedDays.map((day) => ({
           dayNum: day.dayNum,
           dateIso: day.dateIso ?? null,
-          // The slip's own time sort, unchanged and still the caller's — the helper never re-sorts.
-          items: [...day.activities].sort((a, b) => (a.time || "").localeCompare(b.time || "")),
+          // THE PLAN'S OWN ORDER, and no longer a client-side time sort (ledger
+          // `2026-09-05-slip-own-your-plan`). The producer emits a day's items in
+          // `getItineraryItems` order — `sort_order` ASC, then `start_time` ASC — which is exactly
+          // what `POST /api/trips/:tripId/itinerary/reorder` writes. Re-sorting by time here made
+          // the owner's ↑/↓ a control that changed the stored order and moved nothing on screen,
+          // which is a button that lies about what it did (§13). For every plan whose rows still
+          // share one `sort_order` (an AI draft; anything never reordered) the tie-break IS the
+          // start time, so those plans render exactly as they did before.
+          items: [...day.activities],
         })),
         planEvents,
         { groupByEvent },
@@ -1783,6 +1844,25 @@ export function SlipView({
             // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
             // no `date` label of its own and no legs, and invents none of the three.
             const day = slot.dayNum != null ? dayByNum.get(slot.dayNum) : undefined;
+            /**
+             * S1/S2 — the two facts every control on this slot needs, resolved ONCE here.
+             *
+             * `dayItemIds` is the DAY's ordered id list, which is what the reorder rail rewrites
+             * (`sort_order` is day-scoped). It is read off the plan's own day row, not off the
+             * slot's groups, because the groups are a presentation of that list and a slot with no
+             * day row has no list at all.
+             *
+             * `addDayNumber` is the day a hand-added item would land on: the slot's own ordinal, or
+             * — for a slot the EVENTS alone brought into being, which is every slot on a freshly
+             * minted plan — the exact inverse of the server's own `dayDateIso`. NULL when neither
+             * is knowable, and NULL is then said out loud rather than defaulted (§13).
+             */
+            const dayItemIds = (day?.activities ?? []).map((a) => a.id);
+            const addDayNumber = resolveAddDayNumber({
+              dayNum: slot.dayNum,
+              dateIso: slot.dateIso,
+              tripStartDate: data.trip?.startDate ?? null,
+            });
             return (
               <div key={slot.key} className="py-2 first:pt-0 last:pb-0">
                 {/* THE DAY HEADING NAMES THE DAY (re-audit A17, the ratified `Slip` artboard's
@@ -1804,6 +1884,7 @@ export function SlipView({
                   })}
                 </p>
                 {slot.groups.map((group) => {
+                  const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
                     <SlipItemRow
                       key={a.id}
@@ -1817,6 +1898,9 @@ export function SlipView({
                       rowRef={(el) => {
                         rowRefs.current[a.id] = el;
                       }}
+                      dayNumber={slot.dayNum}
+                      dayItemIds={dayItemIds}
+                      groupItemIds={groupItemIds}
                     />
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
@@ -1828,6 +1912,7 @@ export function SlipView({
                       tripId={tripId}
                       destination={data.trip?.destination}
                       isOwner={isOwner}
+                      addDayNumber={addDayNumber}
                     >
                       {/* An event with nothing under it says so, in the ONE string held beside the
                           grouping rule. It is an EMPTY body, not an absent card: the card is what
@@ -1854,6 +1939,25 @@ export function SlipView({
                 {(day?.transports ?? []).map((leg) => (
                   <LogisticsRow key={leg.id} leg={leg} />
                 ))}
+                {/* S1's second control: the plan's ONE implicit unnamed event has no header to hang
+                    an add on, and a day with no events has no event header at all. `null` is that
+                    event — a real answer, not an absence (Locked Decision 29) — so the day-level
+                    control passes exactly that. Owner only (D16).
+                    Omitted entirely on a slot with no resolvable day: such a slot exists ONLY
+                    because an undated event put it there, its own event header already says what
+                    is missing, and an item filed under the implicit event there would have no day
+                    to sit on (§13 — the absence is explained once, not twice). */}
+                {isOwner && addDayNumber != null && (
+                  <div className="px-3 pt-1.5 pb-0.5">
+                    <SlipAddItemControl
+                      tripId={tripId}
+                      dayNumber={addDayNumber}
+                      userExperienceId={null}
+                      label={SLIP_ADD_DAY_LABEL}
+                      testId={`slip-day-add-${slot.key}`}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
