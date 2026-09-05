@@ -139,6 +139,11 @@ import {
 import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { renderTripPdf } from "../services/trip-pdf.render";
+// The plan's .ics — ONE generator, two callers (§18 rule 1). `generateIcsContent` already owned
+// the wall-clock/zone decision for `GET /api/my-itinerary/:id/calendar`; the trip-keyed route
+// below is a second CALLER of it, never a second exporter.
+import { generateIcsContent } from "../utils/ics-calendar";
+import { resolveTripTimezone } from "../services/trip-timezone";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
 // the same module for the full rationale. Advisor-only gate — never owner, never author.
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
@@ -1414,6 +1419,83 @@ router.get("/api/trips/:tripId/pdf", isAuthenticated, async (req, res) => {
     } catch (error) {
       console.error("[TripPDF] render error:", error);
       return res.status(500).json({ message: "Failed to generate trip PDF" });
+    }
+  });
+
+
+// ── The plan's CALENDAR (.ics) — ledger `2026-09-05-slip-rail-regroup`, S11 ──────────────────
+//
+// WHAT WAS MISSING. `generateIcsContent` had exactly ONE route,
+// `GET /api/my-itinerary/:id/calendar`, keyed on an itinerary COMPARISON id. A plan with no
+// comparison — a hand-built slip, a ready-made clone, a plan the traveler never optimized — had
+// no .ics at all, and the slip's rail had nothing to point at. This is that route, keyed on the
+// TRIP, and it is a second CALLER of the one generator, never a second exporter (§18 rule 1):
+// every decision about wall clocks, zones and floating time stays in `ics-calendar.ts`.
+//
+// THE ZONE IS THE PLAN'S OWN (CLAUDE.md Locked Decision 30). `itinerary_items.start_time` is a
+// WALL-CLOCK string and is never converted in storage; `trips.timezone` is the zone it is READ
+// in. Handed to the generator exactly as the my-itinerary route hands it over:
+//   1. the plan's stored `timezone` — its own answer, stamped at mint;
+//   2. failing that, the SAME server-side derivation the mint would have applied, run on this
+//      trip's own destination (`resolveTripTimezone` — one module, now three callers).
+// §13 — BOTH CAN ANSWER NULL, AND NULL IS A FINISHED ANSWER. The exporter then keeps its
+// pre-existing RFC 5545 FLOATING output byte-for-byte. Never UTC, never the server's zone: a
+// wrong instant that looks authoritative is worse than an honestly floating one.
+//
+// GATE: the SAME read gate the trip PDF beside it uses — `getTripRole` (§12: a read surface
+// grants a PENDING advisor) plus the authoring branch — which is the plancard read's own tier.
+// It is deliberately not narrower: an .ics carries the same item titles, times and places the
+// PDF and the plancard already hand this exact set of viewers.
+router.get("/api/trips/:tripId/calendar", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { tripId } = req.params;
+
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const tripRole = await getTripRole(tripId, userId);
+      if (!tripRole && !(await isTripAuthor(tripId, userId))) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // `trips.start_date` is NOT NULL, so the generator's day arithmetic always has a real
+      // anchor — nothing is invented here when a row is odd; a missing one would be a 400.
+      if (!trip.startDate) {
+        return res.status(400).json({ message: "This plan has no start date yet" });
+      }
+
+      const planTimezone = (trip as any).timezone ?? resolveTripTimezone(trip.destination) ?? null;
+      const items = await storage.getItineraryItems(tripId);
+
+      const icsContent = generateIcsContent(
+        {
+          startDate: trip.startDate as unknown as string,
+          title: trip.title ?? null,
+          destination: trip.destination ?? null,
+          timezone: planTimezone,
+        },
+        items.map((item: any) => ({
+          id: item.id,
+          dayNumber: item.dayNumber,
+          startTime: item.startTime,
+          durationMinutes: item.durationMinutes,
+          name: item.title,
+          description: item.description,
+          location: item.locationName,
+          serviceType: item.itemType,
+        })),
+      );
+
+      const slug =
+        (trip.title || "trip").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) ||
+        "trip";
+      res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${slug}.ics"`);
+      return res.send(icsContent);
+    } catch (error) {
+      console.error("[TripCalendar] render error:", error);
+      return res.status(500).json({ message: "Failed to generate calendar file" });
     }
   });
 

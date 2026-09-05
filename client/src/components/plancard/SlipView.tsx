@@ -18,54 +18,23 @@ import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
   Anchor,
-  ArrowRight,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   EyeOff,
-  FileDown,
   List as ListIcon,
-  Loader2,
   Map as MapIcon,
-  Share2,
-  ShoppingCart,
   Sparkles,
-  Ticket,
-  Undo2,
   UserPlus,
   Users,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import StripeCheckout from "@/components/booking/StripeCheckout";
-import {
-  createComparison,
-  type ComparisonPinnedAnchor,
-} from "@/lib/create-comparison";
-import {
-  confirmOptimizationPayment,
-  requestOptimizationGate,
-  type OptimizationPaymentSheet,
-} from "@/lib/optimization-gate";
-import {
-  describeOptimizationPreview,
-  formatOptimizationFeeLabel,
-  type OptimizationFeeQuote,
-  type TripOptimizationPreview,
-} from "@/lib/optimization-preview";
-import {
-  countOptimizableItems,
-  runBulkRouteToCheckout,
-  selectBulkCheckoutItems,
-  slipOptimizeDisabledReason,
-  summarizeBulkRoute,
-} from "@/lib/slip-plan-actions";
 import type { TripPlanTransition } from "@shared/trip-plan";
 import { tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
@@ -78,9 +47,11 @@ import {
 import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
-import { AssignExpertSlot } from "./AssignExpertDialog";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
-import { SlipLogisticsSection } from "./SlipLogisticsSection";
+// The action rail, in four cards (ledger `2026-09-05-slip-rail-regroup`). It owns every
+// `slip-action-*` control this file used to render inline, plus the browse link, the logistics
+// collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
+import { SlipRail } from "./SlipRail";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
 import {
@@ -96,11 +67,9 @@ import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
 import { eventCountLabel, partyLabelForOccasion } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
-import { FinalizeBookingModal } from "./FinalizeBookingModal";
 // LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
 // actually holds bookable rows. The component itself decides visibility from the vault read.
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
-import { BuildAroundDialog } from "./BuildAroundDialog";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -962,526 +931,42 @@ function primaryInputFromTrip(trip: SlipTrip | undefined) {
   return { finalizedAt: trip?.finalizedAt ?? null, startDate: trip?.startDate ?? null, endDate: trip?.endDate ?? null };
 }
 
-function useFinalizeMutation(tripId: string) {
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/finalize`);
-      // finalVersion / finalCreated are the Phase 2 additions (ledger
-      // 2026-08-31-trip-card-snapshot-render): which version this finalize resolved to, and whether
-      // it wrote a NEW one. Optional so an older server response still typechecks.
-      return (await res.json()) as {
-        alreadyFinalized: boolean;
-        finalizedAt: string | null;
-        stagedCount?: number;
-        finalVersion?: number | null;
-        finalCreated?: boolean;
-      };
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      // Phase 3 rider 2 (ledger 2026-08-31-trip-card-snapshot-render): a re-finalize that wrote NO
-      // new version says so with the version, instead of a generic success — the traveler learns
-      // there was nothing to capture, not that "something happened".
-      if (data.finalCreated === false) {
-        toast({
-          title: "Plan unchanged",
-          description: `No changes since v${data.finalVersion ?? "?"} — nothing new to finalize.`,
-        });
-        return;
-      }
-      // Warn, never block (R-F): finalize has already committed by the time we know the staged
-      // count, so this is an informational note, not a gate. (The pre-finalize gate lives on the
-      // Adopt button — Phase 3 rider 1.)
-      const v = data.finalVersion != null ? ` (v${data.finalVersion})` : "";
-      if (data.stagedCount && data.stagedCount > 0) {
-        toast({
-          title: `Trip Card is ready${v}`,
-          description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
-            data.stagedCount > 1 ? "aren't" : "isn't"
-          } booked yet. Your plan is finalized; you can book them later.`,
-        });
-      } else {
-        toast({ title: `Trip Card is ready${v}`, description: "Your plan is finalized." });
-      }
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't finalize plan", description: err?.message || "Please try again", variant: "destructive" });
-    },
-  });
-}
-
-function useReopenMutation(tripId: string) {
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/reopen`);
-      return (await res.json()) as { alreadyOpen: boolean };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't reopen plan", description: err?.message || "Please try again", variant: "destructive" });
-    },
-  });
-}
-
 // ── TripCardPrimaryBanner ─────────────────────────────────────────────────────────────
 
-/** Renders only when the R-F primary rule says so (finalized ∨ T-48h window ∨ underway). Trip
- *  Card is presented as the primary surface here; "Back to planning" only shows when reopening
- *  would actually change anything — i.e. NOT when the date arm alone already forces primacy
- *  (reopen only clears `finalizedAt`; inside the window/underway the Trip Card stays primary
- *  regardless, so offering a reversal there would be dishonest — R-F). */
-function TripCardPrimaryBanner({ trip, isOwner }: { trip: SlipTrip; isOwner: boolean }) {
-  const reopenMutation = useReopenMutation(trip.id);
-  const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({ startDate: trip.startDate, endDate: trip.endDate });
-  // Reopen is owner-gated server-side (verifyTripOwnership) — never render the control for a
-  // non-owner viewer (e.g. the assigned expert), who would only get a 403.
-  const showBackToPlanning = isOwner && !!trip.finalizedAt && !forcedByDateAlone;
-
+/**
+ * Renders only when the R-F primary rule says so (finalized ∨ T-48h window ∨ underway). Trip Card
+ * is presented as the primary surface here.
+ *
+ * ITS CONTROLS MOVED TO THE FINISH CARD (ledger `2026-09-05-slip-rail-regroup`). This banner used
+ * to carry "View Trip Card" and "Back to planning" as well as the statement, while the rail below
+ * carried a THIRD way to the same card ("Preview Trip Card"). The rail's Finish card is now the
+ * ONE home of both controls — same testids, same 48-hour suppression, same owner gate — and this
+ * is the statement alone. A second copy of a control is the drift class §18 rule 1 names, and the
+ * pre-final "Preview" was worse than duplication: before a snapshot exists `/trip/:id` has nothing
+ * of its own to render (§13).
+ */
+function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
   return (
     <Card className="border-primary/30 bg-primary/5" data-testid="slip-trip-card-primary-banner">
-      <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0">
-          <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
-          <p className="text-sm font-medium text-foreground">Your Trip Card is ready</p>
-          {/* Version chip (adopt-finalize-conform D-2): with it, the Finalize Plan button's
-              absence reads as COMPLETED — the confusion that opened this lane. §13: render only
-              a real server-emitted version, never an invented one. */}
-          {trip.finalVersion != null && (
-            <span
-              className="flex-shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-primary"
-              data-testid="slip-final-version-chip"
-            >
-              v{trip.finalVersion}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Link href={`/trip/${trip.id}`}>
-            <Button size="sm" data-testid="slip-action-view-trip-card">
-              View Trip Card
-            </Button>
-          </Link>
-          {showBackToPlanning && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => reopenMutation.mutate()}
-              disabled={reopenMutation.isPending}
-              data-testid="slip-action-reopen"
-            >
-              <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Back to planning
-            </Button>
-          )}
-        </div>
+      <CardContent className="p-4 flex items-center gap-2 flex-wrap">
+        <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
+        <p className="text-sm font-medium text-foreground">Your Trip Card is ready</p>
+        {/* Version chip (adopt-finalize-conform D-2): with it, the Finalize Plan button's absence
+            reads as COMPLETED. §13: render only a real server-emitted version, never an invented
+            one. */}
+        {trip.finalVersion != null && (
+          <span
+            className="flex-shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-primary"
+            data-testid="slip-final-version-chip"
+          >
+            v{trip.finalVersion}
+          </span>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-// ── SlipActions ────────────────────────────────────────────────────────────────────────
-
-function SlipActions({
-  trip,
-  isOwner,
-  activities,
-}: {
-  trip: SlipTrip;
-  isOwner: boolean;
-  activities: PlanCardActivity[];
-}) {
-  const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const finalizeMutation = useFinalizeMutation(trip.id);
-  /**
-   * A HIDDEN OCCASION HAS NO SHARE LINK (migration 276 `default_visibility`; ledger
-   * `2026-09-03-switch-readers`). Sharing a proposal plan is the failure mode the switch exists
-   * to prevent, so the Share button is not rendered — the PDF and the trip-card preview stay,
-   * because neither hands anyone a link.
-   *
-   * §13: unresolved occasion or NULL column ⇒ NOT hidden, i.e. exactly today's behaviour. That is
-   * also what a viewer who cannot read the trip row gets, and it is the right direction: an
-   * undecided occasion must not lose its Share button.
-   */
-  const { isHidden: occasionHidden } = useOccasionSwitches(trip.id);
-
-  // ── A1: Optimize this plan — the SAME shared gate sequence cart.tsx runs
-  // (lib/optimization-gate.ts), fed from this trip's real DTO fields. The server reads the
-  // trip's own in_planning + ready_for_checkout items (loadTripOptimizerInputs), so no
-  // cart is required here.
-  const [optimizing, setOptimizing] = useState(false);
-  const [creatingComparison, setCreatingComparison] = useState(false);
-  // Finalize Plan → the chooser asks "how do you want to book it?" (mock popup 3). Opened only on
-  // a fresh finalize. The staged-but-unbooked warning (Phase 3 rider 1, ledger
-  // 2026-08-31-trip-card-snapshot-render) now lives INSIDE the chooser (adopt-finalize-conform
-  // row 13) — one press, one dialog, no separate pre-gate.
-  const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
-  const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
-  const [buildAroundOpen, setBuildAroundOpen] = useState(false);
-  const runFinalize = () => {
-    finalizeMutation.mutate(undefined, {
-      // Open the "how do you want to book it?" chooser only when a NEW version was actually
-      // captured (a fresh finalize or a changed re-final) — never on an unchanged re-final.
-      onSuccess: (data) => {
-        if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true);
-      },
-    });
-  };
-  // Display-honesty fix (ledger 2026-08-29-persona-coverage-complete's filed finding):
-  // startOptimization used to treat `covered_by_pass` identically to the ordinary
-  // `free_rerun` — same silent proceed, no label distinguishing "this is free because you
-  // have a Trip Pass" from "this is free because of the 24h window". Server truth only
-  // (server/routes/optimization.routes.ts ~L276 `coveredByTripPass`); never inferred client-side.
-  const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
-  const confirmedPinnedAnchorRef = useRef<ComparisonPinnedAnchor | undefined>(undefined);
-
-  const optimizableCount = countOptimizableItems(activities);
-  const optimizeDisabledReason = slipOptimizeDisabledReason({
-    optimizableCount,
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-
-  /**
-   * A1b — THE FREE PREVIEW BESIDE OPTIMIZE (CLAUDE.md Locked Decision 41 (d), ledger
-   * `2026-09-05-optimize-preview-on-slip`). Two reads, both server-resolved, neither of which
-   * charges anything:
-   *
-   *   GET /api/optimization-preview?tripId= — the same free heuristic the cart has always run,
-   *     entered by TRIP ID. The client sends no item list: the server already holds the plan and
-   *     reads it through `loadTripOptimizerInputs`, the single expression of the optimizer's own
-   *     read-set, so the preview and the paid run are looking at the same items (§14 reads).
-   *   GET /api/optimization-fee?tripId=  — the fee, and the server's `coversAction` answer for
-   *     Trip Pass coverage. The amount and the coverage are both server truth; nothing here
-   *     derives either (§14).
-   *
-   * Fetched ONLY when the Optimize action could actually run: when `optimizeDisabledReason` is
-   * set the button is already disabled with that reason on it, and an estimate for a run the
-   * traveler cannot start would be noise. Owner-only, like the button — the fee charges the
-   * signed-in traveler.
-   *
-   * FAIL-SOFT: the shared query fn throws on a non-2xx, so a refusal or an error leaves `data`
-   * undefined and the line renders as NOTHING rather than as a zero or a placeholder (§13).
-   */
-  const previewEnabled = isOwner && !optimizeDisabledReason;
-  const { data: previewData } = useQuery<TripOptimizationPreview>({
-    queryKey: ["/api/optimization-preview", { tripId: trip.id }],
-    enabled: previewEnabled,
-  });
-  const { data: feeQuote } = useQuery<OptimizationFeeQuote>({
-    queryKey: ["/api/optimization-fee", { tripId: trip.id }],
-    enabled: previewEnabled,
-  });
-  const previewLine = previewEnabled ? describeOptimizationPreview(previewData) : null;
-  const previewFeeLabel = previewEnabled ? formatOptimizationFeeLabel(feeQuote) : null;
-
-  // Guarded by optimizeDisabledReason: destination/dates are real trip fields here, never
-  // invented (§13) — the action is disabled until they exist.
-  async function runComparison(
-    optimizationPaymentId?: string,
-    pinnedAnchor?: ComparisonPinnedAnchor,
-  ) {
-    setCreatingComparison(true);
-    try {
-      const comparison = await createComparison({
-        title: trip.title || undefined,
-        destination: trip.destination!,
-        startDate: String(trip.startDate).slice(0, 10),
-        endDate: String(trip.endDate).slice(0, 10),
-        ...(trip.travelers ? { travelers: trip.travelers } : {}),
-        tripId: trip.id,
-        ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
-        ...(pinnedAnchor ? { pinnedAnchor } : {}),
-      });
-      // REVIEW-FIRST (ledger 2026-08-22-slip-optimize-review-first, decision-maker ratified):
-      // a slip-originated optimization lands as a PROPOSAL the traveler reviews — money saved,
-      // shorter drive time and what's trending/in-season — then confirms by applying a variant.
-      // It does NOT auto-apply, so `?autoApply=1` is deliberately omitted (that flag drives the
-      // cart's own auto-apply path, which is unchanged). The comparison page's default
-      // (autoApply=false) is exactly this review UI.
-      setLocation(`/itinerary-comparison/${comparison.id}`);
-    } finally {
-      setCreatingComparison(false);
-    }
-  }
-
-  async function handleOptimize() {
-    if (optimizing || creatingComparison || optimizeDisabledReason) return;
-    setBuildAroundOpen(true);
-  }
-
-  async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
-    if (optimizing || creatingComparison || optimizeDisabledReason) return;
-    setOptimizing(true);
-    setLastOptimizeCoveredByPass(false);
-    try {
-      const outcome = await requestOptimizationGate({
-        tripId: trip.id,
-        destination: trip.destination || undefined,
-      });
-      if (outcome.kind === "refused") {
-        confirmedPinnedAnchorRef.current = undefined;
-        // Fix #971's pre-flight — surface the server's own reason, never swallowed.
-        toast({
-          title: "Nothing to optimize yet",
-          description:
-            (typeof outcome.body.message === "string" && outcome.body.message) ||
-            "This plan has no items the optimizer can work with.",
-        });
-        return;
-      }
-      if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
-        // 24h free re-run (server-side canRunOptimizer) — nothing to charge. `covered_by_pass`
-        // gets the "Included in your Trip Pass" label alongside the free-run treatment.
-        if (outcome.kind === "covered_by_pass") setLastOptimizeCoveredByPass(true);
-        await runComparison(undefined, pinnedAnchor);
-        confirmedPinnedAnchorRef.current = undefined;
-        return;
-      }
-      if (outcome.kind === "payment_sheet") {
-        setPaySheet(outcome.payment);
-      }
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Couldn't start optimization",
-        description: err?.message || "Please try again",
-      });
-      confirmedPinnedAnchorRef.current = undefined;
-    } finally {
-      setOptimizing(false);
-    }
-  }
-
-  async function handleSheetSuccess(paymentIntentId: string) {
-    const pinnedAnchor = confirmedPinnedAnchorRef.current;
-    setPaySheet(null);
-    try {
-      await confirmOptimizationPayment(paymentIntentId);
-      await runComparison(paymentIntentId, pinnedAnchor);
-    } catch (err: any) {
-      // Payment went through but the comparison didn't build — the server's 24h free
-      // re-run window covers the retry, so say so honestly instead of a dead generic.
-      toast({
-        variant: "destructive",
-        title: "Failed to generate itinerary",
-        description: err?.message || "Your payment is recorded — try Optimize again (free re-run).",
-      });
-    } finally {
-      confirmedPinnedAnchorRef.current = undefined;
-    }
-  }
-
-  // ── A2: Add all to checkout — loops the EXISTING per-item routing endpoint over
-  // in_planning items only (client-side filter; with_expert/purchased are never posted),
-  // ONE cache invalidation at the end, per-item failures reported honestly.
-  const [bulkPending, setBulkPending] = useState(false);
-  const bulkTargets = selectBulkCheckoutItems(activities);
-
-  async function handleBulkAddToCheckout() {
-    if (bulkPending) return;
-    setBulkPending(true);
-    try {
-      const result = await runBulkRouteToCheckout({
-        items: activities,
-        postRoute: (itemId) =>
-          apiRequest("POST", `/api/trips/${trip.id}/items/${itemId}/route`, {
-            to: "ready_for_checkout",
-          }),
-        invalidate: () => {
-          // Same two keys RoutingActions invalidates — once for the whole batch.
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${trip.id}/plancard`] });
-          queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-        },
-      });
-      toast(summarizeBulkRoute(result));
-    } finally {
-      setBulkPending(false);
-    }
-  }
-
-  // Same share affordance the trip pages already use (HeroSection.handleShare):
-  // clipboard copy + navigator.share of the itinerary link.
-  function handleShare() {
-    const shareUrl = `${window.location.origin}/itinerary/${trip.id}`;
-    navigator.clipboard?.writeText(shareUrl).catch(() => {});
-    toast({ title: "Link copied!", description: "Share link copied to clipboard." });
-    if (navigator.share) {
-      navigator.share({ title: `${trip.title || trip.destination || "Trip"} - Traveloure`, url: shareUrl }).catch(() => {});
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2 flex-wrap" data-testid="slip-actions">
-      {!occasionHidden && (
-        <Button variant="outline" size="sm" onClick={handleShare} data-testid="slip-action-share">
-          <Share2 className="w-3.5 h-3.5 mr-1.5" /> Share
-        </Button>
-      )}
-      {/* Lane C (ledger 2026-09-03-slip-convergence) — the printable copy. Renders the SAME
-          canonical itinerary_items this slip is showing, so the paper and the screen can never
-          disagree. A plain anchor: the endpoint is session-authenticated and answers with a
-          Content-Disposition attachment, so the browser saves it without a client-side blob. */}
-      <Button variant="outline" size="sm" asChild data-testid="slip-action-pdf">
-        <a href={`/api/trips/${trip.id}/pdf`} download>
-          <FileDown className="w-3.5 h-3.5 mr-1.5" /> Download PDF
-        </a>
-      </Button>
-      <Link href={`/trip/${trip.id}`}>
-        <Button variant="outline" size="sm" data-testid="slip-action-trip-card">
-          Preview Trip Card
-        </Button>
-      </Link>
-      {/* A2 — owner-only (the routing endpoint's →ready_for_checkout edge is traveler-only);
-          hidden entirely when no in_planning item exists (nothing it could do — §13). */}
-      {isOwner && bulkTargets.length > 0 && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBulkAddToCheckout}
-          disabled={bulkPending}
-          data-testid="slip-action-add-all-checkout"
-        >
-          {bulkPending ? (
-            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-          ) : (
-            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
-          )}
-          Add all to checkout ({bulkTargets.length})
-        </Button>
-      )}
-      {/* A1 — owner-only (the optimization fee charges the signed-in traveler). Disabled
-          with an honest tooltip when the optimizer would have nothing to read. */}
-      {isOwner && (
-        <span title={optimizeDisabledReason ?? undefined} data-testid="slip-action-optimize-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOptimize}
-            disabled={!!optimizeDisabledReason || optimizing || creatingComparison}
-            data-testid="slip-action-optimize"
-          >
-            {optimizing || creatingComparison ? (
-              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-            )}
-            {creatingComparison ? "Building..." : "Optimize this plan"}
-          </Button>
-        </span>
-      )}
-      {/* A1b — the free estimate, on its own line under the actions row (`basis-full` inside the
-          wrapping flex). Rendered only when the heuristic returned something; a refusal shows the
-          SERVER's own reason and never a stand-in number (§13). */}
-      {previewLine && (
-        <div
-          className="basis-full text-[11px] leading-relaxed text-muted-foreground"
-          data-testid="slip-optimize-preview"
-        >
-          <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide">
-            Free estimate
-          </span>
-          {previewLine.kind === "estimate" ? (
-            <>
-              <span>{previewLine.headline}</span>{" "}
-              <span className="italic opacity-80">{previewLine.caveat}</span>
-              {previewFeeLabel && (
-                <span
-                  className="ml-1.5 font-mono text-[10px] text-foreground/70"
-                  data-testid="slip-optimize-preview-fee"
-                >
-                  {previewFeeLabel}
-                </span>
-              )}
-            </>
-          ) : (
-            <span>{previewLine.reason}</span>
-          )}
-        </div>
-      )}
-      {isOwner && lastOptimizeCoveredByPass && (
-        <span
-          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
-          data-testid="trip-pass-covered-label"
-        >
-          <Ticket className="w-3.5 h-3.5" />
-          Included in your Trip Pass
-        </span>
-      )}
-      <BuildAroundDialog
-        open={buildAroundOpen}
-        tripId={trip.id}
-        busy={optimizing || creatingComparison}
-        onOpenChange={setBuildAroundOpen}
-        onConfirm={(pinnedAnchor) => {
-          confirmedPinnedAnchorRef.current = pinnedAnchor;
-          setBuildAroundOpen(false);
-          void startOptimization(pinnedAnchor);
-        }}
-      />
-      {/* A1 payment sheet — the same StripeCheckout surface cart.tsx mounts for this fee,
-          in a dialog. The fee amount shown comes from the server-created PaymentIntent. */}
-      <Dialog
-        open={!!paySheet}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPaySheet(null);
-            confirmedPinnedAnchorRef.current = undefined;
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Pay optimization fee</DialogTitle>
-          </DialogHeader>
-          {paySheet && (
-            <StripeCheckout
-              paymentIntent={{
-                clientSecret: paySheet.clientSecret,
-                paymentIntentId: paySheet.paymentIntentId,
-                amount: paySheet.feeCents,
-              }}
-              bookingIds={[]}
-              onSuccess={handleSheetSuccess}
-              onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
-              onCancel={() => {
-                setPaySheet(null);
-                confirmedPinnedAnchorRef.current = undefined;
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-      {/* Finalize Plan — the mock's lock press (adopt-finalize-conform D-2: adopt = merge on the
-          comparison surfaces; THIS control is finalize = lock, and it says so). Owner-gated
-          server-side (verifyTripOwnership) — never render it for a non-owner viewer. Once final,
-          the primary banner (above) owns the finalized state ("Your Trip Card is ready · v{N}"
-          + reopen where dates permit) — no duplicate control here. The former "Finalize without
-          booking?" pre-gate is FOLDED into the chooser (D-13/row 13): FinalizeBookingModal itself
-          carries the staged-but-unbooked note, so finalize is one press → one dialog. */}
-      {isOwner && !trip.finalizedAt && (
-        <Button
-          size="sm"
-          onClick={runFinalize}
-          disabled={finalizeMutation.isPending}
-          data-testid="slip-action-finalize-plan"
-        >
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Finalize Plan
-        </Button>
-      )}
-      <FinalizeBookingModal
-        open={finalizeModalOpen}
-        onOpenChange={setFinalizeModalOpen}
-        trip={{ id: trip.id, destination: trip.destination, travelers: trip.travelers }}
-        activities={activities}
-      />
-    </div>
-  );
-}
 
 // ── SlipView ───────────────────────────────────────────────────────────────────────────
 
@@ -1664,7 +1149,7 @@ export function SlipView({
     <div className="max-w-2xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
-      {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} isOwner={isOwner} />}
+      {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} />}
 
       {/* LD 43(d), mount 2: the finalize success / finished area, gated on the plan holding
           BOOKABLE rows — items staged for checkout, or bookings already made. A finished plan
@@ -1687,18 +1172,39 @@ export function SlipView({
           without this mount the delivery handshake had no Approve/Request-changes control here. */}
       {isOwner && <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} />}
 
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <SlipHeader
-          data={data}
-          hasOptimized={hasOptimized}
-          eventCount={countPlanEvents(planEvents)}
-          partyLabel={partyLabel}
-          isHidden={occasionIsHidden}
-        />
-        {data.trip && <SlipActions trip={data.trip} isOwner={isOwner} activities={allActivities} />}
-      </div>
+      <SlipHeader
+        data={data}
+        hasOptimized={hasOptimized}
+        eventCount={countPlanEvents(planEvents)}
+        partyLabel={partyLabel}
+        isHidden={occasionIsHidden}
+      />
 
+      {/* THE STATUS STRIP — routing-status counts and nothing else. It keeps the ONE taxonomy the
+          slip has always shown (in planning · with expert · in checkout · purchased) and stays
+          zero-omitting: a status no row is in is not a segment (§13). It does not count ORIGINS —
+          who added a row is a per-row fact the item rows carry, and a second population summed
+          into this line would read as the same taxonomy while answering a different question. */}
       <SlipStatusStrip activities={allActivities} />
+
+      {/* ── THE ACTION RAIL, IN FOUR CARDS (ledger `2026-09-05-slip-rail-regroup`) ────────────
+          Build · Plan · Share · Finish, above the List | Map toggle and the day list. It replaces
+          the flat `slip-action-*` button row, and the regrouping is the ruling: every rail keeps
+          exactly ONE home, and the two that had grown a second one (Add all to checkout, Preview
+          Trip Card) are gone rather than re-placed. `budgetLine` and `planEvents` are HANDED DOWN
+          — the derivations stay this component's and are never recomputed inside the rail
+          (§18 rule 1). */}
+      {data.trip && (
+        <SlipRail
+          trip={data.trip}
+          tripId={tripId}
+          isOwner={isOwner}
+          isPrimary={isPrimary}
+          activities={allActivities}
+          planEvents={planEvents}
+          budgetLine={budgetLine}
+        />
+      )}
 
       {/* List | Map toggle — map offered only when at least one stop is genuinely located. */}
       {allActivities.length > 0 && (
@@ -1861,47 +1367,22 @@ export function SlipView({
       </Card>
       )}
 
-      {/* The plan's budget total — the sum of what its EVENTS state, and nothing the plan itself
-          stores. Rendered only when at least one event states one (see `budgetLine` above); the
-          count is part of the claim, so a plan with three events and one stated budget cannot be
-          read as a total for all three. */}
-      {budgetLine && (
-        <p className="text-xs text-muted-foreground" data-testid="slip-plan-budget">
-          {budgetLine}
-        </p>
-      )}
-
-      {/* Row 12 (relocated): one link, not a grid — browse the marketplace scoped to THIS trip.
-          The /services grid's Add-to-trip targets the active trip (cart-is-slip), so a service
-          added there lands on this slip. Owner-only planning affordance. */}
-      {isOwner && (
-        <Link href={`/services?tripId=${encodeURIComponent(tripId)}`}>
-          <a className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline" data-testid="slip-browse-services">
-            Browse services for this trip
-            <ArrowRight className="w-3.5 h-3.5" />
-          </a>
-        </Link>
-      )}
-
-      {/* Row 10 (relocated from the trip-details expert-tab bolt-on): choosing an expert is a
-          planning decision, so its home is the slip. Renders only for the owner while no expert
-          is assigned. */}
-      {data.trip && (
-        <AssignExpertSlot tripId={tripId} destination={data.trip.destination} isOwner={isOwner} />
-      )}
+      {/* WHAT USED TO SIT HERE, AND WHERE IT WENT (ledger `2026-09-05-slip-rail-regroup`):
+          · the budget total (`slip-plan-budget`), the browse-services link (`slip-browse-services`)
+            and `SlipLogisticsSection` (guests · traveling party · anchors · organize into events)
+            are now ROWS of the rail's Build and Plan cards above. Same components, same testids,
+            same gates — moved, not rebuilt.
+          · `AssignExpertSlot` (`button-find-expert`) is GONE from this surface. The slip carried
+            TWO advisor pickers writing through two different routes; the Build card mounts the
+            pick-based, §19-shaped `HireExpertDialog` and that is the ONE picker (D7). The older
+            `POST /api/trips/:id/expert-advisor` route is deliberately not deleted in this lane —
+            it has callers elsewhere and retiring it is its own change.
+          Expert suggestions stay here, under the plan they act on. */}
 
       {/* Row 11 (relocated): expert-suggestion accept/decline. Pre-final it acts on the live plan
           here; the same component mounts on the finalized Trip Card (PlanCard full) where accepting
           auto-creates a new final version. Renders nothing when there are no suggestions. */}
       <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" />
-
-      {/* Rows 13/14 (relocated from the trip-details itinerary/logistics/guests tabs): temporal
-          anchors + guest invites are planning inputs, so their home is the slip. Owner-only. */}
-      {/* `planEvents` is passed, not re-fetched (ledger `2026-09-05-slip-events-first-render`):
-          "how many events does this plan have" now has ONE source on this page — the plancard's own
-          `events` array, the same one the header counts — so the meta line and the "Organize into
-          events" offer can no longer disagree about the same plan. */}
-      {isOwner && <SlipLogisticsSection tripId={tripId} planEvents={planEvents} />}
 
       <TransitionLogFooter
         transitions={transitions}
