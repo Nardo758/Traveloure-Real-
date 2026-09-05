@@ -2630,6 +2630,47 @@ export type VendorCreator = {
 export type VendorWithCreator = Vendor & {
   createdBy: VendorCreator | null;
 };
+/**
+ * Ledger `2026-09-05-vendors-read-scope`. The ALLOWLIST of `vendors` columns `GET /api/vendors`
+ * publishes to a non-admin caller — an allowlist, not a denylist, so a column added to the table
+ * later is NOT published by default (§19's posture applied to a response projection).
+ *
+ * Two columns are deliberately absent and their absence is the point:
+ *   • `createdById` — a platform USER id. Who typed a business into the directory is creator
+ *     provenance, an admin-audit fact; a traveler browsing florists never needs it, and it is the
+ *     bare form of the same identity the `users` JOIN exposed in full.
+ *   • `metadata` — free-form jsonb whose contents nothing in this codebase constrains. An
+ *     unbounded blob is not something a projection can vouch for.
+ * The vendor's OWN `email`/`phone`/`address` stay: they are a business's published contact
+ * details, which is what a vendor directory is for, and the route is authenticated.
+ */
+export const VENDOR_DIRECTORY_FIELDS = [
+  "id",
+  "name",
+  "category",
+  "description",
+  "email",
+  "phone",
+  "website",
+  "address",
+  "city",
+  "country",
+  "rating",
+  "priceRange",
+  "imageUrl",
+  "status",
+  "createdAt",
+  "updatedAt",
+] as const;
+/**
+ * A row as `GET /api/vendors` returns it. `createdBy` is OPTIONAL and is PRESENT only on the
+ * admin projection — it is not `null` for a non-admin, because `null` already means "this vendor
+ * predates creator provenance" (§13: an undisclosed creator and an unknown one are different
+ * facts, and rendering the first as the second is a claim nobody made).
+ */
+export type VendorDirectoryRow = Pick<Vendor, (typeof VENDOR_DIRECTORY_FIELDS)[number]> & {
+  createdBy?: VendorCreator | null;
+};
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;

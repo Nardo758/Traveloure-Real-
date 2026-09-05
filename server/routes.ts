@@ -45,6 +45,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
+import { projectVendorForDirectory } from "./utils/vendor-read-scope";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -1996,10 +1997,55 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Vendors Routes
-  app.get("/api/vendors", async (req, res) => {
+  //
+  // CLAUDE.md §14 applied to READS (ledger `2026-09-05-vendors-read-scope`; found by the sweep
+  // that landed `2026-09-05-custom-venues-owner-scope`). This route was UNAUTHENTICATED, took
+  // `createdById` off the query string, and its storage reader JOINED `users` — so any caller at
+  // all, with no session, received the whole vendor table with the CREATING ACCOUNT'S EMAIL on
+  // every row, and could enumerate one named account's creations at will. Nothing errored; the
+  // page renders identically either way.
+  //
+  // THE SHAPE OF THE FIX, and why it is not the custom-venues shape:
+  //
+  //   1. `isAuthenticated`. There is no anonymous consumer — the only caller is
+  //      `client/src/pages/vendors.tsx`, which App.tsx mounts behind `ProtectedRoute` — so the
+  //      gate costs nothing and closes the "no session at all" half.
+  //   2. The list is NOT owner-scoped, deliberately. Every signed-in traveler legitimately browses
+  //      the whole directory ("Browse trusted service providers"); scoping the ROWS to the session
+  //      user would hide listings the caller is entitled to see, which is a §13 lie by omission. A
+  //      vendor row is a shared business listing, not a user-owned private row — the opposite of
+  //      `custom_venues`, which is why this lane's shape differs from that one's.
+  //   3. The CREATOR is the privileged part, so it leaves this route entirely. The browse reader
+  //      does not join `users` at all, and `projectVendorForDirectory` is the second layer over it
+  //      (§18's "so every caller is covered" placement, applied to a column on the way OUT).
+  //   4. The creator FILTER moves to `GET /api/admin/vendors` below, under the §2 blanket
+  //      `adminApiGuard`. It is not merely ignored here — it is not read here, which is strictly
+  //      stronger, and it puts an admin-audit control on an admin path beside the audit export
+  //      that already lives there. A per-route exemption in `check-query-userid-reads.cjs` was the
+  //      alternative and was REJECTED: it would have made that guard permanently blind to the one
+  //      route this lane exists to fix.
+  //
+  // NOT BUILT, deliberately: a "vendors I added" self-filter. Nothing in the UI asks for one, and
+  // inventing a feature inside a security fix is how a fix grows a surface nobody reviewed.
+  app.get("/api/vendors", isAuthenticated, async (req, res) => {
+    const { category, city } = req.query;
+    const vendorList = await storage.getVendorsForDirectory(
+      category as string | undefined,
+      city as string | undefined,
+    );
+    res.json(vendorList.map((vendor) => projectVendorForDirectory(vendor as any)));
+  });
+
+  // Admin vendor directory: the same listing WITH creator provenance, plus the creator filter the
+  // admin screen's dropdown drives. Rides the §2 blanket `adminApiGuard` mounted above
+  // (`app.use("/api/admin", adminApiGuard)`) — the role is a DB lookup on the session, never a
+  // request-supplied value — with `isAuthenticated` kept as belt-and-suspenders in the same style
+  // as the export route beneath it. `createdById` is caller-chosen HERE by design: auditing who
+  // created what across the whole directory is precisely what an admin surface is for.
+  app.get("/api/admin/vendors", isAuthenticated, async (req, res) => {
     const { category, city, createdById } = req.query;
-    const vendorList = await storage.getVendors(
-      category as string | undefined, 
+    const vendorList = await storage.getVendorsWithCreator(
+      category as string | undefined,
       city as string | undefined,
       createdById as string | undefined,
     );
@@ -2020,7 +2066,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const vendorList = await storage.getVendors();
+      const vendorList = await storage.getVendorsWithCreator();
       const csv = formatVendorAuditCsv(vendorList);
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");

@@ -103,9 +103,13 @@ describe("GET /api/admin/vendors/export", () => {
       /const user = await storage\.getUser\(userId\);[\s\S]*?if \(!user \|\| user\.role !== "admin"\)\s*\{\s*return res\.status\(403\)\.json\(\{\s*message: "Admin access required"/,
       "vendor export must reject sessions whose database role is not admin",
     );
+    // Ledger `2026-09-05-vendors-read-scope` split `storage.getVendors` in two: the browse reader
+    // (`getVendorsForDirectory`, no `users` join) and this one, named for the creator identity it
+    // carries. The rename is the point — this audit export is one of only two callers allowed to
+    // read the join, and naming it makes that an explicit choice rather than an inherited default.
     assert.match(
       source,
-      /const vendorList = await storage\.getVendors\(\);[\s\S]*?formatVendorAuditCsv\(vendorList\)/,
+      /const vendorList = await storage\.getVendorsWithCreator\(\);[\s\S]*?formatVendorAuditCsv\(vendorList\)/,
       "the route must export the complete creator-enriched vendor query",
     );
   });

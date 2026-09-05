@@ -5,6 +5,14 @@
  * applies the creator parameter encoded in the generated WHERE expression to
  * fixture rows, making an omitted creator condition return both creators and
  * fail the scoped assertion. No database rows are created or deleted.
+ *
+ * UPDATED by ledger `2026-09-05-vendors-read-scope`. The reader under test was renamed
+ * `getVendors` → `getVendorsWithCreator` when it was split from the browse reader (which does not
+ * join `users` at all), and the creator filter moved off `GET /api/vendors` onto
+ * `GET /api/admin/vendors`, under CLAUDE.md §2's blanket `adminApiGuard`. The third case
+ * previously asserted the DEFECT verbatim — that the public route must read `createdById` off
+ * `req.query` — and now asserts the fixed shape; the browse-route half is pinned in
+ * `server/__tests__/vendors-read-scope.test.ts`.
  */
 
 import { after, afterEach, describe, it } from "node:test";
@@ -114,7 +122,7 @@ describe("vendor creator filtering", () => {
   it("returns only records owned by the requested creator", async () => {
     installSelectMock();
 
-    const result = await storage.getVendors(undefined, undefined, CREATOR_A);
+    const result = await storage.getVendorsWithCreator(undefined, undefined, CREATOR_A);
 
     assert.deepEqual(
       result.map((vendor) => vendor.id),
@@ -126,7 +134,7 @@ describe("vendor creator filtering", () => {
   it("keeps non-admin/public browsing unfiltered when no creator is supplied", async () => {
     installSelectMock();
 
-    const result = await storage.getVendors();
+    const result = await storage.getVendorsWithCreator();
 
     assert.deepEqual(
       result.map((vendor) => vendor.id),
@@ -134,18 +142,23 @@ describe("vendor creator filtering", () => {
     );
   });
 
-  it("forwards the creator query parameter through the GET route", () => {
+  it("forwards the creator query parameter through the ADMIN route, and not the browse one", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "server/routes.ts"), "utf8");
 
     assert.match(
       source,
-      /const \{\s*category,\s*city,\s*createdById\s*\}\s*=\s*req\.query/,
-      "GET /api/vendors must read createdById from the request query",
+      /app\.get\("\/api\/admin\/vendors", isAuthenticated, async \(req, res\) => \{\s*const \{ category, city, createdById \} = req\.query;/,
+      "GET /api/admin/vendors must read createdById from the request query",
     );
     assert.match(
       source,
-      /storage\.getVendors\(\s*category as string \| undefined,\s*city as string \| undefined,\s*createdById as string \| undefined/,
-      "GET /api/vendors must pass createdById to storage.getVendors",
+      /storage\.getVendorsWithCreator\(\s*category as string \| undefined,\s*city as string \| undefined,\s*createdById as string \| undefined/,
+      "GET /api/admin/vendors must pass createdById to storage.getVendorsWithCreator",
+    );
+    assert.match(
+      source,
+      /app\.use\("\/api\/admin", adminApiGuard\)/,
+      "the admin path relies on the blanket guard actually being mounted",
     );
   });
 });
