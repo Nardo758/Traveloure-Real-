@@ -15,14 +15,34 @@
  * fee_ledger FK, exactly as production stamps it). DISPOSABLE DB ONLY — every row is created and
  * deleted here.
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/traveler-fee-ledger.db.test.ts
+ *
+ * A HANG MUST FAIL, NEVER STALL (ledger `2026-09-05-fee-ledger-test-robustness`). This file imports
+ * the shared `../db` pool, which is built with `allowExitOnIdle: false` — so a process that never
+ * calls `pool.end()` stays alive after the last assertion until pg's own `idleTimeoutMillis` reaper
+ * happens to close the last socket. That is why a green run of this step measured ~30 s (the
+ * reaper's interval), not ~1 s (the assertions), and it is why a run where the reaper never fired —
+ * or where an INSERT sat behind a row lock held by the production server this job also starts
+ * against the same database — produced a silent multi-hour stall with every assertion already
+ * passed. Three layers close that, and NONE of them touches what is asserted:
+ *   1. `after()` ends the pool in a `finally`, so the process exits on its own the moment cleanup
+ *      is done (the ~30 s idle tail disappears too).
+ *   2. every `test()` and both hooks carry an explicit `{ timeout: CASE_TIMEOUT_MS }`, so a blocked
+ *      query becomes a REPORTED FAILURE with the case name instead of silence.
+ *   3. the workflow step carries `timeout-minutes`, so even a stall below the runner (a wedged
+ *      child process) reads as a failed step named in the log rather than a hung job.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { resolveTravelerServiceFee } from "../services/fee-resolution.service";
 import { recordTravelerServiceFeeLedger } from "../services/fee-ledger.service";
+
+/** Per-case ceiling. Every case here is a handful of small statements against a disposable DB, so
+ *  anything approaching a minute is a block (a lock, a dead socket), not slow work. Exceeding it is
+ *  a FAILURE naming the case — never a silent stall. */
+const CASE_TIMEOUT_MS = 60_000;
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const userId = `tfee-${RUN}-user`;
@@ -78,15 +98,21 @@ before(async () => {
   bandId = resolved.bandId;
   assert.ok(feeAmount > 0, `the traveler_service_fee band must resolve a positive fee on $100, got ${feeAmount}`);
   assert.ok(bandId, "resolveTravelerServiceFee must return a band id (fee_ledger.band_id FK)");
-});
+}, { timeout: CASE_TIMEOUT_MS });
 
 after(async () => {
-  if (bookingIds.length) {
-    await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id IN (${sql.join(bookingIds.map((b) => sql`${b}`), sql`, `)})`);
-    await db.execute(sql`DELETE FROM service_bookings WHERE id IN (${sql.join(bookingIds.map((b) => sql`${b}`), sql`, `)})`);
+  // Reverse dependency order: ledger rows → bookings → the fixture user. A failure here is still a
+  // reported failure, but the pool is closed either way so the process can never outlive the run.
+  try {
+    if (bookingIds.length) {
+      await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id IN (${sql.join(bookingIds.map((b) => sql`${b}`), sql`, `)})`);
+      await db.execute(sql`DELETE FROM service_bookings WHERE id IN (${sql.join(bookingIds.map((b) => sql`${b}`), sql`, `)})`);
+    }
+    await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+  } finally {
+    await pool.end();
   }
-  await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
-});
+}, { timeout: CASE_TIMEOUT_MS });
 
 function snap(over: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -102,7 +128,7 @@ function snap(over: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-test("NOT covered → ONE traveler_service_fee (+X) row borne by the traveler", async () => {
+test("NOT covered → ONE traveler_service_fee (+X) row borne by the traveler", { timeout: CASE_TIMEOUT_MS }, async () => {
   const id = await makeBooking(snap({ charged: feeAmount, waived: false, waiverBasis: null }));
   const { inserted } = await recordTravelerServiceFeeLedger({ bookingIds: [id], actor: "test" });
   assert.equal(inserted, 1, "one row for a non-covered booking");
@@ -113,7 +139,7 @@ test("NOT covered → ONE traveler_service_fee (+X) row borne by the traveler", 
   assert.equal(Number(rows[0].amount), feeAmount, "the +X row is the resolved fee");
 });
 
-test("covered (trip_pass) → +X AND fee_waiver (−X) netting to $0, tagged covered_by", async () => {
+test("covered (trip_pass) → +X AND fee_waiver (−X) netting to $0, tagged covered_by", { timeout: CASE_TIMEOUT_MS }, async () => {
   const id = await makeBooking(snap({ charged: 0, waived: true, waiverBasis: "trip_pass" }));
   const { inserted } = await recordTravelerServiceFeeLedger({ bookingIds: [id], actor: "test" });
   assert.equal(inserted, 2, "two rows for a covered booking");
@@ -130,7 +156,7 @@ test("covered (trip_pass) → +X AND fee_waiver (−X) netting to $0, tagged cov
   assert.equal(net, 0, "the pair nets to $0");
 });
 
-test("$0 fee → no row (the amount<>0 CHECK is respected, not fired)", async () => {
+test("$0 fee → no row (the amount<>0 CHECK is respected, not fired)", { timeout: CASE_TIMEOUT_MS }, async () => {
   const id = await makeBooking(snap({ charged: 0, wouldHaveBeen: 0, waived: false }));
   const { inserted, considered } = await recordTravelerServiceFeeLedger({ bookingIds: [id], actor: "test" });
   assert.equal(considered, 0, "a $0 fee is not considered");
@@ -138,14 +164,14 @@ test("$0 fee → no row (the amount<>0 CHECK is respected, not fired)", async ()
   assert.equal((await feeRows(id)).length, 0);
 });
 
-test("no snapshot (pre-lane booking) → nothing written", async () => {
+test("no snapshot (pre-lane booking) → nothing written", { timeout: CASE_TIMEOUT_MS }, async () => {
   const id = await makeBooking(null);
   const { inserted } = await recordTravelerServiceFeeLedger({ bookingIds: [id], actor: "test" });
   assert.equal(inserted, 0, "a booking with no travelerServiceFee snapshot writes nothing");
   assert.equal((await feeRows(id)).length, 0);
 });
 
-test("idempotent — a second call inserts nothing", async () => {
+test("idempotent — a second call inserts nothing", { timeout: CASE_TIMEOUT_MS }, async () => {
   const id = await makeBooking(snap({ charged: feeAmount }));
   const first = await recordTravelerServiceFeeLedger({ bookingIds: [id], actor: "test" });
   assert.equal(first.inserted, 1);

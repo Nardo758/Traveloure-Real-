@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import Stripe from "stripe";
 import { sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { resolveTravelerServiceFee } from "../services/fee-resolution.service";
 import {
   recordTravelerServiceFeeLedger,
@@ -119,13 +119,20 @@ before(async () => {
 });
 
 after(async () => {
-  if (bookingIds.length) {
-    const ids = sql.join(bookingIds.map((b) => sql`${b}`), sql`, `);
-    await db.execute(sql`DELETE FROM refunds WHERE booking_id IN (${ids})`);
-    await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id IN (${ids})`);
-    await db.execute(sql`DELETE FROM service_bookings WHERE id IN (${ids})`);
+  // The shared `../db` pool is built `allowExitOnIdle: false`, so a run that never ends it outlives
+  // its own assertions (ledger `2026-09-05-fee-ledger-test-robustness`). Cleanup first, in reverse
+  // dependency order; the pool closes in a `finally` so the process exits on every path.
+  try {
+    if (bookingIds.length) {
+      const ids = sql.join(bookingIds.map((b) => sql`${b}`), sql`, `);
+      await db.execute(sql`DELETE FROM refunds WHERE booking_id IN (${ids})`);
+      await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id IN (${ids})`);
+      await db.execute(sql`DELETE FROM service_bookings WHERE id IN (${ids})`);
+    }
+    await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+  } finally {
+    await pool.end();
   }
-  await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
 });
 
 test("1. PROPORTIONAL traveler refund — Stripe amount = bookingRefund + tier% × fee; reversal = −(tier% × fee)", async () => {
