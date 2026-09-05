@@ -34,6 +34,7 @@ import {
 } from "../services/dmo-extracted-places.service";
 import { classifyDmoShape, runPlaceExtraction } from "../services/dmo-place-extraction.service";
 import { resolveTripTimezone } from "../services/trip-timezone";
+import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
 
 const router = Router();
 
@@ -657,6 +658,11 @@ router.post(
           // pre-trip EVENT pen is NOT drained here — an authoring build has userId NULL by design,
           // so there is no traveler principal whose pen it could be.
           timezone: resolveTripTimezone(city),
+          // Locked Decision 42 (D12) / ledger `2026-09-05-mint-market-slug-invariant`: same mint
+          // invariant, same ONE resolver, same reasoning as the sibling authoring build in
+          // ready-made.routes.ts — a NULL owner is not a NULL market. `city` is the destination
+          // this build was asked for; outside the 8 operating markets the slug is NULL (§13).
+          marketSlug: resolveMarketSlug(city),
           startDate: fmt(start),
           endDate: fmt(end),
           status: "draft",

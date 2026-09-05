@@ -46,6 +46,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
+import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeDisplay } from "@shared/ready-made-plan-types";
@@ -571,6 +572,28 @@ export default function ReadyMadeDetailPage() {
               >
                 <Copy className="w-3.5 h-3.5" aria-hidden="true" /> Copy trip link
               </Button>
+              {/* Plan entry (ledger `2026-09-04-entry-unification`; Locked Decision 42 D13, ledger
+                  `2026-09-05-doors-source-fields`). Buying is not the only honest next step from a
+                  ready-made listing: a traveler who likes the market but not this plan had nowhere
+                  to go but back. This is the ONE opener, never a second create path — a ready-made
+                  PURCHASE still clones through its own rail and is untouched here (Locked Decision
+                  30 keeps the clone out of the pending-events drain for the same reason: a bought
+                  plan is a fixed product, not a plan being started).
+
+                  IT PASSES THE MARKET, because the page HOLDS it (D13). `listing.market` is the
+                  listing's own DTO field — the same string the fact strip, the share frames and the
+                  neighborhood strip render — so it is a stated fact about this listing, not a guess
+                  about the traveler. It is passed as `city`, which `PlanningSource` resolves
+                  verbatim when no `country` rides with it (a "City, Country" market string therefore
+                  survives whole); nothing splits or re-parses it here (§13). */}
+              <div className="mt-[10px]">
+                <PlanEntryCta
+                  variant="outline"
+                  className="w-full rounded-[8px] border border-[#dfe7e4] bg-white hover:bg-[#f8faf9] text-[#193752] font-bold text-[12px]"
+                  source={{ city: listing.market }}
+                  testId="button-plan-entry-ready-made"
+                />
+              </div>
             </RmCard>
           </aside>
         </div>

@@ -51,8 +51,22 @@ const ANCHOR_ICONS: Record<string, typeof Heart> = {
 
 interface WeddingAnchorPresetsProps {
   tripId: string;
+  /**
+   * THE OCCASION'S OWN SLUG (ledger `2026-09-05-slip-switch-reads-events-first`). The server keys
+   * its anchor presets by occasion slug (`logistics-presets.service.ts`), so this is the whole of
+   * the branch: a slug the server holds presets for renders them, and a slug it holds NONE for
+   * renders NOTHING (the endpoint answers with an empty anchor list and the early return below
+   * takes it). This component never substitutes a nearest-looking template for a missing one.
+   */
   templateSlug: string;
   eventDate: string;
+  /**
+   * The occasion's display name, when the caller has resolved the row. Used for the heading and
+   * the one line of copy under it, so an occasion that is neither a wedding nor a proposal is
+   * named instead of being called "Trip". Absent ⇒ the pre-existing wedding/proposal/Trip words,
+   * unchanged: a label nobody supplied is never invented from the slug (§13).
+   */
+  occasionLabel?: string;
   userExperienceId?: string;
   onPresetsGenerated?: () => void;
 }
@@ -61,6 +75,7 @@ export function WeddingAnchorPresets({
   tripId,
   templateSlug,
   eventDate,
+  occasionLabel,
   userExperienceId,
   onPresetsGenerated,
 }: WeddingAnchorPresetsProps) {
@@ -113,10 +128,13 @@ export function WeddingAnchorPresets({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wand2 className="h-5 w-5 text-pink-600" />
-          {templateSlug === "wedding" ? "Wedding" : templateSlug === "proposal" ? "Proposal" : "Trip"} Schedule Template
+          {occasionLabel ||
+            (templateSlug === "wedding" ? "Wedding" : templateSlug === "proposal" ? "Proposal" : "Trip")}{" "}
+          Schedule Template
         </CardTitle>
         <CardDescription>
-          Auto-generate time anchors for your {templateSlug}. You can customize them after.
+          Auto-generate time anchors for your {(occasionLabel || templateSlug).toLowerCase()}. You
+          can customize them after.
         </CardDescription>
       </CardHeader>
 

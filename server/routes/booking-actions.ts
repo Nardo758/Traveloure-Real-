@@ -311,11 +311,17 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     // diary row in ONE transaction (Lane S ruling 18); an item that is not `in_planning` on this
     // trip is skipped, never clobbered. No cart-projection sync needed: this edge starts from
     // `in_planning`, which never has a cart row (only `ready_for_checkout` materializes).
-    const routedItemIds: string[] = [];
+    // D2 (ledger `2026-09-05-dead-surfaces-and-cart-qty`): the routed subset is NOT recorded on
+    // the request's jsonb. It used to be accumulated into `optimizationContext.routedItemIds`,
+    // which nothing ever read — the workspace resolves the routed items LIVE off
+    // `itinerary_items.routing_status`, which is exactly what this loop writes. A second,
+    // frozen copy of a live fact is the derivation-drift class §18 rule 1 names, and it was
+    // free to disagree with the rows it summarised the moment an item moved. The FLIP below is
+    // load-bearing and unchanged; only the bookkeeping is gone.
     if (tripId && Array.isArray(itemIds) && itemIds.length > 0) {
       for (const rawId of itemIds.slice(0, 100)) {
         const itemId = String(rawId);
-        const routed = await db.transaction(async (tx) => {
+        await db.transaction(async (tx) => {
           const rows = await tx
             .update(itineraryItemsTable)
             .set({ routingStatus: "with_expert", updatedAt: new Date() })
@@ -338,16 +344,11 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
               actorId: resolvedUserId,
             });
           }
-          return rows.length > 0;
         });
-        if (routed) routedItemIds.push(itemId);
       }
     }
-    // The reference set the workspace resolves live: tripId rides its own column below; the
-    // routed item subset is ids only — never titles/prices/providers.
-    if (routedItemIds.length > 0) {
-      sanitizedContext = { ...(sanitizedContext ?? {}), routedItemIds };
-    }
+    // The only reference that rides the request: `tripId`, on its own column below. Nothing
+    // about the ITEMS is copied into the jsonb — never ids, never titles/prices/providers.
 
     // R6: stamp the verified PI onto the request so completion can find the PAID signal and
     // credit the expert split from the LEDGER row (never from the client-writable expert_fee).

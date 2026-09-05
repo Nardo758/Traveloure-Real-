@@ -5,6 +5,13 @@ import { createComparison as createComparisonRequest } from "@/lib/create-compar
 import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optimization-gate";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
+import {
+  MAX_CART_QUANTITY_DIGITS,
+  MIN_CART_QUANTITY,
+  clampCartQuantity,
+  commitCartQuantity,
+  parseCartQuantityInput,
+} from "@/lib/cart-quantity";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -240,6 +247,108 @@ function checkoutAnalyticsData(items: CartItem[]) {
     has_scheduled_item: items.some((item) => Boolean(item.scheduledDate || getRoomStay(item))),
     booking_type: hasRoomStay && hasOtherItem ? "mixed" : hasRoomStay ? "room_stay" : "service",
   };
+}
+
+/**
+ * ── THE QUANTITY IS TYPEABLE AS WELL AS STEPPABLE (ledger `2026-09-05-dead-surfaces-and-cart-qty`) ──
+ *
+ * ONE STATE, TWO CONTROLS (§18 rule 1). The − / + buttons and the box between them write the SAME
+ * quantity through the SAME `updateItemMutation` this component is handed; there is no second
+ * write path and no local copy of the cart. `client/src/lib/cart-quantity.ts` is the ONE
+ * normaliser both controls go through, so they cannot drift into two different floors or ceilings.
+ *
+ * THE BOX MAY BE EMPTY WHILE TYPING AND STILL NEVER WRITES AN EMPTY (§13). A cleared box is a
+ * DRAFT — the traveler is mid-edit — not a statement that the line has no quantity, so committing
+ * an empty box reverts to the quantity the line already has instead of inventing a 0 or a 1. The
+ * server row stays the source of truth: it flows back into the box whenever the traveler is not
+ * editing, and their keystrokes are never overwritten while they are.
+ *
+ * NO PRICE, FEE OR TOTAL IS TOUCHED HERE (§14) — those stay server-derived, exactly as before.
+ */
+function CartQuantityStepper({
+  item,
+  pending,
+  onCommit,
+}: {
+  item: CartItem;
+  pending: boolean;
+  onCommit: (quantity: number) => void;
+}) {
+  const current = clampCartQuantity(item.quantity || MIN_CART_QUANTITY);
+  const [draft, setDraft] = useState<string>(String(current));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(String(current));
+  }, [current, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = commitCartQuantity(draft, current);
+    setDraft(String(next));
+    if (next !== current) onCommit(next);
+  };
+
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-8 w-8"
+        aria-label="Decrease quantity"
+        onClick={() => onCommit(clampCartQuantity(current - 1))}
+        disabled={current <= MIN_CART_QUANTITY || pending}
+        data-testid={`button-decrease-${item.id}`}
+      >
+        <Minus className="w-3 h-3" />
+      </Button>
+      {/* The wrapper keeps the `text-quantity-*` testid the read-only span used to carry. */}
+      <span className="inline-flex w-10" data-testid={`text-quantity-${item.id}`}>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          maxLength={MAX_CART_QUANTITY_DIGITS}
+          aria-label="Quantity"
+          value={draft}
+          disabled={pending}
+          className="w-full min-w-0 rounded-md border border-input bg-transparent px-1 py-1 text-center text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+          onFocus={(e) => {
+            setEditing(true);
+            e.currentTarget.select();
+          }}
+          onChange={(e) => {
+            setEditing(true);
+            setDraft(parseCartQuantityInput(e.target.value));
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+              setDraft(String(current));
+            }
+          }}
+          data-testid={`cart-qty-input-${item.id}`}
+        />
+      </span>
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-8 w-8"
+        aria-label="Increase quantity"
+        onClick={() => onCommit(clampCartQuantity(current + 1))}
+        disabled={pending}
+        data-testid={`button-increase-${item.id}`}
+      >
+        <Plus className="w-3 h-3" />
+      </Button>
+    </div>
+  );
 }
 
 /**
@@ -1927,31 +2036,11 @@ export default function CartPage() {
                                 1 room
                               </p>
                             ) : (
-                              <div className="flex items-center gap-2 mt-2">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => updateItemMutation.mutate({ id: item.id, quantity: Math.max(1, (item.quantity || 1) - 1) })}
-                                  disabled={item.quantity <= 1 || updateItemMutation.isPending}
-                                  data-testid={`button-decrease-${item.id}`}
-                                >
-                                  <Minus className="w-3 h-3" />
-                                </Button>
-                                <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
-                                  {item.quantity || 1}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => updateItemMutation.mutate({ id: item.id, quantity: (item.quantity || 1) + 1 })}
-                                  disabled={updateItemMutation.isPending}
-                                  data-testid={`button-increase-${item.id}`}
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </Button>
-                              </div>
+                              <CartQuantityStepper
+                                item={item}
+                                pending={updateItemMutation.isPending}
+                                onCommit={(quantity) => updateItemMutation.mutate({ id: item.id, quantity })}
+                              />
                             )}
                           </div>
                         </div>

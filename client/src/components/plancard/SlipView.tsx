@@ -97,6 +97,9 @@ import { eventCountLabel, partyLabelForOccasion } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
+// LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
+// actually holds bookable rows. The component itself decides visibility from the vault read.
+import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import {
   EXPERT_NOTE_TINT,
@@ -141,6 +144,15 @@ export interface SlipData extends PlanCardData {
    * its ONE implicit unnamed event, and the slip renders its flat day list unchanged.
    */
   events?: PlanEvent[];
+  /**
+   * LD 41 (c) / ledger `2026-09-05-draft-only-on-empty` — SERVER-DERIVED: true when this plan
+   * holds items and EVERY one of them is still an untouched free-draft row (`origin='ai'` and
+   * `routing_status='in_planning'`). The client does NOT recompute it: the activity DTO carries
+   * no `origin`, so a client answering this would be guessing (§18 rule 1 — one predicate, one
+   * place, and it lives on the server beside the rows). Absent on a pre-lane response ⇒ the line
+   * simply does not render; `false` renders nothing either, never the inverse claim (§13).
+   */
+  aiSketch?: boolean;
   meta?: PlanCardData["meta"] & {
     deliveredBy?: { expertId: string; name: string | null; avatar: string | null } | null;
   };
@@ -330,6 +342,21 @@ function SlipHeader({
           </span>
         ) : null}
       </p>
+      {/* LD 41 (c) — THE FREE DRAFT IS A SKETCH, SAID OUT LOUD. Nothing on the slip previously
+          told a traveler that the plan in front of them was an AI first pass rather than a
+          researched one, so the free draft and a delivered plan read identically. Rendered ONLY
+          when the server says every item is still an untouched draft row (`data.aiSketch`) —
+          absent/false renders nothing at all, never the inverse claim that the plan is
+          hand-built (§13). It states what the draft IS (one version, no live prices) and what
+          Optimize does; it makes no claim about which model wrote it, because the tier is a cost
+          decision and never a product claim. */}
+      {data.aiSketch === true && (
+        <p className="text-xs text-muted-foreground" data-testid="slip-ai-sketch-note">
+          <Sparkles className="w-3 h-3 inline mr-1" />
+          This is an AI starting sketch — one version, without live prices. Optimize builds three
+          proposals around it, anchored to what you have already booked.
+        </p>
+      )}
     </div>
   );
 }
@@ -1493,6 +1520,12 @@ export function SlipView({
   // reason — the same title-reason pattern the Optimize button uses).
   const [slipView, setSlipView] = useState<"list" | "map">("list");
   const [mapDay, setMapDay] = useState(0);
+  // LD 43(d): "the plan holds bookable rows" = something staged for checkout, or already booked.
+  // Derived from the rows this surface already has — no new fetch, and no claim when there are none.
+  const hasBookableRows = useMemo(
+    () => allActivities.some((a) => a.routingStatus === "ready_for_checkout" || isPurchasedRow(a)),
+    [allActivities],
+  );
   const locatedActivities = useMemo(
     () => allActivities.filter((a) => a.lat != null && a.lng != null),
     [allActivities],
@@ -1632,6 +1665,18 @@ export function SlipView({
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} isOwner={isOwner} />}
+
+      {/* LD 43(d), mount 2: the finalize success / finished area, gated on the plan holding
+          BOOKABLE rows — items staged for checkout, or bookings already made. A finished plan
+          with nothing bookable has nothing one-click would speed up, so it is not asked. Owner
+          only (the expert viewer has no card of the traveler's to save), and soft: the prompt
+          renders nothing at all unless the vault read says the traveler has no method yet. */}
+      {isOwner && isPrimary && hasBookableRows && (
+        <SavePaymentMethodPrompt
+          scope={`trip:${tripId}`}
+          message="Save this for one-click bookings on this trip."
+        />
+      )}
 
       {/* Plan-approval delivery handshake (CC-11 fix, migration 164 / CLAUDE.md §18) — same
           component and same owner-only gate PlanCard.tsx:958-960 uses, fed from this page's own

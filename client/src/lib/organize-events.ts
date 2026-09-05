@@ -18,7 +18,10 @@
  *      through the ONE switch reader. NULL/absent ⇒ false ⇒ no offer, which is the plain-plan
  *      shape: a trip has no internal schedule and offering to build one for it would put words
  *      in a row nobody decided on (§13). An UNRESOLVED occasion is the same answer for the same
- *      reason — `useOccasionSwitches` returns a row only on a unique event-type match.
+ *      reason — `useOccasionSwitches` returns a row only when the plan's own events name one
+ *      unanimously, or when the event type identifies exactly one occasion
+ *      (`resolveOccasionForPlan`, ledger `2026-09-05-slip-switch-reads-events-first`); it never
+ *      picks a nearest row, so "no offer" here means "we do not know", not "we decided no".
  *
  *   2. `eventCount === 0` — the plan holds no events yet. This is what makes the action ONE-TIME
  *      rather than a standing "add an event" button: the moment a plan has an event, the offer

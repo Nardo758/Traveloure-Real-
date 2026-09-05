@@ -17,6 +17,9 @@ import { Ticket, Loader2, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import StripeCheckout from "@/components/booking/StripeCheckout";
+// LD 43(d): mount 1 of 2 — the Trip Pass purchase success state. Soft, dismissible, never
+// blocking, and it renders only on a KNOWN-EMPTY vault (the component decides, not this file).
+import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -87,20 +90,29 @@ export function TripPassCard({ tripId }: { tripId: string }) {
 
   if (status.active) {
     return (
-      <section
-        className="flex items-center gap-3 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-4 py-3"
-        data-testid="trip-pass-card-active"
-      >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
-          <Check className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[color:var(--earn-ink)]">Trip Pass active</p>
-          <p className="text-[11px]" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
-            optimizer runs + AI tasks included · service fee waived on this trip
-          </p>
-        </div>
-      </section>
+      <div className="space-y-2">
+        <section
+          className="flex items-center gap-3 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-4 py-3"
+          data-testid="trip-pass-card-active"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
+            <Check className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[color:var(--earn-ink)]">Trip Pass active</p>
+            <p className="text-[11px]" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
+              optimizer runs + AI tasks included · service fee waived on this trip
+            </p>
+          </div>
+        </section>
+        {/* LD 43(d), mount 1: after a Trip Pass purchase. The active state IS this card's purchase
+            success state, and the prompt is scoped + dismissed per trip so a pass bought long ago
+            stops asking after one "not now". It opens the existing AddCardDialog — no second rail. */}
+        <SavePaymentMethodPrompt
+          scope={`trip-pass:${tripId}`}
+          message="Save a payment method for one-click bookings on this trip."
+        />
+      </div>
     );
   }
 

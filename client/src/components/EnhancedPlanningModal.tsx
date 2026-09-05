@@ -39,6 +39,7 @@ import { useLocation } from 'wouter';
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from '@tanstack/react-query';
 import { getQueryFn } from '@/lib/queryClient';
+import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
 
 /**
  * The five FROZEN coarse occasion keys the generator accepts (ruling `2026-09-01-moment-key`).
@@ -192,6 +193,10 @@ export default function EnhancedPlanningModal({
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: the server refuses a free draft on a slip
+  // that already holds items (409 `slip_has_items`). Held as its OWN state, not folded into
+  // `error`, because it is not a failure — it is a routing answer that carries a destination.
+  const [draftRefusal, setDraftRefusal] = useState<AiDraftRefusal | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // City-derived refinements (neighborhoods + hidden gems). These are AI-only inputs — they
@@ -312,6 +317,7 @@ export default function EnhancedPlanningModal({
     setErrors({});
     setIsLoading(true);
     setError('');
+    setDraftRefusal(null);
 
     try {
       // Call the existing itinerary generation endpoint
@@ -338,7 +344,18 @@ export default function EnhancedPlanningModal({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+        // LD 41 (b): the free draft runs only on an EMPTY slip. Read through the ONE shared
+        // reader — never a second copy of the discriminator (§18 rule 1) — and shown as the
+        // server's own sentence plus a link to the slip, whose existing Optimize button runs the
+        // ONE pay-gate implementation. This surface sends no tripId today, so the branch is
+        // reachable only if a door starts to; it is here so that door does not have to invent
+        // its own handling.
+        const refusal = readSlipHasItemsRefusal(response.status, errorData);
+        if (refusal) {
+          setDraftRefusal(refusal);
+          return;
+        }
         throw new Error(errorData.message || 'Failed to generate itinerary');
       }
 
@@ -771,6 +788,28 @@ export default function EnhancedPlanningModal({
             <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-start gap-2">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <p className="text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* LD 41 (b): not an error — the plan already has items, so Optimize is the rail that
+              works on it. Neutral styling, the server's own sentence, and a link to the slip
+              rather than a re-implemented gate. No link when the refusal named no trip (§13). */}
+          {draftRefusal && (
+            <div
+              className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg text-sm"
+              data-testid="ai-draft-slip-has-items"
+            >
+              <p>{draftRefusal.message}</p>
+              {slipHref(draftRefusal) && (
+                <button
+                  type="button"
+                  onClick={() => { onClose(); setLocation(slipHref(draftRefusal)!); }}
+                  className="mt-2 underline font-medium"
+                  data-testid="ai-draft-optimize-instead"
+                >
+                  Optimize this plan instead
+                </button>
+              )}
             </div>
           )}
 

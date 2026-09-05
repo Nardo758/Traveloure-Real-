@@ -20,6 +20,7 @@ import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-led
 import { attachRolesNeeded } from "../services/occasion-roles.service";
 import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
+import { isUntouchedAiDraft } from "../services/ai-draft-eligibility";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -457,6 +458,16 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // A stop with null lat/lng is UNLOCATED and stays visibly flagged; it is never placed on a map.
     const destinations = await getTripDestinations(tripId);
 
+    // LD 41 (c) / ledger `2026-09-05-draft-only-on-empty` — IS THIS PLAN STILL JUST THE FREE
+    // SKETCH? Server-derived from the rows (`origin='ai'` AND `routing_status='in_planning'` for
+    // EVERY item, and at least one item), through the ONE predicate that also answers the
+    // eligibility question about the same table (§18 rule 1). It rides HERE rather than being
+    // recomputed client-side because the plancard activity DTO deliberately carries no `origin`,
+    // so a client answering this would be guessing. §13: `false` for an empty plan — a blank slip
+    // is not an AI sketch — and the client renders NOTHING when it is false, never the inverse
+    // claim ("this plan is yours"). Additive; existing consumers ignore the key.
+    const aiSketch = await isUntouchedAiDraft(tripId);
+
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
       tripRole: plan.plancard.tripRole,
@@ -494,6 +505,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Migration 281 — the plan's ordered stops; see the assembly note above. ADDITIVE: every
       // existing consumer ignores the key.
       destinations,
+      // LD 41 (c) — see the note above. `true` ⇒ every item on this plan is still an untouched
+      // free-draft row, which is the only state the slip's "starting sketch" line renders in.
+      aiSketch,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {
