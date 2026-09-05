@@ -35,6 +35,9 @@ jobs:
     # 24h left the ledger step with no output for 30-80 minutes while every other job on the same
     # SHA was green; with no timeout anywhere the job was free to sit until GitHub's 6-hour default.
     # The per-step ceilings below name the failing step in the log; this one is the job backstop.
+    # The ceilings are the BACKSTOP, not the cure — see the `--test-force-exit` note on the test
+    # steps for the mechanism that was actually stalling them (ledger
+    # `2026-09-05-fee-ledger-hang-root-cause`).
     timeout-minutes: 30
     services:
       postgres:
@@ -102,8 +105,22 @@ jobs:
           pgrep -a node || true
           exit 1
 
+      # `--test-force-exit` IS LOAD-BEARING, NOT A CONVENIENCE (ledger
+      # `2026-09-05-fee-ledger-hang-root-cause`). `node --test <file>` runs the file in a CHILD
+      # process and prints the file's result and the `1..N` summary only when that child EXITS —
+      # so a child left alive by ANY stray handle produces a silent, unbounded stall whose last
+      # line is the final `ok`, with every assertion already passed. The stray handle here is the
+      # `pino-pretty` transport WORKER THREAD that `server/infrastructure/logger.ts` builds
+      # whenever NODE_ENV !== "production" (these steps set NODE_ENV=test); its teardown races
+      # process exit and loses ~11% of the time under 2-CPU contention. Ending the pg pool
+      # (ledger `2026-09-05-fee-ledger-test-robustness`) was necessary and is kept — a hung child
+      # holds no Postgres socket — but it was never the only handle. This flag makes the runner
+      # exit as soon as every test AND hook has finished, with the exit code still decided by the
+      # RESULTS: it cannot hide a failed assertion, and a genuinely blocked hook still reports its
+      # `{ timeout: 60_000 }` failure first and then exits non-zero instead of stalling forever.
+      # Same flag, same reason, as user-experience-ownership-gate.yml and the affiliate gates.
       - name: Fee-preview Trip-Pass waiver pins (A–C)
-        run: npx tsx --test server/__tests__/fee-preview-entitlement.http.test.ts
+        run: npx tsx --test --test-force-exit server/__tests__/fee-preview-entitlement.http.test.ts
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
@@ -114,7 +131,7 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
 
       - name: Traveler-fee ledger netting (+X / −X, $0-no-row, idempotency)
-        run: npx tsx --test server/__tests__/traveler-fee-ledger.db.test.ts
+        run: npx tsx --test --test-force-exit server/__tests__/traveler-fee-ledger.db.test.ts
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
@@ -124,7 +141,7 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
 
       - name: Traveler-fee refund (proportional/full/waived/duplicate + reversal linkage)
-        run: npx tsx --test server/__tests__/traveler-fee-refund.db.test.ts
+        run: npx tsx --test --test-force-exit server/__tests__/traveler-fee-refund.db.test.ts
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
