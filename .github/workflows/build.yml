@@ -875,6 +875,10 @@ jobs:
       # reach past is not a rule: the board hands over the same `userVariant` the baseline column
       # renders, the ratified testids exist, BOTH renderers grew an optional second series rather
       # than a compare-only fork (§18 rule 1), and the surface labels its connectors as sequence
-      # while deriving no distance or duration.
+      # while deriving no distance or duration. B6-B7 pin the link BACK: the plancard names the
+      # board only when a comparison row exists (the key is OMITTED, never null-filled), the id
+      # comes off the same comparison row `lastOptimizedAt` already reads, and both the slip's
+      # "See what changed" and PlanCard's "AI Optimized" pill read that DTO field rather than
+      # fetching the user's comparisons to work out which board a plan came from.
       - name: Proposal comparison map pin
         run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts

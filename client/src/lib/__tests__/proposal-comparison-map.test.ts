@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { planComparisonRef } from "../../../../shared/trip-plan";
 import {
   DEFAULT_BASELINE_TAB_LABEL,
   baselineTabLabel,
@@ -21,6 +22,10 @@ const COMPONENT = path.join(ROOT, "client/src/components/plancard/ProposalCompar
 const PAGE = path.join(ROOT, "client/src/pages/itinerary-comparison.tsx");
 const MAP_CONTROL_CENTER = path.join(ROOT, "client/src/components/plancard/MapControlCenter.tsx");
 const LEAFLET = path.join(ROOT, "client/src/components/expert/leaflet-plan-map.tsx");
+const SLIP_VIEW = path.join(ROOT, "client/src/components/plancard/SlipView.tsx");
+const PLAN_CARD = path.join(ROOT, "client/src/components/plancard/PlanCard.tsx");
+const TRIP_PLAN_SERVICE = path.join(ROOT, "server/services/trip-plan.service.ts");
+const PLANCARD_ROUTE = path.join(ROOT, "server/routes/plancard.routes.ts");
 
 const read = (file: string) => fs.readFileSync(file, "utf8");
 
@@ -246,6 +251,54 @@ describe("B5 — the shipped wiring (a gate the call site can reach past is the 
     assert.ok(
       !/haversine|distanceKm|distanceBetween|sumLegMinutes|Math\.sqrt/i.test(component),
       "the map component must not derive a distance or duration",
+    );
+  });
+});
+
+describe("B6 — the plancard names the board ONLY when a comparison exists", () => {
+  it("carries the id when the comparison row is there", () => {
+    assert.deepEqual(planComparisonRef({ id: "cmp_1" }), { lastComparisonId: "cmp_1" });
+  });
+
+  it("OMITS the key entirely when there is no comparison — never a null-filled fake", () => {
+    for (const absent of [null, undefined, {}, { id: null }, { id: "" }]) {
+      const ref = planComparisonRef(absent as { id?: string | null } | null | undefined);
+      assert.deepEqual(ref, {});
+      assert.equal("lastComparisonId" in ref, false);
+      // Spreading an absent ref must not put the key on the wire at all.
+      assert.equal("lastComparisonId" in { lastOptimizedAt: null, ...ref }, false);
+    }
+  });
+});
+
+describe("B7 — the link back reads the DTO, and no surface fetches comparisons to find it", () => {
+  it("the assembler and the route emit the id off the SAME comparison row as lastOptimizedAt", () => {
+    const service = read(TRIP_PLAN_SERVICE);
+    assert.match(service, /planComparisonRef/);
+    // The spread sits directly under lastOptimizedAt — one row read, no second query.
+    assert.match(service, /lastOptimizedAt,\n(?:\s*\/\/.*\n)*\s*\.\.\.planComparisonRef\(comparison\),/);
+    assert.match(read(PLANCARD_ROUTE), /planComparisonRef\(/);
+  });
+
+  it("the slip's link is the DTO field, gated on its presence", () => {
+    const slip = read(SLIP_VIEW);
+    assert.match(slip, /data-testid="slip-see-what-changed"/);
+    assert.match(slip, /hasOptimized && data\.lastComparisonId &&/);
+    assert.match(slip, /\/itinerary-comparison\/\$\{data\.lastComparisonId\}/);
+    // §14/§18 rule 1: the slip never asks the server for the user's comparisons to work out
+    // which board this plan came from — the id arrives on the plancard payload it already has.
+    assert.ok(
+      !/api\/itinerary-comparisons/.test(slip.replace(/\/itinerary-comparison\/\$\{data\.lastComparisonId\}/g, "")),
+      "the slip must not fetch the comparisons list",
+    );
+  });
+
+  it("the AI Optimized pill points at the same board, and falls back when there is none", () => {
+    const planCard = read(PLAN_CARD);
+    assert.match(planCard, /lastComparisonId = plancardData\?\.lastComparisonId \?\? null/);
+    assert.match(
+      planCard,
+      /navigate\(lastComparisonId \? `\/itinerary-comparison\/\$\{lastComparisonId\}` : planHref\)/,
     );
   });
 });

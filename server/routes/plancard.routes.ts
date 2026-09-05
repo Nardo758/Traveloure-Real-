@@ -19,6 +19,7 @@ import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
 import { attachRolesNeeded } from "../services/occasion-roles.service";
 import { getTripDestinations } from "../services/trip-destinations.service";
+import { planComparisonRef } from "@shared/trip-plan";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -465,6 +466,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       metrics: plan.plancard.metrics,
       optimizationDelta: plan.plancard.optimizationDelta,
       lastOptimizedAt: plan.plancard.lastOptimizedAt,
+      // LD 41 (ledger 2026-09-05-comparison-map-baseline-compare): the review board this plan's
+      // optimization came from, so the slip's optimized state can link back to it. SPREAD, not
+      // assigned — the key stays ABSENT when the trip has no comparison, rather than becoming a
+      // null the reader has to interpret (§13). Additive: every existing consumer ignores it.
+      ...planComparisonRef({ id: plan.plancard.lastComparisonId ?? null }),
       stats: plan.plancard.stats,
       // ADDITIVE TripPlan v1 envelope (docs/EXECUTION_MAP.md §3). New consumers read these;
       // existing consumers ignore them.
