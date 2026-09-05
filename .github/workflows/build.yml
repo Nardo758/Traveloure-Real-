@@ -549,6 +549,22 @@ jobs:
       # wired to no workflow; an unrun test is not a guard.
       - name: Analytics trackEvent fail-soft pin
         run: npx tsx --test client/src/lib/__tests__/analytics.test.ts
+      # 2026-09-05-optimize-preview-on-slip (CLAUDE.md Locked Decision 41 (d)): the free heuristic
+      # is now shown BEFORE the traveler pays, and the failure that would follow is a copy edit
+      # promising a delta the heuristic cannot measure — it reads what each item IS, never where it
+      # is, so it has no distance, no travel time and no measured saving to offer. P1-P8/E1-E3 pin
+      # the extracted scoring (deterministic fixtures; an empty and a single-item plan REFUSED with
+      # the heuristic's own reason rather than scored; the three legacy cart extrapolations kept
+      # byte-identical but reachable only through their own named function). S1-S7 read the shipped
+      # files, because ONE heuristic with two callers is exactly the kind of thing a later refactor
+      # forks silently: no metrics call left in the routes file, both entries on the shared
+      # function, the trip entry reading `loadTripOptimizerInputs` with the actor from the SESSION
+      # and no item list off the wire, no Stripe/fee anywhere in the preview handler, and the slip
+      # rendering neither extrapolated number. L1-L7/F1-F5 hold the traveler-facing strings.
+      - name: Optimize-preview heuristic + slip line pin
+        run: |
+          npx tsx --test server/__tests__/optimize-preview-on-slip.test.ts
+          npx tsx --test client/src/lib/__tests__/optimize-preview-line.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
