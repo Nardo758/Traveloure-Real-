@@ -58,7 +58,7 @@ import {
   Umbrella,
   User
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
@@ -164,12 +164,42 @@ const CHROME_LINK_REST = "text-[color:var(--earn-ink)] hover:text-[color:var(--e
 const CHROME_LINK_ACTIVE = "text-[color:var(--earn-teal-ink)] underline underline-offset-2";
 const CHROME_EYEBROW = "text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]";
 
-function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
+/**
+ * EXACTLY ONE PANEL IS OPEN AT A TIME, and that is structural rather than a rule every close
+ * path has to remember (QA F6). Each trigger used to own a private `isOpen`, so nothing told the
+ * Experiences panel that Planning Tools had just opened — a click on the second left BOTH
+ * painted, one over the other. "Which menu is open" is now ONE piece of state owned by `Layout`
+ * and keyed by the group's name, with these six triggers as its callers (§18 rule 1); the
+ * per-instance hover/blur timers below are unchanged and stay local, because they are about THIS
+ * trigger's pointer, not about which menu the navbar is showing.
+ */
+function DesktopDropdown({
+  item,
+  isActive,
+  openMenu,
+  setOpenMenu,
+}: {
+  item: typeof navItems[0];
+  isActive?: boolean;
+  openMenu: string | null;
+  setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
   const { t } = useTranslation("nav");
   // A config entry with no i18nKey renders English in every locale — the documented migration
   // path for anything added to nav-config later. Never passes an empty key to t().
   const tr = (key: string | undefined, fallback: string) => (key ? t(key, fallback) : fallback);
-  const [isOpen, setIsOpen] = useState(false);
+  const isOpen = openMenu === item.name;
+  /**
+   * Shim so every call site below reads exactly as it did. A CLOSE only ever clears THIS group
+   * (the functional update compares before writing), so a 300 ms hover timer left over from a
+   * menu the traveler has already moved past cannot shut the menu that replaced it.
+   */
+  const setIsOpen = useCallback(
+    (next: boolean) => {
+      setOpenMenu((prev) => (next ? item.name : prev === item.name ? null : prev));
+    },
+    [item.name, setOpenMenu],
+  );
   const [megaStyle, setMegaStyle] = useState<CSSProperties>({});
   const recentCities = useRecentlyViewed();
   const { user } = useAuth();
@@ -316,7 +346,20 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                 ? "w-[800px]"
                 : "left-0 w-72"
             )}
-            style={sections.length > 2 ? megaStyle : {}}
+            /**
+             * THE PANEL IS OPAQUE IN BOTH THEMES, AND SAYS SO IN THE ONE DECLARATION THE CASCADE
+             * CANNOT LOSE (QA F6). The class above already asks for `--earn-card`; this repeats
+             * it inline — an element style beats any rule that could out-specify or fail to
+             * generate the utility — and names a SECOND theme token as the fallback, so a panel
+             * whose primary surface token is missing in one theme lands on the other opaque
+             * surface rather than on transparent (the page's hero showing through a menu). Both
+             * `--earn-card` (:root and .dark) and `--popover` are fully opaque in both themes;
+             * neither is a hardcoded colour, so the panel still follows the theme it is in.
+             */
+            style={{
+              ...(sections.length > 2 ? megaStyle : {}),
+              backgroundColor: "var(--earn-card, hsl(var(--popover)))",
+            }}
             onPointerDown={() => setIsOpen(false)}
             onClickCapture={() => setIsOpen(false)}
           >
@@ -376,7 +419,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                     if (child.featured && !(child.requiresAuth && !user)) {
                       const featured = child.featured;
                       return (
-                        <div key={child.name} className="group/featured flex items-center gap-1">
+                        <div key={child.name} className="group/featured relative flex items-center">
                           <Link
                             href={child.href || "#"}
                             role="menuitem"
@@ -386,13 +429,31 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                           >
                             {inner}
                           </Link>
+                          {/*
+                            THE AFFORDANCE IS OUT OF FLOW, so it cannot take width from the label
+                            beside it (QA F9). It used to be a `shrink-0` flex sibling with
+                            `whitespace-nowrap` text, which in the 4-up mega layout (an ~184 px
+                            column) reserved ~half the row even while invisible — the Wedding link
+                            was then `truncate`d to "W..", while its unfeatured neighbours showed
+                            their full labels. Overlaying it on the row's right edge gives the
+                            label the whole column back and changes nothing else: the button keeps
+                            its testid, its handler and its place in the DOM order, so the
+                            accessibility tree and the tab order are as they were. `opacity-0`
+                            still dims rather than hides it, and the added `pointer-events-none`
+                            (lifted on hover, exactly when it is visible) keeps an invisible
+                            overlay from swallowing clicks meant for the link underneath —
+                            keyboard activation is unaffected, pointer-events never gates focus.
+                          */}
                           <button
                             type="button"
                             role="menuitem"
                             className={cn(
-                              "shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] whitespace-nowrap",
-                              "text-[color:var(--earn-teal-ink)] hover:bg-[color:var(--earn-teal-wash)]",
-                              "opacity-0 transition-opacity group-hover/featured:opacity-100 focus:opacity-100 focus-visible:opacity-100",
+                              "absolute right-1 top-1/2 -translate-y-1/2 z-10",
+                              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] whitespace-nowrap",
+                              "bg-[color:var(--earn-card)] text-[color:var(--earn-teal-ink)] hover:bg-[color:var(--earn-teal-wash)]",
+                              "pointer-events-none opacity-0 transition-opacity",
+                              "group-hover/featured:pointer-events-auto group-hover/featured:opacity-100",
+                              "focus:pointer-events-auto focus:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
                               FOCUS_RING
                             )}
                             style={{ fontFamily: CHROME_MONO }}
@@ -500,10 +561,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { t: tCommon } = useTranslation("common");
   const { locale } = useLocale();
   const tr = (key: string | undefined, fallback: string) => (key ? t(key, fallback) : fallback);
-  const { user, logout } = useAuth();
+  // `isAuthLoading` is the third state the header has always had and never rendered (QA F8):
+  // "not signed in" and "we do not know yet" are different facts, and only the first one may be
+  // drawn as a sign-in CTA (§13 — an unresolved answer is not a negative answer).
+  const { user, isLoading: isAuthLoading, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -513,12 +579,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   // Escape key + click-outside close
   useEffect(() => {
+    // QA F6: Escape and a click anywhere outside the navbar dismiss the open desktop dropdown
+    // too — the same two gestures that already dismissed the mobile sheet. A click INSIDE the
+    // panel is not "outside": the panel closes itself on pointer-down so a menu item still acts.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsMobileMenuOpen(false);
+      if (e.key === "Escape") {
+        setIsMobileMenuOpen(false);
+        setOpenMenu(null);
+      }
     };
     const onOutside = (e: MouseEvent) => {
       if (navRef.current && !navRef.current.contains(e.target as Node)) {
         setIsMobileMenuOpen(false);
+        setOpenMenu(null);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -625,7 +698,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               <div className="hidden lg:ml-8 lg:flex lg:items-center gap-1">
                 {navItems.map((item) => (
-                  <DesktopDropdown key={item.name} item={item} isActive={item.href === location} />
+                  <DesktopDropdown
+                    key={item.name}
+                    item={item}
+                    isActive={item.href === location}
+                    openMenu={openMenu}
+                    setOpenMenu={setOpenMenu}
+                  />
                 ))}
               </div>
             </div>
@@ -636,7 +715,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   resolution order honors ahead of Accept-Language on the next visit. */}
               <LanguageMenu />
 
-              {!user && (
+              {/*
+                WHILE THE SESSION IS UNKNOWN THE HEADER CLAIMS NOTHING (QA F8). `GET /api/auth/user`
+                takes 1–3 s on a cold load, and until this gate the account slot rendered the
+                signed-out CTAs ("Join as Partner" / "Sign In") for that whole window — a signed-in
+                traveler watched the header tell them they were logged out and then replace itself.
+                The neutral placeholder below holds the slot's width so nothing jumps when the
+                answer arrives; it carries no label, because "we are still asking" is not a message
+                worth wording. The signed-out CTAs render only once the query has RESOLVED with no
+                user, and the signed-in cluster only once it has resolved with one.
+              */}
+              {isAuthLoading && (
+                <div
+                  className="hidden lg:flex items-center gap-2"
+                  aria-hidden="true"
+                  data-testid="nav-account-pending"
+                >
+                  <div className="h-8 w-[132px] rounded-md bg-[color:var(--earn-chip)]" />
+                  <div className="h-8 w-[72px] rounded-md bg-[color:var(--earn-chip)]" />
+                </div>
+              )}
+
+              {!user && !isAuthLoading && (
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

@@ -53,9 +53,28 @@ function getAvatarFallback(user: { firstName?: string | null; email?: string | n
 }
 
 export function UserMenu() {
-  const { user, logout } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
+
+  /**
+   * "NOT SIGNED IN" AND "WE DO NOT KNOW YET" ARE DIFFERENT ANSWERS (QA F8; §13). This menu is the
+   * account slot of every console shell (dashboard / admin / provider / EA), so on /profile and
+   * its siblings a signed-in member spent the 1–3 s of the `GET /api/auth/user` round trip being
+   * offered "Login / Sign Up" before the header replaced itself. The unresolved query now renders
+   * a neutral placeholder the same size as the resolved control, so the slot neither claims
+   * anything nor moves; the signed-out buttons below are reached only once the query has actually
+   * come back with no user.
+   */
+  if (isLoading) {
+    return (
+      <div
+        className="h-9 w-[132px] rounded-full bg-muted animate-pulse"
+        aria-hidden="true"
+        data-testid="user-menu-pending"
+      />
+    );
+  }
 
   if (!user) {
     return (

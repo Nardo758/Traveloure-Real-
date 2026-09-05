@@ -276,6 +276,13 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/guest-invite-meta.test.ts
           done
+      # QA F10: the Experiences dropdown shipped a footer leaf whose i18nKey no locale file
+      # carried, so production rendered the literal "browseAllOccasions". The parity spec diffs
+      # the locales against EACH OTHER and was correctly green — a key missing from en AND ja is
+      # at perfect parity. This pin asks the other question: does every key nav-config DECLARES
+      # exist in every locale on disk.
+      - name: Nav i18n key pin
+        run: npx tsx --test client/src/lib/__tests__/nav-i18n-keys.test.ts
       # F-2: ONE trip-target resolver for the /services grid and the service-detail page — the
       # "?tripId= first, then TripContext, else none" order, plus the detail href that carries the
       # handoff forward. A second copy of that order is how the two surfaces drifted apart.

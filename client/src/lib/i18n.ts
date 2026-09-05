@@ -158,8 +158,25 @@ void i18n.use(initReactI18next).init({
     escapeValue: false,
   },
   returnNull: false,
-  // A missing key renders its English string (fallbackLng) — never the raw key. See header.
-  parseMissingKeyHandler: (key: string) => {
+  /**
+   * A missing key renders its English string — never the raw key. See header.
+   *
+   * THE `defaultValue` IS HONOURED FIRST, and that is the whole point (QA F10). i18next calls
+   * this handler for a key that is missing from EVERY loaded locale — en included — and passes
+   * the call site's `defaultValue` as the second argument when one was given. The previous
+   * implementation ignored it and always returned the key's last dot segment, so a call site
+   * that had done exactly what this file's header asks of it — carried its English text as a
+   * defaultValue — still printed "browseAllOccasions" to the user. That is the raw key this
+   * handler exists to prevent, arrived at from inside the prevention.
+   *
+   * The leaf remains the answer of last resort, for a key with no defaultValue at all: a
+   * lower-case run-together word is still a poor thing to show a traveler, but it is shorter and
+   * less alarming than the fully-qualified "nav:links.browseAllOccasions", and there is nothing
+   * truer available. The real fix for either shape is the missing translation, which
+   * `client/src/lib/__tests__/nav-i18n-keys.test.ts` now fails on for every nav/footer key.
+   */
+  parseMissingKeyHandler: (key: string, defaultValue?: string) => {
+    if (typeof defaultValue === "string" && defaultValue !== "") return defaultValue;
     const leaf = key.split(":").pop() ?? key;
     return leaf.split(".").pop() ?? leaf;
   },
