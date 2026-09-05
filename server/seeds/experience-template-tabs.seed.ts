@@ -5352,6 +5352,22 @@ async function updateExperienceTypeHeroConfigs() {
       showOriginCity: "required",
       locationLabel: "Destination city",
     },
+    // QA F11. `golf-trip` (ledger `2026-09-04-golf-occasion-and-housekeeping`) was seeded into the
+    // `templates` array above but never into THIS block, so its four hero-card columns stayed NULL
+    // while every other active occasion defined them — `GET /api/experience-types` reported
+    // `headcountLabel: null, locationLabel: null`, and every reader of those columns had to fall
+    // back. NULL there is honest (§13: not set ⇒ the reader omits or falls back, never invents),
+    // which is why nothing broke loudly; it was simply an unanswered question on a row that has an
+    // answer. The values are `travel`'s, minus kids: the row's own comment at the `templates` entry
+    // says a golf trip is "a group of travelers, not an invited event", and it reuses `travel`'s
+    // tabs and filters wholesale — so the party noun is "traveler", the location is a destination
+    // city, and no new copy is authored here.
+    "golf-trip": {
+      headcountLabel: "traveler",
+      showKids: false,
+      showOriginCity: "required",
+      locationLabel: "Destination city",
+    },
     "milestone-birthday": {
       headcountLabel: "guest",
       showKids: true,

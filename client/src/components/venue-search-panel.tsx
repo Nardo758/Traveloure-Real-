@@ -20,6 +20,14 @@ interface VenueSearchPanelProps {
   externalMinRating?: number;
   externalKeyword?: string;
   hideFilters?: boolean;
+  /**
+   * QA F7 — the no-location empty state's ONE control. The panel does NOT open the plan modal
+   * itself: the page that mounts it already holds the single planning door
+   * (`usePlanning().open`, ledger `2026-09-04-one-modal-many-doors`), and a second opener inside a
+   * shared child would be a second door into the same modal. Omitted ⇒ the empty state renders its
+   * honest copy with no button, never a dead control (§13).
+   */
+  onSetLocation?: () => void;
 }
 
 interface VenueResult {
@@ -123,7 +131,8 @@ export function VenueSearchPanel({
   externalVendorType,
   externalMinRating,
   externalKeyword,
-  hideFilters = false
+  hideFilters = false,
+  onSetLocation
 }: VenueSearchPanelProps) {
   const { toast } = useToast();
   const [searchTrigger, setSearchTrigger] = useState(0);
@@ -218,17 +227,44 @@ export function VenueSearchPanel({
     refetch();
   };
 
-  // Show helpful message if no location is set
+  /**
+   * NO LOCATION YET (QA F7).
+   *
+   * This used to read "Enter a Location to See Venues — please enter your event location in the
+   * form above". There is no form above it: the page that mounts this panel moved the
+   * destination/dates/party quartet to the global Trip Strip (P3b), whose "Edit" is a DOOR of the
+   * one planning modal. So the copy pointed a traveler at a control that does not exist, and the
+   * state offered no way out of itself.
+   *
+   * The replacement says what is true — nothing has named a location yet — and carries the ONE
+   * control that can change that, delegated to the mounting page's existing planning door
+   * (`onSetLocation`). §13: when no door was passed the panel states the absence and stops, rather
+   * than rendering a button that would do nothing.
+   */
   if (!location || location.trim() === '') {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div
+        className="flex flex-col items-center justify-center py-12 text-center"
+        data-testid="venue-search-no-location"
+      >
         <MapPin className="w-16 h-16 text-gray-300 mb-4" />
         <h3 className="text-lg font-semibold text-gray-700 mb-2">
-          Enter a Location to See Venues
+          Your plan doesn't have a location yet
         </h3>
         <p className="text-gray-500 max-w-md">
-          Please enter your event location in the form above to discover venues and vendors in that area.
+          Venues and vendors are searched by city. Set a location for your plan and they'll appear
+          here.
         </p>
+        {onSetLocation && (
+          <Button
+            className="mt-5"
+            onClick={onSetLocation}
+            data-testid="button-set-location-from-empty"
+          >
+            <MapPin className="w-4 h-4 mr-2" />
+            Set your location
+          </Button>
+        )}
       </div>
     );
   }
