@@ -234,3 +234,99 @@ describe("occasion switches", () => {
     assert.equal(retreat!.switches.duration, "range");
   });
 });
+
+/**
+ * HERO CONFIG — the P4 block (`updateExperienceTypeHeroConfigs`) is the seeder's OTHER per-slug
+ * UPDATE half, and it is a SEPARATE literal from the `templates` array above. QA F11: `golf-trip`
+ * was added to `templates` (ledger `2026-09-04-golf-occasion-and-housekeeping`) and never to the
+ * hero `configs` map, so `GET /api/experience-types` reported `headcountLabel: null,
+ * locationLabel: null` for it while every other active occasion defined both.
+ *
+ * That failure is silent by construction: NULL is a legal, HONEST state of those columns (§13 —
+ * not set ⇒ the reader falls back or omits, it never invents), so nothing throws and no guard
+ * fires. The only thing that can catch "the seeder wrote the row but forgot to answer for it" is
+ * a proof that the two literals cover the same slugs.
+ *
+ * NEGATIVE SPACE (§18d): this reads the seed file as TEXT and proves COVERAGE and value shape.
+ * It does not run the seeder, does not touch a DB, and says nothing about whether a row already on
+ * disk has been updated — the seeder's stale-only UPDATE is what does that.
+ */
+
+/** The `configs` map of `updateExperienceTypeHeroConfigs`, read as text. */
+function heroConfigs(): Array<{ slug: string; body: string }> {
+  const src = readFileSync(SEED, "utf8");
+  const start = src.indexOf("const configs: Record<string, HeroConfig> = {");
+  assert.ok(start > -1, "the hero `configs` map must still be findable — update this parser");
+  const open = src.indexOf("{", src.indexOf("=", start));
+  const end = src.indexOf("\n  };", open);
+  assert.ok(end > open, "the hero `configs` map literal must still be findable");
+  const block = src.slice(open, end);
+
+  const rows: Array<{ slug: string; body: string }> = [];
+  // A key followed by its object body up to the next top-level key (or the end of the block).
+  // Non-greedy on the body so a row that lost its object cannot swallow its neighbour.
+  for (const m of block.matchAll(/^    "([^"]+)":\s*\{([\s\S]*?)^    \},$/gm)) {
+    rows.push({ slug: m[1], body: m[2] });
+  }
+  return rows;
+}
+
+describe("occasion hero configs (P4 block)", () => {
+  // H1 — the coverage proof. Every occasion the seeder writes also gets its hero answers.
+  it("H1: every seeded occasion has a hero config", () => {
+    const configured = new Set(heroConfigs().map((r) => r.slug));
+    assert.ok(configured.size >= 27, `expected the full hero config map, parsed ${configured.size}`);
+    const missing = seededSlugs().filter((s) => !configured.has(s));
+    assert.deepEqual(
+      missing,
+      [],
+      "these occasions are seeded into `templates` but have no entry in the P4 hero `configs` " +
+        "map, so their headcountLabel/showKids/showOriginCity/locationLabel stay NULL while every " +
+        `other occasion answers: ${missing.join(", ")}`,
+    );
+  });
+
+  // H1b — and the other direction: a config keyed on a slug nothing seeds applies to no row at
+  // all. That already happened once ("corporate-retreats", fixed by `2026-09-03-occasion-switches`),
+  // and the seeder's own UPDATE swallows it silently ("Row may not exist yet in this environment").
+  it("H1b: every hero config names a slug the seeder actually writes", () => {
+    // ONE key is tolerated, named rather than silently allowed. `birthday-party` is keyed on a
+    // slug no code path creates (the seeded celebration row is `birthday`), so it already updates
+    // nothing — it is the same shape as the `corporate-retreats` orphan, found by this proof and
+    // NOT removed here: the seeder also maintains rows added directly to the DB, and this lane
+    // cannot check production for a hand-made `birthday-party` row. Recorded, not fixed; a NEW
+    // orphan still fails.
+    const KNOWN_ORPHANS = ["birthday-party"];
+    const seeded = new Set(seededSlugs());
+    const orphans = heroConfigs()
+      .map((r) => r.slug)
+      .filter((s) => !seeded.has(s) && !KNOWN_ORPHANS.includes(s));
+    assert.deepEqual(
+      orphans,
+      [],
+      `hero configs keyed on slugs no template seeds — they update nothing: ${orphans.join(", ")}`,
+    );
+  });
+
+  // H2 — every config answers all four columns. A partially-answered row is the same silent NULL
+  // as an absent one, one column at a time.
+  it("H2: every hero config states all four columns", () => {
+    for (const { slug, body } of heroConfigs()) {
+      for (const key of ["headcountLabel", "showKids", "showOriginCity", "locationLabel"]) {
+        assert.ok(new RegExp(`\\b${key}:`).test(body), `"${slug}" is missing \`${key}\``);
+      }
+    }
+  });
+
+  // H3 — QA F11's row, pinned by value. `travel`'s answers minus kids: the `templates` entry's own
+  // comment says a golf trip is "a group of travelers, not an invited event", and it reuses
+  // `travel`'s tabs and filters wholesale, so no new vocabulary is authored for it.
+  it("H3: golf-trip answers with the travel shape, minus kids", () => {
+    const row = heroConfigs().find((r) => r.slug === "golf-trip");
+    assert.ok(row, "`golf-trip` must have a hero config (QA F11)");
+    assert.match(row!.body, /headcountLabel:\s*"traveler"/);
+    assert.match(row!.body, /locationLabel:\s*"Destination city"/);
+    assert.match(row!.body, /showKids:\s*false/);
+    assert.match(row!.body, /showOriginCity:\s*"required"/);
+  });
+});

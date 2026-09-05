@@ -1214,11 +1214,34 @@ export default function ExperienceTemplatePage() {
     geocodeDestination();
   }, [destination]);
 
-  // Prompt for a destination on mount when none was provided (no ?destination= and no saved
-  // settings). At mount `destination` already reflects saved settings, so this won't flash for
-  // returning users. Once a destination is set (typed here or in the settings panel), close it.
+  /**
+   * DESTINATION PROMPT — the rule, spelled out (QA F7 asked why golf-trip is prompted and
+   * wedding/proposal are not).
+   *
+   * IT IS NOT KEYED ON THE OCCASION. There is no config field behind it — not `locationLabel`,
+   * not the occasion's class, not a switch. The one and only condition is "this page mounted with
+   * no destination to search on", and it is the SAME condition for every slug: every occasion's
+   * content sections (curated, venues, catalog) take a city and render empty without one.
+   *
+   * What actually differs between two visits, therefore, is STATE, not the occasion:
+   *   • `?destination=` / `?destinations=` on the URL (a door that already answered),
+   *   • a per-slug `searchSettings_<slug>` saved in sessionStorage from an earlier visit,
+   *   • a destination already in the site-wide Trip Context (a plan in progress).
+   * The third was previously missing here, so a traveler whose plan already names a city saw the
+   * prompt flash open and close again on the next render — the context→local sync above sets
+   * `destination`, but not before this mount effect reads it. Reading `tripCtx.destination`
+   * directly closes that, and suppresses only a prompt that was about to close itself.
+   *
+   * Skipping it is not a dead end: `VenueSearchPanel`'s no-location state carries "Set your
+   * location", which opens the one plan modal (QA F7).
+   */
   useEffect(() => {
-    if (!destination.trim() && !destinationFromQuery && !destinationsFromQuery) {
+    if (
+      !destination.trim() &&
+      !destinationFromQuery &&
+      !destinationsFromQuery &&
+      !tripCtx.destination
+    ) {
       setShowDestPrompt(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2571,6 +2594,10 @@ export default function ExperienceTemplatePage() {
           {currentTabType !== "flights" && currentTabType !== "hotels" && currentTabType !== "services" && currentTabType !== "activities" && currentTabType !== "events" && currentTabType !== "transport" && currentTabType !== "planning-tools" && currentTabType !== "itinerary-builder" && (
             (currentTabType === "vendors" || activeTab in TAB_FALLBACK_CONFIG || currentTabType === "venue-search" || currentTabType === "dining" || currentTabType === "nightlife") && (
               <div className="mb-6">
+                {/* QA F7: `onSetLocation` gives the panel's no-location state a way OUT of itself.
+                    The door is this page's existing plan-modal opener — the same `openPlanModal()`
+                    the Trip Strip's "Edit" and this page's mobile trip card already call — so the
+                    panel never becomes a second entry into the modal (single planning entry). */}
                 <VenueSearchPanel
                   template={slug || ''}
                   location={destination}
@@ -2582,6 +2609,7 @@ export default function ExperienceTemplatePage() {
                   externalMinRating={minRating}
                   externalKeyword={currentTabType !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
+                  onSetLocation={() => openPlanModal()}
                 />
               </div>
             )

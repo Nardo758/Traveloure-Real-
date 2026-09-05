@@ -165,7 +165,7 @@ export default function TravelExpertsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user: signedInUser, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { openSignInModal } = useSignInModal();
   // Restored below (with formData) from a saved draft, if a guest sign-in
   // redirect (or an expired-session retry) brought them back mid-wizard.
@@ -386,6 +386,34 @@ export default function TravelExpertsPage() {
       });
     }
   }, [userData, authFromUrl, toast]);
+
+  /**
+   * QA F12(c) — PREFILL FROM THE SIGNED-IN ACCOUNT.
+   *
+   * `GET /api/auth/user` already carries firstName / lastName / email (the `useAuth` query key),
+   * and the wizard asked a signed-in member to retype all three. The facebook branch above has
+   * done exactly this since it was written; this is the same fill for the ordinary signed-in case,
+   * with the same two rules:
+   *
+   *   • EMPTY-ONLY. `prev.x || …` — a restored draft, a social fill and anything the applicant has
+   *     already typed all win. This never overwrites an answer.
+   *   • INITIAL VALUES, NOT A LOCK. The fields stay ordinary editable inputs, and the required gate
+   *     (`canProceed`) is untouched: a prefilled value satisfies it exactly as a typed one does,
+   *     and clearing one re-blocks Next.
+   *
+   * No toast: unlike connecting a social account, being signed in is not an event worth announcing.
+   * A field the account does not hold stays empty — never a placeholder standing in for a name the
+   * platform was never told (§13).
+   */
+  useEffect(() => {
+    if (!signedInUser) return;
+    setFormData((prev) => ({
+      ...prev,
+      firstName: prev.firstName || signedInUser.firstName || "",
+      lastName: prev.lastName || signedInUser.lastName || "",
+      email: prev.email || signedInUser.email || "",
+    }));
+  }, [signedInUser]);
 
   // Auto-fill Instagram data
   useEffect(() => {
@@ -696,7 +724,14 @@ export default function TravelExpertsPage() {
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
-            <span className="font-semibold text-foreground">{expertTypeTitle} Application</span>
+            {/* QA F12(a): the page's visible title is its H1. It was a bare <span>, so both
+                wizards shipped with NO h1 at all — a screen reader's heading list and every
+                document-outline tool saw a page with no name. Styling is unchanged: Tailwind
+                preflight resets an h1 to inherited size/weight and zero margin, so the same two
+                classes render identically. */}
+            <h1 className="font-semibold text-foreground" data-testid="heading-expert-application">
+              {expertTypeTitle} Application
+            </h1>
             <div className="w-20" />
           </div>
         </div>
@@ -901,43 +936,54 @@ export default function TravelExpertsPage() {
                   </div>
                 </div>
 
+                {/* QA F12(b): step 1's four required fields carry the marker this page already uses
+                    for required fields on later steps (`*` + `aria-required`). The four marked here
+                    are EXACTLY the four `canProceed()` case 1 gates on — First/Last name, Email,
+                    Phone — for both the local-expert and the general branch; Country and City are
+                    deliberately unmarked because step 1 does not gate on them (the local-expert
+                    branch asks for the city again, and gates, on step 2). If that gate changes,
+                    these marks change with it. */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-[#374151]">First Name</Label>
+                    <Label className="text-[#374151]">First Name <span className="text-red-500">*</span></Label>
                     <Input
                       value={formData.firstName}
                       onChange={(e) => updateFormData("firstName", e.target.value)}
                       className="mt-2 h-12 border-border"
+                      aria-required="true"
                       data-testid="input-first-name"
                     />
                   </div>
                   <div>
-                    <Label className="text-[#374151]">Last Name</Label>
+                    <Label className="text-[#374151]">Last Name <span className="text-red-500">*</span></Label>
                     <Input
                       value={formData.lastName}
                       onChange={(e) => updateFormData("lastName", e.target.value)}
                       className="mt-2 h-12 border-border"
+                      aria-required="true"
                       data-testid="input-last-name"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-[#374151]">Email</Label>
+                  <Label className="text-[#374151]">Email <span className="text-red-500">*</span></Label>
                   <Input
                     type="email"
                     value={formData.email}
                     onChange={(e) => updateFormData("email", e.target.value)}
                     className="mt-2 h-12 border-border"
+                    aria-required="true"
                     data-testid="input-email"
                   />
                 </div>
                 <div>
-                  <Label className="text-[#374151]">Phone</Label>
+                  <Label className="text-[#374151]">Phone <span className="text-red-500">*</span></Label>
                   <Input
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => updateFormData("phone", e.target.value)}
                     className="mt-2 h-12 border-border"
+                    aria-required="true"
                     data-testid="input-phone"
                   />
                 </div>
