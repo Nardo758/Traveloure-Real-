@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,7 +98,7 @@ const benefits = [
 export default function ServicesProviderPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user: signedInUser, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { openSignInModal } = useSignInModal();
   // Restored below (with formData) from a saved draft, if a guest sign-in
   // redirect (or an expired-session retry) brought them back mid-wizard.
@@ -174,6 +174,28 @@ export default function ServicesProviderPage() {
   const updateFormData = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
+
+  /**
+   * QA F12(c) — PREFILL FROM THE SIGNED-IN ACCOUNT.
+   *
+   * `GET /api/auth/user` already carries the member's email (the `useAuth` query key), and this
+   * wizard asked a signed-in provider to retype it. Two rules, the same ones the expert wizard's
+   * social fill has always used:
+   *
+   *   • EMPTY-ONLY. `prev.email || …` — a restored draft or anything already typed wins; this
+   *     never overwrites an answer.
+   *   • INITIAL VALUE, NOT A LOCK. The field stays editable and the required gate (`canProceed`)
+   *     is untouched: a prefilled value satisfies it exactly as a typed one does, and clearing it
+   *     re-blocks Next.
+   *
+   * ONLY the email. This form has no first/last-name field at all — the account's name is not a
+   * BUSINESS name, and filling `businessName` from a person's name would be inventing an answer
+   * they never gave (§13). An account with no email on it leaves the field empty.
+   */
+  useEffect(() => {
+    if (!signedInUser?.email) return;
+    setFormData((prev) => (prev.email ? prev : { ...prev, email: signedInUser.email as string }));
+  }, [signedInUser]);
 
   const toggleCategory = (category: string) => {
     if (formData.serviceCategories.includes(category)) {
@@ -332,7 +354,12 @@ export default function ServicesProviderPage() {
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
-            <span className="font-semibold text-foreground">Service Provider Registration</span>
+            {/* QA F12(a): the page's visible title is its H1. It was a bare <span>, so this page
+                shipped with NO h1 at all. Styling is unchanged: Tailwind preflight resets an h1 to
+                inherited size/weight and zero margin, so the same two classes render identically. */}
+            <h1 className="font-semibold text-foreground" data-testid="heading-provider-registration">
+              Service Provider Registration
+            </h1>
             <div className="w-20" />
           </div>
         </div>
@@ -437,24 +464,30 @@ export default function ServicesProviderPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* QA F12(b): step 1's four required fields carry the same `*` + `aria-required`
+                    marker the rest of the codebase uses. The four marked here are EXACTLY the four
+                    `canProceed()` case 1 gates on — Business Name, Business Type, Email, Phone.
+                    Registration Number, Tax ID and Website are unmarked because the step does not
+                    gate on them. If that gate changes, these marks change with it. */}
                 <div>
-                  <Label className="text-[#374151]">Business Name</Label>
+                  <Label className="text-[#374151]">Business Name <span className="text-red-500">*</span></Label>
                   <Input
                     value={formData.businessName}
                     onChange={(e) => updateFormData("businessName", e.target.value)}
                     placeholder="Your Business Name"
                     className="mt-2 h-12 border-border"
+                    aria-required="true"
                     data-testid="input-business-name"
                   />
                 </div>
 
                 <div>
-                  <Label className="text-[#374151]">Business Type</Label>
+                  <Label className="text-[#374151]">Business Type <span className="text-red-500">*</span></Label>
                   <Select
                     value={formData.businessType}
                     onValueChange={(v) => updateFormData("businessType", v)}
                   >
-                    <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-business-type">
+                    <SelectTrigger className="mt-2 h-12 border-border" aria-required="true" data-testid="select-business-type">
                       <SelectValue placeholder="Select business type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -490,22 +523,24 @@ export default function ServicesProviderPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-[#374151]">Email</Label>
+                    <Label className="text-[#374151]">Email <span className="text-red-500">*</span></Label>
                     <Input
                       type="email"
                       value={formData.email}
                       onChange={(e) => updateFormData("email", e.target.value)}
                       className="mt-2 h-12 border-border"
+                      aria-required="true"
                       data-testid="input-email"
                     />
                   </div>
                   <div>
-                    <Label className="text-[#374151]">Phone</Label>
+                    <Label className="text-[#374151]">Phone <span className="text-red-500">*</span></Label>
                     <Input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => updateFormData("phone", e.target.value)}
                       className="mt-2 h-12 border-border"
+                      aria-required="true"
                       data-testid="input-phone"
                     />
                   </div>

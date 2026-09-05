@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useLocation } from "wouter";
+import { parseTripDate } from "@/lib/calendar-date";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -236,7 +237,10 @@ export default function ExecutiveAssistant() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-medium">
-                              {trip.startDate ? new Date(trip.startDate).toLocaleDateString() : "No date"}
+                              {/* QA F3 — `trips.start_date` is a Postgres DATE ("YYYY-MM-DD");
+                                  `new Date()` reads it as UTC midnight, so viewers west of UTC
+                                  saw the previous day. One parser: `@/lib/calendar-date`. */}
+                              {parseTripDate(trip.startDate)?.toLocaleDateString() ?? "No date"}
                             </p>
                             <Badge className={cn("mt-1", getStatusColor(deriveTripPhase(trip, now)))}>
                               {deriveTripPhase(trip, now)}
@@ -326,6 +330,7 @@ export default function ExecutiveAssistant() {
                     <div className="space-y-3 pr-4">
                       {trips.map((trip) => {
                         const EventIcon = getEventTypeIcon(trip.eventType);
+                        const startDay = parseTripDate(trip.startDate);
                         return (
                           <div
                             key={trip.id}
@@ -359,9 +364,11 @@ export default function ExecutiveAssistant() {
                               </div>
                             </div>
                             <div className="text-right">
-                              {trip.startDate && (
+                              {/* QA F3 — same date-only parse as above; an unparseable or absent
+                                  start date renders nothing rather than "Invalid Date" (§13). */}
+                              {startDay && (
                                 <p className="text-sm font-medium">
-                                  {new Date(trip.startDate).toLocaleDateString()}
+                                  {startDay.toLocaleDateString()}
                                 </p>
                               )}
                               <Badge className={cn("mt-1", getStatusColor(deriveTripPhase(trip, now)))}>
