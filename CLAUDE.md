@@ -1074,6 +1074,72 @@ This document captures architectural decisions to maintain consistency across co
     landed and what it left, so this entry stays the ruling and the ledger stays the record of
     which parts of it are real.
 
+43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;
+    ONE SOFT SAVE PROMPT (decision-maker ratified Sep 5, 2026, evening — ledger
+    `2026-09-05-payment-method-posture`; this lane = `2026-09-05-wallets-on-platform-intents`).
+    NO SCHEMA CHANGE, NO MIGRATION, NO NEW TABLE OR COLUMN.**
+    **(a) SIGNUP COLLECTS NO PAYMENT METHOD. EVER.** This is a CONVERSION decision, not an
+    oversight to be tidied up later: nothing is charged before a run, a pass or a booking, so
+    asking for a card at the door costs signups and buys nothing. There is no variant of this —
+    no "optional card field", no deferred-capture step, no card on an onboarding screen.
+    **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
+    existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
+    with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment
+    methods card (the H7 SetupIntent add-card rail). **SAVED METHODS LIVE IN STRIPE, NEVER IN OUR
+    TABLES** — we hold `users.stripe_customer_id` and nothing else, and the legacy
+    `wallets`/credits tables stay RETIRED (410). A third vaulting path is the derivation-drift
+    class §18 rule 1 names: the moment two rails can vault, they can disagree about what is saved.
+    **(c) EVERY PLATFORM PaymentIntent OFFERS WALLETS** — Apple Pay, Google Pay, Link — through
+    Stripe `automatic_payment_methods`, with **`allow_redirects: "never"`** wherever the
+    surrounding flow cannot handle a redirect return. In this codebase that is EVERY embedded
+    sheet: they all confirm with `redirect: 'if_required'`, and `StripeCheckout`'s single
+    hard-coded `return_url` (`/booking/confirmation`) is wrong for the pass, ready-made, optimizer
+    and coordination-fee flows that share it — so a redirect-based method enabled in the Stripe
+    dashboard would strand the traveler on the wrong page. **Wallets are NOT redirect methods, so
+    `never` suppresses none of them**; it suppresses exactly the class that would break. The
+    covered charges are the provider-services checkout, Trip Pass, the optimizer run, the
+    ready-made purchase, deposits, balances and the coordination fee. **AFFILIATE PURCHASES NEVER
+    SEE WALLETS — the partner takes that payment (§16), and we do not create a PaymentIntent for
+    it at all.**
+    **THE ONE EXEMPTION IS STRUCTURAL, NOT A SHORTCUT.** An off-session confirm against a NAMED
+    saved card (`payment_method` + `confirm: true` + `off_session: true` — FP-1 one-click) cannot
+    carry `automatic_payment_methods`: Stripe rejects the combination, and logically so, because
+    that call exists precisely BECAUSE a method is already vaulted. The wallet choice on that path
+    was made when the card was saved. It is annotated in place (`ld43-wallets-exempt: <reason>`)
+    and **PRINTED on every CI run** rather than silently allowed — an exemption that is never
+    re-read becomes a baseline (the §18d posture `phase2-fee-gate`'s `fee-literal-debt` takes).
+    **HOSTED CHECKOUT SESSIONS ARE A DIFFERENT RAIL AND WERE DELIBERATELY NOT CHANGED.** The two
+    `checkout.sessions.create` sites (platform transport commerce; the expert-service session) keep
+    `payment_method_types: ['card']`: a hosted session's method set is DASHBOARD-configured rather
+    than set by `automatic_payment_methods`, and dropping the pin also admits delayed-notification
+    methods whose `checkout.session.completed` can arrive UNPAID — a webhook-behaviour change this
+    ruling did not authorize. Both carry an audit note so the decision stays visible; widening them
+    is an operator + webhook lane, not a find-replace.
+    **§14/§15 ARE UNTOUCHED BY THIS RULING AND MUST STAY THAT WAY.** `automatic_payment_methods`
+    is a PRESENTATION parameter. No amount moved, no amount became client-sourced, and **not one
+    idempotency key or atomic claim changed** — the keys (`tp-buy-…`, `rm-buy-…`, `coord-fee-…`,
+    `expert-svc-…`, `pi-<key>`, the optimizer's derived key) are pinned by the lane's own test
+    precisely so a later "tidy-up" of this parameter cannot drag one along with it.
+    **(d) ONE SOFT PROMPT TO SAVE A METHOD, AT TWO MOUNTS AND NO THIRD.** After a Trip Pass
+    purchase (`TripPassCard`), and at Finalize when the plan actually holds bookable rows —
+    `ready_for_checkout` items or bookings — on `SlipView`. It reuses the EXISTING
+    `AddCardDialog`/SetupIntent rail and mints no Stripe call of its own (see (b)). It is
+    dismissible per scope (localStorage, every read and write wrapped — an absent or throwing store
+    reads as NOT dismissed, because showing a soft prompt once more is the harmless failure and
+    suppressing it forever is not), and it **never blocks**. **NEVER AT SIGNUP** (that is (a)).
+    **§13 — IT RENDERS ONLY ON A KNOWN-EMPTY VAULT.** `GET /api/me/payment-methods` returns
+    `{available:false, methods:[]}` when Stripe is unconfigured or the read degraded, and an
+    in-flight read also reports no methods. **Neither of those is "this traveler has no card"** —
+    they are "we have no answer" — so the prompt shows in NEITHER. One predicate,
+    `shouldOfferSavePayment` (`client/src/lib/save-payment-prompt.ts`), answers this for both
+    mounts; a second copy is how one surface starts nagging someone who already saved a card.
+    **(e) APPLE PAY NEEDS A ONE-TIME STRIPE-DASHBOARD DOMAIN REGISTRATION. THAT IS AN OPERATOR
+    STEP, RECORDED HERE, NOT CODE**, and no test can assert it was done — which is why the FAQ
+    answer says wallets appear "where your device and browser support them" rather than promising a
+    specific button. The same answer was corrected in this lane: it previously stated there was no
+    wallet integration, which stopped being true the moment (c) landed. **PayPal is still not
+    integrated and is still not claimed.**
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

@@ -97,6 +97,9 @@ import { eventCountLabel, partyLabelForOccasion } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
+// LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
+// actually holds bookable rows. The component itself decides visibility from the vault read.
+import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import {
   EXPERT_NOTE_TINT,
@@ -1517,6 +1520,12 @@ export function SlipView({
   // reason — the same title-reason pattern the Optimize button uses).
   const [slipView, setSlipView] = useState<"list" | "map">("list");
   const [mapDay, setMapDay] = useState(0);
+  // LD 43(d): "the plan holds bookable rows" = something staged for checkout, or already booked.
+  // Derived from the rows this surface already has — no new fetch, and no claim when there are none.
+  const hasBookableRows = useMemo(
+    () => allActivities.some((a) => a.routingStatus === "ready_for_checkout" || isPurchasedRow(a)),
+    [allActivities],
+  );
   const locatedActivities = useMemo(
     () => allActivities.filter((a) => a.lat != null && a.lng != null),
     [allActivities],
@@ -1656,6 +1665,18 @@ export function SlipView({
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} isOwner={isOwner} />}
+
+      {/* LD 43(d), mount 2: the finalize success / finished area, gated on the plan holding
+          BOOKABLE rows — items staged for checkout, or bookings already made. A finished plan
+          with nothing bookable has nothing one-click would speed up, so it is not asked. Owner
+          only (the expert viewer has no card of the traveler's to save), and soft: the prompt
+          renders nothing at all unless the vault read says the traveler has no method yet. */}
+      {isOwner && isPrimary && hasBookableRows && (
+        <SavePaymentMethodPrompt
+          scope={`trip:${tripId}`}
+          message="Save this for one-click bookings on this trip."
+        />
+      )}
 
       {/* Plan-approval delivery handshake (CC-11 fix, migration 164 / CLAUDE.md §18) — same
           component and same owner-only gate PlanCard.tsx:958-960 uses, fed from this page's own

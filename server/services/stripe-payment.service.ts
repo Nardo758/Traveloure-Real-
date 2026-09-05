@@ -266,6 +266,13 @@ class StripePaymentService {
       const setupIntent = await stripe.setupIntents.create({
         customer: customerId,
         usage: 'off_session',
+        // LD 43(b)/(c): the add-card sheet is a PLATFORM surface, so it offers the same wallets
+        // every platform charge does (Apple Pay / Google Pay / Link) rather than card-only.
+        // `allow_redirects: 'never'` because AddCardDialog confirms with `redirect: 'if_required'`
+        // and a return_url of the CURRENT page — a redirect method would leave the dialog and land
+        // back with no dialog state. Nothing about the vault changes: `usage: 'off_session'` still
+        // says what the card is being saved FOR, and no money moves on this path (§14-clean).
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const },
       });
       return setupIntent.client_secret ? { clientSecret: setupIntent.client_secret } : null;
     });
@@ -367,6 +374,12 @@ class StripePaymentService {
       // stale-id case already short-circuits to 'no_saved_method' above, since a recreated
       // customer starts with zero saved payment methods).
       const pi = await this.retryOnMissingCustomer(userId, customerId, (cid, attempt) =>
+        // ld43-wallets-exempt: off-session confirm against a NAMED saved payment_method. Stripe
+        // rejects `automatic_payment_methods` alongside `payment_method` + `confirm: true` +
+        // `off_session: true` — this call exists precisely BECAUSE a method is already vaulted, so
+        // there is nothing for Stripe to offer. The wallet choice was made when the card was saved
+        // (LD 43(b)); the interactive fallback this method degrades to (`no_saved_method`) is the
+        // one that offers them.
         stripe.paymentIntents.create(
           {
             amount: params.amountCents,
@@ -512,9 +525,16 @@ class StripePaymentService {
         // is mutually exclusive with that here: it exists to let Stripe pick a method interactively,
         // which is exactly what we are bypassing. Off-session confirmation also requires a customer,
         // so this branch can only be taken when `customerId` resolved.
+        // LD 43(c): the INTERACTIVE branch offers wallets (Apple Pay / Google Pay / Link) via
+        // automatic payment methods. `allow_redirects: 'never'` is deliberate and is what makes
+        // that safe here: every sheet that confirms this PI (StripeCheckout) uses
+        // `redirect: 'if_required'` with a SINGLE hard-coded return_url (/booking/confirmation),
+        // which is wrong for the deposit, balance and pass flows that share this helper — so a
+        // redirect-based method enabled in the Stripe dashboard would strand the traveler on the
+        // wrong page. Wallets are NOT redirect methods, so none of them is suppressed by this.
         ...(offSessionMethodId && customerId
           ? { payment_method: offSessionMethodId, off_session: true, confirm: true }
-          : { automatic_payment_methods: { enabled: true } }),
+          : { automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const } }),
       });
 
       // Stripe rejects reusing an idempotencyKey with different params (`customer` differs on
@@ -524,6 +544,10 @@ class StripePaymentService {
           ? stripeRequestOptions
           : { idempotencyKey: `${stripeRequestOptions.idempotencyKey}-recover` };
 
+      // ld43-wallets-ok: both calls below take `buildPaymentIntentParams`, which carries
+      // `automatic_payment_methods: { enabled: true, allow_redirects: 'never' }` on the
+      // interactive branch and the off-session named-method shape on the one-click branch (see
+      // the builder above). ONE author of these params, two callers (§18 rule 1).
       const paymentIntent = fpCustomerId
         ? await this.retryOnMissingCustomer(userId, fpCustomerId, (cid, attempt) =>
             stripe.paymentIntents.create(buildPaymentIntentParams(cid), requestOptionsForAttempt(attempt)),
@@ -1174,8 +1198,11 @@ class StripePaymentService {
           },
           description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
           receipt_email: userEmail,
+          // LD 43(c): wallets on this platform charge too. allow_redirects 'never' — the expert
+          // service sheet confirms with `redirect: 'if_required'` and has no redirect-return page.
           automatic_payment_methods: {
             enabled: true,
+            allow_redirects: 'never' as const,
           },
         },
         // §15 (MONEY_MAP F-3): deterministic key — variantId+comparisonId+serviceType+userId is
@@ -1223,6 +1250,11 @@ class StripePaymentService {
       const isZeroDecimal = effectiveCurrency === 'jpy';
       const unitAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
 
+      // LD 43 audit note — NOT a PaymentIntent site and deliberately UNCHANGED (same reasoning as
+      // the transport Checkout Session in stripe.service.ts: a hosted session's wallet set is
+      // dashboard-configured, and widening it admits async methods this rail's webhook has not
+      // been audited for). The expert-service PAYMENT INTENT above — the embedded sheet that
+      // actually ships — does offer wallets.
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',

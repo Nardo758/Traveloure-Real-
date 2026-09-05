@@ -23,11 +23,17 @@ import {
 
 /**
  * §13 (fabrication removal) — corrections applied to these answers:
- *  - payment methods: claimed PayPal and Apple Pay. Only Stripe is integrated
- *    (card payment-intents; `payment_method_types: ['card']` /
- *    `automatic_payment_methods`) — there is no PayPal or wallet integration
- *    anywhere in the codebase. Round 1 removed the identical claim from
- *    /features. Now: card payments via Stripe.
+ *  - payment methods: claimed PayPal and Apple Pay when NEITHER was integrated
+ *    (every platform intent was card-only). Round 1 removed the identical claim
+ *    from /features. AMENDED by CLAUDE.md Locked Decision 43 (ledger
+ *    `2026-09-05-payment-method-posture` / `2026-09-05-wallets-on-platform-intents`):
+ *    every platform PaymentIntent now carries `automatic_payment_methods`, so
+ *    Apple Pay, Google Pay and Link ARE offered by Stripe's payment sheet where
+ *    the device and browser support them — the answer below says so, and still
+ *    does NOT claim PayPal, which remains unintegrated. Apple Pay additionally
+ *    depends on a one-time Stripe-dashboard domain registration (LD 43(e), an
+ *    operator step), which is why the wording says "where your device supports
+ *    them" rather than promising a specific button on a specific phone.
  *  - "Help Me Decide": that surface is retired (/help-me-decide redirects to
  *    /discover in App.tsx). Answers now name what actually ships — Discover and
  *    Ready Made Trips (§10).
@@ -112,7 +118,7 @@ const faqs = [
     category: "payment",
     question: "What payment methods do you accept?",
     answer:
-      "We accept card payments (Visa, Mastercard, American Express and other major cards), processed by Stripe.",
+      "We accept card payments (Visa, Mastercard, American Express and other major cards), processed by Stripe. Apple Pay, Google Pay and Link are also offered in the Stripe payment sheet where your device and browser support them. We don't accept PayPal.",
   },
   {
     category: "payment",

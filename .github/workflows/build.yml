@@ -622,6 +622,33 @@ jobs:
       # commit); S1-S5 read the shipped files, because absence is the assertion.
       - name: Dead-surface absence + typed cart quantity pin
         run: npx tsx --test client/src/lib/__tests__/cart-quantity.test.ts
+      # 2026-09-05-payment-method-posture / 2026-09-05-wallets-on-platform-intents (CLAUDE.md
+      # Locked Decision 43): every PLATFORM PaymentIntent offers wallets (Apple Pay / Google Pay /
+      # Link) through `automatic_payment_methods`. The regression this guards is SILENT — a site
+      # that goes back to `payment_method_types: ['card']`, or a new charge path written card-only,
+      # simply renders one fewer button and reports nothing anywhere. C1-C4 are a CENSUS over every
+      # `paymentIntents.create` under server/: each one offers automatic methods or is on a PRINTED
+      # exemption list with its reason (printed on every run, so an exemption cannot become a silent
+      # baseline — the §18d posture), none pins payment_method_types, and each carries
+      # allow_redirects:"never" because every sheet here confirms with `redirect: 'if_required'`
+      # against a single return_url that is wrong for most of these flows. A1-A7 pin the shipped
+      # artifacts, INCLUDING that this lane moved no idempotency key (§15) and no amount (§14), and
+      # that the one exemption (the off-session confirm against a named saved card, which Stripe
+      # will not accept automatic methods alongside) still looks the way its reason claims.
+      - name: Payment-method posture — wallets on every platform intent (LD 43)
+        run: npx tsx --test server/__tests__/payment-method-posture.test.ts
+      # The other half of LD 43, client-side. P1-P6 pin the ONE prompt predicate, whose interesting
+      # states are the two ways of having NO ANSWER — the vault read still in flight, and the read
+      # DEGRADED (`available:false`, which /api/me/payment-methods returns instead of a 500) — both
+      # of which report `methods: []` for a reason that is not "this traveler has no card" (§13).
+      # D1-D4 pin per-scope dismissal over a localStorage that is allowed to be absent or to throw.
+      # A1-A9 pin the shipped artifacts: one add-card rail (the existing AddCardDialog, no second
+      # SetupIntent path), no amount stated, exactly the TWO mounts the ruling names, the Finalize
+      # mount gated on bookable rows and on the owner, no client-side wallet suppression in either
+      # Payment Element sheet — and LD 43(a), which is a CONVERSION decision no runtime assertion
+      # can hold: no auth-shaped surface imports a payment rail at all.
+      - name: Save-payment prompt + no-payment-at-signup pin (LD 43)
+        run: npx tsx --test client/src/lib/__tests__/save-payment-prompt.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
