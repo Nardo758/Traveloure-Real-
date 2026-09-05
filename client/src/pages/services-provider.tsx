@@ -30,13 +30,15 @@ import {
   Star,
   Shield,
   LogIn,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { isAffiliateCategory } from "@/lib/earn-roles";
 import {
   saveApplicationDraft,
   loadApplicationDraft,
@@ -54,34 +56,29 @@ const steps = [
   { id: 4, title: "Review" },
 ];
 
-const serviceCategories = [
-  "Lodging & Accommodation",
-  "Tours & Experiences",
-  "Transportation & Driving",
-  "Photography & Videography",
-  "Food & Culinary",
-  "Music & Performance",
-  "Entertainment",
-  "Floral & Decoration",
-  "Arts & Crafts Instruction",
-  "Fitness & Wellness",
-  "Beauty & Grooming",
-  "Language & Translation",
-  "Companionship & Assistance",
-  "Childcare & Family",
-  "Events & Celebrations",
-  "Rental Services",
-  "Cultural & Educational",
-  "Attire & Fashion",
-  "Business & Professional",
-  "Safety & Security",
-  "Technical Services",
-  "Specialty & Unique Services",
-  "Restaurants & Dining",
-  "Technology & Connectivity",
-  "Pets & Animals",
-  "Custom / Other",
-];
+/**
+ * Gap 2 (ledger `2026-09-04-earn-contained-fixes`): the 26 categories that used to be
+ * hardcoded here are GONE. They were a private copy of a taxonomy migration 034 owns —
+ * "Transportation & Driving", "Music & Performance", "Fitness & Wellness" and eleven more
+ * name NO `service_categories` row, while "Personal Assistance", "Videographer", "Caterer",
+ * "Officiant", "Accessibility Specialist" and "Printing & Materials" are real categories the
+ * applicant could not pick. The picker now reads `GET /api/service-categories` and shows the
+ * rows that carry a `category_key`.
+ *
+ * WHY `categoryKey != null` IS THE FILTER: migration 034 is the sole assigner of that key and
+ * therefore the taxonomy authority (ledger `2026-09-04-taxonomy-reconcile`). A key-less row is
+ * a dead taxonomy that looks live — nothing joins to it — so offering it would let an applicant
+ * pick something no offering, provider count or /earn card can ever resolve.
+ *
+ * WHY THE `aff_*` ROWS ARE EXCLUDED: they are affiliate INVENTORY (Viator/Fever/12Go/Amadeus),
+ * not something a person signs up to provide. The predicate is the shared `isAffiliateCategory`
+ * from `lib/earn-roles.ts` — the same one /earn uses — never a second copy of the rule.
+ */
+interface ServiceCategoryRow {
+  id: string;
+  name: string;
+  categoryKey: string | null;
+}
 
 const businessTypes = [
   "Sole Proprietorship",
@@ -132,9 +129,16 @@ export default function ServicesProviderPage() {
     country: _countryFromUrl,
     serviceCategories: [] as string[],
     description: "",
-    capacity: "",
-    priceRange: "",
-    amenities: "",
+    // Gap 4 (ledger `2026-09-04-earn-contained-fixes`): `capacity`, `priceRange` and
+    // `amenities` USED TO BE ASKED HERE and were never sent — no `service_provider_forms`
+    // column holds any of them. They are LISTING attributes, not account facts: a provider
+    // with three listings has three capacities and three price points, and all three already
+    // have real homes on `provider_services` through ServiceForm (party-size min/max, the
+    // price + pricing model asked at Basics, and What's included). Asking them once at the
+    // account level could only ever produce a number that contradicts the listings, so they
+    // are REMOVED from intake rather than given invented columns. `taxId` stays — it is a
+    // business fact, and it now ships as `businessRegistrationNumber` (the column that holds
+    // it) instead of being dropped on the floor.
     hasInsurance: false,
     hasLicense: false,
     agreeToTerms: false,
@@ -148,6 +152,24 @@ export default function ServicesProviderPage() {
   const [formData, setFormData] = useState(() =>
     savedDraft ? { ...defaultFormData, ...savedDraft.formData } : defaultFormData
   );
+
+  // Gap 2: the category picker's rows. Public read (an applicant is a guest until submit),
+  // 5-min cache — the taxonomy drifts slowly and an admin edit shows up promptly.
+  const {
+    data: allCategories,
+    isLoading: categoriesLoading,
+    isError: categoriesFailed,
+    refetch: refetchCategories,
+  } = useQuery<ServiceCategoryRow[]>({
+    queryKey: ["/api/service-categories"],
+    staleTime: 5 * 60_000,
+  });
+  // Keyed, supply-side rows only — see the note above the ServiceCategoryRow type.
+  const serviceCategories = (allCategories ?? []).filter(
+    (c) => !!c.categoryKey && !isAffiliateCategory(c.categoryKey),
+  );
+  /** The catalog answered. `false` while loading OR after a failure — an unknown list is not an empty one. */
+  const categoriesReady = !categoriesLoading && !categoriesFailed && Array.isArray(allCategories);
 
   const updateFormData = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -169,7 +191,15 @@ export default function ServicesProviderPage() {
       case 1:
         return formData.businessName && formData.businessType && formData.email && formData.phone;
       case 2:
-        return formData.serviceCategories.length > 0 && formData.description.length > 20;
+        // Gap 2 / D5 precedent (the Local Expert wizard's neighbourhood step): a category is
+        // required only when the catalog HAS rows to pick. A confirmed-empty catalog is an
+        // honest state of the platform, not the applicant's fault, and must not become a funnel
+        // hole — they proceed on the description alone. A FAILED fetch is different: we don't
+        // know whether rows exist, so the gate stands and the step offers a retry.
+        return (
+          (categoriesReady && serviceCategories.length === 0 ? true : formData.serviceCategories.length > 0) &&
+          formData.description.length > 20
+        );
       case 3:
         return formData.address && formData.city && formData.country && formData.hasInsurance && formData.hasLicense;
       case 4:
@@ -215,6 +245,10 @@ export default function ServicesProviderPage() {
         businessType: formData.businessType,
         website: formData.website || undefined,
         gst: formData.registrationNumber || undefined,
+        // Gap 4: the Tax ID this form has always collected now reaches the column that holds
+        // it (`service_provider_forms.business_registration_number`). It was parsed into state,
+        // shown on Review, and then silently dropped at submit.
+        businessRegistrationNumber: formData.taxId || undefined,
         serviceOffers: offeringNameFromUrl
           ? Array.from(new Set([offeringNameFromUrl, ...formData.serviceCategories]))
           : formData.serviceCategories,
@@ -225,6 +259,12 @@ export default function ServicesProviderPage() {
         description: formData.description,
         termsAndConditions: formData.agreeToTerms,
         infoConfirmation: formData.hasLicense,
+        // Gap 3: `hasInsurance` is a REQUIRED tick to leave step 3 (see canProceed) and was
+        // never sent, so `service_provider_forms.has_insurance` was NULL for every applicant —
+        // and NULL on that column means "never asked" (migration 108), which was a lie the
+        // moment the wizard started gating on it. Sent only when ticked: an untouched box stays
+        // NULL rather than becoming an explicit `false` the applicant never asserted (§13).
+        ...(formData.hasInsurance ? { hasInsurance: true } : {}),
       };
       return apiRequest("POST", "/api/provider-application", applicationData);
     },
@@ -496,32 +536,73 @@ export default function ServicesProviderPage() {
                   <Label className="text-[#374151] mb-3 block">
                     Select all categories that apply to your business
                   </Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {serviceCategories.map((category) => (
-                      <button
-                        key={category}
-                        onClick={() => toggleCategory(category)}
-                        className={cn(
-                          "p-4 rounded-lg border-2 text-left transition-all",
-                          formData.serviceCategories.includes(category)
-                            ? "border-primary bg-[#FFE3E8]"
-                            : "border-border hover:border-primary"
-                        )}
-                        data-testid={`button-category-${category.toLowerCase().replace(/\s/g, "-")}`}
+                  {categoriesLoading ? (
+                    <p className="text-sm text-muted-foreground" data-testid="text-categories-loading">
+                      Loading categories…
+                    </p>
+                  ) : categoriesFailed ? (
+                    /* §13: say the list could not be loaded — never fall back to a stale
+                       hardcoded copy, which is the defect this step just stopped carrying. */
+                    <div
+                      className="flex flex-col items-start gap-3 rounded-lg border border-[#FCCACA] bg-[#FFF4F4] p-4"
+                      data-testid="text-categories-error"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-[#E85D55] flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold text-[#C0392B]">Couldn't load service categories</p>
+                          <p className="text-xs text-[#8B3A3A] mt-0.5">
+                            We can't show the list right now. Please try again — we'd rather show nothing than the wrong list.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => refetchCategories()}
+                        className="border-[#E85D55] text-[#E85D55] hover:bg-[#FFF0F0]"
+                        data-testid="button-categories-retry"
                       >
-                        <span
+                        Retry
+                      </Button>
+                    </div>
+                  ) : serviceCategories.length === 0 ? (
+                    <p
+                      className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
+                      data-testid="text-categories-empty"
+                    >
+                      No service categories are published yet, so there's nothing to choose here. Describe your
+                      business below and we'll follow up — we'll match you to a category ourselves.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {serviceCategories.map((category) => (
+                        <button
+                          key={category.id}
+                          onClick={() => toggleCategory(category.name)}
                           className={cn(
-                            "font-medium",
-                            formData.serviceCategories.includes(category)
-                              ? "text-primary"
-                              : "text-[#374151]"
+                            "p-4 rounded-lg border-2 text-left transition-all",
+                            formData.serviceCategories.includes(category.name)
+                              ? "border-primary bg-[#FFE3E8]"
+                              : "border-border hover:border-primary"
                           )}
+                          data-category-key={category.categoryKey}
+                          data-testid={`button-category-${category.categoryKey}`}
                         >
-                          {category}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                          <span
+                            className={cn(
+                              "font-medium",
+                              formData.serviceCategories.includes(category.name)
+                                ? "text-primary"
+                                : "text-[#374151]"
+                            )}
+                          >
+                            {category.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -581,47 +662,12 @@ export default function ServicesProviderPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-[#374151]">Capacity (if applicable)</Label>
-                    <Input
-                      value={formData.capacity}
-                      onChange={(e) => updateFormData("capacity", e.target.value)}
-                      placeholder="e.g., 50 guests"
-                      className="mt-2 h-12 border-border"
-                      data-testid="input-capacity"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[#374151]">Price Range</Label>
-                    <Select
-                      value={formData.priceRange}
-                      onValueChange={(v) => updateFormData("priceRange", v)}
-                    >
-                      <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-price-range">
-                        <SelectValue placeholder="Select range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="budget">Budget ($)</SelectItem>
-                        <SelectItem value="moderate">Moderate ($$)</SelectItem>
-                        <SelectItem value="upscale">Upscale ($$$)</SelectItem>
-                        <SelectItem value="luxury">Luxury ($$$$)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-[#374151]">Amenities / Features</Label>
-                  <Textarea
-                    value={formData.amenities}
-                    onChange={(e) => updateFormData("amenities", e.target.value)}
-                    placeholder="List key amenities, features, or services you offer..."
-                    className="mt-2 border-border"
-                    rows={3}
-                    data-testid="textarea-amenities"
-                  />
-                </div>
+                {/* Gap 4: Capacity, Price Range and Amenities were REMOVED from here — see the
+                    note on `defaultFormData`. They are per-listing attributes with real homes on
+                    `provider_services` (ServiceForm's Capacity step, the Basics price, What's
+                    included); nothing in this account application could ever store them, and
+                    asking once here could only contradict the listings. Do not re-add them
+                    without a column that holds them. */}
 
                 <div className="space-y-3 pt-4 border-t border-border">
                   <div className="flex items-center gap-3">

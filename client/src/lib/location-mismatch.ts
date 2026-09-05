@@ -8,12 +8,20 @@
  * claim beyond "this is not in a city your plan names". It never blocks the add, never mutates
  * anything, and its dismissal is not persisted.
  *
- * WHAT THIS IS NOT. There is no `trip_destinations` stops table (the decision-maker has explicitly
- * HELD it), so a plan today names exactly ONE city: `trips.destination` is a single
- * `varchar NOT NULL`. That is why there is no "Add <city> as a stop" action and no stop-count
- * suppression here — a stop count that cannot exist must not be branched on. When stops land, the
- * ruling is that mismatch checks the EVENT's place first and then EVERY stop, and is NEVER
- * suppressed by stop count.
+ * STOPS LANDED, AND THIS READER NOW CHECKS ALL OF THEM (ledger `2026-09-04-plan-stops-ui`).
+ * `trip_destinations` exists (migration 281, CLAUDE.md Locked Decision 34), so a plan can name
+ * several cities and `planStops` carries them in order. `2026-09-04-location-mismatch` ruled in
+ * advance exactly what to do when they arrived, and this is it: **mismatch checks the EVENT's
+ * place first and then EVERY stop, and is NEVER suppressed by stop count** — that suppression was
+ * found to be a defect in the reunion lens, and the ratified Mismatch artboard's own footnote
+ * ("Plans with more than one stop are not flagged") is the clause the ledger overrode. A plan
+ * naming Kyoto and Osaka still flags a Tokyo listing; what changes is that it no longer flags an
+ * Osaka one.
+ *
+ * §13 — NO STOP ROWS MEANS NOT CAPTURED, NOT "no stops". A legacy plan has none (there is no
+ * backfill, deliberately), so the comparison falls back EXPLICITLY to `trips.destination`, the
+ * position-0 mirror and the one city such a plan does name. An absent list is never read as a plan
+ * with nowhere to be.
  *
  * ── THE HONESTY RULES (do not weaken) ────────────────────────────────────────────────────────
  *
@@ -32,7 +40,12 @@
  *
  *   1. the named EVENT the item is being added under (`user_experiences`, bound to the trip by
  *      `trip_id` — CLAUDE.md Locked Decision 29) when that event has a `location` set;
- *   2. otherwise `trips.destination`.
+ *   2. otherwise EVERY stop the plan names (`trip_destinations`, in order);
+ *   3. otherwise `trips.destination` — the position-0 mirror, and all a plan with no stop rows
+ *      has to offer.
+ *
+ * A listing matching ANY ONE of the compared cities is silence: a plan that goes to three cities
+ * is not surprised by a vendor in the second of them.
  *
  * An event with NO location falls through to the plan's destination — an unset event location is
  * not an answer, and inheriting the plan's is the only non-guessing move.
@@ -96,14 +109,31 @@ export interface MismatchInput {
   eventLocation?: RawLocation;
   /** `trips.destination` for the plan being added to. */
   planDestination?: RawLocation;
+  /**
+   * The plan's ordered stops (`trip_destinations`, migration 281) — every city the plan names.
+   * ABSENT OR EMPTY = NOT CAPTURED, and the comparison falls back to `planDestination` (§13).
+   * Entries carrying no location at all (null, "", the "Unknown" sentinel) are dropped, exactly
+   * as on every other side of this module.
+   */
+  planStops?: ReadonlyArray<RawLocation>;
 }
 
 export interface MismatchAlert {
   mismatch: true;
   /** The listing's city, in its ORIGINAL casing, for the headline. */
   listingCity: string;
-  /** The city the plan/event names, in its ORIGINAL casing, for the subline. */
+  /**
+   * The city the plan/event names, in its ORIGINAL casing, for the subline. When the plan names
+   * several, this is the FIRST — position 0, the one `trips.destination` mirrors.
+   */
   comparisonCity: string;
+  /**
+   * EVERY city compared against, in order and in original casing (ledger
+   * `2026-09-04-plan-stops-ui`). One entry for a single-city plan or a named event; several when
+   * the plan carries stops. The subline is derived from this, so a three-stop plan is never told
+   * "every event on your plan is in <one city>" — a sentence that would be false.
+   */
+  comparisonCities: string[];
   source: MismatchSource;
 }
 
@@ -184,26 +214,43 @@ export function locationsAgree(listing: RawLocation, target: RawLocation): boole
  * Returns `{ mismatch: false, reason }` — never a thrown error and never a guess — whenever either
  * side carries no location, or the two agree.
  */
+export function comparisonTargets(input: MismatchInput): { source: MismatchSource; targets: RawLocation[] } {
+  // The named event's own location wins outright. An event with NO location is not an answer —
+  // fall through to the plan rather than invent one (§13).
+  if (locationSegments(input.eventLocation).length > 0) {
+    return { source: "event", targets: [input.eventLocation] };
+  }
+  // Then EVERY stop the plan names, in order. Entries with no location are dropped, not counted.
+  const stops = (input.planStops ?? []).filter((s) => locationSegments(s).length > 0);
+  if (stops.length > 0) return { source: "plan", targets: [...stops] };
+  // Then the position-0 mirror — all a plan with no stop rows has, and an explicit fallback
+  // rather than a silent one (Locked Decision 34: no rows = NOT CAPTURED, never "no destination").
+  if (locationSegments(input.planDestination).length > 0) {
+    return { source: "plan", targets: [input.planDestination] };
+  }
+  return { source: "plan", targets: [] };
+}
+
 export function evaluateLocationMismatch(input: MismatchInput): MismatchDecision {
   const listingSegs = locationSegments(input.listingLocation);
   if (listingSegs.length === 0) return { mismatch: false, reason: "no_listing_location" };
 
-  // Resolution order: the named event's own location first, the plan's destination second.
-  // An event with NO location is not an answer — fall through rather than invent one (§13).
-  const eventSegs = locationSegments(input.eventLocation);
-  const source: MismatchSource = eventSegs.length > 0 ? "event" : "plan";
-  const target = source === "event" ? input.eventLocation : input.planDestination;
-
-  if (locationSegments(target).length === 0) {
+  const { source, targets } = comparisonTargets(input);
+  if (targets.length === 0) {
     return { mismatch: false, reason: "no_comparison_location" };
   }
-  if (locationsAgree(input.listingLocation, target)) {
+  // AGREEING WITH ANY ONE COMPARED CITY IS SILENCE, and the count of them changes nothing else:
+  // a plan is never exempted from the check for having several stops (ledger
+  // `2026-09-04-location-mismatch`, upheld by `2026-09-04-plan-stops-ui`).
+  if (targets.some((target) => locationsAgree(input.listingLocation, target))) {
     return { mismatch: false, reason: "match" };
   }
+  const comparisonCities = targets.map((target) => displayCity(target));
   return {
     mismatch: true,
     listingCity: displayCity(input.listingLocation),
-    comparisonCity: displayCity(target),
+    comparisonCity: comparisonCities[0],
+    comparisonCities,
     source,
   };
 }
@@ -213,11 +260,29 @@ export function mismatchHeadline(alert: MismatchAlert): string {
   return `This is in ${alert.listingCity}.`;
 }
 
-/** Subline: what the plan (or the event being added to) names. */
+/**
+ * Subline: what the plan (or the event being added to) names.
+ *
+ * A MULTI-STOP PLAN GETS ITS OWN SENTENCE, because the single-city one is not true of it: a plan
+ * stopping in three cities cannot be described as having every event in one of them. The cities
+ * are listed, in order, with no claim about the route between them (§13, Locked Decision 22c).
+ */
 export function mismatchSubline(alert: MismatchAlert): string {
-  return alert.source === "event"
-    ? `The event you're adding to is in ${alert.comparisonCity}.`
-    : `Every event on your plan is in ${alert.comparisonCity}.`;
+  if (alert.source === "event") return `The event you're adding to is in ${alert.comparisonCity}.`;
+  const cities = alert.comparisonCities.length > 0 ? alert.comparisonCities : [alert.comparisonCity];
+  if (cities.length === 1) return `Every event on your plan is in ${cities[0]}.`;
+  const listed = `${cities.slice(0, -1).join(", ")} and ${cities[cities.length - 1]}`;
+  return `Your plan stops in ${listed}.`;
+}
+
+/**
+ * The label of the third action: adding the listing's own city to the plan as a stop (ledger
+ * `2026-09-04-plan-stops-ui`; the ratified Mismatch artboard draws it, and it was OMITTED — not
+ * stubbed — while `trip_destinations` did not exist). Derived from the decision, never restated
+ * at a call site.
+ */
+export function addAsStopLabel(alert: MismatchAlert): string {
+  return `Add ${alert.listingCity} as a stop`;
 }
 
 /**

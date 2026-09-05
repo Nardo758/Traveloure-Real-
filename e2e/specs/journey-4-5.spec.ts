@@ -125,7 +125,9 @@ test.describe("Journey 5 — Provider Supply Side (Onboarding → Service → Bo
 
     // ── Step 5: Fill Step 3 — Location & Insurance ────────────────────
     await page.fill("[data-testid='input-location']", "Paris, France");
-    await page.fill("[data-testid='input-capacity']", "8");
+    // input-capacity removed by ledger 2026-09-04-earn-contained-fixes (gap 4): Capacity is a
+    // per-listing attribute set in ServiceForm, not an account-application field — no
+    // service_provider_forms column ever held it.
     await page.check("[data-testid='checkbox-insurance']");
     await page.check("[data-testid='checkbox-license']");
     await page.click("[data-testid='button-next-step']");

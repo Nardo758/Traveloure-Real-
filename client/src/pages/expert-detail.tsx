@@ -32,6 +32,13 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { formatExpertResponseTime } from "@/lib/expert-response-time";
+import {
+  emojiForLocalSpecialty,
+  labelForExpertSpecialization,
+  labelForLocalSpecialty,
+  resolveExpertSpecializations,
+} from "@shared/expert-vocabulary";
+import { useExpertOfferingLabels } from "@/lib/use-expert-offering-labels";
 
 // Continuity design tokens — the same values as artifacts/mockup-sandbox's
 // _shared/continuity.css :root, applied directly (that file is a design
@@ -164,6 +171,9 @@ export default function ExpertDetailPage() {
   const { toast } = useToast();
   const planning = usePlanning();
   const [offeringFilter, setOfferingFilter] = useState<Category>("All");
+  // Gap 8: `offering_type_key` → `display_name`, read live from the expert catalog. `{}` while
+  // loading, which makes an unresolved key render as-is rather than blank (§13).
+  const offeringLabels = useExpertOfferingLabels();
 
   // Sprint 2.1 plan handoff: arriving from the cart/planner with ?tripId=
   // unlocks a "share my trip plan" request — the expert-booking-request carries
@@ -375,8 +385,18 @@ export default function ExpertDetailPage() {
   // shown only when the expert actually stated a response time; null ⇒ omitted.
   const responseTime = formatExpertResponseTime(expert.expertForm?.responseTime);
   const languages = expert.expertForm?.languages || ["English"];
-  const specializations = expert.expertForm?.specializations || [];
+  // Gap 9 (ledger `2026-09-04-earn-contained-fixes`): this page used to read ONLY the
+  // application's `local_expert_forms.specializations` jsonb while the browse card read
+  // `users.specialties` / the `expert_specializations` table — so the same expert could show
+  // one set on the card and a different set here. Both surfaces now call the ONE resolver.
+  const specializations = resolveExpertSpecializations(expert);
   const destinations = expert.expertForm?.destinations || [];
+  // Gap 7: `local_expert_forms.local_specialties` is REQUIRED to finish the Local Expert
+  // wizard and, until now, was read by nothing at all — collected and never surfaced. It
+  // renders beside the locality badge, in the expert's own "Areas of deep knowledge" block.
+  const localSpecialties: string[] = Array.isArray(expert.expertForm?.localSpecialties)
+    ? expert.expertForm.localSpecialties
+    : [];
   // Eyebrow market label (e.g. "LOCAL EXPERT · KYOTO") — the expert's city, else their
   // first listed destination; blank when neither exists (§13, never "[object Location]").
   const heroLocation: string = expert.expertForm?.city || destinations[0] || "";
@@ -661,7 +681,7 @@ export default function ExpertDetailPage() {
           </section>
 
           {/* About */}
-          {(specializations.length > 0 || destinations.length > 0 || neighbourhoods.length > 0 || expert.expertForm?.certifications) && (
+          {(specializations.length > 0 || destinations.length > 0 || neighbourhoods.length > 0 || localSpecialties.length > 0 || expert.expertForm?.certifications) && (
             <section className="mt-8 rounded-[14px] border bg-white p-5" style={{ borderColor: LINE }}>
               <h2 className="mb-4 text-[18px] font-semibold" style={{ color: INK }}>About {expert.firstName || "this expert"}</h2>
 
@@ -669,7 +689,12 @@ export default function ExpertDetailPage() {
                 <div className="mb-4">
                   <h3 className="mb-2 text-[12px] font-semibold" style={{ color: INK }}>Specializations</h3>
                   <div className="flex flex-wrap gap-2">
-                    {specializations.map((spec: string) => <Badge key={spec} variant="outline">{spec}</Badge>)}
+                    {/* Gap 8: the stored values are a MIX — enum slugs, offering keys, and
+                        free text — so every one goes through the ONE label map. An unknown
+                        string renders as-is (the expert's own words), never relabelled. */}
+                    {specializations.map((spec: string) => (
+                      <Badge key={spec} variant="outline">{labelForExpertSpecialization(spec, offeringLabels)}</Badge>
+                    ))}
                   </div>
                 </div>
               )}
@@ -681,6 +706,25 @@ export default function ExpertDetailPage() {
                     {destinations.map((dest: string) => (
                       <Badge key={dest} variant="secondary"><Globe className="w-3 h-3 mr-1" />{dest}</Badge>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Gap 7: what this local expert is deep on, in their own stated specialties.
+                  Rendered only when the application actually carries them — an empty list is
+                  omitted, never printed as "no specialties" (§13). */}
+              {localSpecialties.length > 0 && (
+                <div className="mb-4" data-testid="section-local-specialties">
+                  <h3 className="mb-2 text-[12px] font-semibold" style={{ color: INK }}>Local specialties</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {localSpecialties.map((spec: string, idx: number) => {
+                      const emoji = emojiForLocalSpecialty(spec);
+                      return (
+                        <Badge key={spec} variant="secondary" data-testid={`badge-local-specialty-${idx}`}>
+                          {emoji ? `${emoji} ` : ""}{labelForLocalSpecialty(spec)}
+                        </Badge>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -186,7 +186,7 @@ import expertConsoleRoutes from "./routes/expert-console.routes";
 import neighborhoodClaimsRoutes from "./routes/neighborhood-claims.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
-import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
+import contentRoutes, { seedDatabase, registerDiscoveryRoutes, tripParticipantCreateSchema } from "./routes/content.routes";
 import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
@@ -7073,14 +7073,37 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // client card renders "No data yet" rather than an invented dollar figure (§13).
       const clientLifetimeValue = { status: "no_data" as const };
 
-      // Track which selected services have been created vs pending
-      const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase());
-      const serviceAlignment = selectedServicesAtSignup.map(serviceName => ({
-        name: serviceName,
-        status: createdServiceNames.some(cs => cs.includes(serviceName.toLowerCase()) || serviceName.toLowerCase().includes(cs)) 
-          ? "created" 
-          : "pending"
-      }));
+      // Track which selected services have been created vs pending.
+      //
+      // Gap 10 (ledger `2026-09-04-earn-contained-fixes`): `local_expert_forms.selected_services`
+      // holds `expert_service_offerings` IDS — the application wizard toggles `offering.id`, not a
+      // name — and this block compared those UUIDs against `provider_services.serviceName`. A UUID
+      // never matches a service name, so EVERY selection reported "pending" forever, including the
+      // ones `addExpertSelectedService` had already turned into real listings. ONE join resolves
+      // the ids to the catalog names the created listings actually carry.
+      //
+      // §13: an id the catalog no longer holds is OMITTED rather than reported as pending —
+      // nothing here can say what the expert picked, and "pending" would be a claim.
+      const selectedOfferingRows = selectedServicesAtSignup.length > 0
+        ? await db.select({ id: expertServiceOfferings.id, name: expertServiceOfferings.name })
+            .from(expertServiceOfferings)
+            .where(inArray(expertServiceOfferings.id, selectedServicesAtSignup))
+        : [];
+      const offeringNameById = new Map(selectedOfferingRows.map(r => [r.id, r.name]));
+      // `.filter(Boolean)`: an unnamed listing would make `needle.includes("")` true and mark
+      // every selection "created".
+      const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase()).filter(Boolean);
+      const serviceAlignment = selectedServicesAtSignup.flatMap(selected => {
+        const name = offeringNameById.get(selected);
+        if (!name) return [];
+        const needle = name.toLowerCase();
+        return [{
+          name,
+          status: createdServiceNames.some(cs => cs.includes(needle) || needle.includes(cs))
+            ? "created"
+            : "pending",
+        }];
+      });
       
       res.json({
         expertProfile: {
@@ -10626,11 +10649,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
-      // L20 hardening: `userId` is STRIPPED from the accepted input. A caller must never be
-      // able to assert which user ACCOUNT a participant row points at — that becomes a
-      // self-service authorization grant the moment any gate reads `trip_participants.userId`.
-      // The column is populated only by a real invite→accept flow (L20 Part C), never from body.
-      const validatedData = insertTripParticipantSchema.omit({ userId: true }).parse({
+      // §19 ALLOWLIST (ledger `2026-09-04-plan-islands`). This used to be
+      // `insertTripParticipantSchema.omit({ userId: true })` — a DENYLIST that stripped the one
+      // hole its author knew about (`userId`, the L20 authorization grant: "a caller must never
+      // be able to assert which user ACCOUNT a participant row points at", populated only by a
+      // real invite→accept flow) and left every other column reachable, the money family
+      // included. `tripParticipantCreateSchema` is the pick-based sibling of the PATCH rail's
+      // allowlist — derived from it, never restated beside it (§18 rule 1) — so `amountOwed`,
+      // `amountPaid`, `paymentStatus`, `paymentMethod`, `status` and `userId` are all
+      // unreachable from this body, and a column added to the table later is unreachable until
+      // someone deliberately names it.
+      //
+      // `tripId` is stamped from the route param AFTER the spread, so a body value can never win
+      // (§14); the trip was ownership-checked immediately above.
+      const validatedData = tripParticipantCreateSchema.parse({
         ...req.body,
         tripId: req.params.tripId,
       });

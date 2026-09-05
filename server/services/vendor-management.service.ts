@@ -6,25 +6,13 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { createChildLogger, databaseQueryDuration } from "../infrastructure";
+// The stats roll-up lives in its own DB-free module so it can be unit-tested without a database
+// (ledger `2026-09-04-contract-stats-column`); this file re-exports its types so existing importers
+// are unaffected. ONE implementation — never copy the arithmetic back in here.
+import { computeContractStats } from "./contract-stats";
 
-export interface PaymentMilestone {
-  name: string;
-  amount: number;
-  dueDate: string;
-  status: "pending" | "paid" | "completed" | "overdue";
-  paidDate?: string;
-}
-
-export interface ContractStats {
-  totalContracts: number;
-  activeContracts: number;
-  totalValue: number;
-  totalPaid: number;
-  totalRemaining: number;
-  completedPayments: number;
-  pendingPayments: number;
-  upcomingDeadlines: number;
-}
+export type { PaymentMilestone, ContractStats, ContractStatsInput } from "./contract-stats";
+import type { PaymentMilestone, ContractStats } from "./contract-stats";
 
 export interface CommunicationEntry {
   date: string;
@@ -151,50 +139,7 @@ export class VendorManagementService {
   }
 
   async getContractStats(tripId: string): Promise<ContractStats> {
-    const contracts = await this.getContracts(tripId);
-    const now = new Date();
-    const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    let totalValue = 0;
-    let paidAmount = 0;
-    let pendingPayments = 0;
-    let completedPayments = 0;
-    let upcomingDeadlines = 0;
-    let activeContracts = 0;
-
-    for (const c of contracts) {
-      totalValue += parseFloat(String(c.totalAmount || 0));
-      paidAmount += parseFloat(String(c.paidAmount || 0));
-      if (c.status === "active" || c.status === "in_progress") {
-        activeContracts++;
-      }
-
-      const schedule = (c.paymentSchedule as PaymentMilestone[]) || [];
-      for (const m of schedule) {
-        if (m.status === "pending") {
-          pendingPayments++;
-          const dueDate = new Date(m.dueDate);
-          if (dueDate <= oneWeekFromNow) {
-            upcomingDeadlines++;
-          }
-        } else if (m.status === "paid" || m.status === "completed") {
-          completedPayments++;
-        }
-      }
-    }
-
-    const totalRemaining = totalValue - paidAmount;
-
-    return {
-      totalContracts: contracts.length,
-      activeContracts,
-      totalValue,
-      totalPaid: paidAmount,
-      totalRemaining,
-      completedPayments,
-      pendingPayments,
-      upcomingDeadlines,
-    };
+    return computeContractStats(await this.getContracts(tripId));
   }
 
   async getUpcomingPayments(tripId: string, daysAhead: number = 30): Promise<{
