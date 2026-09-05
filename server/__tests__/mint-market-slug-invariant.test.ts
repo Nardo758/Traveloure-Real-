@@ -21,8 +21,11 @@
  *   M3  the placeholder destinations these paths can carry are NOT special-cased: no mint site
  *       hardcodes a market slug literal.
  *   M4  EVERY trip-insert site in `server/` still stamps `timezone` (Locked Decision 30 held), and
- *       the set of sites that do NOT yet stamp `market_slug` is exactly the recorded outstanding
- *       list below. A NEW insert site that omits it fails here rather than shipping silently.
+ *       EVERY PRODUCTION mint stamps `market_slug` — the traveler mints, the buyer's ready-made
+ *       clone and BOTH expert authoring builds, whose NULL `userId` exempts them from an owner row
+ *       and the pen drain but not from a market. The set that does not is exactly the recorded
+ *       outstanding list below (the e2e seed alone). A NEW insert site that omits it fails here
+ *       rather than shipping silently.
  *   I1  `intake-panel.tsx` sends the stated TOTAL and neither half of a split.
  *   I2  `ai-planner-draft-panel.tsx` likewise — its `kids: 0` was unconditional, sent even when the
  *       traveler count itself was unknown.
@@ -203,20 +206,15 @@ function tripInsertSites(): Array<{ file: string; line: number; window: string }
 }
 
 /**
- * RECORDED OUTSTANDING — insert sites that stamp `timezone` but not yet `market_slug`. They are
- * NOT exempt on principle: each has a real destination and should stamp it. They are outside THIS
- * lane deliberately (Locked Decision 42 scopes wave 1.2 to the two raw-SQL traveler mints), and
- * they are listed rather than silently tolerated so the debt is loud and a NEW omission is not
- * absorbed into it.
+ * RECORDED OUTSTANDING — insert sites that stamp `timezone` but not yet `market_slug`. Every
+ * PRODUCTION mint stamps it (Locked Decision 42 D12: the invariant binds EVERY mint, not only the
+ * traveler-owned ones — a NULL owner is not a NULL market). What remains is the e2e seed, listed
+ * rather than silently tolerated so a NEW omission is not absorbed into it.
  */
 const OUTSTANDING_NO_MARKET_SLUG = [
-  // the buyer's ready-made clone — destination is the listing's `market`
-  "server/services/ready-made-purchase.service.ts",
-  // expert authoring build (build-first) — userId NULL by design, but `destination` is real
-  "server/routes/ready-made.routes.ts",
-  // expert authoring build (workspace) — same shape, destination is `city`
-  "server/routes/expert-workspace.routes.ts",
-  // e2e seed account's Kyoto trip — a seeded plan is still a plan
+  // e2e test-account seed: a fixture, not a production mint. Its destination is the hardcoded
+  // "Kyoto, Japan" a seed author chose, and no market-scoped reader is meant to count it — so it
+  // is deliberately left alone rather than given a market it would then be surfaced under.
   "server/seeds/e2e-test-accounts.seed.ts",
 ];
 
@@ -253,6 +251,46 @@ describe("M4 — every mint site, and the recorded outstanding list", () => {
     assert.equal(bookingSites.length, 2);
     for (const s of bookingSites) {
       assert.match(s.window, /market_slug/, `${s.file}:${s.line} omits market_slug`);
+    }
+  });
+
+  it("EVERY production mint stamps it — the clone and both authoring builds included", () => {
+    // The authoring builds are the load-bearing half of D12's widening: `userId` is NULL there by
+    // design, which exempts them from the owner row and the pen drain, and it was easy to read that
+    // exemption as covering the market too. It does not — the destination is real and the build
+    // becomes a Ready Made a buyer clones.
+    for (const file of [
+      "server/services/ready-made-purchase.service.ts",
+      "server/routes/ready-made.routes.ts",
+      "server/routes/expert-workspace.routes.ts",
+      "server/services/content-query.service.ts",
+      "server/storage.ts",
+    ]) {
+      const found = sites.filter((s) => s.file === file);
+      assert.ok(found.length > 0, `no trip-insert site found in ${file}`);
+      for (const s of found) {
+        assert.match(s.window, /marketSlug|market_slug/, `${s.file}:${s.line} omits market_slug`);
+      }
+    }
+  });
+
+  it("each of those three derives it through the ONE shared resolver (§18 rule 1)", () => {
+    for (const file of [
+      "server/services/ready-made-purchase.service.ts",
+      "server/routes/ready-made.routes.ts",
+      "server/routes/expert-workspace.routes.ts",
+    ]) {
+      const src = read(file);
+      assert.match(
+        src,
+        /import\s*\{[^}]*\bresolveMarketSlug\b[^}]*\}\s*from\s*['"][^'"]*trend-engine\/operating-markets['"]/,
+        `${file} must import resolveMarketSlug from the shared operating-markets module`,
+      );
+      assert.match(
+        src,
+        /marketSlug:\s*resolveMarketSlug\(/,
+        `${file} names market_slug but does not derive it through the shared resolver`,
+      );
     }
   });
 });

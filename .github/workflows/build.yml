@@ -558,8 +558,10 @@ jobs:
       # derived value bound, ONE shared resolveMarketSlug, placeholder destinations NOT
       # special-cased into a hardcoded slug). M4 is the load-bearing one: it re-scans EVERY
       # trip-insert site in server/, holds Locked Decision 30's timezone stamp on all of them, and
-      # pins the set that still omits market_slug to a RECORDED outstanding list — so the four
-      # known sites stay loud and a NEW omission fails here instead of being absorbed. I1-I3 pin
+      # pins the set that still omits market_slug to a RECORDED outstanding list — now the e2e seed
+      # alone, since D12 binds EVERY production mint (the buyer's clone and BOTH expert authoring
+      # builds included: a NULL userId exempts them from an owner row and the pen drain, never from
+      # a market). A NEW omission fails here instead of being absorbed. I1-I3 pin
       # the stripped split and that the stated TOTAL still rides (the server derives the total from
       # `adults` only when the body omitted it, so nothing real was dropped).
       - name: Mint market_slug invariant / party-split pin
