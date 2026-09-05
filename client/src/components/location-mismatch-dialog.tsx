@@ -7,10 +7,13 @@
  * — a second copy of the decision at the view layer is the derivation-drift class CLAUDE.md §18
  * rule 1 names.
  *
- * TWO ACTIONS, DELIBERATELY. The ratified mock draws a third — "Add <city> as a stop" — which needs
- * a `trip_destinations` ordered-stops table the decision-maker has explicitly HELD (an open product
- * question about multi-city scope). Omitting an action is honest; a dead button is not. When stops
- * land, this is where the third action belongs.
+ * THE THIRD ACTION LANDED (ledger `2026-09-04-plan-stops-ui`). "Add <city> as a stop" was OMITTED
+ * — not stubbed, not disabled — while `trip_destinations` did not exist, because omitting an
+ * action is honest and a dead button is not. The table exists (migration 281, CLAUDE.md Locked
+ * Decision 34), so the action is here, and it keeps the same rule it was held to: it renders ONLY
+ * when the gate can actually write it (`onAddAsStop` non-null), and is otherwise absent rather
+ * than shown greyed out. Its LABEL is derived from the decision (`addAsStopLabel`), never
+ * assembled here — the city named on the button and the city written to the plan are one value.
  *
  * The dialog is ADVISORY: it never blocks the add, it writes nothing, and Cancel persists nothing.
  */
@@ -19,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   MISMATCH_HONESTY_LINE,
+  addAsStopLabel,
   mismatchHeadline,
   mismatchSubline,
   type MismatchAlert,
@@ -36,6 +40,11 @@ export interface LocationMismatchDialogProps {
    */
   listingMeta?: string | null;
   onAddAnyway: () => void;
+  /**
+   * "Add <city> as a stop". `null`/omitted ⇒ the action is not rendered at all — the gate could
+   * not read the plan, or the plan already names that city. Never a disabled button.
+   */
+  onAddAsStop?: (() => void) | null;
   onCancel: () => void;
 }
 
@@ -44,6 +53,7 @@ export function LocationMismatchDialog({
   listingName,
   listingMeta,
   onAddAnyway,
+  onAddAsStop = null,
   onCancel,
 }: LocationMismatchDialogProps) {
   return (
@@ -98,6 +108,16 @@ export function LocationMismatchDialog({
               >
                 Add anyway
               </Button>
+              {onAddAsStop ? (
+                <Button
+                  variant="outline"
+                  className="rounded-[8px] border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] text-[13px] font-semibold"
+                  onClick={onAddAsStop}
+                  data-testid="button-mismatch-add-as-stop"
+                >
+                  {addAsStopLabel(alert)}
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 className="text-[13px] font-medium text-[color:var(--earn-muted)]"

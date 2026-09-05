@@ -45,7 +45,13 @@
  * Pure: no React, no fetch, no DB. The caller resolves the occasion row (it owns the catalog
  * query) and hands it in.
  */
-import { showsSchedule, type OccasionSwitchRow } from "./occasion-switches";
+import {
+  durationShape,
+  guestListSetting,
+  showsSchedule,
+  type OccasionSwitchRow,
+} from "./occasion-switches";
+import { partyNoun } from "./plan-vocabulary";
 
 /** The five ratified steps, in flow order. `where` is step 2 — the artboard filename hides it. */
 export type PlanStepId = "occasion" | "where" | "when" | "who" | "events";
@@ -146,4 +152,87 @@ export function previousPlanStep(
 ): PlanStepId | null {
   const i = visible.indexOf(current);
   return i > 0 ? visible[i - 1] : null;
+}
+
+// ── STEP 4'S SECOND QUESTION, AND STEP 2'S SUGGESTED CITY ────────────────────────────────────
+// Ledger `2026-09-04-step4-variants-fields`; CLAUDE.md Locked Decision 38 (migration 284).
+//
+// The Step4Variants artboard draws the SAME step-4 control under four occasions, and two of them
+// ask a SECOND question the platform had nowhere to put. Migration 284 gave those answers columns;
+// the two predicates below are the ONE place that decides WHEN each is asked. They live beside
+// `resolvePlanSteps` for the same reason it does: "does this occasion ask about a budget approver?"
+// is a rule that fails SILENTLY — a wrong answer still renders a step — so it is a pure function
+// with a pinned test rather than a condition written inline in the modal (§18 rule 1).
+//
+// Both read the occasion's OWN switches, never its class: `2026-09-03-occasion-switches` ruled that
+// an occasion is a ROW carrying defaults, and the class survives only as presentation vocabulary.
+
+/**
+ * Does this occasion ask WHO APPROVES THE BUDGET (`trips.budget_approver_name` / `_email`)?
+ *
+ * TRUE exactly when the party noun resolves to **"attendees"** — corporate events and retreats, the
+ * occasions where nobody on the plan is "travelling with you" and somebody off the plan signs off
+ * on the spend. It delegates to `partyNoun`, the SAME resolver step 4's own label uses, rather than
+ * reading `vocabulary` directly: `partyNoun` is where `default_guests === false` is allowed to
+ * override the column, and a second reading of that pair would drift from the label it sits under
+ * (§18 rule 1).
+ *
+ * NULL / not set ⇒ `partyNoun` falls back to "travelers" ⇒ **false**: the question is not asked and
+ * the column stays NULL — which means "never asked", never "nobody approves it" (§13).
+ */
+export function asksBudgetApprover(occasion?: OccasionSwitchRow | null): boolean {
+  return partyNoun(occasion?.vocabulary, guestListSetting(occasion)) === "attendees";
+}
+
+/**
+ * Does this occasion ask the ACCESSIBILITY NOTE (`trips.accessibility_note`)?
+ *
+ * TRUE exactly when `default_guests` is **explicitly true** — weddings, family occasions, parties:
+ * the occasions with a guest list, where the party is other people whose pace the planner is
+ * answering for. It reads the TRI-STATE `guestListSetting` deliberately: `false` is an occasion
+ * that RULED it has no guest list, `null` is nobody having decided, and neither of those is a
+ * reason to ask a planner about somebody else's mobility. Only an explicit `true` asks.
+ *
+ * The answer is the PLANNER's free-text note about the party, and is deliberately NOT
+ * `trip_participants.accessibility_needs` — that column is one PARTICIPANT's own stated needs about
+ * themself, given by that person on a different surface (CLAUDE.md Locked Decision 24 draws the
+ * same line for the provider-side `access_notes`). Merging them would attribute a planner's
+ * paraphrase to the participant.
+ */
+export function asksAccessibilityNote(occasion?: OccasionSwitchRow | null): boolean {
+  return guestListSetting(occasion) === true;
+}
+
+/**
+ * The city step 2 SUGGESTS, or `""` when it suggests nothing.
+ *
+ * THE CASE THIS EXISTS FOR: a date night. A `default_duration = "day"` occasion happens where the
+ * traveler already is — nobody flies to their own date night — and for a signed-in member the
+ * platform already knows that city (`users.home_city`, the column the Plus occasion-draft scheduler
+ * builds from, CLAUDE.md entry 26). Making them type it is a door asking a question it can answer.
+ *
+ * §13 — A SHOWN DEFAULT AND A CHOSEN VALUE ARE DIFFERENT FACTS, and this function returns only the
+ * first. It says what to SUGGEST; it never says what to save. The modal renders the suggestion as a
+ * visibly filled, clearable value and does NOT write it to the pen or the trip row until the
+ * traveler moves forward past step 2, at which point it becomes their answer like any other. A
+ * suggestion nobody confirmed must not land on the plan looking like a city they named.
+ *
+ * Returns `""` — never a guess — when ANY of the three conditions is missing:
+ *   - the occasion is not day-shaped (a range-shaped plan goes somewhere else; suggesting home
+ *     would be wrong far more often than right);
+ *   - there is no signed-in home city (a guest, or a member who never set one — `home_city` is
+ *     nullable and the scheduler already treats NULL as "skip", never as a city);
+ *   - the destination field already holds something (a door's own city, a returning plan, or a
+ *     character the traveler typed). A suggestion never overwrites an answer.
+ */
+export function homeCitySuggestion(input: {
+  occasion?: OccasionSwitchRow | null;
+  homeCity?: string | null;
+  currentDestination?: string | null;
+}): string {
+  if (durationShape(input.occasion) !== "day") return "";
+  const home = (input.homeCity ?? "").trim();
+  if (!home) return "";
+  if ((input.currentDestination ?? "").trim() !== "") return "";
+  return home;
 }

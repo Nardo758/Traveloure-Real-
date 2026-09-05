@@ -20,9 +20,14 @@
  *       NULL in the DB legitimately means "not set" (§13) and the reader omits the prompt — but
  *       the seeder is the one author, so a row IT writes must never be undecided.
  *   R2  every key seeded is a member of `OCCASION_ROLE_KEYS`.
- *   R3  `OCCASION_ROLE_KEYS` is exactly the set migration 034 assigns, MINUS the four `aff_*`
- *       affiliate sources. 034 is the sole authority; this pins the mirror to it, so a category
- *       renamed there without updating the enum fails here rather than at a traveler's screen.
+ *   R3  `OCCASION_ROLE_KEYS` is exactly the set the TAXONOMY REGISTRY assigns, MINUS the four
+ *       `aff_*` affiliate sources. The registry — `TAXONOMY_MIGRATIONS` in
+ *       `scripts/lib/taxonomy-registry.cjs` — is the authority (034's 24 rows plus migration 285's
+ *       `venue`, ledger `2026-09-04-venue-category`); this pins the mirror to it, so a category
+ *       renamed or added there without updating the enum fails here rather than at a traveler's
+ *       screen. The registry module is REQUIRED, not re-implemented: a second copy of "which
+ *       migrations are authoritative" is the derivation-drift class §18 rule 1 names, and it is the
+ *       same module both reachability guards read.
  *   R4  no `aff_*` key is ever named as a role. An occasion never "needs an aff_air_hotel" —
  *       those are affiliate SOURCES, not disciplines anyone hires.
  *   R5  the allowlist schema is pick-based and REFUSES an unknown key (§19), and accepts an
@@ -40,16 +45,26 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { OCCASION_ROLE_KEYS, experienceTypeRolesSchema } from "../schema";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "../..");
 const SEED = path.resolve(HERE, "../../server/seeds/experience-template-tabs.seed.ts");
-const AUTHORITY = path.resolve(
-  HERE,
-  "../../server/migrations/034_phase1_reconcile_service_categories.sql",
-);
+
+const require_ = createRequire(import.meta.url);
+const {
+  TAXONOMY_MIGRATIONS,
+  collectTaxonomy,
+} = require_("../../scripts/lib/taxonomy-registry.cjs") as {
+  TAXONOMY_MIGRATIONS: string[];
+  collectTaxonomy: (sources: Array<{ file: string; sql: string }>) => {
+    keys: Set<string>;
+    errors: string[];
+  };
+};
 
 const seedText = readFileSync(SEED, "utf8");
 
@@ -66,16 +81,18 @@ function seededRoles(): Array<{ slug: string; roles: string[] }> {
   return out;
 }
 
-/** Every category_key migration 034 assigns — field 8, first item on the tuple's 4th line. */
+/** Every category_key the taxonomy REGISTRY assigns, folded across all its migrations. */
 function authorityKeys(): Set<string> {
-  const lines = readFileSync(AUTHORITY, "utf8").split("\n");
-  const keys = new Set<string>();
-  for (let i = 0; i < lines.length; i++) {
-    if (!/^\s{2}\('/.test(lines[i])) continue;
-    const m = (lines[i + 3] ?? "").match(/^\s*'([a-z_]+)'\s*,/);
-    if (m) keys.add(m[1]);
-  }
-  return keys;
+  const taxonomy = collectTaxonomy(
+    TAXONOMY_MIGRATIONS.map((rel) => ({
+      file: rel,
+      sql: readFileSync(path.resolve(REPO, rel), "utf8"),
+    })),
+  );
+  // The registry refuses a key claimed by two migrations (a fork, not a union). Surface that here
+  // rather than silently folding it away — a duplicate is a taxonomy bug, not a parse detail.
+  assert.deepEqual(taxonomy.errors, [], "taxonomy registry reported integrity errors");
+  return taxonomy.keys;
 }
 
 describe("roles_needed — the seeder's literal", () => {
@@ -98,9 +115,9 @@ describe("roles_needed — the seeder's literal", () => {
     }
   });
 
-  it("R3 OCCASION_ROLE_KEYS is exactly migration 034's keys minus the aff_* sources", () => {
+  it("R3 OCCASION_ROLE_KEYS is exactly the taxonomy registry's keys minus the aff_* sources", () => {
     const authority = authorityKeys();
-    assert.ok(authority.size > 0, "parsed ZERO keys from migration 034 — parser is broken");
+    assert.ok(authority.size > 0, "parsed ZERO keys from the taxonomy registry — parser is broken");
     const expected = [...authority].filter((k) => !k.startsWith("aff_")).sort();
     assert.deepEqual([...OCCASION_ROLE_KEYS].sort(), expected);
   });

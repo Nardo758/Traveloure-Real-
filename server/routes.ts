@@ -7073,14 +7073,37 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // client card renders "No data yet" rather than an invented dollar figure (§13).
       const clientLifetimeValue = { status: "no_data" as const };
 
-      // Track which selected services have been created vs pending
-      const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase());
-      const serviceAlignment = selectedServicesAtSignup.map(serviceName => ({
-        name: serviceName,
-        status: createdServiceNames.some(cs => cs.includes(serviceName.toLowerCase()) || serviceName.toLowerCase().includes(cs)) 
-          ? "created" 
-          : "pending"
-      }));
+      // Track which selected services have been created vs pending.
+      //
+      // Gap 10 (ledger `2026-09-04-earn-contained-fixes`): `local_expert_forms.selected_services`
+      // holds `expert_service_offerings` IDS — the application wizard toggles `offering.id`, not a
+      // name — and this block compared those UUIDs against `provider_services.serviceName`. A UUID
+      // never matches a service name, so EVERY selection reported "pending" forever, including the
+      // ones `addExpertSelectedService` had already turned into real listings. ONE join resolves
+      // the ids to the catalog names the created listings actually carry.
+      //
+      // §13: an id the catalog no longer holds is OMITTED rather than reported as pending —
+      // nothing here can say what the expert picked, and "pending" would be a claim.
+      const selectedOfferingRows = selectedServicesAtSignup.length > 0
+        ? await db.select({ id: expertServiceOfferings.id, name: expertServiceOfferings.name })
+            .from(expertServiceOfferings)
+            .where(inArray(expertServiceOfferings.id, selectedServicesAtSignup))
+        : [];
+      const offeringNameById = new Map(selectedOfferingRows.map(r => [r.id, r.name]));
+      // `.filter(Boolean)`: an unnamed listing would make `needle.includes("")` true and mark
+      // every selection "created".
+      const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase()).filter(Boolean);
+      const serviceAlignment = selectedServicesAtSignup.flatMap(selected => {
+        const name = offeringNameById.get(selected);
+        if (!name) return [];
+        const needle = name.toLowerCase();
+        return [{
+          name,
+          status: createdServiceNames.some(cs => cs.includes(needle) || needle.includes(cs))
+            ? "created"
+            : "pending",
+        }];
+      });
       
       res.json({
         expertProfile: {

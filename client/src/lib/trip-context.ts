@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+// Type only — the stop list's SHAPE has one definition (§18 rule 1), in the pure reducer module
+// that also owns its rules. Nothing is imported at runtime, so this adds no module to the graph.
+import type { PlanStopPayload } from "./plan-stops";
 import type { PlanEventDraft } from "@shared/plan-events";
 
 /**
@@ -61,6 +64,31 @@ export interface TripContext {
    */
   adults?: number;
   kids?: number;
+  /**
+   * Step 4's SECOND question, held while no trip row exists (ledger
+   * `2026-09-04-step4-variants-fields`, CLAUDE.md Locked Decision 38; migration 284's
+   * `trips.budget_approver_name` / `budget_approver_email` / `accessibility_note`).
+   *
+   * WHICH ONE IS ASKED IS THE OCCASION ROW'S OWN ANSWER, never a class: the approver pair when
+   * `experience_types.vocabulary` resolves to "attendees" (corporate events, retreats), the note
+   * when `default_guests` is TRUE (weddings, family occasions, parties). The two predicates live
+   * once, in `@/lib/plan-steps` — a second copy here is the drift class §18 rule 1 names.
+   *
+   * `null` IS THE CLEARED MARKER in this blob, exactly as `0` is for the party pair above:
+   * `updateTripContext` merges and cannot delete a key, so a field the traveler emptied is written
+   * `null` rather than left stale. Every reader treats `null` and ABSENT the same — the question
+   * was not answered — and the TRIP ROW is written NULL either way. NULL is never rendered as
+   * "no budget approver" or "no accessibility needs" (§13): those are claims only the traveler can
+   * make, and the flow does not even put the question to an occasion whose switches send it down
+   * the other branch.
+   *
+   * `accessibilityNote` is deliberately NOT `trip_participants.accessibility_needs` — that is one
+   * PARTICIPANT's stated needs about themself, a different person's answer on a different surface
+   * (CLAUDE.md Locked Decision 24 draws the same line for the provider-side `access_notes`).
+   */
+  budgetApproverName?: string | null;
+  budgetApproverEmail?: string | null;
+  accessibilityNote?: string | null;
   eventType?: string;
   tripId?: string;
   userExperienceId?: string;
@@ -92,6 +120,19 @@ export interface TripContext {
    * nothing they chose is lost. The server drain reads both keys and clears both together.
    */
   pendingEventTitles?: string[];
+  /**
+   * The plan's ORDERED STOPS while no trip row exists yet (ledger `2026-09-04-plan-stops-ui`;
+   * `trip_destinations`, migration 281, CLAUDE.md Locked Decision 34). Index 0 is the destination
+   * field — the position-0 mirror — so this list and `destination` above always agree on the first
+   * city. Once `tripId` is bound the ROWS are the truth and this pen is cleared to `[]`; the one
+   * writer of both halves is `client/src/lib/plan-stops-writer.ts`.
+   *
+   * Absent = the stop question was never asked (an occasion whose `default_stops` is not "many"),
+   * which is NOT the same as "this plan has one stop" — a reader falls back to `destination` and
+   * says so (§13). Coordinates appear ONLY when a stop was explicitly placed; a stop without them
+   * is unlocated and stays visibly so, never guessed onto a map.
+   */
+  stops?: PlanStopPayload[];
   /**
    * The pen from this release on — step 5's ratified table (Event · Day · Time · Place), held
    * while no trip row exists. Ledger `2026-09-04-event-time-ui`; the row shape is

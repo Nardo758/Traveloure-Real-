@@ -44,6 +44,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { CLAIM_PROMPTS, type Daypart } from "@shared/neighborhood-claims";
+import { expertSpecializationEnum } from "@shared/schema";
+import { OPERATING_MARKET_DESTINATIONS } from "@shared/operating-markets";
+import { EXPERT_SPECIALIZATION_LABELS, LOCAL_SPECIALTY_OPTIONS } from "@shared/expert-vocabulary";
 import { isEventPlannerOfferingKey } from "@/lib/earn-roles";
 import {
   ClaimCaptureForm,
@@ -95,46 +98,31 @@ const localityProofOptions = [
   { value: "current_resident", label: "Current resident (1–5 years)" },
 ];
 
-const localSpecialtyOptions = [
-  { value: "food_drink", label: "Food & Drink", emoji: "🍜" },
-  { value: "safety_navigation", label: "Safety & Navigation", emoji: "🧭" },
-  { value: "cultural_interpretation", label: "Cultural Interpretation", emoji: "🎭" },
-  { value: "nightlife", label: "Nightlife", emoji: "🌙" },
-  { value: "family_travel", label: "Family Travel", emoji: "👨‍👩‍👧" },
-  { value: "lgbtq_friendly", label: "LGBTQ+ Friendly", emoji: "🏳️‍🌈" },
-  { value: "budget_tips", label: "Budget Tips", emoji: "💰" },
-  { value: "luxury_access", label: "Luxury Access", emoji: "✨" },
-  { value: "photography_spots", label: "Photography Spots", emoji: "📸" },
-  { value: "hidden_gems", label: "Hidden Gems", emoji: "💎" },
-];
+// Gap 7 (ledger `2026-09-04-earn-contained-fixes`): this vocabulary moved to
+// `shared/expert-vocabulary.ts`. It is REQUIRED here and is now also rendered on the expert's
+// public profile and in the admin review queue, so a copy per surface is the drift class
+// §18 rule 1 names. The wizard reads the same list every reader does.
+const localSpecialtyOptions = LOCAL_SPECIALTY_OPTIONS;
 
-const expertSpecializationOptions = [
-  { value: "budget_travel", label: "Budget Travel" },
-  { value: "luxury_experiences", label: "Luxury Experiences" },
-  { value: "adventure_outdoor", label: "Adventure & Outdoor" },
-  { value: "cultural_immersion", label: "Cultural Immersion" },
-  { value: "family_friendly", label: "Family Friendly" },
-  { value: "solo_travel", label: "Solo Travel" },
-  { value: "food_wine", label: "Food & Wine" },
-  { value: "photography_tours", label: "Photography Tours" },
-  { value: "honeymoon", label: "Honeymoon Planning" },
-  { value: "wellness_retreat", label: "Wellness & Retreat" },
-  { value: "group_travel", label: "Group Travel" },
-  { value: "backpacking", label: "Backpacking" },
-];
+// Gap 8: the picker's labels ARE the labels every reader now renders these slugs with
+// (`shared/expert-vocabulary.ts`). Derived from the enum so the picker cannot offer a value
+// the readers do not know, and cannot omit one they do.
+const expertSpecializationOptions = expertSpecializationEnum.map((value) => ({
+  value,
+  label: EXPERT_SPECIALIZATION_LABELS[value],
+}));
 
-const destinations = [
-  "Paris, France",
-  "Tokyo, Japan",
-  "Barcelona, Spain",
-  "Bali, Indonesia",
-  "New York, USA",
-  "Rome, Italy",
-  "Mumbai, India",
-  "Sydney, Australia",
-  "London, UK",
-  "Dubai, UAE",
-];
+/**
+ * Gap 6: the ten hardcoded world cities are GONE. Kyoto — the flagship launch market — was
+ * not among them, so an applicant could not state the one destination the platform most needs
+ * covered, while seven of the ten (Paris, Dubai, Sydney, Bali, New York, Rome, Barcelona) are
+ * places Traveloure does not operate in at all. The list now IS the operating-market config,
+ * which that module's own header says is why it lives in `shared/` (no second city list).
+ *
+ * The step says out loud that these are the markets we operate in today — offering only these
+ * without saying so would imply the list is the world (§13).
+ */
+const destinations = OPERATING_MARKET_DESTINATIONS;
 
 const specialties = [
   "Cultural Tours",
@@ -194,6 +182,12 @@ export default function TravelExpertsPage() {
   const expertTypeFromUrl = urlParams.get('type') || 'travel_expert';
   const cityFromUrl = urlParams.get('city') || '';
   const countryFromUrl = urlParams.get('country') || '';
+  // Gap 15 (ledger `2026-09-04-earn-contained-fixes`): the Discover "Wanted here" slot has
+  // always carried `?neighborhood=` and this page has always ignored it, so someone recruited
+  // FROM Gion arrived at a claim picker with nothing selected. Preselected below, by NAME
+  // match against the city's own `city_neighborhoods` rows — never by creating a row and never
+  // by trusting the string (§13: a name the catalog does not hold selects nothing).
+  const neighborhoodFromUrl = urlParams.get('neighborhood') || '';
   // Offering carried from /earn ("I do this →") — pre-selects this offering in the application.
   const offeringKeyFromUrl = urlParams.get('offeringTypeKey') || '';
   const offeringNameFromUrl = urlParams.get('offeringName') || '';
@@ -299,6 +293,25 @@ export default function TravelExpertsPage() {
     setFormData((prev) => ({ ...prev, neighborhoodClaims: nextClaims, neighborhoods: nextClaims.map((c) => c.name) }));
   };
   const firstClaim = formData.neighborhoodClaims[0] ?? null;
+
+  // Gap 15: preselect the neighbourhood the recruitment link named, ONCE, and only when the
+  // city's catalog actually holds a row with that name (case-insensitive, trimmed). A link
+  // naming a neighbourhood this city has no row for selects NOTHING and the applicant simply
+  // picks — a claim is born only from a real `city_neighborhoods` row (Locked Decision 27),
+  // never from a query string. Skipped entirely once the applicant has picked anything, so a
+  // restored draft or a deliberate deselection is never overwritten.
+  useEffect(() => {
+    if (!isLocalExpert || !neighborhoodFromUrl) return;
+    if (formData.neighborhoodClaims.length > 0 || neighborhoodOptions.length === 0) return;
+    const wanted = neighborhoodFromUrl.trim().toLowerCase();
+    const match = neighborhoodOptions.find((o) => o.name.trim().toLowerCase() === wanted);
+    if (!match) return;
+    setFormData((prev) => ({
+      ...prev,
+      neighborhoodClaims: [{ neighborhoodId: match.id, name: match.name, daypart: match.daypart }],
+      neighborhoods: [match.name],
+    }));
+  }, [isLocalExpert, neighborhoodFromUrl, neighborhoodOptions, formData.neighborhoodClaims.length]);
 
   // Event Planner role picker source: the EXPERT catalog, read live from the same public endpoint
   // /earn reads, then narrowed by the ONE partition list (EVENT_PLANNER_OFFERING_KEYS). The list is
@@ -1360,6 +1373,12 @@ export default function TravelExpertsPage() {
                     <Globe className="w-4 h-4 inline mr-2" />
                     Destinations You Cover (select all that apply)
                   </Label>
+                  {/* Gap 6: say what this list IS. Offering only the operating markets without
+                      saying so would read as "these are the only places that exist" (§13). */}
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-destinations-scope">
+                    These are the markets Traveloure operates in today. Cover somewhere else? Tell us in your
+                    bio &mdash; we open new markets from where our experts already are.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {destinations.map((dest) => (
                       <Badge

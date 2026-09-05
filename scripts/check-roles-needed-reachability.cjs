@@ -8,9 +8,9 @@
  * WHY THIS EXISTS
  * ───────────────
  * `experience_types.roles_needed` names disciplines as `service_categories.category_key` values.
- * Migration 034 is the SOLE assigner of `category_key` (24 rows) and therefore the only authority
- * on which keys exist. A `roles_needed` entry naming a key no category carries would render a hire
- * prompt that resolves to no provider — a dead path that LOOKS live.
+ * The migrations that ASSIGN `category_key` are therefore the only authority on which keys exist.
+ * A `roles_needed` entry naming a key no category carries would render a hire prompt that resolves
+ * to no provider — a dead path that LOOKS live.
  *
  * That is the same failure `check-category-reachability.cjs` exists for (ledger
  * `2026-09-04-taxonomy-reconcile`), reached from the other direction: there, a category row without
@@ -19,11 +19,23 @@
  * + 208 had to repair it on disk, and the wizard's Publish button stayed disabled until they did)
  * and the ten `services-*` experience-bundle rows.
  *
+ * THE AUTHORITY IS A REGISTRY, NOT ONE FILENAME (ledger `2026-09-04-venue-category`)
+ * ──────────────────────────────────────────────────────────────────────────────────
+ * This guard used to hardcode `034_phase1_reconcile_service_categories.sql`, which was correct for
+ * exactly as long as 034 was the only migration assigning a `category_key`. Migration 285
+ * (`venue`) is the second. Both taxonomy guards now read ONE committed list —
+ * `TAXONOMY_MIGRATIONS` in `scripts/lib/taxonomy-registry.cjs` — so "which files are the
+ * authority" has a single home. A second copy of that list is the derivation-drift class §18
+ * rule 1 names: the next category would have to be added twice, and forgetting either copy leaves
+ * a guard reporting PASS while looking at half the taxonomy.
+ *
  * THE RULES
  * ─────────
- *   1. Every key in `OCCASION_ROLE_KEYS` (shared/schema.ts) is assigned by migration 034.
+ *   1. Every key in `OCCASION_ROLE_KEYS` (shared/schema.ts) is assigned by SOME registry migration.
  *   2. Every key seeded in `rolesNeeded:` (server/seeds/experience-template-tabs.seed.ts) is in
  *      `OCCASION_ROLE_KEYS` — so the enum cannot be bypassed by editing the seeder alone.
+ *   3. No `category_key` (or category slug) is claimed by two registry migrations. The registry is
+ *      a UNION, not an override chain — enforced in the shared module, surfaced here.
  *
  * NEGATIVE SPACE — what this guard does NOT check (§18d: green means green-within-stated-bounds)
  * ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -33,32 +45,18 @@
  *     deliberately silent about it.
  *   • It does not judge whether the roles chosen for an occasion are the RIGHT ones. That is
  *     editorial content, ratified with the ledger row, not something a grep can hold.
- *   • It reads migration 034 as text. If 034 is ever superseded by a later migration that assigns
- *     `category_key`, this guard must be taught about it — a superseding migration is exactly the
- *     kind of change that should update the AUTHORITY list below.
+ *   • It reads the registry files as TEXT and never opens a database. A migration that assigns a
+ *     `category_key` but is NOT listed in `TAXONOMY_MIGRATIONS` is invisible to it — which is the
+ *     whole point of the registry being a deliberate, committed act.
  */
 
 const fs = require("fs");
 const path = require("path");
+const { TAXONOMY_MIGRATIONS, collectTaxonomy } = require("./lib/taxonomy-registry.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
-const AUTHORITY = path.join(ROOT, "server/migrations/034_phase1_reconcile_service_categories.sql");
 const SCHEMA = path.join(ROOT, "shared/schema.ts");
 const SEED = path.join(ROOT, "server/seeds/experience-template-tabs.seed.ts");
-
-/** Every `category_key` migration 034 assigns. Field 8 of each VALUES tuple, first item on its line. */
-function authorityKeys(sql) {
-  const keys = new Set();
-  const lines = sql.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (!/^\s{2}\('/.test(lines[i])) continue; // tuple opener
-    const keyLine = lines[i + 3];
-    if (!keyLine) continue;
-    const m = keyLine.match(/^\s*'([a-z_]+)'\s*,/);
-    if (m) keys.add(m[1]);
-  }
-  return keys;
-}
 
 /** The OCCASION_ROLE_KEYS array literal in shared/schema.ts. */
 function enumKeys(ts) {
@@ -76,13 +74,21 @@ function seededKeys(ts) {
   return keys;
 }
 
-function check(sql, schemaTs, seedTs) {
+/**
+ * @param {Array<{file: string, sql: string}>} sources — the registry files, in apply order.
+ */
+function check(sources, schemaTs, seedTs) {
   const errors = [];
-  const authority = authorityKeys(sql);
+  const taxonomy = collectTaxonomy(sources);
+  // Registry-level failures (rule 3: duplicate key/slug across files; an unparseable registry
+  // file) are reported first and are fatal — every rule below reads the union they describe.
+  errors.push(...taxonomy.errors);
+  const authority = taxonomy.keys;
   if (authority.size === 0) {
-    errors.push("Parsed ZERO category_key values from migration 034 — the parser is broken, not the data. Refusing to pass vacuously.");
+    errors.push("Parsed ZERO category_key values from the taxonomy registry — the parser is broken, not the data. Refusing to pass vacuously.");
     return errors;
   }
+  if (errors.length > 0) return errors;
   const declared = enumKeys(schemaTs);
   if (declared === null) {
     errors.push("Could not find `export const OCCASION_ROLE_KEYS = [...] as const;` in shared/schema.ts.");
@@ -94,7 +100,7 @@ function check(sql, schemaTs, seedTs) {
   }
   for (const k of declared) {
     if (!authority.has(k)) {
-      errors.push(`OCCASION_ROLE_KEYS names "${k}", which migration 034 does not assign as a category_key. A hire prompt for it would resolve to no provider.`);
+      errors.push(`OCCASION_ROLE_KEYS names "${k}", which no taxonomy-registry migration assigns as a category_key. A hire prompt for it would resolve to no provider.`);
     }
   }
   for (const k of seededKeys(seedTs)) {
@@ -106,7 +112,12 @@ function check(sql, schemaTs, seedTs) {
 }
 
 // ── committed self-test fixtures (§18d: a predicate change ships with fixtures) ─────────────────
-const FIX_SQL = [
+//
+// Two fixture FILES, because the authority is now a REGISTRY: `FIX_SQL_A` stands in for 034 and
+// `FIX_SQL_B` for a later taxonomy migration such as 285. The cases below cover the three shapes
+// the registry adds — a key present only in the SECOND file (must pass), a key in NEITHER file
+// (must fail), and one key claimed by BOTH files (must fail).
+const FIX_SQL_A = [
   "INSERT INTO service_categories",
   "  (name, slug, description, category_type, verification_required, is_active, sort_order,",
   "   category_key, source_type, launch_tier, commission_band_key, insurance_band,",
@@ -123,20 +134,51 @@ const FIX_SQL = [
   "   'caterer', 'platform_provider', 'core', 'commercial', 2, 'low', false);",
 ].join("\n");
 
+/** A SECOND registry migration — the 285 shape: one new category, ON CONFLICT DO NOTHING. */
+const FIX_SQL_B = [
+  "INSERT INTO service_categories",
+  "  (name, slug, description, category_type, verification_required, is_active, sort_order,",
+  "   category_key, source_type, launch_tier, commission_band_key, insurance_band,",
+  "   risk_profile, requires_background_check)",
+  "VALUES",
+  "  ('Venues',               'venues',",
+  "   'Event venues',",
+  "   'service_provider', true, true, 105,",
+  "   'venue', 'platform_provider', 'segment', 'moderate', 2, 'moderate', false)",
+  "ON CONFLICT (slug) DO NOTHING;",
+].join("\n");
+
+/** The same key claimed twice across the registry — a taxonomy fork, and a hard failure. */
+const FIX_SQL_B_DUP = FIX_SQL_B.replace("'venues'", "'venues-2'").replace("'Venues'", "'Venues (again)'");
+
+const REGISTRY_AB = [
+  { file: "fixture/034.sql", sql: FIX_SQL_A },
+  { file: "fixture/285.sql", sql: FIX_SQL_B },
+];
+
 function selfTest() {
   const okSchema = 'export const OCCASION_ROLE_KEYS = [\n  "florist",\n  "caterer",\n] as const;';
   const okSeed = 'rolesNeeded: ["florist", "caterer"],';
   const failSchema = 'export const OCCASION_ROLE_KEYS = [\n  "florist",\n  "wedding_planner",\n] as const;';
   const failSeed = 'rolesNeeded: ["florist", "dj"],';
+  // A key that exists ONLY in the second registry migration — the whole point of the registry.
+  const venueSchema = 'export const OCCASION_ROLE_KEYS = [\n  "florist",\n  "caterer",\n  "venue",\n] as const;';
+  const venueSeed = 'rolesNeeded: ["florist", "venue"],';
+  const onlyA = [{ file: "fixture/034.sql", sql: FIX_SQL_A }];
 
   const cases = [
-    ["clean case passes", () => check(FIX_SQL, okSchema, okSeed).length === 0],
-    ["unreachable enum key is caught", () => check(FIX_SQL, failSchema, okSeed).some((e) => e.includes("wedding_planner"))],
-    ["seeded key outside the enum is caught", () => check(FIX_SQL, okSchema, failSeed).some((e) => e.includes('"dj"'))],
-    ["broken 034 parse fails loudly, not vacuously", () => check("-- no tuples here", okSchema, okSeed).some((e) => e.includes("ZERO category_key"))],
-    ["missing enum declaration is caught", () => check(FIX_SQL, "// no enum", okSeed).some((e) => e.includes("OCCASION_ROLE_KEYS"))],
-    ["empty enum fails vacuity check", () => check(FIX_SQL, "export const OCCASION_ROLE_KEYS = [\n] as const;", okSeed).some((e) => e.includes("empty"))],
-    ["034 parser finds both fixture keys", () => { const k = authorityKeys(FIX_SQL); return k.has("florist") && k.has("caterer") && k.size === 2; }],
+    ["clean case passes", () => check(REGISTRY_AB, okSchema, okSeed).length === 0],
+    ["unreachable enum key is caught", () => check(REGISTRY_AB, failSchema, okSeed).some((e) => e.includes("wedding_planner"))],
+    ["seeded key outside the enum is caught", () => check(REGISTRY_AB, okSchema, failSeed).some((e) => e.includes('"dj"'))],
+    ["broken registry parse fails loudly, not vacuously", () => check([{ file: "fixture/none.sql", sql: "-- no tuples here" }], okSchema, okSeed).some((e) => e.includes("REGISTRY PARSE"))],
+    ["missing enum declaration is caught", () => check(REGISTRY_AB, "// no enum", okSeed).some((e) => e.includes("OCCASION_ROLE_KEYS"))],
+    ["empty enum fails vacuity check", () => check(REGISTRY_AB, "export const OCCASION_ROLE_KEYS = [\n] as const;", okSeed).some((e) => e.includes("empty"))],
+    ["registry parser finds both fixture files' keys", () => { const k = collectTaxonomy(REGISTRY_AB).keys; return k.has("florist") && k.has("caterer") && k.has("venue") && k.size === 3; }],
+    // ── the three registry shapes (ledger `2026-09-04-venue-category`) ────────────────────────
+    ["REGISTRY — a key present only in the SECOND migration is reachable", () => check(REGISTRY_AB, venueSchema, venueSeed).length === 0],
+    ["REGISTRY — that same key is UNREACHABLE when the second migration is not registered", () => check(onlyA, venueSchema, venueSeed).some((e) => e.includes('"venue"'))],
+    ["REGISTRY — a key in NEITHER migration is caught", () => check(REGISTRY_AB, 'export const OCCASION_ROLE_KEYS = [\n  "florist",\n  "ballroom",\n] as const;', okSeed).some((e) => e.includes("ballroom"))],
+    ["REGISTRY — the SAME key claimed by BOTH migrations FAILS (a fork, not a union)", () => check([{ file: "fixture/034.sql", sql: FIX_SQL_A + "\n" + FIX_SQL_B }, { file: "fixture/285.sql", sql: FIX_SQL_B_DUP }], venueSchema, venueSeed).some((e) => e.includes("REGISTRY DUPLICATE") && e.includes('"venue"'))],
   ];
   let failed = 0;
   for (const [name, fn] of cases) {
@@ -155,25 +197,30 @@ function selfTest() {
 function main() {
   if (process.argv.includes("--self-test")) return selfTest();
 
-  for (const f of [AUTHORITY, SCHEMA, SEED]) {
+  const registry = TAXONOMY_MIGRATIONS.map((rel) => path.join(ROOT, rel));
+  for (const f of [...registry, SCHEMA, SEED]) {
     if (!fs.existsSync(f)) {
       console.error(`roles-needed guard: required file missing — ${path.relative(ROOT, f)}`);
+      console.error("Every entry in TAXONOMY_MIGRATIONS (scripts/lib/taxonomy-registry.cjs) must exist on disk.");
       process.exit(1);
     }
   }
   const errors = check(
-    fs.readFileSync(AUTHORITY, "utf8"),
+    TAXONOMY_MIGRATIONS.map((rel) => ({ file: rel, sql: fs.readFileSync(path.join(ROOT, rel), "utf8") })),
     fs.readFileSync(SCHEMA, "utf8"),
     fs.readFileSync(SEED, "utf8"),
   );
   if (errors.length > 0) {
     console.error("roles-needed reachability guard FAILED:\n");
     for (const e of errors) console.error(`  • ${e}`);
-    console.error("\nEvery role an occasion names must be a category_key migration 034 assigns.");
-    console.error("See CLAUDE.md Locked Decision 31 / ledger 2026-09-04-roles-needed.");
+    console.error("\nEvery role an occasion names must be a category_key some TAXONOMY_MIGRATIONS entry assigns.");
+    console.error("See CLAUDE.md Locked Decision 31 / ledger 2026-09-04-roles-needed, 2026-09-04-venue-category.");
     process.exit(1);
   }
-  console.log("roles-needed reachability guard: OK — every named role resolves to a migration-034 category_key.");
+  console.log(
+    `roles-needed reachability guard: OK — every named role resolves to a category_key assigned by ` +
+      `one of ${TAXONOMY_MIGRATIONS.length} taxonomy-registry migration(s).`
+  );
 }
 
 main();

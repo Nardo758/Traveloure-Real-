@@ -8,8 +8,19 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { storage } from "../storage";
 import { chatStorage } from "../replit_integrations/chat/storage";
-import { eventTypeEnum } from "@shared/schema";
+import {
+  eventTypeEnum,
+  // Ledger `2026-09-04-step4-variants-fields` — the ONE field authority for migration 284's three
+  // step-4 columns, shared with `PATCH /api/trips/:tripId/occasion` so the pen and the row cannot
+  // disagree about what a legal answer is (§18 rule 1).
+  tripBudgetApproverNameSchema,
+  tripBudgetApproverEmailSchema,
+  tripAccessibilityNoteSchema,
+} from "@shared/schema";
 import { aiRateLimit } from "../middleware/rateLimiter";
+// The stop cap has ONE definition (§18 rule 1). Imported from the DB-free half of the trip
+// destinations service so this route pulls in no database at import time.
+import { MAX_TRIP_DESTINATIONS } from "../services/trip-destinations.pure";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
 
 /**
@@ -95,6 +106,25 @@ const tripContextSchema = z
     // reader turns it back into "not set" via `travelersForSave`, and the TRIP ROW is written NULL.
     adults: z.number().int().min(0).max(500).optional(),
     kids: z.number().int().min(0).max(500).optional(),
+    /**
+     * Ledger `2026-09-04-step4-variants-fields` (CLAUDE.md Locked Decision 38, migration 284) —
+     * step 4's SECOND question, held while NO trip row exists yet. Which one is asked is the
+     * occasion row's own answer: the approver pair for an "attendees" vocabulary, the note for an
+     * occasion that has a guest list.
+     *
+     * Same posture as `mainMomentTime` / `pendingEvents` / `stops` above: ordinary planning
+     * content the session user authored about their own draft — no amount, identity, rate or
+     * grant — so §14/§18/§19 have nothing to strip, and they are named EXPLICITLY here because
+     * `.strip()` below drops anything unlisted. The VALIDATION is not restated: these are the same
+     * `shared/schema.ts` field schemas `PATCH /api/trips/:tripId/occasion` extends onto its
+     * pick-based body, so the pen and the row can never disagree about what a legal answer is
+     * (§18 rule 1). `null` is the CLEARED marker here (the client merges and cannot delete a key)
+     * and every reader turns it back into "not asked" — the TRIP ROW is written NULL either way,
+     * and NULL is never rendered as "no approver" or "no accessibility needs" (§13).
+     */
+    budgetApproverName: tripBudgetApproverNameSchema,
+    budgetApproverEmail: tripBudgetApproverEmailSchema,
+    accessibilityNote: tripAccessibilityNoteSchema,
     eventType: str(120).optional(),
     tripId: str(64).optional(),
     userExperienceId: str(64).optional(),
@@ -117,6 +147,30 @@ const tripContextSchema = z
      * and writes only the rich shape below, and the drain clears both together.
      */
     pendingEventTitles: z.array(str(120)).max(20).optional(),
+    // Ledger `2026-09-04-plan-stops-ui` — the plan's ORDERED STOPS while no trip row exists yet.
+    // Same posture as the two fields above: ordinary planning content the session user authored
+    // about their own draft (a place name they typed and, only if they explicitly placed one, a
+    // coordinate) — no amount, no identity, no rate, so §14/§18/§19 have nothing to strip. Named
+    // explicitly on this hand-written ALLOWLIST, and the inner object is `.strip()`ped by default
+    // exactly like the blob, so a key nobody names here does not persist.
+    //
+    // The CAP IS THE SERVER'S OWN (`MAX_TRIP_DESTINATIONS`), imported rather than restated: this
+    // pen is drained into `PUT /api/trips/:tripId/destinations`, and a pen that could hold more
+    // than that route accepts would be a second, quietly disagreeing limit (§18 rule 1). An empty
+    // array is the CLEARED marker (the client merges and cannot delete a key) — never "this plan
+    // has no stops", which `trips.destination` being NOT NULL makes impossible anyway (§13).
+    stops: z
+      .array(
+        z.object({
+          name: str(255),
+          city: str(255).optional(),
+          country: str(255).optional(),
+          lat: z.number().min(-90).max(90).optional(),
+          lng: z.number().min(-180).max(180).optional(),
+        }),
+      )
+      .max(MAX_TRIP_DESTINATIONS)
+      .optional(),
     /**
      * Ledger `2026-09-04-event-time-ui` — step 5's ratified table (Event · Day · Time · Place),
      * held while NO trip row exists. Same posture as its two siblings above: ordinary planning

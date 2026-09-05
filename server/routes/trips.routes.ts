@@ -61,6 +61,11 @@ import {
   optimizationFees,
   experienceTypes,
   eventTypeEnum,
+  // Ledger `2026-09-04-step4-variants-fields` — the ONE field authority for migration 284's three
+  // step-4 columns, shared with the pre-trip pen's allowlist so the two rails cannot drift.
+  tripBudgetApproverNameSchema,
+  tripBudgetApproverEmailSchema,
+  tripAccessibilityNoteSchema,
   type InsertContentPlacementRule,
 } from "@shared/schema";
 import {
@@ -3399,13 +3404,48 @@ router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (
 // Owner-gated with the shared `verifyTripOwnership` (fail-closed): these are trip IDENTITY, not
 // itinerary content, so this is deliberately the OWNER gate and not the broader §12 advisor-write
 // posture the item/note mutations use.
+//
+// AND WHY THE THREE STEP-4 VARIANT FIELDS RIDE IT TOO (ledger `2026-09-04-step4-variants-fields`,
+// CLAUDE.md Locked Decision 38, migration 284). The Step4Variants artboard asks a SECOND question
+// on step 4, and which one depends on the occasion's own switches: a budget approver when
+// `experience_types.vocabulary` says "attendees", an accessibility note when `default_guests` is
+// true. Same reasoning as the party pair directly above — the same modal, the same save, the same
+// owner, so the same allowlisted route rather than a second admission rail. The FIELD schemas
+// themselves are stated once in `shared/schema.ts` (`tripBudgetApprover*Schema` /
+// `tripAccessibilityNoteSchema`) and shared with the pre-trip pen's allowlist, because the columns
+// carry no DB CHECK and two copies of that validation would drift (§18 rule 1).
 const tripOccasionBody = createInsertSchema(trips)
-  .pick({ eventType: true, adults: true, kids: true })
+  .pick({
+    eventType: true,
+    adults: true,
+    kids: true,
+    budgetApproverName: true,
+    budgetApproverEmail: true,
+    accessibilityNote: true,
+  })
   .extend({
     eventType: z.enum(eventTypeEnum).optional(),
     adults: z.coerce.number().int().min(1).max(500).nullable().optional(),
     kids: z.coerce.number().int().min(0).max(500).nullable().optional(),
+    budgetApproverName: tripBudgetApproverNameSchema,
+    budgetApproverEmail: tripBudgetApproverEmailSchema,
+    accessibilityNote: tripAccessibilityNoteSchema,
   });
+
+/**
+ * The keys `PATCH /api/trips/:tripId/occasion` copies onto the row when — and only when — the BODY
+ * actually carried them. Written once so the handler cannot drift from the schema above: a field
+ * the modal did not send is a question the traveler was never asked, and writing NULL over a real
+ * value because a step was walked past is exactly the loss §13 forbids. An EXPLICIT null in the
+ * body is different and is honoured — that is how an answer is cleared.
+ */
+const TRIP_OCCASION_NULLABLE_KEYS = [
+  "adults",
+  "kids",
+  "budgetApproverName",
+  "budgetApproverEmail",
+  "accessibilityNote",
+] as const;
 
 router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) => {
   try {
@@ -3421,7 +3461,7 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
         message:
           "eventType must be one of: " +
           eventTypeEnum.join(", ") +
-          "; adults/kids must be whole numbers or null",
+          "; adults/kids must be whole numbers or null; budgetApproverEmail must be an email address or null",
       });
     }
 
@@ -3429,8 +3469,10 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
     // a question the traveler was never asked, and must not be written as a null over a real value.
     const patch: Record<string, unknown> = {};
     if (parsed.data.eventType !== undefined) patch.eventType = parsed.data.eventType;
-    if ("adults" in (req.body ?? {})) patch.adults = parsed.data.adults ?? null;
-    if ("kids" in (req.body ?? {})) patch.kids = parsed.data.kids ?? null;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    for (const key of TRIP_OCCASION_NULLABLE_KEYS) {
+      if (key in body) patch[key] = (parsed.data as Record<string, unknown>)[key] ?? null;
+    }
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ message: "Nothing to update" });
     }
