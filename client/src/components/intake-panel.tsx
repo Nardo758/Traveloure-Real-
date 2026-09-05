@@ -164,9 +164,15 @@ export function IntakePanel({
       destination: destination.trim(),
       startDate,
       endDate,
+      // Locked Decision 42 (D11 interim) / ledger `2026-09-05-mint-market-slug-invariant`: this
+      // panel asks for ONE number — a party TOTAL — and a total is not a split. It used to send
+      // `adults: travelers, kids: 0`, which fabricated an answer to a question it never asked
+      // (Locked Decision 33: step 4 is always skippable, untouched ⇒ NULL, never a fabricated 2 or
+      // a fabricated 0). Only the stated total is sent; adults/kids stay NULL — "not captured", the
+      // honest answer (§13). The server does not need them here: it derives numberOfTravelers from
+      // `adults` ONLY when numberOfTravelers was omitted (server/routes.ts POST /api/trips), and
+      // this payload states it outright.
       numberOfTravelers: travelers,
-      adults: travelers,
-      kids: 0,
       eventType: eventTypeForSlug(selectedSlug),
     } as InsertTrip;
 

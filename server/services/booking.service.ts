@@ -21,6 +21,7 @@ import { resolveTravelerServiceFee } from './fee-resolution.service';
 import { coversAction } from './trip-entitlement.service';
 import { recordLegacyBookingTravelerFeeLedger } from './fee-ledger.service';
 import { resolveTripTimezone } from './trip-timezone';
+import { resolveMarketSlug } from './trend-engine/operating-markets';
 import { drainPendingEventsIntoTrip } from './pending-events.service';
 
 const stripe = new Stripe(getStripeSecretKey() || '', {
@@ -108,9 +109,16 @@ class BookingService {
     // outside the operating markets — "not captured", which every reader honours rather than
     // guessing a zone (§13). Raw SQL here because this whole mint path is raw SQL.
     const timezone = resolveTripTimezone(destination);
+    // Locked Decision 42 / ledger `2026-09-05-mint-market-slug-invariant`: market_slug is a MINT
+    // INVARIANT beside the timezone — derived server-side from the destination by the SAME
+    // `resolveMarketSlug` storage.createTrip uses (never a second derivation, §18 rule 1). A
+    // destination outside the 8 operating markets — the placeholder this path can carry included —
+    // resolves to NULL and STAYS NULL: "not one of our markets" is the honest answer (§13), never a
+    // nearest-looking guess.
+    const marketSlug = resolveMarketSlug(destination);
     await db.execute(sql`
-      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, timezone, created_at)
-      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, ${timezone}, NOW())
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, timezone, market_slug, created_at)
+      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, ${timezone}, ${marketSlug}, NOW())
     `);
 
     // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
@@ -1130,14 +1138,19 @@ class BookingService {
     const trackingNumber = await storage.generateTrackingNumber('TRV');
     // Ledger `2026-09-04-plan-mint`: same server-side derivation as every other mint site.
     const timezone = resolveTripTimezone(destination);
+    // Locked Decision 42 / ledger `2026-09-05-mint-market-slug-invariant`: same mint invariant, same
+    // ONE derivation. The 'My Destination' placeholder above resolves to NULL here — deliberately
+    // NOT special-cased, because an unresolvable destination and a placeholder destination are the
+    // same fact to this function: no operating market was stated (§13).
+    const marketSlug = resolveMarketSlug(destination);
     await db.execute(sql`
       INSERT INTO trips (
         id, user_id, title, destination, start_date, end_date,
-        number_of_travelers, budget, status, tracking_number, timezone, created_at, updated_at
+        number_of_travelers, budget, status, tracking_number, timezone, market_slug, created_at, updated_at
       ) VALUES (
         ${tripId}, ${userId}, ${`Trip to ${destination}`}, ${destination},
         ${startDate}, ${endDate}, ${travelers}, ${budget},
-        'planning', ${trackingNumber}, ${timezone}, NOW(), NOW()
+        'planning', ${trackingNumber}, ${timezone}, ${marketSlug}, NOW(), NOW()
       )
     `);
 

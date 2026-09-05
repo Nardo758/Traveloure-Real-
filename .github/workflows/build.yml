@@ -588,6 +588,23 @@ jobs:
           npx tsx --test server/__tests__/ai-draft-eligibility.test.ts
           npx tsx --test server/__tests__/ai-json-parse.test.ts
           npx tsx --test client/src/lib/__tests__/ai-draft-refusal.test.ts
+      # 2026-09-05-mint-market-slug-invariant (CLAUDE.md Locked Decision 42, D12 + D11-interim):
+      # `market_slug` joins `timezone` as a named MINT invariant, and the intake panels stop
+      # fabricating a party split. Both defects are ABSENCES that render perfectly — a plan minted
+      # with a NULL market_slug looks right to its owner and is simply never seen by any
+      # market-scoped reader, and `adults: travelers, kids: 0` is a well-formed answer to a question
+      # neither panel asks. M1-M3 pin the two raw-SQL mints in booking.service.ts (column named,
+      # derived value bound, ONE shared resolveMarketSlug, placeholder destinations NOT
+      # special-cased into a hardcoded slug). M4 is the load-bearing one: it re-scans EVERY
+      # trip-insert site in server/, holds Locked Decision 30's timezone stamp on all of them, and
+      # pins the set that still omits market_slug to a RECORDED outstanding list — now the e2e seed
+      # alone, since D12 binds EVERY production mint (the buyer's clone and BOTH expert authoring
+      # builds included: a NULL userId exempts them from an owner row and the pen drain, never from
+      # a market). A NEW omission fails here instead of being absorbed. I1-I3 pin
+      # the stripped split and that the stated TOTAL still rides (the server derives the total from
+      # `adults` only when the body omitted it, so nothing real was dropped).
+      - name: Mint market_slug invariant / party-split pin
+        run: npx tsx --test server/__tests__/mint-market-slug-invariant.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
