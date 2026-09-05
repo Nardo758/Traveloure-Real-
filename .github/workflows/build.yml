@@ -863,3 +863,18 @@ jobs:
         run: node scripts/check-public-user-id.cjs --self-test
       - name: Public user-id guard
         run: node scripts/check-public-user-id.cjs
+      # 2026-09-05-comparison-map-baseline-compare (LD 41): the review board's map gained "Your
+      # plan" as its first tab and a compare toggle that draws it beneath a focused proposal as a
+      # second sequence line. The map's honesty boundary already had a pure test; it was never
+      # wired into CI, so nothing held it. B1-B4 pin the pure rules — the baseline leads the tab
+      # order and keeps its own server-authored name without renumbering the proposals, the board
+      # still OPENS on a proposal, the compare toggle is OMITTED (not disabled) wherever there is
+      # nothing to compare, each series states its OWN "X of Y located" and the two are never
+      # summed, and zero located stops on EVERY drawn series means NO MAP rather than a
+      # city-centre fallback. B5 reads the shipped files, because a pure rule a call site can
+      # reach past is not a rule: the board hands over the same `userVariant` the baseline column
+      # renders, the ratified testids exist, BOTH renderers grew an optional second series rather
+      # than a compare-only fork (§18 rule 1), and the surface labels its connectors as sequence
+      # while deriving no distance or duration.
+      - name: Proposal comparison map pin
+        run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
