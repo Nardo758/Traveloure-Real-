@@ -56,6 +56,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
 import { addLabel, addedTitle } from "@/lib/plan-vocabulary";
+import { trackEvent } from "@/lib/analytics";
 // Ledger 2026-09-04-which-event-picker (migration 277; CLAUDE.md Locked Decision 29) — the
 // "Which event?" question, asked between the add click and the write. Every decision it makes
 // lives in the pure module; this page only supplies the plan's events and the subject card.
@@ -549,6 +550,13 @@ export default function ServiceDetailPage() {
       });
     },
     onSuccess: (_data, vars) => {
+      if (!targetTripId) {
+        trackEvent("service_added_to_cart", {
+          surface: "service_detail",
+          item_type: "service",
+          has_scheduled_date: Boolean(selectedSlot?.date || bookingDate),
+        });
+      }
       if (targetTripId) {
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
@@ -731,6 +739,13 @@ export default function ServiceDetailPage() {
       });
     },
     onSuccess: (_data, vars) => {
+      if (!targetTripId) {
+        trackEvent("service_added_to_cart", {
+          surface: "service_detail",
+          item_type: "room",
+          has_scheduled_date: Boolean(roomCheckIn && roomCheckOut),
+        });
+      }
       if (targetTripId) {
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
