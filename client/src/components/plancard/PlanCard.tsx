@@ -14,7 +14,7 @@ import { tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole, type PlanCardLegData,
 } from "./plancard-types";
-import { parseCalendarDate, parseTripDate } from "@/lib/calendar-date";
+import { formatShortTripRange, parseCalendarDate, parseTripDate } from "@/lib/calendar-date";
 import { HeroSection } from "./HeroSection";
 import { OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
@@ -176,8 +176,15 @@ function ExpertPolishDialog({ open, onClose, trip, optimizationScore, optimizati
     if (open) setNote(buildDeltaSummary(optimizationScore, optimizationDelta));
   }, [open, optimizationScore, optimizationDelta]);
 
-  const formatDate = (d?: string) =>
-    d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–";
+  // QA F13 (same class as F3): `trips.start_date` / `end_date` are DATE columns and arrive as
+  // "YYYY-MM-DD"; `new Date()` reads those as UTC midnight, so the dialog's trip summary showed
+  // a viewer west of UTC the PREVIOUS day — a different range from the card it was opened from.
+  const formatDate = (d?: string) => {
+    const parsed = parseTripDate(d);
+    return parsed
+      ? parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+      : "–";
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -434,13 +441,6 @@ function PlanCardSummary({
   const showCountdown = daysTil > 0;
   const tripTitle = trip.title || trip.destination;
 
-  // F-1: DATE columns arrive as "YYYY-MM-DD"; `new Date()` reads them as UTC midnight and
-  // renders the PREVIOUS day west of UTC.
-  const formatShortDate = (d: string) => {
-    const parsed = parseTripDate(d);
-    return parsed ? parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-  };
-
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -470,7 +470,7 @@ function PlanCardSummary({
         <PlanCardHeader
           title={tripTitle}
           destination={trip.destination}
-          dateRange={`${formatShortDate(trip.startDate ?? "")}–${formatShortDate(trip.endDate ?? "")}`}
+          dateRange={formatShortTripRange(trip.startDate, trip.endDate)}
           statusLabel={statusLabel}
           metrics={{ days: numDays, activities: totalActivities, legs: totalLegs, transitTime: formatMinutes(totalMinutes) }}
           testId={`plancard-header-${trip.id}`}

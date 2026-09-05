@@ -102,6 +102,7 @@ import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { updateTripContext, useTripContext, switchTripContextPreservingId, getTripContext } from "@/lib/trip-context";
+import { calendarDateToIso } from "@/lib/calendar-date";
 // §18 rule 1: the "URL first, then the active TripContext" order is written ONCE, in
 // client/src/lib/trip-target.ts, and every marketplace add resolves through it.
 import { resolveTargetTripId } from "@/lib/trip-target";
@@ -2085,8 +2086,18 @@ export default function ExperienceTemplatePage() {
                   id: linkedTripId,
                   destination: destination || "",
                   title: experienceType?.name,
-                  startDate: startDate?.toISOString(),
-                  endDate: endDate?.toISOString(),
+                  // QA F13 — the hero card rendered the day BEFORE the stored one. This page
+                  // holds its dates as the UTC-midnight instants `new Date("YYYY-MM-DD")`
+                  // produces (see the state above and every other read on this page, which
+                  // takes the UTC date part). Handing the card `.toISOString()` gave it an
+                  // INSTANT, and `parseTripDate` is right to read an instant as an instant —
+                  // so a viewer west of UTC saw "13 Nov–15 Nov" for a plan stored Nov 14–16
+                  // while the Trip Strip beside it (which parses the calendar string) said
+                  // "Nov 14 → Nov 16". The card wants a CALENDAR DAY, so hand it one, using
+                  // the same extraction the rest of this page already uses (§18 rule 1 — no
+                  // second parser). §13: an unset date stays undefined, never a guessed day.
+                  startDate: calendarDateToIso(startDate) || undefined,
+                  endDate: calendarDateToIso(endDate) || undefined,
                   numberOfTravelers: adults + kids,
                   budget: cartTotal,
                   eventType: experienceType?.name?.toLowerCase(),
