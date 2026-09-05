@@ -54,7 +54,20 @@ import { resolveBookingEligibility } from "../services/booking-eligibility.servi
 import {
   stampBalanceAuthorization,
   promoteBalancePayment,
+  // Ledger `2026-09-04-cost-split-phase-one`: the balance leg's §15 claim — taken BEFORE the Stripe
+  // call, because on the saved-card branch that call CHARGES, and two payers with two idempotency
+  // keys would take two charges for one balance.
+  claimBalancePayer,
+  recordedBalancePayer,
 } from "../services/checkout-claim.service";
+// Ledger `2026-09-04-cost-split-phase-one`: WHO may settle a deposit-paid booking's balance, and the
+// idempotency key that now carries the actor. ONE helper, called only from pay-balance below — a
+// second copy of the predicate is the derivation-drift class §18 rule 1 names.
+import {
+  canPayBalance,
+  loadBalancePayerParticipants,
+  buildBalanceIdempotencyKey,
+} from "../services/balance-payer.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -1774,10 +1787,28 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
   // ══ LANE 7 — BALANCE CHECKOUT (deposits / partial payments, DECISIONS.md ruling 72) ═══════════
   // The SECOND, separate checkout that settles the outstanding balance of a deposit-paid booking.
   // Its own authorized PaymentIntent on the SAME booking row (carried on stripe_balance_intent_id),
-  // its own atomic promotion deposit_paid → confirmed (promoteBalancePayment). Owner-gated to the
-  // TRAVELER who owns the booking. Idempotent: the Stripe idempotency key is deterministic per
-  // booking so a retry/double-click returns the SAME PaymentIntent and the SAME single charge (§15),
-  // and the balance-authorization stamp is an atomic conditional so only one caller stamps.
+  // its own atomic promotion deposit_paid → confirmed (promoteBalancePayment).
+  //
+  // WHO MAY PAY — COST SPLIT, PHASE ONE (ledger `2026-09-04-cost-split-phase-one`). Formerly the
+  // booking's OWNER and nobody else. Now the owner OR a `trip_participants` row on the booking's own
+  // trip whose `user_id` is the session user and whose `role` is exactly `payer`. That decision is
+  // ONE helper — `canPayBalance` (`server/services/balance-payer.service.ts`), pure and unit-tested
+  // — never re-stated here. A collaborator who pays does NOT become the booking's owner: nothing
+  // below writes `traveler_id`, so a later refund flows to the original payment method per Stripe's
+  // own semantics, i.e. back to THAT COLLABORATOR'S card. No refund routing exists or is implied.
+  //
+  // Idempotent: the Stripe idempotency key is deterministic per (booking, PAYER) — one payer
+  // retrying returns the SAME PaymentIntent and the SAME single charge (§15 layer a), while two
+  // different payers can no longer present ONE key with different parameters (the PaymentIntent is
+  // built from the actor's own Stripe customer and saved card, so a shared key is a wrong-card
+  // hazard, not a cosmetic collision).
+  //
+  // TWO ATOMIC CONDITIONALS, IN THIS ORDER, AND NEITHER IS THE PERMISSION CHECK (§15). (1) The
+  // balance-PAYER CLAIM (`claimBalancePayer`) is taken BEFORE the Stripe call, because on the
+  // saved-card branch that call CHARGES at creation — two payers with two keys would otherwise take
+  // two real charges for one balance, and no post-call stamp can undo money already moved. (2) The
+  // balance-AUTHORIZATION stamp then records the PaymentIntent. A check-then-update would be the
+  // bug in either position; both are single statements whose WHERE clause IS the guard.
   //
   // §14/§18 — the amount is SERVER-DERIVED from the booking row (`balance_amount`); the acting user
   // is the session; NOTHING is read from req.body. There is no `money-derive-ok` here because there
@@ -1787,8 +1818,21 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       const userId = getUserId(req)!;
       const bookingId = req.params.id;
       const booking = await storage.getServiceBooking(bookingId);
-      // Ownership gate: the TRAVELER owns this booking. Undifferentiated 404 (§13 posture).
-      if (!booking || booking.travelerId !== userId) {
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      // Authorization gate (ledger `2026-09-04-cost-split-phase-one`): the OWNER, or a `payer`-role
+      // participant on THIS booking's own trip. The participant lookup is scoped to (trip, SESSION
+      // user) — it loads nobody else's row, so it discloses no other participant's PII — and the
+      // acting id comes from `getUserId(req)`, never from the body (§14). The refusal stays an
+      // undifferentiated 404 (§13 posture, unchanged): "not yours" and "no such booking" answer
+      // alike, so this endpoint still cannot be used to probe for booking ids.
+      const payerParticipants =
+        booking.travelerId === userId || !booking.tripId
+          ? []
+          : await loadBalancePayerParticipants(booking.tripId, userId);
+      const payerDecision = canPayBalance(booking, userId, payerParticipants);
+      if (!payerDecision.allowed) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
       // Only a deposit-paid booking with an outstanding balance is payable here. A payment_pending
@@ -1812,7 +1856,23 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
       // Already-authorized balance: a prior call stamped the balance PI — return the SAME
       // clientSecret, never a second PaymentIntent (idempotent).
+      //
+      // PAYER-SCOPED since ledger `2026-09-04-cost-split-phase-one`. Handing an existing balance
+      // PaymentIntent to a DIFFERENT user is not idempotency, it is cross-account: the intent was
+      // created against the first payer's Stripe customer with `setup_future_usage`, so a second
+      // person confirming it would charge their card AND vault it on someone else's customer.
+      // Same payer ⇒ byte-identical to the previous behaviour. A row with no recorded payer is a
+      // pre-ruling stamp, which only the OWNER could have made — so the owner still gets it back
+      // and nobody else does; an absent record is never read as "it must have been you" (§13).
       if ((booking as any).stripeBalanceIntentId) {
+        const startedBy = recordedBalancePayer((booking as any).bookingDetails);
+        const mayComplete = startedBy ? startedBy === userId : booking.travelerId === userId;
+        if (!mayComplete) {
+          return res.status(409).json({
+            error: "balance_payment_in_progress",
+            message: "Someone else has already started paying this balance.",
+          });
+        }
         const existingPi = await stripePaymentService
           .getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId)
           .catch(() => null);
@@ -1826,9 +1886,55 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         });
       }
 
-      // Deterministic idempotency key per booking: Stripe returns the SAME PaymentIntent for a
-      // retry/double-click, so the external call cannot double-charge (§15 layer a).
-      const balanceKey = `bal-${bookingId}`;
+      // ══ CLAIM BEFORE THE STRIPE CALL (§15 ordering; ledger `2026-09-04-cost-split-phase-one`) ══
+      // This is the guard the widening REQUIRES, not a nicety. `createPaymentIntent` on the
+      // saved-card branch sends `off_session: true, confirm: true` — a REAL CHARGE at creation,
+      // BEFORE the stamp below can run. While the owner was the only possible payer, two concurrent
+      // calls shared one idempotency key and Stripe returned ONE intent, so there was one charge.
+      // With a second payer the key must differ by actor, so two concurrent payers would create TWO
+      // intents and, on that branch, TAKE TWO REAL CHARGES for one balance — and a post-call stamp
+      // cannot undo money already moved. Claiming the row atomically first is what makes the second
+      // caller unable to pass (§15, verbatim).
+      //
+      // Idempotent for the payer who holds it: a retry/double-click re-claims and proceeds to the
+      // SAME idempotency key, so §15 layer a is untouched.
+      const payerClaim = await claimBalancePayer(bookingId, userId);
+      if (!payerClaim.claimed) {
+        if (payerClaim.heldBy) {
+          return res.status(409).json({
+            error: "balance_payment_in_progress",
+            message: "Someone else has already started paying this balance.",
+          });
+        }
+        // The row moved under us between the reads above and the claim (it was stamped, or left
+        // `deposit_paid`). Answer from the CURRENT row, never from the stale one.
+        const refreshed = await storage.getServiceBooking(bookingId);
+        const refreshedPi = (refreshed as any)?.stripeBalanceIntentId ?? null;
+        const refreshedPayer = recordedBalancePayer((refreshed as any)?.bookingDetails);
+        if (refreshedPi && (refreshedPayer ? refreshedPayer === userId : refreshed?.travelerId === userId)) {
+          const existingPi = await stripePaymentService.getPaymentIntentClientSecret(refreshedPi).catch(() => null);
+          return res.status(200).json({
+            success: true,
+            duplicate: true,
+            bookingId,
+            ...(existingPi ? { paymentIntent: existingPi } : {}),
+            note: "Balance payment already started — completing the existing payment.",
+          });
+        }
+        return res.status(409).json({
+          error: refreshedPi ? "balance_payment_in_progress" : "balance_not_payable",
+          message: refreshedPi
+            ? "Someone else has already started paying this balance."
+            : "This booking has no outstanding balance to pay.",
+        });
+      }
+
+      // Deterministic idempotency key per (booking, PAYER) — ledger `2026-09-04-cost-split-phase-one`
+      // EXTENDED the pre-existing `bal-<bookingId>` key, it did not replace it. Stripe returns the
+      // SAME PaymentIntent for THIS payer's retry/double-click, so one payer still cannot
+      // double-charge (§15 layer a); two different payers no longer collide on a single key whose
+      // parameters differ by actor.
+      const balanceKey = buildBalanceIdempotencyKey(bookingId, userId);
       let paymentIntent: any;
       try {
         paymentIntent = await stripePaymentService.createPaymentIntent(
@@ -1842,6 +1948,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         );
       } catch (stripeErr: any) {
         console.error(`[balance] authorization failed for booking=${bookingId}:`, stripeErr?.message ?? stripeErr);
+        // THE CLAIM IS DELIBERATELY NOT RELEASED HERE. `createPaymentIntent` returns (rather than
+        // throws) whenever Stripe attaches a PaymentIntent to the error, so a THROW is precisely the
+        // case where we cannot prove one does not exist — a timeout after Stripe created and, on the
+        // saved-card branch, CHARGED it looks identical from here. Releasing would let a second payer
+        // take a second charge for that same balance: exactly §15b's "never void a row whose
+        // PaymentIntent may exist". The claim self-heals for the one person it affects — THIS payer's
+        // retry rebuilds the SAME idempotency key and gets the SAME PaymentIntent back.
         return res.status(503).json({
           success: false,
           error: "payment_unavailable",
@@ -1851,14 +1964,29 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         });
       }
       if (!paymentIntent?.paymentIntentId) {
+        // Same reasoning as the throw above: not provably PI-free, so the claim stands.
         return res.status(503).json({ success: false, error: "payment_unavailable", retryable: true });
       }
 
       // AUTHORIZE stamp — atomic conditional on the balance column (§15). Loses the race (another
       // concurrent call stamped first) ⇒ return that call's clientSecret, never a second charge.
-      const stamped = await stampBalanceAuthorization(bookingId, paymentIntent.paymentIntentId);
+      // The PAYER id rides the SAME atomic conditional that stamps the PI, so WHO paid is recorded
+      // by whichever caller actually won the race — and the diary row the promotion writes can name
+      // them even when the promoting signal is the WEBHOOK, which has no session to ask (see
+      // `promoteBalancePayment`). This is not a second write path: it is one more column set by the
+      // one statement that already decides the winner.
+      const stamped = await stampBalanceAuthorization(bookingId, paymentIntent.paymentIntentId, userId);
       if (!stamped) {
         const refreshed = await storage.getServiceBooking(bookingId);
+        // Payer-scoped for the same reason the early return above is: a PaymentIntent created
+        // against one person's Stripe customer is never handed to another person's card.
+        const refreshedPayer = recordedBalancePayer((refreshed as any)?.bookingDetails);
+        if (refreshedPayer && refreshedPayer !== userId) {
+          return res.status(409).json({
+            error: "balance_payment_in_progress",
+            message: "Someone else has already started paying this balance.",
+          });
+        }
         const existingPi = (refreshed as any)?.stripeBalanceIntentId
           ? await stripePaymentService.getPaymentIntentClientSecret((refreshed as any).stripeBalanceIntentId).catch(() => null)
           : null;

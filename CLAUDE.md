@@ -737,6 +737,38 @@ The legacy `bookings` rail is **still live** (`/booking-demo`, `/itinerary-compa
 no-ops on ids it does not own. Proven by `server/__tests__/checkout-payment-promotion.db.test.ts` (negatives
 **N17/N18/N19**); the sweep's 9/9 suite is untouched and still green — redundancy means every layer stands alone.
 
+**§15d — a balance may be paid by the OWNER or by a `payer`-role participant, and nothing else moves
+(ledger `2026-09-04-cost-split-phase-one`).** `POST /api/bookings/:id/pay-balance` was owner-only; it now also
+admits a `trip_participants` row on **the booking's own trip** whose `user_id` is the session user and whose
+`role` is exactly `payer` (`TRIP_PARTICIPANT_ROLE_PAYER`, declared once in `shared/schema.ts` — the column is
+free text, app-enforced, no DB CHECK). The predicate is ONE pure helper, `canPayBalance`
+(`server/services/balance-payer.service.ts`), called once from the route; a second copy is the drift class §18
+rule 1 names. **Everything §14/§15 governs is unchanged:** the AMOUNT stays server-derived from
+`service_bookings.balance_amount` (nothing money-related is read from `req.body`, and no `money-derive-ok`
+annotation was added), the ACTOR stays the session, and the state transitions stay atomic conditionals —
+**a permission check is not a claim**, and a check-then-update would still be the bug. **The widening FORCED one
+new guard: a balance-PAYER CLAIM taken BEFORE the Stripe call** (`claimBalancePayer`), because
+`createPaymentIntent` on the saved-card branch sends `off_session: true, confirm: true` — a real charge at
+creation — and two payers necessarily hold two different idempotency keys, so without the claim two concurrent
+payers would take TWO REAL CHARGES for one balance and no post-call stamp could undo it. One statement
+(`status='deposit_paid' AND stripe_balance_intent_id IS NULL AND COALESCE(recorded_payer, me) = me`): the holder's
+own retry re-claims (idempotent), anyone else is refused 409 `balance_payment_in_progress` with no Stripe call.
+The "already started" early return, the post-stamp fallback and the stamp itself are all **payer-scoped** — an
+existing balance PaymentIntent is never handed to a different person's card (it carries the first payer's
+customer + `setup_future_usage`). **NOTHING RELEASES A CLAIM:** a thrown Stripe error is exactly the case where a
+PaymentIntent cannot be proven absent (§15b), so a claim clears only when the balance is paid. That is a LIVENESS
+limit, not a money-safety one, and a TTL reclaim belongs to phase two. **The
+Stripe idempotency key now carries the actor:** `bal-<bookingId>` → `bal-<bookingId>-<payerUserId>`, because
+`createPaymentIntent` builds the PaymentIntent FROM the actor (their customer, email, saved card), so one key
+with two actors is one key with different parameters — an error, or the second payer handed the first payer's
+PaymentIntent. One payer retrying still rebuilds the SAME key and gets the SAME single charge. **WHO paid is
+recorded on the row's existing `booking_details` jsonb by that same atomic conditional** (`balancePaidByUserId`,
+merged never assigned, no new table) so the promotion's diary row names the payer even when the promoting signal
+is the WEBHOOK, which has no session. The balance payer never becomes the booking's owner — `traveler_id` is
+untouched — so a refund of a balance paid by a collaborator returns to **that collaborator's card** by Stripe's
+own semantics; no refund routing is built. **Phase two (the real split — per-event payers, shares, who owes
+what) needs its own design brief and is not started.**
+
 ### §17 — Drift DETECTION rule (one job, both rails; detect, don't repair — ruling 40)
 
 **GOVERNING RULE:** the daily Stripe-vs-DB reconciliation job (`server/jobs/stripeReconciliation.ts`) scans
