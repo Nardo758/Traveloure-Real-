@@ -40,7 +40,9 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { guestInviteMetaLine } from '@/lib/guest-invite-meta';
 import { PLAN_NOUN_LOWER } from '@/lib/plan-vocabulary';
 
 interface Guest {
@@ -84,10 +86,27 @@ interface Props {
   experienceId: string;
   eventName: string;
   eventDestination: string;
+  /**
+   * The event's own day as the server states it — `user_experiences.event_date`, a Postgres DATE
+   * column, so a bare "YYYY-MM-DD" string. It is parsed with `parseTripDate`, NEVER `new Date`
+   * (QA F3): `new Date("2026-10-10")` is specified to be UTC midnight, so every viewer west of
+   * UTC renders the previous calendar day.
+   */
   eventDate: string;
+  /**
+   * The plan this event belongs to, when the mounting surface knows it.
+   *
+   * QA F5 — the plan's guest roster (`GET /api/trips/:tripId/guests`, Locked Decision 37) is
+   * DERIVED from the very invites this component writes, so a write here leaves every reader of
+   * that key stale (the Guests page's table AND the slip's totals) until a manual reload. This
+   * component stays the ONE invite writer; knowing the plan is what lets it retire the answer its
+   * own write just changed. Absent ⇒ nothing is invalidated, which is honest: without a plan id
+   * there is no roster key to name.
+   */
+  tripId?: string;
 }
 
-export function GuestInviteManager({ experienceId, eventName, eventDestination, eventDate }: Props) {
+export function GuestInviteManager({ experienceId, eventName, eventDestination, eventDate, tripId }: Props) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,7 +115,23 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
   const [sendingIds, setSendingIds] = useState<string[]>([]);
   const [isSendingAll, setIsSendingAll] = useState(false);
   const { toast } = useToast();
-  
+  const queryClient = useQueryClient();
+
+  /**
+   * Retire the DERIVED plan roster after a write that changed it (QA F5).
+   *
+   * The roster is computed server-side from `event_invites` (`plan-guest-roster.service.ts`), so
+   * creating or deleting an invite here changes the answer both `/plans/:tripId/guests` and the
+   * slip's totals render off the SAME query key. One place, both write paths — a second copy of
+   * this decision is the drift class CLAUDE.md §18 rule 1 names.
+   *
+   * Best-effort: a failed invalidation is a stale cache, never a failed write.
+   */
+  function invalidatePlanGuestRoster() {
+    if (!tripId) return;
+    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/guests`] });
+  }
+
   // Guest form state
   const [guests, setGuests] = useState<Guest[]>([{ email: '', name: '', phone: '' }]);
   
@@ -158,6 +193,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
       setGuests([{ email: '', name: '', phone: '' }]);
       fetchInvites();
       fetchStats();
+      invalidatePlanGuestRoster();
       
     } catch (error: any) {
       toast({
@@ -292,6 +328,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
       
       fetchInvites();
       fetchStats();
+      invalidatePlanGuestRoster();
     } catch (error) {
       toast({
         title: "Error",
@@ -326,6 +363,14 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
 
   const unsentCount = invites.filter((i) => !i.inviteSentAt).length;
 
+  /**
+   * The event caption, composed by the ONE derivation that owns it (QA F3,
+   * `@/lib/guest-invite-meta`, pinned under three timezones). It parses the date-only
+   * `event_date` as a LOCAL calendar day rather than the UTC midnight `new Date()` gives it, and
+   * omits any part that was never stated (§13) instead of printing "Invalid Date".
+   */
+  const eventMetaLine = guestInviteMetaLine({ eventName, eventDestination, eventDate });
+
   function getRsvpBadgeColor(status: string) {
     switch (status) {
       case 'accepted': return 'bg-green-500';
@@ -341,8 +386,8 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
       <div className="flex justify-between items-start">
         <div>
           <h2 className="text-2xl font-bold">Guest Invites</h2>
-          <p className="text-muted-foreground">
-            {eventName} • {eventDestination} • {new Date(eventDate).toLocaleDateString()}
+          <p className="text-muted-foreground" data-testid="invite-modal-event-meta">
+            {eventMetaLine}
           </p>
           {/* The container noun comes from plan-vocabulary — never "trip", which is only one of
               the things a traveler plans here. */}

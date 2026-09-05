@@ -85,3 +85,44 @@ export function partyTotal(
   if (a === undefined && k === undefined) return undefined;
   return (a ?? 0) + (k ?? 0);
 }
+
+/**
+ * THE PLANCARD'S PARTY COUNT — which of the plan's two party facts the card renders, in order
+ * (QA F4; ledger `2026-09-05-slip-events-first-render` D3, which recorded this half as
+ * "RECORDED, NOT FIXED").
+ *
+ * THE DEFECT THIS CLOSES. `trips` carries the party TWICE: the pair the traveler answered
+ * (`adults`/`kids`, written by step 4 through `PATCH /api/trips/:tripId/occasion`) and the
+ * DERIVED total (`number_of_travelers`). D3 made both write rails derive the total, but that
+ * says nothing about the rows already on disk: a plan minted before it landed can hold
+ * `adults = 2, kids = NULL, number_of_travelers = NULL`, and the plancard assembler read
+ * `trip.numberOfTravelers || 1` — so the slip header said "1 traveler" beside a Trip Strip chip
+ * and a step 4 that both said "2". The stated answer was sitting in the row the whole time.
+ *
+ * SO THE PAIR WINS. The pair is what the traveler actually answered; the total is a derivation
+ * OF it. Reading the derivation first means a stale or unwritten total can outrank the answer it
+ * was derived from — which is exactly the shape of the bug. `partyTotal` is the ONE derivation
+ * (§18 rule 1) and this delegates to it rather than re-adding the two numbers here.
+ *
+ * §13 — THE HELD FALLBACK IS LEFT EXACTLY AS FOUND, AND IS NOT THIS FUNCTION'S OPINION. When
+ * NEITHER the pair NOR the total states anything, the party is genuinely uncaptured and the
+ * caller passes the `fallback` it has always used. Migration 241 de-masked these columns so NULL
+ * would stay NULL, and rendering an uncaptured party as "1 traveler" is that mask one layer up —
+ * a real, contained defect, recorded by D3 and still open. It is deliberately NOT fixed here:
+ * how a fully-uncaptured party renders is a held decision, and changing it in passing would
+ * decide it silently. The ladder is written down here so that when the decision is made there is
+ * exactly ONE line to change.
+ */
+export function plancardPartyCount(
+  adults: string | number | undefined | null,
+  kids: string | number | undefined | null,
+  numberOfTravelers: string | number | undefined | null,
+  fallback: number,
+): number {
+  const stated = partyTotal(adults, kids);
+  if (stated !== undefined) return stated;
+  // `travelersForSave` reads every spelling of "not stated" — NULL, "", 0, negative, non-numeric —
+  // as `undefined`, so the stored total gets the same honesty test the pair does, and the caller's
+  // held fallback is reached in exactly the cases `|| fallback` reached it in before.
+  return travelersForSave(numberOfTravelers) ?? fallback;
+}

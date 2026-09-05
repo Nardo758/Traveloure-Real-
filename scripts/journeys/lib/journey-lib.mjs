@@ -56,9 +56,18 @@ export function resolveConfig(overrides = {}) {
   return { BASE_URL, DB_URL, OUT_DIR, HEADED, SKIP_EXTERNAL, PASSWORD };
 }
 
-export const CHROMIUM_EXECUTABLE =
-  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
-  "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+// Chromium resolution order (learned Sep 5 2026, Replit J3 re-run): the /opt/pw-browsers
+// binary EXISTS on Replit but is not launchable there (host lacks libglib) — and because
+// it exists, it shadows the fallback. The Replit-provisioned wrapper at /repl/tools/bin/
+// chromium IS launchable on that host, so it outranks the /opt path. Env var always wins;
+// when nothing resolves, launchBrowser passes executablePath: undefined and Playwright's
+// own bundled Chromium is used (the Windows dev machine path).
+const CHROMIUM_CANDIDATES = [
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  "/repl/tools/bin/chromium",
+  "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+].filter(Boolean);
+export const CHROMIUM_EXECUTABLE = CHROMIUM_CANDIDATES.find((p) => fs.existsSync(p));
 
 export function bootRecipe({ baseUrl, dbUrl, journeyFile, journeyLabel = "" }) {
   return `
@@ -270,7 +279,9 @@ export async function deleteItemsNotIn(pg, tripId, keepIds) {
 export async function launchBrowser({ headed = false } = {}) {
   return chromium.launch({
     headless: !headed,
-    executablePath: fs.existsSync(CHROMIUM_EXECUTABLE) ? CHROMIUM_EXECUTABLE : undefined,
+    // CHROMIUM_EXECUTABLE is pre-resolved (existsSync-filtered) at module load;
+    // undefined here means "use Playwright's bundled Chromium".
+    executablePath: CHROMIUM_EXECUTABLE,
     args: ["--no-sandbox"],
   });
 }

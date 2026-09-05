@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Check, ImageIcon, Loader2, Search, Send, X } from "lucide-react";
 import { READY_MADE_PLAN_TYPES, isCustomPlanType } from "@shared/ready-made-plan-types";
+import { trackEvent } from "@/lib/analytics";
 
 // Same neutral scale as the workspace right rail this panel is rendered inside
 // (client/src/pages/expert/workspace.tsx) so it doesn't read as a foreign element. The primary
@@ -230,6 +231,10 @@ export default function ReadyMadeListingPanel({
       return body as { listing: ReadyMadeListing };
     },
     onSuccess: () => {
+      trackEvent("listing_submitted", {
+        listing_type: "ready_made",
+        surface: "expert_ready_made_panel",
+      });
       qc.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
       toast({ title: "Submitted for review", description: "It goes live in the store once an admin approves it." });
     },
