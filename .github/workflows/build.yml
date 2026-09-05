@@ -310,6 +310,13 @@ jobs:
       # governs. This pins that each reader falls back to the plain-plan shape in the SAFE
       # direction, that default_guests:false beats the vocabulary column, and that the reverse
       # event-type lookup returns a row only on a UNIQUE match instead of guessing.
+      # 2026-09-05-slip-switch-reads-events-first (Locked Decision 42 D1) adds R7/R7b/A1-A5: the
+      # event-type lookup is many-to-one, so most occasions were unresolvable from a trip and their
+      # slips silently wore the plain-trip shape. The plan's own events name the occasion by ID, so
+      # resolution tries that FIRST — and R7 pins the refusals that keep it exact (disagreement, a
+      # missing id, an unmatched id and no events all fall THROUGH, never to a majority or a
+      # nearest), while A1-A5 pin the wiring, because a slip reading `trips.event_type` for a shape
+      # decision is the defect itself.
       - name: Occasion switch readers pin
         run: npx tsx --test client/src/lib/__tests__/occasion-switch-readers.test.ts
       # 2026-09-04-location-mismatch: the add-to-plan confirm is an HONESTY surface — it measures

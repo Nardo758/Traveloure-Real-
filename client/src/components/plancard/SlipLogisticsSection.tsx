@@ -48,10 +48,29 @@ import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { SlipTravelingParty } from "./SlipTravelingParty";
 import { SlipOrganizeEvents } from "./SlipOrganizeEvents";
 import { canOrganizeIntoEvents } from "@/lib/organize-events";
+import { guestListSetting } from "@/lib/occasion-switches";
 import { countPlanEvents, type PlanEvent } from "@/lib/slip-events";
 import type { UserExperience } from "@shared/schema";
 
-const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
+/**
+ * THE PRE-SWITCH GUEST TEST, KEPT ONLY AS THE UNRESOLVED-OCCASION FALLBACK (ledger
+ * `2026-09-05-slip-switch-reads-events-first`; Locked Decision 42 D1, Locked Decision 28).
+ *
+ * The question "does this plan have a guest list at all?" is the occasion's OWN answer —
+ * `experience_types.default_guests`, read through `guestListSetting`. This hand-typed set of
+ * `trips.event_type` values is what the slip used before that column had a reader, and it is now
+ * reached ONLY when the occasion does not resolve at all (`guestListSetting` ⇒ `null`).
+ *
+ * §13 — it survives because `null` is NOT a ruling. Dropping the set outright would delete the
+ * guest surface from every birthday/corporate plan whose event type names two occasions and which
+ * has no event to resolve from, and defaulting the other way would grow a guest list on every
+ * plain vacation. Keeping today's answer for exactly the undecided case is the only direction that
+ * neither invents nor removes. It shrinks to nothing as plans gain events, and it is deletable the
+ * day `trips` carries its own `experience_type_id`.
+ */
+const LEGACY_EVENT_TYPE_GUEST_FALLBACK = new Set([
+  "wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate",
+]);
 
 /**
  * THE SLIP'S GUEST TOTALS (re-audit A20, ledger `2026-09-04-reaudit-fixes`).
@@ -146,7 +165,15 @@ export function SlipLogisticsSection({
    * NULL, resolves to NOT hidden — the pre-switch behaviour, unchanged. Nothing disappears
    * because a row was never given a value.
    */
-  const { occasion, isHidden } = useOccasionSwitches(tripId);
+  /**
+   * THE OCCASION, RESOLVED FROM THE PLAN'S OWN EVENTS FIRST (ledger
+   * `2026-09-05-slip-switch-reads-events-first`). `planEvents` is the same hand-down the header
+   * counts, so this costs no fetch: when every event names the same `experienceTypeId` that row IS
+   * the occasion, exactly, and the many-to-one event-type lookup is only the fallback. This is why
+   * a milestone birthday, a corporate retreat or a golf trip now reaches its own switches at all —
+   * their event types each name two occasions, so attempt 2 has always honestly refused them.
+   */
+  const { occasion, isHidden } = useOccasionSwitches(tripId, planEvents);
   /**
    * HOW MANY EVENTS THIS PLAN HAS — ONE SOURCE, AND IT IS THE PLANCARD'S OWN `events` ARRAY
    * (ledger `2026-09-05-slip-events-first-render`; §18 rule 1).
@@ -171,8 +198,34 @@ export function SlipLogisticsSection({
    * excluded for the same reason Guests is — the proposal case must not grow a schedule surface.
    */
   const canOrganize = !isHidden && !!occasion && canOrganizeIntoEvents(occasion, eventCount);
+  /**
+   * DOES THIS PLAN HAVE A GUEST LIST? — `default_guests`, read as the TRI-STATE it is
+   * (`guestListSetting`, the ONE reader; §18 rule 1). The three answers are three different
+   * instructions and are kept apart here:
+   *
+   *   true  ⇒ the occasion has guests. Show the surface.
+   *   false ⇒ the occasion deliberately has none (a honeymoon, a date night, a golf trip). Show
+   *           nothing — and note this is a RULING, so it is not second-guessed by the event type.
+   *   null  ⇒ nobody decided, or the occasion did not resolve. Keep today's answer verbatim
+   *           (`LEGACY_EVENT_TYPE_GUEST_FALLBACK` above) — §13: an absent ruling is not a ruling.
+   *
+   * The `linkedExperience` clause is unchanged and leads, so a plan that ALREADY has an event with
+   * invites never loses the surface those invites live on, whatever the occasion says.
+   */
+  const guestSetting = guestListSetting(occasion);
   const isEventTrip =
-    !isHidden && (!!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase()));
+    !isHidden &&
+    (!!linkedExperience ||
+      guestSetting === true ||
+      (guestSetting === null &&
+        LEGACY_EVENT_TYPE_GUEST_FALLBACK.has((trip?.eventType || "").toLowerCase())));
+
+  /**
+   * WHICH occasion's schedule-template presets to offer, or `null` for none. See the comment at
+   * the mount below; kept here so the JSX reads as one condition rather than two nested falls.
+   */
+  const anchorTemplateSlug =
+    occasion?.slug || ((trip?.eventType || "").toLowerCase() === "wedding" ? "wedding" : null);
 
   const createGuestListMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/user-experiences", {
@@ -208,10 +261,26 @@ export function SlipLogisticsSection({
             <EnergyBudgetDisplay tripId={tripId} />
           </div>
           <AnchorSuggestionsPanel tripId={tripId} />
-          {(trip?.eventType || "").toLowerCase() === "wedding" && (
+          {/*
+            THE SCHEDULE-TEMPLATE OFFER IS THE OCCASION'S OWN, NOT THE WEDDING'S (ledger
+            `2026-09-05-slip-switch-reads-events-first`). This was `trip.eventType === "wedding"`
+            with the wedding slug hardcoded into the mount, so a proposal, a corporate retreat, a golf
+            trip and every other occasion the server ALREADY holds anchor presets for
+            (`logistics-presets.service.ts` keys them by occasion slug) could not reach them, and a
+            wedding could only ever be offered the wedding set.
+
+            Now the resolved occasion's own slug is passed, and the component asks the server for
+            that slug's presets. §13 in two places: an occasion that does not resolve falls back to
+            today's exact behaviour — the event type must literally be "wedding" and it gets the
+            wedding slug — and a slug the server holds NO presets for renders nothing at all
+            (`GET /api/logistics/presets/:slug` answers with an empty anchor list and the component
+            returns null), rather than a nearest-looking template wearing this occasion's name.
+          */}
+          {anchorTemplateSlug && (
             <WeddingAnchorPresets
               tripId={tripId}
-              templateSlug="wedding"
+              templateSlug={anchorTemplateSlug}
+              occasionLabel={occasion?.name || undefined}
               /* F-1: startDate is already a "YYYY-MM-DD" DATE value — round-tripping it
                  through `new Date().toISOString()` re-reads it as UTC midnight and can slice
                  back the PREVIOUS day. calendarDateToIso keeps the calendar day it was given. */
