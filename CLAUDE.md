@@ -785,6 +785,24 @@ an **allowlist projection** over the response (`VENDOR_DIRECTORY_FIELDS` + the e
 the second layer, so a column added later is not published by default. An admin-only FILTER belongs on an
 `/api/admin/*` path under §2's blanket guard — **never** as an allowlist entry in the guard script, because an
 allowlisted route is invisible to that predicate forever, including for a later regression on the same route.
+**THIRD INSTANCE, AND THE RULE IT SETTLES: A DENYLIST IS NOT A PROJECTION (ledger
+`2026-09-05-experts-public-projection`).** The three PUBLIC expert routes — `GET /api/experts`,
+`/api/experts/counts`, `/api/experts/:id`, none authenticated — served the whole `users` row and the whole
+`local_expert_forms` row, because `storage.getExpertsWithProfiles` spread the raw rows and then DELETED
+three names (`password`, `instagramAccessToken`, `instagramUserId`). Three names over a thirty-six-column
+table publishes everything nobody thought of: `email`, `homeCity`, every `stripe*` column,
+`commissionOverrideExpertSharePercent` (a §18 RATE), `suspensionReason`, plus — under `expertForm` — the
+applicant's identity documents (`govId`, `travelLicence`), the payout/fee family and the admin review
+internals. **So the required shape for a user-row response is the same ALLOWLIST the vendors lane landed,
+and the allowlist must be MECHANICALLY TRUE:** the projector derives the table's column set from the schema
+(`getTableColumns`) rather than restating it, so "a column the allowlist does not name" is COMPUTED. A
+hand-copied denylist — or a hand-copied allowlist that must be edited to stay correct — is the §19 failure
+one layer out: nobody edits a list for a column that did not exist when it was written. Two layers as ever
+(storage projects, the route projects again with the SAME idempotent projector, §18 rule 1), and §13 holds
+on the absences: a null nested row stays `null` and never becomes `{}`, and an unbounded jsonb column is
+narrowed to the one key a page reads and OMITTED when that key has no real value. **No grep guard covers
+this class** — a projection defect lives in a storage SELECT and a spread, which no scan over route files
+can see (§18d); the committed test is the layer.
 **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
 `/checkout` dup-bookings — see §15); marketplace Phase B surfacing.

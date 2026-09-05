@@ -46,6 +46,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setu
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { projectVendorForDirectory } from "./utils/vendor-read-scope";
+import { toPublicExpert, toPublicExperts } from "./utils/expert-read-scope";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -4521,6 +4522,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         counts[r]++;
       }
     }
+    // No projector call here on purpose: this route publishes COUNTS, never a row. Its filters
+    // read `expertForm.destinations/city/country/neighborhoods`, all of which
+    // `EXPERT_FORM_PUBLIC_FIELDS` keeps, so layer 1's projection does not change what it counts
+    // (ledger `2026-09-05-experts-public-projection`).
     res.json(counts);
   });
 
@@ -4653,7 +4658,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Non-fatal: experts list still returns without counts.
     }
 
-    res.json(filtered);
+    // SECOND LAYER (ledger `2026-09-05-experts-public-projection`). `storage.getExpertsWithProfiles`
+    // already projected every row; this re-applies the SAME projector — §18's "so every caller is
+    // covered" placement — because the block above rebuilds each row with `...e` while attaching
+    // storefront metrics, and a spread is exactly how a stripped column comes back. `toPublicExpert`
+    // is idempotent, so on an already-clean row this changes nothing.
+    res.json(toPublicExperts(filtered as any[]));
   });
 
   // Get a single expert with profile by ID (public)
@@ -4683,7 +4693,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("Error attaching expert rating:", err);
     }
-    res.json(expert);
+    // SECOND LAYER — same projector as the list route and as storage (ledger
+    // `2026-09-05-experts-public-projection`). This route `res.json`d the row verbatim, so it was
+    // the widest of the three: the whole `users` row plus the whole `local_expert_forms` row for
+    // any id, with no session.
+    res.json(toPublicExpert(expert));
   });
 
   // Get services offered by a specific expert (public)

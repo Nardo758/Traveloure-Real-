@@ -2727,6 +2727,96 @@ export const VENDOR_DIRECTORY_FIELDS = [
 export type VendorDirectoryRow = Pick<Vendor, (typeof VENDOR_DIRECTORY_FIELDS)[number]> & {
   createdBy?: VendorCreator | null;
 };
+
+/**
+ * Ledger `2026-09-05-experts-public-projection`. The ALLOWLIST of `users` columns the PUBLIC
+ * expert surfaces publish — `GET /api/experts`, `GET /api/experts/counts` and
+ * `GET /api/experts/:id`, all three unauthenticated. An allowlist, not a denylist, so a column
+ * added to `users` later is NOT published by default (§19's posture applied to a response
+ * projection, the same shape `VENDOR_DIRECTORY_FIELDS` above takes).
+ *
+ * WHAT THIS REPLACES. `storage.getExpertsWithProfiles` spread the ENTIRE `users` row into its
+ * result and removed three names from it (`password`, `instagramAccessToken`, `instagramUserId`).
+ * A three-name denylist over a thirty-six-column table published everything else: `email`,
+ * `notificationEmail`, `homeCity`, `stripeCustomerId`, `stripeAccountId`, `stripeAccountStatus`,
+ * `canReceivePayments`, `commissionOverrideExpertSharePercent` (a §18 RATE), `suspensionReason`,
+ * `isDeleted`/`isSuspended` and their timestamps, `preferences`, `emailVerified`, `authProvider`,
+ * the terms/privacy acceptance stamps and the vacation columns — for every expert-role account,
+ * to anyone, with no session. That is the third instance of the read-projection class
+ * (`2026-09-05-custom-venues-owner-scope`, `2026-09-05-vendors-read-scope`).
+ *
+ * `id` is kept deliberately, and it is the ONE entry here that is known-not-final. Locked Decision
+ * 40 (`2026-09-05-user-id-is-internal`) rules `users.id` INTERNAL and an earner's public identity
+ * the HANDLE; stripping it from public projections is that ruling's **lane 2**, which also brings
+ * the guard that keeps it stripped. Removing it in THIS lane would break every expert card link
+ * (`/experts/:id`) and the chat/hire handoffs that key on it, with no handle-based replacement
+ * built — so it stays, named as lane 2's to remove, rather than being quietly treated as settled.
+ *
+ * `preferences` is deliberately ABSENT even though `expert-detail.tsx` reads
+ * `expert.preferences.storefront.coverImageUrl`: the column is unbounded jsonb, so the projector
+ * re-attaches that ONE key narrowed (see `server/utils/expert-read-scope.ts`) rather than
+ * publishing the blob — the same thing `buildStorefront` already does for `/s/:handle`.
+ */
+export const EXPERT_PUBLIC_FIELDS = [
+  "id",
+  "firstName",
+  "lastName",
+  "profileImageUrl",
+  "role",
+  "bio",
+  "specialties",
+  "handle",
+  "createdAt",
+] as const;
+
+/**
+ * Ledger `2026-09-05-experts-public-projection`. The ALLOWLIST of `local_expert_forms` columns the
+ * same three public routes publish as the nested `expertForm` object.
+ *
+ * The full row went out with the users row. It carries the application's own intake PII (`email`,
+ * `phone`), the applicant's IDENTITY DOCUMENTS (`govId`, `travelLicence` — file URLs), the whole
+ * payout/fee family (`stripeAccountId`, `stripeAccountStatus`, `totalEarnings`, `pendingPayout`,
+ * `feeSettings`, `payoutSchedule`, `bookingFeeType`/`bookingFeePercentage`/`bookingFeeFixed`/
+ * `bookingFeeHourly`/`minBookingFee`), the admin-only review internals (`knowledgeScore`,
+ * `knowledgeProofAnswers`, `rejectionMessage`, `identityVerificationSessionId`, `referralCode`,
+ * `paAccessGrantedBy`) and the handoff counters. `EXPERT_APPLICATION_PUBLIC_FIELDS` in
+ * `server/utils/data-sanitizer.ts` already names most of that family as admin/financial internals
+ * for the applicant's OWN echo; none of it belongs on an anonymous browse response.
+ *
+ * This list is narrower than that one, because that echo goes back to the applicant and this goes
+ * to the public: the intake identity fields (`email`, `phone`, `firstName`, `lastName`,
+ * `offeringTypeKey`) and the lifecycle state (`status`, `createdAt`) are absent here. The gate that
+ * needs `status` — "a `local_expert` without an approved form appears nowhere" — runs on the raw
+ * row BEFORE this projection, so nothing depends on publishing it.
+ *
+ * Every name below is read by a shipped consumer: the two server-side browse filters
+ * (`destinations`/`city`/`country`/`neighborhoods`), `expert-card`/`expert-match-card`/
+ * `expert-detail`/`city-feed-card-expert`/`ExpertsScroll`/`chat`/`experts.tsx` and
+ * `client/src/lib/expert-search.ts`.
+ */
+export const EXPERT_FORM_PUBLIC_FIELDS = [
+  "expertType",
+  "displayName",
+  "headline",
+  "city",
+  "country",
+  "destinations",
+  "specialties",
+  "languages",
+  "experienceTypes",
+  "specializations",
+  "selectedServices",
+  "neighborhoods",
+  "localityProof",
+  "localSpecialties",
+  "yearsOfExperience",
+  "bio",
+  "certifications",
+  "responseTime",
+  // The "ID Verified" badge on /experts and /experts/:id. The STATUS string only — the
+  // `identityVerificationSessionId` that produced it stays server-side.
+  "identityVerificationStatus",
+] as const;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;

@@ -208,6 +208,39 @@ test.describe("T7 — Sensitive data: password not in /api/experts", () => {
     }
   });
 
+  // Ledger `2026-09-05-experts-public-projection`. The two assertions above named the two fields
+  // the server's own three-name DENYLIST happened to strip — so they went green for the whole life
+  // of a route that also served `email`, `homeCity`, every `stripe*` column,
+  // `commissionOverrideExpertSharePercent` (a §18 rate) and the applicant's `govId`/`travelLicence`
+  // under `expertForm`. Asserting the names a fix already covers is how the next column ships
+  // unnoticed, so this asserts the CLASS: the response carries only allowlisted `users` columns.
+  test("no account, payout or rate-bearing column reaches an anonymous caller", async ({ page }) => {
+    const resp = await page.request.get(`${BASE}/api/experts`);
+    expect(resp.status()).toBe(200);
+    const experts: any[] = await resp.json();
+    const forbidden = [
+      "email", "password", "notificationEmail", "homeCity", "preferredCurrency",
+      "stripeCustomerId", "stripeAccountId", "stripeAccountStatus", "canReceivePayments",
+      "commissionOverrideExpertSharePercent", "suspensionReason", "isDeleted", "isSuspended",
+      "emailVerified", "authProvider", "instagramAccessToken", "instagramUserId",
+    ];
+    const forbiddenOnForm = [
+      "email", "phone", "govId", "travelLicence", "totalEarnings", "pendingPayout",
+      "feeSettings", "payoutSchedule", "stripeAccountId", "knowledgeScore", "referralCode",
+      "identityVerificationSessionId", "bookingFeePercentage",
+    ];
+    for (const expert of experts) {
+      for (const key of forbidden) {
+        expect(key in expert, `users.${key} must not be published`).toBe(false);
+      }
+      if (expert.expertForm) {
+        for (const key of forbiddenOnForm) {
+          expect(key in expert.expertForm, `expertForm.${key} must not be published`).toBe(false);
+        }
+      }
+    }
+  });
+
   test("no internal server paths in error responses", async ({ page }) => {
     const resp = await page.request.get(`${BASE}/api/admin/users/9999999`);
     const body = await resp.text();
