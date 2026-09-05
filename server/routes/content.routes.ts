@@ -6883,6 +6883,45 @@ export const tripParticipantPatchSchema = insertTripParticipantSchema
   })
   .partial();
 
+/**
+ * §19 ALLOWLIST for POST /api/trips/:tripId/participants (ledger `2026-09-04-plan-islands`).
+ *
+ * The live CREATE rail (the `server/routes.ts` copy, which registers first and SHADOWS the
+ * `trips.routes.ts` twin) parsed `insertTripParticipantSchema.omit({ userId: true })` — a
+ * DENYLIST. That closed the one hole its author knew about (`userId`, the L20 authorization
+ * grant) and left every other column reachable, money included: `amountOwed`, `amountPaid`,
+ * `paymentStatus`, `paymentMethod`. §19 states why a denylist is the wrong shape here — "a
+ * privileged column is client-settable BY DEFAULT under a denylist schema, and nobody edits an
+ * omit list for a column that did not exist when it was written" — and the traveling-party UI
+ * this lane adds is the first screen that writes this rail at all, so it lands on the allowlist.
+ *
+ * IT IS DERIVED FROM THE PATCH ALLOWLIST, NOT RESTATED BESIDE IT. A second literal field list
+ * would be the derivation-drift class §18 rule 1 names: the day a field moves lanes, create and
+ * update would start disagreeing about who may set it. So the shared body is exactly
+ * `tripParticipantPatchSchema` (its `.pick()` + the two route-boundary date coercions), and this
+ * schema adds only the two things a CREATE needs and an UPDATE does not:
+ *
+ *   - `name` — NOT NULL on the row and the only thing a participant must have. Its constraint
+ *     comes from `insertTripParticipantSchema.shape.name` (the Drizzle contract), never a
+ *     re-stated `z.string().max(200)`, which would be a second authority for the column.
+ *   - `tripId` — linkage. It is in the schema so the parse can carry it, but the route STAMPS it
+ *     from `req.params` AFTER spreading the body, so a body value can never win (§14). The trip
+ *     is separately ownership-checked before the parse.
+ *
+ * Everything the patch allowlist deliberately refuses is refused here for the same reasons, and
+ * the money columns are the ones that matter most on a birth rail: `amountOwed`/`amountPaid`/
+ * `paymentStatus` are DERIVED by `POST /api/participants/:id/payment` from the stored row, and a
+ * participant who is born already owing $0 — or already "paid" — contradicts that derivation
+ * before any payment rail ever runs. `status`/`invitedAt` stay server-stamped
+ * (`createParticipant` writes `invitedAt`; the column default supplies `invited`).
+ *
+ * Exported so the negative test asserts against the REAL artifact, not a copy of it.
+ */
+export const tripParticipantCreateSchema = tripParticipantPatchSchema.extend({
+  name: insertTripParticipantSchema.shape.name,
+  tripId: insertTripParticipantSchema.shape.tripId,
+});
+
 router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;

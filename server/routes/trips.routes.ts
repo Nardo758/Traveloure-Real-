@@ -928,6 +928,20 @@ router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHand
   }));
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/participants in routes.ts, which registers first). ANNOTATED, not
+// duplicated — the migration-275 precedent, and the same disposition the bulk-invite and
+// contract-create twins below already carry.
+//
+// The LIVE copy admits its body through `tripParticipantCreateSchema`, the §19 pick-based
+// allowlist derived from the PATCH rail's own allowlist (ledger `2026-09-04-plan-islands`,
+// declared beside it in content.routes.ts). This copy still parses the bare DENYLIST
+// `insertTripParticipantSchema`, which is strictly WORSE than what the live rail carried before
+// that change — it does not even strip `userId`, the L20 authorization grant. It is left as-is
+// deliberately: importing the allowlist from a sibling router to fix a handler that can never
+// receive a request would add a module edge for no runtime effect, and copying the field list
+// here is exactly the second-author drift §18 rule 1 names. If mount order ever changes, this
+// handler must adopt `tripParticipantCreateSchema` BEFORE it goes live, not after.
 router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;

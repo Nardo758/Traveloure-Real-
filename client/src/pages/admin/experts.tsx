@@ -27,6 +27,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
+import { emojiForLocalSpecialty, labelForLocalSpecialty } from "@shared/expert-vocabulary";
 
 interface ExpertApplication {
   id: string;
@@ -453,6 +454,26 @@ export default function AdminExperts() {
                         <Badge variant="secondary" className="text-xs ml-1">
                           {{ born_raised: "Born & raised", long_term_10yr: "Long-term resident (10+ yrs)", resident_5yr: "Resident (5+ yrs)", current_resident: "Current resident" }[app.localityProof] ?? app.localityProof}
                         </Badge>
+                      </div>
+                    )}
+
+                    {/* Gap 7 (ledger `2026-09-04-earn-contained-fixes`): `localSpecialties` was
+                        already DECLARED on this interface and rendered by nothing — the review
+                        queue could not see an answer the wizard REQUIRES. Labels come from the
+                        one shared map; an unknown slug renders as-is. */}
+                    {app.expertType === "local_expert" && (app.localSpecialties ?? []).length > 0 && (
+                      <div className="text-sm" data-testid={`local-specialties-${app.id}`}>
+                        <span className="text-gray-500 font-medium">Local specialties: </span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(app.localSpecialties ?? []).map((spec, i) => {
+                            const emoji = emojiForLocalSpecialty(spec);
+                            return (
+                              <Badge key={i} variant="outline" className="text-xs">
+                                {emoji ? `${emoji} ` : ""}{labelForLocalSpecialty(spec)}
+                              </Badge>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 

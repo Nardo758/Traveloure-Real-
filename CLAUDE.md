@@ -577,6 +577,13 @@ This document captures architectural decisions to maintain consistency across co
     `user_experiences` has no time-of-day column. Surface: `client/src/pages/plan-guests.tsx` at
     `/plans/:tripId/guests`; per-event invites keep their ONE writer (`GuestInviteManager`), and a
     `default_visibility: hidden` occasion has no guest surface at all (ruling 28, `SlipProposal`).
+    **The TRAVELING PARTY now has its own surface (ledger `2026-09-04-plan-islands`):**
+    `SlipTravelingParty`, a section on the slip beside "Guests & invites" that adds / edits /
+    removes a `trip_participants` row (name, role, arrival, departure, accessibility needs,
+    mobility level — never a money column, §14) through the EXISTING owner-gated participant
+    routes, hidden under a `default_visibility: hidden` occasion exactly as Guests is; it says on
+    screen that it answers "who is traveling" while the derived roster answers "who is invited",
+    and the two are **still never merged**.
 
 38. **STEP 4 ASKS A SECOND QUESTION, AND THE OCCASION'S OWN SWITCHES CHOOSE IT (decision-maker
     delegated Sep 4, 2026 — ledger `2026-09-04-step4-variants-fields`; migration 284).** Ruling 33
