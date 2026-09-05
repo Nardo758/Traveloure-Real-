@@ -2752,13 +2752,28 @@ export type VendorDirectoryRow = Pick<Vendor, (typeof VENDOR_DIRECTORY_FIELDS)[n
  * (`/experts/:id`) and the chat/hire handoffs that key on it, with no handle-based replacement
  * built — so it stays, named as lane 2's to remove, rather than being quietly treated as settled.
  *
+ * LANE 2 LANDED AND THIS ENTRY SURVIVED IT, as a NAMED, PRINTED debt rather than a silent one.
+ * Lane 2 removed the id from the storefront, the provider directory, the public service detail and
+ * the public service browse, and added `scripts/check-public-user-id.cjs` to keep them removed.
+ * This one entry is exempted there with `public-user-id-ok`, which means the guard PRINTS it on
+ * every run, pass or fail. It cannot be removed until three id-addressed rails have handle-shaped
+ * replacements, none of which is a projection change:
+ *   • the HIRE rail — `POST /api/trips/:tripId/advisors` takes a client-supplied `localExpertId`
+ *     and answers with `expertUserId` (`HireExpertDialog`);
+ *   • `chat.tsx`'s counterpart-name resolution, which matches a thread's user id against this list;
+ *   • the READY-MADE cross-sell on `/experts`, which joins `ready_made_trips.authorId` to this id
+ *     (that feed's `authorId` carries the same exemption for the same reason).
+ * And one product fact underneath all three: `/experts/:id` is today the ONLY public profile an
+ * earner who has claimed NO handle has. Removing the id without giving those earners a handle would
+ * not degrade honestly, it would delete them from the site.
+ *
  * `preferences` is deliberately ABSENT even though `expert-detail.tsx` reads
  * `expert.preferences.storefront.coverImageUrl`: the column is unbounded jsonb, so the projector
  * re-attaches that ONE key narrowed (see `server/utils/expert-read-scope.ts`) rather than
  * publishing the blob — the same thing `buildStorefront` already does for `/s/:handle`.
  */
 export const EXPERT_PUBLIC_FIELDS = [
-  "id",
+  "id", // public-user-id-ok: LD 40 lane-2 debt (see above) — hire rail, chat name resolution and the ready-made cross-sell are still id-addressed; a handle-less earner has no other public profile.
   "firstName",
   "lastName",
   "profileImageUrl",

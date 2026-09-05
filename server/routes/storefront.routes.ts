@@ -752,22 +752,21 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
 
   return {
     earner: {
-      // ⚠️ REVERSED by CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`,
-      // ratified Sep 5, 2026). This field previously carried the comment "Not sensitive — user
-      // ids are already public on /experts/:id and similar surfaces". THAT IS NOW WRONG, and the
-      // reasoning was circular: it justified publishing an internal id here on the grounds that
-      // other surfaces publish it too.
-      //
-      // `users.id` is INTERNAL. An earner's PUBLIC identity is `handle` (below), which is what
+      // NO `id`. CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`), lane 2:
+      // `users.id` is INTERNAL and an earner's PUBLIC identity is `handle` (below) — what
       // `/s/:handle` serves and what a person can be told out loud. A published id is a durable
       // cross-surface identifier for a person that they never chose and cannot rotate.
       //
-      // KEPT FOR NOW, and only for now: this is LANE 1 of that ruling (the server rails), and no
-      // client has switched yet. **Lane 2 REMOVES this field** and adds the guard that keeps it
-      // removed; lane 3 switches the clients to `handle`. The "Message" CTA's replacement already
-      // exists — `POST /api/conversations/start` with `{ handle }`, which resolves the recipient
-      // server-side and returns no user id at all. Do not add a new consumer of this field.
-      id: owner.id,
+      // The comment that stood here before lane 1 claimed the id was not sensitive BECAUSE other
+      // surfaces published it too. That reasoning is circular, it is how the field spread, and it
+      // is retracted — lane 1 rewrote it, lane 3 switched every consumer, and this lane removed
+      // the field. `owner.id` is still read INSIDE this function
+      // (the inventory queries, `resolveEarnerLocation`, `isOwnerIdentityVerified`) — internal use
+      // is the point of an internal key. It just never leaves.
+      //
+      // To open a thread with this earner: `POST /api/conversations/start` with `{ handle }`,
+      // which resolves the recipient server-side and returns no user id at all. Do not re-add an
+      // id here — `scripts/check-public-user-id.cjs` fails if you do.
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
       bio: owner.bio ?? null,
       profileImageUrl: owner.profileImageUrl ?? null,
@@ -882,8 +881,11 @@ async function loadProviderStorefrontDirectory() {
       users.profileImageUrl,
     );
 
+  // NO `id` on a directory row (LD 40 lane 2). Every row here is a provider WITH a claimed handle
+  // — the query's `isNotNull(users.handle)` makes that true by construction — so `handle` is the
+  // row's public identity AND its stable client key. `row.id` stays a local join key for
+  // `resolveEarnerLocation` below; it just never reaches the wire.
   return Promise.all(rows.map(async (row) => ({
-    id: row.id,
     name: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Traveloure provider",
     handle: row.handle,
     bio: row.bio ?? null,

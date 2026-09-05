@@ -1071,7 +1071,14 @@ router.get("/api/ready-made", async (req, res) => {
         authorName: r.authorFirstName ?? "Expert",
         // authorId: source-link fallback (2026-08-25-card-source-link) — a handle-less
         // author (no /s/ page) links to their expert profile /experts/:id; never plain text.
-        authorId: r.authorId,
+        //
+        // LD 40 lane 2 wants this gone. It is EXEMPTED, not settled: `check-public-user-id.cjs`
+        // prints it on every run. Two things must land first, and neither is a projection change —
+        // the `/experts` cross-sell shelf joins this id to `EXPERT_PUBLIC_FIELDS.id` (the same
+        // exemption, the same reason), and `/experts/:id` is the only public profile an author who
+        // has claimed no handle has. `authorHandle` below is already the preferred address.
+        authorId: r.authorId, // public-user-id-ok: LD 40 lane-2 debt — paired with EXPERT_PUBLIC_FIELDS.id; a handle-less author has no other public profile.
+
         authorHandle: r.authorHandle ?? null,
         // The consumer shelf section (ratified store model): by author TYPE.
         section: r.authorRole === "local_expert" ? "trips_by_locals" : "advisor",

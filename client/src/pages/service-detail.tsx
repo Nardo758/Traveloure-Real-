@@ -104,7 +104,14 @@ interface PricingTier {
 
 interface Service {
   id: string;
-  userId: string;
+  /**
+   * No `userId`. CLAUDE.md Locked Decision 40 lane 2: `users.id` is INTERNAL, so the public
+   * `GET /api/services/:id` payload stopped carrying the owner's. Both things this page used it
+   * for are now addressed by the LISTING instead — the verification badge
+   * (`GET /api/services/:id/provider-verification`) and the Contact CTA
+   * (`POST /api/conversations/start` with `{ serviceId }`, lane 3) — and the server resolves the
+   * owner itself in both. Do not re-add it.
+   */
   serviceName: string;
   shortDescription: string;
   description: string;
@@ -421,8 +428,10 @@ export default function ServiceDetailPage() {
   });
 
   const { data: providerVerification } = useQuery<ProviderVerification>({
-    queryKey: ["/api/providers", service?.userId, "public-verification"],
-    enabled: !!service?.userId,
+    // LD 40 lane 2: addressed by the LISTING, not by the owner's user id. The server resolves
+    // the approved listing's owner and applies the same F2 read-gate the detail read applies.
+    queryKey: ["/api/services", id, "provider-verification"],
+    enabled: !!id,
   });
 
   // The same-owner package cross-sell (`expert_templates`) RETIRED — ledger
@@ -1745,7 +1754,7 @@ export default function ServiceDetailPage() {
                       askExpert({
                         // Locked Decision 40 (lane 3): the LISTING is the address. The server
                         // resolves the approved listing's owner itself — this CTA no longer reads
-                        // `service.userId`, which lane 2 removes from the public payload.
+                        // `service.userId`, which lane 2 removed from the public payload.
                         serviceId: service.id,
                         subject: service.serviceName,
                         returnTo: `/services/${service.id}`,

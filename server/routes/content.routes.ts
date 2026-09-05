@@ -2299,9 +2299,20 @@ router.get("/api/services/:id", async (req, res) => {
     // provider's OWN meeting link for a scheduled remote session (call/video), revealed only to
     // a CONFIRMED traveler + the owning provider (see GET /api/service-bookings), never on this
     // public pre-purchase read (§12's PENDING-advisor read grant does not extend to it either).
+    // `userId` joins the strip — CLAUDE.md Locked Decision 40 lane 2 (ledger
+    // `2026-09-05-user-id-is-internal`). This is an UNAUTHENTICATED detail read, and the owner's
+    // `users.id` rode it on every product shape via the `...service` spread below. An earner's
+    // public identity is their HANDLE; the one thing this page needed the id for — the provider
+    // verification badge — now has a SERVICE-addressed route (`GET /api/services/:id/
+    // provider-verification`, routes.ts) that resolves the owner server-side, so nothing on the
+    // wire has to name them by row id. Contact is likewise `POST /api/conversations/start` with
+    // `{ serviceId }` (lane 3). The OWNER id is still needed INSIDE this handler — read it from
+    // `rawService` below, never from `service`.
+    const ownerUserId = rawService.userId;
     const service = omitFields(rawService, [
       "serviceFile",
       "revenueShareRate",
+      "userId",
       "reviewedBy",
       "rejectionReason",
       "formStatus",
@@ -2320,7 +2331,7 @@ router.get("/api/services/:id", async (req, res) => {
     const [owner] = await db
       .select({ vacationUntil: users.vacationUntil, vacationMessage: users.vacationMessage })
       .from(users)
-      .where(eq(users.id, service.userId))
+      .where(eq(users.id, ownerUserId))
       .limit(1);
     const away =
       owner?.vacationUntil && owner.vacationUntil.getTime() > Date.now()
@@ -2381,7 +2392,7 @@ router.get("/api/services/:id", async (req, res) => {
           .from(providerNeighborhoodCoverage)
           .innerJoin(cityNeighborhoods, eq(providerNeighborhoodCoverage.neighborhoodId, cityNeighborhoods.id))
           .where(and(
-            eq(providerNeighborhoodCoverage.providerId, service.userId),
+            eq(providerNeighborhoodCoverage.providerId, ownerUserId),
             eq(providerNeighborhoodCoverage.categoryKey, cat.categoryKey),
           ))
           .orderBy(providerNeighborhoodCoverage.sortOrder);
