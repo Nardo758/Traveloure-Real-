@@ -783,6 +783,231 @@ This document captures architectural decisions to maintain consistency across co
     contact rail at all.
 
 
+42. **THE SLIP IS THE ONE PLANNING SURFACE; SEVENTEEN RULINGS ON HOW EVERY FINISH, DOOR, MINT AND
+    EXPERT TOUCH LANDS THERE (decision-maker ratified Sep 5, 2026, evening — ledger
+    `2026-09-05-slip-one-surface-seventeen`).** **NUMBERING:** this entry is **42** and sits directly after **40** — **41** is the entry landing on PR #796 and was not yet on `main` when this was appended, so the gap is deliberate and is not a missing ruling. (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids, which are date-slugs per ruling 25.) Rulings 32, 33 and 39 each named one half of the
+    same shape: no expert touchpoint exists without a slip (32), there is ONE planning modal and
+    many doors (33), and every add surface is a view of `itinerary_items` (39). What none of them
+    said out loud is where a plan LIVES between the modal closing and the trip ending. It lives on
+    the **slip** (`/plans/:tripId`), and every finish, every door, every mint and every expert
+    touch resolves there. The seventeen rulings below are one ratification, sequenced in the build
+    order at the end; each is a ruling in its own right and none is optional polish.
+
+    **D1 — THE PLAN'S OCCASION IS A ROW REFERENCE, NOT A GUESS OFF A COARSE KEY.**
+    `trips.experience_type_id` is persisted: additive nullable, **FK → `experience_types` ON DELETE
+    SET NULL**, **NO DB CHECK** (the publish-trap posture — migrations
+    181/195/273/275/276/277/279/280/281/282/284/287), **declared in `shared/schema.ts`** per the
+    deploy-push durability rule, and **NO BACKFILL** — deriving a row id for every legacy trip out
+    of the coarse `trips.experience_type` key would turn "we never asked" into "the traveler chose
+    this occasion". It is written **ONLY** through the existing pick-based allowlist on the
+    owner-gated `PATCH /api/trips/:tripId/occasion` (the rail `adults`/`kids` and ruling 38's three
+    columns already ride — no new route, no second admission rail, §19), and the handler
+    **server-derives the id from the slug**: a client hands a slug, never a row id, so the
+    catalog stays the authority on which occasions exist.
+    **NULL = NEVER CAPTURED ⇒ every reader falls back to the current event-type lookup EXPLICITLY
+    and says so in a comment (§13)** — never a nearest-looking row presented as the plan's own
+    answer. Ruling 28's six switches, ruling 31's `roles_needed` and ruling 33's step-1 skip all
+    read this row, and all of them currently reach it through a LOSSY coarse-key lookup: five
+    frozen keys standing in for a catalog of many.
+    **CLIENT-SIDE FIRST, and the client's resolution is EXACT.** `useOccasionSwitches` resolves the
+    occasion from the plan's OWN events when they agree on one `experience_type_id` — an exact id
+    match over the `user_experiences` rows the plan already carries (ruling 29), with **no
+    guessing**: events that disagree, or that name no occasion, resolve NOTHING and the reader
+    falls through to the lossy lookup exactly as today. That half ships before the column, needs no
+    migration, and is honest on its own.
+
+    **D2 — "WHO BOOKS" IS ASKED ONCE, AT FINALIZE, AND `with_expert` ROUTING LEAVES THE PLANNING
+    VIEW.** Routing an item to an expert is a question about a PURCHASE, not about a plan's
+    contents, and asking it per item on the planning surface put a commerce decision on every row
+    of a list whose job is "what are we doing". It is asked **once at Finalize** — *book these
+    myself* / *my expert books these* — with **per-item exceptions inside Finalize** for the plan
+    where one line differs. The per-item **"Send to expert" control on the item row is REMOVED**,
+    and the **write-only `optimizationContext.routedItemIds` is DELETED (§18c: no consumer +
+    a state-bearing effect ⇒ delete, don't gate)** — it was written by the routing control and read
+    by nothing, which is precisely the shape §18c exists to refuse. Deleting it is not a
+    behaviour change to any reader, because there is no reader.
+
+    **D3 — EXPERT WORK IS PROTECTED WHERE MONEY IS PROTECTED.** An item carrying
+    `itinerary_items.expert_note` (ruling 21) or `origin='expert'` (ruling 12) is **paid human
+    work sitting in a row a machine may rewrite**. Those rows join the optimizer baseline's
+    **PROTECTED set** — `server/services/optimizer-baseline.service.ts`, **the single read-set
+    expression**: injected into the optimizer as constraints, **never emitted** as suggestions, and
+    **never deleted by apply-to-trip** — AND `itineraryItemRebuildDeletable()` **spares them**, so
+    a regenerate cannot destroy them either. **ONE CLASS ADDED TO THE EXISTING PREDICATES, NEVER A
+    SECOND PREDICATE**: a parallel "is this expert work?" test written beside the baseline's own is
+    the derivation-drift class §18 rule 1 names, and it is how one rail starts protecting a row the
+    other rail deletes. Both predicates already carry the protected-origin idea; this widens each
+    in place.
+
+    **D4 — THE OWNER MAY NOT WRITE `itinerary_items.expert_note`.** Ruling 21 made the field
+    traveler-FACING; it never made it traveler-WRITABLE, and a note labelled "from your expert" that
+    the traveler wrote themself is a false attribution on a surface whose whole value is whose
+    words those are. It is **stripped from the owner's item PATCH path** — the §19 allowlist shape,
+    the field is simply not in the owner's pick — and **only a §12 WRITE-status advisor**
+    (`accepted`/`assigned`, never `pending`) writes it, through the advisor rail that already gates
+    every other item mutation. This is §19 applied to an AUTHORSHIP field rather than a money one:
+    the class is the same — a privileged column reachable by default through a body schema nobody
+    re-read when the column was added.
+
+    **D5 — THE `local` FINISH MINTS THE SLIP.** Ruling 33 said each finish branch's downstream
+    behaviour was unchanged; **this amends that clause for the `local` branch and no other**. A
+    traveler who finishes the modal with "plan with a local" was sent to `/experts` with a
+    `?destination=` and **no trip**, which walks straight into what ruling 32 forbids: an expert
+    touchpoint with no slip behind it, whose lead surfaces to nobody. The `local` finish now
+    **MINTS the slip through the SAME `mintTripSlip` the `myself` finish uses** — one mint door,
+    one more caller (§18 rule 1) — **behind the SAME sign-in gate**, checked BEFORE anything is
+    minted, and forwards `tripId` to `/experts` so the storefront request rail ruling 32(b)
+    requires has the trip it needs. The reason is ruling 32's precondition, not a preference.
+
+    **D6 — TWO ROLE QUESTIONS, TWO CATALOGS, AND THEY ARE NEVER MERGED (§4, and the FAQ's refusal
+    of a new service table).** "Who plans this WITH me" is a **plan-level** question and its answer
+    is the **EXPERT picker** — `HireExpertDialog`, the ONE picker, reading `expert_offering_types`
+    roles. "Who do I HIRE for this event" is an **event-level** question and its answer is
+    `experience_types.roles_needed` (ruling 31), which is a pointer into
+    `service_categories.category_key` — the PROVIDER catalog — so it resolves to a **PROVIDER
+    browse pre-filtered by that category, ending in Add to plan on the ruling 39 rail
+    (`itinerary_items`)**. Two questions, two existing catalogs, two existing rails; **no new
+    table**. Ruling 31 shipped `roles_needed` deliberately unread and named this as the surface it
+    unblocks; this says which of the two catalogs it opens, and that a florist is not an advisor.
+
+    **D7 — ONE ADVISOR-ADD RAIL, AND THE READER RETURNS ALL OF THEM.** The older
+    `POST /api/trips/:id/expert-advisor` takes a raw `req.body.expertUserId` with **no allowlist**
+    — the §19 denylist shape, on an ACCESS grant — and is **RETIRED** in favour of the pick-based
+    `POST /api/trips/:tripId/advisors`, which is already the rail `HireExpertDialog` uses and which
+    routes through `upsertTripAdvisorRow`, the ONE author ruling 32's correction established. The
+    slip keeps **ONE picker**. Same ruling: the advisor **READER returns ALL advisors on a plan**,
+    not the first — the UNIQUE `(trip_id, local_expert_id)` index has always permitted several, the
+    schema has always allowed it, and a reader that silently returns one of many is a plan quietly
+    hiding a person who can write to it.
+
+    **D8 — `/trip/:id` IS NOT A PLANNING SURFACE.** The finalized Trip Card is the read-out of a
+    plan that is DONE. A pre-final plan that lands there gets a second, divergent editing surface
+    beside the slip — the drift class §18 rule 1 names, worn as two pages. Pre-final plans
+    **REDIRECT to `/plans/:tripId`**, by **the same `finalVersion` rule `PlanCard` already
+    applies** — the rule is read, never restated (a second copy of "is this plan final?" would
+    drift the day the definition moves). The **contract board moves to the slip**, where the plan
+    it describes lives.
+
+    **D9 — THE BOOKINGS SECTION LIVES ON THE SLIP, AND ITS AUDIENCE IS §15d's.** Balance payment
+    (§15d) is offered in a bookings section **on the slip**, visible to **the owner and a
+    `payer`-role `trip_participants` row, and to nobody else** — the SAME predicate
+    `canPayBalance` (`server/services/balance-payer.service.ts`) the route itself runs, read by the
+    surface rather than re-typed on it (§18 rule 1; re-typing it is how a button appears for
+    someone the server will refuse). Everything §14/§15 governs is untouched: the amount stays
+    server-derived, the actor stays the session, the transitions stay atomic conditionals, and the
+    balance-payer claim is unchanged. This ruling moves a SURFACE, not a rail.
+
+    **D10 — THE PER-EVENT ADVISOR LINK STAYS "JOINS THIS WHOLE PLAN", AND ONE QUESTION IS LEFT
+    OPEN, NAMED.** Ruling 32(d) said an advisor joins the plan, not an event; the per-event hire
+    affordance says so out loud rather than implying a per-event scope the row cannot hold
+    (`trip_expert_advisors` keys on `trip_id`; there is no event column and this ruling adds none).
+    Pre-hire conversations **may** later carry a **trip context kind** on `conversation_contexts`
+    (ruling 40, migration 287 — `context_kind` is app-enforced with no DB CHECK precisely so a
+    fourth kind is a code change and not a publish trap); that is a later lane and is not built
+    here. **OPEN, RECORDED, NOT RULED: the `boys-trip` vocabulary.** The decision-maker did not
+    rule on it. The seeded value **STANDS** untouched and the question is recorded here as open —
+    an unruled string left in place is honest; a lane silently renaming it would be a vocabulary
+    decision taken by whoever happened to touch the seeder (§13).
+
+    **D11 — `IntakePanel` COLLAPSES INTO THE ONE MODAL, AND UNTIL IT DOES ITS FABRICATED PARTY
+    SPLIT IS STRIPPED.** Ruling 33 established ONE planning modal; `IntakePanel` is a second one,
+    with its own two steps, its own create call and its own answers. It **collapses into the ONE
+    modal — its mounts become DOORS** (`usePlanning().open(source)`), which is the same move ruling
+    33 made on `edit-trip-panel.tsx`: renamed into the one modal, never copied beside it. **UNTIL
+    that lands, its `kids: 0` write is STRIPPED.** Ruling 33 de-masked the party pair precisely so
+    an untouched field saves as **NULL** — the panel never asks about children and then files
+    "0 kids" as the traveler's answer, which is a fabricated split of a number they did give
+    (§13). Same ruling: **`AiPlannerDraftPanel` mints through the ONE mint helper**
+    (`buildTripMintBody` / `mintTripSlip`), never its own assembled body — a second mint body is a
+    second place D12's invariants have to be remembered.
+
+    **D12 — NO MINT MAY INVENT A DESTINATION OR A DATE, AND `market_slug` IS A NAMED MINT
+    INVARIANT.** `trips.destination`, `start_date` and `end_date` are NOT NULL, and ruling 32's
+    `checkSlipPrecondition` refuses a lead whose slip has none — so a mint site that fills one in
+    to satisfy the column is manufacturing the exact fact the precondition exists to require. **The
+    six mint sites ASK or REFUSE**; none guesses. Same ruling, amending ruling 30: **`market_slug`
+    joins `timezone` as a NAMED mint invariant** — ruling 30 made the zone a stamped-at-mint,
+    server-derived fact and stated it for every mint site, and `market_slug` is derived from the
+    same `trips.destination` by the same `storage.createTrip`/`updateTrip` path but was never
+    written down as an invariant. **The two raw-SQL mints in `booking.service.ts`** (the cart
+    auto-trip and the saved-trip conversion) bypass that path and therefore **stamp it
+    explicitly** — the same treatment ruling 30 already gave them for the zone. A plan with no
+    market slug is invisible to every market-scoped reader while looking perfectly normal on the
+    slip.
+
+    **D13 — A DOOR PASSES WHAT IT HOLDS, AND CI CHECKS THE NAMED ONES.** Ruling 33 ruled that doors
+    differ in exactly two things — what arrives pre-filled and which step opens first — and
+    `resolvePlanSteps` decides the second. Nothing decided the first, and nothing checked it: a
+    door that holds an occasion or a city and passes NEITHER opens a modal that asks the traveler a
+    question the page it came from already knew the answer to. **A surface that HOLDS an occasion
+    or a city MUST PASS IT** in its `PlanningSource`. `scripts/check-planning-entry.cjs` grows a
+    **per-surface REQUIRED-FIELD list** beside its existing entry-shape list, with committed
+    `--self-test` fixtures (§18d) run before the guard in CI.
+    **STATED NEGATIVE SPACE, and it is the load-bearing half of this ruling: the guard can see what
+    a door PASSES, never what the page KNOWS.** It cannot tell that a page holding a city passed
+    none — only that a NAMED door stopped passing the field it was ruled to pass. Adding a surface
+    to the list is a human decision, and a surface absent from the list is unchecked, not
+    exonerated. That limit is why the rule is written here as well as in the script: a green run
+    means green-within-stated-bounds.
+    **AND A DOOR PASSES ONLY WHAT IS TRUE (§13).** Where a field would have to be invented — a rail
+    that names eight markets and no one of them, an earner "location" that is a NEIGHBOURHOOD
+    rather than a city — the door passes **NOTHING**. An absent field is how the modal is told "not
+    known"; a placeholder is how it is told a lie, and the required-field list must never be
+    satisfied by manufacturing one.
+
+    **D14 — `/quick-start` IS RETIRED.** It is a second front door asking the modal's own questions
+    in its own shapes, and ruling 33 left exactly one. Same ruling: **CityGrid's "Plan now" opens
+    the modal with `{ city, country }` pre-filled** — the grid holds both, so under D13 it passes
+    both, and a traveler who clicked a specific city is never asked which city.
+
+    **D15 — A PLAN STARTED FROM A LISTING ENDS BACK AT THAT LISTING.** `PlanningSource` gains
+    **return-to context** — `returnTo: { kind: 'service' | 'expert', id/handle }` — so a plan
+    started from a service page finishes with **that listing offered for Add to plan** (the ruling
+    39 rail, `itinerary_items`; the cart is its `ready_for_checkout` projection, never a second
+    store) and a plan started from an expert finishes with **that expert offered to choose** (D6's
+    plan-level picker; D5's mint has by then given the request its slip). It is **context the door
+    already holds** — a listing page knows which listing it is — so under D13 it is passed, not
+    reconstructed. It is a RETURN ADDRESS and **grants nothing**: it authorizes no add, no hire and
+    no read, and every downstream gate is unchanged. An expert addressed here is addressed the way
+    ruling 40 requires — by handle where the row carries one — never by a bare `users.id`.
+
+    **D16 — THE SLIP'S EDIT CONTROLS ARE THE OWNER'S; THE EXPERT'S EDIT SURFACE IS THE
+    WORKSTATION.** Item add / edit / delete / reorder render on the slip **for the OWNER only**.
+    The expert already has an edit surface — the Workstation — and a second one on the traveler's
+    own plan produces two places the same mutation is authored and two places its §12 gating has to
+    be remembered. **The expert's presence on the slip stays READ, NOTE, SUGGEST, MESSAGE**: they
+    see the plan live (ruling 32), write `expert_note` (D4), suggest items, and talk. This is a
+    RENDER rule, not a new permission: the §12 WRITE-status advisor rails on the server are
+    untouched, and a rule about which buttons draw is never the thing that keeps a write out —
+    the route's own gate is (§14 posture).
+
+    **D17 — THE OPTIMIZER RUN IS AUTHORIZED BY THE ITEM-MUTATION PREDICATE, NOT THE LOGISTICS
+    ONE.** An optimizer run — paid, free re-run, or Trip Pass — **rewrites the plan's items**. It
+    is therefore authorized for **the owner or a §12 WRITE-status advisor (`accepted`/`assigned`),
+    NEVER `pending`**, through the **same predicate item mutations already use** and **not**
+    `authorizeTripLogistics`, which is a READ-shaped tier that grants `pending` (correctly, for
+    reading). Ruling 12 drew this line for every other item write path; the optimizer is the
+    largest item write on the platform and was gated by the wrong one of the two. ONE predicate,
+    one more caller — a second "may this person rewrite the plan?" test is the drift class §18
+    rule 1 names.
+
+    **BUILD ORDER — THREE WAVES, AND EACH LANE APPENDS ITS OWN LEDGER ROW.**
+    **Wave 1** is everything that needed no decision beyond what is ratified here and touches no
+    schema: the doors passing what they hold and the guard's required-field list (D13), `/quick-start`
+    and CityGrid (D14), the `IntakePanel` `kids: 0` strip and the one-mint-helper move (D11), the
+    mint invariants (D12), the owner-only render rule (D16).
+    **Wave 2** is the decision items that still touch no schema: the Finalize question and the
+    `routedItemIds` deletion (D2), the protected-set widening (D3), the `expert_note` owner strip
+    (D4), the `local` finish mint (D5), the advisor rail retirement and the all-advisors reader
+    (D7), the `/trip/:id` redirect and the contract board move (D8), the bookings section (D9),
+    the return-to context (D15), the optimizer predicate (D17).
+    **Wave 3** is schema and the large surfaces: `trips.experience_type_id` and its
+    `useOccasionSwitches` client half (D1), the two role surfaces (D6), the `IntakePanel` collapse
+    (D11).
+    A wave is a sequence, not a batch: **each lane appends its OWN ledger row** naming what it
+    landed and what it left, so this entry stays the ruling and the ledger stays the record of
+    which parts of it are real.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
