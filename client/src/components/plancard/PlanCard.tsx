@@ -353,6 +353,12 @@ function PlanCardSummary({
 
   const optimizationDeltaFromData = plancardData?.optimizationDelta ?? null;
   const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
+  /**
+   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`): the review board this
+   * optimization came from. Present only when a comparison row exists — the pill falls back to
+   * the plan when it is absent, exactly as it behaved before (§13: no link we cannot name).
+   */
+  const lastComparisonId = plancardData?.lastComparisonId ?? null;
   const numDays = computeDayCount(days, trip.startDate, trip.endDate);
 
   // Two-surfaces routing (Trip Card rebuild Phase 4, ledger 2026-08-31-stage-a-dashboard):
@@ -566,7 +572,12 @@ function PlanCardSummary({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); navigate(planHref); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Same destination the slip's "See what changed" uses, from the same DTO
+                        // field — one decision about where the optimized state points.
+                        navigate(lastComparisonId ? `/itinerary-comparison/${lastComparisonId}` : planHref);
+                      }}
                       className="flex items-center gap-[3px] text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
                       style={
                         isStale
@@ -850,6 +861,12 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const shareToken = score?.shareToken;
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
   const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
+  /**
+   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`): the review board this
+   * optimization came from. Present only when a comparison row exists — the pill falls back to
+   * the plan when it is absent, exactly as it behaved before (§13: no link we cannot name).
+   */
+  const lastComparisonId = plancardData?.lastComparisonId ?? null;
 
   const totalActivities = stats.totalActivities || days.reduce((s: number, d) => s + (d.activities?.length || 0), 0);
   const confirmedActivities = stats.confirmedActivities ?? days.reduce((s: number, d) => s + (d.activities?.filter((a) => a.status === "confirmed").length || 0), 0);

@@ -783,9 +783,75 @@ This document captures architectural decisions to maintain consistency across co
     contact rail at all.
 
 
+41. **THE FREE DRAFT IS A SKETCH; OPTIMIZE IS THE PLAN; THE MAP SHOWS THE COMPARISON
+    (decision-maker ratified Sep 5, 2026 — ledger `2026-09-05-draft-sketch-optimize-plan`;
+    lane 1 = `2026-09-05-trip-pass-run-gate`, LANDED).** One ruling, four lanes. It draws the
+    line between what the platform gives away and what it charges for, and it fixes the place
+    where the two disagreed.
+    **(a) A TRIP PASS COVERS THE RUN, NOT JUST THE CHARGE — LANE 1, LANDED.**
+    `coversAction(tripId, "optimizer_run")` was consulted at exactly ONE place: the charge point,
+    `POST /api/optimization-payments`. The RUN gate — the `canRunOptimizer` decision inside
+    `POST /api/itinerary-comparisons` and `POST /api/itinerary-comparisons/:id/regenerate` — never
+    read `trip_entitlements` at all. So a pass holder running outside the 24h free-rerun window was
+    answered `{coveredByTripPass:true}`, the client created the comparison with **no**
+    `optimizationPaymentId` (correctly — a covered run has no PaymentIntent), and the run gate, seeing
+    no recent run and no PI, refused: the comparison was born `pending_payment` with **zero variants
+    generated**. Nothing threw and nothing logged; the traveler had paid for the pass, was told the
+    run was included, and got a perfectly ordinary "payment required" screen. **THE FIX IS ONE
+    PREDICATE, NOT A THIRD COPY OF THE RULE (§18 rule 1):**
+    `resolveOptimizerRunAuthorization` (`server/services/optimizer-run-authorization.ts`) is the ONE
+    decision about whether the optimizer may run, returning a discriminated
+    `{authorized:true, basis:'trip_pass'|'free_rerun'|'paid'} | {authorized:false, reason}`, and both
+    sites call it. The bases are ordered **pass → free re-run → the payment already recorded on the
+    comparison → a freshly verified PaymentIntent**, with the pass FIRST so the run gate and the
+    charge gate can never disagree about a covered trip, and because "free re-run" would be the wrong
+    reason to report for a covered one even when it also happens to be true (§13).
+    **THE PREDICATE DECIDES; IT NEVER WRITES.** It imports no `db`, no `storage` and no Stripe client
+    — its three server reads arrive injected — so it takes no claim of its own and can be proven by a
+    pure CI test with no database. The §15 **atomic conditional** that records a fresh PaymentIntent
+    stays at the regenerate route (`UPDATE … WHERE id = ? AND optimization_payment_id IS NULL`), and
+    a `paid` result says whether that claim is still owed (`claimRequired`). **A TRIP PASS BASIS
+    TAKES NO CLAIM AND SPENDS NO PaymentIntent:** `optimizer_run` coverage is unlimited by ruling
+    (`trip-entitlement.service.ts`), so there is no counter to race on, and a supplied PI is neither
+    verified nor recorded on a covered run. **The pay endpoint's behaviour is UNCHANGED** — this lane
+    added no charge, removed none, and touched no fee.
+    **§13 — HOW THE BASIS IS RECORDED, AND WHAT IS NOT CLAIMED.** `itinerary_comparisons` has no
+    basis column: it records a payment IDENTITY (`optimization_payment_id`) and nothing else, so a
+    free re-run and a pass-covered run are both stored as "no payment id". Writing a sentinel like
+    `"trip_pass"` there would be a fabricated payment identity (§19a) **and** would poison the reuse
+    lookup that reads that column, and a $0 `fee_ledger` row is forbidden by that table's
+    `amount<>0` CHECK. So the basis is recorded exactly the way the suppressed CHARGE records it
+    (ledger `2026-08-29-trip-pass-provenance`): a `[trip-pass] … (covered_by:trip_pass)` line plus a
+    `runBasis` on the run response, with the durable record being the active `trip_entitlements` row
+    on the trip and the absence of a PI. **It is deliberately not claimed to be pinned per
+    comparison** — a per-comparison basis column is a schema change nobody has ratified, and stating
+    the limit is the honest half of shipping without one.
+    **(b) THE FREE AI DRAFT RUNS ONLY ON AN EMPTY SLIP (lane 2).** Any AI action on a slip that
+    already holds items is **Optimize**, and goes through the existing pay gate. There is no second
+    free rail hiding behind a different button.
+    **(c) THE FREE DRAFT IS A SKETCH (lane 2):** one version, no anchor, no metrics, no live catalog
+    pricing, external fills flagged as such. It **may run a cheaper model tier as a COST decision**,
+    env-configurable — that is a spend choice and **never a product claim**, so no surface may
+    describe the draft by which engine produced it. The primary generate path **MUST** write
+    `ai_cost_tracking` (the table CLAUDE.md's publish-trap rule already flags as load-bearing).
+    **(d) THE HEURISTIC PREVIEW IS SHOWN BEFORE THE CHARGE (lane 3).** The existing free
+    `POST /api/optimization-preview` renders on the slip beside Optimize, so the traveler sees what a
+    paid run would buy before paying; the charge happens only on confirm.
+    **(e) THE MAP SHOWS THE COMPARISON (lane 4).** The review board's map gains **"Your plan"**
+    (the baseline) as a tab and a compare toggle drawing baseline + focused proposal as two sequence
+    lines, each carrying its own "X of Y located" line (ruling 22's honesty posture — located stops
+    only, no invented distances, no city-centre fallback). The slip's Optimized strip links back to
+    the revisitable board.
+    **(f) RECORDED AS OPEN DEBT, NOT FIXED BY THESE LANES.** The `ai_task` and `expert_revision`
+    Trip Pass entitlements have **no consumption or charge site at all**
+    (`server/services/trip-entitlement.service.ts` — `coversAction` answers `true`/`consumeRevision`
+    exists, and nothing calls either), so Trip Pass and `/pricing` promise more than the code
+    enforces. Owner = the **memberships-checkout lane** (starts 2026-10-01 per
+    `docs/design/PRICING_AND_FEATURE_MAP.md`). Naming it is not fixing it: until that lane lands,
+    do not describe those two as enforced benefits.
 42. **THE SLIP IS THE ONE PLANNING SURFACE; SEVENTEEN RULINGS ON HOW EVERY FINISH, DOOR, MINT AND
     EXPERT TOUCH LANDS THERE (decision-maker ratified Sep 5, 2026, evening — ledger
-    `2026-09-05-slip-one-surface-seventeen`).** **NUMBERING:** this entry is **42** and sits directly after **40** — **41** is the entry landing on PR #796 and was not yet on `main` when this was appended, so the gap is deliberate and is not a missing ruling. (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids, which are date-slugs per ruling 25.) Rulings 32, 33 and 39 each named one half of the
+    `2026-09-05-slip-one-surface-seventeen`).** (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids, which are date-slugs per ruling 25.) Rulings 32, 33 and 39 each named one half of the
     same shape: no expert touchpoint exists without a slip (32), there is ONE planning modal and
     many doors (33), and every add surface is a view of `itinerary_items` (39). What none of them
     said out loud is where a plan LIVES between the modal closing and the trip ending. It lives on

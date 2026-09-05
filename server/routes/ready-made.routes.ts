@@ -32,6 +32,7 @@ import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { resolveTripTimezone } from "../services/trip-timezone";
+import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
 // THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
 // §18 rule 1). This file READS the table freely; the concierge-revision grant below is a CALLER
 // of the shared upsert and never inserts the row itself.
@@ -107,6 +108,12 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
         // "not captured" (§13). The pre-trip EVENT pen is NOT drained here — an authoring build has
         // userId NULL by design, so there is no traveler principal whose pen it could be.
         timezone: resolveTripTimezone(destination),
+        // Locked Decision 42 (D12) / ledger `2026-09-05-mint-market-slug-invariant`: an authoring
+        // build has userId NULL by design — which is why the pen is not drained above — but that
+        // exempts it from an OWNER, not from a MARKET. `destination` is real, this build becomes a
+        // Ready Made, and the buyer's clone is market-scoped, so the slug is derived here by the
+        // same ONE resolver as the zone. Outside the operating markets it is NULL (§13).
+        marketSlug: resolveMarketSlug(destination),
         startDate: fmt(start),
         endDate: fmt(end),
         status: "draft",

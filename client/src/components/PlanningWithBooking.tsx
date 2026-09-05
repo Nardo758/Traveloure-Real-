@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Users, MapPin, Sparkles, CheckCircle, Gem } from 'lucide-react';
 import BookingFlowModal from './booking/BookingFlowModal';
+import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
 
 const EXPERIENCE_TYPES = [
   { value: 'travel', label: 'Travel', emoji: '✈️', description: 'Leisure vacation' },
@@ -52,6 +53,9 @@ export default function PlanningWithBooking({
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // LD 41 (b): held separately from `error` — a refusal is a routing answer with a destination,
+  // not a failure (ledger `2026-09-05-draft-only-on-empty`).
+  const [draftRefusal, setDraftRefusal] = useState<AiDraftRefusal | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Booking state
@@ -134,6 +138,7 @@ export default function PlanningWithBooking({
     setErrors({});
     setIsLoading(true);
     setError('');
+    setDraftRefusal(null);
 
     try {
       // Call AI API to generate itinerary
@@ -152,8 +157,18 @@ export default function PlanningWithBooking({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate itinerary');
+        const errorData = await response.json().catch(() => ({}));
+        // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: the free draft runs only on an
+        // EMPTY slip. Read through the ONE shared reader (§18 rule 1) and rendered below as the
+        // server's own sentence with a link to the slip's existing Optimize button — this surface
+        // never re-implements the pay gate. It sends no tripId today, so the branch is reachable
+        // only if a door starts to.
+        const refusal = readSlipHasItemsRefusal(response.status, errorData);
+        if (refusal) {
+          setDraftRefusal(refusal);
+          return;
+        }
+        throw new Error(errorData.error || errorData.message || 'Failed to generate itinerary');
       }
 
       const data = await response.json();
@@ -489,6 +504,27 @@ export default function PlanningWithBooking({
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
                   {error}
+                </div>
+              )}
+
+              {/* LD 41 (b): not an error — the plan already holds items, so Optimize is the rail
+                  that works on it. The server's own sentence; the link opens the slip, which owns
+                  the one pay-gate implementation. No link when no trip was named (§13). */}
+              {draftRefusal && (
+                <div
+                  className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg text-sm"
+                  data-testid="ai-draft-slip-has-items"
+                >
+                  <p>{draftRefusal.message}</p>
+                  {slipHref(draftRefusal) && (
+                    <a
+                      href={slipHref(draftRefusal)!}
+                      className="mt-2 inline-block underline font-medium"
+                      data-testid="ai-draft-optimize-instead"
+                    >
+                      Optimize this plan instead
+                    </a>
+                  )}
                 </div>
               )}
             </div>

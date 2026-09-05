@@ -46,6 +46,7 @@ import { plancardPartyCount } from "@shared/plan-vocabulary";
 import {
   TRIP_PLAN_VERSION,
   isChauffeuredMode,
+  planComparisonRef,
   type AssembledRedactionLevel,
   type FullTripPlan,
   type PreviewTripPlan,
@@ -1123,6 +1124,11 @@ export async function assembleTripPlan(
       metrics: metricsMap,
       optimizationDelta,
       lastOptimizedAt,
+      // LD 41: the board this optimization came from, so the slip can link back to it. Same
+      // `comparison` row `lastOptimizedAt` is read off — no second query — and the key is
+      // OMITTED when there is no comparison, never null-filled (§13; `planComparisonRef` is the
+      // one place that decision is made).
+      ...planComparisonRef(comparison),
       stats: {
         totalDays: fallbackDays || days.length,
         totalActivities: fallbackActivityCount,
