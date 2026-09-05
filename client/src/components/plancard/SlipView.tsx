@@ -54,6 +54,12 @@ import {
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
 import {
+  describeOptimizationPreview,
+  formatOptimizationFeeLabel,
+  type OptimizationFeeQuote,
+  type TripOptimizationPreview,
+} from "@/lib/optimization-preview";
+import {
   countOptimizableItems,
   runBulkRouteToCheckout,
   selectBulkCheckoutItems,
@@ -1113,6 +1119,39 @@ function SlipActions({
     endDate: trip.endDate,
   });
 
+  /**
+   * A1b — THE FREE PREVIEW BESIDE OPTIMIZE (CLAUDE.md Locked Decision 41 (d), ledger
+   * `2026-09-05-optimize-preview-on-slip`). Two reads, both server-resolved, neither of which
+   * charges anything:
+   *
+   *   GET /api/optimization-preview?tripId= — the same free heuristic the cart has always run,
+   *     entered by TRIP ID. The client sends no item list: the server already holds the plan and
+   *     reads it through `loadTripOptimizerInputs`, the single expression of the optimizer's own
+   *     read-set, so the preview and the paid run are looking at the same items (§14 reads).
+   *   GET /api/optimization-fee?tripId=  — the fee, and the server's `coversAction` answer for
+   *     Trip Pass coverage. The amount and the coverage are both server truth; nothing here
+   *     derives either (§14).
+   *
+   * Fetched ONLY when the Optimize action could actually run: when `optimizeDisabledReason` is
+   * set the button is already disabled with that reason on it, and an estimate for a run the
+   * traveler cannot start would be noise. Owner-only, like the button — the fee charges the
+   * signed-in traveler.
+   *
+   * FAIL-SOFT: the shared query fn throws on a non-2xx, so a refusal or an error leaves `data`
+   * undefined and the line renders as NOTHING rather than as a zero or a placeholder (§13).
+   */
+  const previewEnabled = isOwner && !optimizeDisabledReason;
+  const { data: previewData } = useQuery<TripOptimizationPreview>({
+    queryKey: ["/api/optimization-preview", { tripId: trip.id }],
+    enabled: previewEnabled,
+  });
+  const { data: feeQuote } = useQuery<OptimizationFeeQuote>({
+    queryKey: ["/api/optimization-fee", { tripId: trip.id }],
+    enabled: previewEnabled,
+  });
+  const previewLine = previewEnabled ? describeOptimizationPreview(previewData) : null;
+  const previewFeeLabel = previewEnabled ? formatOptimizationFeeLabel(feeQuote) : null;
+
   // Guarded by optimizeDisabledReason: destination/dates are real trip fields here, never
   // invented (§13) — the action is disabled until they exist.
   async function runComparison(
@@ -1307,6 +1346,35 @@ function SlipActions({
             {creatingComparison ? "Building..." : "Optimize this plan"}
           </Button>
         </span>
+      )}
+      {/* A1b — the free estimate, on its own line under the actions row (`basis-full` inside the
+          wrapping flex). Rendered only when the heuristic returned something; a refusal shows the
+          SERVER's own reason and never a stand-in number (§13). */}
+      {previewLine && (
+        <div
+          className="basis-full text-[11px] leading-relaxed text-muted-foreground"
+          data-testid="slip-optimize-preview"
+        >
+          <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide">
+            Free estimate
+          </span>
+          {previewLine.kind === "estimate" ? (
+            <>
+              <span>{previewLine.headline}</span>{" "}
+              <span className="italic opacity-80">{previewLine.caveat}</span>
+              {previewFeeLabel && (
+                <span
+                  className="ml-1.5 font-mono text-[10px] text-foreground/70"
+                  data-testid="slip-optimize-preview-fee"
+                >
+                  {previewFeeLabel}
+                </span>
+              )}
+            </>
+          ) : (
+            <span>{previewLine.reason}</span>
+          )}
+        </div>
       )}
       {isOwner && lastOptimizeCoveredByPass && (
         <span
