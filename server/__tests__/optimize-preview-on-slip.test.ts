@@ -284,7 +284,13 @@ test("S6: Trip Pass coverage on the fee endpoint is the SERVER's coversAction an
 });
 
 test("S7: the slip surface renders the preview and its fee, and reads no extrapolated number", () => {
-  assert.ok(slipSurfaceSrc.includes('data-testid="slip-optimize-preview"'));
+  // The Build card hands the testid to a shared RailNote (`testId="…"`), which renders it as
+  // `data-testid`; either spelling is the same rendered attribute.
+  assert.ok(
+    slipSurfaceSrc.includes('data-testid="slip-optimize-preview"') ||
+      slipSurfaceSrc.includes('testId="slip-optimize-preview"'),
+    "the preview line carries its testid",
+  );
   assert.ok(slipSurfaceSrc.includes('data-testid="slip-optimize-preview-fee"'));
   assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-preview"'));
   assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-fee"'));
