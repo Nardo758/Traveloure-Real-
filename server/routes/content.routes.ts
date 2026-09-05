@@ -31,6 +31,7 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
+import { getBuildInfo } from "../services/build-info";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
 import { nightDatesInclusive } from "../services/availability-materializer.service";
 import { attachRolesNeeded } from "../services/occasion-roles.service";
@@ -320,16 +321,24 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
   return mapFeverCategoryToEventType(category);
 }
 
-router.get("/api/health", async (_req, res) => {
+// Public, unauthenticated. `build` carries the SAME object `GET /api/version` returns — ONE
+  // resolver (`server/services/build-info.ts`), so a deploy check reading either endpoint gets
+  // the same answer (§18 rule 1). It is a commit sha and a timestamp: not a secret, and
+  // deliberately not an env dump. §13: `commit: null` + `source: "unknown"` when nothing could
+  // name the build — a fabricated sha would be compared, match nothing, and blame the code.
+  // Present on the 503 branch too: "which build is failing" is exactly the question a failing
+  // health probe raises.
+  router.get("/api/health", async (_req, res) => {
+    const build = getBuildInfo();
     try {
       const ok = await dbHealthCheck();
       if (ok) {
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString() });
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build });
       } else {
-        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString() });
+        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build });
       }
     } catch {
-      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString() });
+      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build });
     }
   });
 
