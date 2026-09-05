@@ -81,12 +81,13 @@ import {
   buildSlipDaySlots,
   countPlanEvents,
   eventMetaLine,
+  showsSlipEmptyState,
   SLIP_EMPTY_EVENT_BODY,
   SLIP_UNDATED_SLOT_HEADING,
   type PlanEvent,
 } from "@/lib/slip-events";
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
-import { eventCountLabel, partyCountLabel } from "@/lib/plan-vocabulary";
+import { eventCountLabel, partyLabelForOccasion } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
@@ -1455,7 +1456,18 @@ export function SlipView({
   //
   // When either is false the day renders its items flat, in the same Fragment-wrapped single
   // group, so the un-grouped DOM is byte-identical to the pre-lane render.
-  const { occasion, isHidden: occasionIsHidden } = useOccasionSwitches(tripId);
+  const {
+    occasion,
+    isHidden: occasionIsHidden,
+    /**
+     * QA check 3 — the difference between "this plan has no occasion" and "we have not been told
+     * yet". Both arrive here as `occasion === null`, and BOTH of this surface's first-paint
+     * defects were a reader treating the second as the first: the party noun below, and the
+     * "No items on this plan yet" line at the bottom of the day list. Resolved ONCE, by the hook
+     * that owns the lookup (§18 rule 1).
+     */
+    isResolved: occasionResolved,
+  } = useOccasionSwitches(tripId);
   const planEvents: PlanEvent[] = data.events ?? [];
   const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
 
@@ -1514,11 +1526,22 @@ export function SlipView({
    * occasion's `vocabulary` column, read through the switch reader (Locked Decision 28), with
    * `default_guests === false` forcing "travelers" inside the helper rather than here.
    * §13 — `""` for a count nobody stated, and the segment is omitted rather than printed as zero.
+   *
+   * ── AND THE NOUN WAITS FOR ITS ROW (QA check 3) ──────────────────────────────────────────────
+   * `partyNoun`'s NULL ⇒ "travelers" fallback is ruling 28's answer for an occasion that HAS
+   * resolved and states no vocabulary. It is not an answer for one still in flight, and this line
+   * could not tell the two apart: a freshly minted wedding painted "3 travelers" until
+   * `GET /api/trips/:id` and `GET /api/experience-types` answered, then settled to "3 guests".
+   * `partyLabelForOccasion` renders the COUNT ALONE while the lookup is unsettled — the count is
+   * the traveler's own and is true whatever the occasion turns out to be — and hands straight back
+   * to `partyCountLabel`, fallback included, the moment it settles. Nothing about the settled
+   * render changes.
    */
-  const partyLabel = partyCountLabel(
+  const partyLabel = partyLabelForOccasion(
     data.trip?.travelers ?? null,
     occasion?.vocabulary ?? null,
     occasion?.defaultGuests ?? null,
+    occasionResolved,
   );
 
   return (
@@ -1605,10 +1628,29 @@ export function SlipView({
         <CardContent className="p-2 sm:p-3 divide-y divide-border">
           {/* §13 — "No items" is now said ONLY when there is genuinely nothing to show. A plan
               with events and no items has slots (the event cards below), so this line no longer
-              contradicts the header's own event count directly above it. */}
-          {daySlots.length === 0 && (
-            <p className="text-sm text-muted-foreground p-4 text-center">No items on this plan yet.</p>
-          )}
+              contradicts the header's own event count directly above it.
+
+              QA check 3 — AND ONLY ONCE WE HAVE THE DATA THAT WOULD SHOW THEM. `daySlots` is built
+              with `groupByEvent`, which needs the occasion row; while that lookup is in flight the
+              row is absent, `showsSchedule` correctly falls back to false, and a brand-new plan's
+              event cards do not exist yet. Saying "no items" there is a claim about the plan made
+              before the plan has answered — so the sentence waits for `occasionResolved` (the ONE
+              signal, from the hook that owns the lookup) and a neutral placeholder stands in its
+              place. The placeholder states nothing; it is not an empty state and never says one. */}
+          {showsSlipEmptyState(daySlots.length, occasionResolved) ? (
+            <p
+              className="text-sm text-muted-foreground p-4 text-center"
+              data-testid="slip-empty-items"
+            >
+              No items on this plan yet.
+            </p>
+          ) : daySlots.length === 0 ? (
+            <div className="p-4 space-y-2" data-testid="slip-day-list-loading" aria-hidden="true">
+              <div className="h-4 rounded bg-muted animate-pulse w-1/3" />
+              <div className="h-4 rounded bg-muted animate-pulse w-2/3" />
+              <div className="h-4 rounded bg-muted animate-pulse w-1/2" />
+            </div>
+          ) : null}
           {daySlots.map((slot) => {
             // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
             // no `date` label of its own and no legs, and invents none of the three.

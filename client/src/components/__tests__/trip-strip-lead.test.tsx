@@ -53,8 +53,16 @@ function renderWithContext(
   /**
    * Rows as `GET /api/experience-types` returns them. Seeded into the cache rather than fetched:
    * queries are `enabled: false` in this harness, and `setQueryData` is how the strip's real
-   * `useQuery(["/api/experience-types"])` gets its data without a network. Omit to render the
-   * NOT-SET path — a strip that never resolved an occasion row, which is the §13 fallback.
+   * `useQuery(["/api/experience-types"])` gets its data without a network.
+   *
+   * THE TWO ABSENCES ARE DIFFERENT, and this parameter is how each is expressed (QA check 3):
+   *   - `[]`  ⇒ the lookup RESOLVED and found no matching row. A finished answer, so the strip
+   *             renders its stated §13 fallback (the class-based label it has always shown).
+   *   - OMIT  ⇒ the lookup is STILL IN FLIGHT. The strip's own `enabled` predicate overrides the
+   *             harness default whenever the context names an occasion, so an unseeded cache is a
+   *             genuinely pending query — the first-paint window in which no noun may be printed.
+   * Before that fix both spellings produced the same render, which is exactly the conflation the
+   * production walkthrough caught.
    */
   occasions?: Array<Record<string, unknown>>,
   /**
@@ -190,8 +198,29 @@ describe("party chip — the vocabulary column, with the pre-switch label as the
   });
 
   it("no occasion rows at all ⇒ the class-based label, unchanged", () => {
-    const html = renderWithContext({ destination: "Kyoto, Japan", experienceType: "Wedding", travelers: 8 });
+    // RESOLVED to nothing (an empty catalog): a finished answer, so the stated fallback stands.
+    const html = renderWithContext(
+      { destination: "Kyoto, Japan", experienceType: "Wedding", travelers: 8 },
+      [],
+    );
     assert.equal(partyChipText(html), "8 guests");
+  });
+
+  /**
+   * QA check 3 — the first-paint window. The row is not absent, it has not ARRIVED, and the strip
+   * could not tell the two apart: it printed the class-based wording with the row's authority and
+   * then swapped the word underneath the reader once the fetch landed. The count is the
+   * traveler's own answer and is true whatever the occasion turns out to be; the noun waits.
+   */
+  it("an occasion lookup still IN FLIGHT renders the count alone — no noun at all", () => {
+    const html = renderWithContext({
+      destination: "Kyoto, Japan",
+      experienceType: "Wedding",
+      travelers: 8,
+    });
+    assert.equal(partyChipText(html), "8");
+    // Not the class fallback, and not the plain-plan one either — no word is printed at all.
+    assert.ok(!/guest|traveler|attendee|Party of/i.test(partyChipText(html)));
   });
 
   it("still renders NO chip for a count the traveler never stated", () => {
@@ -260,7 +289,9 @@ describe("events chip — the count of the plan's events, hidden whenever there 
   it("leaves the party chip and the lead untouched", () => {
     const html = renderWithContext(
       { destination: "Kyoto, Japan", experienceType: "Wedding", travelers: 8, tripId: "trip-1" },
-      undefined,
+      // RESOLVED to nothing, so the party chip's stated fallback is the one under test here —
+      // an unseeded (still-pending) lookup is a different assertion, made above.
+      [],
       [{ id: "ev-1", tripId: "trip-1" }],
     );
     assert.equal(partyChipText(html), "8 guests");

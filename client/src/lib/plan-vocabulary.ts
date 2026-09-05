@@ -184,3 +184,56 @@ export function eventCountLabel(count: number | null | undefined): string {
   if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return "";
   return `${count} ${count === 1 ? "event" : "events"}`;
 }
+
+/**
+ * ── THE NOUN IS NOT AVAILABLE UNTIL THE ROW IS (QA check 3, post-publish walkthrough) ────────
+ *
+ * THE DEFECT. `partyNoun`'s NULL ⇒ "travelers" fallback is ruling 28's honest default for an
+ * occasion that HAS resolved and states no `vocabulary`. It is NOT an answer for an occasion whose
+ * row has not arrived yet — and every surface below reached for it in exactly that window. A
+ * freshly minted wedding painted "3 travelers", held it for as long as `GET /api/trips/:id` and
+ * `GET /api/experience-types` took to answer, and then settled to "3 guests". The word was wrong
+ * for a few seconds and it was presented with the row's authority, which is the §13 class this
+ * whole vocabulary module exists to prevent: a stated fallback and a value in flight are DIFFERENT
+ * facts, and only one of them is safe to print.
+ *
+ * THE RULE. Until the occasion lookup has RESOLVED — settled, one way or the other — a surface
+ * renders the COUNT ALONE and no noun. A count the traveler typed is true whatever the occasion
+ * turns out to be; the noun is the only part that has to wait. Once the lookup resolves, the
+ * fallback is back in force and unchanged: a resolved row with a NULL `vocabulary` still reads
+ * "travelers", because that IS ruling 28's answer for it.
+ *
+ * ONE IMPLEMENTATION, N CALLERS (§18 rule 1). Both halves live here, beside the label they gate,
+ * so the slip meta and the Trip Strip chip cannot answer "what do we show while we do not know
+ * yet" two different ways — which is precisely how they came to disagree about the settled answer
+ * in the first place (ledger `2026-09-05-slip-events-first-render`).
+ */
+
+/**
+ * The party count with NO noun — what a surface renders while the occasion row is still in
+ * flight. Same honest-or-absent posture as `partyCountLabel`: a count nobody stated returns "",
+ * so a placeholder can never become "0".
+ */
+export function partyCountOnly(count: number | null | undefined): string {
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return "";
+  return `${count}`;
+}
+
+/**
+ * `partyCountLabel` for a surface whose occasion row may still be loading.
+ *
+ * @param occasionResolved `true` once the lookup that would produce the row has SETTLED — which
+ *                         includes settling on nothing (an ambiguous event type, an unreadable
+ *                         trip, a plan with no occasion at all). A settled absence is a finished
+ *                         answer and gets the stated fallback; an unsettled one gets no noun.
+ */
+export function partyLabelForOccasion(
+  count: number | null | undefined,
+  vocabulary: string | null | undefined,
+  hasGuestList: boolean | null | undefined,
+  occasionResolved: boolean,
+): string {
+  return occasionResolved
+    ? partyCountLabel(count, vocabulary, hasGuestList)
+    : partyCountOnly(count);
+}
