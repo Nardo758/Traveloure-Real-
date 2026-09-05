@@ -418,6 +418,17 @@ jobs:
       # the whole table.
       - name: Custom-venues owner-scope pin
         run: npx tsx --test server/__tests__/custom-venues-owner-scope.test.ts
+      # 2026-09-05-vendors-read-scope: the same class one table over, found by the sweep above.
+      # `GET /api/vendors` was unauthenticated, read `createdById` off the query string, and its
+      # storage reader JOINED `users` — so any caller got every vendor row carrying the creating
+      # account's EMAIL. P1-P7 pin the pure allowlist projection (no creator identity, `createdBy`
+      # ABSENT rather than null, a new column NOT published by default); A1-A6/S1-S3 pin the
+      # shipped artifacts — the browse route gated and reading no creator id, the creator filter
+      # relocated to the /api/admin path under §2's blanket guard, and exactly ONE storage reader
+      # joining `users`; G1-G2 pin that the guard's name list grew and that no query-side allowlist
+      # was invented to hide this route behind.
+      - name: Vendors read-scope pin
+        run: npx tsx --test server/__tests__/vendors-read-scope.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)

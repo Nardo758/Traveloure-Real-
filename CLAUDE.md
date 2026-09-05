@@ -707,6 +707,21 @@ one shared predicate answers "is this row yours" for all of a table's routes rat
 route (§18 rule 1) — the two custom-venue routes that leaked were exactly the two that had no copy of it.
 Guarded by `check-query-userid-reads` (its negative space is in the Guard registry: NAME-based, query/param
 only, body-sourced ids belong to `check-money-endpoints`).
+**SECOND INSTANCE, AND THE OTHER HALF OF THE CLASS (ledger `2026-09-05-vendors-read-scope`).** The same sweep
+found `GET /api/vendors`: unauthenticated, `createdById` off the query string, the same
+"no conditions ⇒ every row" ternary — **and a SELECT that joined `users`**, so every row carried the creating
+account's EMAIL. Two rules fall out and neither is optional. **(a) NOT every table is owner-scoped, and
+pretending one is would be its own §13 lie.** A `vendors` row is a SHARED business listing every signed-in
+member may browse; scoping the ROWS to the session user would hide listings the caller is entitled to see. The
+fix is therefore a GATE plus a PROJECTION, not an owner filter: what was privileged was the CREATOR, not the
+listing. **(b) A LEAK CAN BE IN THE SELECT, WHICH NO ROUTE-LEVEL GREP SEES.** A reader that joins a PII table
+by default is one careless caller away from publishing it, so a table with both a public and an audit audience
+gets **TWO NAMED READERS** — `getVendorsForDirectory` (no join) and `getVendorsWithCreator` (the join, named
+for what it carries) — with the undifferentiated old name RETIRED so no call site keeps the join silently, plus
+an **allowlist projection** over the response (`VENDOR_DIRECTORY_FIELDS` + the existing `pickPublicFields`) as
+the second layer, so a column added later is not published by default. An admin-only FILTER belongs on an
+`/api/admin/*` path under §2's blanket guard — **never** as an allowlist entry in the guard script, because an
+allowlisted route is invisible to that predicate forever, including for a later regression on the same route.
 **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
 `/checkout` dup-bookings — see §15); marketplace Phase B surfacing.

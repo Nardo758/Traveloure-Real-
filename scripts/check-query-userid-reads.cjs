@@ -22,9 +22,10 @@
  * ──────────────────────────────────────
  *   (1) QUERY: no route handler under `server/routes.ts` or `server/routes/**` may read an
  *       OWNERSHIP identifier — `userId`, `user_id`, `ownerId`, `owner_id`, `travelerId`,
- *       `traveler_id` — from `req.query`, whether or not the route is authenticated. An
- *       authenticated route that filters by a client-chosen `userId` is still client-chosen
- *       identity; the session already says who is asking.
+ *       `traveler_id`, `createdById`, `created_by_id`, `creatorId`, `creator_id` — from
+ *       `req.query`, whether or not the route is authenticated. An authenticated route that
+ *       filters by a client-chosen `userId` is still client-chosen identity; the session already
+ *       says who is asking.
  *   (2) PARAMS: a route with NO `isAuthenticated` may not read one of those names from
  *       `req.params` either — the `/:userId` path shape is the same lookup wearing a different
  *       hat.
@@ -39,6 +40,12 @@
  *     the audit log's `targetUserId`). The exemption is keyed on the ROUTE PATH, not the file.
  *   • Anything else needs a line in ALLOWED_PARAM_ROUTES with a reason. One entry today: the
  *     public provider-verification badge, which is a deliberately public per-user surface.
+ *   • There is deliberately NO allowlist for predicate (1). Ledger `2026-09-05-vendors-read-scope`
+ *     considered adding one for `GET /api/vendors`'s admin creator filter and rejected it: an
+ *     allowlisted route is invisible to its predicate FOREVER, including for a later regression on
+ *     that same route, so exempting the very route a lane exists to fix buys silence, not safety.
+ *     The filter moved to `GET /api/admin/vendors` instead — where it is exempt by ROUTE PATH,
+ *     because §2's blanket `adminApiGuard` is a real gate rather than a note in a script.
  *
  * NEGATIVE SPACE — what this guard does NOT cover (§18d: green means green-within-stated-bounds)
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -48,7 +55,15 @@
  *     `providerId`, `memberId`, `handle`, an email — is invisible, and deliberately so: those names
  *     are also how a legitimately PUBLIC feed filters by its public author (`GET /api/ready-made?
  *     authorId=`, `GET /api/booking-fee-config?expertId=`), and flagging them would train people to
- *     grow the allowlist instead of reading the route.
+ *     grow the allowlist instead of reading the route. `createdById` was in exactly that bucket
+ *     when this guard landed and was named as a known unfixed site; ledger
+ *     `2026-09-05-vendors-read-scope` fixed the route and moved the name IN. The four names still
+ *     listed above have not moved and remain out of predicate.
+ *   • It says nothing about what a route RETURNS. `GET /api/vendors` was flagged for its query
+ *     read, but the worse half — a storage reader that joined `users` and published the creating
+ *     account's email on every row — is not a shape any grep over route files can see. The
+ *     response projection (`projectVendorForDirectory`) and the two-reader split in `storage.ts`
+ *     are that layer, not this.
  *   • It says nothing about whether a flagged read is actually EXPLOITABLE, nor whether an
  *     unflagged route is safe: a route that takes no id at all and returns another user's rows
  *     because its storage reader has no owner filter is not something a text scan can see. The
@@ -81,6 +96,15 @@ const OWNER_NAMES = [
   "owner_id",
   "travelerId",
   "traveler_id",
+  // Added by ledger `2026-09-05-vendors-read-scope`. `GET /api/vendors` was this guard's own
+  // stated blind spot: unauthenticated, `createdById` off the query string, a storage reader whose
+  // "no conditions ⇒ every row" ternary made the filter optional, and a `users` JOIN that put the
+  // creating account's EMAIL on every row. The name was deliberately left out when this guard
+  // landed so that it would not ship RED; now that the route is fixed, the name is in.
+  "createdById",
+  "created_by_id",
+  "creatorId",
+  "creator_id",
 ];
 
 const NAME_ALT = OWNER_NAMES.join("|");
@@ -288,7 +312,10 @@ function main() {
     "CLAUDE.md §14 applies to READS: a list or detail route whose rows are user-owned derives the\n" +
       "owner from the SESSION (getUserId(req)) and never from req.query / req.params. Ignore any\n" +
       "owner id in the query rather than trusting it. If the surface is deliberately PUBLIC, add it\n" +
-      "to ALLOWED_PARAM_ROUTES in scripts/check-query-userid-reads.cjs with a reason.",
+      "to ALLOWED_PARAM_ROUTES in scripts/check-query-userid-reads.cjs with a reason. If the filter\n" +
+      "is genuinely an ADMIN control, move the route under /api/admin/* — where §2's blanket\n" +
+      "adminApiGuard is a real gate — rather than exempting it here (ledger\n" +
+      "2026-09-05-vendors-read-scope).",
   );
   process.exit(1);
 }
@@ -400,6 +427,59 @@ function selfTest() {
   expect(
     "public author filter (authorId) is not flagged",
     ['router.get("/api/ready-made", async (req, res) => {', "  const authorId = req.query.authorId;", "});"].join("\n"),
+    0,
+  );
+
+  // ── ledger `2026-09-05-vendors-read-scope`: `createdById` joined the ownership names ──────────
+
+  // THE DEFECT, verbatim: the pre-fix `GET /api/vendors` as it stood on origin/main. Nothing
+  // exempts this route, so the same predicate that fails here also fails the real pre-fix
+  // `routes.ts` — the file-level RED proof recorded in the ledger row. This is the copy that runs
+  // on every push.
+  expect(
+    "pre-fix vendors list (unauthenticated, createdById off the query, users JOIN behind it)",
+    [
+      'app.get("/api/vendors", async (req, res) => {',
+      "  const { category, city, createdById } = req.query;",
+      "  const vendorList = await storage.getVendors(",
+      "    category as string | undefined,",
+      "    city as string | undefined,",
+      "    createdById as string | undefined,",
+      "  );",
+      "  res.json(vendorList);",
+      "});",
+    ].join("\n"),
+    1,
+  );
+
+  // The snake and `creatorId` spellings of the same idea.
+  expect(
+    "created_by_id / creatorId spellings",
+    [
+      'router.get("/api/things", async (req, res) => {',
+      '  const a = req.query["created_by_id"];',
+      "  const b = (req.query as any).creatorId;",
+      "  const c = req.query.creator_id;",
+      "});",
+    ].join("\n"),
+    3,
+  );
+
+  // THE FIX: the creator filter moved to an `/api/admin/*` path, where filtering the whole table
+  // by an arbitrary creator is the surface's job and the §2 blanket guard is the real gate. The
+  // browse route beside it reads no creator id at all.
+  expect(
+    "post-fix vendors pair (browse reads no creator id; the filter lives on the admin path)",
+    [
+      'app.get("/api/vendors", isAuthenticated, async (req, res) => {',
+      "  const { category, city } = req.query;",
+      "  const vendorList = await storage.getVendorsForDirectory(category, city);",
+      "});",
+      'app.get("/api/admin/vendors", isAuthenticated, async (req, res) => {',
+      "  const { category, city, createdById } = req.query;",
+      "  const vendorList = await storage.getVendorsWithCreator(category, city, createdById);",
+      "});",
+    ].join("\n"),
     0,
   );
 

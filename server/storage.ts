@@ -236,7 +236,13 @@ export interface IStorage {
 
   // Vendors
 
-  getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
+  // Ledger `2026-09-05-vendors-read-scope`: TWO readers, because one reader that joins `users`
+  // by default is one leak away from every caller. `getVendorsForDirectory` does not join at all;
+  // `getVendorsWithCreator` carries the creator's email and is named so a caller cannot reach it
+  // by accident. The old `getVendors` name is retired so no existing call site keeps the join
+  // silently.
+  getVendorsForDirectory(category?: string, city?: string, createdById?: string): Promise<Vendor[]>;
+  getVendorsWithCreator(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
@@ -1634,7 +1640,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
+  //
+  // Ledger `2026-09-05-vendors-read-scope`. The single `getVendors` that used to live here served
+  // BOTH the public list route and the admin audit export, and its SELECT joined `users` — so the
+  // creator's email address rode out on every row of a route with no session at all. The split
+  // below is structural, not cosmetic: the reader the browse surface calls has no join to strip.
+  //
+  // NOTE the `category`/`city`/`createdById` filters are all still OPTIONAL here, and an omitted
+  // filter still means "the whole directory". That is CORRECT for this table and is the difference
+  // from `getCustomVenues*` (which now throws without an owner): a vendor row is a shared directory
+  // listing every signed-in caller is entitled to browse, not a user-owned private row. What was
+  // never correct was publishing the CREATOR alongside it.
+
+  /** The browse projection: the vendor's own columns, no `users` join, no creator anything. */
+  async getVendorsForDirectory(category?: string, city?: string, createdById?: string): Promise<Vendor[]> {
+    const conditions = [
+      category ? eq(vendors.category, category) : undefined,
+      city ? eq(vendors.city, city) : undefined,
+      createdById ? eq(vendors.createdById, createdById) : undefined,
+    ].filter((condition): condition is NonNullable<typeof condition> => condition !== undefined);
+    return await db
+      .select()
+      .from(vendors)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+  }
+
+  /**
+   * The creator-provenance projection: carries the creating account's id, email and name.
+   *
+   * ADMIN/AUDIT ONLY. Its two callers are the admin CSV export and the admin branch of
+   * `GET /api/vendors`; both establish `role === "admin"` from the DB first. Do not call this to
+   * serve a browse surface — that is the defect this split exists to make un-writable.
+   */
+  async getVendorsWithCreator(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
     const conditions = [
       category ? eq(vendors.category, category) : undefined,
       city ? eq(vendors.city, city) : undefined,
