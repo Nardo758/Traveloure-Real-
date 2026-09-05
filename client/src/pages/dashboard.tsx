@@ -20,6 +20,7 @@ import { PlanSlipStrip } from "@/components/dashboard/PlanSlipStrip";
 import { WhileYouWereAway } from "@/components/dashboard/WhileYouWereAway";
 import { TodaysMove } from "@/components/dashboard/TodaysMove";
 import { IntakePanel } from "@/components/intake-panel";
+import { parseTripDate } from "@/lib/calendar-date";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 
 interface Notification {
@@ -321,12 +322,15 @@ export default function Dashboard() {
                     {activePlans.map((trip) => {
                       const isSelected = trip.id === effectiveTripId;
                       const dest = trip.destination?.split(",")[0] ?? "Trip";
-                      const d1 = trip.startDate
-                        ? new Date(trip.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-                        : null;
-                      const d2 = trip.endDate
-                        ? new Date(trip.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-                        : null;
+                      // QA F3 — `trips.start_date`/`end_date` are Postgres DATE columns and reach
+                      // the client as bare "YYYY-MM-DD"; `new Date()` reads those as UTC midnight,
+                      // so every viewer west of UTC saw the plan start a day early. `parseTripDate`
+                      // is the ONE date-only parser (`@/lib/calendar-date`). §13 — an unparseable
+                      // value stays null and the chip simply carries no dates.
+                      const d1 =
+                        parseTripDate(trip.startDate)?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? null;
+                      const d2 =
+                        parseTripDate(trip.endDate)?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? null;
                       const start = new Date(trip.startDate ?? 0);
                       const end = new Date(trip.endDate ?? 0);
                       const isActive = now >= start && now <= end;

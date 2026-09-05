@@ -390,6 +390,9 @@ export default function PlanGuestsPage() {
           </DialogHeader>
           {inviteEvent && (
             <GuestInviteManager
+              /* QA F5 — the writer retires this page's own roster key after a create/delete, so
+                 the table below stops showing 0 invited until a manual reload. */
+              tripId={tripId}
               experienceId={inviteEvent.id}
               eventName={eventLabel(inviteEvent, events.findIndex((e) => e.id === inviteEvent.id))}
               eventDestination={trip?.destination || ""}

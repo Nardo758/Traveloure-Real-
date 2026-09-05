@@ -261,6 +261,15 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/trip-date-local-parse.test.ts
           done
+      # QA F3: the SAME date-only defect on the Guest Invites caption — `user_experiences.event_date`
+      # is a DATE column, so `new Date("2026-10-10")` showed every viewer west of UTC the 9th, a
+      # day that can fall outside the plan's own range. Three timezones for the same reason.
+      - name: QA F3 guest-invite caption local-parse pin (3 timezones)
+        run: |
+          for tz in America/New_York Asia/Tokyo UTC; do
+            echo "--- TZ=$tz ---"
+            TZ="$tz" npx tsx --test client/src/lib/__tests__/guest-invite-meta.test.ts
+          done
       # F-2: ONE trip-target resolver for the /services grid and the service-detail page — the
       # "?tripId= first, then TripContext, else none" order, plus the detail href that carries the
       # handoff forward. A second copy of that order is how the two surfaces drifted apart.
