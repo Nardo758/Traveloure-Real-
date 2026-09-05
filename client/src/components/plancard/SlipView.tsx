@@ -290,6 +290,21 @@ function SlipHeader({
             <Sparkles className="w-3 h-3" /> optimized
           </span>
         )}
+        {/* LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`): the board stays
+            REVISITABLE after an adopt (adopt-finalize-conform D-4 removed the losing-variant
+            discard), so the optimized state links back to it. The id is read STRAIGHT OFF this
+            DTO (`lastComparisonId`, present only when a comparison row exists) — no surface
+            fetches the user's comparisons to work out which board this was. Absent id ⇒ NO LINK
+            (§13): a link to a board we cannot name is worse than none. */}
+        {hasOptimized && data.lastComparisonId && (
+          <Link
+            href={`/itinerary-comparison/${data.lastComparisonId}`}
+            className="text-[10px] font-semibold underline underline-offset-2 text-muted-foreground hover:text-foreground"
+            data-testid="slip-see-what-changed"
+          >
+            See what changed
+          </Link>
+        )}
       </div>
       <h1 className={`${SLIP_TITLE_FONT_CLASS} text-2xl font-bold text-foreground`} data-testid="slip-title">
         {trip?.title || trip?.destination || "Trip plan"}
