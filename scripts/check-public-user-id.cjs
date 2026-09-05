@@ -37,18 +37,28 @@
  *         • the key `id` whose value reads a person-shaped row (`owner.id`, `earner.id`,
  *           `expert.id`, `u.id`, …) — the storefront's exact shape.
  *
- *       PUBLIC scope is (a) a route block whose registration head carries no `isAuthenticated` /
- *       `requireAdmin` / `adminApiGuard` / `requireRole` and whose path is not under `/api/admin`,
- *       `/api/me` or `/api/auth`; or (b) the body of a payload-builder function — one named
- *       `load*` / `build*` in a route file, the convention this codebase already follows
+ *       PUBLIC scope is narrowed twice, because a route file is mostly not a response. First by
+ *       AUDIENCE: (a) a route block whose registration head carries no `isAuthenticated` /
+ *       `requireAdmin` / `adminApiGuard` / `requireRole` / `isAdmin` and whose path is not under
+ *       `/api/admin`, `/api/me`, `/api/auth` or `/internal/`; or (b) a payload-builder function —
+ *       one named `load*` / `build*` in a route file, the convention this codebase already follows
  *       (`loadStorefront`, `buildStorefront`, `loadProviderStorefrontDirectory`). Builders are
  *       checked regardless of the routes around them, because a builder carries no auth signal of
  *       its own and the storefront leak lived in exactly one.
  *
- *       Query-shaped regions are excluded by brace-matching, not by guesswork: the argument of
- *       `.select(`, `.values(`, `.set(`, `.where(`, `.returning(`, `.onConflictDoUpdate(` and
- *       `.groupBy(` is drizzle talking to Postgres, not a response. `id: users.id` inside a
- *       `.select({...})` is how you read the column you must not publish.
+ *       Then by WHAT ACTUALLY REACHES A CLIENT: only the argument of a `res.json(...)` /
+ *       `res.status(n).json(...)` call, and — inside a builder — the expression a `return` hands
+ *       back. Without that second narrowing the guard flagged thirty sites, nearly all of them
+ *       analytics INSERTS and storage-write arguments that happen to be spelled `{ userId }` — a
+ *       guard that cries wolf thirty times is one people learn to ignore.
+ *
+ *       Two more exclusions, both mechanical rather than guesswork. Drizzle QUERY arguments are
+ *       removed by brace-matching: `.select(`, `.values(`, `.set(`, `.where(`, `.returning(`,
+ *       `.onConflictDoUpdate(`, `.groupBy(` and friends are drizzle talking to Postgres, and
+ *       `id: users.id` inside a `.select({...})` is how you READ the column you must not publish.
+ *       And TS TYPE positions are removed by the shape of the value (`userId: string`,
+ *       `authorId: string | undefined`) — an interface field or a parameter list NAMES an identity
+ *       without publishing one.
  *
  * THE ESCAPE HATCH, AND WHY IT IS NOISY ON PURPOSE
  * ───────────────────────────────────────────────
