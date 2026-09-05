@@ -32,6 +32,14 @@
  *   R4  `guestListCopy` — the per-event guest list is PROMISED only on an explicit `true`
  *       (re-audit A9/A10).
  *
+ * Post-publish QA check 4 added the PRECEDENCE the suggestion sits inside, and pinned it here for
+ * the same reason:
+ *   Q1  `resolveStep2Destination` — an explicit destination on THIS plan wins; a destination left
+ *       over from a plan the traveler CLEARED does not, because nobody stated it about this one;
+ *       the home-city default only fills the gap, and only for a day-shaped occasion; everything
+ *       else is EMPTY, never a guess. `fromHomeCity` keeps a shown default and a chosen value
+ *       distinguishable (§13).
+ *
  * Pure unit: no DOM, no DB, no fetch.
  * Run: npx tsx --test client/src/lib/__tests__/plan-steps.test.ts
  */
@@ -49,6 +57,7 @@ import {
   partyFields,
   previousPlanStep,
   resolvePlanSteps,
+  resolveStep2Destination,
   showsHomeCityDayCaption,
   showsMainMoment,
   type PlanStepId,
@@ -541,6 +550,103 @@ describe("R4 — the guest-list clause is promised only on an explicit yes (A9/A
       const copy = guestListCopy(row);
       assert.equal(copy.on, /guest list/.test(copy.eventsIntro));
       assert.equal(copy.on, copy.eventsFooter !== "");
+    }
+  });
+});
+
+// ── Q1 · POST-PUBLISH QA CHECK 4 — STEP 2's PRECEDENCE ───────────────────────────────────────
+//
+// THE DEFECT THIS PINS. `homeCitySuggestion` asks its question of the FIELD ("does it already
+// hold something?"), and the modal used to hand it the live input value. A field value and a
+// plan's stated destination are different facts: production QA found a member whose profile said
+// Porto open a date night and be shown **Kyoto** — the destination of the plan they had just
+// cleared, still sitting in the field, with no note saying where it came from. The precedence is
+// therefore asked of the PLAN, and lives in one pure function.
+
+describe("Q1 — step 2's destination precedence: stated > home city > empty", () => {
+  it("a destination THIS plan states wins — the home city never overwrites it", () => {
+    const r = resolveStep2Destination({
+      occasion: DATE_NIGHT,
+      statedDestination: "Osaka, Japan",
+      homeCity: "Porto",
+    });
+    assert.deepEqual(r, { value: "Osaka, Japan", fromHomeCity: false });
+  });
+
+  it("a CLEARED plan states nothing, so the home city fills the gap (the reported bug)", () => {
+    // The plan that held "Kyoto, Japan" was cleared; nothing states a destination any more.
+    const r = resolveStep2Destination({
+      occasion: DATE_NIGHT,
+      statedDestination: "",
+      homeCity: "Porto",
+    });
+    assert.deepEqual(r, { value: "Porto", fromHomeCity: true });
+    // Absent and null read the same as empty — all three mean "not stated" (§13).
+    for (const stated of [undefined, null, "   "]) {
+      assert.deepEqual(resolveStep2Destination({ occasion: DATE_NIGHT, statedDestination: stated, homeCity: "Porto" }), {
+        value: "Porto",
+        fromHomeCity: true,
+      });
+    }
+  });
+
+  it("the home city is offered ONLY for a day-shaped occasion", () => {
+    assert.deepEqual(
+      resolveStep2Destination({ occasion: WEDDING, statedDestination: "", homeCity: "Porto" }),
+      { value: "", fromHomeCity: false },
+    );
+    // NOT SET falls back to "range" (`durationShape`), so it offers nothing either.
+    for (const row of NOT_SET) {
+      assert.deepEqual(resolveStep2Destination({ occasion: row, statedDestination: "", homeCity: "Porto" }), {
+        value: "",
+        fromHomeCity: false,
+      });
+    }
+  });
+
+  it("no home city ⇒ EMPTY — a guest, or a member who never set one, is never given a guess", () => {
+    for (const home of [undefined, null, "", "   "]) {
+      assert.deepEqual(
+        resolveStep2Destination({ occasion: DATE_NIGHT, statedDestination: "", homeCity: home }),
+        { value: "", fromHomeCity: false },
+      );
+    }
+  });
+
+  it("a stated destination wins even when there is no home city, and is trimmed", () => {
+    assert.deepEqual(
+      resolveStep2Destination({ occasion: DATE_NIGHT, statedDestination: "  Kyoto, Japan  " }),
+      { value: "Kyoto, Japan", fromHomeCity: false },
+    );
+  });
+
+  it("a stated destination on a RANGE occasion is still stated — the shape gates only the DEFAULT", () => {
+    assert.deepEqual(
+      resolveStep2Destination({ occasion: WEDDING, statedDestination: "Kyoto, Japan", homeCity: "Porto" }),
+      { value: "Kyoto, Japan", fromHomeCity: false },
+    );
+  });
+
+  it("`fromHomeCity` is TRUE only for the default — a shown default is not a chosen value (§13)", () => {
+    assert.equal(
+      resolveStep2Destination({ occasion: DATE_NIGHT, statedDestination: "", homeCity: "Porto" }).fromHomeCity,
+      true,
+    );
+    // Even when the stated destination IS the home city: the traveler said it about this plan.
+    assert.equal(
+      resolveStep2Destination({ occasion: DATE_NIGHT, statedDestination: "Porto", homeCity: "Porto" }).fromHomeCity,
+      false,
+    );
+  });
+
+  it("delegates the home-city half — it never disagrees with `homeCitySuggestion`", () => {
+    for (const occasion of [DATE_NIGHT, WEDDING, TRAVEL, null]) {
+      for (const homeCity of ["Porto", "", null]) {
+        const viaPrecedence = resolveStep2Destination({ occasion, statedDestination: "", homeCity });
+        const direct = homeCitySuggestion({ occasion, homeCity, currentDestination: "" });
+        assert.equal(viaPrecedence.value, direct);
+        assert.equal(viaPrecedence.fromHomeCity, direct !== "");
+      }
     }
   });
 });

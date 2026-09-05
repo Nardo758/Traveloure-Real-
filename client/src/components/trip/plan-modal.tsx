@@ -17,6 +17,7 @@ import {
   switchTripContext,
   updateTripContext,
   useTripContext,
+  type TripContext,
 } from "@/lib/trip-context";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -53,11 +54,11 @@ import {
   asksBudgetApprover,
   asksKidsCount,
   guestListCopy,
-  homeCitySuggestion,
   nextPlanStep,
   partyFields,
   previousPlanStep,
   resolvePlanSteps,
+  resolveStep2Destination,
   showsHomeCityDayCaption,
   showsMainMoment,
   type PlanStepId,
@@ -413,15 +414,22 @@ export function PlanModal({
     [source],
   );
 
-  // Seed the form from the live context each time the modal opens, then let the door's own source
-  // pre-fill over it — a door that names a city is describing the plan the traveler just asked for.
-  useEffect(() => {
-    if (!open) return;
+  /**
+   * SEED THE FORM FROM A CONTEXT SNAPSHOT — the ONE implementation, two callers (§18 rule 1):
+   * the open effect below (seeding from the live context), and "Clear plan" (seeding from an
+   * EMPTY context, which is what makes a cleared plan actually disappear from the form rather
+   * than merely from the store — post-publish QA check 4). A second copy of "what does an empty
+   * plan look like on this form?" is exactly how the modal came to re-render a plan the traveler
+   * had just deleted.
+   */
+  // `ctx` deliberately SHADOWS the component's live context here: every line below reads the
+  // snapshot it was handed, and a stray read of the live one is exactly the mistake this
+  // parameter exists to prevent.
+  const seedFormFrom = (ctx: TripContext, sourceDestination: string) => {
     startResolved.current = false;
     setFinishError(null);
     setStep("occasion");
     setTitle(ctx.title || "");
-    const sourceDestination = doorDestination;
     /**
      * The stop list, seeded from what the context already holds: the pre-trip pen (`ctx.stops`)
      * when there is one, otherwise the single `ctx.destination` — the §13 fallback, stated once in
@@ -459,6 +467,13 @@ export function PlanModal({
     setPickedEvents(readPendingEvents(ctx));
     setCustomEvent("");
     setCustomOpen(false);
+  };
+
+  // Seed the form from the live context each time the modal opens, then let the door's own source
+  // pre-fill over it — a door that names a city is describing the plan the traveler just asked for.
+  useEffect(() => {
+    if (!open) return;
+    seedFormFrom(ctx, doorDestination);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -553,30 +568,6 @@ export function PlanModal({
   });
 
   /**
-   * STEP 2's SUGGESTED CITY, for a day-shaped occasion only. `homeCitySuggestion` owns every
-   * condition (day-shaped, a home city exists, the field is still empty) — this effect only applies
-   * its answer, and marks what it wrote as a SUGGESTION so the save can tell it apart from a city
-   * the traveler chose (§13). It never runs over a filled field, so a door's own city, a bound
-   * plan's destination and anything typed all win by construction.
-   */
-  useEffect(() => {
-    if (!open || homeCitySeeded.current) return;
-    const suggestion = homeCitySuggestion({
-      occasion: selectedOccasion,
-      homeCity,
-      currentDestination: destination,
-    });
-    if (!suggestion) return;
-    // ONCE PER OPEN. A traveler who CLEARS the suggested city has answered "not that one", and
-    // re-offering it on the next render would be the modal arguing with them — the same reason the
-    // stop seed is one-shot behind `stopsTouched`.
-    homeCitySeeded.current = true;
-    setStops((prev) => renameStopAt(prev, 0, suggestion));
-    setDestinationSuggested(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectedOccasion, homeCity, destination]);
-
-  /**
    * THE PLAN'S OWN STOPS, when a plan exists. Read only for a `many` occasion, because that is the
    * only shape that writes them back and a replace-list writer must have read what it replaces.
    * The rows are the truth once a trip is bound: they outrank the pre-trip pen, and they carry
@@ -613,6 +604,51 @@ export function PlanModal({
     setStops(doorDestination ? renameStopAt(fromTrip, 0, doorDestination) : fromTrip);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stopsMany, boundTrip]);
+
+  /**
+   * WHAT THIS PLAN STATES ABOUT WHERE IT GOES — the input to step 2's precedence rule, and
+   * deliberately NOT the input FIELD (post-publish QA check 4).
+   *
+   * Three sources, in the order the modal already trusts them: the DOOR's own city (the traveler
+   * just asked for it), the BOUND TRIP's row (the truth once a plan exists), then the live trip
+   * CONTEXT. A destination that is in none of them is not stated by this plan — a value left in
+   * the field by a plan the traveler has since CLEARED is the case that shipped the bug — and the
+   * home-city default is then free to fill an empty field (§13).
+   */
+  const statedDestination = (
+    doorDestination ||
+    boundTrip?.destination ||
+    ctx.destination ||
+    ""
+  ).trim();
+
+  /**
+   * STEP 2's ROW 1, resolved by the ONE precedence function (`resolveStep2Destination`). It reads
+   * what the PLAN states, never what the field holds, so neither a cleared plan's leftover city
+   * nor the one-commit lag between "the modal re-opened" and "the seed applied" can decide it.
+   * `resolveStep2Destination` delegates the day-shaped/home-city half to `homeCitySuggestion` —
+   * one implementation of that rule, two readers (§18 rule 1).
+   *
+   * Only the home-city case is applied here: cases 1 and 3 are already on screen from the seed
+   * above, and re-writing them would fight the traveler's own typing. What is written is marked
+   * as a SUGGESTION so the save can tell it apart from a city the traveler chose (§13).
+   */
+  useEffect(() => {
+    if (!open || homeCitySeeded.current || stopsTouched) return;
+    const resolved = resolveStep2Destination({
+      occasion: selectedOccasion,
+      statedDestination,
+      homeCity,
+    });
+    if (!resolved.fromHomeCity) return;
+    // ONCE PER OPEN. A traveler who CLEARS the suggested city has answered "not that one", and
+    // re-offering it on the next render would be the modal arguing with them — the same reason the
+    // stop seed is one-shot behind `stopsTouched`.
+    homeCitySeeded.current = true;
+    setStops((prev) => renameStopAt(prev, 0, resolved.value));
+    setDestinationSuggested(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedOccasion, homeCity, statedDestination, stopsTouched]);
 
   /**
    * The visible steps track the CURRENTLY chosen occasion, not the one the door arrived with —
@@ -1092,8 +1128,35 @@ export function PlanModal({
     }
   };
 
+  /**
+   * "CLEAR PLAN" — the plan goes away everywhere it is held (post-publish QA check 4).
+   *
+   * THE DEFECT THIS CLOSES: this was `clearTripContext(); onOpenChange(false);`, and BOTH halves
+   * were short. `clearTripContext` emptied one sessionStorage key while the server row, an armed
+   * debounced push, an in-flight hydrate and the per-slug `searchSettings_<slug>` mirrors all
+   * still held the plan and put it back (that module now closes all four). And this component
+   * kept its OWN copy: `PlanModal` is mounted permanently by `PlanningProvider` (it is the `open`
+   * prop that toggles), so every field the traveler had filled survived the close and was still
+   * on screen at the next open — which is how a cleared Kyoto plan came back with its dates and
+   * its title intact.
+   *
+   * So the form is re-seeded from an EMPTY context through the same `seedFormFrom` the open
+   * effect uses (§18 rule 1 — one description of what an empty plan looks like), and the occasion
+   * is reset with it: `seedFormFrom` does not own `occasionSlug` (the door table sets it, once
+   * per open), and leaving it would put a cleared plan back under its old occasion's pill.
+   *
+   * The two cached READS this modal makes are dropped as well — the bound trip's own row, which
+   * the stop seeding reads, and the context endpoint, which nothing caches today but which a
+   * later reader would inherit stale. The TRIP ITSELF is not deleted: clearing the planning
+   * context is not destroying the traveler's trip (§13 — they are different acts).
+   */
   const clearAll = () => {
+    const clearedTripId = contextTripId;
     clearTripContext();
+    queryClient.removeQueries({ queryKey: ["/api/trip-context"] });
+    if (clearedTripId) queryClient.removeQueries({ queryKey: ["/api/trips", clearedTripId] });
+    seedFormFrom({}, "");
+    setOccasionSlug("");
     onOpenChange(false);
   };
 
@@ -1394,7 +1457,13 @@ export function PlanModal({
                   style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
                   data-testid="text-etp-destination-suggested"
                 >
-                  from your home city — change it, or continue to keep it
+                  {/* The attribution carries its OWN testid as well as the paragraph's: the
+                      walkthrough doc pins `text-etp-destination-suggested`, and the QA check that
+                      found this note unreachable asks for it by the name it looked for. One
+                      element cannot carry two `data-testid`s, so the sentence is the inner one. */}
+                  <span data-testid="text-destination-from-home-city">
+                    from the home city in your profile — change it, or continue to keep it
+                  </span>
                 </p>
               )}
 

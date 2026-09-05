@@ -155,6 +155,24 @@ export type TripContextPatch = Omit<Partial<TripContext>, "startDate" | "endDate
 
 const STORAGE_KEY = "experienceContext";
 const CHANGE_EVENT = "trip-context-change";
+/**
+ * Fired by `clearTripContext` ONLY — "the traveler cleared the plan", which is a different fact
+ * from "the context changed" (CHANGE_EVENT, which every merge fires). A surface holding its own
+ * copy of the plan's basics in React state — `experience-template.tsx` holds the destination/date
+ * quartet and reverse-syncs it back into this blob — cannot tell those two apart from the blob
+ * alone: an empty context looks identical to a context that has not hydrated yet, and treating
+ * every empty read as a clear is how a mount pass wipes a live plan. So the clear says so out
+ * loud, once, and the surfaces that can re-seed a plan listen for it (QA check 4).
+ */
+export const TRIP_CONTEXT_CLEARED_EVENT = "trip-context-cleared";
+/**
+ * The per-slug search-settings mirror `experience-template.tsx` writes
+ * (`searchSettings_<slug>`), named HERE because `clearTripContext` has to be able to drop every
+ * one of them: that store holds the same destination/dates this blob does and reverse-syncs them
+ * back in, so a clear that leaves it behind is a clear the next render undoes. One definition,
+ * two readers (§18 rule 1) — the page imports this prefix rather than re-typing the literal.
+ */
+export const SEARCH_SETTINGS_PREFIX = "searchSettings_";
 
 function normalizeDate(value: string | Date | null | undefined): string | undefined {
   if (value === null || value === undefined || value === "") return undefined;
@@ -361,6 +379,13 @@ function schedulePush(context: TripContext): void {
 }
 
 let hydrated = false;
+/**
+ * Bumped by every `clearTripContext`. A hydrate that started BEFORE a clear must not land AFTER
+ * it: the server payload it is carrying describes the plan the traveler just deleted, and writing
+ * it back is the same resurrection this lane exists to close (the sibling of the #972 mid-flight
+ * race guarded below). Captured at the top of the hydrate and re-checked before the write.
+ */
+let clearGeneration = 0;
 
 /**
  * Hydrate the local context from the server once per page load. The server copy
@@ -389,6 +414,8 @@ let hydrated = false;
 export async function hydrateTripContextFromServer(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
+  // Clear race (QA check 4): captured BEFORE the request leaves, re-checked before the write.
+  const generation = clearGeneration;
   try {
     const requestedLegacyRow = !getTripContext().tripId;
     const res = await fetch(`/api/trip-context${tripScopedQuery(getTripContext())}`, { credentials: "include" });
@@ -396,6 +423,7 @@ export async function hydrateTripContextFromServer(): Promise<void> {
     const data = await res.json().catch(() => null);
     const server = data?.context;
     if (!server || typeof server !== "object" || Object.keys(server).length === 0) return;
+    if (clearGeneration !== generation) return; // race: the plan was CLEARED mid-flight — discard
     const local = getTripContext();
     if (requestedLegacyRow && local.tripId) return; // race: a trip was bound mid-flight — discard
     // Merge: server provides the base, local fields override. Only write if
@@ -423,14 +451,98 @@ export function useTripContextSync(): void {
   }, []);
 }
 
+/**
+ * Clear the SERVER's copy through the EXISTING rail — `PUT /api/trip-context` with an empty
+ * context. There is no DELETE route and this lane adds none: the PUT is a full replace of the
+ * `trip_contexts.context` blob, so an empty body IS the clear.
+ *
+ * BOTH ROWS, when a trip was bound. `hydrateTripContextFromServer` picks its row from whatever
+ * `tripId` is local at the time, and a cleared context has none — so it will read the LEGACY
+ * per-user row on the next load. Clearing only the trip-scoped row would leave that legacy row to
+ * resurrect the plan; clearing only the legacy one would leave the trip-scoped row to do it the
+ * moment the trip is bound again. Both, or neither is cleared in practice.
+ *
+ * Best-effort exactly like `schedulePush`: a guest gets a 401 and a failure is swallowed. The
+ * server's first-touch `origin` provenance survives by design (the PUT's own CASE preserves it) —
+ * that is where the visitor came from, not what they were planning.
+ */
+function pushClear(tripId?: string): void {
+  if (typeof fetch !== "function") return;
+  const queries = tripId ? [`?tripId=${encodeURIComponent(tripId)}`, ""] : [""];
+  for (const query of queries) {
+    fetch(`/api/trip-context${query}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ context: {} }),
+    }).catch(() => {
+      /* offline / guest — best-effort */
+    });
+  }
+}
+
+/**
+ * CLEAR PLAN — the ONE implementation, and it clears every store that can re-seed a plan
+ * (QA check 4; CLAUDE.md Locked Decision 33's "Clear plan" control is its only caller).
+ *
+ * THE DEFECT THIS CLOSES. This used to remove one sessionStorage key and fire one event, which
+ * left FOUR live copies of the plan behind, every one of them able to put it back:
+ *
+ *   1. a DEBOUNCED PUSH already armed by the write that preceded the clear (`schedulePush`, 1.5s)
+ *      — it fires afterwards and re-saves the pre-clear blob to the server;
+ *   2. the SERVER row itself, which nothing here ever cleared, so the next page load hydrated the
+ *      plan straight back;
+ *   3. a HYDRATE already in flight, which lands after the clear and writes the server's copy over
+ *      the emptied store;
+ *   4. the per-slug `searchSettings_<slug>` mirrors, which hold the same destination/dates and
+ *      reverse-sync them back into this blob on the next render of `experience-template.tsx`.
+ *
+ * All four are closed here, and the ORDER matters: the armed push is disarmed and the in-flight
+ * hydrate is invalidated BEFORE the store is emptied, so nothing that was already moving can land
+ * after it. The pre-trip PEN (`stops`, `pendingEvents`, `pendingEventTitles`, the party
+ * pair, step 4's second question) lives INSIDE the blob and therefore goes with it — there is no
+ * second key to forget.
+ *
+ * WHAT IT DOES NOT DO, deliberately: it does not delete the TRIP. A plan row is the traveler's,
+ * not this control's, and "clear the planning context" is not "destroy my trip" (§13 — the two
+ * would render identically here and are not the same act). Nor does it touch React-Query caches:
+ * this module owns the context store and pulls in no query client. The one caller drops its own
+ * cached reads beside this call.
+ */
 export function clearTripContext(): void {
+  // (1) Disarm a push carrying the PRE-clear blob before anything else — it is the only writer
+  // that is already scheduled, and it would otherwise undo (2) a second later.
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = undefined;
+  }
+  const before = getTripContext();
+  // (3) Any hydrate already in flight is now describing a plan that no longer exists.
+  clearGeneration += 1;
   try {
     sessionStorage.removeItem(STORAGE_KEY);
   } catch {
     /* ignore */
   }
+  // (4) Every per-slug search-settings mirror. Collected first: removing while iterating
+  // `sessionStorage.key(i)` re-indexes the store and skips entries.
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith(SEARCH_SETTINGS_PREFIX)) stale.push(key);
+    }
+    for (const key of stale) sessionStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+  // (2) The server's own copy, through the existing PUT rail.
+  pushClear(before.tripId);
   try {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+    // Said out loud and separately: a surface holding its own copy of the basics cannot tell a
+    // clear from an un-hydrated read, and must not have to guess.
+    window.dispatchEvent(new CustomEvent(TRIP_CONTEXT_CLEARED_EVENT));
   } catch {
     /* ignore */
   }
