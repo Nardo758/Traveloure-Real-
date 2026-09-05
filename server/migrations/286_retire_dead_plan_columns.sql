@@ -1,0 +1,32 @@
+-- 286 — retire the dead plan column `trips.event_details`.
+-- Ledger `2026-09-04-retire-dead-plan-columns`.
+--
+-- WHAT IS DROPPED, AND WHY IT IS PROVABLY DEAD.
+--   `trips.event_details` (jsonb, default '{}') — born in `000_baseline_schema.sql`, declared in
+--   `shared/schema.ts`, and read or written by NOTHING. A grep of `server/`, `client/` and
+--   `shared/` (excluding the schema declaration itself) for both spellings returns exactly one
+--   hit: `client/src/pages/GuestInvitePage.tsx`'s local `Experience` interface, which is a
+--   DIFFERENT shape — the guest-invite payload, produced by `redactExperienceForGuest` in
+--   `server/routes/guest-invites.ts`, which never emits an `eventDetails` field at all. So that
+--   member is a stale type on another entity, not a reader of this column. Since ruling 29 an
+--   event inside a plan is a `user_experiences` row, not a blob on the trip; keeping an unread
+--   jsonb named `event_details` beside that is an invitation to write to the wrong one.
+--
+-- WHAT IS DELIBERATELY **NOT** DROPPED (recorded, not fixed here).
+--   `trip_participants.mandatory_event_ids` and `optional_event_ids` were proposed for retirement
+--   in the same ruling on the belief that they are never set or read. THEY HAVE A LIVE WRITER:
+--   `tripParticipantPatchSchema` (`server/routes/content.routes.ts`) `.pick()`s both fields into
+--   the allowlisted body of the owner-gated `PATCH /api/participants/:id`, which passes them
+--   straight to `coordinationService.updateParticipant`. Dropping the columns would 500 that
+--   route, and removing the declarations would throw at module load where the `.pick()` names
+--   them. The ruling's own precondition ("verify zero readers/writers; if any exists, do not
+--   drop") therefore refuses them. Retiring them is a separate lane that must first retire the
+--   writer.
+--
+-- PUBLISH-TRAP POSTURE. `DROP COLUMN IF EXISTS` only: no CHECK is added or removed, so
+-- `scripts/preflight-prod-constraints.cjs` and its CONSTRAINT_MANIFEST are unaffected. The
+-- matching declaration is removed from `shared/schema.ts` in the SAME commit — schema and
+-- migration must agree, or the deploy push re-adds the column the migration just dropped
+-- (deploy-push durability rule, inverted).
+
+ALTER TABLE trips DROP COLUMN IF EXISTS event_details;

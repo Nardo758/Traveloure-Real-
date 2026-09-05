@@ -8,12 +8,14 @@
  * ───────────────
  * There are THREE writers of `service_categories` rows and the code assumes two:
  *
- *   1. server/migrations/034_phase1_reconcile_service_categories.sql — the taxonomy AUTHORITY.
- *      Upserts 24 rows and is the only place that assigns `category_key`, the join key every
- *      offering-driven reader uses (service_offering_types.category_key → the provider offering
- *      picker's group headers in client/src/components/ServiceForm.tsx,
- *      /api/service-categories/provider-counts, and the /earn role partition in
- *      client/src/lib/earn-roles.ts).
+ *   1. THE TAXONOMY REGISTRY — `TAXONOMY_MIGRATIONS` in `scripts/lib/taxonomy-registry.cjs`
+ *      (migration 034's 24 rows, plus migration 285's `venue`). These are the only migrations that
+ *      assign `category_key`, the join key every offering-driven reader uses
+ *      (service_offering_types.category_key → the provider offering picker's group headers in
+ *      client/src/components/ServiceForm.tsx, /api/service-categories/provider-counts, and the
+ *      /earn role partition in client/src/lib/earn-roles.ts). Until ledger
+ *      `2026-09-04-venue-category` this guard hardcoded 034's filename; the registry replaced that
+ *      so the two taxonomy guards cannot drift apart on which files are authoritative.
  *   2. server/seed-categories.ts — runs at BOOT, after runMigrations().
  *   3. POST /api/admin/seed-categories (server/routes/admin.routes.ts) — an admin-triggered
  *      second copy of the same shape.
@@ -27,8 +29,11 @@
  *
  * THE TWO RULES
  * ─────────────
+ *  R0 REGISTRY INTEGRITY. Every file in `TAXONOMY_MIGRATIONS` parses, and no `category_key` (nor
+ *     category slug) is claimed by two of them. The registry is a UNION, not an override chain:
+ *     two files claiming one key means the last-applied one silently wins.
  *  R1 KEYED-OR-DECLARED. Every slug a seeder can create must end up carrying a `category_key` —
- *     either from the seeder literal itself or from migration 034's upsert — UNLESS it is named in
+ *     either from the seeder literal itself or from a registry migration's upsert — UNLESS it is named in
  *     KEYLESS_BY_DECISION below with a reason. That list is migration 034's own documented
  *     "outside brief taxonomy" set; adding to it is a deliberate act, which is the point.
  *  R2 NAMESPACE. A seeded category slug may never collide with a BUNDLE key in
@@ -56,6 +61,10 @@
  *     CLAUDE.md §4 forbids merging the two. This guard is only about `service_categories`.
  *   • Whether a category with a key has any OFFERINGS. A keyed category with zero offering rows is
  *     legal (the affiliate aff_* rows work that way) and silently absent from the picker.
+ *   • A migration that assigns a `category_key` but is NOT listed in `TAXONOMY_MIGRATIONS`. The
+ *     registry is a deliberate, committed act; an unregistered assigner is invisible here on
+ *     purpose — and `check-roles-needed-reachability.cjs` fails the moment a role names one of its
+ *     keys, which is the pressure that keeps the registry honest.
  *   • Migration-side `UPDATE service_categories SET category_key = …` backfills keyed by NAME
  *     (189/208 do this for Custom / Other). Both seeder literals already carry that key, so the
  *     row is covered by R1 without parsing them.
@@ -65,10 +74,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const { TAXONOMY_MIGRATIONS, collectTaxonomy } = require("./lib/taxonomy-registry.cjs");
 
 const REPO = path.resolve(__dirname, "..");
 
-const MIGRATION_034 = "server/migrations/034_phase1_reconcile_service_categories.sql";
 const BUNDLE_KEYS_FILE = "shared/constants/providerCategories.ts";
 const MIGRATIONS_DIR = "server/migrations";
 
@@ -115,22 +124,6 @@ const KEYLESS_BY_DECISION = new Map([
 ]);
 
 // ── Parsers ───────────────────────────────────────────────────────────────────────────────────
-
-/** migration 034's UPSERT → Set of slugs it assigns a category_key to. */
-function upsertBody(sqlText) {
-  // The header comment also says "ON CONFLICT (slug)", so cut at the LAST occurrence — the
-  // statement itself — not the first.
-  const cut = sqlText.lastIndexOf("ON CONFLICT (slug)");
-  return cut === -1 ? sqlText : sqlText.slice(0, cut);
-}
-
-function parseMigration034Slugs(sqlText) {
-  const upsert = upsertBody(sqlText);
-  const slugs = new Set();
-  // Tuples look like:  ('Display Name', 'the-slug',\n 'description', …
-  for (const m of upsert.matchAll(/\(\s*'[^']*'\s*,\s*'([a-z0-9-]+)'\s*,/g)) slugs.add(m[1]);
-  return slugs;
-}
 
 /**
  * Seeder category literals → [{ slug, hasKey }].
@@ -180,12 +173,15 @@ function parseSeederLiteralKeys(tsText) {
   return keys;
 }
 
-/** migration 034 → the set of category_key values it assigns. */
-function parseMigration034Keys(sqlText) {
-  const upsert = upsertBody(sqlText);
-  const keys = new Set();
-  for (const m of upsert.matchAll(/'([a-z0-9_]+)'\s*,\s*'(?:platform_provider|affiliate)'\s*,/g)) keys.add(m[1]);
-  return keys;
+/**
+ * The taxonomy registry, read off disk → `{ slugs, keys, rows, errors }`.
+ *
+ * ONE implementation of "which migrations assign a `category_key`", shared with
+ * `check-roles-needed-reachability.cjs` — a second copy of that list is the derivation-drift class
+ * §18 rule 1 names.
+ */
+function readRegistry(readFn) {
+  return collectTaxonomy(TAXONOMY_MIGRATIONS.map((rel) => ({ file: rel, sql: readFn(rel) })));
 }
 
 // ── Rules ─────────────────────────────────────────────────────────────────────────────────────
@@ -198,6 +194,10 @@ function parseMigration034Keys(sqlText) {
 function evaluate(input) {
   const errs = [];
   const allowlist = input.allowlist || KEYLESS_BY_DECISION;
+
+  // R0 — registry integrity (parse + no key/slug claimed twice). Reported first because every
+  // rule below reads the union the registry describes.
+  for (const e of input.registryErrors || []) errs.push(`R0 REGISTRY — ${e}`);
 
   for (const row of input.seeded) {
     // R2 first — a bundle-key collision is a failure even when allowlisted.
@@ -214,7 +214,7 @@ function evaluate(input) {
     if (!keyed && !allowlist.has(row.slug)) {
       errs.push(
         `R1 KEYED-OR-DECLARED — ${row.file}: category slug "${row.slug}" is seeded with no ` +
-          `category_key (neither in the literal nor by migration 034). Every offering-driven reader ` +
+          `category_key (neither in the literal nor by a taxonomy-registry migration). Every offering-driven reader ` +
           `joins on that key, so the row can never appear in the provider offering picker, ` +
           `/api/service-categories/provider-counts or /earn. Give it a category_key and seed its ` +
           `service_offering_types rows, or add it to KEYLESS_BY_DECISION with a reason.`
@@ -227,7 +227,7 @@ function evaluate(input) {
     if (!input.assignedKeys.has(key)) {
       errs.push(
         `R3 OFFERING JOIN — a service_offering_types seed row points at category_key "${key}", but ` +
-          `no seeded category carries it (migration 034 upsert + seeder literals). The picker would ` +
+          `no seeded category carries it (taxonomy-registry upserts + seeder literals). The picker would ` +
           `render a prettified key as a group header for a category that does not exist.`
       );
     }
@@ -236,6 +236,54 @@ function evaluate(input) {
 }
 
 // ── Self-test (§18d) ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * Two stand-in registry migrations: `A` is the 034 shape (many rows, ON CONFLICT DO UPDATE) and
+ * `B` the 285 shape (one row, ON CONFLICT DO NOTHING). They are fed through the REAL shared parser,
+ * so a parser that goes blind fails these fixtures instead of passing vacuously.
+ */
+const REGISTRY_FIXTURE_A = [
+  "-- header prose that mentions INSERT INTO service_categories and ON CONFLICT (slug)",
+  "INSERT INTO service_categories",
+  "  (name, slug, description, category_type, verification_required, is_active, sort_order,",
+  "   category_key, source_type, launch_tier, commission_band_key, insurance_band,",
+  "   risk_profile, requires_background_check)",
+  "VALUES",
+  "  ('Floral & Decoration', 'floral-decoration',",
+  "   'Florists',",
+  "   'service_provider', true, true, 12,",
+  "   'florist', 'platform_provider', 'core', 'commercial', 2, 'low', false),",
+  "  ('Caterer', 'caterer',",
+  "   'Caterers',",
+  "   'service_provider', true, true, 13,",
+  "   'caterer', 'platform_provider', 'core', 'commercial', 2, 'low', false)",
+  "ON CONFLICT (slug) DO UPDATE SET category_key = EXCLUDED.category_key;",
+].join("\n");
+
+const REGISTRY_FIXTURE_B = [
+  "INSERT INTO service_categories",
+  "  (name, slug, description, category_type, verification_required, is_active, sort_order,",
+  "   category_key, source_type, launch_tier, commission_band_key, insurance_band,",
+  "   risk_profile, requires_background_check)",
+  "VALUES",
+  "  ('Venues', 'venues',",
+  "   'Event venues',",
+  "   'service_provider', true, true, 105,",
+  "   'venue', 'platform_provider', 'segment', 'moderate', 2, 'moderate', false)",
+  "ON CONFLICT (slug) DO NOTHING;",
+].join("\n");
+
+/** The same `venue` key under a DIFFERENT slug — a taxonomy fork the registry must refuse. */
+const REGISTRY_FIXTURE_B_DUP = REGISTRY_FIXTURE_B.replace("'venues'", "'event-venues'");
+
+const REGISTRY_FIXTURE_AB = [
+  { file: "fixture/034.sql", sql: REGISTRY_FIXTURE_A },
+  { file: "fixture/285.sql", sql: REGISTRY_FIXTURE_B },
+];
+const REGISTRY_FIXTURE_DUP = [
+  { file: "fixture/034.sql", sql: REGISTRY_FIXTURE_A + "\n" + REGISTRY_FIXTURE_B },
+  { file: "fixture/285.sql", sql: REGISTRY_FIXTURE_B_DUP },
+];
 
 function selfTest() {
   const base = {
@@ -297,6 +345,32 @@ function selfTest() {
       offeringKeys: new Set(["custom_other"]),
       expect: 0,
     },
+    // ── R0 REGISTRY (ledger `2026-09-04-venue-category`) ──────────────────────────────────────
+    // The three shapes the registry adds, driven through the REAL shared parser rather than a
+    // hand-built Set — a fixture that fakes the parse cannot catch a parser that has gone blind.
+    {
+      name: "R0 REGISTRY — a key present ONLY in the second migration (285) is assigned",
+      seeded: [],
+      offeringKeys: new Set(["venue"]),
+      assignedKeys: collectTaxonomy(REGISTRY_FIXTURE_AB).keys,
+      expect: 0,
+    },
+    {
+      name: "R0 REGISTRY — a key in NEITHER migration fails R3 against the same registry",
+      seeded: [],
+      offeringKeys: new Set(["ballroom"]),
+      assignedKeys: collectTaxonomy(REGISTRY_FIXTURE_AB).keys,
+      expect: 1,
+      wantRule: "R3",
+    },
+    {
+      name: "R0 REGISTRY — the SAME key claimed by BOTH migrations FAILS (a fork, not a union)",
+      seeded: [],
+      offeringKeys: new Set(),
+      registryErrors: collectTaxonomy(REGISTRY_FIXTURE_DUP).errors,
+      expect: 1, // the duplicated category_key (the slugs deliberately differ)
+      wantRule: "R0",
+    },
   ];
 
   let failed = 0;
@@ -314,7 +388,9 @@ function selfTest() {
     console.error(`[check-category-reachability] self-test FAILED (${failed})`);
     process.exit(1);
   }
-  console.log("[check-category-reachability] self-test OK — 8 fixtures (bug fails, fix passes)");
+  console.log(
+    `[check-category-reachability] self-test OK — ${cases.length} fixtures (bug fails, fix passes)`
+  );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────────────────────
@@ -331,15 +407,16 @@ function read(rel) {
 function main() {
   if (process.argv.includes("--self-test")) return selfTest();
 
-  const m034 = read(MIGRATION_034);
-  const keyedByMigration = parseMigration034Slugs(m034);
-  const assignedKeys = parseMigration034Keys(m034);
+  const registry = readRegistry(read);
+  const keyedByMigration = registry.slugs;
+  const assignedKeys = new Set(registry.keys);
   const bundleKeys = parseBundleKeys(read(BUNDLE_KEYS_FILE));
 
   if (keyedByMigration.size === 0 || assignedKeys.size === 0 || bundleKeys.size === 0) {
     console.error(
-      "[check-category-reachability] a parser returned nothing — the shape of " +
-        `${MIGRATION_034} or ${BUNDLE_KEYS_FILE} changed. Fix the parser; do not delete the guard.`
+      "[check-category-reachability] a parser returned nothing — the shape of a " +
+        `TAXONOMY_MIGRATIONS entry (${TAXONOMY_MIGRATIONS.join(", ")}) or ${BUNDLE_KEYS_FILE} ` +
+        "changed. Fix the parser; do not delete the guard."
     );
     process.exit(1);
   }
@@ -365,19 +442,28 @@ function main() {
     for (const k of parseOfferingCategoryKeys(read(path.join(MIGRATIONS_DIR, f)))) offeringKeys.add(k);
   }
 
-  const errs = evaluate({ seeded, keyedByMigration, bundleKeys, offeringKeys, assignedKeys, allowlist: KEYLESS_BY_DECISION });
+  const errs = evaluate({
+    seeded,
+    keyedByMigration,
+    bundleKeys,
+    offeringKeys,
+    assignedKeys,
+    registryErrors: registry.errors,
+    allowlist: KEYLESS_BY_DECISION,
+  });
 
   if (errs.length) {
     console.error(`category-reachability guard: ${errs.length} FAILURE(S):`);
     for (const e of errs) console.error(`  ✗ ${e}`);
-    console.error("\nSee ledger 2026-09-04-taxonomy-reconcile.");
+    console.error("\nSee ledger 2026-09-04-taxonomy-reconcile / 2026-09-04-venue-category.");
     process.exit(1);
   }
   const uniqueSlugs = new Set(seeded.map((r) => r.slug));
   console.log(
     `category-reachability guard OK — ${uniqueSlugs.size} seeded category slug(s) across ` +
       `${SEEDER_FILES.length} seeder(s) all reachable; ${offeringKeys.size} offering category_key(s) resolve; ` +
-      `${KEYLESS_BY_DECISION.size} declared key-less by decision.`
+      `${KEYLESS_BY_DECISION.size} declared key-less by decision; ` +
+      `${assignedKeys.size} category_key(s) assigned across ${TAXONOMY_MIGRATIONS.length} taxonomy-registry migration(s).`
   );
 }
 
