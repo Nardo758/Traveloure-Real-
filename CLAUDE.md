@@ -695,6 +695,18 @@ and the guard predicate and its schema-mediated blind spot are described there. 
 **privileged-field mass-assignment through a denylist (`.omit()`) schema** — whose structural fix is a
 pick-based **allowlist** body schema. §19 also binds ruling 41's `stripePaymentIntentId` clause on the
 booking-BIRTH side. Read §14, §18 and §19 together.
+**§14 APPLIES TO READS AS WELL (ledger `2026-09-05-custom-venues-owner-scope`).** A list or detail route whose
+rows are user-owned derives the owner from the **session** (`getUserId(req)`) and never from `req.query` /
+`req.params`; an owner id that arrives on the query string is IGNORED, not trusted, and a filter the caller may
+not use (someone else's `tripId`) is treated as ABSENT rather than as an error. The reason this is stated
+separately from the money clause: `GET /api/custom-venues` was unauthenticated and passed a query-supplied
+`userId` into a storage reader that treated the owner as one OPTIONAL filter among three, so **omitting it
+returned every row on the table** — a leak with no money, no mutation and no error in any log. Storage readers
+for user-owned rows therefore REQUIRE an owner and refuse an empty one (second layer, the §18 placement), and
+one shared predicate answers "is this row yours" for all of a table's routes rather than being re-typed per
+route (§18 rule 1) — the two custom-venue routes that leaked were exactly the two that had no copy of it.
+Guarded by `check-query-userid-reads` (its negative space is in the Guard registry: NAME-based, query/param
+only, body-sourced ids belong to `check-money-endpoints`).
 **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
 `/checkout` dup-bookings — see §15); marketplace Phase B surfacing.
