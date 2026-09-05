@@ -26,6 +26,13 @@ import path from "path";
 import { storage, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
+import { resolveAiDraftModel } from "./services/ai-draft-model";
+import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
+import {
+  resolveAiDraftEligibility,
+  aiDraftRefusalBody,
+  AI_DRAFT_REFUSAL_STATUS,
+} from "./services/ai-draft-eligibility";
 import {
   materializeServiceAvailability,
   materializeDateRangeAvailability,
@@ -1412,6 +1419,19 @@ export async function registerRoutes(
         if (denied) return res.status(denied.status).json({ message: denied.message });
       }
 
+      // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: the FREE AI draft runs only on an
+      // EMPTY slip. This handler's whole job below is a wipe-and-rebuild of the trip's items — a
+      // free re-optimize competing with the paid Optimize rail — so a slip that already holds
+      // ANY item (purchased, in checkout, expert-authored or plain in_planning) is refused here
+      // with a 409 the client routes to Optimize. ONE predicate, one place (§18 rule 1).
+      // Placed after authorization and BEFORE the Anthropic call and the destructive delete, so a
+      // refused request costs zero AI tokens and destroys nothing — the same reason the
+      // authorization check above sits where it does.
+      const draftEligibility = await resolveAiDraftEligibility(req.params.id);
+      if (!draftEligibility.eligible) {
+        return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
+      }
+
       const start = new Date(trip.startDate);
       const end = new Date(trip.endDate);
       const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
@@ -1467,19 +1487,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // callWithCircuitBreaker prevents further calls when AI is failing repeatedly.
         itineraryData = await dedupedRequest(dedupKey, () =>
           callWithCircuitBreaker(async () => {
+            // LD 41 (c) / ledger `2026-09-05-draft-cost-tracking-and-tier`: the FREE draft's tier
+            // is a COST decision, env-configurable and defaulted to the cheaper current tier by
+            // `resolveAiDraftModel()`. It is never surfaced to the traveler in either direction —
+            // no "lite" badge and no degraded-quality disclaimer (§13) — and it is NOT the paid
+            // optimizer's model, which keeps its own Sonnet-class id.
+            const draftModel = resolveAiDraftModel();
             const completion = await anthropic.messages.create({
-              model: "claude-sonnet-4-5",
+              model: draftModel,
               max_tokens: 4000,
               messages: [{ role: "user", content: prompt }],
             });
 
             // T6-5: this is the one Anthropic call site outside claude.service.ts — without
             // this the primary generate-itinerary surface never writes ai_cost_tracking.
-            trackAnthropicResponse(completion, { sourceType: "ai_itinerary" });
+            // LD 41 (c): the tracked row now also carries WHOSE generation it was. `userId` was
+            // absent, so every draft landed in the cost table attributed to nobody; the admin cost
+            // breakdown could total spend but not attribute it. `trackAnthropicResponse` swallows
+            // its own failures (§15b — an ancillary effect may not break the operation).
+            trackAnthropicResponse(completion, {
+              sourceType: "ai_itinerary",
+              userId: callerUserId ?? null,
+            });
 
             const text = (completion.content[0] as any).text;
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            return JSON.parse(jsonMatch ? jsonMatch[0] : text);
+            // ONE parse implementation (§18 rule 1) — brace-matched, fence-tolerant, and it never
+            // repairs a truncated response into an object the model did not produce (§13).
+            return parseAiJsonObjectOrThrow(text, "AI itinerary draft");
           })
         );
       } catch (aiErr: any) {
