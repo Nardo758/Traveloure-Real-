@@ -35,6 +35,21 @@ interface MapControlCenterProps {
   compact?: boolean;
   /** Proposal maps connect located stops in emitted order without claiming a routed journey. */
   connectorMode?: "transport" | "sequence";
+  /**
+   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`) — an OPTIONAL second, MUTED
+   * series drawn beneath the primary one, so the review board can show a proposal against the
+   * traveler's own plan on ONE map rather than forking a second map component (§18 rule 1).
+   * Its connectors are straight DASHED sequence lines exactly like the primary series' — never
+   * travel routing, and no distance or duration is derived from either (§13, LD 22c). Only the
+   * stops the caller already located are passed; this component fabricates no coordinate.
+   */
+  secondarySeries?: SecondaryMapSeries | null;
+}
+
+export interface SecondaryMapSeries {
+  id: string;
+  label: string;
+  activities: PlanCardActivity[];
 }
 
 interface GeocodedActivity extends PlanCardActivity {
@@ -43,6 +58,11 @@ interface GeocodedActivity extends PlanCardActivity {
 }
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+
+// LD 41 comparison series styling. A dashed Google polyline is a zero-opacity stroke plus a
+// repeating dash symbol (the same shape `transport-modes.ts` uses for walking legs).
+const SECONDARY_SERIES_COLOR = "#94A3B8";
+const SECONDARY_DASH: google.maps.Symbol = { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 };
 
 function MapContent({
   activities,
@@ -53,6 +73,7 @@ function MapContent({
   onSelectPin,
   tripId,
   connectorMode,
+  secondaryActivities,
 }: {
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
@@ -62,6 +83,8 @@ function MapContent({
   onSelectPin: (id: string | null) => void;
   tripId: string;
   connectorMode: "transport" | "sequence";
+  /** LD 41: the comparison series' already-located stops (empty when nothing is compared). */
+  secondaryActivities: PlanCardActivity[];
 }) {
   const map = useMap();
   // Pins read coordinates directly from the server response. Coordinates are
@@ -76,20 +99,32 @@ function MapContent({
     [activities],
   );
 
+  // LD 41 comparison series — same §13 filter, no second coordinate rail.
+  const geocodedSecondary = useMemo<GeocodedActivity[]>(
+    () =>
+      (secondaryActivities || [])
+        .filter((a) => a.lat != null && a.lng != null)
+        .map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! })),
+    [secondaryActivities],
+  );
+
   // Center fallback (a day with no geolocated stops) uses the single server
   // geocode path — the same GET /api/geocode the Expert Workspace uses.
   const { data: center } = useQuery<{ lat: number; lng: number }>({
     queryKey: ["/api/geocode", destination],
     queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(destination)}`).then((r) => r.json()),
-    enabled: !!destination && geocodedActivities.length === 0,
+    enabled: !!destination && geocodedActivities.length === 0 && geocodedSecondary.length === 0,
     staleTime: Infinity,
   });
 
   useEffect(() => {
     if (!map || typeof google === "undefined" || !google.maps) return;
-    if (geocodedActivities.length > 0) {
+    // Both series share ONE viewport: a compare view that framed only the proposal would
+    // silently crop the plan it is being compared with.
+    const framed = [...geocodedActivities, ...geocodedSecondary];
+    if (framed.length > 0) {
       const bounds = new google.maps.LatLngBounds();
-      geocodedActivities.forEach((a) => {
+      framed.forEach((a) => {
         bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
       });
       map.fitBounds(bounds, 60);
@@ -97,12 +132,59 @@ function MapContent({
       map.setCenter({ lat: center.lat, lng: center.lng });
       map.setZoom(13);
     }
-  }, [map, geocodedActivities, center]);
+  }, [map, geocodedActivities, geocodedSecondary, center]);
 
   const expertNoteActivities = geocodedActivities.filter(a => a.expertNote && a.expertNote.trim().length > 0);
 
   return (
     <>
+      {/* LD 41 comparison series, drawn first so the focused series sits on top of it. Dashed,
+          muted, and labelled as SEQUENCE by the caller's legend — never a routed journey. */}
+      {layers.activities && geocodedSecondary.length > 1 &&
+        geocodedSecondary.slice(0, -1).map((activity, index) => {
+          const nextActivity = geocodedSecondary[index + 1];
+          return (
+            <Polyline
+              key={`secondary-sequence-${activity.id}-${nextActivity.id}`}
+              path={[
+                { lat: activity.resolvedLat, lng: activity.resolvedLng },
+                { lat: nextActivity.resolvedLat, lng: nextActivity.resolvedLng },
+              ]}
+              strokeColor={SECONDARY_SERIES_COLOR}
+              strokeOpacity={0}
+              strokeWeight={2}
+              icons={[{ icon: SECONDARY_DASH, offset: "0", repeat: "14px" }]}
+            />
+          );
+        })}
+
+      {layers.activities && geocodedSecondary.map((activity) => (
+        <MapMarker
+          key={`secondary-${activity.id}`}
+          position={{ lat: activity.resolvedLat, lng: activity.resolvedLng }}
+          title={activity.name}
+        >
+          <div className="flex flex-col items-center" data-testid={`map-secondary-pin-${activity.id}`}>
+            <div
+              className="rounded-lg px-2 py-1 whitespace-nowrap border border-dashed"
+              style={{
+                backgroundColor: "hsl(var(--card))",
+                borderColor: SECONDARY_SERIES_COLOR,
+                opacity: 0.9,
+              }}
+            >
+              <div className="text-[10px] font-semibold" style={{ color: SECONDARY_SERIES_COLOR }}>
+                {activity.name}
+              </div>
+            </div>
+            <div
+              className="w-2.5 h-2.5 rounded-full -mt-0.5 border"
+              style={{ backgroundColor: "hsl(var(--card))", borderColor: SECONDARY_SERIES_COLOR }}
+            />
+          </div>
+        </MapMarker>
+      ))}
+
       {connectorMode === "sequence" && layers.activities && geocodedActivities.length > 1 &&
         geocodedActivities.slice(0, -1).map((activity, index) => {
           const nextActivity = geocodedActivities[index + 1];
@@ -302,6 +384,7 @@ export function MapControlCenter({
   expertTravelerNote,
   compact = false,
   connectorMode = "transport",
+  secondarySeries = null,
 }: MapControlCenterProps) {
   const [layers, setLayers] = useState({ activities: true, transport: true, expertNotes: true });
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
@@ -378,6 +461,7 @@ export function MapControlCenter({
                   onSelectPin={setSelectedPinId}
                   tripId={tripId}
                   connectorMode={connectorMode}
+                  secondaryActivities={secondarySeries?.activities ?? []}
                 />
               </Map>
             </APIProvider>

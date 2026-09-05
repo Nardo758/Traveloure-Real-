@@ -548,6 +548,17 @@ export interface TripPlanPlancardExtras {
   metrics: TripPlanMetrics;
   optimizationDelta: unknown;
   lastOptimizedAt: Date | string | null;
+  /**
+   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`) — the `itinerary_comparisons` row
+   * this trip's optimization came from, so the slip can link BACK to the review board (which stays
+   * revisitable: adopt-finalize-conform D-4 removed the losing-variant discard).
+   *
+   * PRESENT ONLY WHEN A COMPARISON EXISTS. The key is OMITTED — never null-filled — for a trip
+   * that was never optimized, so a reader cannot mistake "there is no board" for "the board has no
+   * id" (§13). Sourced from the SAME comparison row `lastOptimizedAt` is read off; no second
+   * query, and no client-side lookup of the user's comparisons.
+   */
+  lastComparisonId?: string;
   stats: TripPlanStats;
 }
 
@@ -662,6 +673,21 @@ export type TripPlanFor<L extends AssembledRedactionLevel> = L extends "full"
     : PreviewTripPlan;
 
 /** Type guard — the only way to read the itinerary body off an assembled plan. */
+/**
+ * LD 41: the plancard's link back to the review board, as a SPREADABLE fragment.
+ *
+ * A comparison with an id yields `{ lastComparisonId }`; anything else — no comparison row, a row
+ * with no id — yields `{}`, so the key is ABSENT rather than null. Pure, and the ONE place the
+ * decision is made: a second `comparison?.id ?? null` at a call site would put a fake id-shaped
+ * hole on the wire the day the row is missing (§13, §18 rule 1).
+ */
+export function planComparisonRef(
+  comparison: { id?: string | null } | null | undefined,
+): { lastComparisonId?: string } {
+  const id = comparison?.id;
+  return typeof id === "string" && id.length > 0 ? { lastComparisonId: id } : {};
+}
+
 export function isFullTripPlan(plan: AnyTripPlan): plan is FullTripPlan {
   return plan.redactionLevel === "full";
 }
