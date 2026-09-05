@@ -383,6 +383,13 @@ jobs:
       # plan-steps, which the step above already runs).
       - name: Clear-plan durability pin
         run: npx tsx --test client/src/lib/__tests__/clear-plan.test.ts
+      # Step 4's centre is now a TYPED input as well as a stepper (decision-maker request), so one
+      # normaliser serves two controls on one state (§18 rule 1). P6a-P6e pin the invariants a
+      # free-text field is the obvious way to break: empty stays empty (Locked Decision 33's
+      # "untouched ⇒ NULL, never 2"), a typed 0 is NOT SET rather than a stated none (§13), digits
+      # survive a paste, and the clamp is the stepper's own MAX_PARTY_COUNT.
+      - name: Typed party count pin
+        run: npx tsx --test client/src/lib/__tests__/plan-vocabulary.test.ts
       # 2026-09-04-plan-islands: three surfaces that connect machinery the plan's own page could
       # not reach. T1/T2 pin that the TRAVELING-PARTY body carries no money column and that a
       # blank field CLEARS rather than being dropped; O1-O4 pin the one-time "Organize into
