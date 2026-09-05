@@ -1138,7 +1138,11 @@ This document captures architectural decisions to maintain consistency across co
     answer says wallets appear "where your device and browser support them" rather than promising a
     specific button. The same answer was corrected in this lane: it previously stated there was no
     wallet integration, which stopped being true the moment (c) landed. **PayPal is still not
-    integrated and is still not claimed.**
+    integrated and is still not claimed.** **The association file's PATH is now served (ledger
+    `2026-09-05-well-known-static`): `/.well-known/*` is a static mount registered ahead of both
+    SPA catch-alls, which were answering Stripe's verification fetch with the SPA's 200-HTML "404
+    – Lost at Sea?" page — the file itself remains an operator drop-in, and the dashboard
+    registration remains the operator step this clause rules it to be.**
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

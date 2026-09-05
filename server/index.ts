@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { createServer, request as httpRequest } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { mountWellKnown } from "./well-known";
 import { runMigrations } from "./migrations/run-migrations";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
@@ -537,6 +538,20 @@ async function runDatabaseSeeding() {
 // window (~7 s), and the autoscale promote step times out and fails.
 // In development this block is skipped — Vite dev-server setup must happen
 // before listen(), so dev keeps the original order.
+// ── /.well-known is served as static files, AHEAD of every SPA catch-all ──────────────
+// Stripe verifies an Apple Pay domain (CLAUDE.md Locked Decision 43(e)) by fetching
+// https://<domain>/.well-known/apple-developer-merchantid-domain-association. Every SPA
+// fallback in this file answers 200 text/html for an unmatched path — serveStatic()'s
+// boot-window catch-all and mountSpaFallback() in production, Vite's app.use("*") in dev —
+// so that fetch was answered with the SPA's "404 – Lost at Sea?" PAGE and the domain could
+// never be registered (§9: a dead endpoint returns 200-HTML, NOT 404).
+//
+// THE MOUNT'S POSITION IN THIS FILE IS THE FIX, so it is pinned by a test: it must stay
+// ABOVE the serveStatic(app) call below (production pre-bind) and far above the
+// setupVite()/mountSpaFallback() calls inside the async IIFE, which register later still.
+// Unknown /.well-known/* paths get a plain-text 404 from that mount — never the SPA.
+mountWellKnown(app);
+
 const _productionPort = parseInt(process.env.PORT || "5000", 10);
 if (process.env.NODE_ENV === "production") {
   serveStatic(app);
