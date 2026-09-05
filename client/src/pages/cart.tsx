@@ -61,6 +61,7 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 import { getAcquisitionRef } from "@/lib/acquisition";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
+import { trackEvent } from "@/lib/analytics";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -228,6 +229,17 @@ function getRoomStay(item: CartItem): { checkIn: string; checkOut: string; night
   const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
   if (!Number.isFinite(nights) || nights < 1) return null;
   return { checkIn, checkOut, nights };
+}
+
+function checkoutAnalyticsData(items: CartItem[]) {
+  const itemCount = items.reduce((total, item) => total + item.quantity, 0);
+  const hasRoomStay = items.some((item) => item.service?.pricingUnit === "per_night");
+  const hasOtherItem = items.some((item) => item.service?.pricingUnit !== "per_night");
+  return {
+    item_count: itemCount,
+    has_scheduled_item: items.some((item) => Boolean(item.scheduledDate || getRoomStay(item))),
+    booking_type: hasRoomStay && hasOtherItem ? "mixed" : hasRoomStay ? "room_stay" : "service",
+  };
 }
 
 /**
@@ -553,6 +565,10 @@ export default function CartPage() {
     amount: number;
   } | null>(null);
   const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
+  const checkoutStartedRef = useRef(false);
+  const paymentCompletedRef = useRef(false);
+  const bookingCompletedRef = useRef(false);
+  const checkoutAnalyticsRef = useRef({ item_count: 0, has_scheduled_item: false, booking_type: "service" });
   // FP-4: once /api/checkout succeeds it clears the cart server-side (bookings are
   // created payment_pending before the Stripe charge), so the live cart query goes
   // empty right under the payment step. Snapshot the real checkout response here so
@@ -796,12 +812,35 @@ export default function CartPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         return;
       }
+      const analyticsData = checkoutAnalyticsData(cart?.items || []);
+      if (!checkoutStartedRef.current && (data.paymentIntent || (data.oneClick && data.status === "succeeded"))) {
+        checkoutStartedRef.current = true;
+        checkoutAnalyticsRef.current = analyticsData;
+        trackEvent("checkout_started", {
+          item_count: analyticsData.item_count,
+          has_scheduled_item: analyticsData.has_scheduled_item,
+        });
+      }
       // B2 one-click: the off-session confirm already SUCCEEDED server-side — there is no
       // payment step left, and the clientSecret must NOT be confirmed again. Same polling
       // fallback as the interactive path (idempotent; the server promoted inline as actor
       // "checkout", so this converges instantly), then straight to the traveler's bookings.
       // ONE click total: the button below was the entire checkout.
       if (data.oneClick && data.status === "succeeded") {
+        if (!paymentCompletedRef.current) {
+          paymentCompletedRef.current = true;
+          trackEvent("payment_completed", {
+            flow: "cart_checkout",
+            payment_method_type: "saved_card",
+          });
+        }
+        if (!bookingCompletedRef.current) {
+          bookingCompletedRef.current = true;
+          trackEvent("booking_completed", {
+            booking_type: analyticsData.booking_type,
+            payment_required: true,
+          });
+        }
         confirmCheckoutPayment(
           data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [],
           data.paymentIntent?.paymentIntentId,
@@ -2661,6 +2700,20 @@ export default function CartPage() {
                             // becomes a no-op. Best-effort: never block the traveler's confirmation
                             // screen on it (the booking is already paid; the webhook will catch up).
                             await confirmCheckoutPayment(checkoutBookingIds, paymentIntentId).catch(() => {});
+                            if (!paymentCompletedRef.current) {
+                              paymentCompletedRef.current = true;
+                              trackEvent("payment_completed", {
+                                flow: "cart_checkout",
+                                payment_method_type: "card",
+                              });
+                            }
+                            if (!bookingCompletedRef.current) {
+                              bookingCompletedRef.current = true;
+                              trackEvent("booking_completed", {
+                                booking_type: checkoutAnalyticsRef.current.booking_type,
+                                payment_required: true,
+                              });
+                            }
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
                             setLocation("/bookings");
