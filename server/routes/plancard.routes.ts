@@ -407,8 +407,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // only its ONE implicit unnamed event" state, never a fabricated placeholder event.
     //
     // The projection is deliberately narrow: id, title, eventDate, startTime, location, guestCount,
-    // experienceTypeId, rolesNeeded. `preferences` / `stepData` / `mapData` are the wizard's own
-    // working state and are not part of this contract.
+    // budget, experienceTypeId, rolesNeeded. `preferences` / `stepData` / `mapData` are the
+    // wizard's own working state and are not part of this contract.
     //
     // `rolesNeeded` (ledger `2026-09-04-which-event-hint`; migration 280, Locked Decision 31) is
     // the occasion's own `experience_types.roles_needed` — the disciplines it typically hires,
@@ -431,6 +431,14 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
         startTime: e.startTime ?? null,
         location: e.location ?? null,
         guestCount: e.guestCount ?? null,
+        // Ledger `2026-09-04-event-budget`: the EVENT'S OWN stated budget — the traveler's
+        // planning number, carried as the DB's own decimal string and never re-scaled here. The
+        // plan's total is DERIVED from these by the client's one pure helper and is never a
+        // stored field (§18 rule 1). `null` = NOT STATED, and a reader must then show nothing
+        // rather than 0 (§13). It rides this gate — owner / assigned advisor / author — and no
+        // wider one; it is on no public or teaser channel. It is read by NOTHING on the money
+        // path and must never be (§14).
+        budget: e.budget ?? null,
         experienceTypeId: e.experienceTypeId,
       })),
     );

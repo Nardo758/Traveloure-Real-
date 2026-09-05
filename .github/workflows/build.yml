@@ -355,6 +355,18 @@ jobs:
       # lanes on one rail only (§19, §18 rule 1). G3/G3b assert over the real artifacts.
       - name: Participant write-rail allowlist pin
         run: npx tsx --test server/__tests__/participant-write-rail.test.ts
+      # 2026-09-04-event-budget: the EVENT is the budget unit and the plan's total is DERIVED, so
+      # B2 pins the omission that is the whole ruling — no event stating a budget renders NO line,
+      # never "$0" — and B4 pins that a blank string is not coerced to zero (Number("") is 0, which
+      # is exactly how "left blank" becomes "said zero"). B5 pins the deliberate choice NOT to
+      # filter a stored negative, so the total can never disagree with the "across N events" beside
+      # it. G1-G6 pin the admission shape on the SHARED pick: `createInsertSchema` derives
+      # `z.string()` for a `decimal`, so that rail took "abc" and refused a number until this lane.
+      # The start-time file is committed by #765 and ran in NO workflow — this arms it too.
+      - name: Event budget pin
+        run: |
+          npx tsx --test client/src/lib/__tests__/plan-budget.test.ts
+          npx tsx --test shared/__tests__/user-experience-start-time.test.ts
       # 2026-09-04-reaudit-fixes: the post-build re-audit's contained fixes. Everything pinned here
       # is a divergence that RENDERED PERFECTLY while asking or claiming the wrong thing, which is
       # why none of it was caught by any existing gate:

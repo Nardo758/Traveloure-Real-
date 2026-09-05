@@ -61,6 +61,19 @@ export interface PlanEvent {
   startTime?: string | null;
   location?: string | null;
   guestCount?: number | null;
+  /**
+   * `user_experiences.budget` — the EVENT'S OWN stated budget (ledger `2026-09-04-event-budget`,
+   * CLAUDE.md Locked Decision 29). A `decimal` column, so it arrives as a STRING; a number is
+   * tolerated in the type because no reader here should care which spelling the wire used, and
+   * the ONE parse lives in `plan-budget.ts`.
+   *
+   * `null` / absent = NOT STATED, and it is NEVER rendered as 0, "no budget" or "free" — all
+   * three are claims the traveler did not make (§13). The PLAN's total is DERIVED from these
+   * rows at read time and is never stored, so there is no second number to disagree with them.
+   *
+   * It is planning content, not money: no charge, fee, payout or rate path reads it (§14).
+   */
+  budget?: string | number | null;
   experienceTypeId?: string | null;
   /**
    * `experience_types.roles_needed` for the occasion this event names — the disciplines it

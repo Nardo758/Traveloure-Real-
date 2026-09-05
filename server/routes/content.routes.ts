@@ -100,7 +100,7 @@ import {
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
-  insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema, userExperienceStartTimeSchema,
+  insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema, userExperienceStartTimeSchema, userExperienceBudgetSchema,
   insertUserExperienceItemSchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -1758,6 +1758,20 @@ export const userExperienceBodySchema = insertUserExperienceSchema.pick({
   // format authority for the column (it carries no DB CHECK — publish-trap posture). Re-stating the
   // regex here would be the second copy §18 rule 1 names.
   startTime: userExperienceStartTimeSchema,
+  // Ledger `2026-09-04-event-budget` (CLAUDE.md Locked Decision 29): the EVENT'S OWN stated
+  // budget. The column is pre-existing and was ALREADY in this pick — what changes is its SHAPE.
+  // `createInsertSchema` derives `z.string()` for a `decimal`, so this rail accepted "abc" (a
+  // value the column cannot hold) and refused the number a client naturally sends. The narrowing
+  // comes from `userExperienceBudgetSchema` in shared/schema.ts, which is the ONE shape authority
+  // for the column (it carries no DB CHECK — publish-trap posture) and converts to the DB's
+  // string at the column's own scale. Re-stating any of that here would be the second copy §18
+  // rule 1 names.
+  //
+  // A BUDGET IS PLANNING CONTENT, NOT A MONEY FIELD: it is the traveler's own stated number, no
+  // charge/fee/payout/rate path reads it, and none may start (§14 — the prohibition there is on a
+  // client-supplied amount reaching a MONEY decision, which is exactly what this value must never
+  // become).
+  budget: userExperienceBudgetSchema,
 });
 
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {

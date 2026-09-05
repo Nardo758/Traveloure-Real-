@@ -2070,6 +2070,23 @@ export const userExperiences = pgTable("user_experiences", {
   // by the pick-based allowlist `userExperienceBodySchema` shares between POST and PATCH (§19).
   startTime: varchar("start_time", { length: 5 }),
   location: varchar("location", { length: 255 }),
+  // THE EVENT'S OWN BUDGET — the traveler's STATED PLANNING NUMBER, and nothing else
+  // (ledger `2026-09-04-event-budget`; CLAUDE.md Locked Decision 29). The column is pre-existing;
+  // that lane added no migration, only an admission shape and readers.
+  //
+  // IT IS NOT A PRICE, A CHARGE, A QUOTE OR A COMMITMENT. Nothing on the money path may read it:
+  // it never reaches a Stripe call, a fee resolution, a payout, a booking amount or a §8 rate.
+  // §14 says a money endpoint derives its amount from the SERVER's record and never from the
+  // client — this value comes FROM the client by design, which is exactly why it must stay on the
+  // planning side of that line. The per-event budget is the ONE budget unit, and a PLAN's total is
+  // DERIVED from these rows at read time (`client/src/lib/plan-budget.ts`) — never stored, so no
+  // second number can disagree with the rows it claims to sum (§18 rule 1).
+  //
+  // NULL = NOT STATED, and is NEVER rendered as 0 or "no budget" — both are claims the traveler
+  // did not make (§13). A plan where no event states one shows NO total line at all.
+  // No DEFAULT and no DB CHECK (publish-trap posture); the shape is app-enforced by
+  // `userExperienceBudgetSchema` below, through the ONE pick-based allowlist the POST and the
+  // PATCH share (§19).
   budget: decimal("budget", { precision: 10, scale: 2 }),
   guestCount: integer("guest_count"),
   preferences: jsonb("preferences").default({}), // Experience-specific preferences
@@ -2776,6 +2793,51 @@ export const userExperienceStartTimeSchema = z
   .regex(/^\d{2}:\d{2}$/, 'startTime must be a wall-clock "HH:MM"')
   .nullable()
   .optional();
+
+/**
+ * The column's own declared capacity, derived from its `decimal(precision, scale)` rather than
+ * typed out as a magic number: 8 integer digits and 2 decimal places. A larger value would not be
+ * rejected by anything until Postgres threw `numeric field overflow` behind a 500, so the cap is
+ * stated where the shape is. It is the COLUMN's limit, not an invented business rule about how
+ * large a traveler's budget may be.
+ */
+const USER_EXPERIENCE_BUDGET_MAX = 10 ** (10 - 2) - 0.01;
+
+/**
+ * THE SHAPE AUTHORITY for `user_experiences.budget` (ledger `2026-09-04-event-budget`; CLAUDE.md
+ * Locked Decision 29). Stated ONCE, here, and `.extend()`ed onto the ONE pick-based allowlist the
+ * POST and the PATCH share — a second copy at the route is the drift §18 rule 1 names.
+ *
+ * WHAT IT ADMITS, and why each choice is deliberate:
+ *  - A NUMBER. `createInsertSchema` derives `z.string()` for a `decimal` column (drizzle reads and
+ *    writes numerics as strings), which meant the pick accepted `"abc"` — a value the column
+ *    cannot hold, refused only later by Postgres — while refusing the number a client naturally
+ *    sends. This narrows the wire to a real number and converts to the DB's string HERE, in the
+ *    one place that knows the column's scale.
+ *  - `.nullable()` is load-bearing: an explicit `null` is how a traveler CLEARS a budget they
+ *    stated. `.optional()` keeps an untouched field ABSENT, which under the PATCH's `.partial()`
+ *    means "not mentioned" — a different answer from "cleared" (§13, two states kept as two).
+ *  - NEGATIVES ARE REFUSED. This is a deliberate departure from the `startTime` precedent, which
+ *    validates shape and not range: "25:00" is well-formed and merely meaningless, whereas a
+ *    stated budget below zero is not a statement anyone can make, and unlike a clock it is SUMMED
+ *    by a reader (`planBudgetTotal`), where a negative would silently cancel out another event's
+ *    real number. The refusal lives at admission because that is the only place that can stop one
+ *    being born; the reader deliberately does NOT filter, so it can never disagree with the rows
+ *    it claims to total.
+ *
+ * IT IS NOT A MONEY FIELD IN THE §14 SENSE. A budget is the traveler's own planning statement, it
+ * is read by no charge, fee, payout or rate path, and it must never become one.
+ */
+export const userExperienceBudgetSchema = z
+  .number({ invalid_type_error: "budget must be a number, not a string" })
+  .finite()
+  .min(0, "budget cannot be negative")
+  .max(USER_EXPERIENCE_BUDGET_MAX)
+  .nullable()
+  .optional()
+  // To the DB's own representation, at the column's own scale. Done once, here, so no caller has
+  // to know that a `decimal` column round-trips as a string.
+  .transform((value) => (typeof value === "number" ? value.toFixed(2) : value));
 export const insertUserExperienceItemSchema = createInsertSchema(userExperienceItems).omit({ id: true, createdAt: true });
 
 export type ExperienceType = typeof experienceTypes.$inferSelect;

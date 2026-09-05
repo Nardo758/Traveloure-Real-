@@ -249,6 +249,13 @@ This document captures architectural decisions to maintain consistency across co
     the plancard payload gains an `events` array (the trip's `user_experiences` rows) behind the
     same owner/advisor/author gate the plancard already has. Grouping the slip by event is a
     separate lane.
+    **THE EVENT IS ALSO THE BUDGET UNIT (ledger `2026-09-04-event-budget`; NO schema change — the
+    pre-existing nullable `user_experiences.budget` is the home):** a budget is stated PER EVENT on
+    the slip and never at intake, and the PLAN's total is DERIVED from those rows by one pure helper
+    and never stored (a second stored number is free to disagree with the rows it summarises, §18
+    rule 1); NULL = NOT STATED ⇒ the total line is OMITTED, never "$0" (§13); it is the traveler's
+    own planning statement, read by NO charge/fee/payout/rate path (§14), and a PAYER — a money
+    identity — is deliberately not modelled.
 
 30. **A PLAN CARRIES ITS OWN TIMEZONE, AND ITS EVENTS SURVIVE BEING PLANNED BEFORE IT EXISTS
     (decision-maker ratified Sep 3, 2026 — ledger `2026-09-04-plan-mint`; migration 279).** One
