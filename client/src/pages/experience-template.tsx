@@ -922,6 +922,17 @@ export default function ExperienceTemplatePage() {
   const [tripCtx] = useTripContext();
   // Ledger `2026-09-04-one-modal-many-doors`: this page's "edit trip" affordances are DOORS of the
   // one planning modal, opened through the one opener — not a second dialog this page mounts.
+  //
+  // Locked Decision 42 (D13), ledger `2026-09-05-doors-source-fields`: A DOOR PASSES WHAT IT HOLDS.
+  // This page holds two things the modal would otherwise ask for — its occasion SLUG (the route
+  // param, which IS a seeded `experience_types` slug and is what makes `resolvePlanSteps` open at
+  // step 2 under the occasion pill) and the destination the traveler has stated. All THREE
+  // `openPlanModal(...)` call sites below pass the same pair: they are ONE door worn three ways,
+  // and passing it at two of the three is the derivation-drift class §18 rule 1 names.
+  //
+  // §13 — A BLANK IS NOT AN ANSWER. Both are coerced to `undefined` when empty rather than passed
+  // as `""`: an ABSENT field is how `PlanningSource` says "not known", and an empty string is a
+  // stated answer that happens to be empty. Nothing here is invented to fill either one.
   const { open: openPlanModal } = usePlanning();
   // Flips true once the mount-time context→local sync has run, so the persist
   // effect can't write stale local defaults over the strip's values first.
@@ -2649,9 +2660,10 @@ export default function ExperienceTemplatePage() {
             (currentTabType === "vendors" || activeTab in TAB_FALLBACK_CONFIG || currentTabType === "venue-search" || currentTabType === "dining" || currentTabType === "nightlife") && (
               <div className="mb-6">
                 {/* QA F7: `onSetLocation` gives the panel's no-location state a way OUT of itself.
-                    The door is this page's existing plan-modal opener — the same `openPlanModal()`
-                    the Trip Strip's "Edit" and this page's mobile trip card already call — so the
-                    panel never becomes a second entry into the modal (single planning entry). */}
+                    The door is this page's existing plan-modal opener — the same `openPlanModal`
+                    call the Trip Strip's "Edit" and this page's mobile trip card already make — so
+                    the panel never becomes a second entry into the modal (single planning entry).
+                    All three carry the same source (Locked Decision 42 D13, see the opener above). */}
                 <VenueSearchPanel
                   template={slug || ''}
                   location={destination}
@@ -2663,7 +2675,7 @@ export default function ExperienceTemplatePage() {
                   externalMinRating={minRating}
                   externalKeyword={currentTabType !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
-                  onSetLocation={() => openPlanModal()}
+                  onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                 />
               </div>
             )
@@ -3107,7 +3119,7 @@ export default function ExperienceTemplatePage() {
                 {/* P3b: destination/dates/travelers now live in the global Trip Strip */}
                 <button
                   type="button"
-                  onClick={() => openPlanModal()}
+                  onClick={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                   className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors text-left"
                   data-testid="button-template-edit-trip-mobile"
                 >
@@ -3433,7 +3445,7 @@ export default function ExperienceTemplatePage() {
                     onClick={() => {
                       setAiItineraryDialogOpen(false);
                       // P3b: the quartet lives in the Trip Strip — open the one plan modal
-                      openPlanModal();
+                      openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined });
                     }}
                     data-testid="button-close-itinerary-dialog"
                   >

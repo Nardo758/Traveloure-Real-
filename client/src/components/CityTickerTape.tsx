@@ -64,6 +64,19 @@ export function CityTickerTape() {
             </div>
           </div>
 
+          {/* Locked Decision 42 (D13), ledger `2026-09-05-doors-source-fields`: A DOOR PASSES WHAT
+              IT HOLDS — AND ONLY WHAT IS TRUE (§13). This rail names ALL EIGHT `OPERATING_MARKETS`
+              and no ONE of them, so there is no "the city of this door" to pass. Picking one to
+              satisfy D13's required-field list would manufacture a destination the traveler never
+              chose — the same class as `provider_services.location` defaulting to "Unknown". It
+              passes NOTHING, deliberately, and `check-planning-entry.cjs` requires no city of it.
+              If this rail ever becomes single-city, pass that city here AND update the guard's
+              REQUIRED_SOURCE_FIELDS entry and the pin in plan-entry-source-fields.test.ts.
+
+              RECORDED, NOT FIXED: this component is currently mounted by nothing — the only two
+              references to it in `client/` are comments (plan-entry-cta.tsx, landing.tsx). A dead
+              component that reads as a live door is a product call for the decision-maker, not a
+              deletion to take silently in a doors lane. */}
           <button
             type="button"
             onClick={() => openPlanning()}

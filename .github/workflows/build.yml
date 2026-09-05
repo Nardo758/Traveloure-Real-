@@ -861,6 +861,24 @@ jobs:
       - name: Planning-entry guard
         run: node scripts/check-planning-entry.cjs
 
+  plan-entry-source-fields:
+    name: plan-entry-source-fields (Locked Decision 42 D13 — 2026-09-05-doors-source-fields)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # The SIBLING of check-planning-entry: that guard asks "does the named door still pass the
+      # named key?" (one bit per surface); this pins WHICH value each door passes, that the three
+      # experience-template doors are one door worn three ways, and that the two §13 doors — the
+      # eight-market ticker rail and the storefront's neighbourhood-shaped `earner.location` —
+      # still pass NO city. Static source pins: no DOM, no DB, no network.
+      - name: Door source-field pins
+        run: npx tsx --test client/src/lib/__tests__/plan-entry-source-fields.test.ts
+
   privileged-field-completeness-guard:
     name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
     runs-on: ubuntu-latest

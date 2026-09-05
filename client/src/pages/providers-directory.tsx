@@ -30,6 +30,7 @@ import {
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile (ShoppingBag)
 // reads it, never a restated glyph.
 import { NAV_LEAF_ICONS } from "@/components/layout";
+import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -211,6 +212,18 @@ export default function ProvidersDirectoryPage() {
                 })}
               </div>
             </nav>
+          </div>
+          {/* Plan entry (ledger `2026-09-04-entry-unification`; Locked Decision 42 D13, ledger
+              `2026-09-05-doors-source-fields`). A traveler standing on the provider directory had
+              no way to start a plan — the page's only CTAs were supply-side.
+
+              BARE, DELIBERATELY (§13). `GET /api/provider-storefronts` carries no location facet —
+              the section heading above already refuses to claim a per-market count for exactly that
+              reason — so this page holds no city, no destination and no occasion. An absent field is
+              how `PlanningSource` says "not known"; a placeholder would be how it says something
+              false, and D13's required-field list must never be satisfied by inventing one. */}
+          <div className="mt-4 flex md:justify-end">
+            <PlanEntryCta variant="outline" testId="button-plan-entry-providers" />
           </div>
         </div>
       </section>
