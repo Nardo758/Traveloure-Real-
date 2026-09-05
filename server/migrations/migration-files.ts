@@ -1458,4 +1458,15 @@ export const MIGRATION_FILES = [
   // NOTE: registered LAST. Another lane is landing 281/282 concurrently; registry order is
   // authoritative, and this row must stay after whatever they add.
   "283_expert_planner_offering_types.sql",
+  // Ledger `2026-09-04-step4-variants-fields` (CLAUDE.md Locked Decision 38): the two Step4Variants
+  // questions the occasion's own switches ask and nothing could hold —
+  // `trips.budget_approver_name`/`budget_approver_email` (attendee-vocabulary occasions) and
+  // `trips.accessibility_note` (guest-list occasions). Additive nullable, NO DEFAULT and NO CHECK
+  // (publish-trap posture), no backfill; all three declared in `shared/schema.ts` per the
+  // deploy-push durability rule. NULL = never asked ⇒ the row is OMITTED everywhere (§13), never
+  // rendered as "no needs" or "no approver". Deliberately NOT
+  // `trip_participants.accessibility_needs` — a participant's own answer is a different fact.
+  // NOTE ON ORDER: another lane is landing 285/286 concurrently. Registry order is authoritative
+  // and this row goes BEFORE theirs; the landing agent orders the registry.
+  "284_trip_party_fields.sql",
 ] as const;

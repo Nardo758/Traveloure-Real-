@@ -192,6 +192,34 @@ export const trips = pgTable("trips", {
   // server/services/trip-timezone.ts (a launch-market lookup over the existing 8-market config —
   // not a geocoder, no network call).
   timezone: varchar("timezone", { length: 64 }),
+  // ── The two STEP-4 questions the occasion's own switches ask (migration 284, ledger
+  // `2026-09-04-step4-variants-fields`, CLAUDE.md Locked Decision 38). Additive nullable, NO
+  // DEFAULT and NO DB CHECK (publish-trap posture, same as `timezone` above); declared HERE per
+  // the deploy-push durability rule, since an object schema.ts does not declare is dropped at
+  // publish and, the migration already being stamped, never recreated.
+  //
+  // WHICH ONE IS ASKED IS THE ROW'S OWN ANSWER, not a class: the approver pair is offered when
+  // `experience_types.vocabulary` resolves to "attendees" (corporate events, retreats) and the
+  // note when `experience_types.default_guests` is TRUE (weddings, family occasions, parties) —
+  // the two predicates live once, in `client/src/lib/plan-steps.ts`.
+  //
+  // NULL = THE QUESTION WAS NEVER ASKED, a finished answer (§13). A reader OMITS the row rather
+  // than rendering "no budget approver" or "no accessibility needs" — claims only the traveler
+  // can make, and ones the flow does not even put to an occasion whose switches send it down the
+  // other branch.
+  //
+  // ADMISSION IS AN ALLOWLIST (§19): the pick-based `tripOccasionBody` on
+  // `PATCH /api/trips/:tripId/occasion` (the rail `adults`/`kids` already ride) and, pre-trip, the
+  // hand-written `tripContextSchema` on `PUT /api/trip-context`. `insertTripSchema` omits all
+  // three below — under a denylist a freshly-added column is client-settable BY DEFAULT.
+  budgetApproverName: varchar("budget_approver_name", { length: 120 }),
+  budgetApproverEmail: varchar("budget_approver_email", { length: 255 }),
+  // NOT `trip_participants.accessibility_needs`, and never merged with it: that column is one
+  // PARTICIPANT's stated needs about themself — a different person's answer on a different
+  // surface. This is the planner's free-text note about the party, given at plan time. Free text
+  // rather than a checklist because no accessibility standard is claimed on anyone's behalf (the
+  // posture Locked Decision 24 states for `provider_services.access_notes`).
+  accessibilityNote: text("accessibility_note"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -2104,6 +2132,18 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // is derived server-side from the destination in storage.createTrip/updateTrip and is never
   // read off req.body — a client-supplied zone would silently move every guest's calendar.
   timezone: true,
+  // Ledger `2026-09-04-step4-variants-fields` (Locked Decision 38). These three are ordinary
+  // owner-authored planning content — no amount, identity, rate or grant — so §14/§18 have nothing
+  // to strip. They are named here for the OTHER §19 reason: this schema is an `.omit()` DENYLIST,
+  // under which a freshly-added column is client-settable BY DEFAULT, and the ruling gives them
+  // exactly ONE admission rail (the pick-based `tripOccasionBody` on
+  // `PATCH /api/trips/:tripId/occasion` once a trip row exists; the hand-written
+  // `tripContextSchema` allowlist before it does). Leaving them reachable through the mint body as
+  // well would be a second author of the same answer — the drift class §18 rule 1 names, arrived
+  // at by omission rather than by decision.
+  budgetApproverName: true,
+  budgetApproverEmail: true,
+  accessibilityNote: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
@@ -2115,6 +2155,63 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   adults: z.coerce.number().int().min(1).optional(),
   kids: z.coerce.number().int().min(0).optional(),
 });
+
+/**
+ * THE FIELD AUTHORITY for migration 284's three step-4 columns (ledger
+ * `2026-09-04-step4-variants-fields`, CLAUDE.md Locked Decision 38).
+ *
+ * The columns carry NO DB CHECK — the publish-trap posture — so these schemas ARE the only thing
+ * standing between the wire and the row, and they are stated ONCE, here, rather than at each of
+ * the two admission rails that need them (§18 rule 1: two copies drift the day one is loosened).
+ * The rails `.extend()` these on:
+ *
+ *   - `tripOccasionBody` (`PATCH /api/trips/:tripId/occasion`, `server/routes/trips.routes.ts`) —
+ *     pick-based, owner-gated, once a trip row exists;
+ *   - `tripContextSchema` (`PUT /api/trip-context`, `server/routes/trip-context.routes.ts`) — the
+ *     hand-written pre-trip pen allowlist, which `.strip()`s anything it does not name.
+ *
+ * `.nullable()` is load-bearing on all three: an explicit `null` is how a traveler CLEARS an
+ * answer they gave. `.optional()` keeps an untouched field ABSENT, which on a PATCH means "not
+ * mentioned" — a different answer from `null` meaning "cleared", and both different again from a
+ * column that was never asked about (§13; the route builds its patch from the keys the body
+ * actually carried, so an absent field never overwrites a real value with NULL).
+ *
+ * The email is validated with zod's `.email()` when non-null and is NOT lowercased, trimmed into
+ * a different value, or resolved against `users` — it is a contact the planner typed for someone
+ * who may have no account at all, and turning it into an identity lookup would make it a
+ * different fact.
+ *
+ * The trims are the only normalization, and each is followed by a max that matches the column
+ * width (or, for the TEXT note, the ratified 2000-character cap). A string that trims to EMPTY is
+ * transformed to `null` — "" and NULL would otherwise be two spellings of the same non-answer,
+ * and two ways to say nothing is how a reader ends up guessing which was meant (the same
+ * reasoning Locked Decision 31 gives for refusing an empty array beside NULL).
+ */
+const blankToNull = (v: string | null | undefined) =>
+  typeof v === "string" && v.trim() === "" ? null : typeof v === "string" ? v.trim() : v;
+
+export const tripBudgetApproverNameSchema = z
+  .string()
+  .max(120)
+  .nullable()
+  .optional()
+  .transform(blankToNull);
+
+export const tripBudgetApproverEmailSchema = z
+  .union([z.string().trim().max(255).email(), z.literal(""), z.null()])
+  .optional()
+  .transform(blankToNull);
+
+/** The ratified free-text cap. A note, not a checklist — no standard is claimed on anyone's behalf. */
+export const TRIP_ACCESSIBILITY_NOTE_MAX = 2000;
+
+export const tripAccessibilityNoteSchema = z
+  .string()
+  .max(TRIP_ACCESSIBILITY_NOTE_MAX)
+  .nullable()
+  .optional()
+  .transform(blankToNull);
+
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats)

@@ -199,10 +199,11 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 10 | Artboard rename (F1) | — | built | — (ratified and done: ledger `2026-09-04-golf-occasion-and-housekeeping`) |
 | 11 | Planner third door + nav Wedding CTA | D | built | — |
 | 12 | Landing Wedding moment + "Planning your own?" callout | D | built | renders only once Kyoto has an attributed real photo (photo gate) |
-| 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops built by row 8; Step4Variants fields not built |
+| 13 | Five-step plan modal (option 1: one modal, many doors) | D | built | ordered stops built by row 8; Step4Variants fields built by row 17 (migration 284) |
 | 14 | `trip_destinations` + `user_experiences.start_time` (schema + rails) | E | built | UI in follow-up lanes |
 | 15 | Step 5 Day/Time/Place table, `WhichEvent` clock, `TravelEvents` tee times | E | built | ledger `2026-09-04-event-time-ui`; no `.ics` export of events (none exists — see the ledger row) |
 | 16 | Plan islands: traveling party, contract board, organize-into-events | D | built | eventDetails/mustAttend recorded as dead |
+| 17 | Step4Variants fields + home-city default + authoring relabel + walkthrough | D | built | — |
 
 Already `built`: `Step5Events`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`,
 `Step2Where`, `TravelWhere`, `OccasionRow`. Already `ruled`: `SlipProposal`.

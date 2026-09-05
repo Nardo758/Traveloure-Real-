@@ -28,6 +28,9 @@
  *  6. The Event Planner fork's third door (`/start/events`) opens the SAME modal,
  *     and the two supply doors beside it still route to their own signups
  *     (ledger 2026-09-04-wedding-entry-doors).
+ *  7. Step 4's SECOND question follows the occasion's own switches: the accessibility
+ *     note appears under an occasion with a guest list (`wedding`) and is ABSENT — not
+ *     disabled — under one without (`travel`); ledger 2026-09-04-step4-variants-fields.
  *
  * The occasion row is asserted ABSENT while PLUS_SALES_ENABLED is off (default) —
  * hidden, never teased.
@@ -111,6 +114,35 @@ test.describe("Single planning entry — the one modal", () => {
     await expect(page.getByTestId("input-etp-destination")).toBeVisible();
     await expect(page.getByTestId("button-plan-add-stop")).toHaveCount(0);
     await expect(page.getByTestId("plan-stops-list")).toHaveCount(0);
+  });
+
+  /**
+   * Step 4's SECOND question is the OCCASION's own answer (ledger
+   * `2026-09-04-step4-variants-fields`, migration 284). `wedding` is a SEEDED row with
+   * `default_guests: true`, so it asks the accessibility note; `travel` is seeded
+   * `default_guests: false` and asks nothing. The field is OMITTED under travel, never rendered
+   * disabled — a disabled input still promises a question the occasion did not put.
+   *
+   * §13 — the seeded travel row also proves the negative half: an occasion that RULED it has no
+   * guest list must show no accessibility copy at all, not an empty box that reads as "no needs".
+   */
+  test("step 4 asks the accessibility note under wedding and NOT under travel", async ({ page }) => {
+    await openModalFromHero(page);
+    await page.getByTestId("option-occasion-wedding").click();
+    await page.getByTestId("plan-step-who").click();
+    await expect(page.getByTestId("plan-step-who-body")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("plan-step-who-accessibility")).toBeVisible();
+    await expect(page.getByTestId("input-etp-accessibility-note")).toBeVisible();
+    // A wedding's people are GUESTS, not attendees, so the budget approver is not asked here.
+    await expect(page.getByTestId("plan-step-who-approver")).toHaveCount(0);
+
+    // Back to step 1 through the occasion pill, and onto an occasion with no guest list.
+    await page.getByTestId("plan-modal-occasion-pill").click();
+    await page.getByTestId("option-occasion-travel").click();
+    await page.getByTestId("plan-step-who").click();
+    await expect(page.getByTestId("plan-step-who-body")).toBeVisible();
+    await expect(page.getByTestId("plan-step-who-accessibility")).toHaveCount(0);
+    await expect(page.getByTestId("plan-step-who-approver")).toHaveCount(0);
   });
 
   test("AI branch opens the existing planning modal (guest sees its own sign-in gate)", async ({ page }) => {

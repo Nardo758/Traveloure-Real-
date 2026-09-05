@@ -64,6 +64,31 @@ export interface TripContext {
    */
   adults?: number;
   kids?: number;
+  /**
+   * Step 4's SECOND question, held while no trip row exists (ledger
+   * `2026-09-04-step4-variants-fields`, CLAUDE.md Locked Decision 38; migration 284's
+   * `trips.budget_approver_name` / `budget_approver_email` / `accessibility_note`).
+   *
+   * WHICH ONE IS ASKED IS THE OCCASION ROW'S OWN ANSWER, never a class: the approver pair when
+   * `experience_types.vocabulary` resolves to "attendees" (corporate events, retreats), the note
+   * when `default_guests` is TRUE (weddings, family occasions, parties). The two predicates live
+   * once, in `@/lib/plan-steps` — a second copy here is the drift class §18 rule 1 names.
+   *
+   * `null` IS THE CLEARED MARKER in this blob, exactly as `0` is for the party pair above:
+   * `updateTripContext` merges and cannot delete a key, so a field the traveler emptied is written
+   * `null` rather than left stale. Every reader treats `null` and ABSENT the same — the question
+   * was not answered — and the TRIP ROW is written NULL either way. NULL is never rendered as
+   * "no budget approver" or "no accessibility needs" (§13): those are claims only the traveler can
+   * make, and the flow does not even put the question to an occasion whose switches send it down
+   * the other branch.
+   *
+   * `accessibilityNote` is deliberately NOT `trip_participants.accessibility_needs` — that is one
+   * PARTICIPANT's stated needs about themself, a different person's answer on a different surface
+   * (CLAUDE.md Locked Decision 24 draws the same line for the provider-side `access_notes`).
+   */
+  budgetApproverName?: string | null;
+  budgetApproverEmail?: string | null;
+  accessibilityNote?: string | null;
   eventType?: string;
   tripId?: string;
   userExperienceId?: string;
