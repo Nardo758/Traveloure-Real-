@@ -1850,8 +1850,22 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    // Show service markers when destination is set
-    const serviceMarkers = destination && destination.length >= 2
+    /**
+     * Service markers exist only when a REAL centre exists to place them around.
+     *
+     * §13 / Locked Decision 22(c), 34. This branch used to run on `destination` alone and then
+     * defaulted the base coordinate to a hardcoded Lower-Manhattan pair, so a plan whose
+     * destination had not resolved to coordinates got its whole service list scattered across
+     * New York with nothing saying so. A marker is a claim about WHERE something is; with no centre there
+     * is no such claim to make, so no marker is computed and `ExperienceMap` renders its
+     * no-location state instead of a map (there is no city-centre fallback left to land on).
+     *
+     * The offsets below remain a DISPLAY spread around the confirmed centre, not per-service
+     * geocodes — `provider_services` carries no coordinate on this rail. That is a separate,
+     * larger honesty question (LD 22(c)'s "unlocated stop stays visibly flagged"), recorded here
+     * rather than silently widened by this lane.
+     */
+    const serviceMarkers = destination && destination.length >= 2 && destinationCenter
       ? filteredServices.map((s, index) => {
           const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
           // Use golden angle distribution for spreading markers around destination
@@ -1860,9 +1874,9 @@ export default function ExperienceTemplatePage() {
           const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
           const latOffset = Math.cos(angle) * radius;
           const lngOffset = Math.sin(angle) * radius;
-          // Use destination center when available, otherwise fall back to NYC
-          const baseLat = destinationCenter?.lat ?? 40.7128;
-          const baseLng = destinationCenter?.lng ?? -74.0060;
+          // Non-null by the branch guard above — never a default coordinate.
+          const baseLat = destinationCenter.lat;
+          const baseLng = destinationCenter.lng;
           return {
             id: s.id.toString(),
             name: s.serviceName,
@@ -2939,6 +2953,7 @@ export default function ExperienceTemplatePage() {
                   selectedProviderIds={selectedProviderIds}
                   destination={destination}
                   destinationCenter={destinationCenter}
+                  onSetLocation={() => openPlanModal()}
                   onAddToCart={(provider) => addToCart({
                     id: provider.id,
                     type: provider.category,
@@ -3057,14 +3072,13 @@ export default function ExperienceTemplatePage() {
             <div className="flex-1 relative" style={{ height: 'calc(100vh - 48px)' }}>
               <ExperienceMap
                 destination={destination}
-                cart={cart.map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  type: item.type,
-                  price: item.price,
-                  quantity: 1,
-                  provider: "Platform Provider"
-                }))}
+                destinationCenter={destinationCenter}
+                providers={mapProviders}
+                selectedProviderIds={selectedProviderIds}
+                onSetLocation={() => openPlanModal()}
+                /* `cart` was passed here and `ExperienceMap` has never declared or read it — a
+                   dead prop that also carried this mount's only type error. The cart is rendered
+                   by the floating summary below, not by the map. */
                 onRemoveFromCart={removeFromCart}
                 height="100%"
                 activityLocations={activityLocations}
@@ -3248,6 +3262,7 @@ export default function ExperienceTemplatePage() {
                     selectedProviderIds={selectedProviderIds}
                     destination={destination}
                     destinationCenter={destinationCenter}
+                    onSetLocation={() => openPlanModal()}
                     onAddToCart={(provider) => addToCart({
                       id: provider.id,
                       type: provider.category,
