@@ -384,6 +384,14 @@ export interface PlanCardData {
   optimizationDelta?: OptimizationDelta | null;
   lastOptimizedAt?: string | null;
   /**
+   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`) — the review board this plan's
+   * optimization came from (`/itinerary-comparison/:id`, still revisitable after adopt). ABSENT
+   * when the trip has no comparison, never null-filled, so "no board" and "a board with no id"
+   * stay different facts (§13). Read straight off the plancard DTO: no surface fetches the user's
+   * comparisons to work it out.
+   */
+  lastComparisonId?: string;
+  /**
    * Trip-Canon Lane 1 W4/H2 — EVERY real booking on this trip, including ones no plan item points at
    * (see `TripPlanBooking` / the plancard route's `bookings` key). Used by W7's "Purchases" section to
    * surface a booking that isn't rendered inline on any activity row.
