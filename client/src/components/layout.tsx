@@ -132,6 +132,10 @@ const navItems = navGroupsConfig.map((group) => ({
   i18nKey: group.i18nKey,
   href: group.href,
   icon: ChevronDown,
+  // The group-level footer leaf (nav-config `footer`), carried through verbatim. Rendered from
+  // the config key alone — no group is named in the JSX — so a second group gaining one is a
+  // one-line data change (the same posture the `featured` leaf uses).
+  footer: group.footer,
   sections: group.sections?.map((section) => ({
     title: section.title,
     i18nKey: section.i18nKey,
@@ -436,6 +440,27 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                 </div>
               ))}
             </div>
+
+            {/* THE GROUP FOOTER (nav-config `footer`) — "browse all of them", past the menu's own
+                curation. Data-driven: whichever group carries the key gets the row. */}
+            {item.footer && (
+              <div className="border-t border-[color:var(--earn-border)] mx-4 pt-2.5 pb-3">
+                <Link
+                  href={item.footer.href}
+                  role="menuitem"
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-[12.5px] font-medium text-[color:var(--earn-teal-ink)] hover:underline",
+                    FOCUS_RING
+                  )}
+                  style={{ fontFamily: CHROME_MONO }}
+                  data-testid={`link-nav-footer-${slugify(item.footer.name)}`}
+                  onClick={() => setIsOpen(false)}
+                >
+                  {tr(item.footer.i18nKey, item.footer.name)}
+                  <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                </Link>
+              </div>
+            )}
 
             {item.name === "Experiences" && recentCities.length > 0 && (
               <div className="border-t border-[color:var(--earn-border)] mx-4 pt-3 pb-3">

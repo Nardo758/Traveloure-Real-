@@ -14,7 +14,12 @@
  *     event "family only": that is a host's description of who they invited, and no column holds
  *     it. The tile is replaced by EVENTS (a fact the roster carries), rather than inventing a
  *     subset label.
- *   • An event's start TIME. `user_experiences` has `event_date` and no time-of-day column.
+ *   • An event's start TIME. The column EXISTS — `user_experiences.start_time`, migration 282,
+ *     Locked Decision 35 — so the old reason recorded here ("no time-of-day column") stopped
+ *     being true and is corrected (ledger `2026-09-04-reaudit-fixes`, re-audit A23). The reason
+ *     it is still not drawn is the ratified `Guests.dc.html` board, which puts times on the SLIP
+ *     and the picker and keeps these columns to the event's name and its headcount. Do not start
+ *     emitting times here without amending that board.
  *   • "No dietary restrictions" / "Unknown origin". A blank cell means the guest has not said,
  *     which is not the same as having nothing to say.
  *
@@ -142,6 +147,8 @@ export default function PlanGuestsPage() {
   const { data: trip } = useTrip(tripId || "");
   const { isHidden } = useOccasionSwitches(tripId);
   const [inviteEvent, setInviteEvent] = useState<RosterEvent | null>(null);
+  /** Open only when the page-level invite needs to ask WHICH event (re-audit A22). */
+  const [pickingEvent, setPickingEvent] = useState(false);
 
   const { data, isLoading, isError } = useQuery<PlanGuestRoster>({
     queryKey: [`/api/trips/${tripId}/guests`],
@@ -169,6 +176,40 @@ export default function PlanGuestsPage() {
       </p>
     </div>
   );
+
+  /**
+   * THE PAGE-LEVEL "INVITE BY EMAIL" (re-audit A22, the ratified `Guests.dc.html` header action).
+   *
+   * IT OPENS THE ONE WRITER AND BUILDS NO SECOND RAIL. An invite belongs to ONE event
+   * (`event_invites.experience_id`, Locked Decision 37), so a page-level action cannot mean
+   * "invite to the plan" — there is nothing for such a row to hang off. What it does is answer
+   * WHICH event first, and then open the same `GuestInviteManager` the per-column Invite buttons
+   * open. With exactly one event there is nothing to ask, so it opens straight onto it; with
+   * several it opens a picker.
+   *
+   * §13 — the action is OMITTED when the plan has no event, rather than opening a dialog whose
+   * question has no answers. The empty-state block below already says what to do instead.
+   *
+   * THE ARTBOARD'S SECOND HEADER ACTION, "Copy links", IS DELIBERATELY NOT BUILT. There is no
+   * ratified target for it — no per-guest or per-event link exists to copy — and a button that
+   * copies something invented is worse than an absent one.
+   */
+  const inviteAction =
+    (data?.events.length ?? 0) === 0 ? null : (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          const evts = data?.events ?? [];
+          if (evts.length === 1) setInviteEvent(evts[0]);
+          else setPickingEvent(true);
+        }}
+        data-testid="button-invite-by-email"
+      >
+        <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+        Invite by email
+      </Button>
+    );
 
   /**
    * A HIDDEN OCCASION HAS NO GUEST SURFACE (migration 276 `default_visibility`; Locked Decision 28,
@@ -210,7 +251,10 @@ export default function PlanGuestsPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-5" data-testid="page-plan-guests">
-      {header}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        {header}
+        {inviteAction}
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatTile value={totals.invited} label="Invited" testId="stat-invited" />
@@ -306,6 +350,36 @@ export default function PlanGuestsPage() {
         One list. Each column is an event. An invite belongs to an event, so brunch can be family
         only without a second list.
       </p>
+
+      {/* WHICH EVENT? — asked only when the plan holds more than one (re-audit A22). It writes
+          nothing itself: choosing a row closes this and opens the ONE invite writer on that event,
+          which is the same thing the per-column Invite button does. */}
+      <Dialog open={pickingEvent} onOpenChange={setPickingEvent}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Which event?</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1">
+            {events.map((event, index) => (
+              <Button
+                key={event.id}
+                variant="ghost"
+                className="justify-start"
+                onClick={() => {
+                  setPickingEvent(false);
+                  setInviteEvent(event);
+                }}
+                data-testid={`button-pick-invite-event-${event.id}`}
+              >
+                {eventLabel(event, index)}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            An invite belongs to one event, so brunch can be family only without a second list.
+          </p>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!inviteEvent} onOpenChange={(open) => !open && setInviteEvent(null)}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">

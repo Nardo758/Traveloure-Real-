@@ -20,9 +20,14 @@ import type { ExperienceType, UserExperience } from "@shared/schema";
  *
  * Rules (spec of record = the ratified page-by-page mockup):
  * - Vocabulary classes: Travel / Event / Couple, keyed off experienceType.
- * - Server-truth mode: once tripId exists, Edit links to the trip page.
+ * - Server-truth mode: once tripId exists the strip shows TWO controls — "Edit", which opens
+ *   the one plan modal on the bound plan, and "Continue planning ›", which navigates to the
+ *   plan's own surface (ledger `2026-09-04-reaudit-fixes`, the re-audit's B2; the `StripLead`
+ *   artboard draws both). Before a trip exists there is nothing to continue TO, so the single
+ *   control is the modal.
  * - Edit-locked on /checkout, /payment, /booking/confirmation.
- * - "Continue planning ›" label on marketing pages.
+ * - "Continue planning ›" label on marketing pages (the trip-less branch; the bound branch says
+ *   it unconditionally, because that is what that control does everywhere).
  * - Browse never writes: this component only displays; writes happen through
  *   the ONE plan modal (usePlanning().open, ledger `2026-09-04-one-modal-many-doors`)
  *   or explicit page actions.
@@ -300,17 +305,52 @@ export function TripStrip() {
               <Lock className="w-3 h-3" /> locked during payment
             </span>
           ) : ctx.tripId ? (
-            /* Ruling 2026-08-28-single-planning-entry: mid-planning continues on the
-               PLANNING surface (/plans/:tripId, the canonical slip), never the details
-               card; only a trip whose end date has passed lands on /trip/:id. Phase
-               derives from dates per ruling 2 (trips.status is dead). */
-            <Link
-              href={planningRouteForTrip(ctx.tripId, ctx.endDate)}
-              className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
-              data-testid="trip-strip-edit"
-            >
-              {marketing ? "Continue planning ›" : "Edit trip ›"}
-            </Link>
+            /*
+             * TWO CONTROLS, AS RATIFIED (ledger `2026-09-04-reaudit-fixes`, the re-audit's B2;
+             * the `StripLead` artboard draws both). They answer different questions and neither
+             * substitutes for the other:
+             *
+             *   EDIT            — opens the ONE plan modal on the plan already bound, so the five
+             *                     questions (occasion, where, when, who, what's happening) can be
+             *                     CORRECTED without leaving the page. Locked Decision 33's door
+             *                     table has always promised this door — "the Trip Strip's Edit →
+             *                     step 1 or 2 by what the plan already holds, with every visible
+             *                     step reachable from the rail" — and until now the code exposed
+             *                     it only in the trip-LESS branch, so the moment a plan existed
+             *                     the door the ruling names disappeared.
+             *   CONTINUE        — the navigation to the plan's own surface, unchanged.
+             *
+             * The modal needs NO source here: `resolvePlanSteps` reads the held trip context, so
+             * a plan that already names its occasion opens at step 2 under the pill and one that
+             * does not opens at step 1. That decision stays in the one door table; passing a
+             * source from here would be a second copy of it (§18 rule 1).
+             *
+             * TESTIDS: the LINK keeps `trip-strip-edit` because `planning-entry.spec.ts` asserts
+             * its href (the date-derived /plans vs /trip routing, ruling 2); the new button is
+             * `trip-strip-edit-plan`. Renaming the link to match its new label would have moved a
+             * pinned selector for a cosmetic reason.
+             */
+            <span className="inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => openPlanModal()}
+                className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-border)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-chip)]"
+                data-testid="trip-strip-edit-plan"
+              >
+                Edit
+              </button>
+              {/* Ruling 2026-08-28-single-planning-entry: mid-planning continues on the
+                  PLANNING surface (/plans/:tripId, the canonical slip), never the details
+                  card; only a trip whose end date has passed lands on /trip/:id. Phase
+                  derives from dates per ruling 2 (trips.status is dead). */}
+              <Link
+                href={planningRouteForTrip(ctx.tripId, ctx.endDate)}
+                className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
+                data-testid="trip-strip-edit"
+              >
+                Continue planning ›
+              </Link>
+            </span>
           ) : (
             <button
               type="button"

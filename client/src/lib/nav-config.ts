@@ -72,6 +72,19 @@ export interface NavGroupConfig {
   i18nKey?: string;
   href?: string;
   sections?: NavSectionConfig[];
+  /**
+   * A group-level FOOTER leaf, rendered once beneath the dropdown's sections (ledger
+   * `2026-09-04-reaudit-fixes`; ratified `docs/design/wedding-flow/NavTuned.dc.html`).
+   *
+   * It is a DATA SLOT, not a per-group branch: `layout.tsx` renders whatever group carries this
+   * key, generically, so a second group gaining one is a one-line data change. It is deliberately
+   * NOT a section with one item — a section would grow a column heading in the 4-up mega layout
+   * and read as a fifth category, which is exactly what "browse all of them" is not.
+   *
+   * Its href is counted by `getAllNavHrefs`, so the navbar-links gate smoke-tests it like every
+   * other nav link.
+   */
+  footer?: NavLeafConfig;
 }
 
 export interface AuthNavConfig {
@@ -203,6 +216,16 @@ export const navGroupsConfig: NavGroupConfig[] = [
         ],
       },
     ],
+    // The artboard's dropdown footer. The four sections above are a CURATED subset — the seeder
+    // writes more `experience_types` rows than the menu lists — so the menu owes the traveler a
+    // way past its own curation. The target is `/experiences/travel`, the SAME href the landing
+    // Moments section's "All occasions →" already uses (`moments-section.tsx`), so the two doors
+    // to "everything" cannot drift apart (§18 rule 1).
+    footer: {
+      name: "Browse all occasions",
+      i18nKey: "links.browseAllOccasions",
+      href: "/experiences/travel",
+    },
   },
   {
     name: "Planning Tools",
@@ -340,6 +363,8 @@ export function getAllNavHrefs(): string[] {
         seen.add(item.href);
       }
     }
+    // The group-level footer leaf is a nav link like any other, so both link gates smoke-test it.
+    if (group.footer) seen.add(group.footer.href);
   }
   for (const item of authNavConfig) {
     seen.add(item.href);

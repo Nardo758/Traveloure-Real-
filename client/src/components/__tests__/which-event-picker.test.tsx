@@ -110,9 +110,14 @@ describe("R2 — no clock time reaches the screen", () => {
     }
   });
 
-  it("R2b: a dated event still shows its calendar day", () => {
+  it("R2b: a dated event still shows its day — the ratified SHORT form", () => {
+    // Weekday-only since ledger `2026-09-04-reaudit-fixes` (re-audit A18): the `WhichEvent`
+    // artboard draws "Sat 15:00 · Nanzen-ji", and the picker now asks `eventMetaLine` for that
+    // form through an OPTION on the one shared derivation rather than a second copy of it. What
+    // this case exists to hold is unchanged — a dated row still SAYS its day, and does not go
+    // blank — so the assertion moved with the format and nothing else.
     const text = render().replace(/<[^>]*>/g, " ");
-    assert.match(text, /Fri, Oct 2 · Nanzen-ji/);
+    assert.match(text, /Fri · Nanzen-ji/);
   });
 });
 

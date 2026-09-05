@@ -579,8 +579,12 @@ This document captures architectural decisions to maintain consistency across co
     `trip_participants.event_invite_id` link is not built and is not needed. **§13: nothing is
     zero-filled** — an event with no invites still renders a column (every cell `not_invited`),
     `from`/`dietary` are blank when unstated (never "Unknown"/"None"), `totals.countries` is
-    OMITTED rather than 0 when no origin country exists, and no event start TIME is emitted because
-    `user_experiences` has no time-of-day column. Surface: `client/src/pages/plan-guests.tsx` at
+    OMITTED rather than 0 when no origin country exists, and no event start TIME is emitted — **(corrected
+    2026-09-04, ledger `2026-09-04-reaudit-fixes`)** not because the column is missing, which was this
+    entry's original reason and stopped being true when migration 282 added
+    `user_experiences.start_time` (Locked Decision 35), but because the ratified `Guests.dc.html` board
+    draws none: it puts event times on the SLIP and the picker and keeps these columns to the event's
+    name and its headcount. Do not start emitting times here without amending that board. Surface: `client/src/pages/plan-guests.tsx` at
     `/plans/:tripId/guests`; per-event invites keep their ONE writer (`GuestInviteManager`), and a
     `default_visibility: hidden` occasion has no guest surface at all (ruling 28, `SlipProposal`).
     **The TRAVELING PARTY now has its own surface (ledger `2026-09-04-plan-islands`):**
