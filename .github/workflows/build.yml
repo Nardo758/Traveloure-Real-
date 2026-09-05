@@ -68,9 +68,15 @@ jobs:
       # Note the shape of that: the compiler KNEW the dashboard's "N active" tile could
       # never be right, and a ceiling that only forbids the number going UP is why the
       # two errors could live here indefinitely. Locked in, same PR.
+      # 133 measured 2026-09-05 (analytics-events rescue): the trackEvent refactor widened
+      # sendAnalyticsEvent's parameter from `Record<string, unknown>` to `object`, which cleared
+      # the three TS2345 errors its own three callers had been contributing to this baseline
+      # (trackSearchEvent / trackItineraryGenerated / trackBookingEvent — an interface with
+      # optional members is not assignable to an index-signature type). The ratchet detected the
+      # reduction and requires it to be locked in. Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '136'
+          TSC_BASELINE: '133'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -261,6 +267,15 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/trip-date-local-parse.test.ts
           done
+      # QA F3: the SAME date-only defect on the Guest Invites caption — `user_experiences.event_date`
+      # is a DATE column, so `new Date("2026-10-10")` showed every viewer west of UTC the 9th, a
+      # day that can fall outside the plan's own range. Three timezones for the same reason.
+      - name: QA F3 guest-invite caption local-parse pin (3 timezones)
+        run: |
+          for tz in America/New_York Asia/Tokyo UTC; do
+            echo "--- TZ=$tz ---"
+            TZ="$tz" npx tsx --test client/src/lib/__tests__/guest-invite-meta.test.ts
+          done
       # F-2: ONE trip-target resolver for the /services grid and the service-detail page — the
       # "?tripId= first, then TripContext, else none" order, plus the detail href that carries the
       # handoff forward. A second copy of that order is how the two surfaces drifted apart.
@@ -429,6 +444,15 @@ jobs:
       # was invented to hide this route behind.
       - name: Vendors read-scope pin
         run: npx tsx --test server/__tests__/vendors-read-scope.test.ts
+      # Client analytics wrapper (docs/superpowers/specs/2026-09-05-custom-analytics-events-design.md):
+      # trackEvent must be a SAFE NO-OP whenever the host-injected tracker is absent — during SSR,
+      # in dev/preview, and in the tracker-load race — and must swallow a throwing tracker rather
+      # than let it escape. Every call site added by that lane sits INSIDE a mutation success
+      # handler (checkout confirm, listing submit, trip create), so an analytics exception that
+      # escapes is a product outage caused by telemetry. The test shipped with the lane but was
+      # wired to no workflow; an unrun test is not a guard.
+      - name: Analytics trackEvent fail-soft pin
+        run: npx tsx --test client/src/lib/__tests__/analytics.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
