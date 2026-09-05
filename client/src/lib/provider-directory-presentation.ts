@@ -9,7 +9,12 @@
  */
 
 export interface ProviderStorefrontListing {
-  id: string;
+  /**
+   * No `id`. CLAUDE.md Locked Decision 40 lane 2: `users.id` is INTERNAL and never rides a public
+   * payload, so `/api/provider-storefronts` stopped sending one. Every row on this directory has a
+   * claimed handle by construction (the endpoint filters `handle IS NOT NULL`), so `handle` is both
+   * the row's public identity and its stable React key.
+   */
   name: string;
   handle: string;
   bio: string | null;

@@ -720,9 +720,41 @@ This document captures architectural decisions to maintain consistency across co
     ADDED the server-resolved rails beside the existing ones and changed no client: every
     legacy id-based input keeps working, annotated `deprecated — removed after lane 3`, and
     `POST /api/chat`'s body-sourced `receiverId` warns ONCE PER PROCESS so the day clients stop
-    sending it is visible. **Lane 2** strips `userId` from public projections (`loadStorefront`'s
-    `earner.id` among them — the "Not sensitive — user ids are already public" comment that stood
-    there is now WRONG and has been rewritten) and adds the guard that keeps them stripped.
+    sending it is visible.
+    **LANE 2 HAS LANDED (the public projections and the guard — ledger
+    `2026-09-05-ld40-lane2-public-ids`). THE STANDING RULE IS: A PUBLIC PAYLOAD NEVER CARRIES
+    `users.id`, AND THE GUARD IS `check-public-user-id`.** Removed: `loadStorefront`'s `earner.id`
+    (and with it the deprecated `/api/provider-storefront/:handle` twin, which delegates to the
+    same builder); the `id` on every `GET /api/provider-storefronts` row, whose consumer keyed on
+    it and now keys on the handle the query already guarantees (`handle IS NOT NULL`); the owner's
+    `userId` on the public `GET /api/services/:id` detail, stripped ONCE at the top so all four
+    product-shape branches inherit it; and `userId` on the unauthenticated `GET
+    /api/provider-services` browse — **which also stopped publishing `revenueShareRate`, a §18
+    rate-bearing column that ruling 42 stripped from the write rails and
+    `2026-09-05-experts-public-projection` stripped from two other public reads, and that this
+    third one was missed by both.**
+    **A ROUTE THAT CAN ONLY BE ADDRESSED BY A USER ID IS WHY AN ID IS IN A PAYLOAD, so the ROUTE
+    moves.** `service-detail.tsx` held `service.userId` for exactly one thing — the verification
+    badge at `/api/providers/:userId/public-verification`. The badge is now addressed by the
+    LISTING (`GET /api/services/:id/provider-verification`), which resolves the owner server-side
+    behind the SAME F2 read-gate the detail read applies and answers ONE 404 for a listing that is
+    absent, unapproved or paused (never a 403 — the `POST /api/conversations/start` posture). ONE
+    implementation, `loadPublicVerification`, two callers (§18 rule 1); the user-addressed twin is
+    annotated `deprecated` and goes one release later, so a cached SPA mid-deploy keeps its badge.
+    **TWO EXPOSURES SURVIVE, EXEMPTED AND PRINTED, NEVER SILENT:** `EXPERT_PUBLIC_FIELDS.id` (the
+    `/api/experts` and `/api/experts/:id` payloads) and `ready_made_trips`'s feed `authorId`, which
+    the `/experts` cross-sell shelf JOINS to it. Both carry `public-user-id-ok: <reason>`, which the
+    guard prints on every run, pass or fail (ruling 32's disposition for `fee-literal-debt`: filed
+    debt must not become a silent baseline). They are one debt, not two, and the blockers are rails
+    rather than projections: `POST /api/trips/:tripId/advisors` takes a client-supplied
+    `localExpertId` and answers with `expertUserId` (`HireExpertDialog`); `chat.tsx` resolves a
+    counterpart's display name by matching a thread's user id against the `/api/experts` list; and
+    underneath both, **`/experts/:id` is today the ONLY public profile an earner who has claimed NO
+    handle has** — so removing the id there would not degrade honestly (§13), it would delete those
+    earners from the site. Giving them a handle, or a handle-shaped hire rail, is the next lane.
+    **STILL NOT REMOVABLE, and out of this guard's predicate by design:** `ConversationSummary.
+    otherUserId`, `?clientId=` and the WebSocket frame are all on AUTHENTICATED surfaces, so the
+    guard does not scan them; they keep the prerequisites lane 3 recorded below.
     **LANE 3 HAS LANDED (the clients).** Every traveler-facing contact CTA now names a CONTEXT:
     the storefront sends `{ handle }`, service detail sends `{ serviceId }`, a `service_bookings`
     row on My Bookings sends `{ bookingId }`, and expert cards send `{ handle }` when the row has

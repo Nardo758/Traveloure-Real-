@@ -2692,7 +2692,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // so the strip happens here at the public call site, not in the storage function.
     // S9 (ledger row 102): joinLink joins the strip for the same reason — no confirmed booking
     // exists on this pre-purchase browse.
-    res.json(live.map((s) => omitFields(s, ["serviceFile", "joinLink"] as const)));
+    //
+    // `userId` joins it under CLAUDE.md Locked Decision 40 lane 2 (ledger
+    // `2026-09-05-user-id-is-internal`): this is unauthenticated browse and the owner's `users.id`
+    // rode every row. No consumer reads it (`RecommendedServices`, `experience-template`), and an
+    // earner's public identity is their handle, which the storefront and detail reads carry.
+    //
+    // `revenueShareRate` joins it under §18/§14: a rate-bearing column is never expose-able, in
+    // either direction. Ruling 42 stripped it from the WRITE rails and ledger
+    // `2026-09-05-experts-public-projection` stripped it from the embedded-listing read
+    // (`getApprovedServicesForExpert`) and from `GET /api/services/:id` — this browse route is the
+    // same column on the third public read, and was missed by both. `filterOutAwayOwners` above
+    // reads `s.userId` BEFORE this map, so the §16 vacation gate is unaffected.
+    res.json(
+      live.map((s) => omitFields(s, ["serviceFile", "joinLink", "userId", "revenueShareRate"] as const)),
+    );
   });
   
   // Get provider's services
@@ -5458,44 +5472,84 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // === Destination Calendar (Public travel guide) ===
   
-  // Public provider verification status (for service detail page badge)
-  // A6: also surfaces the owner's storefront handle and role so the service-detail page can
-  // choose the role-specific canonical storefront path — additive, null when the user is absent.
+  // Public provider verification status (for the service-detail page badge).
+  //
+  // ONE implementation, TWO callers (CLAUDE.md §18 rule 1). The DTO carries no user id of its own
+  // — it never did — but it was only reachable by NAMING the owner's `users.id`, which is what
+  // forced `service.userId` onto the public `GET /api/services/:id` payload. Locked Decision 40
+  // lane 2 removed that field, so the address moved to the thing the traveler is actually looking
+  // at: the LISTING. See the two route registrations below.
+  //
+  // A6: `handle` and `role` let the service-detail page choose the role-specific canonical
+  // storefront path — additive, null when the user is absent.
+  // Ledger 90 (FP-5, I3): `displayName` is additive here. The service-detail page's "Contact
+  // Provider" CTA needs the owner's display name to render the recipient card — `/api/experts/:id`
+  // resolves EXPERT-FAMILY roles only, so a `service_provider` owner 404s there. Derived exactly
+  // as storefront.routes.ts derives `earner.name`, so the two surfaces name the same person the
+  // same way. Nothing private is added: this name is already public on the storefront and every
+  // listing card.
+  //
+  // Fail closed: an unreadable verification profile reports as UNVERIFIED (never as verified, and
+  // never as a 500 that would blank the whole page).
+  const PUBLIC_VERIFICATION_UNKNOWN = {
+    identityVerified: false,
+    businessVerified: false,
+    handle: null as string | null,
+    role: null as string | null,
+    displayName: null as string | null,
+  };
+  async function loadPublicVerification(ownerUserId: string) {
+    const form = await storage.getServiceProviderForm(ownerUserId);
+    const [userRow] = await db.select({
+      handle: users.handle,
+      role: users.role,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+      .from(users)
+      .where(eq(users.id, ownerUserId))
+      .limit(1);
+    const handle = userRow?.handle ?? null;
+    const role = userRow?.role ?? null;
+    const displayName = userRow
+      ? ([userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || null)
+      : null;
+    if (!form) return { identityVerified: false, businessVerified: false, handle, role, displayName };
+    return {
+      identityVerified: form.identityVerificationStatus === "verified",
+      businessVerified: form.businessVerificationStatus === "verified",
+      handle,
+      role,
+      displayName,
+    };
+  }
+
+  // CANONICAL (LD 40 lane 2): the LISTING is the address, and the server resolves its owner. Same
+  // F2 read-gate the public detail read applies — an unapproved or paused listing tells a caller
+  // nothing about its owner, and a listing that does not resolve is ONE 404 (never a 403), so this
+  // route cannot be used to probe which listings exist (the same posture
+  // `POST /api/conversations/start` takes for its three address kinds).
+  app.get("/api/services/:id/provider-verification", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      return res.json(await loadPublicVerification(service.userId));
+    } catch {
+      return res.json(PUBLIC_VERIFICATION_UNKNOWN);
+    }
+  });
+
+  // DEPRECATED — user-id-addressed. Removed one release after lane 2; its one shipped consumer
+  // (`client/src/pages/service-detail.tsx`) moved to the service-addressed route above, and no
+  // public payload carries a `users.id` to feed it any more. Kept only so a cached SPA bundle
+  // mid-deploy does not lose the badge. Do NOT add a new consumer.
   app.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
-      const form = await storage.getServiceProviderForm(req.params.userId);
-      // Ledger 90 (FP-5, I3): `displayName` is additive here. The service-detail page's
-      // "Contact Provider" CTA needs the owner's display name to open a working chat thread —
-      // `/api/experts/:id` resolves EXPERT-FAMILY roles only, so a `service_provider` owner 404s
-      // there and chat.tsx's documented `?name=` fallback is the only way through (the same shape
-      // the storefront's Message CTA already uses). Derived exactly as storefront.routes.ts
-      // derives `earner.name`, so the two surfaces name the same person the same way. Nothing
-      // private is added: this name is already public on the storefront and every listing card.
-      const [userRow] = await db.select({
-        handle: users.handle,
-        role: users.role,
-        firstName: users.firstName,
-        lastName: users.lastName,
-      })
-        .from(users)
-        .where(eq(users.id, req.params.userId))
-        .limit(1);
-      const handle = userRow?.handle ?? null;
-      const role = userRow?.role ?? null;
-      const displayName = userRow
-        ? ([userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || null)
-        : null;
-      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle, role, displayName });
-      res.json({
-        identityVerified: form.identityVerificationStatus === "verified",
-        businessVerified: form.businessVerificationStatus === "verified",
-        handle,
-        role,
-        displayName,
-      });
+      res.json(await loadPublicVerification(req.params.userId));
     } catch {
-      // Fail closed: if the verification profile cannot be read, report as unverified.
-      res.json({ identityVerified: false, businessVerified: false, handle: null, role: null, displayName: null });
+      res.json(PUBLIC_VERIFICATION_UNKNOWN);
     }
   });
 

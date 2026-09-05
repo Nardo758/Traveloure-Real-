@@ -275,9 +275,18 @@ test("A4 the 'Not sensitive — user ids are already public' claim is GONE from 
   const src = read("server", "routes", "storefront.routes.ts");
   assert.ok(!/Not sensitive — user ids are already public/.test(src));
   assert.match(src, /Locked Decision 40/);
-  // Lane 1 KEEPS the field working; lane 2 removes it. Both facts must be stated where it lives.
-  assert.match(src, /Lane 2 REMOVES this field/);
+  // UPDATED BY LANE 2 (ledger `2026-09-05-ld40-lane2-public-ids`). Lane 1 kept the field working
+  // and this assertion pinned the sentence saying so ("Lane 2 REMOVES this field"). Lane 2 removed
+  // it, so the assertion now pins the END STATE rather than the promise: the earner payload names
+  // the handle and carries no `owner.id` at all. `owner.id` is still read INSIDE the builder — an
+  // internal key used internally — so the check is scoped to the returned payload.
   assert.match(src, /handle: owner\.handle/);
+  const payload = src.slice(src.indexOf("  return {\n    earner: {"));
+  assert.ok(payload.length > 0, "loadStorefront's earner payload not found");
+  assert.ok(
+    !/^\s*id: owner\.id,\s*$/m.test(payload.slice(0, payload.indexOf("services: resolvedServices"))),
+    "loadStorefront still publishes the earner's users.id",
+  );
 });
 
 test("A5 the legacy id-addressed inputs still work and warn ONCE PER PROCESS", () => {

@@ -270,7 +270,7 @@ export default function ProvidersDirectoryPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="providers-grid">
             {filtered.map((provider) => (
-              <ProviderCard key={provider.id} provider={provider} />
+              <ProviderCard key={provider.handle} provider={provider} />
             ))}
           </div>
         )}

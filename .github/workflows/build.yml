@@ -515,6 +515,17 @@ jobs:
       # the pick-based insert schema, and the single handle/verification predicates.
       - name: Contact rails (handle/service/booking) pin
         run: npx tsx --test server/__tests__/contact-rails.test.ts
+      # 2026-09-05-ld40-lane2-public-ids (Locked Decision 40, LANE 2). A removed field is invisible:
+      # nothing 500s, nothing logs, and every page lane 3 switched renders identically whether or
+      # not the server still sends it — so a re-add has no runtime signal at all. R1-R4 pin the four
+      # payloads this lane stripped (storefront earner, provider directory row, public service
+      # detail, public service browse — the last also losing `revenueShareRate`, a §18 rate the two
+      # earlier lanes missed on this third public read); V1-V3 pin that the verification badge moved
+      # from a user-id address to a LISTING address with ONE implementation and the same F2 gate;
+      # G1-G3 pin the guard's CI wiring, that both surviving exposures carry a printed reason rather
+      # than silence, and that CLAUDE.md records the standing rule.
+      - name: Public user-id projection pin
+        run: npx tsx --test server/__tests__/public-user-id.test.ts
       # 2026-09-05-user-id-is-internal, LANE 3 (the clients). Lane 1 kept every id-addressed input
       # alive for one release, so a client that regresses to sending a user id STILL WORKS — it
       # opens the thread, logs nothing and looks correct. That is exactly the failure mode a test
@@ -838,3 +849,17 @@ jobs:
         run: node scripts/check-query-userid-reads.cjs --self-test
       - name: Query/param owner-id guard
         run: node scripts/check-query-userid-reads.cjs
+      # 2026-09-05-ld40-lane2-public-ids (CLAUDE.md Locked Decision 40): a PUBLIC payload names an
+      # earner by HANDLE, never by `users.id`. The storefront published `earner.id` under a comment
+      # saying it was fine because other surfaces published it too — circular, and exactly how the
+      # field spread. Two predicates: a users-shaped public projection allowlist may not name
+      # `id`/`userId` (users-shaped is COMPUTED from columns unique to `users`, so a list written
+      # before this guard is still checked), and a public route's `res.json` payload — or a
+      # `load*`/`build*` payload builder's return — may not carry an identity key. Sibling of
+      # check-query-userid-reads: that one watches what a route READS, this one what it RETURNS.
+      # Its exemptions PRINT on every run, so LD 40's remaining lane-2 debt stays loud (ruling 32).
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Public user-id guard predicate self-test
+        run: node scripts/check-public-user-id.cjs --self-test
+      - name: Public user-id guard
+        run: node scripts/check-public-user-id.cjs
