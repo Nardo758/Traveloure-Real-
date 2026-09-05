@@ -23,7 +23,13 @@ import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseTripDate } from "@/lib/calendar-date";
 import { eventTypeForSlug, findOccasionByKey } from "@shared/occasions";
-import { partyNoun, partyTotal, travelersForSave } from "@/lib/plan-vocabulary";
+import {
+  MAX_PARTY_COUNT,
+  parsePartyCountInput,
+  partyNoun,
+  partyTotal,
+  travelersForSave,
+} from "@/lib/plan-vocabulary";
 import { durationShape, guestListSetting, showsSchedule, stopsShape } from "@/lib/occasion-switches";
 import {
   MAX_PLAN_STOPS,
@@ -287,7 +293,9 @@ function stepUp(raw: string): string {
   if (raw === "") return "1";
   const n = Number(raw);
   if (!Number.isFinite(n)) return "1";
-  return String(Math.min(500, n + 1));
+  // The ceiling is stated ONCE, in `plan-vocabulary.ts`, and shared with the typed input beside
+  // this stepper — two controls on one state must not carry two different maxima (§18 rule 1).
+  return String(Math.min(MAX_PARTY_COUNT, n + 1));
 }
 
 export function PlanModal({
@@ -1731,7 +1739,9 @@ export function PlanModal({
                       : { key: "kids" as const, label: field.label, value: kids, set: setKids };
                   return (
                   <div key={f.key} className="space-y-1.5">
-                    <Label data-testid={`label-etp-${f.key}`}>{f.label}</Label>
+                    <Label htmlFor={`etp-${f.key}-count`} data-testid={`label-etp-${f.key}`}>
+                      {f.label}
+                    </Label>
                     <div
                       className="flex h-11 w-[148px] items-center gap-1 rounded-lg border p-1"
                       style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
@@ -1749,12 +1759,34 @@ export function PlanModal({
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span
-                        className="flex-1 text-center text-[15px] font-semibold"
-                        style={{ color: f.value === "" ? "var(--earn-faint)" : "var(--earn-ink)" }}
-                        data-testid={`value-etp-${f.key}`}
-                      >
-                        {f.value === "" ? "—" : f.value}
+                      {/* THE CENTRE IS TYPEABLE AS WELL AS STEPPABLE (decision-maker, step 4).
+                          ONE STATE, TWO CONTROLS (§18 rule 1): this input and the − / + buttons
+                          write the same `adults`/`kids` string, and `parsePartyCountInput` is the
+                          one normaliser — digits only, empty stays empty, clamped to the same
+                          `MAX_PARTY_COUNT` ceiling `stepUp` enforces. The placeholder is the em
+                          dash the read-only span used to print: an unstated party still reads as
+                          NOT SET, never as a 0 (§13, Locked Decision 33's "untouched ⇒ NULL,
+                          never 2"). The wrapper keeps the `value-etp-*` testid the walkthrough
+                          doc already names. */}
+                      <span className="flex flex-1 items-stretch" data-testid={`value-etp-${f.key}`}>
+                        <input
+                          id={`etp-${f.key}-count`}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
+                          maxLength={3}
+                          placeholder="—"
+                          value={f.value}
+                          className="w-full min-w-0 bg-transparent text-center text-[15px] font-semibold outline-none placeholder:font-semibold placeholder:text-[color:var(--earn-faint)]"
+                          style={{ color: "var(--earn-ink)" }}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onChange={(e) => {
+                            setPartyTouched(true);
+                            f.set(parsePartyCountInput(e.target.value));
+                          }}
+                          data-testid={`input-plan-${f.key}`}
+                        />
                       </span>
                       <button
                         type="button"

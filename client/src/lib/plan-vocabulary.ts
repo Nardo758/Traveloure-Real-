@@ -237,3 +237,43 @@ export function partyLabelForOccasion(
     ? partyCountLabel(count, vocabulary, hasGuestList)
     : partyCountOnly(count);
 }
+
+/**
+ * ── THE PARTY COUNT CAN BE TYPED, NOT ONLY STEPPED (decision-maker, step 4) ──────────────────
+ *
+ * THE DEFECT. The plan modal's step-4 steppers rendered their centre as a read-only `<span>`, so
+ * the only way to state a party of twelve was twelve clicks on `+`. The fix is a real text input
+ * bound to the SAME `adults`/`kids` string state the − / + buttons already mutate — one state, two
+ * controls (§18 rule 1) — and this is the ONE place the typed value is normalised.
+ *
+ * THE INVARIANTS IT PRESERVES, all of them the stepper's own:
+ *
+ *  - **EMPTY STAYS EMPTY.** `""` is "the traveler has not stated a party", and Locked Decision 33
+ *    is explicit that an untouched step-4 field is NULL, "never 2". Nothing here coerces an empty
+ *    string to a 0 or a 1.
+ *  - **THERE IS NO EXPLICIT ZERO** (§13, and the `stepDown` doc-comment above it in the modal):
+ *    "not set" and "zero" are different answers, and only the first is true of a field nobody
+ *    filled in. So a typed `"0"` normalises to `""` — the same place `stepDown` lands from `1` —
+ *    rather than asserting a party of none, which `trips.kids` would then store as a stated 0.
+ *  - **DIGITS ONLY.** Everything else is dropped rather than rejected, so a paste of "12 adults"
+ *    yields 12 instead of clearing the field the traveler was filling.
+ *  - **THE CEILING IS THE STEPPER'S OWN.** `MAX_PARTY_COUNT` is the cap `stepUp` already enforced
+ *    as a literal `500`; it is stated here once and imported there, so the two controls cannot
+ *    drift into two different maxima.
+ */
+export const MAX_PARTY_COUNT = 500;
+
+/**
+ * Normalise a typed party-count field to the string shape the steppers store.
+ *
+ * @param raw the raw input value as typed or pasted.
+ * @returns `""` when the field states nothing (empty, whitespace, non-numeric, or a zero — see
+ *          above), otherwise the digits as a positive integer clamped to `MAX_PARTY_COUNT`.
+ */
+export function parsePartyCountInput(raw: string | null | undefined): string {
+  const digits = String(raw ?? "").replace(/[^0-9]/g, "");
+  if (digits === "") return "";
+  const n = Number(digits);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(Math.min(MAX_PARTY_COUNT, n));
+}

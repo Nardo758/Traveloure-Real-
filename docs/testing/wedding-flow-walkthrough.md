@@ -115,9 +115,17 @@ is `2026-09-04-one-modal-many-doors`).
 - Body: `plan-step-who-body`.
 - Heading for a wedding: **"Who is coming?"** (`vocabulary: "guests"`). For corporate events it is
   "How many attendees?"; for travel, "Who is traveling with you?".
-- Steppers: `button-etp-adults-plus` / `-minus` and `button-etp-kids-plus` / `-minus`; the values are
-  `value-etp-adults` / `value-etp-kids`. **Both start at "—", never at 2.** Labels are
-  `label-etp-adults` (which reads "Guests" here, from the occasion's vocabulary) and `label-etp-kids`.
+- Steppers: `button-etp-adults-plus` / `-minus` and `button-etp-kids-plus` / `-minus`; the value
+  cells are `value-etp-adults` / `value-etp-kids`. Labels are `label-etp-adults` (which reads
+  "Guests" here, from the occasion's vocabulary) and `label-etp-kids`.
+- **The centre of each stepper is a TYPED input** — `input-plan-adults` / `input-plan-kids` — bound
+  to the same state the − / + buttons write, so a party of twelve is one keystroke run rather than
+  twelve clicks. Check all of: **both start EMPTY, showing the "—" placeholder, never a 2**; typing
+  a non-digit (or pasting "12 adults") leaves `12`, not a cleared field; typing `0` returns the
+  field to unset, because there is no explicit zero here — "not set" and "none" are different
+  answers (§13); the field clamps at 500, the same ceiling `+` stops at; `−` is disabled while the
+  field is empty; and clicking into a filled field selects its contents so it can be overtyped.
+  Kids stays OMITTED (not disabled) for an occasion whose step 4 does not ask it.
 - **The accessibility note** (`2026-09-04-step4-variants-fields`, migration 284): block
   `plan-step-who-accessibility`, field `input-etp-accessibility-note`, asked because
   `wedding.default_guests` is **true**. Type e.g. "Grandparents — step-free, short walks".
