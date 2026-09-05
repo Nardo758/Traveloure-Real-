@@ -32,6 +32,9 @@ import {
   nightDatesInclusive,
 } from "./services/availability-materializer.service";
 import { api } from "@shared/routes";
+// ONE derivation of the plan's party total, shared with the client (ledger
+// `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
+import { partyTotal } from "@shared/plan-vocabulary";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
 import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
@@ -1223,7 +1226,14 @@ export async function registerRoutes(
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
       if (!numberOfTravelersProvided && sanitizedInput.adults != null) {
-        sanitizedInput.numberOfTravelers = sanitizedInput.adults + (sanitizedInput.kids ?? 0);
+        // ONE derivation, shared with the client and with `PATCH /api/trips/:tripId/occasion`
+        // (ledger `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33, §18 rule 1).
+        // This addition used to be written out inline here AND in the client's `partyTotal`, and
+        // the occasion PATCH — the rail step 4 writes the pair through — had neither, which is how
+        // the slip header came to read "1 traveler" beside a chip that said "2 guests".
+        // §13 keeps its direction: a pair that states nothing writes nothing.
+        const total = partyTotal(sanitizedInput.adults, sanitizedInput.kids ?? null);
+        if (total !== undefined) sanitizedInput.numberOfTravelers = total;
       }
 
       // Additional validations

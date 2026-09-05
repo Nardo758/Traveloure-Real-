@@ -78,14 +78,15 @@ import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
 import {
+  buildSlipDaySlots,
   countPlanEvents,
   eventMetaLine,
-  groupItemsByEvent,
-  IMPLICIT_EVENT_GROUP_KEY,
+  SLIP_EMPTY_EVENT_BODY,
+  SLIP_UNDATED_SLOT_HEADING,
   type PlanEvent,
 } from "@/lib/slip-events";
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
-import { eventCountLabel } from "@/lib/plan-vocabulary";
+import { eventCountLabel, partyCountLabel } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
@@ -189,10 +190,20 @@ function expertFirstName(data: SlipData): string | null {
  *
  * Parsed with `parseTripDate` so a bare "YYYY-MM-DD" lands on LOCAL midnight — `new Date()` would
  * render the previous day west of UTC (F-1), which is the whole reason that helper exists.
+ *
+ * `dayNum: null` (ledger `2026-09-05-slip-events-first-render`) is a slot the plan's EVENTS brought
+ * into being rather than one of its item-derived days — it has no ordinal, so with no machine date
+ * either there is nothing to name and the heading says exactly that (§13). It is NEVER given
+ * "Day 1": a slot that exists because an event has no date must not be labelled with a day.
  */
-function slipDayHeading(day: { dayNum: number; date?: string | null; dateIso?: string | null }): string {
+function slipDayHeading(day: {
+  dayNum: number | null;
+  date?: string | null;
+  dateIso?: string | null;
+}): string {
   const parsed = parseTripDate(day.dateIso ?? null);
   if (parsed) return format(parsed, "EEEE · MMM d");
+  if (day.dayNum == null) return SLIP_UNDATED_SLOT_HEADING;
   // No machine date. Keep the pre-existing heading verbatim, including its own date-when-present.
   return `Day ${day.dayNum}${day.date ? ` · ${day.date}` : ""}`;
 }
@@ -203,12 +214,22 @@ function SlipHeader({
   data,
   hasOptimized,
   eventCount,
+  partyLabel,
   isHidden,
 }: {
   data: SlipData;
   hasOptimized: boolean;
   /** `countPlanEvents(data.events)` — resolved by the caller, never counted twice (re-audit A16). */
   eventCount: number;
+  /**
+   * "2 guests" / "1 traveler" — the party count AND its occasion noun, resolved ONCE by the caller
+   * through `partyCountLabel` (ledger `2026-09-05-slip-events-first-render`). This header used to
+   * hard-code "traveler(s)" while step 4, the Trip Strip chip and `SlipTravelingParty` all read the
+   * occasion's own `vocabulary` column (Locked Decision 28), so a wedding said "guests" everywhere
+   * except here. `""` when the plan states no party, and the segment is then OMITTED (§13) exactly
+   * as it was when the count itself was falsy.
+   */
+  partyLabel: string;
   /** `default_visibility: hidden` — the proposal case (re-audit A21). */
   isHidden: boolean;
 }) {
@@ -268,11 +289,11 @@ function SlipHeader({
       </h1>
       <p className="text-sm text-muted-foreground" data-testid="slip-meta">
         {start && end ? `${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}` : null}
-        {start && end && trip?.travelers ? " · " : null}
-        {trip?.travelers ? (
-          <span className="inline-flex items-center gap-1">
+        {start && end && partyLabel ? " · " : null}
+        {partyLabel ? (
+          <span className="inline-flex items-center gap-1" data-testid="slip-meta-party">
             <Users className="w-3.5 h-3.5 inline" />
-            {trip.travelers} traveler{trip.travelers > 1 ? "s" : ""}
+            {partyLabel}
           </span>
         ) : null}
         {/* THE EVENT COUNT (re-audit A16). The SAME derivation the Trip Strip's chip already
@@ -282,7 +303,7 @@ function SlipHeader({
             so "0 events" would be a claim about the plan rather than a count (§13). */}
         {eventCount > 0 ? (
           <span data-testid="slip-meta-events">
-            {(start && end) || trip?.travelers ? " · " : null}
+            {(start && end) || partyLabel ? " · " : null}
             {eventCountLabel(eventCount)}
           </span>
         ) : null}
@@ -1438,6 +1459,40 @@ export function SlipView({
   const planEvents: PlanEvent[] = data.events ?? [];
   const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
 
+  /**
+   * ── THE DAY SLOTS (ledger `2026-09-05-slip-events-first-render`) ──────────────────────────────
+   * The day list used to be `sortedDays` alone, and `sortedDays` comes from the ITEMS: the
+   * plancard's `days` array is built from `Array.from(new Set(items.map(i => i.dayNumber)))`, so a
+   * plan with no items has NO days. A freshly minted plan is exactly that — four events ticked at
+   * step 5, zero items — and the slip rendered "No items on this plan yet" directly under a header
+   * that said "4 events". The header was right and the body was right; nothing tied them together.
+   *
+   * `buildSlipDaySlots` is that tie. It calls the SAME `groupItemsByEvent` per day — the grouping
+   * rule is not restated here or forked (§18 rule 1) — and adds a slot for the events that have no
+   * items ANYWHERE on the plan, on the calendar day each names, with a trailing UNDATED slot for
+   * the ones that name none. An event that HAS items is untouched: it renders beside them, exactly
+   * as before, so a plan with items comes out of here identical to today's render.
+   */
+  const daySlots = useMemo(
+    () =>
+      buildSlipDaySlots(
+        sortedDays.map((day) => ({
+          dayNum: day.dayNum,
+          dateIso: day.dateIso ?? null,
+          // The slip's own time sort, unchanged and still the caller's — the helper never re-sorts.
+          items: [...day.activities].sort((a, b) => (a.time || "").localeCompare(b.time || "")),
+        })),
+        planEvents,
+        { groupByEvent },
+      ),
+    [sortedDays, planEvents, groupByEvent],
+  );
+  /** The plan's own day rows, by ordinal — the heading's `date` fallback and the day's legs. */
+  const dayByNum = useMemo(
+    () => new Map(sortedDays.map((d) => [d.dayNum, d])),
+    [sortedDays],
+  );
+
   // ── THE PLAN'S BUDGET TOTAL (ledger `2026-09-04-event-budget`) ────────────────────────────
   // DERIVED from the events, never stored — one pure helper, so the line and the fields it sums
   // cannot drift apart (§18 rule 1). `null` when NO event states a budget, and the line is then
@@ -1449,6 +1504,22 @@ export function SlipView({
   // and hiding a number the traveler entered because of an unrelated switch would lose an answer
   // they gave.
   const budgetLine = planBudgetLine(planEvents);
+
+  /**
+   * ── THE PARTY LINE (ledger `2026-09-05-slip-events-first-render`) ─────────────────────────────
+   * ONE derivation of "N <noun>", the same `partyCountLabel` the Trip Strip's chip and
+   * `SlipTravelingParty` already call — so the count and the WORD both come from one place. The
+   * count itself is the plan's own derived total (`trips.number_of_travelers`, written by the ONE
+   * shared `partyTotal` on the trip-create path and on the occasion PATCH); the noun is the
+   * occasion's `vocabulary` column, read through the switch reader (Locked Decision 28), with
+   * `default_guests === false` forcing "travelers" inside the helper rather than here.
+   * §13 — `""` for a count nobody stated, and the segment is omitted rather than printed as zero.
+   */
+  const partyLabel = partyCountLabel(
+    data.trip?.travelers ?? null,
+    occasion?.vocabulary ?? null,
+    occasion?.defaultGuests ?? null,
+  );
 
   return (
     <div className="max-w-2xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
@@ -1470,6 +1541,7 @@ export function SlipView({
           data={data}
           hasOptimized={hasOptimized}
           eventCount={countPlanEvents(planEvents)}
+          partyLabel={partyLabel}
           isHidden={occasionIsHidden}
         />
         {data.trip && <SlipActions trip={data.trip} isOwner={isOwner} activities={allActivities} />}
@@ -1531,32 +1603,37 @@ export function SlipView({
       ) : (
       <Card>
         <CardContent className="p-2 sm:p-3 divide-y divide-border">
-          {sortedDays.length === 0 && (
+          {/* §13 — "No items" is now said ONLY when there is genuinely nothing to show. A plan
+              with events and no items has slots (the event cards below), so this line no longer
+              contradicts the header's own event count directly above it. */}
+          {daySlots.length === 0 && (
             <p className="text-sm text-muted-foreground p-4 text-center">No items on this plan yet.</p>
           )}
-          {sortedDays.map((day) => {
-            const dayActivities = [...day.activities].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-            // Ungrouped: ONE implicit group holding the whole day, rendered as a bare Fragment —
-            // the same rows in the same order with no extra wrapper, so nothing about the flat
-            // day list changes for a plan with no events.
-            const groups = groupByEvent
-              ? groupItemsByEvent(dayActivities, planEvents)
-              : [{ key: IMPLICIT_EVENT_GROUP_KEY, event: null, items: dayActivities }];
+          {daySlots.map((slot) => {
+            // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
+            // no `date` label of its own and no legs, and invents none of the three.
+            const day = slot.dayNum != null ? dayByNum.get(slot.dayNum) : undefined;
             return (
-              <div key={day.dayNum} className="py-2 first:pt-0 last:pb-0">
+              <div key={slot.key} className="py-2 first:pt-0 last:pb-0">
                 {/* THE DAY HEADING NAMES THE DAY (re-audit A17, the ratified `Slip` artboard's
                     "Friday · Oct 2"). A traveler reads a plan by the days of the week it falls on;
                     "Day 1" is the plan's internal index and tells them nothing they can act on.
                     §13 — the ordinal is the FALLBACK, not the decoration: a plan whose start date
                     is unknown has no weekday to name (`dateIso` is null and `dayDateIso` never
-                    guesses one), and it keeps "Day 1" rather than being given a weekday. */}
+                    guesses one), and it keeps "Day 1" rather than being given a weekday. A slot the
+                    EVENTS alone brought into being has no ordinal at all, so an undated one reads
+                    "Undated" — our knowledge, never a day we picked for it. */}
                 <p
                   className="px-3 pt-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                  data-testid={`slip-day-heading-${day.dayNum}`}
+                  data-testid={`slip-day-heading-${slot.dayNum ?? slot.key}`}
                 >
-                  {slipDayHeading(day)}
+                  {slipDayHeading({
+                    dayNum: slot.dayNum,
+                    date: day?.date ?? null,
+                    dateIso: slot.dateIso,
+                  })}
                 </p>
-                {groups.map((group) => {
+                {slot.groups.map((group) => {
                   const rows = group.items.map((a) => (
                     <SlipItemRow
                       key={a.id}
@@ -1582,7 +1659,21 @@ export function SlipView({
                       destination={data.trip?.destination}
                       isOwner={isOwner}
                     >
-                      {rows}
+                      {/* An event with nothing under it says so, in the ONE string held beside the
+                          grouping rule. It is an EMPTY body, not an absent card: the card is what
+                          proves the event exists, and it carries the event's own time, budget and
+                          hire affordances so the traveler's first act on a fresh plan is possible
+                          from here. */}
+                      {rows.length > 0 ? (
+                        rows
+                      ) : (
+                        <p
+                          className="px-3 py-2 text-xs text-muted-foreground"
+                          data-testid={`slip-event-empty-${group.event.id}`}
+                        >
+                          {SLIP_EMPTY_EVENT_BODY}
+                        </p>
+                      )}
                     </SlipEventGroupBlock>
                   ) : (
                     <Fragment key={group.key}>{rows}</Fragment>
@@ -1590,7 +1681,7 @@ export function SlipView({
                 })}
                 {/* Logistics stay at DAY level: a leg connects two stops and carries no event link
                     of its own, so it is never filed under one (§13). */}
-                {(day.transports ?? []).map((leg) => (
+                {(day?.transports ?? []).map((leg) => (
                   <LogisticsRow key={leg.id} leg={leg} />
                 ))}
               </div>
@@ -1636,7 +1727,11 @@ export function SlipView({
 
       {/* Rows 13/14 (relocated from the trip-details itinerary/logistics/guests tabs): temporal
           anchors + guest invites are planning inputs, so their home is the slip. Owner-only. */}
-      {isOwner && <SlipLogisticsSection tripId={tripId} />}
+      {/* `planEvents` is passed, not re-fetched (ledger `2026-09-05-slip-events-first-render`):
+          "how many events does this plan have" now has ONE source on this page — the plancard's own
+          `events` array, the same one the header counts — so the meta line and the "Organize into
+          events" offer can no longer disagree about the same plan. */}
+      {isOwner && <SlipLogisticsSection tripId={tripId} planEvents={planEvents} />}
 
       <TransitionLogFooter
         transitions={transitions}
