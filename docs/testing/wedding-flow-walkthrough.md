@@ -200,6 +200,19 @@ found broken, so check it deliberately.
 - Add one item to an event and re-check: the card renders its rows and the empty line disappears —
   nothing else about the day list changes.
 
+**7b · The first FEW SECONDS, before the occasion row lands (QA check 3).** Watch the landing, do
+not just read the settled screen — both defects below were invisible once the page had loaded.
+
+- **`slip-empty-items` ("No items on this plan yet.") must never flash.** While
+  `GET /api/trips/:id` and `GET /api/experience-types` are in flight there is no occasion row, so
+  the day list cannot yet be grouped by event; a neutral `slip-day-list-loading` stand-in holds the
+  space. Seeing the sentence and then three event cards is the defect.
+- **`slip-meta-party` and `trip-strip-party` must never flash the wrong NOUN.** Until the occasion
+  row resolves both render the COUNT ALONE ("3"), then settle to "3 guests". "3 travelers" first is
+  the defect — that word is ruling 28's fallback for a row that ANSWERED and said nothing, not for
+  one that has not arrived.
+- A slow connection makes both easy to see; throttle to Slow 3G for one reload.
+
 ---
 
 ## 8 · Add something to the plan → the WhichEvent picker

@@ -432,6 +432,16 @@ jobs:
           npx tsx --test client/src/lib/__tests__/slip-events.test.ts
           npx tsx --test client/src/lib/__tests__/plan-islands.test.ts
           npx tsx --test shared/__tests__/plan-party-total.test.ts
+      # QA check 3 (post-publish walkthrough): the SAME surface, one layer earlier — what it says
+      # BEFORE its data arrives. Both defects are one conflation: an occasion that resolved to
+      # nothing and an occasion still in flight reach every reader as the same `null`, so the slip
+      # claimed "No items on this plan yet" over a plan whose event cards were still coming, and
+      # printed ruling 28's "travelers" fallback over a wedding until the row landed and it became
+      # "guests". P1-P6/E1-E4 pin the two pure gates (including that the SETTLED behaviour is
+      # byte-identical — the NULL-vocabulary fallback is a finished answer and must survive), and
+      # A1-A5 pin the shipped wiring, because a gate a call site can reach past is the defect.
+      - name: Slip first-paint pin
+        run: npx tsx --test client/src/lib/__tests__/slip-first-paint.test.ts
       # 2026-09-05-custom-venues-owner-scope: §14 applied to READS. P1-P4/T1-T4 pin the two pure
       # rules (an absent session user is never an owner; a trip the caller does not own is treated
       # as ABSENT, not as an error), and A1-A6/S1-S2 pin the shipped artifacts — both GETs gated,

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, Calendar, CalendarDays, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
-import { classify, eventCountLabel, partyCountLabel } from "@/lib/plan-vocabulary";
+import { classify, eventCountLabel, partyCountLabel, partyCountOnly } from "@/lib/plan-vocabulary";
 // Ledger 2026-09-04-which-event-picker: "the events of THIS plan" now has ONE definition, shared
 // with the picker that writes the link. The strip filtered inline before that module existed; two
 // copies of the same filter is the drift class §18 rule 1 names.
@@ -77,10 +77,18 @@ export function TripStrip() {
    * Fetched only once an occasion has actually been chosen: a browser with no occasion in context
    * has nothing to look up, and the strip must not add a request to every marketing page.
    */
-  const { data: occasions } = useQuery<ExperienceType[]>({
+  const { data: occasions, isLoading: occasionsLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
     enabled: !!(ctx.experienceSlug || ctx.experienceType),
   });
+  /**
+   * QA check 3 — has the occasion lookup SETTLED? A disabled query (no occasion in context) is
+   * not loading: there is nothing to wait for, so the strip is resolved on nothing and renders
+   * exactly what it always did. A background refetch over cached rows is not loading either.
+   * `isLoading` is the only state that means "a request is in flight and the row may still
+   * change", and it is the one state in which no noun may be printed (see `partyLabel` below).
+   */
+  const occasionResolved = !occasionsLoading;
 
   /**
    * THE PLAN'S EVENTS (migration 277; ledger `2026-09-04-slip-events`, CLAUDE.md entry 29). An
@@ -172,14 +180,26 @@ export function TripStrip() {
   const rowPartyLabel = occasionRow?.vocabulary
     ? partyCountLabel(ctx.travelers, occasionRow.vocabulary, occasionRow.defaultGuests)
     : "";
-  const partyLabel = hasTravelers
-    ? rowPartyLabel ||
-      (vocab === "event"
-        ? `${ctx.travelers} guests`
-        : vocab === "couple"
-          ? `Party of ${ctx.travelers}`
-          : `${ctx.travelers} traveler${ctx.travelers === 1 ? "" : "s"}`)
-    : "";
+  /**
+   * ── AND THE FALLBACK WAITS FOR THE ROW (QA check 3, post-publish walkthrough) ────────────────
+   * Everything above is the settled answer and is unchanged. What was missing is the THIRD state:
+   * while `GET /api/experience-types` is still in flight `occasionRow` is undefined for the same
+   * reason an unmatched slug is — and this chip could not tell them apart, so it printed the
+   * class-based wording as though the row had answered and then swapped words underneath the
+   * reader. The count alone is honest in that window (`partyCountOnly`, the SAME helper the slip's
+   * meta line uses — one answer to "what do we show while we do not know yet", §18 rule 1); the
+   * class fallback is right only once the row's absence is a FINISHED fact.
+   */
+  const partyLabel = !hasTravelers
+    ? ""
+    : !occasionResolved
+      ? partyCountOnly(ctx.travelers)
+      : rowPartyLabel ||
+        (vocab === "event"
+          ? `${ctx.travelers} guests`
+          : vocab === "couple"
+            ? `Party of ${ctx.travelers}`
+            : `${ctx.travelers} traveler${ctx.travelers === 1 ? "" : "s"}`);
 
   /**
    * "3 events" — hidden at zero, and hidden while unknown (§13). A plan with no
