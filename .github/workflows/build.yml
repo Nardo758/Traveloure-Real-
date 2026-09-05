@@ -74,9 +74,14 @@ jobs:
       # (trackSearchEvent / trackItineraryGenerated / trackBookingEvent — an interface with
       # optional members is not assignable to an index-signature type). The ratchet detected the
       # reduction and requires it to be locked in. Locked in, same PR.
+      # 132 measured 2026-09-05 (ledger `2026-09-05-build-id-and-map-fallback`): the mobile
+      # full-screen `ExperienceMap` mount in experience-template.tsx passed a `cart` prop the
+      # component has never declared or read — a dead prop carrying that mount's only TS2322.
+      # Deleting it removed the error; ZERO new type errors in any file this lane touched.
+      # Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '133'
+          TSC_BASELINE: '132'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -585,6 +590,21 @@ jobs:
         run: |
           npx tsx --test server/__tests__/optimize-preview-on-slip.test.ts
           npx tsx --test client/src/lib/__tests__/optimize-preview-line.test.ts
+      # 2026-09-05-build-id-and-map-fallback: two post-publish QA defects whose whole failure mode
+      # is that they RENDER FINE. B1-B9/S1 pin the build-identity resolver — the ordered sources,
+      # and above all §13's all-miss answer (`commit: null`, `source: "unknown"`), because the way
+      # a build id fails is a PLAUSIBLE WRONG ANSWER (a stale env var, a leftover build-info.json,
+      # a short sha compared against a full $GITHUB_SHA) that a deploy check then believes. S1
+      # reads the shipped wiring: ONE resolver behind both /api/version and /api/health, the
+      # legacy `sha` key its two consumers parse, and the build script writing the file AFTER the
+      # bundle. C1-C5/S1-S5 pin the map's honesty boundary — the centre resolver returns NULL when
+      # nothing real names a place, both files are swept for coordinate literals, no fake marker
+      # coordinate is computed without a centre, and the "N providers" chip that flipped 8 -> 0 on
+      # a dismissed destination modal can no longer render a searched-and-found-none zero.
+      - name: Build identity + map city-centre fallback pin
+        run: |
+          npx tsx --test server/__tests__/build-info.test.ts
+          npx tsx --test client/src/lib/__tests__/map-no-city-center-fallback.test.ts
 
       # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
       # the free AI draft runs only on an EMPTY slip, its JSON recovery never repairs a truncated
