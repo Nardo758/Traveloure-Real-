@@ -4,7 +4,8 @@ import {
 import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
-import type { RoutingStatus } from "@shared/schema";
+import { eventTypeEnum, type RoutingStatus } from "@shared/schema";
+import { classifyOccasion, normalizeOccasionKey } from "@shared/occasions";
 import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
 import type { AffiliateBookingInfo } from "./affiliate-booking";
 import { parseCalendarDate } from "@/lib/calendar-date";
@@ -73,10 +74,80 @@ export const TEMPLATES: Record<string, TemplateConfig> = {
   },
 };
 
-export function getTemplateConfig(eventType: string | null | undefined): TemplateConfig {
-  if (eventType === "wedding" || eventType === "honeymoon" || eventType === "proposal") return TEMPLATES.wedding;
-  if (eventType === "corporate") return TEMPLATES.corporate;
-  return TEMPLATES.travel;
+/** The three label sets above, named. `travel` is the DEFAULT skin — the plain-plan vocabulary. */
+export type PlanCardSkin = "travel" | "wedding" | "corporate";
+
+/**
+ * The one skin the occasion CLASS cannot express. `classifyOccasion` answers travel/event/couple,
+ * and a corporate retreat and a wedding are both `event` — the agenda vocabulary is a third
+ * answer, so it is named by an explicit list rather than squeezed out of the class (the Locked
+ * Decision 36 precedent: "a tier cannot make this split, so an explicit list does"). Both spellings
+ * of the seeded catalog's corporate occasions are here.
+ */
+const CORPORATE_SKIN_SLUGS = new Set(["corporate", "corporate-events"]);
+
+/**
+ * THE PRE-RULING `trips.event_type` TEST, KEPT VERBATIM AS THE FALLBACK (ledger
+ * `2026-09-05-slip-switch-reads-events-first`; Locked Decision 42 D1). The four entries and their
+ * skins are exactly the old three-value `if` chain; every other event type falls to `travel`, as
+ * before. It is reached only for a bare string that IS an `eventTypeEnum` member — see below.
+ */
+const LEGACY_EVENT_TYPE_SKIN: Record<string, PlanCardSkin> = {
+  wedding: "wedding",
+  honeymoon: "wedding",
+  proposal: "wedding",
+  corporate: "corporate",
+};
+
+/** What a caller may hand the skin resolver: a resolved occasion row, a bare string, or nothing. */
+export type PlanCardSkinInput =
+  | { slug?: string | null; name?: string | null }
+  | string
+  | null
+  | undefined;
+
+/**
+ * WHICH SKIN A PLAN WEARS — routed through the occasion vocabulary, not a hand-typed event-type
+ * test (ledger `2026-09-05-slip-switch-reads-events-first`; Locked Decision 42 D1).
+ *
+ * Three inputs, deliberately, because two vocabularies already reach this function:
+ *
+ *   1. A RESOLVED OCCASION ROW (`resolveOccasionForPlan`'s answer) ⇒ its slug goes through
+ *      `OCCASION_CLASS_BY_SLUG`/`classifyOccasion`, the ONE place the platform classifies an
+ *      occasion (§18 rule 1). `event` and `couple` wear the events-and-vendors skin, `travel`
+ *      the plain one, and the corporate list above wins over both.
+ *   2. A BARE STRING THAT IS AN `eventTypeEnum` MEMBER ⇒ AMBIGUOUS. "wedding", "birthday" and
+ *      "proposal" are spelled the same in both vocabularies, so this cannot tell a
+ *      `trips.event_type` from an occasion slug — and it keeps today's answer verbatim rather
+ *      than silently re-skinning every birthday and anniversary plan on a guess about which
+ *      vocabulary the caller meant (§13).
+ *   3. ANY OTHER BARE STRING is unambiguously an occasion slug or name (`corporate-events`,
+ *      `wedding-anniversaries`, `bachelor-bachelorette`, …) and classifies like case 1. Those
+ *      strings previously matched nothing and silently took the default skin.
+ *
+ * NOTHING / an empty slug ⇒ the DEFAULT `travel` skin, said out loud: a plan whose occasion did
+ * not resolve wears the plain-plan vocabulary, which is what it wore before any occasion existed.
+ */
+export function planCardSkin(input?: PlanCardSkinInput): PlanCardSkin {
+  if (input && typeof input === "object") return skinForOccasionKey(input.slug || input.name || "");
+  const raw = (input || "").trim();
+  if (!raw) return "travel";
+  if ((eventTypeEnum as readonly string[]).includes(raw.toLowerCase())) {
+    return LEGACY_EVENT_TYPE_SKIN[raw.toLowerCase()] ?? "travel";
+  }
+  return skinForOccasionKey(raw);
+}
+
+function skinForOccasionKey(slugOrName: string): PlanCardSkin {
+  const key = slugOrName.trim();
+  if (!key) return "travel";
+  if (CORPORATE_SKIN_SLUGS.has(normalizeOccasionKey(key))) return "corporate";
+  return classifyOccasion(key) === "travel" ? "travel" : "wedding";
+}
+
+/** The label set for a plan. See `planCardSkin` for what the parameter may be. */
+export function getTemplateConfig(occasion?: PlanCardSkinInput): TemplateConfig {
+  return TEMPLATES[planCardSkin(occasion)];
 }
 
 /**

@@ -10,6 +10,22 @@
  * not. `findOccasionByEventType` is where that refusal lives (`shared/occasions.ts`) — it returns
  * a row only on a UNIQUE match, never a nearest one (§13).
  *
+ * ── EVENTS FIRST (ledger `2026-09-05-slip-switch-reads-events-first`; Locked Decision 42 D1) ──
+ * The lookup above is correct and narrow: most of the seeded catalog shares an event type with
+ * something else, so most occasions could not be recovered from a trip at all. There is an EXACT
+ * answer one level down, and the plancard payload already ships it — an event inside the plan is a
+ * `user_experiences` row (Locked Decision 29) whose `experience_type_id` names the occasion by ID.
+ * So when a caller hands this hook the plan's events and they all name the SAME occasion, that id
+ * IS the occasion, with no vocabulary bridge in between. Disagreement, a missing id, an unmatched
+ * id or no events at all fall through to the event-type lookup, and both failing is still `null`
+ * ⇒ the plain-trip shape, unchanged. The whole rule is ONE pure function,
+ * `resolveOccasionForPlan` (§18 rule 1); this hook only supplies its inputs.
+ *
+ * KNOWN AND DELIBERATE: a caller that passes no events gets attempt 2 only, so two surfaces on the
+ * same plan can hold different answers while the call sites are converted one lane at a time. That
+ * is a widening in progress, not a second implementation — and it disappears entirely once `trips`
+ * carries its own `experience_type_id`.
+ *
  * Both queries are the ones these surfaces already run: `/api/experience-types` is the shared
  * occasion vocabulary key (edit panel, IntakePanel, Trip Strip), and `useTrip` is what
  * SlipLogisticsSection already mounts. A viewer who cannot read the trip (a non-owner without a
@@ -19,7 +35,11 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useTrip } from "@/hooks/use-trips";
-import { findOccasionByEventType } from "@shared/occasions";
+import {
+  resolveOccasionForPlan,
+  unanimousEventOccasionId,
+  type PlanEventOccasionRef,
+} from "@shared/occasions";
 import { isHiddenOccasion, type OccasionSwitchRow } from "@/lib/occasion-switches";
 import type { ExperienceType } from "@shared/schema";
 
@@ -60,14 +80,28 @@ export interface OccasionSwitchesForTrip {
   isResolved: boolean;
 }
 
-export function useOccasionSwitches(tripId: string | undefined): OccasionSwitchesForTrip {
+export function useOccasionSwitches(
+  tripId: string | undefined,
+  /**
+   * THE PLAN'S EVENTS, WHEN THE CALLER ALREADY HAS THEM (ledger
+   * `2026-09-05-slip-switch-reads-events-first`). Optional on purpose: it is a HAND-DOWN of the
+   * plancard payload's own `events` array, never a second fetch — a caller that does not hold one
+   * simply gets attempt 2, i.e. exactly the behaviour this hook had before. Passing it can only
+   * widen what resolves; it can never turn a resolved occasion into `null`.
+   */
+  events?: readonly PlanEventOccasionRef[] | null,
+): OccasionSwitchesForTrip {
   const { data: trip, isLoading: tripLoading } = useTrip(tripId || "");
   const eventType = trip?.eventType ?? null;
+  // The list is worth fetching as soon as EITHER attempt could use it. Before events-first that
+  // was an event type alone; a plan whose events name an occasion needs the rows too, and gating
+  // on `eventType` would have kept attempt 1 from ever having a list to look in.
+  const hasEventOccasionId = !!unanimousEventOccasionId(events);
   const { data: occasions, isLoading: occasionsLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
-    enabled: !!tripId && !!eventType,
+    enabled: !!tripId && (!!eventType || hasEventOccasionId),
   });
-  const occasion = findOccasionByEventType(occasions, eventType);
+  const occasion = resolveOccasionForPlan({ events, eventType, occasions });
   return {
     occasion: occasion ?? null,
     isHidden: isHiddenOccasion(occasion),

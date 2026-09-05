@@ -17,6 +17,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 import { resolveTripTimezone } from "./trip-timezone";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
 
 export interface FulfillResult {
   purchase: typeof readyMadePurchases.$inferSelect;
@@ -95,6 +96,12 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       // The pre-trip EVENT pen is deliberately NOT drained here: the buyer bought a fixed plan, and
       // injecting their own held chips into a purchased product is content that plan never claimed.
       timezone: resolveTripTimezone(listing.market),
+      // Locked Decision 42 (D12) / ledger `2026-09-05-mint-market-slug-invariant`: market_slug is a
+      // MINT INVARIANT for EVERY mint, derived from the same destination by the same ONE resolver
+      // as the zone directly above (§18 rule 1). A clone is an ordinary traveler plan, so it is
+      // market-scoped like any other; a listing whose `market` is none of the 8 operating markets
+      // resolves to NULL and stays NULL — "not one of our markets", never a nearest guess (§13).
+      marketSlug: resolveMarketSlug(listing.market),
       // Placeholder window sized to the plan; the buyer re-dates it in their own planner.
       startDate: fmt(start),
       endDate: fmt(end),
