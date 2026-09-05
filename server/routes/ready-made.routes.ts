@@ -1297,7 +1297,10 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
           buyerId: userId,
         },
         description: `Traveloure ready-made trip: ${listing.title}`,
-        automatic_payment_methods: { enabled: true },
+        // LD 43(c): wallets on every platform charge. `allow_redirects: 'never'` — the buy sheet
+        // confirms with `redirect: 'if_required'` and the clone step runs after confirm on this
+        // page, so a redirect-based method would strand the buyer away from it.
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
       },
       // §15: retrying the purchase re-uses the same PI instead of minting a second charge.
       { idempotencyKey: `rm-buy-${listing.id}-${userId}` },

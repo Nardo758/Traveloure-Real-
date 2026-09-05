@@ -95,7 +95,11 @@ router.post("/api/trips/:tripId/trip-pass/purchase", isAuthenticated, async (req
           buyerId: userId,
         },
         description: `Traveloure Trip Pass — ${trip!.title ?? trip!.id}`,
-        automatic_payment_methods: { enabled: true },
+        // LD 43(c): wallets on every platform charge (Apple Pay / Google Pay / Link).
+        // `allow_redirects: 'never'` — TripPassCard confirms through the shared StripeCheckout,
+        // whose single return_url is /booking/confirmation, which is not this flow's landing
+        // (purchase/confirm runs in the dialog). Wallets are not redirect methods, so none is lost.
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
       },
       // §15: a retry re-uses the same PI instead of minting a second charge.
       { idempotencyKey: `tp-buy-${trip!.id}-${userId}` },

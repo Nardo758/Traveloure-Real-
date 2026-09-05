@@ -9667,6 +9667,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                 creditCents: String(claimedCreditCents),
               },
               description: `Traveloure event coordination fee (${eventType})`,
+              // LD 43(c): the coordination fee is a platform charge, so it offers wallets too.
+              // Like the optimizer site, this one named neither option before, so what it offered
+              // was an API-version default. `allow_redirects: 'never'` — the fee sheet confirms in
+              // place with `redirect: 'if_required'`; wallets are not redirect methods.
+              automatic_payment_methods: { enabled: true, allow_redirects: "never" as const },
             },
             { idempotencyKey },
           );
