@@ -27,6 +27,9 @@ import {
 } from "../services/trip-destinations.service";
 import { redactMoneyForNonOwner } from "../utils/share-money-redaction";
 import { api } from "@shared/routes";
+// ONE derivation of the plan's party total, shared with the client (ledger
+// `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
+import { partyTotal } from "@shared/plan-vocabulary";
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -3473,6 +3476,38 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
     for (const key of TRIP_OCCASION_NULLABLE_KEYS) {
       if (key in body) patch[key] = (parsed.data as Record<string, unknown>)[key] ?? null;
     }
+
+    /**
+     * ── THE DERIVED PARTY TOTAL (ledger `2026-09-05-slip-events-first-render`) ─────────────────
+     * CLAUDE.md Locked Decision 33: the plan's one party number stays DERIVED from the pair by one
+     * `partyTotal`, "so the Trip Strip's chip and the columns cannot disagree". This route wrote
+     * the PAIR and never the total, so they did: step 4 sent `adults: 2` here, the mint had already
+     * left `number_of_travelers` untouched, and the slip header — which reads that column through
+     * the plancard assembler — said "1 traveler" beside a Trip Strip chip that said "2 guests".
+     * The client-side derivation was correct; nothing carried it to the row.
+     *
+     * ONE IMPLEMENTATION, now shared: `partyTotal` is imported from `shared/plan-vocabulary.ts`,
+     * the same function the plan modal calls for its context write. Re-implementing the addition
+     * here is the drift class §18 rule 1 names — it is how this defect was written in the first
+     * place, one route over.
+     *
+     * §13 — A PAIR THAT STATES NOTHING WRITES NOTHING. `partyTotal` returns `undefined` for every
+     * spelling of "they did not answer" (absent, null, zero, negative, unparseable), and this then
+     * leaves `number_of_travelers` exactly as it was: never 0, never a fabricated 1, and never a
+     * NULL over a count some other author legitimately derived. It is written ONLY when the
+     * traveler's own answer produces a real number.
+     *
+     * It rides the SAME `storage.updateTrip` call as the pair, so the total and its components
+     * cannot be committed apart from one another.
+     */
+    if ("adults" in body || "kids" in body) {
+      const total = partyTotal(
+        (patch.adults as number | null | undefined) ?? null,
+        (patch.kids as number | null | undefined) ?? null,
+      );
+      if (total !== undefined) patch.numberOfTravelers = total;
+    }
+
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ message: "Nothing to update" });
     }

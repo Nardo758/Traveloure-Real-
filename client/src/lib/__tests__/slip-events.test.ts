@@ -28,12 +28,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildSlipDaySlots,
   countPlanEvents,
   eventMetaLine,
   groupItemsByEvent,
   IMPLICIT_EVENT_GROUP_KEY,
+  SLIP_EMPTY_EVENT_BODY,
+  SLIP_UNDATED_SLOT_HEADING,
+  SLIP_UNDATED_SLOT_KEY,
   type EventLinkedItem,
   type PlanEvent,
+  type SlipDayItems,
 } from "../slip-events";
 
 const CEREMONY: PlanEvent = { id: "ev-ceremony", title: "Ceremony", eventDate: "2026-10-02", location: "Kiyomizu-dera" };
@@ -286,5 +291,193 @@ describe("G8 — eventMetaLine's SHORT form: one implementation, two callers (re
 
   it("short still reads the bare DATE as a LOCAL day (F-1) — the weekday is never a day early", () => {
     assert.equal(eventMetaLine({ id: "x", eventDate: "2026-10-02" }, { format: "short" }), "Fri");
+  });
+});
+
+describe("F — buildSlipDaySlots: a plan with EVENTS and no ITEMS still renders its events", () => {
+  /**
+   * Ledger `2026-09-05-slip-events-first-render`. The slip's day list comes from ITEMS, so a
+   * freshly minted plan — four events ticked at step 5, zero items — had NO days, rendered
+   * "No items on this plan yet", and showed not one `slip-event-<id>` card, directly under a
+   * header that said "4 events". These hold the fix and, just as importantly, hold that the
+   * items-present render did not move.
+   */
+  const day = (
+    dayNum: number,
+    dateIso: string | null,
+    items: EventLinkedItem[],
+  ): SlipDayItems<EventLinkedItem> => ({ dayNum, dateIso, items });
+
+  const OCT2 = "2026-10-02";
+  const OCT3 = "2026-10-03";
+
+  it("F1: events + NO items ⇒ one empty group per event, under the day each event names", () => {
+    const slots = buildSlipDaySlots<EventLinkedItem>([], [CEREMONY, RECEPTION], {
+      groupByEvent: true,
+    });
+    // Both events name Oct 2, so they share ONE slot — the honest reading of the column.
+    assert.equal(slots.length, 1);
+    assert.equal(slots[0].dateIso, OCT2);
+    assert.equal(slots[0].dayNum, null, "an event-only slot has no ordinal to claim");
+    assert.equal(slots[0].undated, false);
+    assert.deepEqual(
+      slots[0].groups.map((g) => ({ key: g.key, items: g.items.length })),
+      [
+        { key: "ev-ceremony", items: 0 },
+        { key: "ev-reception", items: 0 },
+      ],
+    );
+    // The event ROW itself rides the group, so the card can render its title/meta/affordances.
+    assert.equal(slots[0].groups[0].event?.title, "Ceremony");
+  });
+
+  it("F2: two events on DIFFERENT days get one slot each, in date order", () => {
+    const slots = buildSlipDaySlots<EventLinkedItem>(
+      [],
+      [{ ...RECEPTION, eventDate: OCT3 }, CEREMONY],
+      { groupByEvent: true },
+    );
+    assert.deepEqual(
+      slots.map((s) => [s.dateIso, s.groups.map((g) => g.key)]),
+      [
+        [OCT2, ["ev-ceremony"]],
+        [OCT3, ["ev-reception"]],
+      ],
+    );
+  });
+
+  it("F3 (§13): an event with NO date lands in a TRAILING undated slot, never on day 1", () => {
+    const undatedEvent: PlanEvent = { id: "ev-x", title: "Rehearsal", eventDate: null };
+    const slots = buildSlipDaySlots<EventLinkedItem>(
+      [day(1, OCT2, [item("a")])],
+      [CEREMONY, undatedEvent],
+      { groupByEvent: true },
+    );
+    const last = slots[slots.length - 1];
+    assert.equal(last.key, SLIP_UNDATED_SLOT_KEY);
+    assert.equal(last.undated, true);
+    assert.equal(last.dateIso, null, "it names no day, because the traveler named none");
+    assert.equal(last.dayNum, null, "and it is never given an ordinal either");
+    assert.deepEqual(last.groups.map((g) => g.key), ["ev-x"]);
+    // The dated event still lands on the plan's own Oct 2 day rather than a slot of its own.
+    assert.equal(slots[0].dayNum, 1);
+    assert.deepEqual(slots[0].groups.map((g) => g.key), [IMPLICIT_EVENT_GROUP_KEY, "ev-ceremony"]);
+  });
+
+  it("F3b (§13): a date whose SHAPE is not a calendar day is treated as NO date, never repaired", () => {
+    for (const bad of ["next Friday", "10/02/2026", "", "  "]) {
+      const slots = buildSlipDaySlots<EventLinkedItem>(
+        [],
+        [{ id: "ev-bad", title: "Photos", eventDate: bad }],
+        { groupByEvent: true },
+      );
+      assert.equal(slots.length, 1);
+      assert.equal(slots[0].undated, true, `"${bad}" is not a day`);
+    }
+    // A timestamp that happens to lead with a calendar day IS read as that day — same posture as
+    // `eventMetaLine`, which renders the DATE column as a calendar day and never as a clock.
+    const slots = buildSlipDaySlots<EventLinkedItem>(
+      [],
+      [{ id: "ev-ts", eventDate: "2026-10-02T19:00:00.000Z" }],
+      { groupByEvent: true },
+    );
+    assert.equal(slots[0].dateIso, OCT2);
+    assert.equal(slots[0].undated, false);
+  });
+
+  it("F4: events + items ⇒ output is UNCHANGED — no event gains a second, empty card", () => {
+    const items = [item("breakfast"), item("vows", "ev-ceremony"), item("dinner", "ev-reception")];
+    const slots = buildSlipDaySlots<EventLinkedItem>([day(1, OCT2, items)], [CEREMONY, RECEPTION], {
+      groupByEvent: true,
+    });
+    assert.equal(slots.length, 1, "no extra slot: every event already renders with its items");
+    assert.equal(slots[0].dayNum, 1);
+    // Byte-for-byte the shape `groupItemsByEvent` returns on its own (G3's pinned snapshot).
+    assert.deepEqual(shape(slots[0].groups), shape(groupItemsByEvent(items, [CEREMONY, RECEPTION])));
+    assert.deepEqual(shape(slots[0].groups), [
+      { key: IMPLICIT_EVENT_GROUP_KEY, titled: null, items: ["breakfast"] },
+      { key: "ev-ceremony", titled: "Ceremony", items: ["vows"] },
+      { key: "ev-reception", titled: "Reception", items: ["dinner"] },
+    ]);
+  });
+
+  it("F4b: an event with items on ONE day is not also drawn empty on the day it is DATED", () => {
+    // The reception is dated Oct 3 but its only item sits on day 1 (Oct 2). It renders where its
+    // items are — once — and gets no empty card on Oct 3.
+    const slots = buildSlipDaySlots<EventLinkedItem>(
+      [day(1, OCT2, [item("dinner", "ev-reception")])],
+      [{ ...RECEPTION, eventDate: OCT3 }],
+      { groupByEvent: true },
+    );
+    assert.equal(slots.length, 1);
+    assert.deepEqual(slots[0].groups.map((g) => g.key), ["ev-reception"]);
+    assert.equal(slots[0].groups[0].items.length, 1);
+  });
+
+  it("F5: NO events and NO items ⇒ NO slots (the caller's 'No items on this plan yet' survives)", () => {
+    assert.deepEqual(buildSlipDaySlots<EventLinkedItem>([], [], { groupByEvent: true }), []);
+    assert.deepEqual(buildSlipDaySlots<EventLinkedItem>([], null, { groupByEvent: true }), []);
+    assert.deepEqual(buildSlipDaySlots<EventLinkedItem>([], [CEREMONY]), [], "ungrouped ⇒ no slots");
+  });
+
+  it("F6: with grouping OFF the day list is the flat, single implicit group it always was", () => {
+    const items = [item("a"), item("b", "ev-ceremony")];
+    const slots = buildSlipDaySlots<EventLinkedItem>([day(1, OCT2, items)], [CEREMONY], {
+      groupByEvent: false,
+    });
+    assert.deepEqual(shape(slots[0].groups), [
+      { key: IMPLICIT_EVENT_GROUP_KEY, titled: null, items: ["a", "b"] },
+    ]);
+    // An occasion that states no internal schedule gets no event cards at all, empty or otherwise.
+    assert.equal(slots.length, 1);
+  });
+
+  it("F7: an event dated OUTSIDE the plan's own days gets its own slot, merged in date order", () => {
+    const slots = buildSlipDaySlots<EventLinkedItem>(
+      [day(2, OCT3, [item("a")])],
+      [CEREMONY], // Oct 2 — one day before the plan's only item-day
+      { groupByEvent: true },
+    );
+    assert.deepEqual(
+      slots.map((s) => [s.dateIso, s.dayNum]),
+      [
+        [OCT2, null],
+        [OCT3, 2],
+      ],
+      "a real calendar day sorts where it falls, and the plan's own day keeps its ordinal",
+    );
+  });
+
+  it("F7b: a plan with NO machine dates keeps its ordinal days FIRST — nothing is wedged in", () => {
+    const slots = buildSlipDaySlots<EventLinkedItem>(
+      [day(1, null, [item("a")]), day(2, null, [item("b")])],
+      [CEREMONY],
+      { groupByEvent: true },
+    );
+    assert.deepEqual(
+      slots.map((s) => s.dayNum),
+      [1, 2, null],
+      "there is no honest place to insert a dated slot among days that have no dates",
+    );
+  });
+
+  it("F8: the caller's item order inside a day is preserved, and no item is dropped", () => {
+    const items = [item("late", "ev-ceremony"), item("early", "ev-ceremony"), item("loose")];
+    const slots = buildSlipDaySlots<EventLinkedItem>([day(1, OCT2, items)], [CEREMONY, RECEPTION], {
+      groupByEvent: true,
+    });
+    const out = slots.flatMap((s) => s.groups.flatMap((g) => g.items.map((i) => i.id)));
+    assert.deepEqual(out.slice().sort(), ["early", "late", "loose"]);
+    assert.deepEqual(
+      slots[0].groups.find((g) => g.key === "ev-ceremony")!.items.map((i) => i.id),
+      ["late", "early"],
+    );
+  });
+
+  it("F9: the empty-body line is ONE string, stated once and never re-spelled", () => {
+    assert.equal(SLIP_EMPTY_EVENT_BODY, "Nothing added under this event yet");
+    // §13 — it describes the EVENT's contents, and claims nothing about the plan or the day.
+    assert.doesNotMatch(SLIP_EMPTY_EVENT_BODY, /\b0\b|none|empty|no items on this plan/i);
+    assert.equal(SLIP_UNDATED_SLOT_HEADING, "Undated");
   });
 });

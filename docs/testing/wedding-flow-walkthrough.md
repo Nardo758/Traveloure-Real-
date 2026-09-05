@@ -81,6 +81,14 @@ is `2026-09-04-one-modal-many-doors`).
   **§13 to verify:** press **Save** (`button-etp-save`) from step 2 WITHOUT advancing, reopen the
   modal, and the suggested city must **not** have been stored. Advancing with
   `button-planning-next` first is what makes it yours.
+- **Where a home city is SET (`2026-09-05-slip-events-first-render`).** `/profile` → Personal
+  Information → **Home city** (`select-home-city`), saved by the page's own **Save Changes**. The
+  options are the SERVER's operating-market list (`GET /api/me/home-city` → `markets`), so the
+  picker offers only values the writer accepts; `text-home-city-note` says out loud that the list is
+  the markets we operate in, and **"Not set" is a real answer** — nothing guesses one. The Plus
+  occasions surface writes the same column through the same route
+  (`PATCH /api/me/home-city`, which stays the ONE writer); before this it was the only door, so a
+  non-Plus traveler had no way to make the pre-fill above fire at all.
 - Then: `button-planning-next` → "Next: When".
 
 ---
@@ -167,6 +175,30 @@ is `2026-09-04-one-modal-many-doors`).
   an anchored item.
 - **§13:** an event you gave no time shows the day and **no clock** — not 00:00 and not "all day".
   An event with no place shows no place line.
+
+### 7a · The FIRST render — events, no items (`2026-09-05-slip-events-first-render`)
+
+This is what you see the instant you land, before adding anything. It is the state the walkthrough
+found broken, so check it deliberately.
+
+- **Expected:** one `slip-event-<id>` card **per event you ticked at step 5**, grouped under day
+  headings (`slip-day-heading-<n>` for one of the plan's own days; `slip-day-heading-date-YYYY-MM-DD`
+  for a day only the events name). Each card carries its title, `slip-event-meta-<id>`, the
+  owner-only `slip-event-time-<id>` / `slip-event-budget-<id>` / `slip-event-hire-<id>` affordances,
+  and a body reading **`slip-event-empty-<id>` → "Nothing added under this event yet"**.
+- **`slip-meta` and the body must AGREE.** "4 events" in the header ⇒ four cards below it. The old
+  behaviour — "4 events" over "No items on this plan yet." and no cards at all — is the defect.
+- **"No items on this plan yet." is correct ONLY when the plan has neither items nor events.**
+- **§13:** an event you gave no day sits under a trailing **`slip-day-heading-undated`** ("Undated"),
+  **never** under day 1. It is our knowledge of the event, not a day we picked for it.
+- **No Organize offer when events exist.** `SlipOrganizeEvents` must be ABSENT here — the count it
+  reads is the plancard's own `events` array, the same one `slip-meta` counts. Seeing "Organize into
+  events" beside "4 events" means the two sources have drifted apart again.
+- **`slip-meta-party` must match step 4 and the Trip Strip chip** — both the number ("2", derived
+  from `adults`+`kids` by the ONE shared `partyTotal`) and the noun ("guests" on a wedding, from the
+  occasion's `vocabulary`). "1 traveler" after answering step 4 is the defect.
+- Add one item to an event and re-check: the card renders its rows and the empty line disappears —
+  nothing else about the day list changes.
 
 ---
 

@@ -48,6 +48,7 @@ import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { SlipTravelingParty } from "./SlipTravelingParty";
 import { SlipOrganizeEvents } from "./SlipOrganizeEvents";
 import { canOrganizeIntoEvents } from "@/lib/organize-events";
+import { countPlanEvents, type PlanEvent } from "@/lib/slip-events";
 import type { UserExperience } from "@shared/schema";
 
 const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
@@ -92,7 +93,18 @@ function SlipGuestTotals({ tripId }: { tripId: string }) {
   );
 }
 
-export function SlipLogisticsSection({ tripId }: { tripId: string }) {
+export function SlipLogisticsSection({
+  tripId,
+  planEvents,
+}: {
+  tripId: string;
+  /**
+   * THE PLAN'S EVENTS, HANDED DOWN — the plancard DTO's own `events` array, exactly as the slip
+   * header counts it (ledger `2026-09-05-slip-events-first-render`). It is a PROP and not a second
+   * fetch on purpose: see `eventCount` below.
+   */
+  planEvents?: readonly PlanEvent[];
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [anchorsOpen, setAnchorsOpen] = useState(false);
@@ -136,15 +148,23 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
    */
   const { occasion, isHidden } = useOccasionSwitches(tripId);
   /**
-   * THE PLAN'S EVENTS, off the list this component already fetches — no second query and no
-   * second definition of "an event of this plan" (§18 rule 1). `user_experiences.trip_id` is the
-   * binding (Locked Decision 29); there is no uniqueness on it, so a plan holds many.
+   * HOW MANY EVENTS THIS PLAN HAS — ONE SOURCE, AND IT IS THE PLANCARD'S OWN `events` ARRAY
+   * (ledger `2026-09-05-slip-events-first-render`; §18 rule 1).
    *
-   * `undefined` while the list is in flight is NOT zero: `canOrganizeIntoEvents` refuses a count
-   * it cannot trust, so the offer stays hidden until the list has actually answered (§13).
+   * ── THE DEFECT THIS CLOSES ────────────────────────────────────────────────────────────────
+   * This count used to be derived from `/api/user-experiences` — a USER-scoped list this
+   * component fetches for the guest manager — filtered by `tripId`. On a fresh account that list
+   * had already been fetched (as `[]`) before the plan existed, and nothing on the mint path
+   * invalidated it, so the slip of a plan that had just been minted WITH four events mounted with
+   * `eventCount = 0` and offered to organize into events the plan already held — directly under a
+   * header that said "4 events". Two sources for one fact is exactly how the two disagreed, so
+   * there is now one: the plancard `events` array the header itself counts, handed down as a prop.
+   *
+   * §13 — an ABSENT prop is still counted as zero, not as unknown, because it is the plancard's
+   * own answer for a plan that holds no `user_experiences` row. The list query below survives for
+   * what genuinely needs it (the guest manager's event id); it is no longer consulted about this.
    */
-  const tripEvents = allUserExperiences?.filter((e) => e.tripId === tripId);
-  const eventCount = tripEvents ? tripEvents.length : Number.NaN;
+  const eventCount = countPlanEvents(planEvents);
   /**
    * The one-time "Organize into events" offer. BOTH halves of the gate live in
    * `canOrganizeIntoEvents`; this reads it and never restates either half. A hidden occasion is
@@ -205,6 +225,9 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
         ORGANIZE INTO EVENTS — the one-time offer. It sits ABOVE the two rosters because it is the
         thing that gives the plan the events those rosters hang off (an invite belongs to an
         event, ruling 37). It disappears the moment the plan holds one.
+
+        `existingTitles` reads the SAME ONE source as the count above (the plancard `events`), so
+        the idempotency guard and the eligibility gate can never be looking at different lists.
       */}
       {canOrganize && occasion && (
         <SlipOrganizeEvents
@@ -213,7 +236,7 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
           startDate={trip?.startDate as unknown as string | null}
           endDate={trip?.endDate as unknown as string | null}
           destination={trip?.destination ?? null}
-          existingTitles={(tripEvents ?? []).map((e) => e.title)}
+          existingTitles={(planEvents ?? []).map((e) => e.title ?? null)}
           onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] })}
         />
       )}

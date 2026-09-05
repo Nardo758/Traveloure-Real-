@@ -387,6 +387,29 @@ jobs:
           npx tsx --test client/src/lib/__tests__/slip-events.test.ts
           npx tsx --test server/services/__tests__/wedding-presets.test.ts
           npx tsx --test shared/__tests__/experience-type-switches.test.ts
+      # 2026-09-05-slip-events-first-render: four defects found on the production walkthrough of a
+      # freshly minted wedding plan, every one of which rendered without erroring while telling the
+      # traveler something untrue on their FIRST screen.
+      #   F1-F9 (slip-events) — a plan's day list is built from ITEMS, so a plan with four events
+      #     and zero items had no days and drew no event cards under a header that said
+      #     "4 events". `buildSlipDaySlots` COMPOSES `groupItemsByEvent` rather than forking it, so
+      #     F4/F4b are the load-bearing ones: an event that has items must not gain a second, empty
+      #     card, and the items-present grouping must be byte-identical to the pinned snapshot.
+      #     F3/F3b are the §13 half — an event with no day goes in a trailing "Undated" slot, never
+      #     on day 1, and a malformed date is no date rather than a repaired one.
+      #   O5/O6 (plan islands) — "how many events" now has ONE source (the plancard's own `events`),
+      #     because the second one was a user-scoped list cached as `[]` from before the plan
+      #     existed, which is how "Organize into events" came to sit under "4 events".
+      #   P1-P5 / H1-H4 (shared) — `partyTotal` moved to `shared/` so the occasion PATCH, the
+      #     trip-create path and the client stop deriving the plan's party three ways (P5 pins the
+      #     inline server expression this replaces); `canonicalMarketName` moved beside it so the
+      #     Profile page's new home-city picker and the ONE writer of `users.home_city` read one
+      #     list and one matcher (H4 pins that every offered option is one the writer accepts).
+      - name: Slip first-render pin
+        run: |
+          npx tsx --test client/src/lib/__tests__/slip-events.test.ts
+          npx tsx --test client/src/lib/__tests__/plan-islands.test.ts
+          npx tsx --test shared/__tests__/plan-party-total.test.ts
       # 2026-09-05-custom-venues-owner-scope: §14 applied to READS. P1-P4/T1-T4 pin the two pure
       # rules (an absent session user is never an owner; a trip the caller does not own is treated
       # as ABSENT, not as an error), and A1-A6/S1-S2 pin the shipped artifacts — both GETs gated,
