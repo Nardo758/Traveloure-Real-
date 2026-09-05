@@ -3010,7 +3010,7 @@ export default function ExperienceTemplatePage() {
                   selectedProviderIds={selectedProviderIds}
                   destination={destination}
                   destinationCenter={destinationCenter}
-                  onSetLocation={() => openPlanModal()}
+                  onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                   onAddToCart={(provider) => addToCart({
                     id: provider.id,
                     type: provider.category,
@@ -3129,7 +3129,7 @@ export default function ExperienceTemplatePage() {
                 destinationCenter={destinationCenter}
                 providers={mapProviders}
                 selectedProviderIds={selectedProviderIds}
-                onSetLocation={() => openPlanModal()}
+                onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                 /* `cart` was passed here and `ExperienceMap` has never declared or read it — a
                    dead prop that also carried this mount's only type error. The cart is rendered
                    by the floating summary below, not by the map. */
@@ -3317,7 +3317,7 @@ export default function ExperienceTemplatePage() {
                     selectedProviderIds={selectedProviderIds}
                     destination={destination}
                     destinationCenter={destinationCenter}
-                    onSetLocation={() => openPlanModal()}
+                    onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                     onAddToCart={(provider) => addToCart({
                       id: provider.id,
                       type: provider.category,
