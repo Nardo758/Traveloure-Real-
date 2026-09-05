@@ -245,6 +245,10 @@ export default function ExpertDetailPage() {
       openSignInModal();
       return;
     }
+    // LD 40 lane 2: still id-addressed — this page only renders for an earner who has claimed NO
+    // handle (an earner who has one is redirected to `/s/:handle` above, S2), so by construction
+    // there is no handle here to address them by. When lane 2 removes the id route, this page and
+    // this CTA go with it.
     navigate(`/chat?expertId=${expertId}`);
   };
 

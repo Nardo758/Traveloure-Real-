@@ -58,8 +58,17 @@ const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 interface StorefrontEarner {
-  // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
-  id: string;
+  /**
+   * ⚠️ The comment that stood here — "Not sensitive — user ids are already public on /experts/:id
+   * and similar surfaces" — is the same circular claim CLAUDE.md Locked Decision 40 retracted
+   * server-side (`storefront.routes.ts`), and it is retracted here too.
+   *
+   * `users.id` is INTERNAL; this page's earner is addressed by `handle` everywhere now — the
+   * Message CTA (`POST /api/conversations/start` with `{ handle }`) and the own-storefront check
+   * both read the handle. OPTIONAL because lane 2 removes the field from `loadStorefront`'s
+   * payload; nothing on this page reads it any more, and nothing new may.
+   */
+  id?: string;
   name: string;
   bio: string | null;
   profileImageUrl: string | null;
@@ -367,7 +376,14 @@ export default function StorefrontPage() {
 
   const { earner, away } = data;
   // Hide the CTA when the signed-in visitor IS the earner — no message-myself button/band.
-  const isOwnStorefront = !!user && String(user.id) === String(earner.id);
+  // Locked Decision 40 (lane 3): compared by HANDLE, not by `users.id`. A storefront is keyed by
+  // handle, and the signed-in user's own handle is on the session payload already, so this needs
+  // no id on either side. A visitor with no handle is never this earner (§13 — an absent handle
+  // is not a match), which is exactly the previous answer for everyone but the owner.
+  const isOwnStorefront =
+    !!user?.handle &&
+    !!earner.handle &&
+    String(user.handle).toLowerCase() === String(earner.handle).toLowerCase();
   // Vacation mode (mockup §08/§06b): listings stay visible, booking is disabled — the actual
   // booking block lives on each offering's own detail page (service-detail.tsx); here it's
   // the honest "Away" signal plus a CTA label that no longer promises "book".
@@ -402,7 +418,10 @@ export default function StorefrontPage() {
 
   function messageEarner() {
     askExpert({
-      expertId: earner.id,
+      // Locked Decision 40 (lane 3): the HANDLE is the address. This page IS `/s/:handle`, so the
+      // address is the URL it was opened with; the server resolves the earner itself. `earner.id`
+      // is no longer read here — lane 2 removes it from `loadStorefront`'s payload.
+      handle: earner.handle ?? handle,
       returnTo: `/s/${handle}`,
       fallbackName: earner.name,
       fallbackAvatar: earner.profileImageUrl ?? undefined,

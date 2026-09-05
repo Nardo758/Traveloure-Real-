@@ -147,6 +147,8 @@ export function resolveNotificationLink(n: ApiNotification): ResolvedNotificatio
     };
   }
   if (n.type === "message_received") {
+    // LD 40 lane 2: still id-addressed — the notification row carries `data.clientId` (a traveler
+    // user id) and nothing else; there is no opaque conversation id on a notification payload.
     return { href: n.data?.clientId ? `/chat?clientId=${n.data.clientId}` : "/chat", label: "Open Chat" };
   }
   return null;

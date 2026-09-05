@@ -1034,6 +1034,9 @@ export function CityFeedCardGem({
               askExpert({
                 city,
                 subject: gem.placeName,
+                // LD 40 lane 2: still id-addressed — `gem.curatedBy` carries no handle, so this
+                // card holds no address the start rail accepts. The fix is a field on the feed
+                // payload (server), not a second client rail.
                 expertId: gemCurator(gem)?.id ?? null,
                 fallbackName: gemCuratorFullName(gem),
                 fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
@@ -1178,6 +1181,8 @@ export function CityFeedCardGem({
                     askExpert({
                       city,
                       subject: gem.placeName,
+                      // LD 40 lane 2: still id-addressed — see the note on the other gem CTA:
+                      // `gem.curatedBy` has no handle on the feed payload.
                       expertId: gemCurator(gem)?.id ?? null,
                       fallbackName: gemCuratorFullName(gem),
                       fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,

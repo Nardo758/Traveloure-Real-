@@ -19,7 +19,10 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
+// Locked Decision 40 (lane 3): ONE place decides how a card addresses an earner (§18 rule 1).
+import { earnerProfilePath } from "@/lib/earner-address";
+import { useAskExpert } from "@/lib/use-ask-expert";
 import { useState } from "react";
 
 interface MatchScoreBreakdown {
@@ -33,6 +36,12 @@ interface MatchScoreBreakdown {
 interface ExpertMatchCardProps {
   expert: {
     id: string;
+    /**
+     * `users.handle` — the earner's PUBLIC identity (CLAUDE.md Locked Decision 40). Published by
+     * the public expert projection (`EXPERT_PUBLIC_FIELDS`); absent/null for an expert who has
+     * claimed no storefront, which is the only case still addressed by `id`.
+     */
+    handle?: string | null;
     firstName?: string;
     lastName?: string;
     profileImageUrl?: string;
@@ -112,7 +121,7 @@ export function ExpertMatchCard({
 }: ExpertMatchCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [, setLocation] = useLocation();
+  const askExpert = useAskExpert();
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Expert";
   const initials = `${expert.firstName?.[0] || "T"}${expert.lastName?.[0] || "E"}`;
@@ -338,7 +347,16 @@ export function ExpertMatchCard({
             size="sm"
             className="flex-1 gap-1 h-7 text-xs"
             data-testid="button-message"
-            onClick={() => setLocation(`/chat?expertId=${expert.id}`)}
+            onClick={() =>
+              askExpert({
+                // Locked Decision 40 (lane 3): addressed by HANDLE; the server resolves the
+                // recipient. LD 40 lane 2: still id-addressed for a row with no claimed handle.
+                handle: expert.handle ?? null,
+                expertId: expert.handle ? null : expert.id,
+                fallbackName: `${expert.firstName ?? ""} ${expert.lastName ?? ""}`.trim() || null,
+                fallbackAvatar: expert.profileImageUrl ?? null,
+              })
+            }
           >
             <MessageCircle className="w-3 h-3" />
             Message
@@ -355,7 +373,7 @@ export function ExpertMatchCard({
               {isLoading ? "Matching..." : "Request Expert"}
             </Button>
           ) : (
-            <Link href={`/experts/${expert.id}`} className="flex-1">
+            <Link href={earnerProfilePath(expert) ?? "/experts"} className="flex-1">
               <Button size="sm" className="w-full bg-primary hover:bg-primary/90 h-7 text-xs" data-testid="button-view-profile">
                 View Profile
               </Button>

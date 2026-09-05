@@ -134,8 +134,19 @@ function MessagesTab() {
       <div className="space-y-2">
         {threads.map((thread) => (
           <div key={thread.counterpartId} className="flex items-center gap-2">
-            {/* The existing deep-link: ?expertId= selects the thread directly in chat.tsx */}
-            <Link href={`/chat?expertId=${thread.counterpartId}`} className="flex-1 min-w-0">
+            {/* CANONICAL (CLAUDE.md Locked Decision 40, lane 3): `?conversation=<opaque id>` names
+                the thread and carries no user id. LD 40 lane 2: still id-addressed when the
+                joined `/api/messages` page did not cover this thread — the legacy `?expertId=`
+                deep-link is kept for exactly that case rather than dropping the link (§13: no
+                invented opaque id, and no dead card). */}
+            <Link
+              href={
+                thread.publicId
+                  ? `/chat?conversation=${encodeURIComponent(thread.publicId)}`
+                  : `/chat?expertId=${thread.counterpartId}`
+              }
+              className="flex-1 min-w-0"
+            >
               <Card
                 className="cursor-pointer hover:shadow-md transition-shadow"
                 data-testid={`inbox-thread-${thread.counterpartId}`}

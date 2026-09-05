@@ -107,6 +107,10 @@ export function ConciergeCard({ tripId }: { tripId: string }) {
                   variant="outline"
                   onClick={() =>
                     askExpert({
+                      // LD 40 lane 2: still id-addressed — this row is a READY-MADE PURCHASE, and
+                      // the start rail's booking address resolves `service_bookings` only, so
+                      // there is no context address for it yet. The purchase payload carries no
+                      // author handle either; giving it one is a server change, not a client one.
                       expertId: p.expertUserId!,
                       subject: `Question about my Ready-Made trip from ${expert}`,
                       fallbackName: p.expertName,

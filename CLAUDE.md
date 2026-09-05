@@ -716,15 +716,39 @@ This document captures architectural decisions to maintain consistency across co
     person is on: a traveler's `users.id` is internal for the same reason, and the same rails carry
     both directions of a thread. The earner's handle is public because an earner PUBLISHES a
     storefront; that is the only asymmetry.
-    **THIS IS LANE 1 OF 3, and lanes 2/3 are the rest of the ruling, not optional polish.** Lane 1
-    (this one) ADDS the server-resolved rails beside the existing ones and changes no client: every
+    **THIS IS A THREE-LANE RULING, and lanes 2/3 are the rest of it, not optional polish.** Lane 1
+    ADDED the server-resolved rails beside the existing ones and changed no client: every
     legacy id-based input keeps working, annotated `deprecated — removed after lane 3`, and
     `POST /api/chat`'s body-sourced `receiverId` warns ONCE PER PROCESS so the day clients stop
     sending it is visible. **Lane 2** strips `userId` from public projections (`loadStorefront`'s
     `earner.id` among them — the "Not sensitive — user ids are already public" comment that stood
-    there is now WRONG and has been rewritten in this lane) and adds the guard that keeps them
-    stripped. **Lane 3** switches the clients to handles and deletes the deprecated inputs. Do not
-    remove a deprecated input before lane 3, and do not add a new id-addressed contact rail at all.
+    there is now WRONG and has been rewritten) and adds the guard that keeps them stripped.
+    **LANE 3 HAS LANDED (the clients).** Every traveler-facing contact CTA now names a CONTEXT:
+    the storefront sends `{ handle }`, service detail sends `{ serviceId }`, a `service_bookings`
+    row on My Bookings sends `{ bookingId }`, and expert cards send `{ handle }` when the row has
+    one. ONE client module owns both halves of the decision — `client/src/lib/earner-address.ts`
+    (`resolveContactAddress`, `startConversation`, `earnerProfilePath`, `resolveChatUrlTarget`),
+    §18 rule 1 — and `useAskExpert` is its one caller for contact. `/chat` reads the canonical
+    `?conversation=<opaque id>` and SENDS `{ conversationId }`; **`senderId` is no longer sent on
+    any branch**. Card links prefer `/s/:handle` — which is already where `/experts/:id` redirects
+    a handled earner — and keep the id route only for a row with no claimed handle. The
+    `?about=` subject stays a COMPOSER PREFILL and is deliberately never passed to the start rail,
+    which would deliver it as a message the traveler never typed. Pinned by
+    `client/src/lib/__tests__/earner-address.test.ts` (18 proofs, wired into `build.yml`).
+    **WHAT LANE 2 MUST STILL REMOVE, and what it must fix first.** Removable now: `earner.id` from
+    `loadStorefront` (no client reads it — the storefront's own-page check compares HANDLES), and
+    `service.userId` from the public service payload as far as CONTACT is concerned. **Not yet
+    removable, each marked in the code with the grep-able `LD 40 lane 2: still id-addressed`:**
+    `?clientId=` on the three earner inboxes and the workspace (a TRAVELER has no handle, and
+    those lists group `/api/chats` themselves instead of using `useConversationThreads`, which now
+    joins the opaque id — moving them onto it is the fix); `/expert/clients/:clientUserId`, which
+    builds the INTERNAL pair id client-side; the gem-curator and ready-made-purchase CTAs, whose
+    payloads carry no handle; `expert-detail.tsx`, which only renders for a handle-less earner;
+    and `ConversationSummary.otherUserId`, which `useConversationThreads` joins on. Removing
+    `otherUserId` therefore requires that hook to read its threads from `GET /api/messages`
+    outright, and removing the `/experts/:id` route requires every card row to carry a handle.
+    Do not remove a deprecated INPUT until those are done, and do not add a new id-addressed
+    contact rail at all.
 
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)

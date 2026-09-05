@@ -508,6 +508,20 @@ jobs:
       # the pick-based insert schema, and the single handle/verification predicates.
       - name: Contact rails (handle/service/booking) pin
         run: npx tsx --test server/__tests__/contact-rails.test.ts
+      # 2026-09-05-user-id-is-internal, LANE 3 (the clients). Lane 1 kept every id-addressed input
+      # alive for one release, so a client that regresses to sending a user id STILL WORKS — it
+      # opens the thread, logs nothing and looks correct. That is exactly the failure mode a test
+      # has to hold, because nothing else will. A1-A6 pin the pure address mapping (a storefront
+      # gives `{handle}`, a listing `{serviceId}`, a booking `{bookingId}`; two addresses is a
+      # refusal and not a priority order, as on the server; nothing a caller passes can come back
+      # out as a user id). P1-P2 pin `earnerProfilePath` — ONE decision about the public page, so
+      # a card cannot fork handle-vs-id. U1-U4 pin the /chat URL resolver, including that the
+      # legacy `?expertId=`/`?provider=` links still resolve (they are removed after lane 2) and
+      # that the opaque id wins when both are present. S1-S5 read the SHIPPED files, because a
+      # pure rule a call site can reach past is not a rule: the CTAs that switched, `senderId` gone
+      # from every send branch, and the lane-2 marker on every surface still addressed by id.
+      - name: Earner address / chat URL pin (LD 40 lane 3)
+        run: npx tsx --test client/src/lib/__tests__/earner-address.test.ts
       # Client analytics wrapper (docs/superpowers/specs/2026-09-05-custom-analytics-events-design.md):
       # trackEvent must be a SAFE NO-OP whenever the host-injected tracker is absent — during SSR,
       # in dev/preview, and in the tracker-load race — and must swallow a throwing tracker rather

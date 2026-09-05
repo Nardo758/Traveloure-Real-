@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Info, Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { earnerProfilePath } from "@/lib/earner-address";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 // Family-card grammar (2026-08-25-card-family): mono facts/source rows share the
@@ -59,8 +60,9 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
     .join("") || name.charAt(0).toUpperCase();
 
   // Source-link ruling (2026-08-25-card-source-link): /s/:handle when a claimed
-  // handle exists on the payload, else the id-based /experts/:id fallback.
-  const profileHref = expert.handle ? `/s/${expert.handle}` : `/experts/${expert.id}`;
+  // handle exists on the payload, else the id-based /experts/:id fallback. The decision itself
+  // now lives in ONE place (Locked Decision 40 lane 3, §18 rule 1) — this card was its precedent.
+  const profileHref = earnerProfilePath(expert) ?? "/experts";
 
   // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
   // One mono meta line: from-price / ★rating(count), each omitted when absent
@@ -147,7 +149,14 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
               className="h-7 text-xs px-2.5"
               onClick={(e) => {
                 e.stopPropagation();
-                askExpert({ expertId: expert.id, city, subject: expertCity || city });
+                askExpert({
+                  // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
+                  // fallback only while the row has no claimed handle.
+                  handle: expert.handle ?? null,
+                  expertId: expert.handle ? null : expert.id,
+                  city,
+                  subject: expertCity || city,
+                });
               }}
               data-testid={`btn-ask-expert-${expert.id}`}
             >
@@ -305,7 +314,14 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
             className="h-7 text-xs px-2.5"
             onClick={(e) => {
               e.stopPropagation();
-              askExpert({ expertId: expert.id, city, subject: expertCity || city });
+              askExpert({
+                  // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
+                  // fallback only while the row has no claimed handle.
+                  handle: expert.handle ?? null,
+                  expertId: expert.handle ? null : expert.id,
+                  city,
+                  subject: expertCity || city,
+                });
             }}
             data-testid={`btn-ask-expert-${expert.id}`}
           >

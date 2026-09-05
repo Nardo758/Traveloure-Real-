@@ -600,6 +600,9 @@ function BookingCard({
                 <Button
                   size="sm"
                   variant="ghost"
+                  // LD 40 lane 2: still id-addressed — `?clientId=` names a TRAVELER, who has no
+                  // handle and no storefront, so none of the three address kinds fits. The thread's
+                  // opaque id would, but this row is a BOOKING's traveler and may have no thread yet.
                   onClick={() => navigate(`/chat?clientId=${booking.traveler!.id}`)}
                   data-testid={`button-message-${booking.id}`}
                   title="Message traveler"
@@ -923,6 +926,10 @@ function MessageThreadsSection() {
         />
       ) : (
         <div className="space-y-2">
+          {/* LD 40 lane 2: still id-addressed — this inbox groups `/api/chats` itself rather than
+              using the shared `useConversationThreads` hook, which now joins the opaque
+              conversation id from `/api/messages`. Moving all three inboxes onto that hook is the
+              fix and is its own change. */}
           {threads.map(([counterpartId, last]) => (
             <Link key={counterpartId} href={`/chat?clientId=${counterpartId}`}>
               <Card

@@ -228,6 +228,11 @@ function MessageThread({
 
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
+      // LD 40 lane 2: still id-addressed — `conversationId` here is the INTERNAL pair id, built
+      // client-side from two user ids (below), which is a DEPRECATED input on this route. The
+      // opaque id would replace it, but this page is reached at `/expert/clients/:clientUserId`
+      // and renders BEFORE any thread exists, so there is not always an opaque id to hold. Fixing
+      // it means giving the page a thread lookup, which is its own change.
       await apiRequest("POST", "/api/messages", { conversationId, message: text });
     },
     onSuccess: () => {
