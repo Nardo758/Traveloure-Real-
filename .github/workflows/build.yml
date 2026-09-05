@@ -579,6 +579,16 @@ jobs:
           npx tsx --test server/__tests__/optimize-preview-on-slip.test.ts
           npx tsx --test client/src/lib/__tests__/optimize-preview-line.test.ts
 
+      # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
+      # the free AI draft runs only on an EMPTY slip, its JSON recovery never repairs a truncated
+      # response into a plan the model did not produce, and the client reads the refusal through
+      # ONE module. All three are pure — no DATABASE_URL, no server, no network.
+      - name: AI draft eligibility + parser + client-refusal pins (LD 41 lane 2)
+        run: |
+          npx tsx --test server/__tests__/ai-draft-eligibility.test.ts
+          npx tsx --test server/__tests__/ai-json-parse.test.ts
+          npx tsx --test client/src/lib/__tests__/ai-draft-refusal.test.ts
+
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
     runs-on: ubuntu-latest
@@ -911,3 +921,25 @@ jobs:
       # fetching the user's comparisons to work out which board a plan came from.
       - name: Proposal comparison map pin
         run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
+
+  ai-draft-eligibility-guard:
+    name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Two free rails wrote a fresh AI plan onto an EXISTING trip and replaced what was there —
+      # a free re-optimize competing with the paid Optimize rail, over the traveler's own plan.
+      # The rule is now enforced in three handlers plus an in-transaction second layer, and that
+      # is worth nothing if a fourth writer lands tomorrow: nothing fails when one does, it simply
+      # works. This is the thing that fails. It is FILE-scoped, says nothing about ORDER or about
+      # the 409's shape, and is blind to a raw `DELETE FROM itinerary_items` that never names the
+      # rebuild guard — the script header states the rest of its negative space, and its
+      # EXEMPTIONS print on every run so filed debt never becomes a silent baseline (ruling 32).
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: AI-draft eligibility guard predicate self-test
+        run: node scripts/check-ai-draft-eligibility.cjs --self-test
+      - name: AI-draft eligibility guard
+        run: node scripts/check-ai-draft-eligibility.cjs
