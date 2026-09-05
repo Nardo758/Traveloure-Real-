@@ -276,6 +276,17 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/guest-invite-meta.test.ts
           done
+      # QA F13: the SAME date-only class one boundary further out. The occasion workstation holds
+      # its dates as the UTC-midnight instants `new Date("YYYY-MM-DD")` produces and handed the
+      # hero card `date.toISOString()` — an INSTANT, which `parseTripDate` is right to read as one
+      # — so the card said "13 Nov-15 Nov" for a plan stored Nov 14-16 while the Trip Strip beside
+      # it said "Nov 14 -> Nov 16". Three timezones for the same reason as F-1/F3.
+      - name: QA F13 hero-card date-range local-parse pin (3 timezones)
+        run: |
+          for tz in America/New_York Asia/Tokyo UTC; do
+            echo "--- TZ=$tz ---"
+            TZ="$tz" npx tsx --test client/src/lib/__tests__/hero-card-date-range.test.ts
+          done
       # QA F10: the Experiences dropdown shipped a footer leaf whose i18nKey no locale file
       # carried, so production rendered the literal "browseAllOccasions". The parity spec diffs
       # the locales against EACH OTHER and was correctly green — a key missing from en AND ja is

@@ -89,8 +89,14 @@ export function PlanCardHeader({
         >
           {title}
         </h2>
-        <div className="mt-0.5 text-[12px] text-white/80">
-          📍 {destination} · {dateRange}
+        <div
+          className="mt-0.5 text-[12px] text-white/80"
+          data-testid={testId ? `${testId}-meta` : undefined}
+        >
+          {/* QA F13: the range is its own node so a walkthrough can read the days the card
+              claims without also matching the destination or the expert's name. */}
+          📍 {destination} ·{" "}
+          <span data-testid={testId ? `${testId}-dates` : undefined}>{dateRange}</span>
           {expertName ? ` · Expert: ${expertName}` : ""}
         </div>
 
