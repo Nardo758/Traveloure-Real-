@@ -387,6 +387,14 @@ jobs:
           npx tsx --test client/src/lib/__tests__/slip-events.test.ts
           npx tsx --test server/services/__tests__/wedding-presets.test.ts
           npx tsx --test shared/__tests__/experience-type-switches.test.ts
+      # 2026-09-05-custom-venues-owner-scope: §14 applied to READS. P1-P4/T1-T4 pin the two pure
+      # rules (an absent session user is never an owner; a trip the caller does not own is treated
+      # as ABSENT, not as an error), and A1-A6/S1-S2 pin the shipped artifacts — both GETs gated,
+      # no owner id read off the query string, the undifferentiated 404, one predicate across all
+      # four routes, and the storage readers refusing an ownerless listing rather than returning
+      # the whole table.
+      - name: Custom-venues owner-scope pin
+        run: npx tsx --test server/__tests__/custom-venues-owner-scope.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
@@ -666,3 +674,24 @@ jobs:
         run: node scripts/check-advisor-row-author.cjs --self-test
       - name: Advisor-row author guard
         run: node scripts/check-advisor-row-author.cjs
+
+  query-userid-reads-guard:
+    name: query-userid-reads-guard (CLAUDE.md §14 — 2026-09-05-custom-venues-owner-scope)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # GET /api/custom-venues was unauthenticated and read `userId` off the QUERY STRING into a
+      # storage reader that treated it as an optional filter — so no userId meant no WHERE clause
+      # and the response was every custom venue on the table, private addresses included. Found on
+      # a production walkthrough, not by a test: nothing errors and the page renders perfectly
+      # either way. §14's existing guard (check-money-endpoints) watches BODY-sourced ids on MONEY
+      # routes; this is the same class arriving through the query string on a plain read. It knows
+      # SIX owner-id names and nothing else — the script header states the rest of its negative
+      # space. Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Query/param owner-id guard predicate self-test
+        run: node scripts/check-query-userid-reads.cjs --self-test
+      - name: Query/param owner-id guard
+        run: node scripts/check-query-userid-reads.cjs

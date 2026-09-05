@@ -1,6 +1,7 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getTripRole } from "../utils/trip-role";
 import { getUserId, requireDbAdmin } from "../utils/auth";
+import { isCustomVenueOwner, scopeTripFilter } from '../utils/custom-venue-owner';
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { withQueryTimer } from '../utils/queryTimer';
 import { parsePagination } from '../utils/pagination';
@@ -976,13 +977,28 @@ router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
   
   // Get custom venues (with optional filters)
 
-router.get("/api/custom-venues", async (req, res) => {
-    const { userId, tripId, experienceType } = req.query;
+router.get("/api/custom-venues", isAuthenticated, async (req, res) => {
+    // §14 applied to READS (ledger `2026-09-05-custom-venues-owner-scope`). This route had NO
+    // `isAuthenticated` and took `userId` straight off `req.query`, which the storage layer treats
+    // as an OPTIONAL filter — so no `userId` meant no WHERE clause and the response was every
+    // custom venue on the table, including rows carrying a private residential address. A caller
+    // who did send one could name anybody. The owner now comes from the session and nowhere else.
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const { tripId, experienceType } = req.query;
+    // A `userId` in the query is IGNORED, not rejected: a stale client build may still send its
+    // own id and 400-ing it would break that client for no safety gain — the value simply never
+    // reaches the query. Nothing is logged about it; it is old code, not an attack signal.
     const { limit, offset } = parsePagination(req.query);
+    // A tripId only narrows the list, and a foreign one would already match nothing (the owner
+    // filter is unconditional). It is still verified rather than passed through, so this route
+    // never runs a query keyed on a trip the caller does not own; an unowned or malformed id is
+    // treated as ABSENT (the caller's own unfiltered venue list), never as an error.
+    const scopedTripId = await scopeTripFilter(tripId, userId, verifyTripOwnership);
     const { venues, total } = await storage.getCustomVenuesPage(
-      userId as string | undefined,
-      tripId as string | undefined,
-      experienceType as string | undefined,
+      userId,
+      scopedTripId,
+      typeof experienceType === "string" && experienceType ? experienceType : undefined,
       limit,
       offset,
     );
@@ -991,9 +1007,15 @@ router.get("/api/custom-venues", async (req, res) => {
 
   // Get single custom venue
 
-router.get("/api/custom-venues/:id", async (req, res) => {
+router.get("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
+    // Same lane: this route was unauthenticated and unowned, so any id (guessed, or harvested from
+    // the list hole above) returned somebody else's venue row verbatim.
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const venue = await storage.getCustomVenue(req.params.id);
-    if (!venue) {
+    // UNDIFFERENTIATED 404 (§13 posture): "does not exist" and "is not yours" are answered
+    // identically, so this route cannot be used to probe which venue ids exist.
+    if (!isCustomVenueOwner(venue, userId)) {
       return res.status(404).json({ message: "Custom venue not found" });
     }
     res.json(venue);
@@ -1036,7 +1058,9 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
       }
-      if (venue.userId !== userId) {
+      // ONE predicate for all four routes (§18 rule 1) — the hand-written comparison that used to
+      // sit here existed on two of the four and was absent from both GETs.
+      if (!isCustomVenueOwner(venue, userId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
@@ -1069,7 +1093,7 @@ router.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
       }
-      if (venue.userId !== userId) {
+      if (!isCustomVenueOwner(venue, userId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       await storage.deleteCustomVenue(req.params.id);
