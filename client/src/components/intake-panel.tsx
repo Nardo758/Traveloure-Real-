@@ -95,13 +95,39 @@ function StepRail({ current }: { current: 1 | 2 }) {
 export function IntakePanel({
   open,
   onOpenChange,
+  city,
+  country,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * A DOOR PASSES WHAT IT HOLDS — Locked Decision 42 (D13), ledger
+   * `2026-09-05-doors-source-fields`. `/experiences` parses `?destination=` and `?country=` off
+   * the URL, threads them into every experience-card link, and then dropped them on the floor at
+   * its own "Start planning" CTA — so a traveler who arrived from a city surface was asked for the
+   * city they had just come from. These two props carry that context in.
+   *
+   * PROPS ONLY. Locked Decision 42 (D11) rules that this panel COLLAPSES into the one planning
+   * modal and its mounts become doors of it; that is a wave-3 lane and is deliberately NOT started
+   * here. This is the smallest honest change until then, not an endorsement of a second modal.
+   *
+   * §13 — A SUGGESTION IS NOT AN ANSWER. Both are optional; absent means the caller holds nothing,
+   * and nothing is invented to fill them. The seeded destination is a visibly filled, ordinary
+   * editable field the traveler can clear, and it is only ever what the URL actually said.
+   */
+  city?: string;
+  country?: string;
 }) {
   const [, navigate] = useLocation();
+  // The destination this door arrived holding, or "" when it held none. `city` alone stands on its
+  // own; `country` only qualifies a city (a bare country is not a destination this panel can use,
+  // and joining "" to it would produce ", France"). ONE derivation, read by the initial state and
+  // by `reset()`, so a close-and-reopen returns to the door's context rather than to blank.
+  const doorDestination = (city ?? "").trim()
+    ? [(city ?? "").trim(), (country ?? "").trim()].filter(Boolean).join(", ")
+    : "";
   const [step, setStep] = useState<1 | 2>(1);
-  const [destination, setDestination] = useState("");
+  const [destination, setDestination] = useState(doorDestination);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [travelers, setTravelers] = useState(2);
@@ -127,7 +153,8 @@ export function IntakePanel({
 
   function reset() {
     setStep(1);
-    setDestination("");
+    // Back to what the DOOR held (D13), not to blank — and to blank when it held nothing.
+    setDestination(doorDestination);
     setStartDate("");
     setEndDate("");
     setTravelers(2);

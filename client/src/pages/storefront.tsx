@@ -61,6 +61,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
 import { isProviderRole } from "@shared/roles";
+import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import {
   Star,
   MapPin,
@@ -687,6 +688,28 @@ export default function StorefrontPage() {
                 <Share2 className="w-4 h-4 mr-1.5 shrink-0" />
                 Share
               </Button>
+              {/* Plan entry (ledger `2026-09-04-entry-unification`; Locked Decision 42 D13, ledger
+                  `2026-09-05-doors-source-fields`). A traveler who lands on an earner's storefront
+                  from search had no way to start a plan from here at all — only "Message" and
+                  "Share". Hidden on your OWN storefront: an earner looking at their own shop is not
+                  a traveler door.
+
+                  BARE, DELIBERATELY (§13) — this is the D13 clause that says a door passes only what
+                  is TRUE. `earner.location` LOOKS like a city and is not reliably one:
+                  `resolveEarnerLocation` (server/routes/storefront.routes.ts) prefers the
+                  admin-managed neighbourhood assignment and returns "<neighbourhood>, <city>",
+                  falling back to a form's city/country. Forwarding it as `city` would put a
+                  neighbourhood into the modal's destination field and present it as the traveler's
+                  stated destination. Nothing else on this page names a city, so nothing is passed.
+                  (Locked Decision 42 D15's return-to context — "a plan started from an expert ends
+                  with that expert offered to choose" — is a wave-2 lane and is NOT passed here yet.) */}
+              {!isOwnStorefront && (
+                <PlanEntryCta
+                  variant="outline"
+                  className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                  testId="button-plan-entry-storefront"
+                />
+              )}
             </div>
           </div>
         </div>

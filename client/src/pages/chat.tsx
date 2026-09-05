@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 
 interface RealtimeMessage {
   id: string;
@@ -1322,6 +1323,27 @@ export default function Chat() {
                       ? "Choose a client conversation from the list to view and reply to messages."
                       : "Choose a local expert from the list to start chatting and get personalized travel advice."}
                   </p>
+                  {/* Plan entry (ledger `2026-09-04-entry-unification`; Locked Decision 42 D13,
+                      ledger `2026-09-05-doors-source-fields`). A traveler who arrives here with no
+                      thread selected — the commonest first visit — had no next step at all.
+                      TRAVELER ONLY: an earner reading their client inbox is not a plan door, which
+                      is the same line `useTrip` above already draws with `!isEarner`.
+
+                      IT PASSES THE TRIP THE THREAD IS ABOUT, WHEN THERE IS ONE (D13).
+                      `selectedTripId` is the page's OWN resolution — the relationship-derived
+                      shared trip, else the `?tripId=` My Plans forwards — and it is exactly what
+                      the trip-context badge in the chat header renders. §13: when nothing resolves
+                      it is null, and then NO source is passed at all rather than an empty `tripId`
+                      — an absent field is how `PlanningSource` says "not known". */}
+                  {!isEarner && (
+                    <div className="mt-6">
+                      <PlanEntryCta
+                        variant="outline"
+                        source={selectedTripId ? { tripId: selectedTripId } : undefined}
+                        testId="button-plan-entry-chat"
+                      />
+                    </div>
+                  )}
                 </CardContent>
               )}
             </Card>
