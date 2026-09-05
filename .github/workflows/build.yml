@@ -549,6 +549,19 @@ jobs:
       # wired to no workflow; an unrun test is not a guard.
       - name: Analytics trackEvent fail-soft pin
         run: npx tsx --test client/src/lib/__tests__/analytics.test.ts
+      # 2026-09-05-trip-pass-run-gate (CLAUDE.md Locked Decision 41, LANE 1): Trip Pass coverage was
+      # read at the CHARGE point only, so a pass holder outside the 24h free-rerun window was told
+      # the run was included and then got a `pending_payment` comparison with no variants — no
+      # error, no log, and a page that looks exactly like ordinary "payment required". P1-P13 pin
+      # the ONE run-authorization predicate (a pass authorizes the RUN; a pass on a DIFFERENT trip
+      # authorizes nothing; no pass + outside the window + no PaymentIntent is still refused; a
+      # covered run neither verifies nor spends a PI; an empty-string id is ABSENT). A1-A7 read the
+      # shipped `server/routes.ts`, because a predicate a call site can reach past is not a rule:
+      # exactly two call sites, one caller of `verifyOptimizationPayment`, one `coversAction`
+      # wiring, the §15 atomic PI claim still at the route, no second copy of the free-rerun clock,
+      # and no basis sentinel written into the payment-identity column.
+      - name: Optimizer run-authorization pin (LD 41 lane 1)
+        run: npx tsx --test server/__tests__/optimizer-run-authorization.test.ts
       # 2026-09-05-mint-market-slug-invariant (CLAUDE.md Locked Decision 42, D12 + D11-interim):
       # `market_slug` joins `timezone` as a named MINT invariant, and the intake panels stop
       # fabricating a party split. Both defects are ABSENCES that render perfectly — a plan minted
