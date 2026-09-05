@@ -34,6 +34,12 @@ export interface LeafletPlanMapItem {
   dayNumber: number;
   lat: number;
   lng: number;
+  /**
+   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`): a stop belonging to the SECOND,
+   * comparison series (the review board's "your plan" drawn beneath a focused proposal). Muted
+   * pin, same geometry — this component still never fabricates a coordinate (§13).
+   */
+  muted?: boolean;
 }
 
 /** Discovery-layer candidate (mirrors map-candidates.ts's MapCandidate — coords already
@@ -53,6 +59,12 @@ export interface LeafletRoute {
   day: number;
   color: string;
   points: [number, number][];
+  /**
+   * Optional SVG dash pattern (LD 41). A dashed connector is how the second series is told apart
+   * from the focused one; it says nothing about the journey — connectors are SEQUENCE lines, not
+   * travel routing, and no distance or duration is derived from them (§13, LD 22c).
+   */
+  dashArray?: string;
 }
 
 function candidateDivIcon(id: string): L.DivIcon {
@@ -64,15 +76,16 @@ function candidateDivIcon(id: string): L.DivIcon {
   });
 }
 
-function dayDivIcon(id: string, dayNumber: number, selected: boolean): L.DivIcon {
+function dayDivIcon(id: string, dayNumber: number, selected: boolean, muted = false): L.DivIcon {
   // Testid parity with the keyed Google branch (workspace.tsx's MapMarker carries
   // `map-pin-<id>`): the Leaflet fallback is the ACTIVE map on keyless deploys, so the
   // journeys' pin assertions must hold on BOTH renderers, not just the keyed one.
+  const size = muted ? 18 : 22;
   return L.divIcon({
     className: "",
-    html: `<div data-testid="map-pin-${id}" style="width:22px;height:22px;border-radius:50%;background:${BRAND};color:${CARD};border:2px solid ${selected ? CARD : "transparent"};box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">${dayNumber}</div>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
+    html: `<div data-testid="map-pin-${id}" style="width:${size}px;height:${size}px;border-radius:50%;background:${muted ? CARD : BRAND};color:${muted ? MID : CARD};border:2px ${muted ? "dashed" : "solid"} ${muted ? MID : selected ? CARD : "transparent"};box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:${muted ? 9.5 : 10.5}px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">${dayNumber}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -144,18 +157,18 @@ export function LeafletPlanMap({
       />
       <FitBounds items={items} />
       <FocusFromList target={focusTarget ?? null} />
-      {routes.map(r => (
+      {routes.map((r, routeIndex) => (
         <Polyline
-          key={`route-${r.day}`}
+          key={`route-${r.day}-${routeIndex}`}
           positions={r.points}
-          pathOptions={{ color: r.color, weight: 3, opacity: 0.9 }}
+          pathOptions={{ color: r.color, weight: 3, opacity: 0.9, dashArray: r.dashArray }}
         />
       ))}
       {items.map(item => (
         <Marker
           key={item.id}
           position={[item.lat, item.lng]}
-          icon={dayDivIcon(item.id, item.dayNumber, selectedId === item.id)}
+          icon={dayDivIcon(item.id, item.dayNumber, selectedId === item.id, item.muted)}
           eventHandlers={{
             click: () => onSelect(item.id),
             // Leaflet auto-closes the previously-open popup on a new marker click / map click —

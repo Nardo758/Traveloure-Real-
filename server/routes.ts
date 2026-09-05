@@ -26,6 +26,13 @@ import path from "path";
 import { storage, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
+import { resolveAiDraftModel } from "./services/ai-draft-model";
+import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
+import {
+  resolveAiDraftEligibility,
+  aiDraftRefusalBody,
+  AI_DRAFT_REFUSAL_STATUS,
+} from "./services/ai-draft-eligibility";
 import {
   materializeServiceAvailability,
   materializeDateRangeAvailability,
@@ -161,6 +168,14 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
 import { resolveItemEventLink } from "./services/item-event-link.service";
+// LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
+// shared by the comparison create and regenerate handlers below.
+import {
+  resolveOptimizerRunAuthorization,
+  logOptimizerRunBasis,
+  type OptimizerRunAuthorizationDeps,
+} from "./services/optimizer-run-authorization";
+import { coversAction } from "./services/trip-entitlement.service";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
@@ -524,8 +539,9 @@ const stripeForOptimization = new Stripe(getStripeSecretKey() || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
-/** The documented free-re-run window (`/api/optimization-payments` returns `freeRerun` on the same clock). */
-const OPTIMIZATION_FREE_RERUN_MS = 24 * 60 * 60 * 1000;
+// LD 41: the free-re-run window moved to `optimizer-run-authorization.ts` with the rest of the
+// run decision — one clock, one predicate, two callers (§18 rule 1). It is imported at the top of
+// this file; nothing here re-declares it.
 
 type OptimizationPaymentCheck =
   | { ok: true }
@@ -616,6 +632,20 @@ async function verifyOptimizationPayment(params: {
     throw stripeErr;
   }
 }
+
+/**
+ * The production wiring for the shared run-authorization predicate (LD 41). Three server-side
+ * reads, nothing else: the trip's entitlement (`coversAction` — the SAME call the charge point in
+ * `optimization.routes.ts` makes, so the two gates cannot disagree about a covered trip), the
+ * caller's own recent-run clock, and the Stripe verification above. Declared ONCE and shared by
+ * both call sites so neither can quietly wire a different set (§18 rule 1).
+ */
+const optimizerRunAuthorizationDeps: OptimizerRunAuthorizationDeps = {
+  tripPassCoversRun: (tripId) => coversAction(tripId, "optimizer_run"),
+  hasRecentOptimizationRun: async (userId, cutoff) =>
+    !!(await storage.getRecentOptimizationRun(userId, cutoff)),
+  verifyPayment: verifyOptimizationPayment,
+};
 
 // hint: Logic changed on both sides. Requires understanding intent of each change.
 export async function registerRoutes(
@@ -1412,6 +1442,19 @@ export async function registerRoutes(
         if (denied) return res.status(denied.status).json({ message: denied.message });
       }
 
+      // LD 41 (b) / ledger `2026-09-05-draft-only-on-empty`: the FREE AI draft runs only on an
+      // EMPTY slip. This handler's whole job below is a wipe-and-rebuild of the trip's items — a
+      // free re-optimize competing with the paid Optimize rail — so a slip that already holds
+      // ANY item (purchased, in checkout, expert-authored or plain in_planning) is refused here
+      // with a 409 the client routes to Optimize. ONE predicate, one place (§18 rule 1).
+      // Placed after authorization and BEFORE the Anthropic call and the destructive delete, so a
+      // refused request costs zero AI tokens and destroys nothing — the same reason the
+      // authorization check above sits where it does.
+      const draftEligibility = await resolveAiDraftEligibility(req.params.id);
+      if (!draftEligibility.eligible) {
+        return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
+      }
+
       const start = new Date(trip.startDate);
       const end = new Date(trip.endDate);
       const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
@@ -1467,19 +1510,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // callWithCircuitBreaker prevents further calls when AI is failing repeatedly.
         itineraryData = await dedupedRequest(dedupKey, () =>
           callWithCircuitBreaker(async () => {
+            // LD 41 (c) / ledger `2026-09-05-draft-cost-tracking-and-tier`: the FREE draft's tier
+            // is a COST decision, env-configurable and defaulted to the cheaper current tier by
+            // `resolveAiDraftModel()`. It is never surfaced to the traveler in either direction —
+            // no "lite" badge and no degraded-quality disclaimer (§13) — and it is NOT the paid
+            // optimizer's model, which keeps its own Sonnet-class id.
+            const draftModel = resolveAiDraftModel();
             const completion = await anthropic.messages.create({
-              model: "claude-sonnet-4-5",
+              model: draftModel,
               max_tokens: 4000,
               messages: [{ role: "user", content: prompt }],
             });
 
             // T6-5: this is the one Anthropic call site outside claude.service.ts — without
             // this the primary generate-itinerary surface never writes ai_cost_tracking.
-            trackAnthropicResponse(completion, { sourceType: "ai_itinerary" });
+            // LD 41 (c): the tracked row now also carries WHOSE generation it was. `userId` was
+            // absent, so every draft landed in the cost table attributed to nobody; the admin cost
+            // breakdown could total spend but not attribute it. `trackAnthropicResponse` swallows
+            // its own failures (§15b — an ancillary effect may not break the operation).
+            trackAnthropicResponse(completion, {
+              sourceType: "ai_itinerary",
+              userId: callerUserId ?? null,
+            });
 
             const text = (completion.content[0] as any).text;
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            return JSON.parse(jsonMatch ? jsonMatch[0] : text);
+            // ONE parse implementation (§18 rule 1) — brace-matched, fence-tolerant, and it never
+            // repairs a truncated response into an object the model did not produce (§13).
+            return parseAiJsonObjectOrThrow(text, "AI itinerary draft");
           })
         );
       } catch (aiErr: any) {
@@ -8524,20 +8581,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // ── Optimization authorization gate (Lane 5a Defect 1, harvested from the §9 dead twin) ──
       // The comparison record is ALWAYS created (never blocked) — only the paid LLM run is gated.
-      // canRunOptimizer=false → born "pending_payment", no AI call; true → "generating" + optimizer.
-      let canRunOptimizer = false;
-
-      // Free 24h re-run eligibility first (no Stripe call needed).
-      const cutoff = new Date(Date.now() - OPTIMIZATION_FREE_RERUN_MS);
-      const recentRun = await storage.getRecentOptimizationRun(userId, cutoff);
-
-      if (recentRun) {
-        canRunOptimizer = true;
-      } else if (optimizationPaymentId) {
-        const check = await verifyOptimizationPayment({ userId, optimizationPaymentId, tripId, userExperienceId });
-        if (!check.ok) return res.status(check.status).json(check.body);
-        canRunOptimizer = true;
+      // authorized=false → born "pending_payment", no AI call; true → "generating" + optimizer.
+      //
+      // CLAUDE.md Locked Decision 41 (ledger `2026-09-05-trip-pass-run-gate`): the four ways a run
+      // can be authorized — an active TRIP PASS on the trip, the documented 24h free re-run, the
+      // payment already recorded on the comparison, and a freshly verified PaymentIntent — now
+      // live in ONE predicate shared with the regenerate handler below (§18 rule 1). The pass
+      // basis is the one this lane ADDED: it was consulted only at the CHARGE point, so a covered
+      // trip was told the run was included and then born `pending_payment` with no variants.
+      const runAuth = await resolveOptimizerRunAuthorization(
+        { userId, tripId, userExperienceId, optimizationPaymentId },
+        optimizerRunAuthorizationDeps,
+      );
+      if (runAuth.authorized === false && runAuth.reason === "payment_rejected") {
+        return res.status(runAuth.status).json(runAuth.body);
       }
+      const canRunOptimizer = runAuth.authorized;
+      const runBasis = runAuth.authorized ? runAuth.basis : null;
       // ── End authorization gate ────────────────────────────────────────────────────────────
 
       const [comparison] = await db
@@ -8558,7 +8618,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         })
         .returning();
 
-      // Trigger AI optimization in background only when authorized (payment verified or free re-run)
+      // LD 41: announce a pass-covered run the same way the charge gate announces a suppressed
+      // charge. No-op for every other basis (the function itself decides — one place, §18 rule 1).
+      if (runBasis) logOptimizerRunBasis(runBasis, { tripId, comparisonId: comparison.id });
+
+      // Trigger AI optimization in background only when authorized (pass, free re-run, or payment)
       if (canRunOptimizer && baselineItems.length > 0) {
         // ONE shared catalog query (L6, ledger 2026-08-22-optimizer-catalog-honesty):
         // active + APPROVED + destination-scoped. The previous inline pull filtered
@@ -8621,7 +8685,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
-      res.status(201).json(comparison);
+      // `runBasis` rides on the response so the surface can say WHY the run was free (LD 41):
+      // "Included in your Trip Pass" and "free re-run" are different facts (§13). It is additive —
+      // `CreateComparisonResult` carries an index signature and no client requires it.
+      res.status(201).json({ ...comparison, runBasis });
     } catch (error) {
       console.error("Error creating comparison:", error);
       res.status(500).json({ message: "Failed to create comparison" });
@@ -8857,8 +8924,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // ── Optimization authorization gate on REGENERATE (Lane 5a Defect 1) ────────────────────
       // Same defect as create: this handler fired the paid LLM run with zero payment verification.
-      // The dead twin carried no gate here either, so the rule below is derived from the fee
-      // contract in `optimization.routes.ts` (24h free re-run) + the twin's create gate:
+      // The rule is now the SHARED predicate `resolveOptimizerRunAuthorization` (CLAUDE.md Locked
+      // Decision 41, ledger `2026-09-05-trip-pass-run-gate`) — one implementation, this caller and
+      // the create handler above (§18 rule 1). The four bases, unchanged in substance except for
+      // the pass, which is what this lane added:
+      //   (0) an ACTIVE TRIP PASS on this comparison's own trip covers the run (ruling
+      //       2026-08-29-trip-pass). It was previously read at the CHARGE point only, so a covered
+      //       traveler was refused 402 here after being told the run was included;
       //   (a) the caller has ANY completed optimization run in the last 24h  → the DOCUMENTED free
       //       re-run (identical clock/query to `POST /api/optimization-payments`, which answers
       //       `freeRerun:true, feeCents:0` in exactly this case); fee-literal-ok: comment
@@ -8868,53 +8940,52 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       //   (c) the request carries a fresh PaymentIntent that passes the SAME verification as create.
       //       Accepted only for a comparison that carries no payment yet (the `pending_payment` rows
       //       created by the unpaid surfaces), and the PI is recorded on the row by an ATOMIC
-      //       conditional update so the reuse guard in (c) can see it — a PI can never be spent twice.
+      //       conditional update — the claim STAYS HERE (§15: the predicate decides, it never writes),
+      //       so a PI can never be spent twice.
       // Otherwise 402: the comparison is untouched and no AI call is made.
-      {
-        const cutoff = new Date(Date.now() - OPTIMIZATION_FREE_RERUN_MS);
-        let canRunOptimizer = !!(await storage.getRecentOptimizationRun(userId, cutoff));
-
-        if (!canRunOptimizer && comparison.optimizationPaymentId && comparison.createdAt && comparison.createdAt >= cutoff) {
-          canRunOptimizer = true;
+      const runAuth = await resolveOptimizerRunAuthorization(
+        {
+          userId,
+          // §14: every target is read from the stored comparison, never from the body.
+          tripId: comparison.tripId,
+          userExperienceId: comparison.userExperienceId,
+          optimizationPaymentId,
+          recordedPaymentId: comparison.optimizationPaymentId,
+          recordedPaymentAt: comparison.createdAt,
+        },
+        optimizerRunAuthorizationDeps,
+      );
+      if (runAuth.authorized === false) {
+        if (runAuth.reason === "payment_rejected") {
+          return res.status(runAuth.status).json(runAuth.body);
         }
-
-        if (!canRunOptimizer && optimizationPaymentId) {
-          const check = await verifyOptimizationPayment({
-            userId,
-            optimizationPaymentId,
-            // §14: the target is read from the stored comparison, never from the body.
-            tripId: comparison.tripId ?? undefined,
-            userExperienceId: comparison.userExperienceId ?? undefined,
-          });
-          if (!check.ok) return res.status(check.status).json(check.body);
-
-          const claimed = await db
-            .update(itineraryComparisons)
-            .set({ optimizationPaymentId })
-            .where(and(eq(itineraryComparisons.id, comparisonId), isNull(itineraryComparisons.optimizationPaymentId)))
-            .returning({ id: itineraryComparisons.id });
-          if (claimed.length === 0) {
-            return res.status(409).json({
-              error: "payment_already_recorded",
-              message: "This comparison already has an optimization payment. Please start a new optimization.",
-            });
-          }
-          canRunOptimizer = true;
-        }
-
-        if (!canRunOptimizer) {
-          return res.status(402).json({
-            error: "payment_required",
-            message: "This optimization requires payment. Complete the optimization fee to re-run.",
+        return res.status(402).json({
+          error: "payment_required",
+          message: "This optimization requires payment. Complete the optimization fee to re-run.",
+        });
+      }
+      if (runAuth.basis === "paid" && runAuth.claimRequired) {
+        const claimed = await db
+          .update(itineraryComparisons)
+          .set({ optimizationPaymentId: runAuth.optimizationPaymentId })
+          .where(and(eq(itineraryComparisons.id, comparisonId), isNull(itineraryComparisons.optimizationPaymentId)))
+          .returning({ id: itineraryComparisons.id });
+        if (claimed.length === 0) {
+          return res.status(409).json({
+            error: "payment_already_recorded",
+            message: "This comparison already has an optimization payment. Please start a new optimization.",
           });
         }
       }
+      logOptimizerRunBasis(runAuth.basis, { tripId: comparison.tripId, comparisonId });
 
       // Same shared catalog query as the create path (L6, ledger
       // 2026-08-22-optimizer-catalog-honesty): active + APPROVED + destination-scoped.
       const availableServices = await loadOptimizerCatalog(comparison.destination);
 
-      res.json({ message: "Optimization started", status: "generating" });
+      // LD 41: the basis rides on the response for the same reason it does on create — the
+      // surface must be able to say "included in your Trip Pass" rather than guess (§13).
+      res.json({ message: "Optimization started", status: "generating", runBasis: runAuth.basis });
 
       // Build trip preferences for the adaptive variant strategy. Dislike
       // feedback applies even without a trip row (it's an explicit instruction,

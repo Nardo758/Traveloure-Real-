@@ -1791,12 +1791,28 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
+                {/* LD 41 (ledger 2026-09-05-comparison-map-baseline-compare): the board's map
+                    carries the traveler's OWN plan as its first tab, so a proposal can be read
+                    against the thing it proposes to change. The baseline is the SAME
+                    `source === "user"` variant the baseline COLUMN renders (`userVariant`) — one
+                    source, two surfaces — and it is omitted honestly when the comparison has no
+                    baseline variant at all (§13), which also removes the compare toggle. */}
                 <ProposalComparisonMap
-                  proposals={aiVariants.map((variant, index) => ({
-                    id: variant.id,
-                    name: variant.name || `Proposal ${index + 1}`,
-                    items: variant.items,
-                  }))}
+                  proposals={[
+                    ...(userVariant
+                      ? [{
+                          id: userVariant.id,
+                          name: userVariant.name,
+                          items: userVariant.items,
+                          isBaseline: true,
+                        }]
+                      : []),
+                    ...aiVariants.map((variant, index) => ({
+                      id: variant.id,
+                      name: variant.name || `Proposal ${index + 1}`,
+                      items: variant.items,
+                    })),
+                  ]}
                 />
 
                 <div

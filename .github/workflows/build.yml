@@ -556,6 +556,72 @@ jobs:
       # wired to no workflow; an unrun test is not a guard.
       - name: Analytics trackEvent fail-soft pin
         run: npx tsx --test client/src/lib/__tests__/analytics.test.ts
+      # 2026-09-05-trip-pass-run-gate (CLAUDE.md Locked Decision 41, LANE 1): Trip Pass coverage was
+      # read at the CHARGE point only, so a pass holder outside the 24h free-rerun window was told
+      # the run was included and then got a `pending_payment` comparison with no variants — no
+      # error, no log, and a page that looks exactly like ordinary "payment required". P1-P13 pin
+      # the ONE run-authorization predicate (a pass authorizes the RUN; a pass on a DIFFERENT trip
+      # authorizes nothing; no pass + outside the window + no PaymentIntent is still refused; a
+      # covered run neither verifies nor spends a PI; an empty-string id is ABSENT). A1-A7 read the
+      # shipped `server/routes.ts`, because a predicate a call site can reach past is not a rule:
+      # exactly two call sites, one caller of `verifyOptimizationPayment`, one `coversAction`
+      # wiring, the §15 atomic PI claim still at the route, no second copy of the free-rerun clock,
+      # and no basis sentinel written into the payment-identity column.
+      - name: Optimizer run-authorization pin (LD 41 lane 1)
+        run: npx tsx --test server/__tests__/optimizer-run-authorization.test.ts
+      # 2026-09-05-optimize-preview-on-slip (CLAUDE.md Locked Decision 41 (d)): the free heuristic
+      # is now shown BEFORE the traveler pays, and the failure that would follow is a copy edit
+      # promising a delta the heuristic cannot measure — it reads what each item IS, never where it
+      # is, so it has no distance, no travel time and no measured saving to offer. P1-P8/E1-E3 pin
+      # the extracted scoring (deterministic fixtures; an empty and a single-item plan REFUSED with
+      # the heuristic's own reason rather than scored; the three legacy cart extrapolations kept
+      # byte-identical but reachable only through their own named function). S1-S7 read the shipped
+      # files, because ONE heuristic with two callers is exactly the kind of thing a later refactor
+      # forks silently: no metrics call left in the routes file, both entries on the shared
+      # function, the trip entry reading `loadTripOptimizerInputs` with the actor from the SESSION
+      # and no item list off the wire, no Stripe/fee anywhere in the preview handler, and the slip
+      # rendering neither extrapolated number. L1-L7/F1-F5 hold the traveler-facing strings.
+      - name: Optimize-preview heuristic + slip line pin
+        run: |
+          npx tsx --test server/__tests__/optimize-preview-on-slip.test.ts
+          npx tsx --test client/src/lib/__tests__/optimize-preview-line.test.ts
+
+      # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
+      # the free AI draft runs only on an EMPTY slip, its JSON recovery never repairs a truncated
+      # response into a plan the model did not produce, and the client reads the refusal through
+      # ONE module. All three are pure — no DATABASE_URL, no server, no network.
+      - name: AI draft eligibility + parser + client-refusal pins (LD 41 lane 2)
+        run: |
+          npx tsx --test server/__tests__/ai-draft-eligibility.test.ts
+          npx tsx --test server/__tests__/ai-json-parse.test.ts
+          npx tsx --test client/src/lib/__tests__/ai-draft-refusal.test.ts
+      # 2026-09-05-mint-market-slug-invariant (CLAUDE.md Locked Decision 42, D12 + D11-interim):
+      # `market_slug` joins `timezone` as a named MINT invariant, and the intake panels stop
+      # fabricating a party split. Both defects are ABSENCES that render perfectly — a plan minted
+      # with a NULL market_slug looks right to its owner and is simply never seen by any
+      # market-scoped reader, and `adults: travelers, kids: 0` is a well-formed answer to a question
+      # neither panel asks. M1-M3 pin the two raw-SQL mints in booking.service.ts (column named,
+      # derived value bound, ONE shared resolveMarketSlug, placeholder destinations NOT
+      # special-cased into a hardcoded slug). M4 is the load-bearing one: it re-scans EVERY
+      # trip-insert site in server/, holds Locked Decision 30's timezone stamp on all of them, and
+      # pins the set that still omits market_slug to a RECORDED outstanding list — now the e2e seed
+      # alone, since D12 binds EVERY production mint (the buyer's clone and BOTH expert authoring
+      # builds included: a NULL userId exempts them from an owner row and the pen drain, never from
+      # a market). A NEW omission fails here instead of being absorbed. I1-I3 pin
+      # the stripped split and that the stated TOTAL still rides (the server derives the total from
+      # `adults` only when the body omitted it, so nothing real was dropped).
+      - name: Mint market_slug invariant / party-split pin
+        run: npx tsx --test server/__tests__/mint-market-slug-invariant.test.ts
+      # Build-order row 1.7 (ledger `2026-09-05-dead-surfaces-and-cart-qty`): three client
+      # surfaces and one server field were deleted for having no consumer, and the cart's
+      # quantity control gained a typed box. Both halves fail silently — a deleted-because-
+      # unimported page comes back the day someone copies a sibling and nothing breaks, and a
+      # typed box that grows its own local state or its own PATCH still WORKS, it just stops
+      # agreeing with the buttons beside it. Q1-Q6 pin the one shared normaliser (floor 1, no
+      # zero, the STORAGE ceiling rather than an invented cap, empty-is-a-draft that reverts on
+      # commit); S1-S5 read the shipped files, because absence is the assertion.
+      - name: Dead-surface absence + typed cart quantity pin
+        run: npx tsx --test client/src/lib/__tests__/cart-quantity.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
@@ -870,3 +936,44 @@ jobs:
         run: node scripts/check-public-user-id.cjs --self-test
       - name: Public user-id guard
         run: node scripts/check-public-user-id.cjs
+      # 2026-09-05-comparison-map-baseline-compare (LD 41): the review board's map gained "Your
+      # plan" as its first tab and a compare toggle that draws it beneath a focused proposal as a
+      # second sequence line. The map's honesty boundary already had a pure test; it was never
+      # wired into CI, so nothing held it. B1-B4 pin the pure rules — the baseline leads the tab
+      # order and keeps its own server-authored name without renumbering the proposals, the board
+      # still OPENS on a proposal, the compare toggle is OMITTED (not disabled) wherever there is
+      # nothing to compare, each series states its OWN "X of Y located" and the two are never
+      # summed, and zero located stops on EVERY drawn series means NO MAP rather than a
+      # city-centre fallback. B5 reads the shipped files, because a pure rule a call site can
+      # reach past is not a rule: the board hands over the same `userVariant` the baseline column
+      # renders, the ratified testids exist, BOTH renderers grew an optional second series rather
+      # than a compare-only fork (§18 rule 1), and the surface labels its connectors as sequence
+      # while deriving no distance or duration. B6-B7 pin the link BACK: the plancard names the
+      # board only when a comparison row exists (the key is OMITTED, never null-filled), the id
+      # comes off the same comparison row `lastOptimizedAt` already reads, and both the slip's
+      # "See what changed" and PlanCard's "AI Optimized" pill read that DTO field rather than
+      # fetching the user's comparisons to work out which board a plan came from.
+      - name: Proposal comparison map pin
+        run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
+
+  ai-draft-eligibility-guard:
+    name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Two free rails wrote a fresh AI plan onto an EXISTING trip and replaced what was there —
+      # a free re-optimize competing with the paid Optimize rail, over the traveler's own plan.
+      # The rule is now enforced in three handlers plus an in-transaction second layer, and that
+      # is worth nothing if a fourth writer lands tomorrow: nothing fails when one does, it simply
+      # works. This is the thing that fails. It is FILE-scoped, says nothing about ORDER or about
+      # the 409's shape, and is blind to a raw `DELETE FROM itinerary_items` that never names the
+      # rebuild guard — the script header states the rest of its negative space, and its
+      # EXEMPTIONS print on every run so filed debt never becomes a silent baseline (ruling 32).
+      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: AI-draft eligibility guard predicate self-test
+        run: node scripts/check-ai-draft-eligibility.cjs --self-test
+      - name: AI-draft eligibility guard
+        run: node scripts/check-ai-draft-eligibility.cjs

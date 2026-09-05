@@ -84,8 +84,6 @@ interface ExpertMatchCardProps {
   matchReasons?: string[];
   matchStrengths?: string[];
   showDetails?: boolean;
-  onRequestMatch?: (expertId: string) => void;
-  isLoading?: boolean;
 }
 
 function getScoreColor(score: number): string {
@@ -116,8 +114,6 @@ export function ExpertMatchCard({
   matchReasons,
   matchStrengths,
   showDetails = false,
-  onRequestMatch,
-  isLoading = false,
 }: ExpertMatchCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -361,24 +357,18 @@ export function ExpertMatchCard({
             <MessageCircle className="w-3 h-3" />
             Message
           </Button>
-          {onRequestMatch ? (
-            <Button
-              size="sm"
-              className="flex-1 bg-primary hover:bg-primary/90 h-7 text-xs gap-1"
-              onClick={() => onRequestMatch(expert.id)}
-              disabled={isLoading}
-              data-testid={`button-request-expert-${expert.id}`}
-            >
-              <Sparkles className="w-3 h-3" />
-              {isLoading ? "Matching..." : "Request Expert"}
+          {/* ONE CTA, because there was only ever one. The `onRequestMatch` branch — a
+              "Request Expert" button behind an optional callback — had no caller: the card's
+              single mount (`ai-matched-experts-section.tsx`) never passed the prop, so the
+              testid `button-request-expert-*` could not render on any surface and no spec named
+              it. Deleted rather than wired (§18c's "no consumer ⇒ delete, don't gate", read at
+              its narrow reading: no consumer ⇒ delete). `isLoading` went with it — it was that
+              button's spinner and nothing else read it. Ledger `2026-09-05-dead-surfaces-and-cart-qty`. */}
+          <Link href={earnerProfilePath(expert) ?? "/experts"} className="flex-1">
+            <Button size="sm" className="w-full bg-primary hover:bg-primary/90 h-7 text-xs" data-testid="button-view-profile">
+              View Profile
             </Button>
-          ) : (
-            <Link href={earnerProfilePath(expert) ?? "/experts"} className="flex-1">
-              <Button size="sm" className="w-full bg-primary hover:bg-primary/90 h-7 text-xs" data-testid="button-view-profile">
-                View Profile
-              </Button>
-            </Link>
-          )}
+          </Link>
         </div>
       </CardContent>
     </Card>
