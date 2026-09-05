@@ -14,22 +14,34 @@
  * The band values come from the real `resolveTravelerServiceFee` (so band_id satisfies the
  * fee_ledger FK, exactly as production stamps it). DISPOSABLE DB ONLY — every row is created and
  * deleted here.
- *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/traveler-fee-ledger.db.test.ts
+ *   JOURNEY_DB_WRITES_OK=1 npx tsx --test --test-force-exit server/__tests__/traveler-fee-ledger.db.test.ts
  *
  * A HANG MUST FAIL, NEVER STALL (ledger `2026-09-05-fee-ledger-test-robustness`). This file imports
  * the shared `../db` pool, which is built with `allowExitOnIdle: false` — so a process that never
  * calls `pool.end()` stays alive after the last assertion until pg's own `idleTimeoutMillis` reaper
  * happens to close the last socket. That is why a green run of this step measured ~30 s (the
- * reaper's interval), not ~1 s (the assertions), and it is why a run where the reaper never fired —
- * or where an INSERT sat behind a row lock held by the production server this job also starts
- * against the same database — produced a silent multi-hour stall with every assertion already
- * passed. Three layers close that, and NONE of them touches what is asserted:
+ * reaper's interval), not ~1 s (the assertions). Three layers address that, and NONE of them
+ * touches what is asserted:
  *   1. `after()` ends the pool in a `finally`, so the process exits on its own the moment cleanup
  *      is done (the ~30 s idle tail disappears too).
  *   2. every `test()` and both hooks carry an explicit `{ timeout: CASE_TIMEOUT_MS }`, so a blocked
  *      query becomes a REPORTED FAILURE with the case name instead of silence.
  *   3. the workflow step carries `timeout-minutes`, so even a stall below the runner (a wedged
  *      child process) reads as a failed step named in the log rather than a hung job.
+ *
+ * THAT WAS NOT THE WHOLE MECHANISM (corrected — ledger `2026-09-05-fee-ledger-hang-root-cause`).
+ * The step kept stalling for a full 15 minutes AFTER all three layers landed, always at the same
+ * point: the last `ok`, with every case passed, no `1..5`, no summary, and no hook-timeout failure
+ * to report because nothing was blocked. `node --test <file>` runs the file in a CHILD process and
+ * emits the file's result and the summary only when that child EXITS — and the child is kept alive
+ * by the `pino-pretty` transport WORKER THREAD that `../infrastructure/logger` builds whenever
+ * NODE_ENV !== "production" (the gate runs these steps with NODE_ENV=test). Its teardown races
+ * process exit and loses intermittently; a hung child holds no Postgres socket at all, so layer 1
+ * was necessary and is not sufficient, and layer 2 can never fire on a run where nothing blocked.
+ * The gate therefore runs this file with `--test-force-exit` (see the note in
+ * `.github/workflows/fee-preview-gate.yml`), which exits once every test and hook has finished with
+ * the exit code still decided by the RESULTS. Run it that way by hand too if you want the process
+ * to end: the command at the top of this header is otherwise free to hang after passing.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";

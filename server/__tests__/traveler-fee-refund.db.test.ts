@@ -17,7 +17,7 @@
  *
  * DISPOSABLE DB ONLY — every row is created and deleted here.
  *   JOURNEY_DB_WRITES_OK=1 STRIPE_SECRET_KEY=sk_test_dummy \
- *     npx tsx --test server/__tests__/traveler-fee-refund.db.test.ts
+ *     npx tsx --test --test-force-exit server/__tests__/traveler-fee-refund.db.test.ts
  */
 import { test, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
