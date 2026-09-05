@@ -14,6 +14,27 @@
  * built with existing Tailwind theme tokens (bg-[var(--earn-card)]/border/text-primary/etc.) rather than the
  * mock's own hardcoded palette, so dark mode — already supported here — keeps working.
  *
+ * WEDDING-FLOW RESTYLE (decision-maker request, Sep 5 2026 — "the storefront needs improved
+ * styling to match our new UI"). The 2026-08-17-catalog-preview-upgrade row deliberately left
+ * this surface alone ("reskinning the public storefront would be an un-ratified surface"); this
+ * request is that ratification. The visual system is the ratified wedding-flow artboards
+ * (docs/design/wedding-flow/{Main,Slip,Step4Who,Step5Events,Planner}.dc.html) as already applied
+ * in code by client/src/components/trip/plan-modal.tsx and the landing components:
+ *
+ *   ground  --earn-ground · cards --earn-card on a 1px --earn-border hairline, no drop shadows
+ *   type    Fraunces (serif display) for headings, Geist Mono small-caps for eyebrows / meta /
+ *           counts / prices, Inter for body and buttons
+ *   colour  --earn-navy for display headings, --earn-coral-ink for eyebrows and the ONE primary
+ *           CTA (white text), --earn-teal-ink for informational marks, --earn-gold-* for
+ *           ratings, --earn-green-ink for the checkout assurance, --earn-chip for pills
+ *
+ * STYLE-ONLY: no data, route, query, handler, href, copy-of-record or behaviour change, and every
+ * data-testid is preserved byte-for-byte. The one CONTENT change is an honesty fix, not a
+ * restyle: an earner with no published offerings at all used to be told "No offerings match your
+ * filter" beside a Clear-filters button that could not do anything, because the filter branch was
+ * the only empty state. Nothing-listed and nothing-matched are different facts (§13), so they now
+ * render as two different states and neither invents a count.
+ *
  * Every number/badge still maps to a real field returned by GET /api/storefront/:handle —
  * reviewCount=0 renders "New", never a fabricated score; the verified pill only renders when the
  * server says the identity verification is genuinely approved; the mock's per-card marketing
@@ -21,12 +42,14 @@
  * invented (§13). The tab/search toolbar is a client-side filter over the real three arrays —
  * default state (category "All", empty search) reproduces the exact pre-rebuild render, so the
  * existing per-lane data-testids and their Playwright coverage (offering-card.spec.ts) still hold.
+ *
+ * No map renders on this surface (D5: place-anchored listings get a TEXT-only city chip, never a
+ * tile), so no ODbL attribution is owed here.
  */
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useRoute, Link } from "wouter";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -54,8 +77,15 @@ import {
 } from "lucide-react";
 
 // SPEC §1 type: Fraunces for editorial headings, Geist Mono for eyebrows/facts/labels.
+// Same two faces plan-modal.tsx declares (its SERIF/MONO) and the ~20 landing/feed components
+// declare as EARN_MONO — a per-file const is this codebase's existing convention for them.
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+/** Hairline card — the one rounded/bordered rhythm every panel on this page uses. */
+const CARD_SHELL = "rounded-xl border border-[color:var(--earn-border)] bg-[var(--earn-card)]";
+/** Small-caps mono eyebrow — coral TEXT (an eyebrow never counts against the coral BUTTON budget). */
+const EYEBROW = "text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]";
 
 interface StorefrontEarner {
   // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
@@ -146,11 +176,22 @@ function priceUnitLabel(priceType: string | null, pricingUnit: string | null): s
 
 function RatingLine({ rating, count }: { rating: string | number | null; count: number | null }) {
   if (!count || count === 0 || rating == null) {
-    return <Badge variant="outline" className="text-[11px] w-fit">New</Badge>;
+    // A listing with no reviews yet says so in the mock's faint mono register — never a score.
+    return (
+      <span
+        className="w-fit rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-muted)]"
+        style={{ fontFamily: EARN_MONO }}
+      >
+        New
+      </span>
+    );
   }
   return (
-    <span className="flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-500">
-      <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+    <span
+      className="flex items-center gap-1 text-xs font-semibold text-[color:var(--earn-gold-ink)]"
+      style={{ fontFamily: EARN_MONO }}
+    >
+      <Star className="w-3.5 h-3.5" style={{ color: "var(--earn-gold)", fill: "var(--earn-gold)" }} />
       {Number(rating).toFixed(1)}
       <span className="font-normal text-[color:var(--earn-muted)]">· {count} review{count === 1 ? "" : "s"}</span>
     </span>
@@ -161,10 +202,10 @@ function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string;
   return (
     <div className="mb-4 flex items-baseline justify-between gap-2">
       <div>
-        <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>{eyebrow}</div>
-        <h2 className="mt-0.5 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{title}</h2>
+        <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrow}</div>
+        <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{title}</h2>
       </div>
-      <div className="text-sm tabular-nums text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+      <div className="text-[11px] tabular-nums uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }}>
         {count} available
       </div>
     </div>
@@ -179,6 +220,11 @@ function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string;
  * out of this lane's diff). Same prop contract and the same rendered text/testid/href
  * behavior as the shared card, so offering-card.spec.ts's assertions (title heading,
  * price/CTA text, href pattern, testid) hold unchanged.
+ *
+ * Wedding-flow restyle: hairline card, Fraunces navy title, mono price/meta/chips, and a
+ * --earn-chip photo well (the artboards' `[photo · …]` placeholder) instead of a brand-pink
+ * gradient — the traveler brand red and the earn coral on one screen is the "two reds" the
+ * console palette note in CLAUDE.md names.
  */
 function StorefrontOfferingCard({
   href,
@@ -220,24 +266,36 @@ function StorefrontOfferingCard({
     <Link
       href={href}
       data-testid={testId}
-      className="group flex h-full flex-col overflow-hidden rounded-xl border bg-[var(--earn-card)] no-underline text-inherit transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg hover:border-primary/40"
+      className="group flex h-full flex-col overflow-hidden rounded-xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] no-underline text-inherit transition-all duration-150 hover:-translate-y-0.5 hover:border-[color:var(--earn-coral-border)]"
     >
       <div
-        className={`relative h-36 w-full shrink-0 ${image ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/60 to-primary"}`}
-        style={image ? { backgroundImage: `url(${image})` } : undefined}
+        className={`relative h-36 w-full shrink-0 border-b border-[color:var(--earn-border)] ${image ? "bg-cover bg-center" : ""}`}
+        style={
+          image
+            ? { backgroundImage: `url(${image})` }
+            : { background: "var(--earn-chip)" }
+        }
       >
-        <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
-        <span className="absolute left-2.5 bottom-2.5 rounded-md bg-white/92 px-2 py-1 text-[10px] font-bold text-[color:var(--earn-ink)] dark:bg-black/70 dark:text-white">
+        {/* Scrim only under a real photo — a flat chip well needs no darkening, and darkening
+            it would read as a second, dimmer surface colour. */}
+        {image && <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />}
+        <span
+          className="absolute left-2.5 bottom-2.5 rounded-md border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-2 py-1 text-[9.5px] font-medium uppercase tracking-[0.1em] text-[color:var(--earn-muted)]"
+          style={{ fontFamily: EARN_MONO }}
+        >
           {categoryLabel}
         </span>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-4">
         <div className="flex items-center justify-between gap-2">
           {ratingSlot}
-          <span className="whitespace-nowrap text-[11px] text-[color:var(--earn-muted)]">
+          <span
+            className="whitespace-nowrap text-[11px] text-[color:var(--earn-muted)]"
+            style={{ fontFamily: EARN_MONO }}
+          >
             {priceHidden ? null : (
               <>
-                <span className="text-base font-bold text-[color:var(--earn-ink)]">{price}</span>
+                <span className="text-[15px] font-semibold tabular-nums text-[color:var(--earn-ink)]">{price}</span>
                 {unit && <span className="ml-1">{unit}</span>}
               </>
             )}
@@ -245,32 +303,45 @@ function StorefrontOfferingCard({
         </div>
         {/* line-clamp keeps card heights aligned across a row — an unclamped long title
             previously made one card in a grid row taller than its siblings. */}
-        <h3 className="mt-1 line-clamp-2 font-semibold leading-snug">{title}</h3>
+        <h3
+          className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-[color:var(--earn-navy)]"
+          style={{ fontFamily: FRAUNCES }}
+        >
+          {title}
+        </h3>
         {meta && <p className="line-clamp-1 text-[11.5px] leading-snug text-[color:var(--earn-muted)]">{meta}</p>}
         {chips.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1.5">
             {chips.map((c) => (
               <span
                 key={c}
-                className="rounded-full border bg-[var(--earn-chip)]/60 px-2 py-0.5 text-[11px] font-medium text-[color:var(--earn-muted)]"
+                className="rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-2 py-0.5 text-[10.5px] text-[color:var(--earn-muted)]"
+                style={{ fontFamily: EARN_MONO }}
               >
                 {c}
               </span>
             ))}
           </div>
         )}
-        <div className="mt-auto flex items-center justify-between gap-2 border-t pt-2.5">
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-[color:var(--earn-border)] pt-2.5">
           {priceHidden ? (
-            <span className="text-sm font-medium text-[color:var(--earn-muted)]" data-testid={`${testId}-enquire-price`}>
+            <span
+              className="text-[11px] text-[color:var(--earn-muted)]"
+              style={{ fontFamily: EARN_MONO }}
+              data-testid={`${testId}-enquire-price`}
+            >
               Enquire for pricing
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-500">
+            <span
+              className="inline-flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-[color:var(--earn-green-ink)]"
+              style={{ fontFamily: EARN_MONO }}
+            >
               <ShieldCheck className="w-3.5 h-3.5" />
               Secure checkout
             </span>
           )}
-          <span className="text-sm font-semibold text-primary whitespace-nowrap">{ctaLabel}</span>
+          <span className="whitespace-nowrap text-sm font-semibold text-[color:var(--earn-coral-ink)]">{ctaLabel}</span>
         </div>
       </div>
     </Link>
@@ -326,6 +397,11 @@ export default function StorefrontPage() {
     [readyMade, category, term],
   );
   const visibleTotal = visibleServices.length + visibleReadyMade.length;
+  // §13: "this earner has published nothing" and "your filter matched nothing" are different
+  // facts and get different empty states. Before this split, an earner with an empty catalog was
+  // told their visitor's filter was at fault, beside a Clear-filters button with nothing to clear
+  // (the toolbar isn't even rendered in that case — availableCategories is ["All"] alone).
+  const hasAnyOfferings = services.length + readyMade.length > 0;
   const availableCategories: OfferingCategory[] = [
     "All",
     ...(services.length > 0 ? (["Services"] as const) : []),
@@ -353,12 +429,20 @@ export default function StorefrontPage() {
     return (
       <div className="min-h-screen bg-[var(--earn-ground)] flex items-center justify-center">
         <div className="max-w-md mx-auto px-4 py-20 text-center" data-testid="storefront-not-found">
-          <h1 className="text-2xl font-bold mb-2">Storefront not found</h1>
+          <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>Storefront</div>
+          <h1
+            className="mt-1.5 mb-2 text-[28px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
+            style={{ fontFamily: FRAUNCES }}
+          >
+            Storefront not found
+          </h1>
           <p className="text-[color:var(--earn-muted)] mb-6">
             This link may be incorrect, or the owner has no bookable offerings yet.
           </p>
           <Link href="/discover">
-            <Button>Explore Traveloure</Button>
+            <Button className="text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90">
+              Explore Traveloure
+            </Button>
           </Link>
         </div>
       </div>
@@ -427,7 +511,7 @@ export default function StorefrontPage() {
           ready-made-detail.tsx share/OG page frame. Ruling 116: the 🌐 selector rides here so a
           link/QR recipient (guest included) can switch language — same one-selector rule as the
           Layout header (ruling 60 entry point (b)). */}
-      <div className="border-b bg-[var(--earn-card)]">
+      <div className="border-b border-[color:var(--earn-border)] bg-[var(--earn-card)]">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center" data-testid="link-storefront-logo">
             <TraveloureLogo />
@@ -439,13 +523,20 @@ export default function StorefrontPage() {
       <div className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
         {/* Identity hero card — cover + overlapping avatar + name/handle/verified/bio/proof line,
             consolidated into one bordered card (continuity mock's `.psc-hero`). */}
-        <div className="overflow-hidden rounded-2xl border bg-[var(--earn-card)] shadow-sm">
-          {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient
+        <div className="overflow-hidden rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)]">
+          {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), token wash
               fallback. Link-landing polish (mockup §08): shorter on mobile so a texted storefront
               link gets its first bookable card above the fold on a 375px viewport. */}
           <div
-            className={`h-28 sm:h-44 w-full ${earner.coverImageUrl ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/50 via-primary/70 to-primary"}`}
-            style={earner.coverImageUrl ? { backgroundImage: `url(${earner.coverImageUrl})` } : undefined}
+            className={`h-28 sm:h-44 w-full border-b border-[color:var(--earn-border)] ${earner.coverImageUrl ? "bg-cover bg-center" : ""}`}
+            style={
+              earner.coverImageUrl
+                ? { backgroundImage: `url(${earner.coverImageUrl})` }
+                : {
+                    background:
+                      "linear-gradient(135deg, var(--earn-teal-wash) 0%, var(--earn-gold-wash) 100%), var(--earn-chip)",
+                  }
+            }
             data-testid="storefront-cover"
           />
 
@@ -454,10 +545,13 @@ export default function StorefrontPage() {
               <img
                 src={earner.profileImageUrl}
                 alt={earner.name}
-                className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full object-cover border-4 border-[color:var(--earn-card)] shadow-md shrink-0"
+                className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full object-cover border-4 border-[color:var(--earn-card)] shrink-0"
               />
             ) : (
-              <div className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full border-4 border-[color:var(--earn-card)] shadow-md shrink-0 flex items-center justify-center text-2xl sm:text-3xl font-bold text-white bg-gradient-to-br from-primary/60 to-primary">
+              <div
+                className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full border-4 border-[color:var(--earn-card)] shrink-0 flex items-center justify-center bg-[var(--earn-chip)] text-2xl sm:text-3xl font-semibold text-[color:var(--earn-navy)]"
+                style={{ fontFamily: FRAUNCES }}
+              >
                 {initial}
               </div>
             )}
@@ -465,8 +559,8 @@ export default function StorefrontPage() {
             <div className="pt-3 sm:pt-4 min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>{eyebrowLabel}</div>
-                  <h1 className="mt-0.5 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{earner.name}</h1>
+                  <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrowLabel}</div>
+                  <h1 className="mt-1 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{earner.name}</h1>
                 </div>
                 {earner.verified && (
                   <span
@@ -481,11 +575,11 @@ export default function StorefrontPage() {
                 )}
               </div>
 
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[color:var(--earn-muted)]">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
                 <span>@{earner.handle}</span>
                 {earner.location && (
                   <>
-                    <span className="text-[color:var(--earn-muted)]/50">·</span>
+                    <span className="text-[color:var(--earn-faint)]">·</span>
                     <span className="inline-flex items-center gap-1" data-testid="storefront-location">
                       <MapPin className="w-3.5 h-3.5" />
                       {earner.location}
@@ -493,28 +587,34 @@ export default function StorefrontPage() {
                   </>
                 )}
                 {away && (
-                  <Badge
-                    variant="outline"
-                    className="border-amber-300 bg-amber-50 text-amber-800"
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] uppercase tracking-[0.08em]"
+                    style={{
+                      borderWidth: 1,
+                      borderStyle: "solid",
+                      borderColor: "var(--earn-gold-ink)",
+                      background: "var(--earn-gold-wash)",
+                      color: "var(--earn-gold-ink)",
+                    }}
                     data-testid="badge-storefront-away"
                   >
                     Away — back {awayUntilLabel}
-                  </Badge>
+                  </span>
                 )}
               </div>
 
               {away?.message && (
-                <p className="mt-1 text-sm text-amber-800" data-testid="storefront-away-message">
+                <p className="mt-1.5 text-sm text-[color:var(--earn-gold-ink)]" data-testid="storefront-away-message">
                   {away.message}
                 </p>
               )}
 
               {earner.bio && (
-                <p className="mt-2.5 text-sm text-[color:var(--earn-ink)] max-w-2xl">{earner.bio}</p>
+                <p className="mt-2.5 text-sm leading-relaxed text-[color:var(--earn-ink)] max-w-2xl">{earner.bio}</p>
               )}
 
               {/* Proof line — rating + member-since, both real fields (§13: no fabricated stats). */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-semibold text-[color:var(--earn-muted)]">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
                 <span data-testid="storefront-earner-rating">
                   <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
                 </span>
@@ -533,21 +633,38 @@ export default function StorefrontPage() {
                 mismatched in height). From `sm:` up they sit side by side at their own
                 natural width in the grid's `auto` column. On your own storefront there was
                 previously no way back to editing from here — a lone "Share" button — so an
-                "Edit profile" action replaces "Message @you" instead. */}
-            <div className="flex flex-col sm:flex-row gap-2 sm:pt-4 col-span-2 sm:col-span-1">
+                "Edit profile" action replaces "Message @you" instead.
+                `sm:items-start` is the restyle's one geometry change: as a grid item this
+                column stretched to the hero row's full height, so from `sm:` up the two
+                buttons rendered as tall blocks. It is `sm:`-scoped, so the mobile
+                flex-col/full-width stacking above is untouched. */}
+            <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:pt-4 col-span-2 sm:col-span-1">
               {isOwnStorefront ? (
                 <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full sm:w-auto">
-                  <Button className="w-full sm:w-auto" data-testid="button-edit-storefront">
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                    data-testid="button-edit-storefront"
+                  >
                     Edit profile
                   </Button>
                 </Link>
               ) : (
-                <Button className="w-full sm:w-auto" onClick={messageEarner} data-testid="button-message-storefront">
+                <Button
+                  className="w-full sm:w-auto text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                  onClick={messageEarner}
+                  data-testid="button-message-storefront"
+                >
                   <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
                   <span className="truncate">Message @{earner.handle}</span>
                 </Button>
               )}
-              <Button variant="outline" className="w-full sm:w-auto" onClick={copyLink} data-testid="button-share-storefront">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                onClick={copyLink}
+                data-testid="button-share-storefront"
+              >
                 <Share2 className="w-4 h-4 mr-1.5 shrink-0" />
                 Share
               </Button>
@@ -559,42 +676,42 @@ export default function StorefrontPage() {
             year, real area of expertise (the earner's own location), and an honest multi-lane
             note (rendered only when there genuinely is more than one lane). */}
         <div
-          className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 rounded-xl border bg-[var(--earn-card)] px-6 py-4"
+          className={`mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 px-6 py-4 ${CARD_SHELL}`}
           style={{ fontFamily: EARN_MONO }}
           data-testid="storefront-facts"
         >
           <div>
-            <div className="text-xl font-bold tabular-nums" data-testid="fact-offerings">{earner.offeringsCount}</div>
-            <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Offerings</div>
+            <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-offerings">{earner.offeringsCount}</div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">Offerings</div>
           </div>
-          <div className="border-l pl-8">
-            <div className="text-xl font-bold tabular-nums" data-testid="fact-reviews">{earner.reviewCount}</div>
-            <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Reviews</div>
+          <div className="border-l border-[color:var(--earn-border)] pl-8">
+            <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-reviews">{earner.reviewCount}</div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">Reviews</div>
           </div>
           {/* Ruling 7: renders ONLY when the earner has attributed gems — no zero tile. */}
           {(earner.gemsSharedCount ?? 0) > 0 && (
-            <div className="border-l pl-8">
-              <div className="text-xl font-bold tabular-nums" data-testid="fact-gems-shared">{earner.gemsSharedCount}</div>
-              <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">
+            <div className="border-l border-[color:var(--earn-border)] pl-8">
+              <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-gems-shared">{earner.gemsSharedCount}</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">
                 {earner.gemsSharedCount === 1 ? "Gem shared" : "Gems shared"}
               </div>
             </div>
           )}
           {memberSinceYear && (
-            <div className="border-l pl-8">
-              <div className="text-xl font-bold tabular-nums" data-testid="fact-member-since">{memberSinceYear}</div>
-              <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">On Traveloure since</div>
+            <div className="border-l border-[color:var(--earn-border)] pl-8">
+              <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-member-since">{memberSinceYear}</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">On Traveloure since</div>
             </div>
           )}
           {earner.location && (
-            <div className="border-l pl-8">
-              <div className="text-xl font-bold" data-testid="fact-location">{earner.location}</div>
-              <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Area of expertise</div>
+            <div className="border-l border-[color:var(--earn-border)] pl-8">
+              <div className="text-xl font-semibold text-[color:var(--earn-ink)]" data-testid="fact-location">{earner.location}</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">Area of expertise</div>
             </div>
           )}
           {planWaysNote && (
-            <div className="flex items-start gap-2 text-xs text-[color:var(--earn-muted)] sm:ml-auto max-w-sm" data-testid="storefront-plan-ways-note">
-              <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+            <div className="flex items-start gap-2 text-[11px] leading-relaxed text-[color:var(--earn-muted)] sm:ml-auto max-w-sm" data-testid="storefront-plan-ways-note">
+              <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-[color:var(--earn-teal-ink)]" />
               <span>{planWaysNote}</span>
             </div>
           )}
@@ -606,8 +723,8 @@ export default function StorefrontPage() {
             hook; this is the fuller story (same text today — same-treatment across
             expert-detail.tsx and this page). Honest-omit: renders nothing when empty. */}
         {earner.bio && (
-          <section className="mt-6 rounded-xl border bg-[var(--earn-card)] px-6 py-5" data-testid="storefront-about">
-            <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>
+          <section className={`mt-6 px-6 py-5 ${CARD_SHELL}`} data-testid="storefront-about">
+            <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>
               About
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--earn-ink)]">{earner.bio}</p>
@@ -620,17 +737,17 @@ export default function StorefrontPage() {
         <section className="mt-10 sm:mt-14">
           <div className="mb-4 flex items-end justify-between gap-3">
             <div>
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>Choose your starting point</div>
-              <h2 className="mt-0.5 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{offeringsHeading}</h2>
+              <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>Choose your starting point</div>
+              <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{offeringsHeading}</h2>
             </div>
-            <p className="text-sm text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }} data-testid="storefront-offering-count">
+            <p className="text-[11px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }} data-testid="storefront-offering-count">
               {visibleTotal} offering{visibleTotal === 1 ? "" : "s"}
             </p>
           </div>
 
           {availableCategories.length > 1 && (
             <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex gap-1 overflow-x-auto rounded-lg bg-[var(--earn-chip)] p-1" role="tablist" aria-label="Offering categories">
+              <div className="flex gap-1 overflow-x-auto rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] p-1" role="tablist" aria-label="Offering categories">
                 {availableCategories.map((c) => (
                   <button
                     key={c}
@@ -639,15 +756,18 @@ export default function StorefrontPage() {
                     aria-selected={category === c}
                     onClick={() => setCategory(c)}
                     data-testid={`tab-storefront-category-${categorySlug(c)}`}
-                    className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
-                      category === c ? "bg-[var(--earn-card)] text-[color:var(--earn-ink)] shadow-sm" : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)]"
+                    style={{ fontFamily: EARN_MONO }}
+                    className={`whitespace-nowrap rounded-md px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                      category === c
+                        ? "bg-[var(--earn-card)] text-[color:var(--earn-ink)]"
+                        : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)]"
                     }`}
                   >
                     {c}
                   </button>
                 ))}
               </div>
-              <label className="flex items-center gap-2 rounded-lg border bg-[var(--earn-card)] px-3 py-1.5 text-sm text-[color:var(--earn-muted)] min-w-[200px]">
+              <label className="flex items-center gap-2 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-card)] px-3 py-1.5 text-sm text-[color:var(--earn-muted)] min-w-[200px]">
                 <Search className="w-4 h-4 shrink-0" />
                 <input
                   value={query}
@@ -655,7 +775,7 @@ export default function StorefrontPage() {
                   placeholder="Search this storefront"
                   aria-label="Search this storefront"
                   data-testid="input-storefront-search"
-                  className="w-full min-w-0 border-0 bg-transparent p-0 text-sm text-[color:var(--earn-ink)] outline-none placeholder:text-[color:var(--earn-muted)]"
+                  className="w-full min-w-0 border-0 bg-transparent p-0 text-sm text-[color:var(--earn-ink)] outline-none placeholder:text-[color:var(--earn-faint)]"
                 />
                 {query && (
                   <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
@@ -666,11 +786,27 @@ export default function StorefrontPage() {
             </div>
           )}
 
-          {visibleTotal === 0 && (
-            <div className="flex min-h-[130px] flex-wrap items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center text-sm text-[color:var(--earn-muted)]" data-testid="storefront-empty-filter">
+          {/* §13: nothing published is the earner's own state, not the visitor's filter — it
+              says so plainly, claims no count, and offers no control that could not act. */}
+          {!hasAnyOfferings && (
+            <div
+              className="rounded-xl border border-dashed border-[color:var(--earn-border-dash)] px-6 py-8 text-center"
+              data-testid="storefront-empty-listings"
+            >
+              <div className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }}>
+                Nothing listed yet
+              </div>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[color:var(--earn-muted)]">
+                {firstName} has not published an offering on this storefront. Anything published later shows up here.
+              </p>
+            </div>
+          )}
+
+          {hasAnyOfferings && visibleTotal === 0 && (
+            <div className="flex min-h-[130px] flex-wrap items-center justify-center gap-2 rounded-xl border border-dashed border-[color:var(--earn-border-dash)] p-6 text-center text-sm text-[color:var(--earn-muted)]" data-testid="storefront-empty-filter">
               <Search className="w-5 h-5" />
               <span>No offerings match your filter.</span>
-              <button type="button" onClick={clearFilters} className="font-semibold text-primary">
+              <button type="button" onClick={clearFilters} className="font-semibold text-[color:var(--earn-coral-ink)]">
                 Clear filters
               </button>
             </div>
@@ -753,7 +889,14 @@ export default function StorefrontPage() {
                       chips={chips}
                       // Ready Made Trips have no review mechanism yet (§13) — no rating line,
                       // never a perpetual fake "New" badge for a lane that can't earn reviews.
-                      ratingSlot={<span className="text-[11px] font-medium text-[color:var(--earn-muted)]">Complete trip</span>}
+                      ratingSlot={
+                        <span
+                          className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--earn-muted)]"
+                          style={{ fontFamily: EARN_MONO }}
+                        >
+                          Complete trip
+                        </span>
+                      }
                       price={typeof r.priceCents === "number" ? `$${(r.priceCents / 100).toFixed(0)}` : "Contact for price"}
                       cta="Preview trip →"
                     />
@@ -766,23 +909,30 @@ export default function StorefrontPage() {
 
         {/* "Not sure what you're looking for?" message band — same wiring as the hero CTA. */}
         {!isOwnStorefront && (
-          <div className="mt-4 flex flex-wrap items-center gap-5 rounded-xl border bg-gradient-to-br from-primary/5 to-card p-6" data-testid="storefront-message-band">
+          <div className={`mt-4 flex flex-wrap items-center gap-5 p-6 ${CARD_SHELL}`} data-testid="storefront-message-band">
             {earner.profileImageUrl ? (
               <img src={earner.profileImageUrl} alt={earner.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
             ) : (
-              <div className="w-14 h-14 rounded-full shrink-0 flex items-center justify-center text-lg font-bold text-white bg-gradient-to-br from-primary/60 to-primary">
+              <div
+                className="w-14 h-14 rounded-full shrink-0 flex items-center justify-center bg-[var(--earn-chip)] text-lg font-semibold text-[color:var(--earn-navy)]"
+                style={{ fontFamily: FRAUNCES }}
+              >
                 {initial}
               </div>
             )}
             <div className="flex-1 min-w-[240px]">
-              <div className="text-xs font-bold uppercase tracking-wider text-[color:var(--earn-muted)]">A good place to begin</div>
-              <h3 className="mt-0.5 font-bold">Not sure what you're looking for?</h3>
-              <p className="mt-1 text-sm text-[color:var(--earn-muted)] max-w-xl">
+              <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>A good place to begin</div>
+              <h3 className="mt-1 text-[20px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>Not sure what you're looking for?</h3>
+              <p className="mt-1 text-sm leading-relaxed text-[color:var(--earn-muted)] max-w-xl">
                 Tell {firstName} what you're planning — a private tour, a special
                 occasion, something seasonal — and get pointed to the right offering, or something custom.
               </p>
             </div>
-            <Button onClick={messageEarner} data-testid="button-message-band">
+            <Button
+              className="text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+              onClick={messageEarner}
+              data-testid="button-message-band"
+            >
               <MessageCircle className="w-4 h-4 mr-1.5" />
               Start a conversation
             </Button>
@@ -791,32 +941,32 @@ export default function StorefrontPage() {
 
         {/* Trust strip — three real, general platform facts (no response-time/fabricated stats). */}
         <div
-          className="mt-8 mb-10 grid gap-5 sm:grid-cols-3 border-t pt-6 text-sm"
+          className="mt-8 mb-10 grid gap-5 sm:grid-cols-3 border-t border-[color:var(--earn-border)] pt-6 text-sm"
           data-testid="storefront-trust-strip"
         >
           <div className="flex gap-2">
-            <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+            <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-[color:var(--earn-teal-ink)]" />
             <div>
-              <strong className="block text-xs font-semibold mb-0.5">Payment held until your booking completes</strong>
-              <span className="text-xs text-[color:var(--earn-muted)]">
+              <strong className="block text-xs font-semibold mb-0.5 text-[color:var(--earn-ink)]">Payment held until your booking completes</strong>
+              <span className="text-xs leading-relaxed text-[color:var(--earn-muted)]">
                 Funds are secured through Traveloure and release to {firstName} only after your experience.
               </span>
             </div>
           </div>
           <div className="flex gap-2">
-            <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+            <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0 text-[color:var(--earn-teal-ink)]" />
             <div>
-              <strong className="block text-xs font-semibold mb-0.5">Every listing is admin-reviewed</strong>
-              <span className="text-xs text-[color:var(--earn-muted)]">
+              <strong className="block text-xs font-semibold mb-0.5 text-[color:var(--earn-ink)]">Every listing is admin-reviewed</strong>
+              <span className="text-xs leading-relaxed text-[color:var(--earn-muted)]">
                 Offerings appear here only after Traveloure approves them.
               </span>
             </div>
           </div>
           <div className="flex gap-2">
-            <Handshake className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+            <Handshake className="w-4 h-4 mt-0.5 shrink-0 text-[color:var(--earn-teal-ink)]" />
             <div>
-              <strong className="block text-xs font-semibold mb-0.5">Book and message in one place</strong>
-              <span className="text-xs text-[color:var(--earn-muted)]">
+              <strong className="block text-xs font-semibold mb-0.5 text-[color:var(--earn-ink)]">Book and message in one place</strong>
+              <span className="text-xs leading-relaxed text-[color:var(--earn-muted)]">
                 Your conversation, booking, and receipts stay on Traveloure.
               </span>
             </div>
