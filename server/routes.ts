@@ -2,6 +2,8 @@ import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId, getDbRole } from "./utils/auth";
+// ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
+import { isCustomVenueOwner } from "./utils/custom-venue-owner";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -6068,7 +6070,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!venue) {
           return res.status(404).json({ message: "Custom venue not found" });
         }
-        if (venue.userId !== userId) {
+        if (!isCustomVenueOwner(venue, userId)) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       }
@@ -7896,8 +7898,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!venue) {
           return res.status(404).json({ message: "Custom venue not found" });
         }
-        // Verify user owns the custom venue
-        if (venue.userId !== userId) {
+        // Verify user owns the custom venue — one shared predicate, never a re-typed comparison.
+        if (!isCustomVenueOwner(venue, userId)) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       }
