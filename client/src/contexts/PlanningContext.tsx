@@ -82,6 +82,24 @@ export interface PlanningSource {
    *  door with no occasion (or a Moment with no seeded row) passes nothing and NOTHING is
    *  seeded, never a guessed slug (§13). */
   experienceSlug?: string;
+  /**
+   * AUTHORING MODE — this door is an EXPERT building a plan for a CLIENT (ledger
+   * `2026-09-04-step4-variants-fields`). It relabels step 4's actor ("Who is traveling with your
+   * client?" / "The client's party") and nothing else: same steps, same columns, same writes, same
+   * gates. A label is not a permission.
+   *
+   * PASSED BY THE DOOR, NEVER INFERRED FROM THE VIEWER'S ROLE. The expert authoring builds are the
+   * ones whose trips carry `userId = NULL` and an `authorId` (migration 133), and only the surface
+   * that opened the modal knows it is one of those — an expert planning their own holiday is a
+   * TRAVELER, and a role check would relabel their own plan as a client's.
+   *
+   * NO DOOR SETS THIS TODAY, and that is the honest state rather than an oversight: every current
+   * opener (`landing`, `/start/events`, the marketplace surfaces, the cart header, the Trip Strip,
+   * the experience template, the pricing ladder) is a traveler door. The expert authoring builds
+   * are server rails (`ready-made.routes.ts`, `expert-workspace.routes.ts`) with no plan-modal
+   * surface yet; when one is built it passes `authoring: true` here and needs nothing else.
+   */
+  authoring?: boolean;
 }
 
 interface PlanningApi {
@@ -253,6 +271,9 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         onOpenChange={(v) => (v ? setModalOpen(true) : close())}
         source={source}
         branches={branches}
+        // The door's own answer, forwarded verbatim — never derived from `user.role` here (see the
+        // field's note on `PlanningSource`).
+        authoring={source?.authoring === true}
         continueHref={continueHref}
         continueLabel={continueLabel}
         onContinue={(href) => setLocation(href)}

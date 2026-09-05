@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { TemporalAnchorManager } from "./temporal-anchor-manager";
+import { VendorContractBoard } from "./vendor-contract-board";
 import { ScheduleValidator } from "./schedule-validator";
 import { EnergyBudgetDisplay } from "./energy-budget-display";
 
@@ -319,7 +320,7 @@ export function TripLogisticsDashboard({
 
       {/* Tabbed detail sections */}
       <Tabs defaultValue="budget" className="w-full" data-testid="tabs-logistics">
-        <TabsList className="grid grid-cols-3 w-full max-w-md">
+        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
           <TabsTrigger value="budget" data-testid="tab-budget">
             <Wallet className="w-3.5 h-3.5 mr-1.5" />
             Budget
@@ -327,6 +328,15 @@ export function TripLogisticsDashboard({
           <TabsTrigger value="people" data-testid="tab-people">
             <Users className="w-3.5 h-3.5 mr-1.5" />
             People
+          </TabsTrigger>
+          {/*
+            CONTRACTS — the rows behind the stat card above (ledger `2026-09-04-plan-islands`).
+            The card shows a count; this tab shows what it is a count OF. Read-only: creating or
+            altering a contract is owner-only and lives on its own rails.
+          */}
+          <TabsTrigger value="contracts" data-testid="tab-contracts">
+            <Building2 className="w-3.5 h-3.5 mr-1.5" />
+            Contracts
           </TabsTrigger>
           <TabsTrigger value="planning" data-testid="tab-planning">
             <CalendarClock className="w-3.5 h-3.5 mr-1.5" />
@@ -566,6 +576,11 @@ export function TripLogisticsDashboard({
             </Card>
           </div>
           </div>
+        </TabsContent>
+
+        {/* Contracts tab — the vendor-contract board (read-only). */}
+        <TabsContent value="contracts" className="mt-4">
+          <VendorContractBoard tripId={tripId} />
         </TabsContent>
 
         {/* Planning tab */}

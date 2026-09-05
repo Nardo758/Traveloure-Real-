@@ -2103,6 +2103,7 @@ export default function ServiceDetailPage() {
         listingName={mismatchGate.listing?.name ?? ""}
         listingMeta={mismatchGate.listing?.meta ?? null}
         onAddAnyway={mismatchGate.confirm}
+        onAddAsStop={mismatchGate.addAsStop}
         onCancel={mismatchGate.cancel}
       />
     </Layout>

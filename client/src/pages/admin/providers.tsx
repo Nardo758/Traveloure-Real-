@@ -60,7 +60,10 @@ interface PlatformProvider {
   id: string;
   userId: string;
   businessName: string;
+  /** The LEGAL ENTITY (LLC, Sole Proprietorship, …) — never the trade. See serviceIconForOffering. */
   businessType: string;
+  /** `service_provider_forms.offering_type_key` (migration 107). null = the applicant chose none. */
+  offeringTypeKey?: string | null;
   country: string;
   address: string;
   serviceOffers: string[];
@@ -94,14 +97,31 @@ const SERVICE_TYPE_ICONS: Record<string, any> = {
   default: ShoppingBag,
 };
 
-function serviceIcon(businessType: string) {
-  const t = businessType.toLowerCase();
+/**
+ * Gap 16 (ledger `2026-09-04-earn-contained-fixes`): this used to take `businessType` — the
+ * LEGAL ENTITY, whose value set is "Sole Proprietorship | Partnership | LLC | Corporation |
+ * Non-Profit" — and match it against service words. Not one of those five strings contains
+ * "photo", "chef", "driv", "spa", "fit" or "music", so the branch chain never fired and every
+ * provider on this queue got the same fallback bag icon, while the row's "type" badge showed a
+ * legal entity where a reader expects the trade.
+ *
+ * The service is `service_provider_forms.offering_type_key` (migration 107), which the queue
+ * response already carries, and the name for it is that row's `service_offering_types.display_name`
+ * — read live from the same public catalog /earn reads, never restated here (§18 rule 1: the
+ * catalog is admin-editable and a copy in code is wrong the day someone renames a row).
+ *
+ * §13: a provider with NO offering key gets the NEUTRAL bag and no invented trade label. The
+ * legal entity keeps its own labelled field beside it — it is a real fact, just not this one.
+ */
+function serviceIconForOffering(displayName: string | null | undefined) {
+  const t = (displayName ?? "").toLowerCase();
+  if (!t) return ShoppingBag;
   if (t.includes("photo")) return Camera;
-  if (t.includes("chef") || t.includes("cook") || t.includes("food")) return ChefHat;
-  if (t.includes("driv") || t.includes("transport")) return Car;
+  if (t.includes("chef") || t.includes("cook") || t.includes("food") || t.includes("cater") || t.includes("dining")) return ChefHat;
+  if (t.includes("driv") || t.includes("transport") || t.includes("transfer")) return Car;
   if (t.includes("spa") || t.includes("wellness") || t.includes("massage")) return Waves;
   if (t.includes("fit") || t.includes("gym") || t.includes("yoga")) return Dumbbell;
-  if (t.includes("music") || t.includes("enter")) return Music;
+  if (t.includes("music") || t.includes("entertain") || t.includes("dj")) return Music;
   return ShoppingBag;
 }
 
@@ -151,6 +171,18 @@ export default function AdminProviders() {
   const { data: platformProviders = [], isLoading: providersLoading } = useQuery<PlatformProvider[]>({
     queryKey: ["/api/admin/platform-service-providers"],
   });
+
+  // Gap 16: `offering_type_key` → `display_name`, read from the public provider catalog (the
+  // same rows /earn and the provider wizard read). Never restated in code — the catalog is
+  // admin-editable, so a hardcoded map would be stale the day a row is renamed (§18 rule 1).
+  const { data: offeringTypes = [] } = useQuery<Array<{ offering_type_key: string; display_name: string }>>({
+    queryKey: ["/api/offering-types/services"],
+    staleTime: 5 * 60_000,
+  });
+  const offeringNameByKey = new Map(offeringTypes.map((o) => [o.offering_type_key, o.display_name]));
+  /** The provider's trade, or null when they chose no offering (§13: never guessed from the legal entity). */
+  const offeringNameFor = (p: PlatformProvider) =>
+    (p.offeringTypeKey ? offeringNameByKey.get(p.offeringTypeKey) : undefined) ?? null;
 
   const pendingApps = applications.filter(a => a.status === "pending");
   const approvedApps = applications.filter(a => a.status === "approved");
@@ -248,6 +280,7 @@ export default function AdminProviders() {
     const q = searchQuery.toLowerCase();
     return p.businessName.toLowerCase().includes(q)
       || p.businessType.toLowerCase().includes(q)
+      || (offeringNameFor(p) ?? "").toLowerCase().includes(q)
       || p.country.toLowerCase().includes(q)
       || (p.user?.name ?? "").toLowerCase().includes(q);
   });
@@ -433,7 +466,8 @@ export default function AdminProviders() {
               </Card>
             ) : (
               filteredPlatformProviders.map((provider) => {
-                const Icon = serviceIcon(provider.businessType);
+                const offeringName = offeringNameFor(provider);
+                const Icon = serviceIconForOffering(offeringName);
                 const isExpanded = expandedProvider === provider.id;
                 const initials = (provider.user?.name ?? provider.businessName)
                   .split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -462,7 +496,18 @@ export default function AdminProviders() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <span className="font-semibold text-gray-900">{provider.businessName}</span>
-                            <Badge variant="outline" className="text-xs">{provider.businessType}</Badge>
+                            {/* Gap 16: the TRADE (offering) is the badge a reader expects here; it
+                                renders only when the provider actually chose one. The legal entity
+                                is a separate, explicitly LABELLED field below — never a stand-in. */}
+                            {offeringName ? (
+                              <Badge variant="outline" className="text-xs" data-testid={`badge-provider-offering-${provider.id}`}>
+                                {offeringName}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-gray-400" data-testid={`badge-provider-offering-none-${provider.id}`}>
+                                No offering selected
+                              </Badge>
+                            )}
                             {provider.activeServices === 0 && (
                               <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1">
                                 <AlertCircle className="w-3 h-3" /> No active services
@@ -471,6 +516,9 @@ export default function AdminProviders() {
                             <StripeStatusBadge provider={provider} />
                           </div>
                           <div className="flex items-center gap-3 text-xs text-gray-500">
+                            <span data-testid={`text-provider-business-type-${provider.id}`}>
+                              Legal entity: {provider.businessType}
+                            </span>
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3 h-3" /> {provider.address}, {provider.country}
                             </span>

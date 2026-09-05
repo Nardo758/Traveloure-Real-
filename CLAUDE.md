@@ -490,6 +490,12 @@ This document captures architectural decisions to maintain consistency across co
     `GET /api/trips/:id` (the `trips.routes.ts` copy — the monolith's inline twin was already
     removed and is annotated so it is not re-added) and the plancard payload each carry
     `destinations: [...]` behind their existing gates. The stop-list UI is a separate lane.
+    **The client rail landed with ledger `2026-09-04-plan-stops-ui`:** `default_stops` finally has
+    a reader (`stopsShape`, NULL ⇒ `one`), the plan modal's step 2 is that ordered list under
+    `many` (row 1 IS the destination field), the location-mismatch alert compares EVERY stop and
+    can add the listing's city as one, and both surfaces write through the single client writer
+    `client/src/lib/plan-stops-writer.ts` — never a second rail, and never a list the caller did
+    not first read.
 
 35. **AN EVENT CARRIES ITS OWN WALL-CLOCK TIME, AND THE PLAN'S MAIN MOMENT STAYS AN ANCHOR
     (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-stops-and-event-time`; migration
@@ -577,6 +583,53 @@ This document captures architectural decisions to maintain consistency across co
     `user_experiences` has no time-of-day column. Surface: `client/src/pages/plan-guests.tsx` at
     `/plans/:tripId/guests`; per-event invites keep their ONE writer (`GuestInviteManager`), and a
     `default_visibility: hidden` occasion has no guest surface at all (ruling 28, `SlipProposal`).
+    **The TRAVELING PARTY now has its own surface (ledger `2026-09-04-plan-islands`):**
+    `SlipTravelingParty`, a section on the slip beside "Guests & invites" that adds / edits /
+    removes a `trip_participants` row (name, role, arrival, departure, accessibility needs,
+    mobility level — never a money column, §14) through the EXISTING owner-gated participant
+    routes, hidden under a `default_visibility: hidden` occasion exactly as Guests is; it says on
+    screen that it answers "who is traveling" while the derived roster answers "who is invited",
+    and the two are **still never merged**.
+
+38. **STEP 4 ASKS A SECOND QUESTION, AND THE OCCASION'S OWN SWITCHES CHOOSE IT (decision-maker
+    delegated Sep 4, 2026 — ledger `2026-09-04-step4-variants-fields`; migration 284).** Ruling 33
+    shipped step 4 with a ruled omission — the Step4Variants artboard's corporate budget-approver
+    and family accessibility fields were NOT built because no column held either. Migration 284 adds
+    the three: `trips.budget_approver_name` (varchar 120), `budget_approver_email` (varchar 255) and
+    `accessibility_note` (TEXT, app-capped at 2000). Additive nullable, **NO DEFAULT and NO DB
+    CHECK** (publish-trap posture — migrations 181/195/273/275/276/277/279/281/282), no backfill,
+    **declared in `shared/schema.ts`** per the deploy-push durability rule.
+    **WHICH ONE IS ASKED IS THE ROW'S ANSWER, NOT A CLASS (ruling 28):** the approver pair when the
+    party noun resolves to **"attendees"**, the note when **`default_guests` is explicitly true**.
+    The two predicates live ONCE in `client/src/lib/plan-steps.ts` (`asksBudgetApprover`,
+    `asksAccessibilityNote`) beside the door table, and the first DELEGATES to `partyNoun` rather
+    than re-reading `vocabulary` — a second reading of that pair would drift from the label it sits
+    under (§18 rule 1). **NULL = the question was never asked, a finished answer (§13):** every
+    reader OMITS the row and never renders "no budget approver" or "no accessibility needs", which
+    are claims only the traveler can make. `accessibility_note` is deliberately **NOT**
+    `trip_participants.accessibility_needs` — that is one PARTICIPANT's stated needs about themself,
+    a different person's answer on a different surface (the line ruling 24 drew for `access_notes`),
+    and it is free text because no accessibility standard is claimed on anyone's behalf.
+    **ADMISSION IS AN ALLOWLIST, AND THERE IS EXACTLY ONE RAIL EACH (§19):** the pick-based
+    `tripOccasionBody` on the owner-gated `PATCH /api/trips/:tripId/occasion` (the rail
+    `adults`/`kids` already ride — no new route) and, pre-trip, the hand-written `tripContextSchema`
+    on `PUT /api/trip-context`. Both `.extend()` the SAME `shared/schema.ts` field schemas, so the
+    pen and the row cannot disagree; `insertTripSchema` **omits all three**, because under an
+    `.omit()` denylist a freshly-added column is client-settable BY DEFAULT and the mint body would
+    otherwise be a second author. They reach the trip row at MINT the way the party pair does: the
+    finish mints, then re-enters the ONE `commitPlan`, which PATCHes the new id.
+    **HOME-CITY DEFAULT (step 2):** a day-shaped occasion (`default_duration = "day"` — a date
+    night) pre-fills the destination from the signed-in member's `users.home_city`, read off the
+    payload the client already fetches (`GET /api/auth/user`; `sanitizeUser` strips only the
+    password and Instagram token, so no new route). **A SHOWN DEFAULT AND A CHOSEN VALUE ARE
+    DIFFERENT FACTS (§13):** it is a visibly filled, clearable value that says out loud where it
+    came from, and it is NOT written to the pen or the row until the traveler moves FORWARD past
+    step 2 — one confirmation point (`goToStep`), offered once per open.
+    **AUTHORING RELABEL:** an expert building for a client sees "Who is traveling with your client?"
+    over "The client's party". It is an explicit `PlanningSource.authoring` flag passed by the door,
+    **never inferred from the viewer's role** (an expert planning their own holiday is a traveler),
+    it grants nothing, and no door sets it today — the expert authoring builds are server rails with
+    no plan-modal surface yet.
 
 39. **EVERY ADD SURFACE IS A VIEW OF `itinerary_items`, AND THE CART IS ONE OF THEM (decision-maker
     ratified Sep 4, 2026 — ledger rows `2026-09-03-slip-convergence`, `2026-09-03-trip-pdf`,

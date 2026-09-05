@@ -14,6 +14,17 @@
  * Owner-only and collapsed by default (this is a build tool, not the plan itself). Self-contained:
  * it fetches the full trip (for eventType) and the user-experiences link the guest manager needs,
  * exactly as trip-details did — SlipView's slim DTO does not carry those.
+ *
+ * TWO MORE ROWS LANDED HERE (ledger `2026-09-04-plan-islands`), both for the same reason row 14
+ * is here: this is the plan's ONE home for plan-level logistics, and both were machinery with no
+ * door from the couple's own page.
+ *   - TRAVELING PARTY (`SlipTravelingParty`) — `trip_participants` had a rich roster and no
+ *     surface that could populate it. It sits BESIDE "Guests & invites" and says out loud that it
+ *     is a different list: who is TRAVELING, versus who is INVITED. Locked Decision 37 keeps the
+ *     two apart, and the hidden-occasion gate covers both for the same reason.
+ *   - ORGANIZE INTO EVENTS (`SlipOrganizeEvents`) — a ready-made buyer's clone lands here with
+ *     items and zero events, and step 5 is the only place events are created. The offer appears
+ *     once, on a scheduled occasion with no events, and never creates anything on its own.
  */
 import { useState } from "react";
 import { Link } from "wouter";
@@ -34,6 +45,9 @@ import {
 } from "@/components/logistics";
 import { GuestInviteManager } from "@/components/GuestInviteManager";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
+import { SlipTravelingParty } from "./SlipTravelingParty";
+import { SlipOrganizeEvents } from "./SlipOrganizeEvents";
+import { canOrganizeIntoEvents } from "@/lib/organize-events";
 import type { UserExperience } from "@shared/schema";
 
 const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
@@ -80,7 +94,23 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
    * NULL, resolves to NOT hidden — the pre-switch behaviour, unchanged. Nothing disappears
    * because a row was never given a value.
    */
-  const { isHidden } = useOccasionSwitches(tripId);
+  const { occasion, isHidden } = useOccasionSwitches(tripId);
+  /**
+   * THE PLAN'S EVENTS, off the list this component already fetches — no second query and no
+   * second definition of "an event of this plan" (§18 rule 1). `user_experiences.trip_id` is the
+   * binding (Locked Decision 29); there is no uniqueness on it, so a plan holds many.
+   *
+   * `undefined` while the list is in flight is NOT zero: `canOrganizeIntoEvents` refuses a count
+   * it cannot trust, so the offer stays hidden until the list has actually answered (§13).
+   */
+  const tripEvents = allUserExperiences?.filter((e) => e.tripId === tripId);
+  const eventCount = tripEvents ? tripEvents.length : Number.NaN;
+  /**
+   * The one-time "Organize into events" offer. BOTH halves of the gate live in
+   * `canOrganizeIntoEvents`; this reads it and never restates either half. A hidden occasion is
+   * excluded for the same reason Guests is — the proposal case must not grow a schedule surface.
+   */
+  const canOrganize = !isHidden && !!occasion && canOrganizeIntoEvents(occasion, eventCount);
   const isEventTrip =
     !isHidden && (!!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase()));
 
@@ -130,6 +160,31 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
           )}
         </CollapsibleContent>
       </Collapsible>
+
+      {/*
+        ORGANIZE INTO EVENTS — the one-time offer. It sits ABOVE the two rosters because it is the
+        thing that gives the plan the events those rosters hang off (an invite belongs to an
+        event, ruling 37). It disappears the moment the plan holds one.
+      */}
+      {canOrganize && occasion && (
+        <SlipOrganizeEvents
+          tripId={tripId}
+          occasion={occasion}
+          startDate={trip?.startDate as unknown as string | null}
+          endDate={trip?.endDate as unknown as string | null}
+          destination={trip?.destination ?? null}
+          existingTitles={(tripEvents ?? []).map((e) => e.title)}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] })}
+        />
+      )}
+
+      {/*
+        THE TRAVELING PARTY — who is coming WITH you. Gated only on the hidden-occasion switch
+        (Locked Decision 28): unlike Guests, every plan has a traveling party, so there is no
+        event-trip test here. It is NEVER merged with the guest roster (Locked Decision 37) and
+        the section's own copy says which question each list answers.
+      */}
+      {!isHidden && <SlipTravelingParty tripId={tripId} />}
 
       {isEventTrip && (
         <Collapsible open={guestsOpen} onOpenChange={setGuestsOpen}>

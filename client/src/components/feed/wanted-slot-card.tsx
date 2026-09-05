@@ -7,7 +7,8 @@
  * testid the inline card carried is preserved verbatim:
  *   - wrapper testid `section-recruitment-${neighborhoodId}`
  *   - the high-demand badge `badge-high-demand` (≥5 demandCount)
- *   - the apply CTA testid `link-wanted-apply` (href unchanged: /become-expert…)
+ *   - the apply CTA testid `link-wanted-apply` (still /become-expert — its PARAMS changed;
+ *     see the note on the CTA and `lib/wanted-slot-link.ts`)
  *   - the demandCount copy branch
  * No amount/identity/rate is read here (§19 N/A — ordinary content).
  */
@@ -15,6 +16,7 @@ import { ChevronRight } from "lucide-react";
 import type { FeedItem } from "@/lib/feed-stream";
 import type { WantedSlotData } from "@/lib/feed-composition";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -25,6 +27,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
   const askExpert = useAskExpert();
   const {
     offeringLabel,
+    offeringKey,
     neighborhoodName,
     city: slotCity,
     demandCount,
@@ -72,8 +75,13 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
         </a>
       </div>
       <div className="mt-auto flex flex-wrap items-center gap-2">
+        {/* Gap 15 (ledger `2026-09-04-earn-contained-fixes`): this link used to carry
+            `offering=<display label>` — a param the expert wizard never reads — and no `type=`,
+            so a neighbourhood recruitment slot dropped the offering the demand was measured
+            against AND landed the applicant in the Trip Planner flow. The mapping now lives in
+            ONE tested place; `offeringTypeKey` is emitted only for a real catalog key. */}
         <a
-          href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offering=${encodeURIComponent(offeringLabel)}`}
+          href={buildWantedSlotSignupHref({ city: slotCity, neighborhoodName, offeringKey, offeringLabel })}
           className="inline-flex items-center gap-0.5 rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
           style={{ background: "var(--earn-gold-ink)" }}
           data-testid="link-wanted-apply"

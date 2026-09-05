@@ -3,7 +3,7 @@
  * Ledger `2026-09-04-event-time-ui`; cites `2026-09-04-stops-and-event-time` (migration 282,
  * CLAUDE.md Locked Decision 35).
  *
- * WHY THIS EXISTS. The ratified artboards (`ModalEvents.dc.html`, `TravelEvents.dc.html`) draw
+ * WHY THIS EXISTS. The ratified artboards (`Step5Events.dc.html`, `TravelEvents.dc.html`) draw
  * each ticked chip as a row of Event · Day · Time · Place, with the day and place shown already
  * filled from the plan. That is exactly the shape §13 governs: a value the platform SHOWS as a
  * default and a value the traveler CHOSE look identical on screen and are completely different
