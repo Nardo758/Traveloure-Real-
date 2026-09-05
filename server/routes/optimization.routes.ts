@@ -21,10 +21,13 @@ import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { complexityTier } from "../services/smart-sequencing.service";
 import {
-  calculateItineraryMetrics,
-  complexityTier,
-} from "../services/smart-sequencing.service";
+  computeOptimizationPreviewHeuristic,
+  legacyPreviewExtrapolation,
+  type OptimizationPreviewResult,
+} from "../services/optimization-preview.service";
+import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
@@ -61,6 +64,10 @@ router.post("/api/optimization-preview", async (req, res) => {
       return res.status(400).json({ error: "items array is required" });
     }
 
+    // The cart's body-shaped ADAPTER: a cart row has no day number and no duration of its own,
+    // so both are synthesised here. The SCORING that follows is the shared heuristic
+    // (optimization-preview.service.ts) — one implementation, two callers (§18 rule 1); the GET
+    // entry below feeds it real trip columns instead.
     const normalizedItems = items.map((it: any, i: number) => ({
       serviceType: it.serviceType || it.type || it.category || "sightseeing",
       price: it.price ?? 0,
@@ -68,21 +75,26 @@ router.post("/api/optimization-preview", async (req, res) => {
       dayNumber: it.dayNumber ?? Math.floor(i / 3) + 1,
     }));
 
-    const metrics = calculateItineraryMetrics(normalizedItems, Number(travelers) || 1, eventType);
+    // `minItems: 1` preserves this endpoint's pre-existing contract verbatim — a one-item cart
+    // has always received a scored body here, and this lane changes no existing surface.
+    const preview = computeOptimizationPreviewHeuristic(
+      normalizedItems,
+      Number(travelers) || 1,
+      eventType,
+      { minItems: 1 },
+    );
+    if (!preview.computable) {
+      return res.status(400).json({ error: preview.reason });
+    }
+    const metrics = preview.metrics;
     const tier = complexityTier(eventType);
     const { priceCents, currency, isDisabled, creditTowardCoordination } = await getFee(eventType, tier);
 
-    // Estimate improvement potential:
-    // overallScore is 0–100; lower score means more room to improve.
-    const improvementRoom = Math.max(0, 100 - metrics.overallScore);
-    const estimatedSavingsPct = Math.round(improvementRoom * 0.25); // up to 25% savings
-    const estimatedScheduleTighteningPct = Math.round(
-      (metrics.paceScore < 70 ? 70 - metrics.paceScore : 0) * 0.3
-    );
-    const estimatedCostDelta =
-      metrics.totalCost > 0
-        ? -Math.round(metrics.totalCost * (estimatedSavingsPct / 100))
-        : 0;
+    // The three EXTRAPOLATED numbers this endpoint has always returned (a flat percentage of the
+    // score gap — not a measured saving). Segregated in the service so the boundary is visible;
+    // the trip-addressed entry below deliberately does not emit them (§13).
+    const { estimatedSavingsPct, estimatedCostDelta, estimatedScheduleTighteningPct } =
+      legacyPreviewExtrapolation(preview);
 
     // Check free re-run for authenticated users
     let freeRerun = false;
@@ -106,7 +118,7 @@ router.post("/api/optimization-preview", async (req, res) => {
       estimatedSavingsPct,
       estimatedCostDelta,
       estimatedScheduleTighteningPct,
-      currentScore: Math.round(metrics.overallScore),
+      currentScore: preview.currentScore,
       complexityTier: tier,
       feeCents: isDisabled ? 0 : priceCents,
       currency,
@@ -122,6 +134,106 @@ router.post("/api/optimization-preview", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[optimization-preview] error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/optimization-preview?tripId=…
+ *
+ * THE TRIP-ADDRESSED ENTRY (ledger `2026-09-05-optimize-preview-on-slip`; CLAUDE.md Locked
+ * Decision 41 (d)). The slip already has a trip; the server already holds its items. So the
+ * slip sends an id and NOTHING else — no item list, no prices, no day numbers. That is the §14
+ * read posture applied here: what a preview scores is read from the record, never accepted from
+ * the caller, so a crafted body cannot make a plan look worse (or better) than it is.
+ *
+ * The read-set is `loadTripOptimizerInputs` — the SINGLE expression of the optimizer contract
+ * (`in_planning` + `ready_for_checkout` are re-plannable; `purchased` is an immovable
+ * constraint; `with_expert` is never read). Using it is the point: the preview and the paid run
+ * must be looking at the same plan, or the preview describes a run that will not happen.
+ *
+ * NO FEE IS RETURNED HERE. The fee has one home for this surface — `GET /api/optimization-fee`
+ * below — and a second copy on this response would be a second authority for the same number
+ * (§18 rule 1). NO PAYMENT IS CREATED, NO CHARGE IS MADE and no Stripe object is touched: this
+ * endpoint is the "see it before you pay" half of the ruling.
+ *
+ * Gate: `authorizeTripLogistics` — owner ‖ assigned advisor ‖ trip author ‖ admin, the same
+ * principal set the plan-reading surfaces use.
+ */
+router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
+  try {
+    const tripId = typeof req.query.tripId === "string" ? req.query.tripId.trim() : "";
+    if (!tripId) {
+      return res.status(400).json({
+        error: "trip_required",
+        message: "Provide tripId to preview a plan.",
+      });
+    }
+
+    // §14 (reads): the actor is the SESSION user. An owner id on the query string is not read.
+    const userId = getUserId(req);
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/optimization-preview");
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+
+    const inputs = await loadTripOptimizerInputs(tripId);
+
+    // Event type drives only the heuristic's own score WEIGHTS (TEMPLATE_WEIGHTS) — it is not a
+    // fee input on this path, because this path returns no fee. The party size is deliberately
+    // NOT read: `travelers` reaches only `avgCostPerPerson`, which this response does not emit,
+    // and reading a column an answer does not depend on invites the reader to think it does.
+    const [tripRow] = await db
+      .select({ eventType: trips.eventType })
+      .from(trips)
+      .where(eq(trips.id, tripId))
+      .limit(1);
+
+    const preview: OptimizationPreviewResult = computeOptimizationPreviewHeuristic(
+      // `loadTripOptimizerInputs` always sets both `serviceType` and `dayNumber` (the column is
+      // NOT NULL and the itemType map never returns undefined); the optimizer's shared item type
+      // declares them optional for its OTHER producers. An item that somehow arrives without
+      // either is DROPPED rather than given an invented type or day (§13) — and the item count
+      // this response reports is taken from what was actually scored, so a drop is visible in the
+      // number rather than hidden behind it.
+      inputs.baselineItems.flatMap((item) =>
+        item.serviceType && item.dayNumber != null
+          ? [
+              {
+                serviceType: item.serviceType,
+                // Absent stays absent. `calculateItineraryMetrics` treats a missing price as no
+                // cost and a missing duration as its own default — neither is invented here.
+                price: item.price,
+                duration: item.duration,
+                dayNumber: item.dayNumber,
+              },
+            ]
+          : [],
+      ),
+      1,
+      tripRow?.eventType ?? undefined,
+    );
+
+    if (!preview.computable) {
+      // The heuristic's OWN reason, passed through unchanged — the client never restates it.
+      return res.json({ computable: false, reason: preview.reason });
+    }
+
+    // Projected explicitly. `metrics` (the full internal object) and the three extrapolated
+    // cart numbers are NOT emitted: nothing here measures money or minutes a re-ordering would
+    // recover, so this response carries no figure that would read as one (§13).
+    return res.json({
+      computable: true,
+      itemCount: preview.itemCount,
+      dayCount: preview.dayCount,
+      currentScore: preview.currentScore,
+      improvementRoom: preview.improvementRoom,
+      weakest: preview.weakest,
+      dimensions: preview.dimensions,
+      // Purchased items the run would treat as fixed points. Counted from the same read-set,
+      // never assumed.
+      fixedCount: inputs.counts.purchased,
+    });
+  } catch (err: any) {
+    console.error("[optimization-preview:trip] error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -155,12 +267,22 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
     const tier = complexityTier(dbEventType);
     const fee = await getFee(dbEventType, tier);
 
+    // Ruling `2026-08-29-trip-pass`, read-side (ledger `2026-09-05-optimize-preview-on-slip`):
+    // coverage is SERVER truth, decided by the SAME `coversAction` predicate the charge path
+    // uses — the client never infers it. Until this lane, a covered traveler learned they would
+    // not be charged only AFTER pressing Optimize, from the response's `coveredByTripPass`; a
+    // surface that shows the fee before the press must be able to say the same thing at the same
+    // moment, or it states a price the platform will not charge. `false` here means "no active
+    // pass covers this run", which is exactly what the charge path will decide.
+    const coveredByTripPass = tripId ? await coversAction(String(tripId), "optimizer_run") : false;
+
     return res.json({
       complexityTier: tier,
       feeCents: fee.isDisabled ? 0 : fee.priceCents,
       currency: fee.currency,
       creditTowardCoordination: fee.creditTowardCoordination,
       aiDisabled: fee.isDisabled,
+      coveredByTripPass,
     });
   } catch (err: any) {
     console.error("[optimization-fee] error:", err);

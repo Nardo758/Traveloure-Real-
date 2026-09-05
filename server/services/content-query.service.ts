@@ -27,6 +27,7 @@ import { drainPendingEventsIntoTrip } from "./pending-events.service";
 import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
 import { flagReviewSignal } from "./review-mutation.service";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
+import { assertAiDraftEligible } from "./ai-draft-eligibility";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -366,6 +367,16 @@ export async function saveGeneratedItinerarySnapshot(
       `);
       trip = locked.rows[0];
       if (!trip) throw new Error("Trip not found or not owned by user");
+
+      // LD 41 (b) SECOND LAYER (ledger `2026-09-05-draft-only-on-empty`): the free draft runs only
+      // on an EMPTY slip. Every route that reaches this function already refused a non-empty slip
+      // BEFORE its model call (so a refused request costs no tokens); this is the defence-in-depth
+      // copy for a caller that forgets — or one written after this lane. It runs INSIDE the
+      // transaction and AFTER the `FOR UPDATE` lock above, so it reads the same locked snapshot the
+      // delete below is about to act on rather than racing it, and it THROWS rather than deleting:
+      // an aborted transaction leaves the traveler's plan exactly as it was.
+      // ONE predicate, one place (§18 rule 1) — the count logic is NOT restated here.
+      await assertAiDraftEligible(input.tripId, tx as any);
     } else {
       [trip] = await tx.insert(trips).values({
         userId: input.userId,
