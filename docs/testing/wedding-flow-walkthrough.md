@@ -76,11 +76,16 @@ is `2026-09-04-one-modal-many-doors`).
 - **Home-city default (`2026-09-04-step4-variants-fields`).** Not visible on a wedding: it fires only
   for a **day-shaped** occasion. To see it, sign in as a user with `users.home_city` set, pick
   `option-occasion-date-night`, and go to step 2 with the field empty: it arrives **pre-filled** with
-  the home city and carries `text-etp-destination-suggested` ("from your home city — change it, or
-  continue to keep it"). Type anything and the note disappears — it is now your answer.
+  the home city and carries `text-etp-destination-suggested` (the attribution sentence inside it is
+  `text-destination-from-home-city`: "from the home city in your profile — change it, or continue to
+  keep it"). Type anything and the note disappears — it is now your answer.
   **§13 to verify:** press **Save** (`button-etp-save`) from step 2 WITHOUT advancing, reopen the
   modal, and the suggested city must **not** have been stored. Advancing with
   `button-planning-next` first is what makes it yours.
+  **"Empty" means the PLAN states no destination, not that the input looks empty** (post-publish QA
+  check 4): press **Clear plan** (`button-etp-clear`) on a plan that names a city, reopen, and the
+  modal must show no destination, no dates and no title — and the date-night default must then be
+  the home city, never the cleared plan's city.
 - **Where a home city is SET (`2026-09-05-slip-events-first-render`).** `/profile` → Personal
   Information → **Home city** (`select-home-city`), saved by the page's own **Save Changes**. The
   options are the SERVER's operating-market list (`GET /api/me/home-city` → `markets`), so the
@@ -199,6 +204,19 @@ found broken, so check it deliberately.
   occasion's `vocabulary`). "1 traveler" after answering step 4 is the defect.
 - Add one item to an event and re-check: the card renders its rows and the empty line disappears —
   nothing else about the day list changes.
+
+**7b · The first FEW SECONDS, before the occasion row lands (QA check 3).** Watch the landing, do
+not just read the settled screen — both defects below were invisible once the page had loaded.
+
+- **`slip-empty-items` ("No items on this plan yet.") must never flash.** While
+  `GET /api/trips/:id` and `GET /api/experience-types` are in flight there is no occasion row, so
+  the day list cannot yet be grouped by event; a neutral `slip-day-list-loading` stand-in holds the
+  space. Seeing the sentence and then three event cards is the defect.
+- **`slip-meta-party` and `trip-strip-party` must never flash the wrong NOUN.** Until the occasion
+  row resolves both render the COUNT ALONE ("3"), then settle to "3 guests". "3 travelers" first is
+  the defect — that word is ruling 28's fallback for a row that ANSWERED and said nothing, not for
+  one that has not arrived.
+- A slow connection makes both easy to see; throttle to Slow 3G for one reload.
 
 ---
 

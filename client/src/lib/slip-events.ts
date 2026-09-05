@@ -408,3 +408,35 @@ export function buildSlipDaySlots<T extends EventLinkedItem>(
   }
   return undatedSlot ? [...ordered, undatedSlot] : ordered;
 }
+
+/**
+ * ── "NO ITEMS" IS A CLAIM, AND A CLAIM NEEDS ITS DATA (QA check 3, post-publish walkthrough) ──
+ *
+ * THE DEFECT, and why the previous lane did not close it. `2026-09-05-slip-events-first-render`
+ * gave a plan with events and no items a day list (`buildSlipDaySlots` above), so the header's
+ * "3 events" and the body finally agreed — ONCE everything had loaded. But the slot list is built
+ * with `groupByEvent`, and `groupByEvent` is `showsSchedule(occasion) && events.length > 0`: while
+ * the occasion lookup is still in flight there is no row, `showsSchedule` correctly falls back to
+ * FALSE, `buildSlipDaySlots` correctly returns the plan's own (empty) day list, and the slip
+ * printed "No items on this plan yet" for as long as the lookup took. Every step was right; the
+ * composition told the traveler their brand-new plan was empty and then filled it in.
+ *
+ * THE RULE (§13). An empty list and a list we do not have yet are DIFFERENT FACTS. The empty-state
+ * copy is a statement about the plan, so it is said only once the data behind it has SETTLED; until
+ * then the surface renders a neutral placeholder, which states nothing at all. Nothing about the
+ * settled render changes — a plan that really has no slots still says exactly what it said before.
+ *
+ * It lives here, beside the slot builder whose output it reads, so the condition cannot be
+ * restated at the call site and drift from the thing it guards (§18 rule 1).
+ *
+ * STATED NEGATIVE SPACE (§18d's posture, applied to a predicate): this answers ONLY whether the
+ * empty-state SENTENCE may be shown. It says nothing about what the loading placeholder looks
+ * like, and it is not a gate on the slot list itself — real slots render the moment they exist,
+ * whether or not the occasion has resolved.
+ */
+export function showsSlipEmptyState(
+  slotCount: number,
+  occasionResolved: boolean,
+): boolean {
+  return occasionResolved && slotCount === 0;
+}
