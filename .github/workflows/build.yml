@@ -549,6 +549,16 @@ jobs:
       # wired to no workflow; an unrun test is not a guard.
       - name: Analytics trackEvent fail-soft pin
         run: npx tsx --test client/src/lib/__tests__/analytics.test.ts
+      # Build-order row 1.7 (ledger `2026-09-05-dead-surfaces-and-cart-qty`): three client
+      # surfaces and one server field were deleted for having no consumer, and the cart's
+      # quantity control gained a typed box. Both halves fail silently — a deleted-because-
+      # unimported page comes back the day someone copies a sibling and nothing breaks, and a
+      # typed box that grows its own local state or its own PATCH still WORKS, it just stops
+      # agreeing with the buttons beside it. Q1-Q6 pin the one shared normaliser (floor 1, no
+      # zero, the STORAGE ceiling rather than an invented cap, empty-is-a-draft that reverts on
+      # commit); S1-S5 read the shipped files, because absence is the assertion.
+      - name: Dead-surface absence + typed cart quantity pin
+        run: npx tsx --test client/src/lib/__tests__/cart-quantity.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
