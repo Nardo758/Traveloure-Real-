@@ -16,6 +16,8 @@ import {
   searchMessages,
   assertRecipientExists,
   hasExistingConversation,
+  isPublicConversationIdShape,
+  resolvePublicConversationId,
   blockUser,
   unblockUser,
   getBlockedByUser,
@@ -28,7 +30,27 @@ import { broadcastToUser } from "../websocket";
 
 const router = Router();
 
+// Locked Decision 40, lane 1: the id-addressed inputs stay alive for one release so no client
+// breaks, and warn ONCE PER PROCESS — never per message. A per-message log is noise on a busy
+// instance and gets muted long before lane 3; once per process makes "have the clients switched
+// yet?" answerable from a boot log.
+let warnedDeprecatedRecipientId = false;
+function warnDeprecatedRecipientIdOnce() {
+  if (warnedDeprecatedRecipientId) return;
+  warnedDeprecatedRecipientId = true;
+  console.warn(
+    "[messages] DEPRECATED: POST /api/messages addressed by recipientId or by the INTERNAL " +
+      "conversation id. Address by handle/service/booking (POST /api/conversations/start) or by " +
+      "public conversationId — CLAUDE.md Locked Decision 40. Removed after lane 3.",
+  );
+}
+
+// CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`): `conversationId` now
+// accepts the PUBLIC (HMAC) conversation id, which carries no user ids. The internal pair id is
+// still accepted for one release, and `recipientId` — a client-chosen recipient identity — is
+// DEPRECATED; both are removed after lane 3, when the clients have switched.
 const sendMessageSchema = z.object({
+  /** @deprecated — removed after lane 3 (Locked Decision 40). Address by handle/service/booking. */
   recipientId: z.string().optional(),
   conversationId: z.string().optional(),
   message: z.string().min(1, "Message cannot be empty"),
@@ -72,6 +94,16 @@ router.get("/conversation/:conversationId", isAuthenticated, async (req, res) =>
   try {
     const userId = getUserId(req)!;
     const { conversationId } = req.params;
+
+    // CANONICAL (Locked Decision 40): a PUBLIC conversation id, resolved against the caller's own
+    // threads. The INTERNAL pair id below still works and is DEPRECATED — removed after lane 3.
+    if (isPublicConversationIdShape(conversationId)) {
+      const resolved = await resolvePublicConversationId(userId, conversationId);
+      if (!resolved) return res.status(404).json({ message: "Conversation not found" });
+      const messages = await getConversationMessages(userId, resolved.otherUserId, userId);
+      return res.json(messages);
+    }
+
     const { userId1, userId2 } = parseConversationId(conversationId);
 
     if (userId !== userId1 && userId !== userId2) {
@@ -146,9 +178,19 @@ router.post("/", isAuthenticated, async (req, res) => {
     const { recipientId, conversationId, message, attachment } = validation.data;
 
     let targetRecipientId: string;
-    if (recipientId) {
+    if (isPublicConversationIdShape(conversationId)) {
+      // CANONICAL: resolved against the CALLER'S OWN threads, so a non-participant holding a
+      // valid-looking id resolves nothing. A 404 covers malformed, missing and not-yours alike
+      // (§13) so the rail cannot be used as an oracle.
+      const resolved = await resolvePublicConversationId(userId, conversationId);
+      if (!resolved) return res.status(404).json({ message: "Conversation not found" });
+      targetRecipientId = resolved.otherUserId;
+    } else if (recipientId) {
+      warnDeprecatedRecipientIdOnce();
       targetRecipientId = recipientId;
     } else if (conversationId) {
+      // DEPRECATED: the INTERNAL pair id, which IS the counterpart's user id. Removed after lane 3.
+      warnDeprecatedRecipientIdOnce();
       const { userId1, userId2 } = parseConversationId(conversationId);
       if (userId !== userId1 && userId !== userId2) {
         return res.status(403).json({ message: "Not authorized" });

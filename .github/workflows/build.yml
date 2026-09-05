@@ -276,6 +276,17 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/guest-invite-meta.test.ts
           done
+      # QA F13: the SAME date-only class one boundary further out. The occasion workstation holds
+      # its dates as the UTC-midnight instants `new Date("YYYY-MM-DD")` produces and handed the
+      # hero card `date.toISOString()` — an INSTANT, which `parseTripDate` is right to read as one
+      # — so the card said "13 Nov-15 Nov" for a plan stored Nov 14-16 while the Trip Strip beside
+      # it said "Nov 14 -> Nov 16". Three timezones for the same reason as F-1/F3.
+      - name: QA F13 hero-card date-range local-parse pin (3 timezones)
+        run: |
+          for tz in America/New_York Asia/Tokyo UTC; do
+            echo "--- TZ=$tz ---"
+            TZ="$tz" npx tsx --test client/src/lib/__tests__/hero-card-date-range.test.ts
+          done
       # QA F10: the Experiences dropdown shipped a footer leaf whose i18nKey no locale file
       # carried, so production rendered the literal "browseAllOccasions". The parity spec diffs
       # the locales against EACH OTHER and was correctly green — a key missing from en AND ja is
@@ -482,6 +493,21 @@ jobs:
       # A1-A3 and S1-S2 pin the shipped call sites and that the browse filters still resolve.
       - name: Experts public-projection pin
         run: npx tsx --test server/__tests__/experts-public-projection.test.ts
+      # 2026-09-05-user-id-is-internal (CLAUDE.md Locked Decision 40): `users.id` is INTERNAL, an
+      # earner's public identity is the HANDLE, and contact is addressed by CONTEXT with the
+      # recipient resolved SERVER-SIDE. P1-P6 pin the opaque public conversation id (the old id was
+      # literally the two user ids concatenated, so the THREAD KEY published the counterpart — a
+      # leak no participant-object projection could catch) and its non-participant refusal; B1-B6
+      # pin the `.strict()` pick-based address allowlist, including that a legacy `receiverId` body
+      # is a 400 rather than a silently ignored key; K1-K5 pin who counts as a party to a booking
+      # and that a stranger gets the same 404 as a non-existent one (§13, no oracle); L1-L3 pin that
+      # an unresolvable context is labelled by KIND and never given an invented name; A1-A8 pin the
+      # shipped artifacts — the rail reading no identity from the body, the admin index on §2's
+      # blanket guard with no message bodies, the retracted "Not sensitive" comment, the
+      # once-per-process deprecation warn, the schema declaration + no-CHECK/no-backfill migration,
+      # the pick-based insert schema, and the single handle/verification predicates.
+      - name: Contact rails (handle/service/booking) pin
+        run: npx tsx --test server/__tests__/contact-rails.test.ts
       # Client analytics wrapper (docs/superpowers/specs/2026-09-05-custom-analytics-events-design.md):
       # trackEvent must be a SAFE NO-OP whenever the host-injected tracker is absent — during SSR,
       # in dev/preview, and in the tracker-load race — and must swallow a throwing tracker rather

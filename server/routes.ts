@@ -113,6 +113,7 @@ import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimi
 import { resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
+import conversationsRoutes from "./routes/conversations.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
@@ -962,6 +963,15 @@ export async function registerRoutes(
   // Booking Actions API routes - Expert Review, Save, Share
   app.use("/api", bookingActionsRoutes);
   app.use("/api/messages", messagesRouter);
+
+  // Contact rails — CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`).
+  // `POST /api/conversations/start` addresses an earner by handle / service / booking and resolves
+  // the recipient SERVER-SIDE; `GET /api/admin/conversations` indexes threads by that context and
+  // rides §2's blanket `adminApiGuard`, mounted above at line ~663. Declares full `/api/...` paths
+  // internally, so it is mounted without a prefix. Registered AFTER `registerChatRoutes` (line
+  // ~766), which owns the unrelated AI-assistant `/api/conversations` family; the paths do not
+  // collide (that router has no POST `/api/conversations/start`).
+  app.use(conversationsRoutes);
 
   // My Itinerary routes - final itinerary view with smart sequencing
   app.use(myItineraryRoutes);
@@ -1942,15 +1952,71 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(enrichedChats);
   });
 
+  // Locked Decision 40, lane 1: the id-addressed input stays alive for one release so no client
+  // breaks, and warns ONCE PER PROCESS (never per message — a per-message log would be noise on a
+  // busy instance and would be muted long before lane 3) so "have clients stopped sending it yet?"
+  // is answerable from a boot log rather than by guessing.
+  let warnedDeprecatedReceiverId = false;
+  function warnDeprecatedReceiverIdOnce() {
+    if (warnedDeprecatedReceiverId) return;
+    warnedDeprecatedReceiverId = true;
+    console.warn(
+      "[chat] DEPRECATED: POST /api/chats received a body-sourced receiverId. " +
+        "Address conversations by handle/service/booking (POST /api/conversations/start) or by " +
+        "public conversationId — CLAUDE.md Locked Decision 40. Removed after lane 3.",
+    );
+  }
+
+  // CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`): this rail now accepts
+  // `{ conversationId: <PUBLIC id>, message }` — the server resolves the counterpart from the
+  // SESSION USER'S OWN conversations, so no user id crosses the wire in either direction. The
+  // legacy `{ receiverId }` shape still works and is DEPRECATED — removed after lane 3.
   app.post(api.chats.create.path, isAuthenticated, async (req, res) => {
      try {
-      const input = api.chats.create.input.parse(req.body);
       // Sender is always the session user — a body-sent senderId would let any
       // authenticated user write messages as someone else (§14's identity rule,
-      // applied to chat integrity).
+      // applied to chat integrity). Unchanged by Locked Decision 40; the ruling adds the same
+      // rule for the RECIPIENT.
       const sessionUserId = getUserId(req)!;
+
+      // CANONICAL PATH: a public conversation id. Resolved against the caller's own threads
+      // (`resolvePublicConversationId`), so a non-participant holding a valid-looking id resolves
+      // nothing. A public id that does not resolve is a 404 — the same answer as "no such thread"
+      // and "not yours", so the rail is not an oracle (§13).
+      const publicConversationId = (req.body as any)?.conversationId;
+      if (messagingService.isPublicConversationIdShape(publicConversationId)) {
+        const resolved = await messagingService.resolvePublicConversationId(sessionUserId, publicConversationId);
+        if (!resolved) return res.status(404).json({ message: "Conversation not found" });
+        const input = api.chats.create.input.parse({
+          ...(req.body as any),
+          conversationId: undefined,
+          senderId: sessionUserId,
+          receiverId: resolved.otherUserId,
+        });
+        const isNewConversation = !(await messagingService.hasExistingConversation(sessionUserId, resolved.otherUserId));
+        const rate = checkMessageRateLimit({ senderId: sessionUserId, recipientId: resolved.otherUserId, isNewConversation, peerIp: req.ip });
+        if (!rate.allowed) {
+          res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
+          return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
+        }
+        const chat = await storage.createChat({ ...input, senderId: sessionUserId, receiverId: resolved.otherUserId });
+        broadcastToUser(String(chat.receiverId), {
+          type: "chat",
+          id: chat.id,
+          senderId: sessionUserId,
+          recipientId: chat.receiverId,
+          content: chat.message,
+          timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
+        });
+        // The response carries the PUBLIC id; the row's own id-shaped fields are the deprecated
+        // half and lane 2/3 remove them.
+        return res.status(201).json({ ...chat, conversationId: publicConversationId });
+      }
+
+      const input = api.chats.create.input.parse(req.body);
       const recipientId = (input as any).receiverId as string | undefined;
       if (recipientId) {
+        warnDeprecatedReceiverIdOnce();
         const isNewConversation = !(await messagingService.hasExistingConversation(sessionUserId, recipientId));
         const rate = checkMessageRateLimit({ senderId: sessionUserId, recipientId, isNewConversation, peerIp: req.ip });
         if (!rate.allowed) {

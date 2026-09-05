@@ -1700,6 +1700,62 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
   readAt: timestamp("read_at"),
 });
 
+// WHAT A CONVERSATION IS ABOUT — ledger `2026-09-05-user-id-is-internal`, CLAUDE.md Locked
+// Decision 40 (migration 287).
+//
+// A messaging thread carried no record of WHY it exists, so a storefront enquiry, a question about
+// a listing and a thread about a paid booking were the same undifferentiated rows. Contact is now
+// addressed by CONTEXT — a handle, a service or a booking — and the address that opened the channel
+// is recorded here, which is what lets the platform see pre-service traffic apart from post-service
+// traffic.
+//
+// `conversationId` is the INTERNAL pair id from `buildConversationId` (the two user ids sorted and
+// joined), deliberately NOT the public HMAC id: the public id is a keyed projection that must stay
+// recomputable from — and rotatable independently of — what is stored.
+//
+// `contextKind` is `storefront` | `service` | `booking`, APP-ENFORCED by the pick-based allowlist
+// below and by CONVERSATION_CONTEXT_KINDS, with NO DB CHECK (the publish-trap posture, migrations
+// 181/195/273/275/276/277/279/280/281/282/284).
+//
+// NO ROWS = an OLDER thread with no recorded context, and readers say so (§13) — never a guessed
+// `storefront`. There is no backfill. Written SERVER-SIDE ONLY (the start rail); no client body
+// reaches this table, and the UNIQUE below makes the write idempotent by construction so the
+// inserter needs no check-then-insert (§15 — the statement is the guard).
+//
+// Table + UNIQUE + index are declared HERE per the deploy-push durability rule: an object this file
+// does not declare is dropped by the publish-time push and never recreated.
+export const conversationContextKindEnum = ["storefront", "service", "booking"] as const;
+export type ConversationContextKind = (typeof conversationContextKindEnum)[number];
+
+export const conversationContexts = pgTable("conversation_contexts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  conversationId: text("conversation_id").notNull(),
+  contextKind: varchar("context_kind", { length: 20 }).notNull(),
+  contextId: text("context_id").notNull(),
+  // A user id — INTERNAL by this very ruling, which is why it sits on a row no client body can
+  // write and no public payload returns.
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => [
+  uniqueIndex("conversation_contexts_unique").on(table.conversationId, table.contextKind, table.contextId),
+  index("conversation_contexts_target_idx").on(table.contextKind, table.contextId),
+]);
+export type ConversationContext = typeof conversationContexts.$inferSelect;
+
+// ALLOWLIST, not a denylist (§19 / #PS18). This table is server-internal — the ONE writer is the
+// start rail's context recorder — so the pick set is the whole row minus its server-generated
+// parts. Written as a `.pick()` anyway because §19's point is structural: under an `.omit()` a
+// column added to this table later would be settable by default the moment anyone ever parses this
+// schema from a body, and "nobody parses it from a body today" is exactly the sentence that was
+// true of `revenueShareRate`.
+export const insertConversationContextSchema = createInsertSchema(conversationContexts).pick({
+  conversationId: true,
+  contextKind: true,
+  contextId: true,
+  createdBy: true,
+});
+export type InsertConversationContext = z.infer<typeof insertConversationContextSchema>;
+
 
 // === AI Itinerary Optimization ===
 
@@ -2689,9 +2745,12 @@ export type VendorDirectoryRow = Pick<Vendor, (typeof VENDOR_DIRECTORY_FIELDS)[n
  * to anyone, with no session. That is the third instance of the read-projection class
  * (`2026-09-05-custom-venues-owner-scope`, `2026-09-05-vendors-read-scope`).
  *
- * `id` is kept deliberately: every expert card links to `/experts/:id` and the storefront
- * handoff, chat and hire rails all key on it. It is the account id, and LD 40 lane 2 is where
- * it stops being the public route key; until then removing it would break every link.
+ * `id` is kept deliberately, and it is the ONE entry here that is known-not-final. Locked Decision
+ * 40 (`2026-09-05-user-id-is-internal`) rules `users.id` INTERNAL and an earner's public identity
+ * the HANDLE; stripping it from public projections is that ruling's **lane 2**, which also brings
+ * the guard that keeps it stripped. Removing it in THIS lane would break every expert card link
+ * (`/experts/:id`) and the chat/hire handoffs that key on it, with no handle-based replacement
+ * built — so it stays, named as lane 2's to remove, rather than being quietly treated as settled.
  *
  * `preferences` is deliberately ABSENT even though `expert-detail.tsx` reads
  * `expert.preferences.storefront.coverImageUrl`: the column is unbounded jsonb, so the projector

@@ -64,3 +64,34 @@ export function parseTripDate(value: string | Date | null | undefined): Date | n
 export function parseTripDateOrInvalid(value: string | Date | null | undefined): Date {
   return parseTripDate(value) ?? new Date(value as string);
 }
+
+/** Separator the compact plan-card range is joined on (no spaces — "14 Nov–16 Nov"). */
+export const SHORT_TRIP_RANGE_SEPARATOR = "–";
+
+/**
+ * The compact "14 Nov–16 Nov" range the plan card's shared header renders.
+ *
+ * ONE implementation (CLAUDE.md §18 rule 1). It exists as a named export rather than an inline
+ * closure because the QA finding it fixes lives in the COMPOSITION, not in either half: the
+ * occasion workstation held its dates as UTC-midnight `Date` instants and handed the card
+ * `date.toISOString()`, which `parseTripDate` correctly reads as an INSTANT — so a viewer west
+ * of UTC saw "13 Nov–15 Nov" for a plan stored 2026-11-14 → 2026-11-16, while the Trip Strip on
+ * the same page (which parses the calendar string) said "Nov 14 → Nov 16".
+ *
+ * Callers must therefore hand this a CALENDAR DAY ("YYYY-MM-DD" — `calendarDateToIso` produces
+ * one from a Date), not an instant. `parseTripDate` keeps instant semantics on purpose (diary
+ * `createdAt` rows share it), so it cannot recover the day from an instant on the caller's behalf.
+ *
+ * §13: an end that is not stated is omitted rather than guessed; the output shape is unchanged
+ * from the inline version it replaces (an unparseable half contributes an empty string).
+ */
+export function formatShortTripRange(
+  start: string | Date | null | undefined,
+  end: string | Date | null | undefined,
+): string {
+  const one = (value: string | Date | null | undefined) => {
+    const parsed = parseTripDate(value);
+    return parsed ? parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+  };
+  return `${one(start)}${SHORT_TRIP_RANGE_SEPARATOR}${one(end)}`;
+}
