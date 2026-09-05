@@ -5,6 +5,7 @@ import { createComparison as createComparisonRequest } from "@/lib/create-compar
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
+import { earnerProfilePath } from "@/lib/earner-address";
 import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -172,7 +173,8 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
   const roleLabel = l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner";
   // Card-source-link (2026-08-25-card-source-link): the author ALWAYS links to its source —
   // claimed handle → /s/:handle, else the author's expert profile. Never plain text.
-  const sourceHref = l.authorHandle ? `/s/${l.authorHandle}` : `/experts/${l.authorId}`;
+  // ONE decision about how a row addresses an earner (Locked Decision 40 lane 3, §18 rule 1).
+  const sourceHref = earnerProfilePath({ handle: l.authorHandle, id: l.authorId }) ?? "/experts";
   const sourceLabel = l.authorHandle ? `@${l.authorHandle}` : l.authorName;
 
   return (
@@ -388,8 +390,12 @@ function ServiceCard({
   // expert without handle → /experts/:id; provider without handle → their /providers card.
   // Role comes from the /api/discover row (server-derived from users.role). Never a dead link:
   // when neither a handle nor a resolvable role is present, the name renders as plain text.
+  // LD 40 lane 2: still id-addressed — the handle-first half is the shared decision, but the
+  // fallback here forks on ROLE (an expert gets a profile, a provider gets the directory), which
+  // `earnerProfilePath` deliberately does not know about. `service.userId` is the field lane 2
+  // removes from this payload; when it goes, the expert branch becomes handle-or-nothing.
   const sourceHref = service.providerHandle
-    ? `/s/${service.providerHandle}`
+    ? earnerProfilePath({ handle: service.providerHandle })
     : isExpertRole(service.providerRole)
       ? `/experts/${service.userId}`
       : isProviderRole(service.providerRole)
@@ -1495,7 +1501,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             const params = new URLSearchParams();
                             if (expertHandoffTripId) params.set("tripId", expertHandoffTripId);
                             params.set("source", "quick-start");
-                            setLocation(`/experts/${expert.id}?${params.toString()}`);
+                            // Locked Decision 40 (lane 3): handle-keyed when the row carries one;
+                            // the id route only while it does not.
+                            setLocation(
+                              `${earnerProfilePath(expert) ?? "/experts"}?${params.toString()}`,
+                            );
                           }}
                           data-testid={`button-connect-expert-${expert.id}`}
                         >

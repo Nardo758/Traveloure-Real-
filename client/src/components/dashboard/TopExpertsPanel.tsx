@@ -1,8 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+// Locked Decision 40 (lane 3): ONE decision about addressing an earner (§18 rule 1).
+import { earnerProfilePath } from "@/lib/earner-address";
 
 interface Expert {
   id: string;
+  /** `users.handle` — the earner's PUBLIC identity (Locked Decision 40); absent when unclaimed. */
+  handle?: string | null;
   firstName: string;
   lastName: string;
   avgRating: string;
@@ -41,7 +45,7 @@ export function TopExpertsPanel({ destinations }: TopExpertsPanelProps) {
         const initials = `${expert.firstName?.[0] || ""}${expert.lastName?.[0] || ""}`.toUpperCase();
         const rating = parseFloat(expert.avgRating || "0");
         return (
-          <Link key={expert.id} href={`/experts/${expert.id}`}>
+          <Link key={expert.id} href={earnerProfilePath(expert) ?? "/experts"}>
             <div
               className="flex items-center gap-2 py-[7px] cursor-pointer hover:bg-muted/30 rounded -mx-1 px-1 transition-colors"
               style={{

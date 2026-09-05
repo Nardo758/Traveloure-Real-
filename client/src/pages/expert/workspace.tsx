@@ -5142,6 +5142,8 @@ export default function ExpertWorkspace() {
                       </div>
                       {/* F3: land in THIS client's thread, not the chat lobby — /chat already reads ?clientId. */}
                       <button
+                        // LD 40 lane 2: still id-addressed — the trip's traveler is named by id on
+                        // the assigned-trips payload, and a traveler has no handle to address.
                         onClick={() => safeNavigate(trip?.traveler_user_id ? `/chat?clientId=${trip.traveler_user_id}` : "/chat")}
                         data-testid="button-open-chat"
                         style={{ ...btnQuietStyle, flexShrink: 0, padding: "5px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 5, color: MID }}

@@ -47,6 +47,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
@@ -629,6 +630,11 @@ interface CancelPreview {
 
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
   const { toast } = useToast();
+  // CLAUDE.md Locked Decision 40 (lane 3): a BOOKING is one of the three addresses. `/api/my-bookings`
+  // reads `service_bookings`, so `booking.id` is exactly the id the start rail resolves — it looks
+  // the booking up, confirms the caller is on it, and answers with the OTHER party. No provider
+  // user id is read here any more.
+  const askExpert = useAskExpert();
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -1035,11 +1041,14 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   </Link>
                 </Button>
               )}
-              <Button variant="outline" size="sm" asChild data-testid={`button-message-${booking.id}`}>
-                <Link href={`/chat?provider=${booking.providerId}`}>
-                  <MessageSquare className="w-4 h-4 mr-1" />
-                  Message
-                </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid={`button-message-${booking.id}`}
+                onClick={() => askExpert({ bookingId: booking.id })}
+              >
+                <MessageSquare className="w-4 h-4 mr-1" />
+                Message
               </Button>
             </div>
           </div>

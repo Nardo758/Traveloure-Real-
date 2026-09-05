@@ -1481,6 +1481,9 @@ function MessageThreadsSection() {
         <div className="space-y-2">
           {threads.map(([counterpartId, last]) => {
             const name = nameFor(counterpartId);
+            // LD 40 lane 2: still id-addressed — same as the provider inbox: this list has its
+            // own `/api/chats` grouping instead of the shared `useConversationThreads` hook that
+            // carries the opaque conversation id.
             return (
               <Link key={counterpartId} href={`/chat?clientId=${counterpartId}`}>
                 <Card

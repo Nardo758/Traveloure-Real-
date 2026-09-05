@@ -24,6 +24,9 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
 import { buildConversationId, useMarkConversationRead } from "@/hooks/use-message-read";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+// Locked Decision 40 (lane 3): which thread a /chat URL names, decided in ONE pure function so
+// the canonical `?conversation=` and the legacy id params cannot drift apart (§18 rule 1).
+import { resolveChatUrlTarget } from "@/lib/earner-address";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,7 +60,21 @@ interface RealtimeMessage {
 }
 
 interface DisplayExpert {
+  /**
+   * The counterpart's `users.id`.
+   *
+   * LD 40 lane 2: still id-addressed — the WebSocket send, block/report and read-all rails are all
+   * keyed on it. EMPTY STRING is a real state, not a placeholder: a conversation opened by opaque
+   * id that has no messages yet has no counterpart id on this client at all, and every id-keyed
+   * rail below is disabled for it rather than fired with a guess (§13).
+   */
   id: string | number;
+  /**
+   * The OPAQUE conversation id (Locked Decision 40) — carries no user ids and is the address this
+   * page SENDS with. `null` for a directory row (no thread exists yet) or a thread that was not on
+   * the joined `/api/messages` page; the send then falls back to the legacy id body.
+   */
+  publicId?: string | null;
   name: string;
   location: string;
   avatar: string;
@@ -179,15 +196,21 @@ export default function Chat() {
   const { toast } = useToast();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
-  // Ledger 90 (FP-5, I3): `?provider=` is accepted as an ALIAS for `?expertId=`. The service-detail
-  // "Contact Provider" CTA linked to `/chat?provider=<userId>` for its whole life and this file has
-  // never read that param, so the most prominent way for a traveler to reach a provider dropped
-  // them on the browse directory with no composer. The CTA itself now uses the canonical rail
-  // (useAskExpert → `?expertId=` + `?name=`), and this alias catches every link already out in the
-  // world — a shared URL, a bookmark, a chat history. There is ONE conversation rail here, not two:
-  // `provider_services` is role-agnostic, so a listing's owner may be a provider or an expert, and
-  // the thread is the same `user_and_expert_chats` row either way.
-  const expertIdFromUrl = urlParams.get("expertId") ?? urlParams.get("provider");
+  // CANONICAL (CLAUDE.md Locked Decision 40, lane 3): `?conversation=<opaque id>`. The id is an
+  // HMAC over the internal thread key and carries no user ids; it is what the start rail
+  // (`POST /api/conversations/start`) answers with and what this page sends with.
+  //
+  // LEGACY, kept for one release and REMOVED AFTER LD 40 LANE 2: `?expertId=<users.id>` and its
+  // `?provider=` alias. Ledger 90 (FP-5, I3): `?provider=` was accepted as an alias because the
+  // service-detail "Contact Provider" CTA linked to `/chat?provider=<userId>` for its whole life
+  // and this file never read that param, dropping the traveler on the browse directory with no
+  // composer. Both params catch links already out in the world — a shared URL, a bookmark, a chat
+  // history. There is ONE conversation rail here, not two: `provider_services` is role-agnostic,
+  // so a listing's owner may be a provider or an expert, and the thread is the same
+  // `user_and_expert_chats` row either way.
+  const urlTarget = resolveChatUrlTarget(searchString);
+  const conversationFromUrl = urlTarget?.kind === "conversation" ? urlTarget.conversationId : null;
+  const expertIdFromUrl = urlTarget?.kind === "expert" ? urlTarget.expertId : null;
   // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
   // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
   const clientIdFromUrl = urlParams.get("clientId");
@@ -277,6 +300,9 @@ export default function Chat() {
   const conversationPartners = useMemo<DisplayExpert[]>(() => {
     return conversationThreads.map((t) => ({
       id: t.counterpartId,
+      // Locked Decision 40: the opaque address for this thread, joined server-side from
+      // GET /api/messages. `null` when that read did not cover this thread (§13 — no invented id).
+      publicId: t.publicId,
       name: t.displayName || (isEarner ? "Client" : "Expert"),
       location: isEarner ? "Client" : "Expert",
       avatar: t.avatarUrl || "",
@@ -295,13 +321,54 @@ export default function Chat() {
   // Inbox threads are role-agnostic: a traveler may be talking with either an expert or a
   // service provider. Prefer the real thread already returned by /api/chats over the
   // expert-directory lookup, which intentionally cannot resolve provider profiles.
-  const threadExpertFromUrl = useMemo(
-    () =>
-      expertIdFromUrl
-        ? conversationPartners.find((partner) => String(partner.id) === String(expertIdFromUrl)) ?? null
-        : null,
-    [conversationPartners, expertIdFromUrl],
-  );
+  const threadExpertFromUrl = useMemo(() => {
+    // Locked Decision 40: an opaque conversation id names a thread directly — matched against the
+    // ids the server minted, never parsed (there is no inverse; see conversation-public-id.pure.ts).
+    if (conversationFromUrl) {
+      return (
+        conversationPartners.find((partner) => partner.publicId === conversationFromUrl) ?? null
+      );
+    }
+    // LD 40 lane 2: still id-addressed — legacy `?expertId=`/`?provider=` links.
+    if (expertIdFromUrl) {
+      return (
+        conversationPartners.find((partner) => String(partner.id) === String(expertIdFromUrl)) ?? null
+      );
+    }
+    return null;
+  }, [conversationPartners, conversationFromUrl, expertIdFromUrl]);
+
+  /**
+   * A conversation opened BY OPAQUE ID that has no messages yet.
+   *
+   * `POST /api/conversations/start` deliberately sends nothing unless the caller passes `about`,
+   * so a freshly opened thread has no `user_and_expert_chats` row and appears in no thread list.
+   * The start rail answers with the recipient card, and `useAskExpert` forwards it as the same
+   * `?name=`/`?avatar=` params the legacy branch already uses — so the header renders the real
+   * name the server gave us and nothing is invented (§13).
+   *
+   * `id` is EMPTY because there is no counterpart user id on this client and there must not be
+   * one: every id-keyed rail (WebSocket, block, report, read-all) is disabled while it is empty
+   * rather than fired against a guess. Once the first message lands, the thread appears in
+   * `conversationPartners` with a real id and the selection upgrades to it (effect below).
+   */
+  const conversationFromUrlExpert = useMemo<DisplayExpert | null>(() => {
+    if (!conversationFromUrl || threadExpertFromUrl) return null;
+    if (!nameFromUrl) return null;
+    return {
+      id: "",
+      publicId: conversationFromUrl,
+      name: nameFromUrl,
+      location: "",
+      avatar: avatarFromUrl || "",
+      rating: null,
+      reviews: 0,
+      specialties: [],
+      languages: [],
+      responseTime: "",
+      isConversationPartner: true,
+    };
+  }, [conversationFromUrl, threadExpertFromUrl, nameFromUrl, avatarFromUrl]);
 
   // Traveler-mode browse directory (real experts + any deep-linked expert not already in the
   // list). Kept separate from conversationPartners so the two can render as distinct groups
@@ -316,11 +383,16 @@ export default function Chat() {
   }, [isEarner, effectiveLinkedExpert, expertList]);
 
   const allExperts = useMemo(() => {
+    // Locked Decision 40: a thread opened by opaque id that has no messages yet is not in any
+    // list — it is prepended so the rail shows the conversation the traveler just opened rather
+    // than an empty selection. Role-agnostic: an earner can be handed one of these too.
+    const withOpenedConversation = (rows: DisplayExpert[]) =>
+      conversationFromUrlExpert ? [conversationFromUrlExpert, ...rows] : rows;
     if (isEarner) {
       if (linkedClient) {
         const exists = conversationPartners.some(p => String(p.id) === String(linkedClient.id));
         if (!exists) {
-          return [
+          return withOpenedConversation([
             {
               id: linkedClient.id,
               name:
@@ -337,18 +409,18 @@ export default function Chat() {
               isConversationPartner: true,
             } as DisplayExpert,
             ...conversationPartners,
-          ];
+          ]);
         }
       }
-      return conversationPartners;
+      return withOpenedConversation(conversationPartners);
     }
     // Traveler mode: real conversation threads first, then the browse directory — a directory
     // entry already covered by a real thread is dropped so the same expert doesn't render twice.
     const dedupedDirectory = directoryExperts.filter(
       e => !conversationPartners.some(p => String(p.id) === String(e.id)),
     );
-    return [...conversationPartners, ...dedupedDirectory];
-  }, [isEarner, conversationPartners, linkedClient, directoryExperts]);
+    return withOpenedConversation([...conversationPartners, ...dedupedDirectory]);
+  }, [isEarner, conversationPartners, linkedClient, directoryExperts, conversationFromUrlExpert]);
 
   // F3 (workstation-flows audit): for expert users, cross-reference the conversation partner
   // against assigned trips so the thread header can offer "Open trip workspace". Client-side
@@ -477,7 +549,8 @@ export default function Chat() {
     },
     enabled: !isEarner && !!tripAdvisor?.expert_id && !expertIdFromUrl,
   });
-  const initialLinkedExpert = threadExpertFromUrl ?? effectiveLinkedExpert ?? tripLinkedExpert;
+  const initialLinkedExpert =
+    threadExpertFromUrl ?? conversationFromUrlExpert ?? effectiveLinkedExpert ?? tripLinkedExpert;
 
   // The trip actually shared with the OPEN conversation partner, resolved from real assignment
   // data only (never guessed — §13). Earner (expert) side reuses partnerAssignedTrip above
@@ -546,11 +619,13 @@ export default function Chat() {
   // A deep link should select its target once. It must not reassert that selection after the
   // traveler deliberately chooses another thread in the same rail. Resetting the handled key
   // when the URL context changes still makes links from Inbox and My Plans switch conversations.
-  const initialSelectionKey = expertIdFromUrl
-    ? `expert:${expertIdFromUrl}`
-    : tripIdFromUrl
-      ? `trip:${tripIdFromUrl}`
-      : null;
+  const initialSelectionKey = conversationFromUrl
+    ? `conversation:${conversationFromUrl}`
+    : expertIdFromUrl
+      ? `expert:${expertIdFromUrl}`
+      : tripIdFromUrl
+        ? `trip:${tripIdFromUrl}`
+        : null;
   useEffect(() => {
     if (!initialSelectionKey) {
       handledInitialSelectionRef.current = null;
@@ -561,6 +636,18 @@ export default function Chat() {
     setSelectedExpert(initialLinkedExpert);
     handledInitialSelectionRef.current = initialSelectionKey;
   }, [initialLinkedExpert, initialSelectionKey]);
+
+  // Locked Decision 40: upgrade a thread opened by opaque id the moment it becomes a real thread.
+  // A conversation started with no first message has no counterpart id here (see
+  // `conversationFromUrlExpert`), so every id-keyed rail is off; once the traveler sends and the
+  // row appears in `/api/chats`, the same publicId now carries a real id and the open thread
+  // becomes fully functional without a reload. Keyed on the publicId, so it never re-points a
+  // thread the traveler deliberately switched to.
+  useEffect(() => {
+    if (!selectedExpert?.publicId || selectedExpert.id) return;
+    const upgraded = conversationPartners.find((p) => p.publicId === selectedExpert.publicId);
+    if (upgraded) setSelectedExpert(upgraded);
+  }, [conversationPartners, selectedExpert?.publicId, selectedExpert?.id]);
 
   // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
   // client's name so the relevant conversation thread is surfaced immediately.
@@ -599,7 +686,11 @@ export default function Chat() {
   // harmless no-op when there's no real conversation yet (e.g. browsing the expert directory
   // pre-first-message) since read-all matches zero rows in that case.
   useEffect(() => {
-    if (!user?.id || !selectedExpert) return;
+    // LD 40 lane 2: still id-addressed — `read-all` is keyed on the INTERNAL pair id, so a thread
+    // opened by opaque id with no counterpart id yet is skipped rather than marked with a guess
+    // (§13). It has no unread messages by construction, so nothing is lost; the upgrade effect
+    // above re-runs this once the thread has a real id.
+    if (!user?.id || !selectedExpert?.id) return;
     const conversationId = buildConversationId(user.id, String(selectedExpert.id));
     markConversationRead.mutate(conversationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -660,10 +751,44 @@ export default function Chat() {
 
   const handleSend = () => {
     if (!message.trim() || !selectedExpert) return;
-    
+
     const currentMessage = message;
-    const recipientId = String(selectedExpert.id);
-    
+    const recipientId = String(selectedExpert.id ?? "");
+    const publicConversationId = selectedExpert.publicId ?? null;
+
+    // CANONICAL (CLAUDE.md Locked Decision 40, lane 3): send by OPAQUE conversation id. The server
+    // resolves the counterpart from the SESSION USER'S OWN threads, so no user id crosses the wire
+    // in either direction. `senderId` is not sent on any branch any more — the sender has always
+    // been the session (§14's identity rule); sending it was a client claim the server ignored.
+    //
+    // LD 40 lane 2: still id-addressed — the WebSocket frame is addressed by recipient user id, so
+    // a thread with an opaque address takes the HTTP rail. Moving the socket to opaque ids is a
+    // separate change to `server/websocket.ts` and is not in this lane.
+    if (publicConversationId) {
+      sendMessageMutation.mutate(
+        { message: currentMessage, conversationId: publicConversationId },
+        {
+          onSuccess: () => {
+            setMessage("");
+            refetch();
+          },
+          onError: () => {
+            toast({
+              title: "Message failed",
+              description: "Failed to send message. Please try again.",
+              variant: "destructive",
+            });
+          },
+        },
+      );
+      return;
+    }
+
+    // No opaque address for this thread (a directory row with no conversation yet, or a thread the
+    // joined `/api/messages` page did not cover). Legacy id-addressed send, unchanged except that
+    // `senderId` is gone.
+    if (!recipientId) return;
+
     // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
     // WebSocket real-time only works with actual platform users
     if (isConnected && recipientId.length > 10) {
@@ -675,7 +800,7 @@ export default function Chat() {
     } else {
       // Demo mode or WebSocket failed - use HTTP mutation
       sendMessageMutation.mutate(
-        { message: currentMessage, senderId: user?.id, receiverId: recipientId },
+        { message: currentMessage, receiverId: recipientId },
         { 
           onSuccess: () => {
             setMessage("");
@@ -695,7 +820,8 @@ export default function Chat() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(e.target.value);
-    if (selectedExpert && isConnected) {
+    // LD 40 lane 2: still id-addressed — the typing frame names the recipient by user id.
+    if (selectedExpert?.id && isConnected) {
       sendTyping(String(selectedExpert.id));
     }
   };
@@ -710,9 +836,18 @@ export default function Chat() {
   const filteredConversations = filteredExperts.filter(expert => expert.isConversationPartner);
   const filteredDirectory = filteredExperts.filter(expert => !expert.isConversationPartner);
 
+  // Which rail card is the open one. Locked Decision 40: matched on the OPAQUE id when the
+  // selection carries one, because a thread opened by opaque id has no counterpart id yet and an
+  // empty id must never read as "equal to" another empty id.
+  const isSelectedCard = (expert: DisplayExpert) => {
+    if (!selectedExpert) return false;
+    if (selectedExpert.publicId && expert.publicId) return selectedExpert.publicId === expert.publicId;
+    return !!selectedExpert.id && String(selectedExpert.id) === String(expert.id);
+  };
+
   const renderExpertCard = (expert: DisplayExpert, index: number) => (
     <motion.div
-      key={expert.id}
+      key={expert.publicId ?? expert.id}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
@@ -721,7 +856,7 @@ export default function Chat() {
         role="button"
         tabIndex={0}
         aria-label={`Open conversation with ${expert.name}`}
-        className={`cursor-pointer transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
+        className={`cursor-pointer transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isSelectedCard(expert) ? 'ring-2 ring-primary' : ''}`}
         onClick={() => setSelectedExpert(expert)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -1004,7 +1139,15 @@ export default function Chat() {
                       </div>
                     </div>
                     <Button variant="outline" size="sm" data-testid="button-view-profile">View Profile</Button>
-                    {/* Block / report user — conversation header actions */}
+                    {/* Block / report user — conversation header actions.
+                        LD 40 lane 2: still id-addressed — every one of these routes is
+                        `/api/messages/{block,report}/.../:targetUserId`. A thread opened by opaque
+                        id with no first message yet has no counterpart id on this client, so the
+                        menu is OMITTED rather than rendered with buttons that would 404 (§13: a
+                        control that cannot work must not be shown as if it can). It appears as
+                        soon as the thread has a real row, which is also the first moment there is
+                        anything to report. */}
+                    {!!selectedExpert.id && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" data-testid="button-conversation-actions">
@@ -1040,6 +1183,7 @@ export default function Chat() {
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    )}
                   </div>
 
                   {/* Messages */}

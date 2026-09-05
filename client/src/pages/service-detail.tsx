@@ -1743,7 +1743,10 @@ export default function ServiceDetailPage() {
                     disabled={!providerVerification?.displayName}
                     onClick={() =>
                       askExpert({
-                        expertId: service.userId,
+                        // Locked Decision 40 (lane 3): the LISTING is the address. The server
+                        // resolves the approved listing's owner itself — this CTA no longer reads
+                        // `service.userId`, which lane 2 removes from the public payload.
+                        serviceId: service.id,
                         subject: service.serviceName,
                         returnTo: `/services/${service.id}`,
                         fallbackName: providerVerification?.displayName ?? null,
