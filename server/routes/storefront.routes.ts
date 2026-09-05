@@ -25,6 +25,8 @@ import { Router } from "express";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
+import { HANDLE_RE } from "@shared/handle";
+import { isOwnerIdentityVerified } from "../utils/earner-verification";
 import fs from "fs";
 import path from "path";
 import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
@@ -61,8 +63,10 @@ const RESERVED_HANDLES = new Set([
   "register", "settings", "dashboard", "me", "you", "null", "undefined", "test",
 ]);
 
-// lowercase alnum + hyphens, 3–30 chars, no leading/trailing/double hyphen
-const HANDLE_RE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,28}[a-z0-9]$/;
+// lowercase alnum + hyphens, 3–30 chars, no leading/trailing/double hyphen. Moved to
+// `shared/handle.ts` by ledger `2026-09-05-user-id-is-internal`: the contact start rail addresses
+// an earner BY HANDLE and needs the same shape, and a second copy of it is the derivation-drift
+// class §18 rule 1 names. Re-exported here so the existing local references are unchanged.
 
 const claimSchema = z.object({
   handle: z
@@ -140,24 +144,10 @@ async function isStorefrontVerificationRequired(): Promise<boolean> {
   }
 }
 
-// V.1 — has this owner completed identity verification on EITHER form? Checked regardless of
-// current role (a user's stored role can be ambiguous relative to which onboarding form they
-// filled out), so verified-in-either counts.
-async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
-  const [localExpertForm] = await db
-    .select({ status: localExpertForms.identityVerificationStatus })
-    .from(localExpertForms)
-    .where(eq(localExpertForms.userId, userId))
-    .limit(1);
-  if (localExpertForm?.status === "verified") return true;
-
-  const [providerForm] = await db
-    .select({ status: serviceProviderForms.identityVerificationStatus })
-    .from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, userId))
-    .limit(1);
-  return providerForm?.status === "verified";
-}
+// V.1 — has this owner completed identity verification on EITHER form? MOVED to
+// `server/utils/earner-verification.ts` by ledger `2026-09-05-user-id-is-internal`: the contact
+// start rail's recipient card shows the same pill, and a second copy of the predicate is the
+// derivation-drift class §18 rule 1 names. Imported above; behaviour unchanged.
 
 // Storefront identity-hero location (§13-honest): prefers the admin-managed neighborhood
 // assignment (expertNeighborhoods → city_neighborhoods — the Kyoto lead-vetting table, isLead
@@ -762,10 +752,21 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
 
   return {
     earner: {
-      // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
-      // Lets the client (the "Message" CTA) open/create a chat thread with this earner and
-      // detect the earner-viewing-their-own-storefront case (§14: only used for CTA gating,
-      // never trusted as an identity/ownership decision on the server).
+      // ⚠️ REVERSED by CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`,
+      // ratified Sep 5, 2026). This field previously carried the comment "Not sensitive — user
+      // ids are already public on /experts/:id and similar surfaces". THAT IS NOW WRONG, and the
+      // reasoning was circular: it justified publishing an internal id here on the grounds that
+      // other surfaces publish it too.
+      //
+      // `users.id` is INTERNAL. An earner's PUBLIC identity is `handle` (below), which is what
+      // `/s/:handle` serves and what a person can be told out loud. A published id is a durable
+      // cross-surface identifier for a person that they never chose and cannot rotate.
+      //
+      // KEPT FOR NOW, and only for now: this is LANE 1 of that ruling (the server rails), and no
+      // client has switched yet. **Lane 2 REMOVES this field** and adds the guard that keeps it
+      // removed; lane 3 switches the clients to `handle`. The "Message" CTA's replacement already
+      // exists — `POST /api/conversations/start` with `{ handle }`, which resolves the recipient
+      // server-side and returns no user id at all. Do not add a new consumer of this field.
       id: owner.id,
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
       bio: owner.bio ?? null,

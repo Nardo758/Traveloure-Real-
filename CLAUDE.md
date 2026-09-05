@@ -663,6 +663,69 @@ This document captures architectural decisions to maintain consistency across co
     `expert_templates` consumer lane is gone from this vocabulary entirely — `ready_made_trips` is
     the single store lane.
 
+40. **`users.id` IS INTERNAL; AN EARNER'S PUBLIC IDENTITY IS THE HANDLE, AND CONTACT IS ADDRESSED BY
+    CONTEXT (decision-maker ratified Sep 5, 2026 — ledger `2026-09-05-user-id-is-internal`;
+    migration 287).** `users.handle` is the ONE public name of an earner — it is what `/s/:handle`
+    already serves and what a person can be told out loud. `users.id` is an INTERNAL key: it is a
+    join column and a session subject, not an address, and a surface that publishes it hands every
+    client a durable cross-surface identifier for a person that the person never chose and cannot
+    rotate. **Travelers and earners contact each other ONLY through platform channels** — there is
+    no outbound contact link on a storefront, and this ruling adds none — and a channel is opened by
+    naming **WHAT the conversation is about**, never by naming a row id.
+    **THE THREE ADDRESS KINDS, and they are the whole set.** A conversation is opened by exactly one
+    of: a **handle** (`{ handle }` — "I am writing to this earner because of their storefront"), a
+    **service** (`{ serviceId }` — a public, `approval_status='approved'` listing, which resolves to
+    its owner), or a **booking** (`{ bookingId }` — which resolves to the OTHER party of a booking
+    the caller is already on). Each one is a claim the SERVER can check; a `receiverId` is not.
+    **THE RECIPIENT IS SERVER-DERIVED — §14's identity rule applied to the OTHER END of the
+    message.** §14 says a money endpoint derives the ACTOR from the session and never from
+    `req.body`. The same reasoning binds the RECIPIENT of a platform message: a client-chosen
+    counterpart id is an identity the caller picked, and it is what makes user ids worth harvesting
+    in the first place. `POST /api/conversations/start` takes a `.strict()` **pick-based allowlist**
+    (§19) of exactly one address kind plus an optional `about`, resolves the counterpart itself, and
+    **returns no user id at all** — the recipient comes back as `{ handle, displayName, avatarUrl,
+    verified }`. Self-messaging is refused, `isBlockedBetween` is honoured, and the SAME
+    `checkMessageRateLimit` every other write path calls is applied with `isNewConversation` from
+    `hasExistingConversation` — one limiter, one more caller, never a second throttle (§18 rule 1).
+    **AN UNRESOLVABLE ADDRESS IS A 404, NEVER A 403 (§13 posture, the custom-venues precedent):**
+    "no such thing" and "not yours" are the SAME sentence, so the rail cannot be used to probe which
+    services or bookings exist.
+    **THE CLIENT-VISIBLE CONVERSATION ID CARRIES NO USER IDS.** `buildConversationId` concatenates
+    the two user ids, so the internal id IS the counterpart's id to anyone who sees it — a leak
+    through the thread key itself, which no projection over the participant object would ever catch.
+    `toPublicConversationId` is a keyed **HMAC-SHA256** over that internal id, truncated to 32 hex
+    chars, and `resolvePublicConversationId` resolves it by walking the **SESSION USER'S OWN**
+    conversation list and matching — so a public id is meaningless to anyone but the two people in
+    the thread, and a non-participant holding one resolves nothing. The key is `SESSION_SECRET` (the
+    secret the session cookie and the concierge claim-token HMAC already use — **no new required env
+    var**); when it is absent the fallback is a **process-lifetime random** key, never a fixed
+    literal, so an unconfigured environment yields ids that stop resolving after a restart rather
+    than ids anyone can compute (**fail closed**: a wrong-looking id is refused, a guessable one
+    would not be).
+    **EVERY CONVERSATION RECORDS WHAT IT IS ABOUT.** `conversation_contexts` (migration 287,
+    declared in `shared/schema.ts` per the deploy-push durability rule) is one additive table:
+    `(conversation_id, context_kind, context_id)` UNIQUE, `context_kind ∈
+    {storefront, service, booking}` **app-enforced with NO DB CHECK** (the publish-trap posture,
+    migrations 181/195/273/275/276/277/279/280/281/282/284). It is written ONLY server-side by the
+    start rail — its insert schema is `.pick()`-based (§19) and no client body ever reaches it — so
+    the platform can see PRE-service traffic (a storefront enquiry, a question about a listing) and
+    POST-service traffic (a thread about a booking) as different things. **NO BACKFILL: a thread
+    with no context rows is an OLDER thread and renders honestly as having no context (§13)** —
+    never as "storefront", which would be a claim nobody made.
+    **SYMMETRY.** The rule is about publishing an id, not about which side of the marketplace the
+    person is on: a traveler's `users.id` is internal for the same reason, and the same rails carry
+    both directions of a thread. The earner's handle is public because an earner PUBLISHES a
+    storefront; that is the only asymmetry.
+    **THIS IS LANE 1 OF 3, and lanes 2/3 are the rest of the ruling, not optional polish.** Lane 1
+    (this one) ADDS the server-resolved rails beside the existing ones and changes no client: every
+    legacy id-based input keeps working, annotated `deprecated — removed after lane 3`, and
+    `POST /api/chat`'s body-sourced `receiverId` warns ONCE PER PROCESS so the day clients stop
+    sending it is visible. **Lane 2** strips `userId` from public projections (`loadStorefront`'s
+    `earner.id` among them — the "Not sensitive — user ids are already public" comment that stood
+    there is now WRONG and has been rewritten in this lane) and adds the guard that keeps them
+    stripped. **Lane 3** switches the clients to handles and deletes the deprecated inputs. Do not
+    remove a deprecated input before lane 3, and do not add a new id-addressed contact rail at all.
+
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

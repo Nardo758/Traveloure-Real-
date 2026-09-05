@@ -1,10 +1,28 @@
 import { db } from "../db";
 import { userAndExpertChats, users, notifications, userBlocks, messageReports, adminNotifications } from "@shared/schema";
 import { eq, and, or, desc, sql, isNull, ilike } from "drizzle-orm";
+import {
+  matchPublicConversationId,
+  toPublicConversationId as toPublicConversationIdImpl,
+} from "./conversation-public-id.pure";
+import { listConversationContexts } from "./contact-rails.service";
+import type { ConversationContextView } from "./contact-rails.pure";
 
 export function buildConversationId(userId1: string, userId2: string): string {
   return [userId1, userId2].sort().join("_");
 }
+
+// ─── PUBLIC CONVERSATION IDS (Locked Decision 40, ledger `2026-09-05-user-id-is-internal`) ────
+//
+// `buildConversationId` above concatenates the two USER IDS. That string is returned to clients on
+// every message and every conversation summary, so the THREAD KEY ITSELF publishes the
+// counterpart's `users.id` — a leak no projection over the participant object would ever catch.
+//
+// `toPublicConversationId` is the client-visible projection: a keyed HMAC over the internal id,
+// carrying no user id at all. It is re-exported from here (its implementation is in
+// `conversation-public-id.pure.ts`) so callers have ONE import for the messaging vocabulary while
+// the projection keeps its proof in an environment with no `DATABASE_URL`.
+export { toPublicConversationId, isPublicConversationIdShape } from "./conversation-public-id.pure";
 
 export function parseConversationId(conversationId: string): { userId1: string; userId2: string } {
   const sep = conversationId.indexOf("_");
@@ -17,6 +35,15 @@ export function parseConversationId(conversationId: string): { userId1: string; 
 
 export interface ConversationSummary {
   conversationId: string;
+  // Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`): the id a client should use. It
+  // carries NO user ids. `conversationId` and `otherUserId` above/below are the LEGACY id-shaped
+  // fields — deprecated, removed after lane 3 (the client switch); lane 2 strips the ids from
+  // public projections. They stay for now so no client breaks in this lane.
+  publicId: string;
+  // WHAT this thread is about. EMPTY = an older thread with no recorded context, rendered honestly
+  // as having none (§13) — never a guessed `storefront`. There is no backfill.
+  contexts: ConversationContextView[];
+  /** @deprecated — removed after lane 3 (Locked Decision 40); address by handle/service/booking. */
   otherUserId: string;
   lastMessage: string | null;
   lastMessageAt: Date | null;
@@ -61,6 +88,8 @@ export async function getConversationList(
     if (!conversationMap.has(convId)) {
       conversationMap.set(convId, {
         conversationId: convId,
+        publicId: toPublicConversationIdImpl(convId),
+        contexts: [],
         otherUserId: otherId,
         lastMessage: msg.message,
         lastMessageAt: msg.createdAt,
@@ -105,7 +134,16 @@ export async function getConversationList(
   conversations.sort(
     (a, b) => new Date(b.lastMessageAt!).getTime() - new Date(a.lastMessageAt!).getTime(),
   );
-  return conversations.slice(0, limit);
+  const page = conversations.slice(0, limit);
+
+  // Locked Decision 40: every thread carries WHAT it is about. Resolved server-side and labelled
+  // server-side — a client must never restate the label, which would be the derivation-drift class
+  // §18 rule 1 names. Looked up only for the page actually returned.
+  const contextMap = await listConversationContexts(page.map((c) => c.conversationId));
+  for (const conv of page) {
+    conv.contexts = contextMap.get(conv.conversationId) ?? [];
+  }
+  return page;
 }
 
 export async function getConversationMessages(
@@ -288,6 +326,48 @@ export async function hasExistingConversation(userA: string, userB: string): Pro
     )
     .limit(1);
   return !!row;
+}
+
+/**
+ * Every INTERNAL conversation id the user is a party to.
+ *
+ * Deliberately a narrow projection (`sender_id`/`receiver_id` only) rather than a call into
+ * `getConversationList`: resolving a public id must not depend on the summary payload's shape, its
+ * party filter or its 50-row cap — a thread the caller is on must resolve whether or not it is on
+ * the first page of their inbox.
+ */
+export async function listInternalConversationIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ senderId: userAndExpertChats.senderId, receiverId: userAndExpertChats.receiverId })
+    .from(userAndExpertChats)
+    .where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)));
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const other = row.senderId === userId ? row.receiverId : row.senderId;
+    if (other) ids.add(buildConversationId(userId, other));
+  }
+  return Array.from(ids);
+}
+
+/**
+ * Resolve a PUBLIC conversation id for one of its two participants.
+ *
+ * The walk is over the SESSION USER'S OWN conversations, which is what makes the id meaningless to
+ * anyone else: a non-participant holding a perfectly valid public id has no internal id in their own
+ * list that projects to it, so they get null. Null is also the answer for a malformed id and for a
+ * thread that does not exist — one refusal, so the rail cannot be used as an oracle (§13).
+ */
+export async function resolvePublicConversationId(
+  sessionUserId: string,
+  publicId: unknown,
+): Promise<{ internalId: string; otherUserId: string } | null> {
+  const internalIds = await listInternalConversationIds(sessionUserId);
+  const internalId = matchPublicConversationId(publicId, internalIds);
+  if (!internalId) return null;
+  const { userId1, userId2 } = parseConversationId(internalId);
+  const otherUserId = userId1 === sessionUserId ? userId2 : userId1;
+  if (!otherUserId || otherUserId === sessionUserId) return null;
+  return { internalId, otherUserId };
 }
 
 export async function assertRecipientExists(recipientId: string): Promise<boolean> {
