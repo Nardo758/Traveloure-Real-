@@ -76,11 +76,16 @@ is `2026-09-04-one-modal-many-doors`).
 - **Home-city default (`2026-09-04-step4-variants-fields`).** Not visible on a wedding: it fires only
   for a **day-shaped** occasion. To see it, sign in as a user with `users.home_city` set, pick
   `option-occasion-date-night`, and go to step 2 with the field empty: it arrives **pre-filled** with
-  the home city and carries `text-etp-destination-suggested` ("from your home city — change it, or
-  continue to keep it"). Type anything and the note disappears — it is now your answer.
+  the home city and carries `text-etp-destination-suggested` (the attribution sentence inside it is
+  `text-destination-from-home-city`: "from the home city in your profile — change it, or continue to
+  keep it"). Type anything and the note disappears — it is now your answer.
   **§13 to verify:** press **Save** (`button-etp-save`) from step 2 WITHOUT advancing, reopen the
   modal, and the suggested city must **not** have been stored. Advancing with
   `button-planning-next` first is what makes it yours.
+  **"Empty" means the PLAN states no destination, not that the input looks empty** (post-publish QA
+  check 4): press **Clear plan** (`button-etp-clear`) on a plan that names a city, reopen, and the
+  modal must show no destination, no dates and no title — and the date-night default must then be
+  the home city, never the cleared plan's city.
 - **Where a home city is SET (`2026-09-05-slip-events-first-render`).** `/profile` → Personal
   Information → **Home city** (`select-home-city`), saved by the page's own **Save Changes**. The
   options are the SERVER's operating-market list (`GET /api/me/home-city` → `markets`), so the

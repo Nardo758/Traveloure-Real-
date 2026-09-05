@@ -238,6 +238,72 @@ export function homeCitySuggestion(input: {
   return home;
 }
 
+/**
+ * WHAT ROW 1 OF STEP 2 HOLDS WHEN THE STEP IS SHOWN, and WHERE THAT VALUE CAME FROM.
+ * The precedence rule, stated once (post-publish QA check 4).
+ *
+ * THE DEFECT THIS CLOSES. `homeCitySuggestion` above answers "may I suggest the home city?" by
+ * looking at THE FIELD — "does it already hold something?" — and the modal fed it the LIVE input
+ * value. A field value and a plan's stated destination are different facts, and they came apart
+ * in both directions:
+ *
+ *   - a destination left over from a PREVIOUS, CLEARED plan was still sitting in the field, so it
+ *     read as "the traveler already answered" and the home-city default never fired. It is not an
+ *     answer: nobody stated it about THIS plan. Reported from production — a member whose profile
+ *     said Porto opened a date night and was shown Kyoto, the destination of the plan they had
+ *     just cleared, with no note saying where it came from.
+ *   - the mirror case: on the render where the modal re-opens, the field still holds the PREVIOUS
+ *     open's value while the freshly-seeded one is queued, so a genuinely stated destination could
+ *     read as empty and be overwritten by the suggestion one commit later.
+ *
+ * So the question is asked of the PLAN, not of the input: the ordering below is
+ *
+ *   1. what THIS plan/context states — the door's own city, the bound trip row, the live context.
+ *      The traveler said it, so nothing may overwrite it;
+ *   2. otherwise, the home-city DEFAULT for a day-shaped occasion (`homeCitySuggestion` owns every
+ *      condition of that half and is DELEGATED to, never re-implemented — §18 rule 1);
+ *   3. otherwise EMPTY. Never a guess, and never a value carried over from a plan that no longer
+ *      exists (§13).
+ *
+ * `fromHomeCity` is the §13 half and is the whole point of returning an object rather than a
+ * string: a SHOWN DEFAULT and a CHOSEN VALUE render identically in a filled input and must stay
+ * distinguishable right up to the moment the traveler makes one of them true. The caller shows
+ * the attribution note while it stands, and does not write the value to the pen or the trip row
+ * until the traveler moves forward past step 2.
+ *
+ * ORDERED STOPS (CLAUDE.md Locked Decision 34) are untouched: this decides ROW 1 — the position-0
+ * mirror of `trip_destinations` — and says nothing about rows 2..n, which are only ever the
+ * traveler's own text.
+ */
+export interface Step2Destination {
+  /** What row 1 should hold. `""` = nothing to show; the field stays empty (§13). */
+  value: string;
+  /** TRUE only for case 2 — a suggestion nobody has confirmed yet. */
+  fromHomeCity: boolean;
+}
+
+export function resolveStep2Destination(input: {
+  occasion?: OccasionSwitchRow | null;
+  /**
+   * The destination THIS plan/context states — the door's city, the bound trip's own row, or the
+   * live trip context. NOT the input field: a field can hold a value no plan states.
+   */
+  statedDestination?: string | null;
+  homeCity?: string | null;
+}): Step2Destination {
+  const stated = (input.statedDestination ?? "").trim();
+  if (stated) return { value: stated, fromHomeCity: false };
+  // The home-city half, delegated. `currentDestination` is "" by construction here — the branch
+  // above already returned for every non-empty stated destination — so the ordering IS the
+  // "never overwrite an answer" rule, expressed once rather than checked twice.
+  const home = homeCitySuggestion({
+    occasion: input.occasion,
+    homeCity: input.homeCity,
+    currentDestination: "",
+  });
+  return home ? { value: home, fromHomeCity: true } : { value: "", fromHomeCity: false };
+}
+
 // ── THE RE-AUDIT PREDICATES ───────────────────────────────────────────────────────────────────
 // Ledger `2026-09-04-reaudit-fixes`. Each one answers a question the modal previously answered
 // INLINE with a fixed tuple or a fixed sentence, and each one fails SILENTLY when it is wrong —

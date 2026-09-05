@@ -101,7 +101,14 @@ import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
-import { updateTripContext, useTripContext, switchTripContextPreservingId, getTripContext } from "@/lib/trip-context";
+import {
+  updateTripContext,
+  useTripContext,
+  switchTripContextPreservingId,
+  getTripContext,
+  SEARCH_SETTINGS_PREFIX,
+  TRIP_CONTEXT_CLEARED_EVENT,
+} from "@/lib/trip-context";
 // §18 rule 1: the "URL first, then the active TripContext" order is written ONCE, in
 // client/src/lib/trip-target.ts, and every marketplace add resolves through it.
 import { resolveTargetTripId } from "@/lib/trip-target";
@@ -848,7 +855,7 @@ export default function ExperienceTemplatePage() {
   const initialSettings = useMemo(() => {
     if (typeof window === 'undefined') return null;
     try {
-      const stored = sessionStorage.getItem(`searchSettings_${slug}`);
+      const stored = sessionStorage.getItem(`${SEARCH_SETTINGS_PREFIX}${slug}`);
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -859,7 +866,7 @@ export default function ExperienceTemplatePage() {
   const getPersistedSearchSettings = (currentSlug: string) => {
     if (typeof window === 'undefined') return null;
     try {
-      const stored = sessionStorage.getItem(`searchSettings_${currentSlug}`);
+      const stored = sessionStorage.getItem(`${SEARCH_SETTINGS_PREFIX}${currentSlug}`);
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -1045,6 +1052,32 @@ export default function ExperienceTemplatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripCtx.destination, tripCtx.startDate, tripCtx.endDate, tripCtx.travelers, slug]);
 
+  /**
+   * "CLEAR PLAN" REACHES THIS PAGE'S OWN COPY (post-publish QA check 4).
+   *
+   * The sync above deliberately skips EMPTY context values so a mount pass cannot blank a live
+   * plan — which means an emptied context alone can never reset this page. So it holds the plan's
+   * destination and dates in React state long after the traveler cleared it, and the persist
+   * effect below writes them straight back into the context on the next dep change. That is one
+   * of the readers that resurrected a cleared Kyoto plan.
+   *
+   * A CLEAR IS A DIFFERENT FACT FROM AN EMPTY READ, and `clearTripContext` says so with its own
+   * event — so this listens for that, and only that. It resets the basics the plan owns
+   * (destination, dates, and the details-submitted flag that gates the trip-detail prompts) and
+   * deliberately leaves the page's SEARCH preferences (tab, sort, price, filters) alone: those
+   * are how you are reading this template, not what you are planning.
+   */
+  useEffect(() => {
+    const onCleared = () => {
+      setDestination("");
+      setStartDate(undefined);
+      setEndDate(undefined);
+      setDetailsSubmitted(false);
+    };
+    window.addEventListener(TRIP_CONTEXT_CLEARED_EVENT, onCleared);
+    return () => window.removeEventListener(TRIP_CONTEXT_CLEARED_EVENT, onCleared);
+  }, []);
+
   // Persist search settings to sessionStorage whenever they change
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1068,7 +1101,7 @@ export default function ExperienceTemplatePage() {
       kids,
       detailsSubmitted,
     };
-    sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
+    sessionStorage.setItem(`${SEARCH_SETTINGS_PREFIX}${slug}`, JSON.stringify(settingsToSave));
     // P3b reverse-sync: any remaining internal setter (destination prompt, query
     // params, trip queue) still propagates to the site-wide TripContext. Empty
     // values skipped, so blanks never clobber the strip. Gated on ctxApplied so
@@ -1083,14 +1116,24 @@ export default function ExperienceTemplatePage() {
     // the same trip and dates/travelers changes alone still preserve it —
     // the same preserve-vs-clear policy as the plan modal's commit).
     // experienceSlug isn't part of that identity set — merged separately.
+    //
+    // WITH NO DESTINATION THIS PAGE STATES NOTHING ABOUT A PLAN (post-publish QA check 4).
+    // `adults` defaults to 2 here and `experienceType?.name` is just whichever template is on
+    // screen, so an unguarded write pushed `travelers: 2` + an occasion name into the site-wide
+    // context on every filter tweak — enough to make the Trip Strip visible for a plan with
+    // nowhere to go, and enough to put a plan back the instant after the traveler cleared one. A
+    // party nobody stated is not a plan (§13). The occasion SLUG still rides: it is which
+    // template you are reading, not a plan, and it is not one of the fields the strip appears for.
     if (ctxApplied) {
-      switchTripContextPreservingId({
-        destination: destination.trim() || undefined,
-        startDate,
-        endDate,
-        travelers: adults + kids,
-        experienceType: experienceType?.name,
-      });
+      if (destination.trim()) {
+        switchTripContextPreservingId({
+          destination: destination.trim(),
+          startDate,
+          endDate,
+          travelers: adults + kids,
+          experienceType: experienceType?.name,
+        });
+      }
       updateTripContext({ experienceSlug: slug });
     }
   }, [
