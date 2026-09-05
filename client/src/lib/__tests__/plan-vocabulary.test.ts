@@ -32,7 +32,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ADDED_TO_CART_TITLE,
+  MAX_PARTY_COUNT,
   eventCountLabel,
+  parsePartyCountInput,
   partyTotal,
   ADDED_TO_PLAN_TITLE,
   ADD_TO_CART_LABEL,
@@ -148,5 +150,63 @@ describe("P6 — the party total (Adults + Kids, one derivation)", () => {
 
   it("never tops a stated kids count up with an assumed adult", () => {
     assert.equal(partyTotal(undefined, "2"), 2);
+  });
+});
+
+/**
+ * P6 — THE TYPED PARTY COUNT (decision-maker, step 4: "the traveler must be able to TYPE the
+ * number as well as step it").
+ *
+ * `parsePartyCountInput` is the ONE normaliser shared by the step-4 input and the − / + buttons
+ * that sit either side of it (§18 rule 1). Everything asserted here is an invariant the STEPPER
+ * already held and which a free-text field is the obvious way to break:
+ *
+ *   - an empty field stays empty, because Locked Decision 33 says an untouched step-4 field is
+ *     NULL, "never 2" — a parser that answered 0 or 1 for "" would put migration 241's mask back;
+ *   - there is no explicit ZERO in this model (§13): "not set" and "none" are different answers
+ *     and only the first is true of a field nobody filled in, so a typed "0" lands exactly where
+ *     `stepDown` lands from 1 — at "";
+ *   - the ceiling is the stepper's own `MAX_PARTY_COUNT`, so the two controls on one state cannot
+ *     disagree about the maximum;
+ *   - and the parsed result is a string, because that is the shape the `adults`/`kids` state and
+ *     `partyTotal` already speak. A number here would be a second representation of one value.
+ */
+describe("parsePartyCountInput (step 4's typed party count)", () => {
+  it("P6a: an empty or whitespace field states NOTHING — never a 0, never a 1", () => {
+    assert.equal(parsePartyCountInput(""), "");
+    assert.equal(parsePartyCountInput("   "), "");
+    assert.equal(parsePartyCountInput(undefined), "");
+    assert.equal(parsePartyCountInput(null), "");
+    // And an unstated field feeds through the existing derivation as "not captured".
+    assert.equal(partyTotal(parsePartyCountInput(""), parsePartyCountInput("")), undefined);
+  });
+
+  it("P6b: keeps digits and drops everything else rather than clearing the field", () => {
+    assert.equal(parsePartyCountInput("12"), "12");
+    assert.equal(parsePartyCountInput("12 adults"), "12");
+    assert.equal(parsePartyCountInput("1a2"), "12");
+    assert.equal(parsePartyCountInput("-3"), "3");
+    assert.equal(parsePartyCountInput("2.5"), "25");
+    assert.equal(parsePartyCountInput("007"), "7");
+  });
+
+  it("P6c: there is no explicit zero — a typed 0 is NOT SET, the same place stepDown lands", () => {
+    assert.equal(parsePartyCountInput("0"), "");
+    assert.equal(parsePartyCountInput("00"), "");
+  });
+
+  it("P6d: clamps to the stepper's own ceiling, and never above it", () => {
+    assert.equal(parsePartyCountInput(String(MAX_PARTY_COUNT)), String(MAX_PARTY_COUNT));
+    assert.equal(parsePartyCountInput(String(MAX_PARTY_COUNT + 1)), String(MAX_PARTY_COUNT));
+    assert.equal(parsePartyCountInput("999999999999999999999999"), String(MAX_PARTY_COUNT));
+  });
+
+  it("P6e: returns the string shape the adults/kids state and partyTotal already speak", () => {
+    const adults = parsePartyCountInput("3");
+    const kids = parsePartyCountInput("2");
+    assert.equal(typeof adults, "string");
+    assert.equal(partyTotal(adults, kids), 5);
+    // A stated adults count beside an untouched kids field totals the adults alone.
+    assert.equal(partyTotal(adults, parsePartyCountInput("")), 3);
   });
 });
