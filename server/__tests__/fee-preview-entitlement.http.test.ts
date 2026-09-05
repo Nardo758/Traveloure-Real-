@@ -29,7 +29,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { grantTripPass } from "../services/trip-entitlement.service";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
@@ -121,11 +121,18 @@ before(async () => {
 });
 
 after(async () => {
-  await db.execute(sql`DELETE FROM trip_entitlements WHERE trip_id IN (${tripNoPassId}, ${tripPassId})`);
-  await db.execute(sql`DELETE FROM trips WHERE id IN (${tripNoPassId}, ${tripPassId})`);
-  await db.execute(sql`DELETE FROM provider_services WHERE id = ${serviceId}`);
-  await db.execute(sql`DELETE FROM users WHERE id IN (${providerId})`);
-  await db.execute(sql`DELETE FROM users WHERE email = ${buyerEmail}`); // cart_items cascade from users
+  // The shared `../db` pool is built `allowExitOnIdle: false`, so a run that never ends it outlives
+  // its own assertions (ledger `2026-09-05-fee-ledger-test-robustness`). Cleanup first, in reverse
+  // dependency order; the pool closes in a `finally` so the process exits on every path.
+  try {
+    await db.execute(sql`DELETE FROM trip_entitlements WHERE trip_id IN (${tripNoPassId}, ${tripPassId})`);
+    await db.execute(sql`DELETE FROM trips WHERE id IN (${tripNoPassId}, ${tripPassId})`);
+    await db.execute(sql`DELETE FROM provider_services WHERE id = ${serviceId}`);
+    await db.execute(sql`DELETE FROM users WHERE id IN (${providerId})`);
+    await db.execute(sql`DELETE FROM users WHERE email = ${buyerEmail}`); // cart_items cascade from users
+  } finally {
+    await pool.end();
+  }
 });
 
 test("A: no tripId → no waiver, and a baseline total", async () => {

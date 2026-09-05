@@ -63,7 +63,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import type { VendorWithCreator } from "@shared/schema";
+import type { VendorCreator, VendorDirectoryRow } from "@shared/schema";
 
 const vendorCategories = [
   { id: "photography", label: "Photography", icon: Camera },
@@ -89,9 +89,27 @@ const vendorFormSchema = z.object({
 });
 
 type VendorFormValues = z.infer<typeof vendorFormSchema>;
-type Vendor = VendorWithCreator;
+/**
+ * What `GET /api/vendors` actually returns (ledger `2026-09-05-vendors-read-scope`): the vendor's
+ * own business columns always, and `createdBy` ONLY on the admin projection — the server does not
+ * disclose the creating account to a non-admin browser at all.
+ */
+type Vendor = VendorDirectoryRow;
 
 const PLANNER_ROLES = new Set(["admin", "service_provider", "provider", "local_expert", "travel_expert", "event_planner"]);
+
+/**
+ * True when the SERVER disclosed creator provenance for this row (the admin projection).
+ *
+ * §13: an UNDISCLOSED creator and an UNKNOWN one are different facts. `createdBy: null` already
+ * means "this vendor predates the provenance column", so a non-admin response omits the key
+ * entirely and this surface renders no attribution line at all — rather than printing
+ * "Unknown origin" over a creator the platform knows perfectly well and simply is not telling
+ * this viewer.
+ */
+function hasCreatorProvenance(vendor: Vendor): boolean {
+  return "createdBy" in vendor;
+}
 
 function VendorCreatorAttribution({ vendor }: { vendor: Vendor }) {
   const creatorName = [vendor.createdBy?.firstName, vendor.createdBy?.lastName]
@@ -128,11 +146,17 @@ export default function Vendors() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Ledger `2026-09-05-vendors-read-scope`. Two endpoints, because creator provenance is an
+  // ADMIN-AUDIT fact and now lives on an admin path (under §2's blanket `adminApiGuard`) rather
+  // than as a projection branch inside the browse route. The browse endpoint returns no creator at
+  // all, so the creator dropdown below simply has nothing to build from for a non-admin — which is
+  // correct: that control is already admin-only.
+  const vendorsEndpoint = isAdmin ? "/api/admin/vendors" : "/api/vendors";
   const { data: vendors = [], isLoading } = useQuery<Vendor[]>({
-    queryKey: ["/api/vendors", { createdById: isAdmin && creatorFilter !== "all" ? creatorFilter : undefined }],
+    queryKey: [vendorsEndpoint, { createdById: isAdmin && creatorFilter !== "all" ? creatorFilter : undefined }],
   });
 
-  const creatorOptions = vendors.reduce<Vendor["createdBy"][]>((creators, vendor) => {
+  const creatorOptions = vendors.reduce<(VendorCreator | null | undefined)[]>((creators, vendor) => {
     if (vendor.createdBy && !creators.some((creator) => creator?.id === vendor.createdBy?.id)) {
       creators.push(vendor.createdBy);
     }
@@ -160,7 +184,9 @@ export default function Vendors() {
       return res.json();
     },
     onSuccess: () => {
+      // Both listing endpoints (browse + admin) show the new row, so both are invalidated.
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/vendors"] });
       setIsAddDialogOpen(false);
       form.reset();
     },
@@ -579,7 +605,7 @@ export default function Vendors() {
                           <span className="font-medium">{vendor.rating}</span>
                         </div>
                       )}
-                      <VendorCreatorAttribution vendor={vendor} />
+                      {hasCreatorProvenance(vendor) && <VendorCreatorAttribution vendor={vendor} />}
                     </CardContent>
                   </Card>
                 );
@@ -624,7 +650,7 @@ export default function Vendors() {
                               {vendor.rating}
                             </div>
                           )}
-                          <VendorCreatorAttribution vendor={vendor} />
+                          {hasCreatorProvenance(vendor) && <VendorCreatorAttribution vendor={vendor} />}
                         </div>
                         <Button variant="outline" size="sm" data-testid={`button-contact-vendor-${vendor.id}`}>
                           Contact

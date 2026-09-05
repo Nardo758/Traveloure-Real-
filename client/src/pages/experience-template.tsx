@@ -1234,9 +1234,14 @@ export default function ExperienceTemplatePage() {
     setShowDestPrompt(false);
   };
 
+  // Owner-scoped since ledger `2026-09-05-custom-venues-owner-scope`: the list route derives the
+  // owner from the SESSION and ignores any userId in the query, so this asks for (and can only
+  // ever receive) the signed-in traveler's own saved venues. It sends no userId — it never did —
+  // and it is gated on `user` like the other signed-in-only queries on this page, because a
+  // logged-out visitor would now get a 401 the default queryFn throws on rather than a list.
   const { data: customVenuesResp } = useQuery<{ data: CustomVenue[] }>({
     queryKey: ["/api/custom-venues", { experienceType: slug }],
-    enabled: !!slug,
+    enabled: !!slug && !!user,
   });
   const customVenues = customVenuesResp?.data ?? [];
 

@@ -236,7 +236,13 @@ export interface IStorage {
 
   // Vendors
 
-  getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
+  // Ledger `2026-09-05-vendors-read-scope`: TWO readers, because one reader that joins `users`
+  // by default is one leak away from every caller. `getVendorsForDirectory` does not join at all;
+  // `getVendorsWithCreator` carries the creator's email and is named so a caller cannot reach it
+  // by accident. The old `getVendors` name is retired so no existing call site keeps the join
+  // silently.
+  getVendorsForDirectory(category?: string, city?: string, createdById?: string): Promise<Vendor[]>;
+  getVendorsWithCreator(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]>;
 
   getVendor(id: string): Promise<Vendor | undefined>;
 
@@ -641,7 +647,8 @@ export interface IStorage {
 
   // Custom Venues
 
-  getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
+  // userId is REQUIRED, not an optional filter (ledger `2026-09-05-custom-venues-owner-scope`).
+  getCustomVenues(userId: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
 
   getCustomVenue(id: string): Promise<CustomVenue | undefined>;
 
@@ -1302,7 +1309,8 @@ export interface IStorage {
 
   getVendorContractsByIds(ids: string[]): Promise<Array<{ id: string; vendorPhone: string | null }>>;
 
-  getCustomVenuesPage(userId: string | undefined, tripId: string | undefined, experienceType: string | undefined, limit: number, offset: number): Promise<{ venues: CustomVenue[]; total: number }>;
+  // userId is REQUIRED — omitting it used to mean "every row" (same ledger row).
+  getCustomVenuesPage(userId: string, tripId: string | undefined, experienceType: string | undefined, limit: number, offset: number): Promise<{ venues: CustomVenue[]; total: number }>;
 }
 
 // §19 layer 2 (ruling 46, same placement rationale as updateProviderService's approval-lifecycle
@@ -1632,7 +1640,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
+  //
+  // Ledger `2026-09-05-vendors-read-scope`. The single `getVendors` that used to live here served
+  // BOTH the public list route and the admin audit export, and its SELECT joined `users` — so the
+  // creator's email address rode out on every row of a route with no session at all. The split
+  // below is structural, not cosmetic: the reader the browse surface calls has no join to strip.
+  //
+  // NOTE the `category`/`city`/`createdById` filters are all still OPTIONAL here, and an omitted
+  // filter still means "the whole directory". That is CORRECT for this table and is the difference
+  // from `getCustomVenues*` (which now throws without an owner): a vendor row is a shared directory
+  // listing every signed-in caller is entitled to browse, not a user-owned private row. What was
+  // never correct was publishing the CREATOR alongside it.
+
+  /** The browse projection: the vendor's own columns, no `users` join, no creator anything. */
+  async getVendorsForDirectory(category?: string, city?: string, createdById?: string): Promise<Vendor[]> {
+    const conditions = [
+      category ? eq(vendors.category, category) : undefined,
+      city ? eq(vendors.city, city) : undefined,
+      createdById ? eq(vendors.createdById, createdById) : undefined,
+    ].filter((condition): condition is NonNullable<typeof condition> => condition !== undefined);
+    return await db
+      .select()
+      .from(vendors)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+  }
+
+  /**
+   * The creator-provenance projection: carries the creating account's id, email and name.
+   *
+   * ADMIN/AUDIT ONLY. Its two callers are the admin CSV export and the admin branch of
+   * `GET /api/vendors`; both establish `role === "admin"` from the DB first. Do not call this to
+   * serve a browse surface — that is the defect this split exists to make un-writable.
+   */
+  async getVendorsWithCreator(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
     const conditions = [
       category ? eq(vendors.category, category) : undefined,
       city ? eq(vendors.city, city) : undefined,
@@ -4184,15 +4224,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Custom Venues
-  async getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]> {
-    const conditions = [];
-    if (userId) conditions.push(eq(customVenues.userId, userId));
+  //
+  // OWNER IS REQUIRED (ledger `2026-09-05-custom-venues-owner-scope`). Both readers below used to
+  // treat `userId` as one OPTIONAL filter among three, so omitting it produced a query with no
+  // WHERE clause at all — every custom venue on the table, addresses included. The route that
+  // omitted it was unauthenticated, so that branch was reachable by anyone. The route is fixed;
+  // this is the second layer, so a FUTURE caller cannot list the whole table by omission.
+  //
+  // It THROWS rather than returning []: an absent owner here is a programming error at the call
+  // site, and a silent empty list would look like "this user has no venues" — a claim the caller
+  // never made (§13). Nothing legitimately needs a cross-user listing; an admin surface that ever
+  // does must query deliberately under the §2 blanket guard, not by leaving an argument off.
+  async getCustomVenues(userId: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]> {
+    if (!userId) throw new Error("getCustomVenues requires an owner userId");
+    const conditions = [eq(customVenues.userId, userId)];
     if (tripId) conditions.push(eq(customVenues.tripId, tripId));
     if (experienceType) conditions.push(eq(customVenues.experienceType, experienceType));
-    
-    if (conditions.length === 0) {
-      return await db.select().from(customVenues).orderBy(desc(customVenues.createdAt));
-    }
+
     return await db.select().from(customVenues).where(and(...conditions)).orderBy(desc(customVenues.createdAt));
   }
 
@@ -8267,18 +8315,21 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(inviteTemplates.createdAt));
   }
 
+  // Owner is REQUIRED — see the note on `getCustomVenues` above. This is the reader the
+  // unauthenticated list route called, and the `conditions.length > 0` ternary below is the exact
+  // line that turned an omitted owner into "select every row".
   async getCustomVenuesPage(
-    userId: string | undefined,
+    userId: string,
     tripId: string | undefined,
     experienceType: string | undefined,
     limit: number,
     offset: number,
   ): Promise<{ venues: CustomVenue[]; total: number }> {
-    const conditions = [];
-    if (userId) conditions.push(eq(customVenues.userId, userId));
+    if (!userId) throw new Error("getCustomVenuesPage requires an owner userId");
+    const conditions = [eq(customVenues.userId, userId)];
     if (tripId) conditions.push(eq(customVenues.tripId, tripId));
     if (experienceType) conditions.push(eq(customVenues.experienceType, experienceType));
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = and(...conditions);
 
     const [agg] = await db.select({ total: count() }).from(customVenues).where(whereClause);
     const venues = await db

@@ -233,3 +233,178 @@ export function eventMetaLine(
   const when = [day, time].filter(Boolean).join(" ");
   return [when || null, event.location || null].filter(Boolean).join(" · ");
 }
+
+/**
+ * ── THE SLIP'S DAY SLOTS — what a plan renders BEFORE anything has been added ─────────────────
+ * Ledger `2026-09-05-slip-events-first-render`. NO SCHEMA CHANGE; this is a second reader of the
+ * same two arrays `groupItemsByEvent` already reads.
+ *
+ * THE DEFECT IT CLOSES. The slip's day list is built from ITEMS — the plancard's `days` array is
+ * `Array.from(new Set(items.map(i => i.dayNumber)))`, so a plan with no items has NO days — while
+ * the header's event count is built from EVENTS. A freshly minted wedding plan is exactly that
+ * state: four events ticked at step 5, zero items. The header said "4 events" and the body said
+ * "No items on this plan yet", with no `slip-event-<id>` card anywhere. The very first thing a
+ * traveler saw after "Build it myself" contradicted itself. Both halves were individually correct;
+ * what was missing was a day list that can be derived from the EVENTS as well as from the items.
+ *
+ * `groupItemsByEvent` IS NOT FORKED. It still answers exactly what it answered before — which of a
+ * DAY'S items belong to which event — and it still never invents a group for an event with no items
+ * on that day. This function COMPOSES it: it calls it per day, unchanged, and then places the
+ * events that have NO items ANYWHERE on the plan as their own empty-bodied groups. A second copy of
+ * the grouping rule would be the drift class §18 rule 1 names.
+ *
+ * ── THE RULES, AND WHY EACH IS ONE ────────────────────────────────────────────────────────────
+ * 1. **AN EVENT WITH ITEMS IS NEVER GIVEN A SECOND CARD.** It renders where its items are, exactly
+ *    as it did before this lane. Only an event with nothing anywhere on the plan gets an empty
+ *    card, so a plan whose events all carry items comes out of here byte-identical to today.
+ * 2. **AN EMPTY EVENT IS PLACED ON THE DAY IT NAMES, AND NOWHERE ELSE (§13).** Its `event_date` is
+ *    matched against the day's own `dateIso` — both are "YYYY-MM-DD" machine days from the same
+ *    producer, which is why neither side re-parses a localised string. A date naming no day of the
+ *    plan gets its own slot on that real calendar day rather than being folded into a day it does
+ *    not fall on.
+ * 3. **AN EVENT WITH NO DATE GOES IN A TRAILING UNDATED SLOT, NOT ON DAY 1.** `event_date` NULL
+ *    means the traveler never gave the event a day; filing it under the plan's first day would put
+ *    a date in their mouth, which is the fabrication §13 forbids everywhere else on this surface.
+ *    The slot's heading names OUR KNOWLEDGE ("Undated"), never the plan's schedule. A value whose
+ *    SHAPE is not a calendar day is treated as no date at all, for the same reason `eventMetaLine`
+ *    refuses to print a malformed clock: nothing here repairs a value it cannot read.
+ * 4. **THE PLAN'S OWN DAYS KEEP THEIR ORDER.** Extra slots merge into the sequence by date only
+ *    when EVERY plan day has a machine date to merge against; a plan that does not know its dates
+ *    keeps its ordinal days first and takes the dated event slots after them, because there is no
+ *    honest place to wedge them in between.
+ *
+ * STATED NEGATIVE SPACE (§18d's posture, applied to a helper): this function decides WHICH DAY an
+ * event card appears under and NOTHING about whether the plan should be grouped at all — that stays
+ * the caller's `showsSchedule` read (Locked Decision 28) — and it never creates, edits or orders
+ * events. The `events` order is the server's, preserved, exactly as `groupItemsByEvent` preserves
+ * it.
+ */
+
+/** The ONE empty-body line an event card renders when nothing is planned under it yet. */
+export const SLIP_EMPTY_EVENT_BODY = "Nothing added under this event yet";
+
+/**
+ * The stable key of the trailing slot holding events the traveler gave no day. It cannot collide
+ * with the `day-<n>` / `date-<YYYY-MM-DD>` keys of the other two slot shapes, and it is also what
+ * the heading's `data-testid` suffix becomes (`slip-day-heading-undated`).
+ */
+export const SLIP_UNDATED_SLOT_KEY = "undated";
+
+/** That slot's heading. It names OUR KNOWLEDGE — these events have no day — and is never a claim
+ *  about when they happen. */
+export const SLIP_UNDATED_SLOT_HEADING = "Undated";
+
+/** A day of the plan, reduced to what this function reads. The caller's item order is preserved. */
+export interface SlipDayItems<T extends EventLinkedItem> {
+  dayNum: number;
+  /** The MACHINE day, "YYYY-MM-DD", or null when the plan has no start date to count from. */
+  dateIso?: string | null;
+  /** The day's items, already in the order they should render. */
+  items: readonly T[];
+}
+
+export interface SlipDaySlot<T extends EventLinkedItem> {
+  /** Stable render key. */
+  key: string;
+  /** The plan day this slot renders, or `null` for a slot the EVENTS alone brought into being. */
+  dayNum: number | null;
+  /** The machine calendar day this slot names, or `null` when it has none. */
+  dateIso: string | null;
+  /** `true` for the ONE trailing slot holding events with no `event_date` (rule 3). */
+  undated: boolean;
+  /** The groups to render, in order. A group with `items: []` is an event with nothing under it. */
+  groups: SlipEventGroup<T>[];
+}
+
+/** "YYYY-MM-DD" out of a DATE column's value, or null when it is not one. Never repaired. */
+function calendarDayOf(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const day = value.trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
+export function buildSlipDaySlots<T extends EventLinkedItem>(
+  days: readonly SlipDayItems<T>[],
+  events: readonly PlanEvent[] | null | undefined,
+  options?: { groupByEvent?: boolean },
+): SlipDaySlot<T>[] {
+  const groupByEvent = options?.groupByEvent === true;
+
+  // The plan's own days, exactly as they rendered before this lane. The ungrouped branch is the
+  // same single implicit group the slip used to build inline, so a plan with no events — or one
+  // whose occasion states no internal schedule — is untouched.
+  const slots: SlipDaySlot<T>[] = days.map((day) => ({
+    key: `day-${day.dayNum}`,
+    dayNum: day.dayNum,
+    dateIso: day.dateIso ?? null,
+    undated: false,
+    groups: groupByEvent
+      ? groupItemsByEvent(day.items, events)
+      : [{ key: IMPLICIT_EVENT_GROUP_KEY, event: null, items: [...day.items] }],
+  }));
+
+  if (!groupByEvent) return slots;
+
+  const planEvents = (events ?? []).filter((e) => !!e && !!e.id);
+  if (planEvents.length === 0) return slots;
+
+  // Rule 1: an event that any item on the plan names already renders beside those items.
+  const linked = new Set<string>();
+  for (const day of days) {
+    for (const item of day.items) {
+      if (item.userExperienceId) linked.add(item.userExperienceId);
+    }
+  }
+
+  const byDate = new Map<string, SlipDaySlot<T>>();
+  for (const slot of slots) {
+    if (slot.dateIso && !byDate.has(slot.dateIso)) byDate.set(slot.dateIso, slot);
+  }
+
+  const extra: SlipDaySlot<T>[] = [];
+  let undatedSlot: SlipDaySlot<T> | null = null;
+  const placed = new Set<string>();
+
+  for (const event of planEvents) {
+    if (linked.has(event.id) || placed.has(event.id)) continue;
+    placed.add(event.id);
+    const day = calendarDayOf(event.eventDate);
+    let target = day ? byDate.get(day) : undefined;
+    if (!target && day) {
+      // Rule 2: a real calendar day the plan's item-derived days do not cover still gets named.
+      target = extra.find((s) => s.dateIso === day);
+      if (!target) {
+        target = { key: `date-${day}`, dayNum: null, dateIso: day, undated: false, groups: [] };
+        extra.push(target);
+      }
+    }
+    if (!target) {
+      // Rule 3: no day was given, so no day is invented.
+      if (!undatedSlot) {
+        undatedSlot = {
+          key: SLIP_UNDATED_SLOT_KEY,
+          dayNum: null,
+          dateIso: null,
+          undated: true,
+          groups: [],
+        };
+      }
+      target = undatedSlot;
+    }
+    target.groups.push({ key: event.id, event, items: [] });
+  }
+
+  // Rule 4. With no extra dated slots there is nothing to merge, so the plan's days are returned in
+  // the order they arrived — never re-sorted for the sake of a sort.
+  const byDay = (a: SlipDaySlot<T>, b: SlipDaySlot<T>) =>
+    (a.dateIso || "").localeCompare(b.dateIso || "");
+  let ordered: SlipDaySlot<T>[];
+  if (extra.length === 0) {
+    ordered = slots;
+  } else if (slots.every((s) => !!s.dateIso)) {
+    ordered = [...slots, ...extra].sort(byDay);
+  } else {
+    ordered = [...slots, ...extra.slice().sort(byDay)];
+  }
+  return undatedSlot ? [...ordered, undatedSlot] : ordered;
+}

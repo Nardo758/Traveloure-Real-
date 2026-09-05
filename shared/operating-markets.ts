@@ -128,3 +128,40 @@ export const OPERATING_MARKETS: readonly OperatingMarket[] = [
 export const OPERATING_MARKET_DESTINATIONS: readonly string[] = OPERATING_MARKETS.map(
   (m) => `${m.cityName}, ${m.country}`,
 );
+
+/**
+ * The bare CITY NAMES of the 8 markets — the exact strings `users.home_city` stores, DERIVED from
+ * the list above and never hand-listed (ledger `2026-09-05-slip-events-first-render`).
+ *
+ * It was previously computed privately inside `server/routes/occasions.routes.ts`, which was fine
+ * while `PATCH /api/me/home-city` was the ONLY door to that column. It is not any more: the
+ * traveler Profile page now sets a home city too (see the note on `canonicalMarketName`), and two
+ * surfaces offering "the operating markets" from two lists is the drift class §18 rule 1 names.
+ */
+export const OPERATING_MARKET_CITY_NAMES: readonly string[] = OPERATING_MARKETS.map(
+  (m) => m.cityName,
+);
+
+/**
+ * Match a submitted home city to an operating market case-insensitively, returning the CANONICAL
+ * spelling, or `null` when it is not one of the 8.
+ *
+ * ── WHY IT LIVES HERE (ledger `2026-09-05-slip-events-first-render`) ──────────────────────────
+ * `users.home_city` had exactly ONE writer — `PATCH /api/me/home-city` in `occasions.routes.ts`,
+ * reachable only from the Plus occasions surface — so a traveler who never opened Plus had no way
+ * to state a home city at all, and CLAUDE.md Locked Decision 38's date-night home-city
+ * pre-fill on step 2 could never fire for them. The route itself is a plain `isAuthenticated`
+ * route with no Plus gate, so the fix is a second SURFACE on the SAME writer, not a second writer.
+ * This function moved out of that route file so the Profile page's picker and the route's
+ * validation read one list and one matcher; the route calls it, and there is still exactly one
+ * author of the column.
+ *
+ * §13 — an unmatched value is REFUSED (`null`), never coerced to a nearest market. A home city the
+ * platform does not operate in is an honest "we cannot store that", and a surface offering only
+ * these 8 must say so rather than implying the list is the world.
+ */
+export function canonicalMarketName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const needle = value.trim().toLowerCase();
+  return OPERATING_MARKET_CITY_NAMES.find((m) => m.toLowerCase() === needle) ?? null;
+}

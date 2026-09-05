@@ -31,6 +31,11 @@ jobs:
   fee-preview:
     name: fee-preview (Trip-Pass informational waiver)
     runs-on: ubuntu-latest
+    # A HANG MUST FAIL, NEVER STALL (ledger `2026-09-05-fee-ledger-test-robustness`). Two runs in
+    # 24h left the ledger step with no output for 30-80 minutes while every other job on the same
+    # SHA was green; with no timeout anywhere the job was free to sit until GitHub's 6-hour default.
+    # The per-step ceilings below name the failing step in the log; this one is the job backstop.
+    timeout-minutes: 30
     services:
       postgres:
         image: public.ecr.aws/docker/library/postgres:15
@@ -99,6 +104,7 @@ jobs:
 
       - name: Fee-preview Trip-Pass waiver pins (A–C)
         run: npx tsx --test server/__tests__/fee-preview-entitlement.http.test.ts
+        timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           JOURNEY_BASE_URL: http://127.0.0.1:5000
@@ -109,6 +115,7 @@ jobs:
 
       - name: Traveler-fee ledger netting (+X / −X, $0-no-row, idempotency)
         run: npx tsx --test server/__tests__/traveler-fee-ledger.db.test.ts
+        timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
@@ -118,6 +125,7 @@ jobs:
 
       - name: Traveler-fee refund (proportional/full/waived/duplicate + reversal linkage)
         run: npx tsx --test server/__tests__/traveler-fee-refund.db.test.ts
+        timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production

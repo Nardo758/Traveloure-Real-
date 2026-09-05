@@ -387,6 +387,48 @@ jobs:
           npx tsx --test client/src/lib/__tests__/slip-events.test.ts
           npx tsx --test server/services/__tests__/wedding-presets.test.ts
           npx tsx --test shared/__tests__/experience-type-switches.test.ts
+      # 2026-09-05-slip-events-first-render: four defects found on the production walkthrough of a
+      # freshly minted wedding plan, every one of which rendered without erroring while telling the
+      # traveler something untrue on their FIRST screen.
+      #   F1-F9 (slip-events) — a plan's day list is built from ITEMS, so a plan with four events
+      #     and zero items had no days and drew no event cards under a header that said
+      #     "4 events". `buildSlipDaySlots` COMPOSES `groupItemsByEvent` rather than forking it, so
+      #     F4/F4b are the load-bearing ones: an event that has items must not gain a second, empty
+      #     card, and the items-present grouping must be byte-identical to the pinned snapshot.
+      #     F3/F3b are the §13 half — an event with no day goes in a trailing "Undated" slot, never
+      #     on day 1, and a malformed date is no date rather than a repaired one.
+      #   O5/O6 (plan islands) — "how many events" now has ONE source (the plancard's own `events`),
+      #     because the second one was a user-scoped list cached as `[]` from before the plan
+      #     existed, which is how "Organize into events" came to sit under "4 events".
+      #   P1-P5 / H1-H4 (shared) — `partyTotal` moved to `shared/` so the occasion PATCH, the
+      #     trip-create path and the client stop deriving the plan's party three ways (P5 pins the
+      #     inline server expression this replaces); `canonicalMarketName` moved beside it so the
+      #     Profile page's new home-city picker and the ONE writer of `users.home_city` read one
+      #     list and one matcher (H4 pins that every offered option is one the writer accepts).
+      - name: Slip first-render pin
+        run: |
+          npx tsx --test client/src/lib/__tests__/slip-events.test.ts
+          npx tsx --test client/src/lib/__tests__/plan-islands.test.ts
+          npx tsx --test shared/__tests__/plan-party-total.test.ts
+      # 2026-09-05-custom-venues-owner-scope: §14 applied to READS. P1-P4/T1-T4 pin the two pure
+      # rules (an absent session user is never an owner; a trip the caller does not own is treated
+      # as ABSENT, not as an error), and A1-A6/S1-S2 pin the shipped artifacts — both GETs gated,
+      # no owner id read off the query string, the undifferentiated 404, one predicate across all
+      # four routes, and the storage readers refusing an ownerless listing rather than returning
+      # the whole table.
+      - name: Custom-venues owner-scope pin
+        run: npx tsx --test server/__tests__/custom-venues-owner-scope.test.ts
+      # 2026-09-05-vendors-read-scope: the same class one table over, found by the sweep above.
+      # `GET /api/vendors` was unauthenticated, read `createdById` off the query string, and its
+      # storage reader JOINED `users` — so any caller got every vendor row carrying the creating
+      # account's EMAIL. P1-P7 pin the pure allowlist projection (no creator identity, `createdBy`
+      # ABSENT rather than null, a new column NOT published by default); A1-A6/S1-S3 pin the
+      # shipped artifacts — the browse route gated and reading no creator id, the creator filter
+      # relocated to the /api/admin path under §2's blanket guard, and exactly ONE storage reader
+      # joining `users`; G1-G2 pin that the guard's name list grew and that no query-side allowlist
+      # was invented to hide this route behind.
+      - name: Vendors read-scope pin
+        run: npx tsx --test server/__tests__/vendors-read-scope.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
@@ -666,3 +708,24 @@ jobs:
         run: node scripts/check-advisor-row-author.cjs --self-test
       - name: Advisor-row author guard
         run: node scripts/check-advisor-row-author.cjs
+
+  query-userid-reads-guard:
+    name: query-userid-reads-guard (CLAUDE.md §14 — 2026-09-05-custom-venues-owner-scope)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # GET /api/custom-venues was unauthenticated and read `userId` off the QUERY STRING into a
+      # storage reader that treated it as an optional filter — so no userId meant no WHERE clause
+      # and the response was every custom venue on the table, private addresses included. Found on
+      # a production walkthrough, not by a test: nothing errors and the page renders perfectly
+      # either way. §14's existing guard (check-money-endpoints) watches BODY-sourced ids on MONEY
+      # routes; this is the same class arriving through the query string on a plain read. It knows
+      # SIX owner-id names and nothing else — the script header states the rest of its negative
+      # space. Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Query/param owner-id guard predicate self-test
+        run: node scripts/check-query-userid-reads.cjs --self-test
+      - name: Query/param owner-id guard
+        run: node scripts/check-query-userid-reads.cjs

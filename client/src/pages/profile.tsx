@@ -90,6 +90,49 @@ export default function Profile() {
     setSelectedBudget((prev) => (prev === budget ? null : budget));
   };
 
+  /**
+   * ── HOME CITY (ledger `2026-09-05-slip-events-first-render`) ───────────────────────────────
+   * `users.home_city` had exactly ONE writer — `PATCH /api/me/home-city` — and the only surface
+   * that opened it was the PLUS occasions page. A traveler who never went near Plus therefore had
+   * no way to state a home city at all, which meant CLAUDE.md Locked Decision 38's date-night
+   * home-city pre-fill on step 2 of the plan modal could never fire for them, and registration
+   * asks nothing. That route is a plain `isAuthenticated` route with no Plus gate, so this is a
+   * second SURFACE on the SAME writer — never a second writer, and no new admission rail (§19).
+   *
+   * The OPTIONS are the server's own answer (`markets`, returned by that route from
+   * `OPERATING_MARKET_CITY_NAMES`), not a list restated here — a client-side copy is the drift
+   * class §18 rule 1 names and is exactly how the expert application ended up offering ten cities
+   * that did not include Kyoto. §13 — the field says out loud that it offers only the markets the
+   * platform operates in, and "Not set" is a real, clearable answer rather than a hidden default.
+   */
+  const [homeCity, setHomeCity] = useState<string>("");
+  const hydratedHomeCity = useRef(false);
+
+  const { data: savedHomeCity } = useQuery<{ homeCity: string | null; markets: string[] }>({
+    queryKey: ["/api/me/home-city"],
+  });
+
+  useEffect(() => {
+    if (!savedHomeCity || hydratedHomeCity.current) return;
+    hydratedHomeCity.current = true;
+    setHomeCity(savedHomeCity.homeCity ?? "");
+  }, [savedHomeCity]);
+
+  const saveHomeCityMutation = useMutation({
+    mutationFn: async () => {
+      // The body carries exactly one key, and the route reads exactly that one — an unknown key
+      // could never reach the column even if it were sent.
+      const res = await apiRequest("PATCH", "/api/me/home-city", { homeCity: homeCity || null });
+      return res.json() as Promise<{ homeCity: string | null; markets: string[] }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/home-city"] });
+      // The plan modal reads the home city off the auth payload it already fetches (ruling 38), so
+      // that cache is stale the moment this lands.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+  });
+
   const saveTravelPreferencesMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PATCH", "/api/me/travel-preferences", {
@@ -155,7 +198,10 @@ export default function Profile() {
     }
     setIsLoading(true);
     try {
-      const saves: Promise<any>[] = [saveTravelPreferencesMutation.mutateAsync()];
+      const saves: Promise<any>[] = [
+        saveTravelPreferencesMutation.mutateAsync(),
+        saveHomeCityMutation.mutateAsync(),
+      ];
       if (isEarner) saves.push(saveNotificationEmailMutation.mutateAsync());
       await Promise.all(saves);
       toast({
@@ -293,6 +339,36 @@ export default function Profile() {
                 className="border-border"
                 data-testid="input-location"
               />
+            </div>
+
+            {/* HOME CITY — the one persisted place a traveler can state where they live, and the
+                only thing Locked Decision 38's date-night pre-fill can read. It is a SELECT, not
+                free text, because the column is validated against the operating markets by its one
+                writer; the options are the SERVER's list, never restated here. */}
+            <div className="space-y-2">
+              <Label htmlFor="homeCity" className="text-foreground dark:text-white flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                Home city
+              </Label>
+              <select
+                id="homeCity"
+                value={homeCity}
+                onChange={(e) => setHomeCity(e.target.value)}
+                className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                data-testid="select-home-city"
+              >
+                <option value="">Not set</option>
+                {(savedHomeCity?.markets ?? []).map((market) => (
+                  <option key={market} value={market}>
+                    {market}
+                  </option>
+                ))}
+              </select>
+              {/* §13 — say what the list is, rather than implying it is the world. */}
+              <p className="text-xs text-muted-foreground" data-testid="text-home-city-note">
+                We can only plan from the markets we operate in today. Leave it unset if yours is
+                not here — we will not guess one for you.
+              </p>
             </div>
 
             <div className="space-y-2">
