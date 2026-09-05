@@ -95,69 +95,19 @@ export function addedTitle(hasTarget: boolean): string {
 }
 
 /**
- * TRAVELERS, DE-MASKED (ledger `2026-09-03-item-event-link`; the fix restores migration 241's
- * intent on the edit panel).
+ * THE PARTY PAIR AND ITS TOTAL NOW LIVE IN `shared/plan-vocabulary.ts`
+ * (ledger `2026-09-05-slip-events-first-render`).
  *
- * THE DEFECT THIS CLOSES. `EditTripPanel` seeded its travelers input with a literal `2` and wrote
- * `travelers` on EVERY save. Migration 241 de-masked party size precisely so an uncaptured count
- * stays NULL — an honest "not captured" the demand rollup can tell apart from a real answer (§13,
- * and the same posture `insertTripSchema`'s de-masking comment states). The panel silently put the
- * mask back one layer up: a traveler who opened the panel to fix a typo in the title left with a
- * fabricated party of two, and nothing downstream could tell it from a stated one.
+ * `travelersForSave` and `partyTotal` were defined here and used only by the client, while the
+ * SERVER carried its own inline copy of the same arithmetic on the trip-create path. That second
+ * author is the drift class §18 rule 1 names, and it drifted: the occasion PATCH wrote
+ * `adults`/`kids` and never the derived total, so the slip header read "1 traveler" beside a Trip
+ * Strip chip that said "2 guests". The derivation moved to `shared/` — ONE implementation, both
+ * sides of the wire — and is RE-EXPORTED here verbatim so every existing import keeps working.
  *
- * THE RULE: untouched ⇒ NOT SET. An empty input is not a party of one, not a party of two, and not
- * a zero — it is an unanswered question, and `undefined` is how this codebase says that. The panel
- * writes through `switchTripContext`, whose SWITCH_FIELDS have REPLACE semantics, so an omitted
- * `travelers` clears the field rather than re-asserting a guess.
- *
- * @param raw the raw input value (`""` while empty, a numeric string once typed, or a number when
- *            seeded from an existing context).
- * @returns a positive integer when the traveler really stated one; `undefined` for every form of
- *          "they did not" — empty, whitespace, non-numeric, zero or negative.
+ * Do not re-declare either function in this file, in a route or in a component.
  */
-export function travelersForSave(raw: string | number | undefined | null): number | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw === "string" && raw.trim() === "") return undefined;
-  const n = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(n)) return undefined;
-  const rounded = Math.floor(n);
-  return rounded > 0 ? rounded : undefined;
-}
-
-/**
- * THE PARTY TOTAL — one derivation of "how many people is this plan for", never two
- * (ledger `2026-09-04-one-modal-many-doors`; CLAUDE.md Locked Decision 33).
- *
- * The plan modal's step 4 asks TWO questions (Adults and Kids — `trips.adults` / `trips.kids`,
- * both de-masked to NULL by migration 241), while the Trip Strip's party chip and the trip
- * context read ONE number (`travelers`). That is a derivation, and a derivation with two authors
- * is the drift class §18 rule 1 names — so it is written here, beside `travelersForSave`, and the
- * modal calls it for the context write.
- *
- * §13 — the empty state survives the addition. `travelersForSave` already turns every spelling of
- * "they did not answer" into `undefined`; this function keeps that: with NEITHER field stated the
- * total is `undefined` (NOT SET), never 0 and never a fabricated 2. A stated kids count with no
- * adults is honoured as given rather than being topped up with an assumed adult — assuming one is
- * exactly the masking migration 241 removed. Neither field carries an explicit ZERO: "not set" and
- * "zero" are different answers, and only the first is true of a control nobody touched.
- *
- * The addition matches what the server already does with the same two columns on the trip-create
- * path (`numberOfTravelers = adults + (kids ?? 0)`), so the client's chip and the row's own
- * derived count cannot disagree about the same party.
- */
-export function partyTotal(
-  adults: string | number | undefined | null,
-  kids: string | number | undefined | null,
-): number | undefined {
-  // BOTH halves go through `travelersForSave`, so every spelling of "they did not answer" —
-  // empty, whitespace, non-numeric, zero, negative — reads the same on both, and the plan modal's
-  // "0 means cleared" marker in the trip-context blob is read back as NOT SET here rather than as
-  // a count of none.
-  const a = travelersForSave(adults);
-  const k = travelersForSave(kids);
-  if (a === undefined && k === undefined) return undefined;
-  return (a ?? 0) + (k ?? 0);
-}
+export { partyTotal, travelersForSave } from "@shared/plan-vocabulary";
 
 /**
  * THE PARTY NOUN (ledger `2026-09-03-switch-readers`; migration 276's `vocabulary` column).

@@ -19,7 +19,7 @@ import {
   useTripContext,
 } from "@/lib/trip-context";
 import { format } from "date-fns";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseTripDate } from "@/lib/calendar-date";
 import { eventTypeForSlug, findOccasionByKey } from "@shared/occasions";
 import { partyNoun, partyTotal, travelersForSave } from "@/lib/plan-vocabulary";
@@ -1012,6 +1012,32 @@ export function PlanModal({
           console.warn("[plan-modal] stops not saved:", result.message);
         }
       }
+    }
+
+    /**
+     * ── THE CACHE THIS SAVE LEAVES BEHIND (ledger `2026-09-05-slip-events-first-render`) ────────
+     * Everything above has just changed what the server would answer for this plan, and the very
+     * next thing the "Build it myself" finish does is navigate to `/plans/:tripId`. The surfaces
+     * there read three keys, and on a fresh account at least one of them is already in cache with
+     * a PRE-PLAN answer: the dashboard fetches `/api/user-experiences` (as `[]`) before any plan
+     * exists, nothing invalidated it, and the slip therefore mounted believing the plan had zero
+     * events — and offered to organize into events it had just created. Invalidating here is the
+     * ONE place that covers BOTH authors of those events: the rows this function POSTs when a trip
+     * row already exists, and the server-side pre-trip pen drain that writes them at mint
+     * (`server/services/pending-events.service.ts`, Locked Decision 30 (b)), which the client never
+     * sees happen at all.
+     *
+     * It runs at the END of the commit, after every awaited write, so a refetch it triggers reads
+     * the finished plan rather than a half-written one. The `PATCH .../occasion` above is
+     * deliberately fire-and-forget, so its own effect on `trips` may land after this — that is
+     * unchanged behaviour and is why this is not treated as a read-your-writes guarantee.
+     * Best-effort like every other write here: a failed invalidation is a stale cache, never a
+     * failed save.
+     */
+    if (tripId) {
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/guests`] });
     }
     return tripId;
   }

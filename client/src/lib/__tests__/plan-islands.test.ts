@@ -33,6 +33,7 @@ import {
   travelingPartyBodyKeys,
 } from "../traveling-party";
 import { canOrganizeIntoEvents, eventsNotYetCreated } from "../organize-events";
+import { countPlanEvents } from "../slip-events";
 import {
   UNNAMED_VENDOR,
   contractMilestones,
@@ -275,4 +276,35 @@ test("C8: a contract with no overdue milestones reports hasOverdue false", () =>
     [],
   );
   assert.equal(row.hasOverdue, false);
+});
+
+// ── O5/O6 — the count the offer reads comes from the PLANCARD, and only from there ────────────
+// Ledger `2026-09-05-slip-events-first-render`. The offer used to count events off
+// `/api/user-experiences` — a USER-scoped list the slip fetches for the guest manager — while the
+// slip HEADER counted the plancard's own `events` array. On a fresh account that list was already
+// cached as `[]` from before the plan existed and nothing on the mint path invalidated it, so a
+// plan minted WITH four events showed "Organize into events" directly under a header reading
+// "4 events". Two sources for one fact is how they disagreed (§18 rule 1); there is now one.
+
+test("O5: the plancard's own events array is what the offer counts", () => {
+  const scheduled = { defaultSchedule: true };
+  const plancardEvents = [{ id: "ev-1" }, { id: "ev-2" }, { id: "ev-3" }, { id: "ev-4" }];
+  // The freshly minted wedding: four events on the plancard ⇒ no offer, whatever any other
+  // list happens to be holding.
+  assert.equal(canOrganizeIntoEvents(scheduled, countPlanEvents(plancardEvents)), false);
+  // The ready-made buyer's clone — items, genuinely no events — still gets the offer.
+  assert.equal(canOrganizeIntoEvents(scheduled, countPlanEvents([])), true);
+});
+
+test("O6: an absent plancard events array counts as ZERO, not as unknown", () => {
+  // `countPlanEvents` already answers this for the header (re-audit A16) and the offer now shares
+  // it: the plancard route returns `[]` for a plan with no `user_experiences` row, so absent and
+  // empty are the same fact — the plan has only its ONE implicit unnamed event.
+  const scheduled = { defaultSchedule: true };
+  assert.equal(countPlanEvents(null), 0);
+  assert.equal(countPlanEvents(undefined), 0);
+  assert.equal(canOrganizeIntoEvents(scheduled, countPlanEvents(undefined)), true);
+  // And a hidden or unresolved occasion is still refused, whatever the count says — the two halves
+  // of the gate are independent (Locked Decision 28).
+  assert.equal(canOrganizeIntoEvents(null, countPlanEvents([])), false);
 });
