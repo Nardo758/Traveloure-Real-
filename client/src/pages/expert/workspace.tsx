@@ -47,6 +47,7 @@ import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
 // rendered instead of the Google block when VITE_GOOGLE_MAPS_API_KEY is unset (see that file's
 // doc comment for the "Google swap point" contract).
 import { LeafletPlanMap } from "@/components/expert/leaflet-plan-map";
+import { trackEvent } from "@/lib/analytics";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -529,7 +530,7 @@ async function geocodeLocationText(
  *  `insertItineraryItemSchema` (drizzle-zod) expects a STRING for decimal columns, so a raw
  *  `parseFloat` JS number 400s with "invalid_type expected string received number" (the same
  *  drift `server/routes.ts:1271,7793` already guard against via `String(...)`). */
-function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId: string; dayNumber: number; destination?: string; onAdded: () => void }) {
+function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAdded }: { tripId: string; dayNumber: number; destination?: string; workspaceMode: "assignment" | "authoring"; onAdded: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
   const [geocoding, setGeocoding] = useState(false);
@@ -540,6 +541,11 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
+      trackEvent("plan_item_added", {
+        item_type: form.itemType,
+        source_type: "custom",
+        workspace_mode: workspaceMode,
+      });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       onAdded();
@@ -4144,7 +4150,7 @@ export default function ExpertWorkspace() {
           {/* Add · Custom — the add-item form, inline; day-aware. */}
           {rightTab === "add" && addSource === "custom" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} destination={destination} onAdded={triggerEnergyRecalc} />
+              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} destination={destination} workspaceMode={workspaceCtx?.mode ?? "assignment"} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 

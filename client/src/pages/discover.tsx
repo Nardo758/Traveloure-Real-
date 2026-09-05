@@ -851,13 +851,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     }
   }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page]);
 
-  // Track search events for tourism analytics
+  // Preserve the project's existing tourism-analytics pipeline. Replit-hosted
+  // custom events are additive and use trackEvent at confirmed outcome points.
   useEffect(() => {
-    // Only track when there's a meaningful search (destination/location filter)
     if (locationFilter && locationFilter.length >= 2) {
       trackSearchEvent({
         destination: locationFilter,
-        searchContext: 'discover',
+        searchContext: "discover",
       });
     }
   }, [locationFilter]);

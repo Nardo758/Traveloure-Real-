@@ -93,6 +93,7 @@ import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
 import { ServicePhotosDrawer } from "@/components/provider/service-photos-drawer";
 import { ServiceLanguagesCard } from "@/components/service-languages-card";
 import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
+import { trackEvent } from "@/lib/analytics";
 
 interface ServiceCategory {
   id: string;
@@ -1690,6 +1691,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         const approvalStatus: string | null | undefined =
           service?.approvalStatus ?? (isEditMode ? existingService?.approvalStatus : undefined);
         const isDraftOutcome = submitAction === "draft" || approvalStatus === "draft";
+        if (!isDraftOutcome && approvalStatus !== "approved") {
+          trackEvent("listing_submitted", {
+            listing_type: "provider_service",
+            surface: "service_form",
+          });
+        }
         toast({
           title: isDraftOutcome ? "Draft saved" : "Submitted for review",
           description: isDraftOutcome
@@ -1717,6 +1724,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         return;
       }
 
+      const approvalStatus: string =
+        service?.approvalStatus ?? (submitAction === "draft" ? "draft" : "submitted");
+      if (submitAction === "submit" && approvalStatus === "submitted") {
+        trackEvent("listing_submitted", {
+          listing_type: "expert_service",
+          surface: "service_form",
+        });
+      }
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
@@ -1725,7 +1740,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // Real outcome, not the button label: draft stays draft even if the client tried
       // to send something else; anything else lands "submitted" unless the row somehow
       // came back "approved" (grandfathered/edge case — never true for a fresh create).
-      const approvalStatus: string = service?.approvalStatus ?? (submitAction === "draft" ? "draft" : "submitted");
       const isLive = approvalStatus === "approved" && service?.status !== "draft";
       // role === "expert" from here on (provider already returned above).
       if (approvalStatus === "draft") {
