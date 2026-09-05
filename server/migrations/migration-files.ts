@@ -1485,4 +1485,11 @@ export const MIGRATION_FILES = [
   // `optional_event_ids` are deliberately NOT dropped: they still have a live writer (see the
   // migration's header).
   "286_retire_dead_plan_columns.sql",
+  // Ledger `2026-09-05-user-id-is-internal` (CLAUDE.md Locked Decision 40): `conversation_contexts`
+  // — one additive table recording WHAT a messaging thread is about (storefront handle / service /
+  // booking), so pre-service and post-service traffic are distinguishable. `context_kind` is
+  // app-enforced with NO DB CHECK (publish-trap posture), the table + UNIQUE + index are declared
+  // in `shared/schema.ts` in the same commit (deploy-push durability rule), and there is NO
+  // backfill: a thread with no rows here is an older thread with no recorded context (§13).
+  "287_conversation_contexts.sql",
 ] as const;
