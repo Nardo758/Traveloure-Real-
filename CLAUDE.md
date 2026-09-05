@@ -752,6 +752,9 @@ This document captures architectural decisions to maintain consistency across co
     underneath both, **`/experts/:id` is today the ONLY public profile an earner who has claimed NO
     handle has** — so removing the id there would not degrade honestly (§13), it would delete those
     earners from the site. Giving them a handle, or a handle-shaped hire rail, is the next lane.
+    **THE CLAIM PROMPT HAS LANDED** (ledger `2026-09-05-handles-are-claimed`): handles are ASKED
+    for — a persistent console banner and an optional last step in both application wizards,
+    prefilled by ONE shared `suggestHandle` helper — and never generated on an earner's behalf.
     **STILL NOT REMOVABLE, and out of this guard's predicate by design:** `ConversationSummary.
     otherUserId`, `?clientId=` and the WebSocket frame are all on AUTHENTICATED surfaces, so the
     guard does not scan them; they keep the prerequisites lane 3 recorded below.
