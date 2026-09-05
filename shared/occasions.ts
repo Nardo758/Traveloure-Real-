@@ -259,3 +259,93 @@ export function findOccasionByKey<T extends { slug: string; name?: string | null
     ) ?? null
   );
 }
+
+/**
+ * THE PLAN'S OCCASION, RESOLVED EVENTS-FIRST (ledger `2026-09-05-slip-switch-reads-events-first`;
+ * CLAUDE.md Locked Decision 42's D1 client step, Locked Decisions 28 and 29).
+ *
+ * ── WHY A SECOND ATTEMPT WAS NEEDED ─────────────────────────────────────────────────────────
+ * `findOccasionByEventType` above is the only lookup a slip had, and it is correct but narrow:
+ * `eventTypeForSlug` is many-to-one, so it returns a row ONLY on a unique match and honestly
+ * refuses the rest. Concretely that leaves most of the seeded catalog unresolvable from a trip —
+ * `birthday`/`milestone-birthday` both map to `"birthday"`, `corporate`/`corporate-events` both
+ * to `"corporate"`, and the whole travel family (`travel`, `romance`, `golf-trip`, …) collapses
+ * onto `"vacation"` — so their slips fell back to the plain-trip shape even though the traveler
+ * had picked a specific occasion. `trips` carries no `experience_type_id` today (a later lane
+ * adds the column), so there was nothing exact to read.
+ *
+ * There IS something exact one level down. An event inside a plan is a `user_experiences` row
+ * (Locked Decision 29) and that row's `experience_type_id` is NOT NULL — it names the occasion by
+ * ID, no vocabulary bridge in between. The plancard payload already ships those rows as its
+ * `events` array with `experienceTypeId` on each. So: **when every event on the plan names the
+ * SAME occasion, that occasion IS the plan's** — an exact identity, not a guess.
+ *
+ * ── §13, AND WHY THE AGREEMENT TEST IS STRICT ───────────────────────────────────────────────
+ * Attempt 1 fires only when there is one unanimous answer. Events that disagree, an events array
+ * where any event carries no id, an id no supplied row matches (a row deleted between two reads,
+ * or one this viewer's gate did not return), and an empty/absent array are ALL "this does not
+ * identify an occasion" — and every one of them falls through to attempt 2 rather than picking a
+ * majority, a first, or a nearest. A plan holding a ceremony and a rehearsal dinner from two
+ * different occasions has not told us which one it is, and answering anyway would wear the
+ * traveler's authority for a choice they never made.
+ *
+ * Both attempts failing is `null`, which every caller renders as the PLAIN-TRIP shape and says so
+ * — unchanged from before this function existed. Widening, never narrowing: attempt 2 is exactly
+ * today's lookup, reached with exactly today's inputs.
+ *
+ * Pure — no React, no fetch, no DB — so both attempts are testable on their own and neither can
+ * drift into a second copy at a call site (§18 rule 1).
+ */
+export interface PlanEventOccasionRef {
+  /** `user_experiences.experience_type_id` as the plancard `events` array ships it. */
+  experienceTypeId?: string | null;
+}
+
+/**
+ * The ONE occasion every supplied event names, or `null` when they do not agree on one.
+ *
+ * Exported for the pins: the agreement rule is the interesting half of the resolver and is worth
+ * asserting without a row list in the way.
+ */
+export function unanimousEventOccasionId(
+  events: readonly PlanEventOccasionRef[] | null | undefined,
+): string | null {
+  if (!events || events.length === 0) return null;
+  let agreed: string | null = null;
+  for (const event of events) {
+    const id = typeof event?.experienceTypeId === "string" ? event.experienceTypeId.trim() : "";
+    // An event with no occasion id cannot vote, and it cannot be ignored either: the plan then
+    // has an event we cannot attribute, so the plan does not unanimously name anything (§13).
+    if (!id) return null;
+    if (agreed === null) agreed = id;
+    else if (agreed !== id) return null;
+  }
+  return agreed;
+}
+
+/** The occasion row with this id, or `null`. An id nothing matches is never a nearest row. */
+export function findOccasionById<T extends { id: string }>(
+  rows: readonly T[] | null | undefined,
+  id: string | null | undefined,
+): T | null {
+  const wanted = (id || "").trim();
+  if (!wanted || !rows) return null;
+  return rows.find((r) => r.id === wanted) ?? null;
+}
+
+/**
+ * Resolve the occasion behind a plan: events first (exact), then the event-type lookup (unique
+ * match only), then `null` (the plain-trip shape).
+ */
+export function resolveOccasionForPlan<T extends { id: string; slug: string }>(input: {
+  events?: readonly PlanEventOccasionRef[] | null;
+  eventType?: string | null;
+  occasions?: readonly T[] | null;
+}): T | null {
+  const { events, eventType, occasions } = input;
+  // ATTEMPT 1 — the plan's own events name the occasion by id. Exact; no vocabulary bridge.
+  const byId = findOccasionById(occasions, unanimousEventOccasionId(events));
+  if (byId) return byId;
+  // ATTEMPT 2 — today's lookup, unchanged: a row only when the event type identifies exactly one.
+  return findOccasionByEventType(occasions, eventType);
+}
