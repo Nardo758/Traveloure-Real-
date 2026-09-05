@@ -13,6 +13,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 import { isProviderRole } from "@shared/roles";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
+import { toPublicExperts } from "./utils/expert-read-scope";
 import { sanitizeText } from "./utils/text-sanitizer";
 import { 
   trips, tripFinals, occasions, occasionDrafts, generatedItineraries, touristPlaceResults, touristPlacesSearches,
@@ -4529,7 +4530,15 @@ export class DatabaseStorage implements IStorage {
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
       ));
-    return rows.map((r) => omitFields(r, ["serviceFile", "joinLink"] as const));
+    // `revenueShareRate` added by ledger `2026-09-05-experts-public-projection`. Both callers of
+    // this method are PUBLIC and unauthenticated — `GET /api/experts/:id/services` and the
+    // `selectedServices` embed on `getExpertsWithProfiles` — so the per-listing commission split
+    // was world-readable. §18 forbids the column being client-SETTABLE and ruling 42 stripped it
+    // from both write rails; publishing it on an anonymous read is the same column one direction
+    // over. No client reads it (verified repo-wide: the only client references are
+    // `pricing-fees.ts`/`pricing-fees-drawer.tsx` documenting its ABSENCE, plus the admin
+    // services table, which reads its own admin endpoint).
+    return rows.map((r) => omitFields(r, ["serviceFile", "joinLink", "revenueShareRate"] as const));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
@@ -4680,29 +4689,33 @@ export class DatabaseStorage implements IStorage {
       return true;
     });
 
-    // Strip sensitive user fields before returning to any API consumer.
-    // These columns live on the users row but must never leave the server.
-    const SENSITIVE_EXPERT_FIELDS = [
-      "password",
-      "instagramAccessToken",
-      "instagramUserId",
-    ] as const;
-    const scrub = (expert: any) => {
-      const safe = { ...expert };
-      for (const field of SENSITIVE_EXPERT_FIELDS) delete safe[field];
-      return safe;
-    };
-
+    // Project down to the PUBLIC shape before returning to any API consumer (ledger
+    // `2026-09-05-experts-public-projection`; §14's read clause + §19's allowlist posture).
+    //
+    // This used to be a three-name DENYLIST — `password`, `instagramAccessToken`,
+    // `instagramUserId` deleted off the spread `users` row — over a thirty-six-column table
+    // whose every other column therefore went out. All three callers of this method are
+    // UNAUTHENTICATED public routes, so `email`, `notificationEmail`, `homeCity`, the four
+    // `stripe*`/payout columns, `commissionOverrideExpertSharePercent` (a §18 rate),
+    // `suspensionReason`, `preferences` and the rest were world-readable for every expert
+    // account — as was the whole `local_expert_forms` row hanging off `expertForm`, `govId`
+    // and `travelLicence` included.
+    //
+    // `toPublicExpert` is the ONE projector (§18 rule 1); the three routes apply it AGAIN as
+    // the second layer, the placement §18 requires ("so every caller is covered"). It runs
+    // AFTER the approval gate above deliberately — that gate reads the raw `expertForm.status`,
+    // which is not a published field.
+    //
     // Filter by experience type if provided
     if (experienceTypeId) {
-      return approvedExperts
-        .filter(expert =>
+      return toPublicExperts(
+        approvedExperts.filter(expert =>
           expert.experienceTypes.some((et: any) => et.experienceTypeId === experienceTypeId)
         )
-        .map(scrub);
+      );
     }
 
-    return approvedExperts.map(scrub);
+    return toPublicExperts(approvedExperts);
   }
 
   // Expert Custom Services

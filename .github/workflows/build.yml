@@ -470,6 +470,18 @@ jobs:
       # was invented to hide this route behind.
       - name: Vendors read-scope pin
         run: npx tsx --test server/__tests__/vendors-read-scope.test.ts
+      # 2026-09-05-experts-public-projection: the same class again, on the widest surface of the
+      # three. `storage.getExpertsWithProfiles` spread the whole `users` row and removed THREE
+      # names from it, and its callers — GET /api/experts, /api/experts/counts, /api/experts/:id —
+      # are all unauthenticated, so `email`, `homeCity`, every `stripe*` column,
+      # `commissionOverrideExpertSharePercent` (a §18 rate) and the whole `local_expert_forms` row
+      # (`govId`/`travelLicence` included) were world-readable per expert account. P1-P10 pin the
+      # pure projector (nothing credential/contact/payout survives; the display fields and the
+      # composed keys do; `preferences` narrowed to one key and OMITTED when absent; a users column
+      # added later excluded by default; idempotent, which is what lets the routes re-apply it);
+      # A1-A3 and S1-S2 pin the shipped call sites and that the browse filters still resolve.
+      - name: Experts public-projection pin
+        run: npx tsx --test server/__tests__/experts-public-projection.test.ts
       # Client analytics wrapper (docs/superpowers/specs/2026-09-05-custom-analytics-events-design.md):
       # trackEvent must be a SAFE NO-OP whenever the host-injected tracker is absent — during SSR,
       # in dev/preview, and in the tracker-load race — and must swallow a throwing tracker rather
