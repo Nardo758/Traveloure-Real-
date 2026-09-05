@@ -141,10 +141,16 @@ test("S3 the map renders NO map when there is no centre, and says why", () => {
   );
   // And the no-location state carries the one door out of itself.
   assert.ok(src.includes('data-testid="button-set-location-from-map"'), "a way out of the empty state");
+  // The door is the page's EXISTING planning opener (LD 33 — no second planning door), and it
+  // passes the page's occasion slug and destination like every other door on this page
+  // (LD 42 D13 — the plan-entry-source-fields pin refuses a bare opener here).
   assert.ok(
-    read(TEMPLATE).includes("onSetLocation={() => openPlanModal()}"),
-    "the page passes its EXISTING planning opener — no second planning door (LD 33)",
+    read(TEMPLATE).includes(
+      "onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}",
+    ),
+    "the page passes its EXISTING planning opener, with the page's own source fields",
   );
+  assert.ok(!/onSetLocation=\{\(\) => openPlanModal\(\)\}/.test(read(TEMPLATE)), "no bare door survives (D13)");
 });
 
 test("S4 every ExperienceMap mount on the page can reach the planning door", () => {
@@ -152,7 +158,7 @@ test("S4 every ExperienceMap mount on the page can reach the planning door", () 
   const mounts = (src.match(/<ExperienceMap\b/g) ?? []).length;
   assert.ok(mounts >= 3, `expected the page's three map mounts, found ${mounts}`);
   // A mount without the door would render an empty state with no way out of it (§13).
-  const doors = (src.match(/onSetLocation=\{\(\) => openPlanModal\(\)\}/g) ?? []).length;
+  const doors = (src.match(/onSetLocation=\{\(\) => openPlanModal\(\{ experienceSlug: slug \|\| undefined, destination: destination\.trim\(\) \|\| undefined \}\)\}/g) ?? []).length;
   assert.ok(
     doors >= mounts,
     `every map mount needs the door: ${mounts} mounts, ${doors} doors`,
