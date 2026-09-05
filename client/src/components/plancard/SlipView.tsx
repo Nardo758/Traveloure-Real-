@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  EyeOff,
   FileDown,
   List as ListIcon,
   Loader2,
@@ -77,12 +78,14 @@ import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
 import {
+  countPlanEvents,
   eventMetaLine,
   groupItemsByEvent,
   IMPLICIT_EVENT_GROUP_KEY,
   type PlanEvent,
 } from "@/lib/slip-events";
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
+import { eventCountLabel } from "@/lib/plan-vocabulary";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { MapControlCenter } from "./MapControlCenter";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
@@ -173,9 +176,42 @@ function expertFirstName(data: SlipData): string | null {
   return name.split(" ")[0] || null;
 }
 
+/**
+ * THE DAY HEADING (re-audit A17; the ratified `Slip` artboard's "Friday · Oct 2").
+ *
+ * A plan's days are read as days of the week — "the Friday" is what a traveler plans around — and
+ * the ordinal "Day 1" is the plan's own internal index, which tells them nothing they can act on.
+ *
+ * §13 — THE ORDINAL IS THE FALLBACK, NOT THE DECORATION. The weekday can only be named from a real
+ * calendar date, and `dateIso` is null for a plan with no start date (`dayDateIso` never guesses
+ * one). Such a plan keeps "Day N" exactly as before, and gains no weekday. A `dateIso` that will
+ * not parse is treated the same as an absent one: it is not shown as itself and not repaired.
+ *
+ * Parsed with `parseTripDate` so a bare "YYYY-MM-DD" lands on LOCAL midnight — `new Date()` would
+ * render the previous day west of UTC (F-1), which is the whole reason that helper exists.
+ */
+function slipDayHeading(day: { dayNum: number; date?: string | null; dateIso?: string | null }): string {
+  const parsed = parseTripDate(day.dateIso ?? null);
+  if (parsed) return format(parsed, "EEEE · MMM d");
+  // No machine date. Keep the pre-existing heading verbatim, including its own date-when-present.
+  return `Day ${day.dayNum}${day.date ? ` · ${day.date}` : ""}`;
+}
+
 // ── SlipHeader ─────────────────────────────────────────────────────────────────────────
 
-function SlipHeader({ data, hasOptimized }: { data: SlipData; hasOptimized: boolean }) {
+function SlipHeader({
+  data,
+  hasOptimized,
+  eventCount,
+  isHidden,
+}: {
+  data: SlipData;
+  hasOptimized: boolean;
+  /** `countPlanEvents(data.events)` — resolved by the caller, never counted twice (re-audit A16). */
+  eventCount: number;
+  /** `default_visibility: hidden` — the proposal case (re-audit A21). */
+  isHidden: boolean;
+}) {
   const trip = data.trip;
   const start = safeDate(trip?.startDate);
   const end = safeDate(trip?.endDate);
@@ -200,6 +236,22 @@ function SlipHeader({ data, hasOptimized }: { data: SlipData; hasOptimized: bool
             {PHASE_LABELS[phase]}
           </span>
         )}
+        {/* THE PRIVATE-PLAN BADGE (re-audit A21). Share and the guest surface are already
+            correctly ABSENT under a hidden occasion — hidden, never disabled — but the absence
+            said nothing, so a traveler could only read it as something missing. This is the
+            positive signal, gated on the SAME `isHidden` the two absences are, so the badge and
+            the behaviour can never disagree (§18 rule 1). §13 keeps its own direction here: an
+            unresolved occasion or a NULL column is NOT hidden, so an undecided plan is never
+            labelled private. */}
+        {isHidden && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border border-border text-muted-foreground"
+            data-testid="slip-private-badge"
+            title="Share and the guest list are off for this plan"
+          >
+            <EyeOff className="w-3 h-3" /> private plan
+          </span>
+        )}
         {/* Spec B: OptimizedBadge — only when a REAL variant_applied diary row exists. */}
         {hasOptimized && (
           <span
@@ -221,6 +273,17 @@ function SlipHeader({ data, hasOptimized }: { data: SlipData; hasOptimized: bool
           <span className="inline-flex items-center gap-1">
             <Users className="w-3.5 h-3.5 inline" />
             {trip.travelers} traveler{trip.travelers > 1 ? "s" : ""}
+          </span>
+        ) : null}
+        {/* THE EVENT COUNT (re-audit A16). The SAME derivation the Trip Strip's chip already
+            renders — `countPlanEvents` / `eventCountLabel` — never a second count (§18 rule 1),
+            and hidden at zero exactly as the chip is: a plan with no `user_experiences` row has
+            only its one implicit unnamed event, which is not a row and is never counted as one,
+            so "0 events" would be a claim about the plan rather than a count (§13). */}
+        {eventCount > 0 ? (
+          <span data-testid="slip-meta-events">
+            {(start && end) || trip?.travelers ? " · " : null}
+            {eventCountLabel(eventCount)}
           </span>
         ) : null}
       </p>
@@ -661,7 +724,10 @@ function SlipEventGroupBlock({
   // ONE derivation, shared with the "Which event?" picker (ledger `2026-09-04-which-event-picker`):
   // date-when-set · place-when-set, and never a clock time. Restating it here is the drift class
   // §18 rule 1 names — and the second copy is exactly where a fabricated start time gets written.
-  const meta = eventMetaLine(event);
+  // SHORT form (re-audit A18): the DAY HEADING directly above this block already names the
+  // calendar date, so repeating it here read as two different facts about the same row. Same ONE
+  // derivation the "Which event?" picker calls, with the same option.
+  const meta = eventMetaLine(event, { format: "short" });
   // The hire affordance is an owner-only planning action, so an event with neither a title nor a
   // meta line still gets a header for the owner — and still gets NO invented label (§13).
   const hasHeader = !!event.title || !!meta || isOwner;
@@ -681,6 +747,21 @@ function SlipEventGroupBlock({
           {meta && (
             <p className="text-[11px] text-muted-foreground" data-testid={`slip-event-meta-${event.id}`}>
               {meta}
+            </p>
+          )}
+          {/* "58 attending" (re-audit A19). `user_experiences.guest_count` has ridden the plancard
+              payload since the events array landed and no surface printed it, so a host's own
+              headcount was collected and never read back.
+              §13 — OMITTED WHEN NULL, and never "0 attending": a count nobody entered is an
+              unanswered question, not an empty room, and the two render identically once a zero is
+              printed. A stored zero is likewise not shown, for the same reason the party steppers
+              carry no explicit zero (migration 241's de-masking). */}
+          {typeof event.guestCount === "number" && event.guestCount > 0 && (
+            <p
+              className="text-[11px] text-muted-foreground"
+              data-testid={`slip-event-guests-${event.id}`}
+            >
+              {event.guestCount} attending
             </p>
           )}
           {isOwner && (
@@ -1353,7 +1434,7 @@ export function SlipView({
   //
   // When either is false the day renders its items flat, in the same Fragment-wrapped single
   // group, so the un-grouped DOM is byte-identical to the pre-lane render.
-  const { occasion } = useOccasionSwitches(tripId);
+  const { occasion, isHidden: occasionIsHidden } = useOccasionSwitches(tripId);
   const planEvents: PlanEvent[] = data.events ?? [];
   const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
 
@@ -1385,7 +1466,12 @@ export function SlipView({
       {isOwner && <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} />}
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <SlipHeader data={data} hasOptimized={hasOptimized} />
+        <SlipHeader
+          data={data}
+          hasOptimized={hasOptimized}
+          eventCount={countPlanEvents(planEvents)}
+          isHidden={occasionIsHidden}
+        />
         {data.trip && <SlipActions trip={data.trip} isOwner={isOwner} activities={allActivities} />}
       </div>
 
@@ -1458,9 +1544,17 @@ export function SlipView({
               : [{ key: IMPLICIT_EVENT_GROUP_KEY, event: null, items: dayActivities }];
             return (
               <div key={day.dayNum} className="py-2 first:pt-0 last:pb-0">
-                <p className="px-3 pt-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Day {day.dayNum}
-                  {day.date ? ` · ${day.date}` : ""}
+                {/* THE DAY HEADING NAMES THE DAY (re-audit A17, the ratified `Slip` artboard's
+                    "Friday · Oct 2"). A traveler reads a plan by the days of the week it falls on;
+                    "Day 1" is the plan's internal index and tells them nothing they can act on.
+                    §13 — the ordinal is the FALLBACK, not the decoration: a plan whose start date
+                    is unknown has no weekday to name (`dateIso` is null and `dayDateIso` never
+                    guesses one), and it keeps "Day 1" rather than being given a weekday. */}
+                <p
+                  className="px-3 pt-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  data-testid={`slip-day-heading-${day.dayNum}`}
+                >
+                  {slipDayHeading(day)}
                 </p>
                 {groups.map((group) => {
                   const rows = group.items.map((a) => (

@@ -204,6 +204,7 @@ States: `todo` · `in progress` · `audited` (Phase A brief exists) · `built` (
 | 15 | Step 5 Day/Time/Place table, `WhichEvent` clock, `TravelEvents` tee times | E | built | ledger `2026-09-04-event-time-ui`; no `.ics` export of events (none exists — see the ledger row) |
 | 16 | Plan islands: traveling party, contract board, organize-into-events | D | built | eventDetails/mustAttend recorded as dead |
 | 17 | Step4Variants fields + home-city default + authoring relabel + walkthrough | D | built | — |
+| N | Re-audit contained fixes (27) + Strip Edit door | D | built | B1/B3/B5/B6/B7 held |
 
 Already `built`: `Step5Events`, `StripLead`, `Slip`, `WhichEvent` (minus the hint), `Mismatch`,
 `Step2Where`, `TravelWhere`, `OccasionRow`. Already `ruled`: `SlipProposal`.

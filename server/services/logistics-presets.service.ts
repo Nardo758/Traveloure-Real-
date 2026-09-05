@@ -38,9 +38,32 @@ interface TemplatePresets {
   }>;
 }
 
-// Wedding template: ceremony is the central anchor, everything radiates from it
+// Wedding template: ceremony is the central anchor, everything radiates from it.
+//
+// SEVEN ANCHORS, and the two added by ledger `2026-09-04-reaudit-fixes` (re-audit A6) are here for
+// the same reason the sixth golf chip was: step 5 renders the SERVER's presets and never a client
+// list, so this table is the only thing standing between a ratified board and what a traveler can
+// tick. `Step5Events.dc.html` draws seven chips, the landing Moment copy names the weekend by them
+// ("Welcome drinks") and `Slip.dc.html` files items under "Farewell brunch" — while the table held
+// five, so a couple could not describe the two ends of their own weekend.
+//
+// Each carries its OWN `anchorType`, because `generatePresetsForTrip` de-duplicates by type: two
+// anchors sharing one would silently collapse into a single row, and the type is also what the
+// optimizer and the schedule validator branch on. Both are MOVABLE (`isImmovable: false`) — the
+// ceremony and the reception are what the weekend is arranged around; a drinks gathering and a
+// send-off brunch are arranged around THEM.
 const WEDDING_PRESETS: TemplatePresets = {
   anchors: [
+    {
+      anchorType: "welcome_drinks",
+      label: "Welcome drinks",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "19:00",
+      dayOffset: -1,
+      isImmovable: false,
+      description: "Drinks with guests as they arrive, the evening before",
+    },
     {
       anchorType: "rehearsal_time",
       label: "Rehearsal Dinner",
@@ -90,6 +113,16 @@ const WEDDING_PRESETS: TemplatePresets = {
       dayOffset: 0,
       isImmovable: true,
       description: "Wedding reception with dinner and celebration",
+    },
+    {
+      anchorType: "farewell_brunch",
+      label: "Farewell brunch",
+      defaultBufferBefore: 30,
+      defaultBufferAfter: 60,
+      defaultTimeOfDay: "11:00",
+      dayOffset: 1,
+      isImmovable: false,
+      description: "Brunch with guests the morning after, before they travel",
     },
   ],
   dayBoundaries: [

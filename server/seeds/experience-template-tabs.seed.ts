@@ -4808,8 +4808,12 @@ export async function seedExperienceTemplateTabs() {
     { slug: "birthday", name: "Birthday", tabs: birthdayTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
       rolesNeeded: ["venue", "event_coordinator", "caterer", "entertainment", "photography", "rentals"] },
+    // DURATION "day", not "range" (ledger `2026-09-04-reaudit-fixes`, re-audit A25 — the ratified
+    // `OccasionRow.dc.html` row). A corporate EVENT is a run of show inside one day; the multi-day
+    // product is the separate `corporate` row below ("Corporate Retreats", many/range), and having
+    // this one ask "First day / Last day" made the two indistinguishable in the flow.
     { slug: "corporate-events", name: "Corporate Events", tabs: corporateTabs, universalFilters: standardUniversalFilters, backfillControls: true,
-      switches: { stops: "one", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" },
+      switches: { stops: "one", duration: "day", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" },
       rolesNeeded: ["venue", "event_coordinator", "av_tech", "caterer", "accommodation", "private_transportation", "printing_materials"] },
     { slug: "retreats", name: "Retreats", tabs: retreatsTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "attendees", visibility: "shown" },
@@ -4827,8 +4831,14 @@ export async function seedExperienceTemplateTabs() {
     { slug: "boys-trip", name: "Boys Trip", tabs: boysTripTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" },
       rolesNeeded: ["accommodation", "activity_provider", "private_transportation", "entertainment"] },
+    // VOCABULARY "guests", not "travelers" (ledger `2026-09-04-reaudit-fixes`, re-audit A24 — the
+    // ratified `OccasionRow.dc.html` row). The row already seeds `guests: true` — it HAS a guest
+    // list — and a `travelers` vocabulary beside that switch was the pair disagreeing with itself:
+    // step 4 asked "Who is traveling with you?" for an occasion whose whole shape is people being
+    // invited to the big night. `boys-trip` is deliberately left alone: it is not on the artboard,
+    // and changing a row the board does not draw would be this lane inventing a ruling.
     { slug: "girls-trip", name: "Girls Trip", tabs: girlsTripTabs, universalFilters: standardUniversalFilters,
-      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "travelers", visibility: "shown" },
+      switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },
       rolesNeeded: ["accommodation", "activity_provider", "private_transportation", "hair_makeup"] },
     { slug: "reunions", name: "Reunions", tabs: reunionsTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "many", duration: "range", schedule: true, guests: true, vocabulary: "guests", visibility: "shown" },

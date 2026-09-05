@@ -857,6 +857,12 @@ export async function assembleTripPlan(
       dayNumber: dayNum,
       dayNum,
       date: dayDateLabel(startDate, dayNum),
+      // The MACHINE date beside the display one (ledger `2026-09-04-reaudit-fixes`, re-audit A17).
+      // The slip's day heading names the weekday, and a weekday can only be derived from a real
+      // calendar date — parsing the localised `date` string back into one would be a second, and
+      // fragile, authority for the same fact (§18 rule 1). `dayDateIso` returns null with no start
+      // date and never guesses, so a plan that does not know its dates keeps its ordinal heading.
+      dateIso: dayDateIso(startDate, dayNum),
       label: generateDayLabel(types, dayItems),
       activities: dayItems.map(buildActivity),
       transports: dayLegs.map(buildLeg),
@@ -907,6 +913,9 @@ export async function assembleTripPlan(
           dayNumber: dayNum,
           dayNum,
           date: dayDateLabel(startDate, dayNum),
+          // Same machine date as the structured branch above (re-audit A17), so the two producers
+          // cannot give the same plan two different day headings.
+          dateIso: dayDateIso(startDate, dayNum),
           label: generateDayLabel(types, []),
           activities: acts.map((a: any, ai: number) => {
             const title = a.name || a.title || "";

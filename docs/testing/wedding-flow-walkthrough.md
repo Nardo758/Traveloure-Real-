@@ -190,6 +190,13 @@ is `2026-09-04-one-modal-many-doors`).
 
 - Page: `page-plan-guests`, heading `heading-plan-guests`, subline `text-plan-subline`, back link
   `link-back-to-plan`.
+- **`button-invite-by-email`** sits beside the page heading (ledger `2026-09-04-reaudit-fixes`).
+  It opens the SAME single invite writer the per-column `button-invite-<eventId>` opens — with a
+  "Which event?" step first (`button-pick-invite-event-<eventId>`) when the plan holds more than
+  one event, straight through when it holds one, and **absent** when it holds none, because an
+  invite belongs to an event and there is nothing for the row to hang off. There is deliberately
+  **no "Copy links"** button: the artboard drew one, nothing exists for it to copy, and it was
+  amended out rather than invented.
 - The table `table-plan-guests` is **one row per person, one column per event**:
   `column-event-<eventId>` headers, `button-invite-<eventId>` per column, `row-guest-<key>` rows,
   and `rsvp-<attending|declined|pending|not_invited>` cells.
@@ -197,13 +204,20 @@ is `2026-09-04-one-modal-many-doors`).
   all; `empty-no-guests` when it has events but nobody invited; a blank "from"/"dietary" rather than
   "Unknown"/"None"; and `totals.countries` **omitted** rather than shown as 0.
 - **A hidden occasion** (proposal) renders `plan-guests-hidden` instead of the table — by ruling.
-- **THE TRAVELING PARTY IS NOT ON THIS PAGE, deliberately.** `trip_participants` (who owes what, who
-  arrives when) is a different list under a different predicate and is **never merged** into the
-  roster (`2026-09-04-guest-list-reconciliation`). The party you entered on step 4 is
-  `trips.adults` / `trips.kids` — a count, not a list — and the participant tracker lives on the
-  trip logistics dashboard (`TripLogisticsDashboard`, mounted from `/trip/:id` and the itinerary
-  pages). **Looking for a "Traveling party" section here and not finding one is the correct
-  outcome**; report it as confirmed, not as missing.
+- **THE TRAVELING PARTY IS NOT ON THIS PAGE, deliberately — but it now HAS a page of its own.**
+  `trip_participants` (who owes what, who arrives when) is a different list under a different
+  predicate and is **never merged** into the roster (`2026-09-04-guest-list-reconciliation`). The
+  party you entered on step 4 is `trips.adults` / `trips.kids` — a count, not a list.
+  **CORRECTED 2026-09-04 (ledger `2026-09-04-plan-islands`, PR #766):** this note used to send you
+  to the trip logistics dashboard for the participant list. That tracker still exists, but the
+  slip's own logistics section now carries a **`SlipTravelingParty`** block beside "Guests &
+  invites" — add / edit / remove a participant (name, role, arrival, departure, accessibility
+  needs, mobility level; never a money column, §14), hidden under a `default_visibility: hidden`
+  occasion exactly as Guests is, and it says on screen that it answers "who is traveling" while
+  the roster answers "who is invited".
+  So: **looking for a "Traveling party" section on THIS page and not finding one is still the
+  correct outcome** — report it as confirmed, not as missing — and the section you should find is
+  one level up, on the plan's own slip.
 
 ---
 

@@ -51,10 +51,15 @@ import {
   PLAN_STEP_LABELS,
   asksAccessibilityNote,
   asksBudgetApprover,
+  asksKidsCount,
+  guestListCopy,
   homeCitySuggestion,
   nextPlanStep,
+  partyFields,
   previousPlanStep,
   resolvePlanSteps,
+  showsHomeCityDayCaption,
+  showsMainMoment,
   type PlanStepId,
 } from "@/lib/plan-steps";
 import { useAuth } from "@/hooks/use-auth";
@@ -381,6 +386,8 @@ export function PlanModal({
   const [pickedEvents, setPickedEvents] = useState<PlanEventDraft[]>([]);
   /** The "Something else" free-text chip — an occasion's presets can never cover everything. */
   const [customEvent, setCustomEvent] = useState("");
+  /** Has the "Something else" chip been pressed in this open? It reveals the field (re-audit A8). */
+  const [customOpen, setCustomOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [step, setStep] = useState<PlanStepId>("occasion");
@@ -451,6 +458,7 @@ export function PlanModal({
     // ticked before the deploy is dropped on the floor.
     setPickedEvents(readPendingEvents(ctx));
     setCustomEvent("");
+    setCustomOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -510,6 +518,19 @@ export function PlanModal({
    */
   const wantsBudgetApprover = asksBudgetApprover(selectedOccasion);
   const wantsAccessibilityNote = asksAccessibilityNote(selectedOccasion);
+  /**
+   * THE RE-AUDIT PREDICATES (ledger `2026-09-04-reaudit-fixes`). Each is called ONCE here and
+   * never re-derived in the JSX below — the same posture every other switch reader takes.
+   *
+   * `wantsKids` is load-bearing beyond the render: a step that was never SHOWN states nothing, so
+   * the save must not fold a kids count collected under a previously-chosen occasion into a party
+   * whose step 4 asked for one number (§13).
+   */
+  const wantsKids = asksKidsCount(selectedOccasion);
+  const wantsMainMoment = showsMainMoment(selectedOccasion);
+  const guestCopy = guestListCopy(selectedOccasion);
+  /** Step 4's steppers, built from the occasion's noun. Resolved once; the JSX only maps it. */
+  const partyStepperFields = partyFields(selectedOccasion);
 
   /**
    * THE SIGNED-IN MEMBER'S HOME CITY. Read from the payload the client ALREADY fetches — `useAuth`
@@ -519,6 +540,17 @@ export function PlanModal({
    */
   const { user } = useAuth();
   const homeCity = (user as { homeCity?: string | null } | null | undefined)?.homeCity ?? "";
+
+  /**
+   * IS STEP 3's "your own city, one evening" CAPTION TRUE HERE? (re-audit A3.) The predicate lives
+   * in `plan-steps.ts` and reads the SAME `homeCity` the step-2 suggestion does, so the caption
+   * and the suggestion can never disagree about which city is "own" (§18 rule 1).
+   */
+  const showsOwnCityCaption = showsHomeCityDayCaption({
+    occasion: selectedOccasion,
+    homeCity,
+    destination,
+  });
 
   /**
    * STEP 2's SUGGESTED CITY, for a day-shaped occasion only. `homeCitySuggestion` owns every
@@ -752,8 +784,16 @@ export function PlanModal({
      * `switchTripContext` has REPLACE semantics, so omitting the field would CLEAR a real stated
      * count just because someone walked past step 4.
      */
-    const partyAnswered = partyTouched || adults !== "" || kids !== "";
-    const travelers = partyAnswered ? partyTotal(adults, kids) : liveCtx.travelers;
+    /**
+     * A QUESTION THAT WAS NOT ASKED STATES NOTHING (§13; re-audit A4). Under the `attendees`
+     * vocabulary step 4 renders ONE stepper and the Kids field is omitted, so whatever `kids`
+     * holds — a value typed under an occasion the traveler has since changed away from — is not
+     * this plan's answer and must not reach the total, the pen or the row. Resolved once, here,
+     * so every write below reads the same fact.
+     */
+    const kidsStated = wantsKids ? kids : "";
+    const partyAnswered = partyTouched || adults !== "" || kidsStated !== "";
+    const travelers = partyAnswered ? partyTotal(adults, kidsStated) : liveCtx.travelers;
     /**
      * The same "walked past vs cleared" test for step 4's SECOND question (migration 284). A
      * traveler who never touched the field states nothing at all, so nothing is sent and whatever
@@ -793,7 +833,7 @@ export function PlanModal({
     if (partyAnswered) {
       updateTripContext({
         adults: travelersForSave(adults) ?? 0,
-        kids: travelersForSave(kids) ?? 0,
+        kids: travelersForSave(kidsStated) ?? 0,
       });
     }
     /**
@@ -837,7 +877,7 @@ export function PlanModal({
       if (partyAnswered) {
         // NULL, never 0: an unanswered party is not a party of none.
         body.adults = travelersForSave(adults) ?? null;
-        body.kids = travelersForSave(kids) ?? null;
+        body.kids = travelersForSave(kidsStated) ?? null;
       }
       /**
        * Step 4's SECOND question, on the SAME route and the same allowlist (migration 284, ledger
@@ -868,8 +908,14 @@ export function PlanModal({
     // The moment's DATE is the single date for a day-shaped occasion and its own answer for a
     // range-shaped one (the ratified Step3When card). Neither is invented: with no date and no
     // time there is no anchor to write (§13).
-    const momentDate = shape === "day" ? start || "" : mainMomentDate.trim();
-    const momentTime = mainMomentTime.trim();
+    // The main moment is written only for an occasion that HAS one (`showsMainMoment`, re-audit
+    // A15 / the re-audit's B4). A golf trip's fixed points are its four rounds, and an unnamed
+    // "The main moment" anchor beside them is a claim about the plan nobody made — the optimizer
+    // and the schedule validator both read that row, so this is a data consequence, not a pixel
+    // one. An occasion that does not ask the question also never renders the inputs, so this
+    // guard only matters when the traveler answered under one occasion and switched to another.
+    const momentDate = wantsMainMoment ? (shape === "day" ? start || "" : mainMomentDate.trim()) : "";
+    const momentTime = wantsMainMoment ? mainMomentTime.trim() : "";
     const rowsToCreate = wantsSchedule ? eventRows : [];
     if (tripId && ((momentDate && momentTime) || rowsToCreate.length > 0)) {
       setSaving(true);
@@ -1047,26 +1093,41 @@ export function PlanModal({
     if (step === "where" && to > from) setDestinationSuggested(false);
     setStep(target);
   };
-  const partyLabelNoun = noun.charAt(0).toUpperCase() + noun.slice(1);
-
   /** The eyebrow, composed ONLY from what the plan actually holds (§13). */
   const eyebrow = useMemo(() => {
     const city = destination.trim().split(",")[0].trim();
     const occ = selectedOccasion?.name?.toLowerCase();
     const lead = city && occ ? `Your ${city} ${occ}` : city ? `Your ${city} plan` : "Your plan";
-    if (!startDate) return lead;
-    const fmt = (ymd: string) => {
-      const d = new Date(`${ymd}T00:00:00`);
-      return isNaN(d.getTime()) ? ymd : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    };
-    const span =
-      endDate && endDate !== startDate ? `${fmt(startDate)} to ${fmt(endDate)}` : fmt(startDate);
-    return `${lead} · ${span}`;
-  }, [destination, selectedOccasion, startDate, endDate]);
+    /**
+     * THE STOP COUNT (re-audit A14, the ratified `TravelWhen` eyebrow "Your golf trip · 3 stops").
+     * Counted from the list the traveler actually named — `namedStops`, the same reader the
+     * sequence line uses, never a second count (§18 rule 1) — and shown only under `many` and only
+     * above one: the eyebrow's own city IS stop 1, so "1 stop" would be repeating it, and a
+     * single-stop occasion never asked the question at all.
+     */
+    const stopCount = stopsMany ? namedStops(stops).length : 0;
+    const segments = [lead];
+    if (stopCount > 1) segments.push(`${stopCount} stops`);
+    if (startDate) {
+      const fmt = (ymd: string) => {
+        const d = new Date(`${ymd}T00:00:00`);
+        return isNaN(d.getTime()) ? ymd : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      };
+      segments.push(
+        endDate && endDate !== startDate ? `${fmt(startDate)} to ${fmt(endDate)}` : fmt(startDate),
+      );
+    }
+    return segments.join(" · ");
+  }, [destination, selectedOccasion, startDate, endDate, stopsMany, stops]);
 
   const stepTitle: Record<PlanStepId, string> = {
     occasion: "What are you planning?",
-    where: "Where is it happening?",
+    // STEP 2's TITLE VARIES BY STOPS SHAPE AND BY NOTHING ELSE (re-audit A13). Under `many` the
+    // question really is a different one — an ORDER is being asked for, not a place — and that is
+    // a fact the occasion's own `default_stops` column already states. The travel artboards' "Where
+    // are you going?" is deliberately NOT built: it would need a per-occasion literal, and an
+    // occasion is a row carrying defaults, not a class (Locked Decision 28).
+    where: stopsMany ? "Where, in order?" : "Where is it happening?",
     when: "When is it?",
     // The artboard's four variants, in the artboard's own words. AUTHORING is a fourth heading
     // rather than a suffix on the other three: an expert building for a client is answering about
@@ -1094,9 +1155,19 @@ export function PlanModal({
       shape === "day"
         ? "Occasions that last a day ask for a date and a time, never a range."
         : "A travel-class plan asks only for the two days.",
+    /**
+     * STEP 4's NOTE BRANCHES BY THE PARTY NOUN (re-audit A5), the same derived value its TITLE and
+     * its steppers already branch on — never a per-occasion literal. The `attendees` line is the
+     * ratified Step4Variants footnote for that panel; every other noun keeps the de-masking note,
+     * which is the one thing true of all of them.
+     */
     who: authoring
       ? "You are building this for someone else; the question changes actor, not shape."
-      : "Left untouched, nothing is assumed: a party you never set is saved as not set.",
+      : noun === "attendees"
+        ? "Nobody travels on this plan; attendees RSVP. Left untouched, nothing is assumed."
+        : noun === "guests"
+          ? "This is the booking party, not the guest list. Left untouched, nothing is assumed."
+          : "Left untouched, nothing is assumed: a party you never set is saved as not set.",
     events: "Each one becomes its own part of the plan, with its own place and time.",
   };
 
@@ -1252,9 +1323,26 @@ export function PlanModal({
           {/* ── STEP 2 · Where — one destination, or an ordered list. See the header note. ─── */}
           {step === "where" && (
             <div className="space-y-1.5" data-testid="plan-step-where-body">
+              {/* ROW 1's LABEL SAYS WHICH SHAPE THIS IS (re-audit A12). Under `many` the list read
+                  *Destination / 02 / 03* — row 1 had a different KIND of name from its own
+                  siblings, which reads as a field standing outside the list rather than as its
+                  first member. It IS the first member (the position-0 mirror of
+                  `trip_destinations`, Locked Decision 34), so under `many` it takes the ordinal
+                  "01" and the name "First stop". Under `one` nothing changes: there is no list to
+                  be first in, and "Destination" is the honest word. */}
               <Label htmlFor="etp-destination" className="flex items-center gap-2">
-                <MapPin className="h-3.5 w-3.5" style={{ color: "var(--earn-muted)" }} />
-                Destination
+                {stopsMany ? (
+                  <span
+                    className="text-[10.5px] tabular-nums"
+                    style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
+                    data-testid="text-plan-stop-ordinal-0"
+                  >
+                    01
+                  </span>
+                ) : (
+                  <MapPin className="h-3.5 w-3.5" style={{ color: "var(--earn-muted)" }} />
+                )}
+                {stopsMany ? "First stop" : "Destination"}
               </Label>
               {/* ROW 1 IS THE DESTINATION FIELD in both shapes, and keeps its id and its testid:
                   under `many` it is simply the first row of the list (the position-0 mirror). */}
@@ -1405,14 +1493,6 @@ export function PlanModal({
                 </div>
               )}
 
-              <Label htmlFor="etp-title" className="pt-2 block">Plan name (optional)</Label>
-              <Input
-                id="etp-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={destination ? `Your ${destination.split(",")[0]} plan` : "My plan"}
-                data-testid="input-etp-title"
-              />
             </div>
           )}
 
@@ -1447,6 +1527,20 @@ export function PlanModal({
                       data-testid="input-etp-main-moment"
                     />
                   </div>
+                  {/* THE RATIFIED Step3Day CAPTION, with every clause of it CHECKED (re-audit A3).
+                      `showsHomeCityDayCaption` owns the three conditions — day-shaped, no stop
+                      list, and the destination on screen really IS the signed-in member's own
+                      `users.home_city`. Written as a literal it would tell a traveler flying to a
+                      date night in another city that they are staying home (§13). */}
+                  {showsOwnCityCaption && (
+                    <p
+                      className="col-span-2 text-[11px]"
+                      style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
+                      data-testid="text-etp-own-city-caption"
+                    >
+                      Your own city, one evening. No stops, no range.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3" data-testid="etp-step3-range">
@@ -1480,7 +1574,7 @@ export function PlanModal({
                   a moment inside a three-day range has no date the plan can derive for it, and
                   a derived one would render exactly like a stated one (§13). Nothing is written
                   until BOTH are given. */}
-              {shape !== "day" && wantsSchedule && (
+              {shape !== "day" && wantsMainMoment && (
                 <div
                   className="space-y-3 rounded-lg border p-3.5"
                   style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
@@ -1518,7 +1612,7 @@ export function PlanModal({
             </div>
           )}
 
-          {/* ── STEP 4 · Who — Adults and Kids, both starting at NOT SET. ──────────────────── */}
+          {/* ── STEP 4 · Who — the occasion's own stepper tuple, every field starting NOT SET. ── */}
           {step === "who" && (
             <div className="space-y-3" data-testid="plan-step-who-body">
               {authoring && (
@@ -1530,11 +1624,17 @@ export function PlanModal({
                   The client's party
                 </p>
               )}
+              {/* THE STEPPERS ARE THE OCCASION'S OWN TUPLE (re-audit A4). `partyFields` decides
+                  how many there are and what they are called; a corporate plan gets ONE, and the
+                  Kids stepper is OMITTED rather than disabled — an absent control asks nothing,
+                  a greyed-out one asserts the question exists here and cannot be answered. */}
               <div className="flex flex-wrap gap-4">
-                {([
-                  { key: "adults", label: partyLabelNoun, value: adults, set: setAdults },
-                  { key: "kids", label: "Kids", value: kids, set: setKids },
-                ] as const).map((f) => (
+                {partyStepperFields.map((field) => {
+                  const f =
+                    field.key === "adults"
+                      ? { key: "adults" as const, label: field.label, value: adults, set: setAdults }
+                      : { key: "kids" as const, label: field.label, value: kids, set: setKids };
+                  return (
                   <div key={f.key} className="space-y-1.5">
                     <Label data-testid={`label-etp-${f.key}`}>{f.label}</Label>
                     <div
@@ -1575,7 +1675,8 @@ export function PlanModal({
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               {/* ── STEP 4's SECOND QUESTION — the occasion picks it (migration 284) ──────────
                   `asksBudgetApprover` / `asksAccessibilityNote` are the two predicates, and they
@@ -1641,9 +1742,14 @@ export function PlanModal({
                 </div>
               )}
 
-              <p className="text-[13px]" style={{ color: "var(--earn-muted)" }}>
-                This is the party on your booking. Your guest list is separate and per event
-                {next === "events" ? " — next step." : "."}
+              {/* THE GUEST-LIST CLAUSE IS DERIVED (re-audit A10). `golf-trip` seeds
+                  `default_guests: false`, and this note used to promise that plan a per-event
+                  guest list it will never have — one line away from `partyNoun`, which was
+                  already refusing it every word of guest vocabulary. ONE helper answers it here
+                  and on step 5; a second copy is the drift §18 rule 1 names. */}
+              <p className="text-[13px]" style={{ color: "var(--earn-muted)" }} data-testid="text-etp-party-note">
+                {guestCopy.partyNote}
+                {guestCopy.on && next === "events" ? " — next step." : "."}
               </p>
             </div>
           )}
@@ -1651,9 +1757,8 @@ export function PlanModal({
           {/* ── STEP 5 · What's happening — the SERVER's presets for this occasion. ─────────── */}
           {step === "events" && (
             <div className="space-y-2.5" data-testid="etp-step5-schedule">
-              <p className="text-[13px]" style={{ color: "var(--earn-muted)" }}>
-                Tick what applies. Each becomes its own event on the plan, with its own time, place
-                and guest list.
+              <p className="text-[13px]" style={{ color: "var(--earn-muted)" }} data-testid="text-etp-events-intro">
+                {guestCopy.eventsIntro}
               </p>
               <div className="flex flex-wrap gap-2">
                 {chipLabels.map((label) => {
@@ -1675,24 +1780,45 @@ export function PlanModal({
                     </button>
                   );
                 })}
+                {!customOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomOpen(true)}
+                    className="rounded-full border border-dashed px-3 py-1.5 text-xs transition-colors bg-background text-muted-foreground hover:bg-muted"
+                    data-testid="chip-etp-event-something-else"
+                  >
+                    + Something else
+                  </button>
+                )}
               </div>
-              {/* "Something else" becomes a ROW as soon as it is confirmed, so it gets the same
-                  Day/Time/Place cells every ticked chip gets — an occasion's presets can never
-                  cover everything, and a free-text event with no way to say WHEN would be a
-                  second-class one. Text left un-confirmed in the box is still saved: `eventsToCreate`
-                  folds it in, so nothing typed is lost by not pressing Enter. */}
-              <Input
-                value={customEvent}
-                onChange={(e) => setCustomEvent(e.target.value)}
-                onBlur={commitCustomEvent}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  commitCustomEvent();
-                }}
-                placeholder="Something else…"
-                data-testid="input-etp-custom-event"
-              />
+              {/* "SOMETHING ELSE" IS A CHIP THAT OPENS A FIELD (re-audit A8). The ratified
+                  artboards draw it as the last chip in the row, and it belongs there: it is the
+                  same kind of answer as the presets beside it — one more thing that is happening —
+                  and rendering it as a permanently-open text box made it look like a different
+                  question. The BEHAVIOUR is unchanged and is deliberately richer than the artboard:
+                  confirmed text becomes a full ROW with the same Day/Time/Place cells every ticked
+                  chip gets, because an occasion's presets can never cover everything and a
+                  free-text event with no way to say WHEN would be a second-class one.
+
+                  The field, once open, STAYS open — including after a confirm — so a traveler
+                  adding three of their own does not re-open it three times. Text left un-confirmed
+                  in it is still saved: `eventsToCreate` folds it in, so nothing typed is lost by
+                  not pressing Enter, and the chip is therefore never a way to lose an answer. */}
+              {customOpen ? (
+                <Input
+                  autoFocus
+                  value={customEvent}
+                  onChange={(e) => setCustomEvent(e.target.value)}
+                  onBlur={commitCustomEvent}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    commitCustomEvent();
+                  }}
+                  placeholder="Something else…"
+                  data-testid="input-etp-custom-event"
+                />
+              ) : null}
 
               {/* ── THE RATIFIED TABLE — Event · Day · Time · Place ────────────────────────────
                   `Step5Events.dc.html` and `TravelEvents.dc.html` both draw this, and both were
@@ -1707,28 +1833,35 @@ export function PlanModal({
                   default at all — a plan carries no hour, and midnight is not "no time given". */}
               {pickedEvents.length > 0 && (
                 <div className="space-y-1.5 pt-1" data-testid="etp-step5-rows">
+                  {/* FOUR COLUMNS, as ratified (re-audit A7). Day and time were one merged cell;
+                      they are two ANSWERS — a plan-day chosen from a select, and a wall-clock time
+                      that has no default at all — and merging their headers made the second look
+                      like part of the first. The Day column can still be absent for a plan whose
+                      range is not readable yet; the grid keeps its slot so the rows stay aligned. */}
                   <div
-                    className="grid grid-cols-[1fr_auto_auto] gap-2 text-[10.5px] uppercase tracking-[0.12em]"
+                    className="grid grid-cols-[1fr_auto_auto_auto] gap-2 text-[10.5px] uppercase tracking-[0.12em]"
                     style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
                   >
                     <span>Event</span>
-                    <span>Day &amp; time</span>
+                    <span>Day</span>
+                    <span>Time</span>
                     <span>Place</span>
                   </div>
                   {pickedEvents.map((row) => (
                     <div
                       key={row.title}
-                      className="grid grid-cols-[1fr_auto_auto] items-center gap-2"
+                      className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2"
                       data-testid={`etp-event-row-${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
                     >
                       <span className="truncate text-[13px]" style={{ color: "var(--earn-ink)" }}>
                         {row.title}
                       </span>
-                      <span className="flex items-center gap-1">
-                        {/* A SELECT of the plan's own days, not a free calendar: an event inside a
-                            plan cannot fall outside it, and `trips.start_date`/`end_date` are the
-                            range. No days readable yet ⇒ the cell is omitted rather than asking a
-                            question with no answers. */}
+                      {/* A SELECT of the plan's own days, not a free calendar: an event inside a
+                          plan cannot fall outside it, and `trips.start_date`/`end_date` are the
+                          range. No days readable yet ⇒ the cell renders EMPTY rather than asking a
+                          question with no answers (§13) — the column keeps its slot so the Time and
+                          Place cells below it stay under their own headers. */}
+                      <span className="flex items-center">
                         {dayOptions.length > 0 && (
                           <select
                             value={row.eventDate ?? ""}
@@ -1753,6 +1886,8 @@ export function PlanModal({
                             ))}
                           </select>
                         )}
+                      </span>
+                      <span className="flex items-center">
                         <Input
                           type="time"
                           value={row.startTime ?? ""}
@@ -1784,6 +1919,19 @@ export function PlanModal({
                     Days and places default to your plan. Change any of them now or later from the
                     slip. A time is only ever the one you set.
                   </p>
+                  {/* The ratified Step5Events footer (re-audit A9), on the SAME helper the intro
+                      above and step 4's note use. An occasion with `default_guests` false or NOT
+                      SET gets nothing here: the sentence is a claim about a capability, and a
+                      claim needs an explicit yes (§13). */}
+                  {guestCopy.eventsFooter && (
+                    <p
+                      className="text-[11px]"
+                      style={{ fontFamily: MONO, color: "var(--earn-faint)" }}
+                      data-testid="text-etp-events-guest-footer"
+                    >
+                      {guestCopy.eventsFooter}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1796,6 +1944,24 @@ export function PlanModal({
             so `branches` arrives narrowed to that one. */}
         {isLastStep && (
           <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--earn-border)" }}>
+            {/* THE PLAN'S NAME IS OPTIONAL AND LAST (re-audit A2). It sat on step 2, carried over
+                from the edit panel this modal was renamed from, where a second field under
+                "Where is it happening?" answered a different question from the one the step asks —
+                and the ratified Step2Where artboard draws one field, not two. A name is the one
+                thing a plan can be finished without: `trips.title` is derived from the destination
+                when it is blank, so asking for it beside the CTA is asking at the only moment it
+                costs nothing. The field, its id, its state and its testid are unchanged — it MOVED,
+                it was not rebuilt. */}
+            <div className="space-y-1.5 pb-1">
+              <Label htmlFor="etp-title">Plan name (optional)</Label>
+              <Input
+                id="etp-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={destination ? `Your ${destination.split(",")[0]} plan` : "My plan"}
+                data-testid="input-etp-title"
+              />
+            </div>
             {continueHref && !source?.branch && (
               <button
                 type="button"

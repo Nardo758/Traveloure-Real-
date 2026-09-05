@@ -187,15 +187,43 @@ export function countPlanEvents(events: readonly PlanEvent[] | null | undefined)
  * and the place is the next. A time with no day still renders, alone: "15:00" is true of a row
  * that was given an hour and no date, and hiding it would lose an answer the traveler gave.
  *
- * It lives beside `groupItemsByEvent` because the slip's event heading and the "Which event?"
- * picker (ledger `2026-09-04-which-event-picker`) must say the SAME thing about the same row —
- * two surfaces deriving one label two ways is the drift class §18 rule 1 names, and the second
- * copy is exactly where a clock time gets invented out of something that is not a clock.
+ * ── THE DAY'S TWO FORMS (re-audit A18, ledger `2026-09-04-reaudit-fixes`) ─────────────────────
+ * `format: "long"` (the default, and what every existing caller got) prints the full calendar day,
+ * "Sat, Oct 3". `format: "short"` prints the WEEKDAY ALONE, "Sat" — for a caller that has already
+ * named the date somewhere the reader can see it, which is what both ratified artboards draw:
+ * the slip prints the date in the DAY HEADING above the event, and the "Which event?" picker
+ * prints it in the plan's own dates above the list.
+ *
+ * IT IS AN OPTION, NOT A SECOND FUNCTION. Both artboards describe the same row, and two surfaces
+ * deriving one label two ways is the drift class §18 rule 1 names — the second copy is exactly
+ * where a clock time gets invented out of something that is not a clock. So the *substance* is
+ * identical in both forms: the same date parse, the same shape-checked `start_time`, the same
+ * place, the same §13 silences. Only how much of the day is spelled out differs.
+ *
+ * It lives beside `groupItemsByEvent` for the same reason.
  */
-export function eventMetaLine(event: PlanEvent | null | undefined): string {
+export interface EventMetaOptions {
+  /**
+   * "long" (default) ⇒ "Sat, Oct 3"; "short" ⇒ "Sat".
+   *
+   * Both ratified artboards draw the SHORT form, and both are surfaces where the calendar date is
+   * already on screen: the slip prints it in the day heading directly above the event, and the
+   * picker lists only the events of the ONE plan whose dates the traveler just set. STATED LIMIT
+   * (§18d's posture, applied to a format rather than a guard): on a plan spanning more than a week
+   * two events on different Saturdays render the same weekday, so "short" is a presentation choice
+   * for a caller that can place the day from its surroundings — never a claim that the weekday
+   * identifies the date on its own. "long" stays the default for exactly that reason.
+   */
+  format?: "long" | "short";
+}
+
+export function eventMetaLine(
+  event: PlanEvent | null | undefined,
+  options?: EventMetaOptions,
+): string {
   if (!event) return "";
   const date = parseTripDate(event.eventDate);
-  const day = date ? format(date, "EEE, MMM d") : null;
+  const day = date ? format(date, options?.format === "short" ? "EEE" : "EEE, MMM d") : null;
   // Shape-checked before it is shown: the column carries no DB CHECK (publish-trap posture), so a
   // value that is not a wall clock is not rendered as one. A malformed row shows its day and its
   // place, exactly as a row with no time does.

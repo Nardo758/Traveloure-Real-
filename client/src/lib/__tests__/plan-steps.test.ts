@@ -20,6 +20,18 @@
  *   D7  the start step is always one of the visible steps, and the next/previous helpers walk the
  *       VISIBLE list (so a hidden step 5 can never be stepped into).
  *
+ * The post-build re-audit (ledger `2026-09-04-reaudit-fixes`) added four more predicates to this
+ * module, each closing a divergence that rendered perfectly while asking the wrong question, and
+ * each pinned below:
+ *   R1  `partyFields` / `asksKidsCount` — an `attendees` occasion asks ONE count and the Kids
+ *       stepper is OMITTED, never disabled (re-audit A4).
+ *   R2  `showsMainMoment` — the anchor card belongs to a day-shaped occasion, or to a scheduled
+ *       one whose party is guests/attendees. A golf trip (travelers + range + schedule) gets none,
+ *       which is what stops it acquiring a stray `temporal_anchors` row (re-audit A15 / B4).
+ *   R3  `showsHomeCityDayCaption` — "your own city" is checked, never asserted (re-audit A3).
+ *   R4  `guestListCopy` — the per-event guest list is PROMISED only on an explicit `true`
+ *       (re-audit A9/A10).
+ *
  * Pure unit: no DOM, no DB, no fetch.
  * Run: npx tsx --test client/src/lib/__tests__/plan-steps.test.ts
  */
@@ -30,10 +42,15 @@ import {
   PLAN_STEP_ORDER,
   asksAccessibilityNote,
   asksBudgetApprover,
+  asksKidsCount,
+  guestListCopy,
   homeCitySuggestion,
   nextPlanStep,
+  partyFields,
   previousPlanStep,
   resolvePlanSteps,
+  showsHomeCityDayCaption,
+  showsMainMoment,
   type PlanStepId,
 } from "../plan-steps";
 import type { OccasionSwitchRow } from "../occasion-switches";
@@ -355,5 +372,175 @@ describe("V3 — the home-city suggestion: a shown default is not a chosen value
       homeCitySuggestion({ occasion: DATE_NIGHT, homeCity: "  Kyoto  ", currentDestination: "   " }),
       "Kyoto",
     );
+  });
+});
+
+// ── THE RE-AUDIT PREDICATES (ledger `2026-09-04-reaudit-fixes`) ──────────────────────────────
+
+// `CORPORATE` (attendees + a guest list) and `DATE_NIGHT` (one stop, one day, no guest list) are
+// declared above with the V1–V3 fixtures and are reused here rather than re-declared: two rows
+// standing for the same occasion is how a fixture set starts disagreeing with itself.
+
+/** Golf: travelers over a range WITH a schedule — the row that made A15 a real data bug. */
+const GOLF: OccasionSwitchRow = {
+  defaultStops: "many",
+  defaultDuration: "range",
+  defaultSchedule: true,
+  defaultGuests: false,
+  vocabulary: "travelers",
+  defaultVisibility: "shown",
+};
+
+/** The seeded corporate-events shape after re-audit A25: the same row, over ONE day. */
+const CORPORATE_DAY: OccasionSwitchRow = { ...CORPORATE, defaultStops: "one", defaultDuration: "day" };
+
+describe("R1 — step 4's steppers are the occasion's own tuple (A4)", () => {
+  it("an ATTENDEES occasion asks ONE count, labelled Attendees", () => {
+    assert.deepEqual(partyFields(CORPORATE), [{ key: "adults", label: "Attendees" }]);
+    assert.equal(asksKidsCount(CORPORATE), false);
+  });
+
+  it("the Kids field is OMITTED, not present-and-disabled — there is no third state to render", () => {
+    // The whole tuple is what the modal maps over, so "omitted" here IS "absent from the DOM".
+    assert.equal(partyFields(CORPORATE).some((f) => f.key === "kids"), false);
+  });
+
+  it("guests and travelers both get the ratified Adults / Kids pair", () => {
+    for (const row of [WEDDING, TRAVEL, GOLF]) {
+      assert.deepEqual(partyFields(row), [
+        { key: "adults", label: "Adults" },
+        { key: "kids", label: "Kids" },
+      ]);
+      assert.equal(asksKidsCount(row), true);
+    }
+  });
+
+  it("§13 — NOT SET falls back to the plain-plan pair, never to the single count", () => {
+    for (const row of [...NOT_SET, null, undefined]) {
+      assert.equal(asksKidsCount(row), true, "an undecided occasion must not silently drop a field");
+    }
+  });
+
+  it("an occasion that ruled it has NO guest list is answered by the same rule as its label", () => {
+    // `partyNoun` forces "travelers" on `defaultGuests: false`, so an "attendees" spelling beside
+    // a false guest switch does NOT collapse to one stepper — the two readers agree by delegation.
+    const contradictory: OccasionSwitchRow = { vocabulary: "attendees", defaultGuests: false };
+    assert.equal(asksKidsCount(contradictory), true);
+  });
+});
+
+describe("R2 — the main moment belongs to the occasions that have one (A15 / the re-audit's B4)", () => {
+  it("a DAY-shaped occasion has a main moment — it IS the day", () => {
+    assert.equal(showsMainMoment(DATE_NIGHT), true);
+    assert.equal(showsMainMoment(CORPORATE_DAY), true);
+  });
+
+  it("a wedding — range, schedule, guests — has one", () => {
+    assert.equal(showsMainMoment(WEDDING), true);
+  });
+
+  it("GOLF does NOT: travelers + range + schedule is a list of appointments, not an anchor", () => {
+    assert.equal(
+      showsMainMoment(GOLF),
+      false,
+      "this is what stops a golf plan writing an unnamed 'The main moment' temporal_anchors row " +
+        "beside its four tee times",
+    );
+  });
+
+  it("a range with NO schedule has none either", () => {
+    assert.equal(showsMainMoment(TRAVEL), false);
+    assert.equal(showsMainMoment({ defaultDuration: "range", defaultGuests: true, vocabulary: "guests" }), false);
+  });
+
+  it("§13 — NOT SET ⇒ false: no anchor is given to an occasion nobody decided anything about", () => {
+    for (const row of [...NOT_SET, null, undefined]) assert.equal(showsMainMoment(row), false);
+  });
+
+  it("it answers from the SWITCHES, never from a seventh column or a slug (Locked Decision 31)", () => {
+    // Two rows with identical switches must answer identically no matter what else they carry.
+    const a: OccasionSwitchRow = { defaultDuration: "range", defaultSchedule: true, defaultGuests: true, vocabulary: "guests" };
+    const b: OccasionSwitchRow = { ...a, defaultStops: "many", defaultVisibility: "hidden" };
+    assert.equal(showsMainMoment(a), showsMainMoment(b));
+  });
+});
+
+describe("R3 — 'your own city, one evening' is checked, not asserted (A3)", () => {
+  const own = { occasion: DATE_NIGHT, homeCity: "Kyoto", destination: "Kyoto" };
+
+  it("all three clauses true ⇒ the caption shows", () => {
+    assert.equal(showsHomeCityDayCaption(own), true);
+    // Case and surrounding whitespace are not a different city.
+    assert.equal(showsHomeCityDayCaption({ ...own, destination: "  kyoto " }), true);
+  });
+
+  it("a day-shaped plan in ANOTHER city does not claim to be at home", () => {
+    assert.equal(showsHomeCityDayCaption({ ...own, destination: "Osaka" }), false);
+  });
+
+  it("no home city — a guest, or a member who never set one — never sees it", () => {
+    for (const home of [undefined, null, "", "  "]) {
+      assert.equal(showsHomeCityDayCaption({ ...own, homeCity: home }), false);
+    }
+  });
+
+  it("a RANGE-shaped or MULTI-STOP occasion is not 'one evening, no stops'", () => {
+    assert.equal(showsHomeCityDayCaption({ ...own, occasion: WEDDING }), false);
+    assert.equal(showsHomeCityDayCaption({ ...own, occasion: GOLF }), false);
+    assert.equal(
+      showsHomeCityDayCaption({ ...own, occasion: { ...DATE_NIGHT, defaultStops: "many" } }),
+      false,
+    );
+  });
+
+  it("no fuzzy matching: 'Kyoto' and 'Kyoto, Japan' are NOT the same answer", () => {
+    // A false negative omits a caption; a false positive tells a traveler where they live.
+    assert.equal(showsHomeCityDayCaption({ ...own, destination: "Kyoto, Japan" }), false);
+  });
+
+  it("§13 — NOT SET ⇒ false", () => {
+    for (const row of [...NOT_SET, null, undefined]) {
+      assert.equal(showsHomeCityDayCaption({ occasion: row, homeCity: "Kyoto", destination: "Kyoto" }), false);
+    }
+  });
+});
+
+describe("R4 — the guest-list clause is promised only on an explicit yes (A9/A10)", () => {
+  it("a wedding is promised its per-event guest list", () => {
+    const copy = guestListCopy(WEDDING);
+    assert.equal(copy.on, true);
+    assert.match(copy.partyNote, /guest list/);
+    assert.match(copy.eventsIntro, /guest list/);
+    assert.equal(copy.eventsFooter, "Guests are per event. Brunch can be family only.");
+  });
+
+  it("GOLF (`default_guests: false`) is promised nothing — the defect this closes", () => {
+    const copy = guestListCopy(GOLF);
+    assert.equal(copy.on, false);
+    assert.equal(/guest/i.test(copy.partyNote), false);
+    assert.equal(/guest/i.test(copy.eventsIntro), false);
+    assert.equal(copy.eventsFooter, "", "no footer, rather than a footer saying there is none");
+  });
+
+  it("§13 — NULL is not a ruling either: an undecided occasion is promised nothing", () => {
+    for (const row of [...NOT_SET, null, undefined, { defaultGuests: null }]) {
+      const copy = guestListCopy(row as OccasionSwitchRow);
+      assert.equal(copy.on, false);
+      assert.equal(/guest/i.test(copy.eventsIntro), false);
+    }
+  });
+
+  it("both sentences still describe the event's own day, time and place when guests are off", () => {
+    // Dropping the promise must not drop the three facts the step really does collect.
+    const copy = guestListCopy(GOLF);
+    for (const word of ["day", "time", "place"]) assert.match(copy.eventsIntro, new RegExp(word));
+  });
+
+  it("ONE decision, three sentences: `on` and the copy can never disagree", () => {
+    for (const row of [WEDDING, GOLF, CORPORATE, TRAVEL, ...NOT_SET]) {
+      const copy = guestListCopy(row);
+      assert.equal(copy.on, /guest list/.test(copy.eventsIntro));
+      assert.equal(copy.on, copy.eventsFooter !== "");
+    }
   });
 });

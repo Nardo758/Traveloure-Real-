@@ -52,6 +52,46 @@ import type { UserExperience } from "@shared/schema";
 
 const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
 
+/**
+ * THE SLIP'S GUEST TOTALS (re-audit A20, ledger `2026-09-04-reaudit-fixes`).
+ *
+ * Reads the SAME owner-gated derived roster the Guests page reads, under the SAME query key, so
+ * the two surfaces share a cache and can never show a plan two different headcounts. Nothing is
+ * counted here: `totals` is the server's answer (`plan-guest-roster.service.ts`), and a second
+ * count on the client is the drift class §18 rule 1 names.
+ *
+ * §13 — EVERY ABSENCE IS PRESERVED. A roster that has not loaded, one the viewer may not read
+ * (the route is owner-tier because the rows carry emails and dietary notes), and one with nobody
+ * on it all render NOTHING — never "0 invited", which is a claim about the guest list rather than
+ * about our knowledge of it. `countries` is omitted server-side when no guest states an origin
+ * and is simply not rendered here either.
+ */
+function SlipGuestTotals({ tripId }: { tripId: string }) {
+  const { data } = useQuery<{
+    totals?: { invited?: number; attending?: number; countries?: number };
+  }>({
+    queryKey: [`/api/trips/${tripId}/guests`],
+    enabled: !!tripId,
+    staleTime: 30_000,
+    // A 401/403/404 is an honest "we cannot say", not an empty roster — do not retry it into one.
+    retry: false,
+  });
+  const totals = data?.totals;
+  const invited = typeof totals?.invited === "number" ? totals.invited : null;
+  const attending = typeof totals?.attending === "number" ? totals.attending : null;
+  const countries = typeof totals?.countries === "number" ? totals.countries : null;
+  if (invited === null || invited === 0) return null;
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="text-slip-guest-totals">
+      {invited} invited
+      {attending !== null ? ` · ${attending} attending` : ""}
+      {countries !== null
+        ? ` · ${countries} ${countries === 1 ? "country" : "countries"} of origin`
+        : ""}
+    </p>
+  );
+}
+
 export function SlipLogisticsSection({ tripId }: { tripId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -208,6 +248,18 @@ export function SlipLogisticsSection({ tripId }: { tripId: string }) {
                   person with a column per event. It does not replace this block; it is where "who
                   is coming to what" is actually answerable.
                 */}
+                {/* THE TOTALS THE ARTBOARD DRAWS (re-audit A20). The link below has always been
+                    here; what the slip could not say was how the list is doing, so the answer sat
+                    one navigation away. These are the SERVER's own numbers from the SAME derived
+                    roster the Guests page renders (`GET /api/trips/:tripId/guests`) — this
+                    component computes nothing and counts nothing (§18 rule 1; the derivation has
+                    one home).
+                    §13 — the block is OMITTED, not zero-filled, whenever the roster is empty or
+                    has not answered: a plan whose events nobody has been invited to yet says
+                    nothing here rather than "0 invited", and a request that failed (a non-owner,
+                    an offline tab) is an unknown, not an empty list. `countries` is already
+                    omitted-when-absent server-side and stays that way. */}
+                <SlipGuestTotals tripId={tripId} />
                 <Link href={`/plans/${tripId}/guests`}>
                   <a
                     className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"

@@ -208,7 +208,11 @@ export function whichEventChoices(
       key: event.id,
       event,
       label: event.title || "",
-      meta: eventMetaLine(event),
+      // SHORT form — the ratified `WhichEvent` artboard's "Sat 15:00 · Nanzen-ji" (re-audit A18).
+      // Same ONE derivation as the slip's event heading, called with the option rather than
+      // re-implemented: a second copy is where a clock gets invented out of something that is not
+      // one (§18 rule 1).
+      meta: eventMetaLine(event, { format: "short" }),
       value: event.id,
     });
   }

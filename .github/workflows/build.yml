@@ -367,6 +367,26 @@ jobs:
         run: |
           npx tsx --test client/src/lib/__tests__/plan-budget.test.ts
           npx tsx --test shared/__tests__/user-experience-start-time.test.ts
+      # 2026-09-04-reaudit-fixes: the post-build re-audit's contained fixes. Everything pinned here
+      # is a divergence that RENDERED PERFECTLY while asking or claiming the wrong thing, which is
+      # why none of it was caught by any existing gate:
+      #   R1-R4 (plan-steps) — step 4's stepper tuple (an `attendees` occasion asks ONE count),
+      #     the main-moment predicate that stops a GOLF plan writing a stray `temporal_anchors`
+      #     row, the checked "your own city" caption, and the guest-list clause that is promised
+      #     only on an explicit `default_guests: true`.
+      #   G8 (slip-events) — `eventMetaLine`'s short form is an OPTION, so the slip and the
+      #     "Which event?" picker cannot fork one derivation into two (§18 rule 1); every §13
+      #     silence must survive the option.
+      #   W1-W6 (wedding presets) — the two chips the ratified board draws that the table omitted;
+      #     step 5 renders the SERVER's presets, so this table is the only thing standing between
+      #     the board and what a traveler can tick.
+      #   S6 (switch seeds) — the two seeded rows that disagreed with the ratified OccasionRow
+      #     board, by value, because the seeder is the one author and a hand-edit is how they drift.
+      - name: Re-audit contained fixes pin
+        run: |
+          npx tsx --test client/src/lib/__tests__/slip-events.test.ts
+          npx tsx --test server/services/__tests__/wedding-presets.test.ts
+          npx tsx --test shared/__tests__/experience-type-switches.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)

@@ -143,8 +143,12 @@ describe("W5 — an event that has told us nothing invents nothing", () => {
   });
 
   it("W5c: a date with no place, and a place with no date, each render only what is there", () => {
+    // SHORT form since ledger `2026-09-04-reaudit-fixes` (re-audit A18): the picker asks for the
+    // weekday alone, which is what the ratified `WhichEvent` artboard draws. It is an OPTION on
+    // the one shared `eventMetaLine`, not a second derivation — see G8 in `slip-events.test.ts`,
+    // which holds that every §13 silence survives the option unchanged.
     const [, rehearsal] = whichEventChoices([REHEARSAL]);
-    assert.equal(rehearsal.meta, "Thu, Oct 1");
+    assert.equal(rehearsal.meta, "Thu");
     const [, placeOnly] = whichEventChoices([{ id: "ev-p", title: "Brunch", eventDate: null, location: "Gion" }]);
     assert.equal(placeOnly.meta, "Gion");
   });
@@ -228,10 +232,11 @@ describe("W7 — a clock time comes from the clock column, or not at all", () =>
   it("W7b: the mock's own times ARE now reproducible — from `start_time`, and only from it", () => {
     // The artboard draws "Sat 15:00 · Nanzen-ji". Migration 282 gave that a source, so the row
     // that HAS one renders it; the identical row without one renders exactly as it did before.
+    // The artboard's line, now exactly: weekday + clock + place (re-audit A18).
     const [, timed] = whichEventChoices([{ ...CEREMONY, startTime: "15:00" }]);
-    assert.equal(timed.meta, "Fri, Oct 2 15:00 · Nanzen-ji");
+    assert.equal(timed.meta, "Fri 15:00 · Nanzen-ji");
     const [, untimed] = whichEventChoices([CEREMONY]);
-    assert.equal(untimed.meta, "Fri, Oct 2 · Nanzen-ji");
+    assert.equal(untimed.meta, "Fri · Nanzen-ji");
   });
 
   it("W7c: a time with no date still renders — hiding it would lose an answer the traveler gave", () => {
