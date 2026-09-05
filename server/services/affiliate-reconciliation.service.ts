@@ -12,7 +12,10 @@ import { affiliateEarnings, affiliateClicks, affiliatePartners } from "@shared/s
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getConversionReport, getPartnerizeCredentials } from "./partnerize/partnerize-client";
 import { fetchTravelpayoutsActions } from "./travelpayouts/statistics.service";
-import { parseAttributionSubId } from "./travelpayouts/travelpayouts-client";
+import {
+  resolveExternalAttributionToken,
+  selectTokenMatchCandidate,
+} from "./affiliate-attribution.service";
 import { resolveCommissionRates } from "./commission";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +32,11 @@ export interface ExternalCommission {
   // MONEY_MAP F-5: raw partner sub_id, when the source API surfaces one (Travelpayouts
   // execute_query rows carry it natively). Undefined for partners with no sub_id concept.
   subId?: string | null;
+  // Ledger `2026-09-05-affiliate-subid-live` — DETECTION OUTPUT, never an input. Populated on the
+  // unmatched-external list so an operator can see EXACTLY what the partner echoed back and what
+  // it parsed to. `rawSubId` present with a null `token` is an UNPARSEABLE sub_id: it is reported
+  // verbatim and stays unmatched, never guessed onto a nearby booking request (§13/§17).
+  attribution?: { rawSubId: string | null; token: string | null };
 }
 
 export interface ReconciliationSummary {
@@ -346,27 +354,16 @@ class AffiliateReconciliationService {
     const matchedExternalRefIds = new Set<string>();
 
     for (const ext of external) {
-      // The 2026-08-01 live probe showed execute_query rows carry BOTH sub_id and long_sub_id;
-      // long_sub_id is presumed to hold the full `marker.token` value where sub_id may be
-      // shortened. Check sub_id first, fall back to long_sub_id — whichever yields a token.
-      const subId = ext.subId ?? (ext.rawData as any)?.sub_id;
-      let token = typeof subId === "string" && subId ? parseAttributionSubId(subId).token : null;
-      if (!token) {
-        const longSubId = (ext.rawData as any)?.long_sub_id;
-        if (typeof longSubId === "string" && longSubId) {
-          token = parseAttributionSubId(longSubId).token;
-        }
-      }
+      // Both halves are PURE and unit-tested (resolveExternalAttributionToken /
+      // selectTokenMatchCandidate, which live beside the BUILDER in
+      // affiliate-attribution.service.ts so the write and the read of the same convention cannot
+      // drift — §18 rule 1). An unparseable sub_id yields a null token and simply
+      // falls through: the row stays unmatched and its raw value is reported verbatim on the
+      // unmatched-external list (§13/§17 — detection, never a guess).
+      const { token } = resolveExternalAttributionToken(ext);
       if (!token) continue;
 
-      // Linkage (MONEY_MAP F-5 item 3): affiliate_earnings.external_report_data carries
-      // {affiliateBookingRequestId: <affiliate_booking_requests.id>} at write time
-      // (content.routes.ts ~:6929) — the same id we suffixed into the outbound sub_id.
-      const candidate = internalRows.find((row) =>
-        !consumed.has(row.id) &&
-        row.reconciliation_status === "unmatched" &&
-        (row.external_report_data as any)?.affiliateBookingRequestId === token
-      );
+      const candidate = selectTokenMatchCandidate(token, internalRows, consumed);
       if (!candidate) continue;
 
       // §8: same config-resolved split used at write time — never a new literal.
@@ -389,6 +386,28 @@ class AffiliateReconciliationService {
         contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
       } catch (_) {}
 
+      // Ledger `2026-09-05-affiliate-subid-live`: the token IS a booking-request id, so the adopted
+      // commission is LINKED to that request and to the plan the request belongs to (migration
+      // 288). Resolved from the DB, never assumed: a request row that no longer exists leaves both
+      // columns NULL rather than writing an id nothing backs (the FK would refuse it anyway), and a
+      // request with no trip leaves trip_id NULL — "this booking was never attached to a plan" is a
+      // finished answer, not a gap to fill (§13). This is LINKAGE only: no amount, rate, status or
+      // payout is decided here, and nothing is marked paid (§14/§15/§17 — detection, never repair).
+      let linkedRequestId: string | null = null;
+      let linkedTripId: string | null = null;
+      try {
+        const requestRow = await db.execute(sql`
+          SELECT id, trip_id FROM affiliate_booking_requests WHERE id = ${token} LIMIT 1
+        `);
+        const found = requestRow.rows[0] as any;
+        if (found) {
+          linkedRequestId = found.id ?? null;
+          linkedTripId = found.trip_id ?? null;
+        }
+      } catch (linkLookupErr) {
+        console.error(`[Reconciliation] F-5 booking-request lookup failed for token ${token}:`, linkLookupErr);
+      }
+
       // Idempotent atomic claim (§15 posture): a row already matched by a concurrent/duplicate
       // pass updates 0 rows here instead of being re-adopted.
       const result = await db.execute(sql`
@@ -400,7 +419,9 @@ class AffiliateReconciliationService {
             expert_share             = ${String(adoptedExpertShare)},
             reconciled_at            = NOW(),
             external_report_data     = ${JSON.stringify(ext.rawData)}::jsonb,
-            content_tracking_number  = ${contentTrackingNumber}
+            content_tracking_number  = ${contentTrackingNumber},
+            booking_request_id       = ${linkedRequestId},
+            trip_id                  = ${linkedTripId}
         WHERE id = ${candidate.id}
           AND reconciliation_status <> 'matched'
       `);
@@ -586,9 +607,12 @@ class AffiliateReconciliationService {
         .filter((r) => r.reconciliation_status === "matched" && r.partner_reference_id)
         .map((r) => r.partner_reference_id)
     );
-    const unmatchedExternal = external.filter(
-      (e) => !matchedRefIds.has(e.partnerReferenceId)
-    );
+    // Ledger `2026-09-05-affiliate-subid-live`: every unmatched partner row reports WHAT it echoed
+    // back and what that parsed to. A `rawSubId` with a null `token` is an unparseable sub_id — it
+    // is surfaced verbatim and stays unmatched, never guessed onto a booking request (§13/§17).
+    const unmatchedExternal = external
+      .filter((e) => !matchedRefIds.has(e.partnerReferenceId))
+      .map((e) => ({ ...e, attribution: resolveExternalAttributionToken(e) }));
 
     // Build explicit matched pairs: each matched internal row paired with its external record
     const matchedPairs: MatchedPair[] = internalRows

@@ -649,6 +649,19 @@ jobs:
       # can hold: no auth-shaped surface imports a payment rail at all.
       - name: Save-payment prompt + no-payment-at-signup pin (LD 43)
         run: npx tsx --test client/src/lib/__tests__/save-payment-prompt.test.ts
+      # MONEY_MAP F-5 goes LIVE (ledger `2026-09-05-affiliate-subid-live`). Affiliate attribution is
+      # per REQUEST: the outbound partner link for an `affiliate_booking_requests` row carries that
+      # row's id in the partner's OWN attribution parameter, through ONE builder. B1-B6 pin the
+      # builder — including the two §13 rules a plausible implementation gets wrong: a partner with
+      # no sub_id concept gets the URL back BYTE-IDENTICAL (never a fabricated parameter) and the
+      # return shape says so, and the builder never throws over an attribution nicety. R1-R4 pin the
+      # round trip through `parseAttributionSubId` and the matcher's two decisions — an unparseable
+      # sub_id yields a NULL token, is reported verbatim and stays UNMATCHED, because the only rows
+      # this pass exists for carry a 0.00 the fuzzy pass rejects. S1-S5 pin §16 (the URL leaves only
+      # as a Location header on a 302; both list readers and the PATCH strip it) and that this lane
+      # decides no amount, rate or payout at all.
+      - name: Affiliate sub_id attribution pin (MONEY_MAP F-5 live)
+        run: npx tsx --test server/__tests__/affiliate-subid-attribution.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
