@@ -293,6 +293,10 @@ export function SlipLogisticsSection({
                   </a>
                 </Link>
                 <GuestInviteManager
+                  /* QA F5 — SlipGuestTotals above reads the same derived roster key, so the
+                     writer invalidates it after a create/delete rather than leaving the slip
+                     showing a headcount its own dialog just changed. */
+                  tripId={tripId}
                   experienceId={linkedExperience.id}
                   eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
                   eventDestination={linkedExperience.location || trip?.destination || ""}
