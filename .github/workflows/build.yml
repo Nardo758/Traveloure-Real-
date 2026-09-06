@@ -52,6 +52,17 @@ jobs:
       - name: Well-known static mount pin (LD 43(e))
         run: npx tsx --test server/__tests__/well-known-static.test.ts
 
+      # 2026-09-06-expert-work-protected (CLAUDE.md Locked Decision 42 D3 + D4): expert work is
+      # protected where money is protected — rows carrying expert_note or origin='expert' join
+      # the optimizer baseline's constraint set, itineraryItemRebuildDeletable() and BOTH
+      # apply-to-trip replace deletes spare them, and the owner may not write expert_note (the
+      # PATCH strip + the live create rail's strip/re-admit for WRITE-status advisors). Pure and
+      # static pins: the ONE row-level predicate, its WHERE-clause form in the guard, both delete
+      # sites carrying the SAME clause, the baseline's fixedCommitments routing, and E7's file-set
+      # pin that no third expression of the class exists anywhere under server/.
+      - name: Expert-work protection pin (LD 42 D3/D4)
+        run: npx tsx --test server/__tests__/expert-work-protected.test.ts
+
       # 2026-09-06-optimizer-run-predicate (CLAUDE.md Locked Decision 42 D17): the optimizer run —
       # paid, free re-run, or Trip Pass — REWRITES the plan's items, so all four run gates
       # (comparison create, generate, apply-to-trip, optimize-order + its dead twin) are authorized
@@ -63,6 +74,7 @@ jobs:
       # preview are untouched).
       - name: Optimizer run predicate pin (LD 42 D17)
         run: npx tsx --test server/__tests__/optimizer-run-predicate.test.ts
+
 
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
       # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER

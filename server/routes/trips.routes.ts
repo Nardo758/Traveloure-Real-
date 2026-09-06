@@ -3340,12 +3340,6 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
       // 2026) is provenance stamped only at CREATE time — a PATCH must never let a client
       // retroactively rewrite it.
-      // `expertNote` is DELIBERATELY left in `safeBody` and reaches the DB write below — it is the
-      // TRAVELER-FACING per-item note (§21, migration 152) PlanCard already renders, distinct from
-      // the trip-level PRIVATE `trips.expertNotes` (Workstation build notes) and the trip-level
-      // traveler-facing `trips.expertTravelerNote` (PATCH /api/trips/:tripId/expert-traveler-note,
-      // below). This write path already carried it — the §21 audit's "Workstation write path" gap
-      // was the client never sending the field, not a missing server allow-list entry.
       const {
         id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt,
         suggestedBy: _sb, origin: _origin,
@@ -3357,6 +3351,15 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
         userExperienceId: _uxid,
         ...safeBody
       } = req.body as any;
+      // D4 (LD 42, ratified Sep 5 2026): THE OWNER MAY NOT WRITE `itinerary_items.expert_note`.
+      // §21 made the field traveler-FACING, never traveler-WRITABLE — a note labelled "from your
+      // expert" that the traveler wrote themself is a false attribution on a surface whose whole
+      // value is whose words those are. The field is simply not in the owner's pick (the §19
+      // allowlist shape applied to an AUTHORSHIP field): stripped for every caller EXCEPT a
+      // WRITE-status advisor (`tripRole === "expert"` — resolved by `getTripWriteRole` above, so
+      // accepted/assigned, never pending), whose writes ride this same advisor-gated rail. The
+      // ready-made author branch (`authorMayMutate`) is not an advisor and is stripped too.
+      if (tripRole !== "expert") delete (safeBody as any).expertNote;
       const eventLink = itineraryItemEventLinkSchema.safeParse(req.body);
       if (!eventLink.success) {
         return res.status(400).json({ message: "Invalid event link", errors: eventLink.error.errors });

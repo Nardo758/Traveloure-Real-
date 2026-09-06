@@ -1,10 +1,11 @@
-import { and, isNull, notInArray, type SQL } from "drizzle-orm";
+import { and, isNull, ne, notInArray, type SQL } from "drizzle-orm";
 import { itineraryItems } from "@shared/schema";
 import {
   ITEM_MONEY_COMMITTED_STATUSES,
   itineraryItemIsMoneyCommitted,
   itineraryItemIsPaid,
 } from "@shared/itinerary-item-money";
+import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 
 /**
  * D-1 money-safety guard (ledger 2026-08-31-two-surfaces-one-handoff).
@@ -26,13 +27,37 @@ import {
 export const REBUILD_PROTECTED_STATUSES = ["ready_for_checkout", "purchased"] as const;
 
 /**
+ * ── THE EXPERT-WORK CLAUSE (CLAUDE.md Locked Decision 42 D3, ratified Sep 5 2026) ──
+ *
+ * D3: a row carrying `expert_note` (ruling 21) or `origin='expert'` (ruling 12) is PAID HUMAN
+ * WORK — it joins every protection money already had. This is the WHERE-clause form of that one
+ * class; the row-level form is `itineraryItemIsExpertWork` (`shared/itinerary-item-expert.ts`),
+ * imported above so the two forms sit beside each other and are read together (the money
+ * predicate's own precedent, below). ONE class added to the EXISTING predicates — never a
+ * second, parallel "is this expert work?" test written beside them (D3's own words).
+ *
+ * ANDed into `itineraryItemRebuildDeletable()` here and into the two apply-to-trip replace
+ * deletes (`plancard.routes.ts`, `storage.deleteInPlanningItineraryItemsByTrip`), whose
+ * "in_planning-only" exemption no longer sufficed: an in_planning expert-work row was exactly
+ * the row a machine wipe could destroy.
+ */
+export function itineraryItemNotExpertWork(): SQL {
+  return and(
+    isNull(itineraryItems.expertNote),
+    ne(itineraryItems.origin, "expert"),
+  )!;
+}
+
+/**
  * ANDed into a rebuild DELETE's WHERE clause to restrict it to rows that are safe to replace.
- * A row is deletable only when it is NOT in a protected status AND carries no booking reference.
+ * A row is deletable only when it is NOT in a protected status, carries no booking reference,
+ * AND is not expert work (D3).
  */
 export function itineraryItemRebuildDeletable(): SQL {
   return and(
     notInArray(itineraryItems.routingStatus, [...REBUILD_PROTECTED_STATUSES]),
     isNull(itineraryItems.bookingId),
+    itineraryItemNotExpertWork(),
   )!;
 }
 
@@ -58,3 +83,10 @@ export {
   itineraryItemIsMoneyCommitted,
   itineraryItemIsPaid,
 };
+
+// D3's row-level form, re-exported on the money predicates' own precedent above: the two forms
+// of the expert-work answer (this module's SQL clause, the shared module's row test) are read
+// together. NOT added to the row-level money predicate — a traveler pressing ✕ on their own
+// row is doing what they meant; D3 protects expert work from MACHINE rewrites (optimizer apply,
+// AI rebuild), not from the owner.
+export { itineraryItemIsExpertWork };

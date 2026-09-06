@@ -48,7 +48,7 @@ describe("GET /api/trips/:id/anchor-candidates", () => {
             { id: "stop-2", name: "Market", latitude: 35.01, longitude: 135.01 },
           ],
           fixedCommitments: [],
-          counts: { optimizable: 2, purchased: 0 },
+          counts: { optimizable: 2, purchased: 0, expertProtected: 0 },
         } as any;
       },
       rankAnchors: async (destination, stops) => {
