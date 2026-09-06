@@ -275,6 +275,10 @@ import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
+// The item-mutation predicate (LD 42 D17): the optimizer RUN is an item write and is authorized
+// through THE SAME predicate every other item write uses — owner ‖ WRITE-status advisor
+// (accepted/assigned, never pending) — not the logistics read tier.
+import { getTripWriteRole, canMutateTrip } from "./utils/trip-role";
 import { verifyTripOwnership } from "./utils/trip-ownership";
 // Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
 // audit-logged admin. Returns null when authorized, else the {status, message} to send.
@@ -8493,9 +8497,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // attacker could point their own comparison at someone else's trip and then apply it.
       // A comparison with NO trip is legitimate (cart / experience-template flows create one before
       // any trip exists), so only authorize when a tripId is actually supplied.
+      // D17 (LD 42, Sep 5 2026): the optimizer RUN rewrites the plan's items — the largest item
+      // write on the platform — so it is authorized by THE SAME predicate item mutations use:
+      // `getTripWriteRole`/`canMutateTrip` (owner ‖ WRITE-status advisor, NEVER pending), with the
+      // mutation handlers' parallel author branch. NOT `authorizeTripLogistics` — a read-shaped
+      // tier that grants pending (correctly, for reading) and audit-logged admin (which item
+      // mutations never grant). ONE predicate, one more caller (§18 rule 1).
       if (tripId) {
-        const denied = await authorizeTripLogistics(tripId, userId, "POST /api/itinerary-comparisons");
-        if (denied) return res.status(denied.status).json({ message: denied.message });
+        const tripRole = await getTripWriteRole(tripId, userId);
+        const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
+        if (!canMutateTrip(tripRole) && !authorMayRun) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       // ── Lane 5b: resolve the baseline BEFORE anything is created or verified ────────────────
@@ -8831,12 +8844,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // THE RE-POINT (see the create handler for the full rationale). The stored `tripId` is
         // re-authorized here rather than trusted from the create-time check: access can be revoked
         // between the two calls, and this handler triggers a paid run over that trip's contents.
-        const denied = await authorizeTripLogistics(
-          comparison.tripId,
-          userId,
-          "POST /api/itinerary-comparisons/:id/generate",
-        );
-        if (denied) return res.status(denied.status).json({ message: denied.message });
+        // D17 (LD 42): the run is an item write — authorized by the item-mutation predicate
+        // (`getTripWriteRole`/`canMutateTrip`, never pending), NOT the logistics read tier.
+        const tripRole = await getTripWriteRole(comparison.tripId, userId);
+        const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(comparison.tripId, userId);
+        if (!canMutateTrip(tripRole) && !authorMayRun) {
+          return res.status(403).json({ message: "Access denied" });
+        }
 
         const tripInputs = await loadTripOptimizerInputs(comparison.tripId);
         baselineItems = tripInputs.baselineItems;
@@ -11567,10 +11581,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = getUserId(req)!;
       // SECURITY: same omission as the reorder handler above — `isAuthenticated` only, no trip
       // authorization, so any authenticated user could compute an optimized order for any trip.
-      // D1 (ruling, Aug 7 2026): treated as a trip-item MUTATION path (see comment below) —
-      // `requireWriteAccess: true` narrows the advisor branch to accepted/assigned.
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order", { requireWriteAccess: true });
-      if (denied) return res.status(denied.status).json({ message: denied.message });
+      // D17 (LD 42, Sep 5 2026): this handler was already DECLARED a trip-item mutation path (the
+      // comment below) but gated by the logistics predicate's write flag; it now uses the
+      // item-mutation predicate itself — `getTripWriteRole`/`canMutateTrip` (owner ‖ WRITE-status
+      // advisor, NEVER pending) with the mutation handlers' parallel author branch. ONE predicate
+      // for every item write (§18 rule 1).
+      const tripRole = await getTripWriteRole(req.params.tripId, userId);
+      const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(req.params.tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayRun) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18) — same derivation as the
       // reorder handler above (itself mirroring the item-create handler's `isAdvisor`). This
       // endpoint only COMPUTES a suggested order (no write), but gating it too means an

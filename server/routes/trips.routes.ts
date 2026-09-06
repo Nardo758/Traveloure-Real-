@@ -1631,18 +1631,17 @@ router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req,
 // tripsRoutes mount comment). Kept in sync for safety only.
 // SECURITY (P0-b IDOR, kept safe for the reconciliation sweep): this endpoint carried
 // `isAuthenticated` ONLY — no trip authorization at all — despite reordering the trip's own
-// itinerary. Its sibling `reorder` handler above uses `getTripRole`/`canMutateTrip`; that
-// model is left untouched here (not this lane's call to unify) and `authorizeTripLogistics`
-// is used instead, matching the fix the live copy already carries.
+// itinerary. D17 (LD 42, Sep 5 2026): mirrors the live copy's re-point to the item-mutation
+// predicate (`getTripWriteRole`/`canMutateTrip` + the parallel author branch) — the optimizer
+// surface is an item write and is gated by the same predicate as every other item write.
 router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const denied = await authorizeTripLogistics(
-        req.params.tripId,
-        userId,
-        "POST /api/trips/:tripId/itinerary/optimize-order",
-      );
-      if (denied) return res.status(denied.status).json({ message: denied.message });
+      const tripRole = await getTripWriteRole(req.params.tripId, userId);
+      const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(req.params.tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayRun) {
+        return res.status(403).json({ message: "Access denied" });
+      }
 
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);

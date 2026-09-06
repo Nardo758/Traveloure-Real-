@@ -10,7 +10,7 @@ import { db } from "../db";
 import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
 import { itineraryItemNotExpertWork } from "../services/itinerary-rebuild-guard";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
@@ -64,15 +64,21 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // so a comparison can name someone else's trip. This handler then wipes that trip
     // (`deleteItineraryItemsByTrip`) and re-inserts the variant, so without a trip-side check any
     // authenticated user could destroy and overwrite any other user's itinerary. BOTH checks must
-    // hold: the comparison-ownership check above AND the canonical trip authorization here
-    // (owner ‖ trip-assigned expert ‖ trip author ‖ audit-logged admin), performed BEFORE the delete.
-    const denied = await authorizeTripLogistics(
-      comparison.tripId,
-      userId,
-      "POST /api/itinerary-comparisons/:id/apply-to-trip",
-    );
+    // hold: the comparison-ownership check above AND the trip authorization here, performed BEFORE
+    // the delete.
+    // D17 (LD 42, Sep 5 2026): apply-to-trip IS the optimizer's write — it deletes and re-inserts
+    // the plan's items — so it is authorized by the item-mutation predicate
+    // (`getTripWriteRole`/`canMutateTrip`: owner ‖ WRITE-status advisor, NEVER pending, plus the
+    // mutation handlers' parallel author branch), NOT the logistics read tier that granted pending
+    // advisors and audit-logged admin. ONE predicate for every item write (§18 rule 1).
     // Local convention in this router: `{ error }` bodies, 403 for an authorized-user-wrong-trip.
-    if (denied) return res.status(denied.status).json({ error: denied.message });
+    {
+      const tripRole = await getTripWriteRole(comparison.tripId, userId);
+      const authorMayApply = canMutateTrip(tripRole) ? false : await isTripAuthor(comparison.tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayApply) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    }
 
     // Find best variant: prefer selectedVariantId, else top AI variant by optimizationScore
     let variant: any = null;
@@ -122,13 +128,11 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // D3 (LD 42, Sep 5 2026): in_planning-only is NO LONGER sufficient — an in_planning row
       // carrying `expert_note` or `origin='expert'` is paid human work and survives the replace,
       // so the delete ANDs in the ONE expert-work clause (`itineraryItemNotExpertWork`), the same
-      // class `itineraryItemRebuildDeletable()` now carries — never a second predicate.
-      // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
-      // This transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
+      // class `itineraryItemRebuildDeletable()` now carries — never a second predicate. This
+      // transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
       // diary row); a plan rebuild is not a removal, so no per-row `item_removed` (§13, R15).
-      // rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/
-      // booked rows are preserved by construction (D-1 invariant) and expert-work rows by the D3
-      // clause ANDed into the WHERE; the full guard predicate is not re-stated here.
+      // rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/booked rows preserved by construction (D-1); expert work by the D3 clause ANDed into the WHERE.
+      // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
       await tx
         .delete(itineraryItems)
         .where(and(

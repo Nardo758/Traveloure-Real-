@@ -7980,12 +7980,12 @@ export class DatabaseStorage implements IStorage {
   // DELIBERATELY a NEW method: `deleteItineraryItemsByTrip` keeps its total-wipe semantics for its
   // own (currently zero other) callers — this does not change any existing behaviour.
   async deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }> {
-    // item-removed:replace — the routing-aware apply-to-trip replace (in_planning rows the
-    // optimizer is about to re-insert). Its live sibling (plancard.routes.ts apply) already logs a
-    // trip-scoped `variant_applied` event; this is a plan rebuild, not a removal (§13, R15).
-    // rebuild-guard-exempt: in_planning-only AND not-expert-work — the WHERE deletes only
-    // in_planning non-expert rows, so ready_for_checkout/purchased/booked rows are preserved by
-    // construction (D-1 invariant) and expert-work rows by the D3 clause ANDed in below.
+    // The routing-aware apply-to-trip replace (in_planning rows the optimizer is about to
+    // re-insert). Its live sibling (plancard.routes.ts apply) already logs a trip-scoped
+    // `variant_applied` event; this is a plan rebuild, not a removal, so no per-row
+    // `item_removed` (§13, R15). D3 (LD 42): the D3 expert-work clause is ANDed into the WHERE.
+    // rebuild-guard-exempt: in_planning-only AND not-expert-work — routed/booked rows preserved by construction (D-1), expert work by the D3 clause.
+    // item-removed:replace — in_planning non-expert rows replaced by the incoming variant set.
     const deleted = await db
       .delete(itineraryItems)
       .where(and(
