@@ -53,8 +53,15 @@
  * (`git checkout main && git fetch origin && git reset --hard origin/main`), which is the
  * operator sequence `docs/RELEASE.md` step 0 spells out — not a switch that turns the rule off.
  *
- * A FAILED FETCH IS A WARNING, NOT A FAILURE
- * ──────────────────────────────────────────
+ * A FAILED FETCH IS A WARNING, NOT A FAILURE — AND IT IS TIME-BOUNDED
+ * ───────────────────────────────────────────────────────────────────
+ * The fetch is the ONLY network call this script makes, and it runs as the first step of the
+ * production build, so a fetch that HANGS hangs the deploy. It is therefore bounded by an explicit
+ * `timeout` (FETCH_TIMEOUT_MS) and run with `GIT_TERMINAL_PROMPT=0`: a build sandbox that drops
+ * packets, stalls on DNS, or has no credentials fails FAST and DETERMINISTICALLY instead of
+ * blocking on the OS-level TCP timeout or on a credential prompt. A timed-out fetch is the same
+ * warning as any other failed fetch — never a failure, and never a hang.
+ *
  * The fetch is best-effort. If it fails (no network, no credentials in the build sandbox), the
  * comparison still runs against the LOCAL `refs/remotes/origin/main`, and the script says out
  * loud that the remote ref may be stale. That is honest about which way the residual risk points:
@@ -95,6 +102,15 @@ const MIGRATION_REGISTRY = path.join(ROOT, "server", "migrations", "migration-fi
 
 /** The polluted-registry marker the lockfile must never carry (CLAUDE.md "Lockfile purity"). */
 const POLLUTION_MARKER = "replit.local";
+
+/**
+ * Hard bound on the one network call this script makes. It runs as the FIRST step of the
+ * production build, so an unbounded fetch is an unbounded deploy: a sandbox that silently drops
+ * packets would otherwise block on the OS TCP timeout (minutes, times git's retries) with nothing
+ * on stdout. Exceeding this is a WARNING like any other fetch failure — the comparison still runs
+ * against the local remote-tracking ref (see the header).
+ */
+const FETCH_TIMEOUT_MS = 20_000;
 
 // ── the predicate ─────────────────────────────────────────────────────────────────────────────
 // Pure over an already-gathered snapshot, so the self-test can drive every branch with no git,
@@ -234,6 +250,12 @@ function gather() {
     execFileSync("git", ["fetch", "--quiet", "origin", "main"], {
       cwd: ROOT,
       stdio: ["ignore", "ignore", "ignore"],
+      // Bounded so a dropped-packet or stalled-DNS build sandbox cannot hang the deploy; a
+      // timeout throws and is caught below, which is the ordinary fetch-failed WARNING path.
+      timeout: FETCH_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+      // No terminal prompt: a build sandbox without credentials must fail, never wait for input.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     });
   } catch {
     fetchFailed = true;
@@ -359,6 +381,10 @@ function selfTest() {
       () => lastMigrationEntry("export const MIGRATION_FILES = [] as const;") === null,
     ],
     ["an unreadable registry reports null, never a placeholder", () => lastMigrationEntry(null) === null],
+    [
+      "the fetch is bounded — an unbounded fetch would be an unbounded deploy",
+      () => Number.isFinite(FETCH_TIMEOUT_MS) && FETCH_TIMEOUT_MS > 0 && FETCH_TIMEOUT_MS <= 60_000,
+    ],
   ];
 
   let failed = 0;
