@@ -1765,7 +1765,11 @@ Schema changes reach production ONLY via `runMigrations` on boot, from committed
 PR carries it to review. `main` in the workspace exists only to be reset to `origin/main` before a
 publish. A publish is only ever made from a workspace where `main == origin/main`.
 
-Five incidents, two of which reached production, justify this rule.
+Five incidents, two of which reached production, justify this rule. The sixth (2026-09-06, commit
+`96c39f5` served before it was on `main`) is now refused mechanically by `scripts/publish-preflight.cjs`.
+**The way of working — roles per model, lane briefs, the serial landing procedure, the publish
+procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md` (ratified Sep 6,
+2026); a session reads both files.**
 
 ## Service Model: Canonical Table
 
