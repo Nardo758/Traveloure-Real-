@@ -18,6 +18,8 @@
     "test:instagram-frame": "tsx --test server/routes/__tests__/instagram-frame-passthrough.http.test.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts && node scripts/write-build-info.cjs",
+    "preflight:publish": "node scripts/publish-preflight.cjs",
+    "build:prod": "node scripts/publish-preflight.cjs --strict && npm run build",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "generate:mutation-auth": "tsx scripts/generate-mutation-auth-manifest.ts",
