@@ -31,7 +31,11 @@
  * ─────────────
  *  R0 REGISTRY INTEGRITY. Every file in `TAXONOMY_MIGRATIONS` parses, and no `category_key` (nor
  *     category slug) is claimed by two of them. The registry is a UNION, not an override chain:
- *     two files claiming one key means the last-applied one silently wins.
+ *     two files claiming one key means the last-applied one silently wins. The one declared
+ *     exception is a REPAIR entry (`TAXONOMY_REPAIRS`, ledger `2026-09-06-category-key-repair`) —
+ *     a file that RE-WRITES another's pairs for databases where the first write never landed. It
+ *     claims nothing, may not introduce or re-point a key (`REGISTRY REPAIR SCOPE`), and is legal
+ *     only because the registry declares it.
  *  R1 KEYED-OR-DECLARED. Every slug a seeder can create must end up carrying a `category_key` —
  *     either from the seeder literal itself or from a registry migration's upsert — UNLESS it is named in
  *     KEYLESS_BY_DECISION below with a reason. That list is migration 034's own documented
@@ -285,6 +289,30 @@ const REGISTRY_FIXTURE_DUP = [
   { file: "fixture/285.sql", sql: REGISTRY_FIXTURE_B_DUP },
 ];
 
+/**
+ * A REPAIR of fixture A (ledger `2026-09-06-category-key-repair`): the SAME pairs, written again
+ * for databases where 034's original form never assigned them. Declared, it must pass and must
+ * widen nothing; UNDECLARED, the identical text must still fail as a duplicate.
+ */
+const REGISTRY_FIXTURE_A_REPAIR = REGISTRY_FIXTURE_A.replace(
+  "ON CONFLICT (slug) DO UPDATE SET category_key = EXCLUDED.category_key;",
+  "ON CONFLICT DO NOTHING;"
+);
+/** The same repair, but re-pointing `florist` at a slug its target never carried. */
+const REGISTRY_FIXTURE_A_REPAIR_OUT_OF_SCOPE = REGISTRY_FIXTURE_A_REPAIR.replace(
+  "'floral-decoration'",
+  "'flowers'"
+);
+const REGISTRY_FIXTURE_ABR = [
+  ...REGISTRY_FIXTURE_AB,
+  { file: "fixture/289.sql", sql: REGISTRY_FIXTURE_A_REPAIR },
+];
+const REGISTRY_FIXTURE_ABR_OUT_OF_SCOPE = [
+  ...REGISTRY_FIXTURE_AB,
+  { file: "fixture/289.sql", sql: REGISTRY_FIXTURE_A_REPAIR_OUT_OF_SCOPE },
+];
+const REGISTRY_FIXTURE_REPAIRS = { "fixture/289.sql": "fixture/034.sql" };
+
 function selfTest() {
   const base = {
     keyedByMigration: new Set(["entertainment", "rental-services"]),
@@ -369,6 +397,33 @@ function selfTest() {
       offeringKeys: new Set(),
       registryErrors: collectTaxonomy(REGISTRY_FIXTURE_DUP).errors,
       expect: 1, // the duplicated category_key (the slugs deliberately differ)
+      wantRule: "R0",
+    },
+    // ── R0 REPAIR entries (ledger `2026-09-06-category-key-repair`) ───────────────────────────
+    {
+      name: "R0 REPAIR — a DECLARED repair of 034's own pairs is clean, and widens nothing",
+      seeded: [],
+      offeringKeys: new Set(["florist", "caterer", "venue"]),
+      assignedKeys: collectTaxonomy(REGISTRY_FIXTURE_ABR, { repairs: REGISTRY_FIXTURE_REPAIRS }).keys,
+      registryErrors: collectTaxonomy(REGISTRY_FIXTURE_ABR, { repairs: REGISTRY_FIXTURE_REPAIRS }).errors,
+      expect: 0,
+    },
+    {
+      name: "R0 REPAIR — the SAME file UNDECLARED is still a duplicate (the declaration is the licence)",
+      seeded: [],
+      offeringKeys: new Set(),
+      registryErrors: collectTaxonomy(REGISTRY_FIXTURE_ABR, { repairs: {} }).errors,
+      expect: 4, // florist + caterer keys, and both their slugs
+      wantRule: "R0",
+    },
+    {
+      name: "R0 REPAIR — a repair that RE-POINTS a key at a new slug FAILS as out of scope",
+      seeded: [],
+      offeringKeys: new Set(),
+      registryErrors: collectTaxonomy(REGISTRY_FIXTURE_ABR_OUT_OF_SCOPE, {
+        repairs: REGISTRY_FIXTURE_REPAIRS,
+      }).errors,
+      expect: 1,
       wantRule: "R0",
     },
   ];

@@ -25,6 +25,32 @@
  * list rather than counting fields positionally), so a registry migration is free to use a
  * different column order from 034's.
  *
+ * REPAIR ENTRIES — A FILE THAT RE-ASSIGNS ANOTHER'S KEYS, AND CLAIMS NONE OF ITS OWN
+ * ──────────────────────────────────────────────────────────────────────────────────
+ * Ledger `2026-09-06-category-key-repair`. A stamped migration NEVER RE-RUNS, so a migration that
+ * was WRONG when a database applied it stays wrong on that database forever — even after the file
+ * on disk is corrected. Migration 034 is exactly that case: its original UPDATE-WHERE-slug form
+ * assigned nothing where slugs did not match, it was later repaired to an UPSERT, and production
+ * still carries the pre-repair outcome. Fixing that needs a NEW migration that assigns 034's OWN
+ * keys again — which under the duplicate rule below would read as a second file claiming them, i.e.
+ * as a taxonomy FORK.
+ *
+ * It is not a fork, and the registry says so explicitly rather than by exception: a file listed in
+ * `TAXONOMY_REPAIRS` names the file it REPAIRS, and
+ *
+ *   • its `(slug, category_key)` pairs must ALL already be claimed by that target file — a repair
+ *     may never introduce a key, rename a slug, or re-point a key at a different slug. A pair the
+ *     target does not carry is a `REGISTRY REPAIR SCOPE` failure, which is the thing that stops a
+ *     "repair" from quietly becoming a second authority;
+ *   • it therefore CLAIMS nothing: its rows do not enter the key/slug ownership maps and do not
+ *     widen the taxonomy union. The union is still 034 ∪ 285, and the guards that read it are
+ *     unchanged in what they conclude;
+ *   • it is still PARSED, and still fails `REGISTRY PARSE` if nothing comes out of it — a repair
+ *     that has gone blind must fail loudly, not pass vacuously (the phase2-fee-gate lesson, §18d).
+ *
+ * A duplicate that is NOT declared as a repair still fails, exactly as before. The declaration is
+ * the deliberate, committed act; being a repair is not something a file can assert about itself.
+ *
  * NEGATIVE SPACE — what this module does NOT do (§18d)
  * ───────────────────────────────────────────────────
  *   • It never opens a database. A `category_key` assigned by a hand-run statement, an admin route
@@ -32,6 +58,10 @@
  *     rules make a committed, registered migration the only durable author.
  *   • It does not check that a registry file is REGISTERED in `migration-files.ts`. That is the
  *     chain-integrity test's job (`server/migrations/__tests__/chain-integrity.test.ts`).
+ *   • For a REPAIR entry it checks the SCOPE of the keys the file re-assigns — never whether the
+ *     repair actually works. Whether 289's slug-then-name match finds the drifted row on a given
+ *     database is a question about that database's data, and this module never opens one; that is
+ *     `scripts/preview-category-key-repair.cjs`'s job, run by a human against the real database.
  *   • It says nothing about whether a category has offerings, providers, or supply in any market.
  *     Supply is a §13 honesty question for the reader, not a taxonomy question.
  *   • It parses SQL as TEXT. `UPDATE service_categories SET category_key = …` backfills are NOT
@@ -52,7 +82,25 @@ const TAXONOMY_MIGRATIONS = [
   "server/migrations/034_phase1_reconcile_service_categories.sql",
   // `venue` — the 21st discipline (ledger `2026-09-04-venue-category`).
   "server/migrations/285_venue_service_category.sql",
+  // REPAIR of 034 for databases that applied its pre-UPSERT form — claims NO key of its own; see
+  // TAXONOMY_REPAIRS below and the header's "REPAIR ENTRIES" section
+  // (ledger `2026-09-06-category-key-repair`).
+  "server/migrations/289_reconcile_service_category_keys.sql",
 ];
+
+/**
+ * REPAIR entries: `<repairing file>` → `<the file whose keys it re-assigns>`.
+ *
+ * Both sides must also appear in TAXONOMY_MIGRATIONS. A repair claims nothing and may only
+ * re-assign `(slug, category_key)` pairs its target already carries — see the header. Adding an
+ * entry here is a taxonomy decision like any other registry change: it declares that a file which
+ * LOOKS like a second claim on a key is deliberately a second WRITE of the same claim, because the
+ * first write did not land on every database.
+ */
+const TAXONOMY_REPAIRS = {
+  "server/migrations/289_reconcile_service_category_keys.sql":
+    "server/migrations/034_phase1_reconcile_service_categories.sql",
+};
 
 // ── SQL text helpers ──────────────────────────────────────────────────────────────────────────
 
@@ -177,15 +225,24 @@ function parseCategoryRows(sqlText) {
   return rows;
 }
 
+/** `slug`+`key` as one comparable token (NUL-joined so no real value can forge a pair). */
+function pairToken(row) {
+  return `${row.key ?? ""}\u0000${row.slug ?? ""}`;
+}
+
 /**
  * Fold the whole registry into one taxonomy view.
  *
  * @param {Array<{file: string, sql: string}>} sources — registry files, in apply order.
+ * @param {{ repairs?: Record<string, string> }} [options] — REPAIR declarations
+ *        (`<repairing file>` → `<repaired file>`); defaults to `TAXONOMY_REPAIRS`. A repair claims
+ *        no key of its own and may only re-assign pairs its target already carries.
  * @returns {{ slugs: Set<string>, keys: Set<string>,
- *             rows: Array<{file: string, slug: string|null, key: string|null}>,
+ *             rows: Array<{file: string, slug: string|null, key: string|null, repairOf?: string}>,
  *             errors: string[] }}
  */
-function collectTaxonomy(sources) {
+function collectTaxonomy(sources, options = {}) {
+  const repairs = options.repairs ?? TAXONOMY_REPAIRS;
   const errors = [];
   const rows = [];
   /** @type {Map<string, string[]>} */
@@ -193,6 +250,10 @@ function collectTaxonomy(sources) {
   /** @type {Map<string, string[]>} */
   const slugOwners = new Map();
 
+  // ── Pass 1: parse every file. A repair is parsed exactly as strictly as an authority — a repair
+  // that has gone blind must FAIL, not pass vacuously (§18d).
+  /** @type {Map<string, Array<{slug: string|null, key: string|null}>>} */
+  const parsedByFile = new Map();
   for (const { file, sql } of sources) {
     const parsed = parseCategoryRows(sql);
     if (parsed.length === 0) {
@@ -204,10 +265,46 @@ function collectTaxonomy(sources) {
       );
       continue;
     }
+    parsedByFile.set(file, parsed);
+  }
+
+  // ── Pass 2: authorities CLAIM; repairs are checked against what they repair and claim nothing.
+  for (const { file } of sources) {
+    const parsed = parsedByFile.get(file);
+    if (!parsed) continue;
+
+    const repairOf = Object.prototype.hasOwnProperty.call(repairs, file) ? repairs[file] : undefined;
+    if (repairOf === undefined) {
+      for (const r of parsed) {
+        rows.push({ file, ...r });
+        if (r.key) keyOwners.set(r.key, [...(keyOwners.get(r.key) ?? []), file]);
+        if (r.slug) slugOwners.set(r.slug, [...(slugOwners.get(r.slug) ?? []), file]);
+      }
+      continue;
+    }
+
+    const target = parsedByFile.get(repairOf);
+    if (!target) {
+      errors.push(
+        `REGISTRY REPAIR TARGET — ${file} is declared in TAXONOMY_REPAIRS as a repair of ` +
+          `${repairOf}, which is not a parsed registry file. A repair is meaningful only against ` +
+          "the file whose keys it re-writes; add the target to TAXONOMY_MIGRATIONS or drop the " +
+          "repair declaration."
+      );
+      continue;
+    }
+    const targetPairs = new Set(target.map(pairToken));
     for (const r of parsed) {
-      rows.push({ file, ...r });
-      if (r.key) keyOwners.set(r.key, [...(keyOwners.get(r.key) ?? []), file]);
-      if (r.slug) slugOwners.set(r.slug, [...(slugOwners.get(r.slug) ?? []), file]);
+      rows.push({ file, repairOf, ...r });
+      if (!targetPairs.has(pairToken(r))) {
+        errors.push(
+          `REGISTRY REPAIR SCOPE — ${file} repairs ${repairOf}, but assigns category_key ` +
+            `"${r.key ?? "<none>"}" to slug "${r.slug ?? "<none>"}", a pairing ${repairOf} does ` +
+            "not carry. A repair re-writes an existing claim; it may not introduce a key, rename " +
+            "a slug, or re-point a key — that is a new taxonomy authority and belongs in " +
+            "TAXONOMY_MIGRATIONS on its own terms."
+        );
+      }
     }
   }
 
@@ -235,9 +332,13 @@ function collectTaxonomy(sources) {
     }
   }
 
+  // The union is built from CLAIMS only. A repair row is deliberately excluded even though it is
+  // (by the scope rule above) a subset of its target's claims — so a scope violation can never
+  // widen the taxonomy while it is being reported as an error.
+  const claims = rows.filter((r) => r.repairOf === undefined);
   return {
-    slugs: new Set(rows.map((r) => r.slug).filter(Boolean)),
-    keys: new Set(rows.map((r) => r.key).filter(Boolean)),
+    slugs: new Set(claims.map((r) => r.slug).filter(Boolean)),
+    keys: new Set(claims.map((r) => r.key).filter(Boolean)),
     rows,
     errors,
   };
@@ -245,6 +346,7 @@ function collectTaxonomy(sources) {
 
 module.exports = {
   TAXONOMY_MIGRATIONS,
+  TAXONOMY_REPAIRS,
   stripLineComments,
   splitTopLevel,
   parseCategoryRows,

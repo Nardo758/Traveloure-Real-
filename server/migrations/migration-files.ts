@@ -1499,4 +1499,16 @@ export const MIGRATION_FILES = [
   // durability rule), and NO backfill: NULL is the honest "never stamped / never token-matched".
   // Attribution only — no amount, rate, payout or status is touched anywhere in this lane.
   "288_affiliate_attribution_links.sql",
+  // Ledger `2026-09-06-category-key-repair` (CLAUDE.md Locked Decision 31): REPAIR of migration
+  // 034 on databases that ran its PRE-UPSERT form. 034's original shape was UPDATE-WHERE-slug for
+  // 15 legacy rows plus INSERT for 9 new ones and assigned nothing where slugs did not match; it
+  // was later repaired to an UPSERT, but a stamped migration never re-runs, so production still
+  // carries the pre-repair outcome (25 of 27 `service_categories` rows with a NULL `category_key`,
+  // no row at all behind `florist`/`caterer`/`officiant`). 289 assigns EXACTLY 034's 24 keys —
+  // never `venue` (285's) and never a new key — matching by slug, then by lower-cased name, then
+  // INSERTing only what neither identifier finds. DATA ONLY: no ALTER, no CHECK, no index, no
+  // DEFAULT change, so `preflight-prod-constraints.cjs` is unaffected and the deploy push has
+  // nothing to fail on. Registered as a REPAIR in `scripts/lib/taxonomy-registry.cjs`
+  // (`TAXONOMY_REPAIRS`), which is what keeps it from reading as a second claim on 034's keys.
+  "289_reconcile_service_category_keys.sql",
 ] as const;
