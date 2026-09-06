@@ -1063,6 +1063,32 @@ jobs:
       # pins the ratified door source shape (a blank passed as ABSENT, never as "").
       - name: Experience-template plan door pin
         run: npx tsx --test client/src/lib/__tests__/template-plan-door.test.ts
+      # 2026-09-05-slip-own-your-plan (CLAUDE.md Locked Decision 42 rows 1.6 / S1 / S2 / D16). The
+      # owner can finally add, edit, remove and reorder items on their own plan — through the four
+      # rails that already existed, with no new route under server/. Every rule here is invisible on
+      # happy-path data: D16 is a RENDER rule (a ✕ wrongly drawn for an advisor gives the plan a
+      # second, unruled edit surface), §14's rule is about a field that must NOT be sent, and the
+      # money rule is about a row that looks completely ordinary — a ✕ on a booked row severs the
+      # only plan-side link to a `service_bookings` row and NOTHING in this repo puts it back.
+      # T1-T2 pin the owner gate and the artboard's money rules (paid ⇒ no tools, booked ⇒ ↑ ✎ and
+      # no ✕, a not-yet-charged checkout row still the traveler's to remove); T3-T4 pin the bodies
+      # (the event link rides as an id AND as an explicit null, no money field is emitted, an
+      # untouched optional is OMITTED rather than "", a cleared one is null, and `expertNote` never
+      # rides — D4); T5 pins that reorder sends the DAY's full list swapped by GROUP neighbour, since
+      # a partial list would silently renumber rows nobody touched; T6 pins that a slot with no
+      # knowable day says so instead of filing the item on day 1; A1-A3 pin the shipped wiring.
+      - name: Slip own-your-plan pin
+        run: npx tsx --test client/src/lib/__tests__/slip-own-your-plan.test.ts
+      # The server half of the same ruling (review R14), and the half that actually refuses: a
+      # hidden button keeps nothing out. P1-P2 pin the ONE row-level "is this row money?" predicate
+      # and that everything it refuses a delete for is ALSO spared by the rebuild guard's WHERE
+      # clause — the two rails can never end up with one destroying what the other protects (§18
+      # rule 1) — while stating why the rebuild set is deliberately WIDER. R1-R3 pin the shipped
+      # 409 `item_booked`: read the real row first, refuse before the delete, role-blind, and no
+      # second copy of the predicate anywhere under server/. N1 pins that the item CRUD + reorder
+      # surface is still exactly the five paths that existed before this lane.
+      - name: Booked-item delete refusal pin
+        run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
 
   ai-draft-eligibility-guard:
     name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)
