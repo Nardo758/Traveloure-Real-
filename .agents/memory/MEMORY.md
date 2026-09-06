@@ -63,3 +63,4 @@
 - [Proposal map provider policy](proposal-map-provider-policy.md) — Google is primary in-app; Leaflet/OSM is only the keyless or share/export fallback, with no invented locations or routes.
 - [Playwright audit captures](playwright-audit-captures.md) — HTML reporter can clear custom files under playwright-report; use line reporter when preserving screenshot evidence.
 - [Development database host guard](dev-database-host-guard.md) — Replit development databases can use Neon hostnames; gate fixture seeds by environment flags, not host matching.
+- [Vite context identity](vite-context-identity.md) — shared React contexts can split across Fast Refresh revisions; preserve their identity in Vite hot data.
