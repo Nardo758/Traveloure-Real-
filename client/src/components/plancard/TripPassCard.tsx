@@ -92,10 +92,10 @@ export function TripPassCard({ tripId }: { tripId: string }) {
     return (
       <div className="space-y-2">
         <section
-          className="flex items-center gap-3 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-4 py-3"
+          className="flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-3 py-3"
           data-testid="trip-pass-card-active"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
             <Check className="h-4 w-4" />
           </span>
           <div className="min-w-0">
@@ -118,25 +118,34 @@ export function TripPassCard({ tripId }: { tripId: string }) {
 
   return (
     <>
+      {/* ── ONE COLUMN, FULL WIDTH (ledger `2026-09-06-slip-conformance`) ─────────────────────
+          This was a three-across `flex-wrap` row — icon, a text block, and the buy button — which
+          works at page width and fails inside the slip's 320px rail: the button takes the row, the
+          text block is squeezed to a few characters, and the price line wraps roughly one word per
+          line. Nothing about WHAT is shown changes; the parts are stacked so each gets the card's
+          full width. The price is still the server's own `priceCents` from the plans row and is
+          still never a literal (§14). */}
       <section
-        className="flex flex-wrap items-center gap-3 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-4 py-3"
+        className="flex flex-col gap-2 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-3 py-3"
         data-testid="trip-pass-card-offer"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
-          <Ticket className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[color:var(--earn-ink)]">{status.planName || "Trip Pass"}</p>
-          <p className="text-[11px]" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
-            <span data-testid="trip-pass-price" style={{ color: "var(--earn-teal-ink)" }}>{priceLabel}</span>
-            {" "}· unlimited optimizer runs + AI tasks · 1 expert revision · service fee waived
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
+            <Ticket className="h-4 w-4" />
+          </span>
+          <p className="min-w-0 truncate text-sm font-semibold text-[color:var(--earn-ink)]">
+            {status.planName || "Trip Pass"}
           </p>
         </div>
+        <p className="text-[11px] leading-relaxed" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
+          <span data-testid="trip-pass-price" style={{ color: "var(--earn-teal-ink)" }}>{priceLabel}</span>
+          {" "}· unlimited optimizer runs + AI tasks · 1 expert revision · service fee waived
+        </p>
         <button
           type="button"
           disabled={starting}
           onClick={() => void startPurchase()}
-          className="rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors bg-[color:var(--earn-teal)] hover:bg-[color:var(--earn-teal-ink)] disabled:opacity-60"
+          className="w-full rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors bg-[color:var(--earn-teal)] hover:bg-[color:var(--earn-teal-ink)] disabled:opacity-60"
           data-testid="button-buy-trip-pass"
         >
           {starting ? "Starting…" : "Get the Trip Pass"}

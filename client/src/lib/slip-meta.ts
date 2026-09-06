@@ -93,3 +93,24 @@ export function slipZoneLine(timezone: string | null | undefined): string | null
   const zone = typeof timezone === "string" ? timezone.trim() : "";
   return zone.length > 0 ? `${SLIP_ZONE_PREFIX} ${zone}` : null;
 }
+
+/**
+ * THE TWO LINES AS ONE ROW META — "Kyoto → Osaka · Times shown in Asia/Tokyo".
+ *
+ * Ledger `2026-09-06-slip-conformance`. The rail's Plan card carries a "Stops & timezone" row
+ * whose meta says what this plan currently answers to both questions. It COMPOSES the two lines
+ * the header already renders and restates NEITHER (§18 rule 1): a second phrasing of the zone here
+ * is exactly how the row and the header would start disagreeing about the same column.
+ *
+ * §13 — the absences carry through unchanged. A plan with no captured zone shows the stops alone
+ * (never "no timezone", never UTC); a DTO that has not loaded shows nothing at all and the caller
+ * renders the row with no meta rather than an empty separator. Returns `null` when neither line
+ * exists, which is the caller's signal to say nothing.
+ */
+export function slipPlanMetaLine(
+  stopsLine: string | null,
+  zoneLine: string | null,
+): string | null {
+  const parts = [stopsLine, zoneLine].filter((p): p is string => !!p && p.trim().length > 0);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}

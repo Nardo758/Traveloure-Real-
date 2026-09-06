@@ -44,6 +44,20 @@ export const SLIP_ADD_DAY_LABEL = "Add something to this day";
  */
 export const SLIP_ADD_NEEDS_A_DAY_NOTE = "Give this event a date to add things under it.";
 export const SLIP_DELETE_CONFIRM_LABEL = "Remove this from the plan?";
+/**
+ * S3's line on the item row, in the ratified `ItemRow` artboard's own words (ledger
+ * `2026-09-06-slip-conformance`).
+ *
+ * The row mounts the EXISTING per-item thread (`ItemComments`, migration 165 — the same component
+ * the Trip Card and the Workstation mount). What the SLIP calls that thread is the slip's decision,
+ * not the component's, so the label is stated HERE and passed in; the component keeps its own
+ * default ("Comment" / "N comments") for the two mounts that were not part of this ruling.
+ *
+ * §13 — the slip mount shows NO COUNT beside it. The artboard draws none, and the plancard payload
+ * carries none: a number here could only come from somewhere other than the thread it describes.
+ * The real count still renders inside the opened thread, from that thread's own read.
+ */
+export const SLIP_ASK_EXPERT_LABEL = "Ask your expert about this";
 /** The four things the form asks. Deliberately no cost field — see `buildSlipAddItemBody`. */
 export const SLIP_ITEM_FORM_FIELDS = ["title", "startTime", "locationName", "notes"] as const;
 

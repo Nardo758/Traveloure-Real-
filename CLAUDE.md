@@ -1156,6 +1156,26 @@ This document captures architectural decisions to maintain consistency across co
     `client/src/lib/item-origin.ts`; **no schema change, no migration and no new writer**, the
     column stays server-stamped at create and client-settable nowhere.
 
+    **D6 IS NOW APPLIED ON THE EVENT HEADER (ledger `2026-09-06-slip-conformance`).** D6 ruled that
+    the two role questions have two catalogs and are never merged; until this lane the event
+    header's only role affordance was "Hire an expert", which opened the PLAN-level EXPERT picker
+    from an EVENT — the exact conflation D6 names. The picker keeps its ONE home (the rail's Build
+    card, "Hand off to a local expert"; `HireExpertDialog` is unchanged and undeleted), and the
+    header now asks the EVENT's own question: one chip per `experience_types.roles_needed` key
+    (ruling 31), each opening the EXISTING marketplace browse pre-filtered by that
+    `service_categories.category_key` and carrying the plan's id so Add to plan lands on the
+    ruling 39 rail. No new catalog, no new table, no new browse, and no server or schema change.
+    **§13 holds in the direction that matters:** NULL / absent / empty `roles_needed` draws NOTHING
+    — never "this occasion needs nobody", which ruling 31 forbids by name — and the client
+    reconstructs no role list of its own from a slug, a title or a keyword. The advisor-standing
+    sentence STAYS on the header and is now spelled ONCE, shared with the rail's new Expert card
+    (§18 rule 1). Same lane, same ruling's D16: the slip is laid out as the ratified canvas draws
+    it — the rail as a fixed 320px right column (Build · Plan · Share · Finish), the status counts
+    and the List | Map toggle merged into one view bar, and no version on the WORKING header, since
+    a version exists only once a plan is final. What D6 still does not have is a way to seed an
+    occasion's roles in an e2e: the chips' rules are proven purely, and their silence is proven in
+    the DOM.
+
 43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;
     ONE SOFT SAVE PROMPT (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-payment-method-posture`; this lane = `2026-09-05-wallets-on-platform-intents`).

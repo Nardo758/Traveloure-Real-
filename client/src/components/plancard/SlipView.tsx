@@ -26,7 +26,6 @@ import {
   List as ListIcon,
   Map as MapIcon,
   Sparkles,
-  UserPlus,
   Users,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -65,11 +64,23 @@ import {
 } from "@/lib/slip-events";
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
 import { eventCountLabel, planHeaderCountLabel } from "@/lib/plan-vocabulary";
-import { slipStopsLine, slipZoneLine, type SlipDestinationRow } from "@/lib/slip-meta";
+import {
+  slipPlanMetaLine,
+  slipStopsLine,
+  slipZoneLine,
+  type SlipDestinationRow,
+} from "@/lib/slip-meta";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { TripExpertNote } from "./TripExpertNote";
 import { ItemComments } from "./ItemComments";
-import { HireExpertDialog } from "./HireExpertDialog";
+// D6 (ledger `2026-09-06-slip-conformance`): the EVENT-level role question opens the PROVIDER
+// browse. `roleLabel` is the ONE place a `service_categories.category_key` becomes words and is
+// shared with the expert picker's own chips (§18 rule 1); `slip-event-roles` owns the keys, the
+// hrefs and the §13 rule that a NULL `roles_needed` draws nothing at all.
+import { roleLabel, type HireRoleCategory } from "@/lib/hire-from-slip";
+import { slipEventRoleChips } from "@/lib/slip-event-roles";
+// The advisor's standing, spelled ONCE — this header and the rail's Expert card read it.
+import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 // LD 42 rows 1.6 / S1 / S2 / D16 (ledger `2026-09-05-slip-own-your-plan`): the owner's own hands on
 // their own plan. The RULES are pure and live in `@/lib/slip-item-tools`; the buttons and the four
 // existing rails they call live in `SlipItemTools.tsx`. Nothing here restates either (§18 rule 1).
@@ -79,6 +90,7 @@ import {
   slipItemTools,
   SLIP_ADD_DAY_LABEL,
   SLIP_ADD_EVENT_LABEL,
+  SLIP_ASK_EXPERT_LABEL,
 } from "@/lib/slip-item-tools";
 import { MapControlCenter } from "./MapControlCenter";
 // LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
@@ -241,6 +253,8 @@ function SlipHeader({
   partyLabel,
   isHidden,
   isOwner,
+  stopsLine,
+  zoneLine,
   onEditStops,
 }: {
   data: SlipData;
@@ -261,6 +275,19 @@ function SlipHeader({
   /** D16 — the stops line's Edit affordance is the OWNER'S, like every other edit on this slip. */
   isOwner: boolean;
   /**
+   * S6 / S7 — WHERE THIS PLAN GOES, AND WHICH ZONE ITS TIMES ARE READ IN, resolved ONCE by the
+   * caller (ledger `2026-09-06-slip-conformance`) and handed to the two surfaces that state them:
+   * this header, and the rail's Plan card "Stops & timezone" row. Both lines are §13 rules first
+   * (see `@/lib/slip-meta`): the stops line falls back EXPLICITLY to `trips.destination` when the
+   * plan has no `trip_destinations` rows (Locked Decision 34 — no backfill, so that is every
+   * legacy plan and the absence is not an error), and the zone line is OMITTED ENTIRELY when
+   * `trips.timezone` is unset (Locked Decision 30 — never UTC, never the server's zone, never a
+   * guess). Neither derives a distance, a duration or a route: the arrow is an ORDER (Locked
+   * Decision 22(c)). `null` on either means the line does not render at all.
+   */
+  stopsLine: string | null;
+  zoneLine: string | null;
+  /**
    * S6 — opens the ONE plan modal, whose step 2 IS the ordered stop-list editor. Deliberately a
    * callback rather than an editor of its own: Locked Decision 34 gives the client ONE stop writer
    * (`plan-stops-writer.ts`), and the modal's step 2 is its ONE editing surface. A second list
@@ -274,27 +301,28 @@ function SlipHeader({
   const start = safeDate(trip?.startDate);
   const end = safeDate(trip?.endDate);
   const phase = derivePhase(start, end);
-  const version = trip?.planVersion;
-
-  // ── S6 / S7 — WHERE THIS PLAN GOES, AND WHICH ZONE ITS TIMES ARE READ IN ────────────────────
-  // Both lines are §13 rules first (see `@/lib/slip-meta`): the stops line falls back EXPLICITLY
-  // to `trips.destination` when the plan has no `trip_destinations` rows (Locked Decision 34 — no
-  // backfill, so that is every legacy plan and the absence is not an error), and the zone line is
-  // OMITTED ENTIRELY when `trips.timezone` is unset (Locked Decision 30 — never UTC, never the
-  // server's zone, never a guess). Neither derives a distance, a duration or a route: the arrow is
-  // an ORDER (Locked Decision 22(c)).
-  const stopsLine = slipStopsLine(trip?.destination, data.destinations);
-  const zoneLine = slipZoneLine(trip?.timezone);
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
       <div className="flex items-center gap-2 flex-wrap">
-        {/* Tracking ref: mono, muted. NULL trackingNumber → render nothing for it (never invent). */}
-        <span className="font-mono text-xs text-muted-foreground" data-testid="slip-tracking-ref">
-          {trip?.trackingNumber ? `Slip ${trip.trackingNumber}` : null}
-          {trip?.trackingNumber && version != null ? " · " : null}
-          {version != null ? `v${version}` : null}
-        </span>
+        {/* ── NO SLIP NUMBER AND NO VERSION ON THE WORKING HEADER ─────────────────────────────
+            Ledger `2026-09-06-slip-conformance`; the ratified `header()` artboard says it in one
+            line: "No slip number and no version: neither exists on a plan (a version exists only
+            once it is final)."
+
+            `slip-tracking-ref` used to print "Slip TRV-000123 · v7" here, where `v7` was
+            `planVersion` — the item-transition-log ROW COUNT, which ticks every time anything
+            moves. Read at the top of a working plan it looks like a released version of the plan,
+            and it is not one: the only version a traveler can hold is the FINALIZED Trip Card's,
+            and that one still renders — on the finished card, as `slip-final-version-chip`, from
+            the server's own `trip.finalVersion` (see `TripCardPrimaryBanner`). One version number,
+            in the one place where a version actually exists (§13).
+
+            The tracking number itself is not deleted from the DTO and is not gone from the
+            platform — `PlanSlipStrip` still prints it on the dashboard, where it is an identifier
+            for finding a plan rather than a claim about its state. The transition log's own
+            per-entry `v<n>` is likewise untouched: there it labels a row in a history, which is
+            exactly what the count is. */}
         {phase && (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border border-border text-muted-foreground"
@@ -608,7 +636,19 @@ function SlipItemRow({
               read, never from this DTO: the plancard activity carries no comment count, and a
               number derived here would be a guess. An empty thread reads "No comments yet". */}
           {hasAdvisor && (isOwner || isExpertViewer) && (
-            <ItemComments tripId={tripId} itemId={a.id} className="mt-2" />
+            <ItemComments
+              tripId={tripId}
+              itemId={a.id}
+              className="mt-2"
+              /* The ratified `ItemRow` artboard's own words, held once in `@/lib/slip-item-tools`
+                 beside the slip's other row labels — the component keeps its default for the two
+                 mounts (Trip Card, Workstation) this ruling did not touch. */
+              label={SLIP_ASK_EXPERT_LABEL}
+              /* And NO count on this mount: the artboard draws none and the plancard activity
+                 carries none, so any number here could only come from somewhere other than the
+                 thread it describes (§13). The real count still renders inside the open thread. */
+              hideCount
+            />
           )}
           {showActions && (
             <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`slip-routing-actions-${a.id}`}>
@@ -651,82 +691,96 @@ function SlipItemRow({
 }
 
 /**
- * THE EVENT HEADER'S HIRE AFFORDANCE (ledger `2026-09-04-hire-from-slip`; clause (c) of
- * `2026-09-04-slip-precondition`).
+ * THE EVENT HEADER'S ADVISOR STANDING (ledger `2026-09-04-hire-from-slip`; clause (c) of
+ * `2026-09-04-slip-precondition`; D6 as landed by `2026-09-06-slip-conformance`).
  *
- * Owner-only, and deliberately TWO states and no more:
+ * ── WHAT D6 MOVED, AND WHAT STAYED ────────────────────────────────────────────────────────────
+ * This component used to have TWO states: the advisor's standing when one exists, and a "Hire an
+ * expert" button when none does — a button that opened the plan-level EXPERT picker from an EVENT
+ * header. Locked Decision 42's D6 rules that the two role questions are different questions with
+ * different catalogs: "who plans this WITH me" is PLAN-level and its answer is the ONE expert
+ * picker, which now lives only in the rail's Build card ("Hand off to a local expert"); "who do I
+ * HIRE for this event" is EVENT-level and its answer is `experience_types.roles_needed` — the
+ * PROVIDER catalog — which `EventRoleChips` below draws.
  *
- *  - NO advisor on the plan yet => "Hire an expert", which opens the picker for THIS event
- *    (`HireExpertDialog`); the event's occasion supplies the role chips (Locked Decision 31).
- *  - AN advisor exists => their standing, said plainly. `pending` is "Request sent - awaiting
- *    <name>": the invitation is out and the expert has accepted nothing, which is exactly what
- *    Locked Decision 12 means when it says a PENDING advisor may not write. NO ETA is shown -
- *    nothing on the platform knows when this expert will answer, and a guessed one would be the
- *    §13 fabricated-claim class.
+ * So the BUTTON is gone from here and the STANDING stays, unchanged and in the same words. The
+ * picker itself (`HireExpertDialog`) is untouched and still mounted, once, by the rail.
  *
  * IT SAYS "THIS PLAN", NOT "THIS EVENT", ON PURPOSE. `trip_expert_advisors` is keyed
  * (trip, expert) and has no event column - this lane did not add one - so the row that exists is
- * a PLAN-level advisor. The affordance sits on the event header because that is where the
- * traveler decides, but the sentence never claims an expert belongs to the event. Where several
+ * a PLAN-level advisor. The sentence never claims an expert belongs to the event. Where several
  * experts are on one plan, `GET /api/trips/:id/expert-advisor` returns the most recent
  * pending/accepted one, so this line is incomplete rather than wrong - recorded in the ledger.
+ *
+ * §13 — NO ADVISOR ⇒ NOTHING RENDERS. Not a greyed control, not "no expert yet": with the hire
+ * button moved, an event header on a plan nobody is advising has nothing true to say here, and
+ * the rail's Build card is where that absence is answered.
  */
-function EventHireAffordance({
-  tripId,
-  destination,
-  event,
-}: {
-  tripId: string;
-  destination: string | null | undefined;
-  event: PlanEvent;
-}) {
-  const [open, setOpen] = useState(false);
-  // The owner-gated advisor read the slip's own AssignExpertSlot already uses - one endpoint,
-  // one cache entry, no second query shape for the same fact.
-  const { data } = useQuery<{
-    advisor: { status?: string | null; first_name?: string | null; last_name?: string | null } | null;
-  }>({
+function EventAdvisorStanding({ tripId, event }: { tripId: string; event: PlanEvent }) {
+  // The owner-gated advisor read the rail's Build card already uses - one endpoint, one cache
+  // entry, no second query shape for the same fact.
+  const { data } = useQuery<{ advisor: SlipRailAdvisor | null }>({
     queryKey: [`/api/trips/${tripId}/expert-advisor`],
     enabled: !!tripId,
   });
-  const advisor = data?.advisor ?? null;
-
-  if (advisor) {
-    const name = [advisor.first_name, advisor.last_name].filter(Boolean).join(" ").trim();
-    const label =
-      advisor.status === "pending"
-        ? `Request sent — awaiting ${name || "your expert"}`
-        : `${name || "An expert"} is advising this plan`;
-    return (
-      <p className="mt-1 text-[11px] text-muted-foreground" data-testid={`slip-event-advisor-${event.id}`}>
-        {label}
-      </p>
-    );
-  }
-
+  // THE ONE SENTENCE, shared with the rail's Expert card (`slipAdvisorStandingLine`). Written
+  // inline here it was a second copy waiting to happen the moment the rail said the same thing
+  // (§18 rule 1); the module owns the wording, the fallbacks and the no-ETA rule.
+  const label = slipAdvisorStandingLine(data?.advisor ?? null);
+  if (!label) return null;
   return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="mt-1 h-6 px-1.5 text-[11px] text-primary hover:text-primary"
-        onClick={() => setOpen(true)}
-        data-testid={`slip-event-hire-${event.id}`}
-      >
-        <UserPlus className="w-3 h-3 mr-1" />
-        Hire an expert
-      </Button>
-      {open && (
-        <HireExpertDialog
-          tripId={tripId}
-          destination={destination}
-          event={event}
-          open={open}
-          onOpenChange={setOpen}
-        />
-      )}
-    </>
+    <p className="mt-1 text-[11px] text-muted-foreground" data-testid={`slip-event-advisor-${event.id}`}>
+      {label}
+    </p>
+  );
+}
+
+/**
+ * D6 · THE EVENT'S ROLE CHIPS — "who do I HIRE for this event" (ledger
+ * `2026-09-06-slip-conformance`; CLAUDE.md Locked Decision 42 D6, Locked Decision 31).
+ *
+ * One chip per `experience_types.roles_needed` key on THIS event, each opening the EXISTING
+ * marketplace browse pre-filtered to that `service_categories.category_key` and carrying this
+ * plan's id, so Add to plan lands on the Locked Decision 39 rail (`itinerary_items`). No new
+ * catalog, no new table, no new browse: D6's whole point is that both halves already exist.
+ *
+ * WHERE EVERY PART COMES FROM, so nothing here is a second copy (§18 rule 1):
+ *  · the KEYS and the HREFS — `@/lib/slip-event-roles`, which also states why NULL draws nothing.
+ *  · the LABEL for a key — `roleLabel` in `@/lib/hire-from-slip`, the ONE place a category key
+ *    becomes words, shared with the expert picker's own chips.
+ *  · the CATEGORY ROWS — the same public `/api/service-categories` read the picker uses, so
+ *    react-query serves both from ONE cache entry and ONE request.
+ *
+ * §13 — `rolesNeeded` NULL / absent / empty ⇒ THIS RENDERS NOTHING AT ALL. Locked Decision 31 is
+ * explicit that NULL means NOT SET and never "this occasion needs nobody", which is a claim only a
+ * planner can make; and it declined to make `[]` a second empty state, so both are answered the
+ * same silent way. Nothing is reconstructed from the event's title or its occasion's slug, and a
+ * chip names a DISCIPLINE — it makes no claim that anyone is listed in it here.
+ */
+function EventRoleChips({ tripId, event }: { tripId: string; event: PlanEvent }) {
+  const chips = slipEventRoleChips(event.rolesNeeded, tripId);
+  // Fetched only when there is something to label. The picker's own read shares this cache entry.
+  const { data: categories } = useQuery<HireRoleCategory[]>({
+    queryKey: ["/api/service-categories"],
+    enabled: chips.length > 0,
+    staleTime: 10 * 60_000,
+  });
+  if (chips.length === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5" data-testid={`slip-event-roles-${event.id}`}>
+      {/* The verb, once, so a row of bare nouns is not mistaken for a list of who is booked. */}
+      <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">browse</span>
+      {chips.map((chip) => (
+        <Link
+          key={chip.key}
+          href={chip.href}
+          className="inline-flex items-center rounded-md border border-border px-1.5 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted/40"
+          data-testid={`slip-event-role-${event.id}-${chip.key}`}
+        >
+          {roleLabel(chip.key, categories)}
+        </Link>
+      ))}
+    </span>
   );
 }
 
@@ -911,14 +965,15 @@ function EventBudgetAffordance({ tripId, event }: { tripId: string; event: PlanE
 function SlipEventGroupBlock({
   event,
   tripId,
-  destination,
   isOwner,
   addDayNumber,
   children,
 }: {
   event: PlanEvent;
   tripId: string;
-  destination: string | null | undefined;
+  // `destination` is GONE from this block (ledger `2026-09-06-slip-conformance`): it existed only
+  // to seed the plan-level expert picker that D6 moved to the rail's Build card. The event's own
+  // role chips need no destination — they open the PROVIDER browse by category key.
   isOwner: boolean;
   /**
    * S1 — the day a "+ Add something to this event" row would land on, already resolved by the
@@ -978,7 +1033,13 @@ function SlipEventGroupBlock({
                   on the event's own header beside its time — and the plan's total below the list
                   is derived from these, never stored. */}
               <EventBudgetAffordance tripId={tripId} event={event} />
-              <EventHireAffordance tripId={tripId} destination={destination} event={event} />
+              {/* D6 — the two role questions, kept apart. The STANDING of the plan's advisor (a
+                  plan-level fact, stated where the traveler is standing) and, beside it, the
+                  EVENT's own role chips into the PROVIDER browse. The "Hire an expert" button that
+                  used to sit here opened the plan-level EXPERT picker from an event header; it
+                  lives in the rail's Build card now, and the picker has ONE home. */}
+              <EventAdvisorStanding tripId={tripId} event={event} />
+              <EventRoleChips tripId={tripId} event={event} />
               {/* S1 — the add control the ratified artboards draw on every event header. It writes
                   the EXISTING LD 39 add rail with this event's id on the LD 29 allowlist, so the
                   row lands under the event that was pressed. */}
@@ -1385,8 +1446,20 @@ export function SlipView({
     occasionResolved,
   );
 
+  /**
+   * ── S6 / S7 · WHERE THIS PLAN GOES, AND WHICH ZONE ITS TIMES ARE READ IN ─────────────────────
+   * Resolved ONCE here (ledger `2026-09-06-slip-conformance`) because TWO surfaces now state them:
+   * the header's third row, and the rail's Plan card "Stops & timezone" row. They were the
+   * header's own locals; a second `slipStopsLine(...)` call inside the rail would be the
+   * derivation-drift class §18 rule 1 names, and the two would disagree the day either rule moves.
+   * Both helpers keep their §13 absences (see `@/lib/slip-meta`): the stops line falls back
+   * EXPLICITLY to `trips.destination`, and an unset zone renders NOTHING rather than UTC.
+   */
+  const stopsLine = slipStopsLine(data.trip?.destination, data.destinations);
+  const zoneLine = slipZoneLine(data.trip?.timezone);
+
   return (
-    <div className="max-w-2xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
+    <div className="max-w-6xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} />}
@@ -1419,71 +1492,86 @@ export function SlipView({
         partyLabel={partyLabel}
         isHidden={occasionIsHidden}
         isOwner={isOwner}
+        /* S6/S7 — resolved ONCE above and handed to BOTH surfaces that state them (this header and
+           the rail's Plan card row). Neither derives them again (§18 rule 1). */
+        stopsLine={stopsLine}
+        zoneLine={zoneLine}
         /* S6 — the ONE plan modal, whose step 2 IS the ordered stop-list editor (Locked Decision
            34's one-writer rule). The SAME opener the Trip Strip's Edit uses, with no source: the
            modal reads the plan the traveler is already on. */
         onEditStops={() => openPlanModal()}
       />
 
-      {/* THE STATUS STRIP — routing-status counts and nothing else. It keeps the ONE taxonomy the
-          slip has always shown (in planning · with expert · in checkout · purchased) and stays
-          zero-omitting: a status no row is in is not a segment (§13). It does not count ORIGINS —
-          who added a row is a per-row fact the item rows carry, and a second population summed
-          into this line would read as the same taxonomy while answering a different question. */}
-      <SlipStatusStrip activities={allActivities} />
+      {/* ── THE TWO COLUMNS (ledger `2026-09-06-slip-conformance`) ───────────────────────
+          The ratified canvas `page()` draws ONE layout: the plan on the left and a fixed 320px
+          rail on the right, side by side. The rail used to sit in the flow ABOVE the day list as a
+          two-up card grid, which pushed the plan itself below the fold on every screen and made
+          the Trip Pass card narrow enough to wrap its price line a word at a time.
 
-      {/* ── THE ACTION RAIL, IN FOUR CARDS (ledger `2026-09-05-slip-rail-regroup`) ────────────
-          Build · Plan · Share · Finish, above the List | Map toggle and the day list. It replaces
-          the flat `slip-action-*` button row, and the regrouping is the ruling: every rail keeps
-          exactly ONE home, and the two that had grown a second one (Add all to checkout, Preview
-          Trip Card) are gone rather than re-placed. `budgetLine` and `planEvents` are HANDED DOWN
-          — the derivations stay this component's and are never recomputed inside the rail
-          (§18 rule 1). */}
-      {data.trip && (
-        <SlipRail
-          trip={data.trip}
-          tripId={tripId}
-          isOwner={isOwner}
-          isPrimary={isPrimary}
-          activities={allActivities}
-          planEvents={planEvents}
-          budgetLine={budgetLine}
-        />
-      )}
+          BELOW `lg` THE RAIL STACKS ABOVE THE LIST — the artboard's order, and the honest one on a
+          phone: the four cards are what a traveler does next, and the day list is long. `order-*`
+          does the flip, so the DOM order is unchanged and nothing about focus order or the reading
+          order of the two regions depends on the breakpoint's direction. */}
+      <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8" data-testid="slip-columns">
+        <div className="order-2 lg:order-1 min-w-0 flex-1 space-y-5">
+          {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
+              These were two stacked rows with the whole rail between them, so the plan's status
+              line and the control that changes how the plan is displayed read as unrelated. They
+              are one row now, and BOTH halves are exactly what they were:
 
-      {/* List | Map toggle — map offered only when at least one stop is genuinely located. */}
-      {allActivities.length > 0 && (
-        <div className="flex items-center justify-between gap-3 flex-wrap" data-testid="slip-view-toggle">
-          <div className="inline-flex rounded-md border border-border overflow-hidden">
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              onClick={() => setSlipView("list")}
-              data-testid="button-slip-view-list"
+              THE STATUS STRIP keeps the ONE taxonomy the slip has always shown (in planning · with
+              expert · in checkout · purchased) and stays zero-omitting: a status no row is in is
+              not a segment (§13). It does not count ORIGINS — who added a row is a per-row fact the
+              item rows carry, and a second population summed into this line would read as the same
+              taxonomy while answering a different question.
+
+              THE TOGGLE keeps its honest map gating: Map is offered only when at least one stop is
+              genuinely located, and its disabled title says why.
+
+              §13 — the whole bar is ABSENT on a plan with no items. Both halves count the same
+              rows, so with none there is nothing true for either to say, and the canvas's
+              "Nothing added yet" placeholder is deliberately not rendered: the empty state below
+              already says it once, in the list's own words. */}
+          {allActivities.length > 0 && (
+            <div
+              className="flex items-center justify-between gap-3 flex-wrap"
+              data-testid="slip-viewbar"
             >
-              <ListIcon className="w-3.5 h-3.5" /> List
-            </button>
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
-              onClick={() => setSlipView("map")}
-              disabled={!!mapDisabledReason}
-              title={mapDisabledReason ?? undefined}
-              data-testid="button-slip-view-map"
-            >
-              <MapIcon className="w-3.5 h-3.5" /> Map
-            </button>
-          </div>
-          {slipView === "map" && (
-            <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
-              <span className="font-semibold text-foreground">
-                {locatedActivities.length} of {allActivities.length}
-              </span>{" "}
-              stop{allActivities.length === 1 ? "" : "s"} located
-            </span>
+              <div className="min-w-0">
+                <SlipStatusStrip activities={allActivities} />
+              </div>
+              <div className="flex items-center gap-3 flex-wrap" data-testid="slip-view-toggle">
+                <div className="inline-flex rounded-md border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setSlipView("list")}
+                    data-testid="button-slip-view-list"
+                  >
+                    <ListIcon className="w-3.5 h-3.5" /> List
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                    onClick={() => setSlipView("map")}
+                    disabled={!!mapDisabledReason}
+                    title={mapDisabledReason ?? undefined}
+                    data-testid="button-slip-view-map"
+                  >
+                    <MapIcon className="w-3.5 h-3.5" /> Map
+                  </button>
+                </div>
+                {slipView === "map" && (
+                  <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
+                    <span className="font-semibold text-foreground">
+                      {locatedActivities.length} of {allActivities.length}
+                    </span>{" "}
+                    stop{allActivities.length === 1 ? "" : "s"} located
+                  </span>
+                )}
+              </div>
+            </div>
           )}
-        </div>
-      )}
 
       {/* ── S5 · THE TRIP-LEVEL EXPERT NOTE (ledger `2026-09-06-slip-small-additions`) ─────────
           Locked Decision 21's `trips.expert_traveler_note` — the note the expert wrote FOR the
@@ -1631,7 +1719,6 @@ export function SlipView({
                       key={group.key}
                       event={group.event}
                       tripId={tripId}
-                      destination={data.trip?.destination}
                       isOwner={isOwner}
                       addDayNumber={addDayNumber}
                     >
@@ -1703,12 +1790,41 @@ export function SlipView({
           auto-creates a new final version. Renders nothing when there are no suggestions. */}
       <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" />
 
-      <TransitionLogFooter
-        transitions={transitions}
-        planVersion={planVersion}
-        itemTitleById={itemTitleById}
-        expertName={expertName}
-      />
+          <TransitionLogFooter
+            transitions={transitions}
+            planVersion={planVersion}
+            itemTitleById={itemTitleById}
+            expertName={expertName}
+          />
+        </div>
+
+        {/* ── THE ACTION RAIL (ledger `2026-09-05-slip-rail-regroup`; placed by
+            `2026-09-06-slip-conformance`) ───────────────────────────────────────
+            Build · Plan · Share · Finish, in the ratified canvas's FIXED 320px right column
+            (`lg:w-80`) that never shrinks (`lg:shrink-0`) — which is what stops the Trip Pass
+            card's price line wrapping a word at a time. Below `lg` it is full width and stacks
+            ABOVE the day list (`order-1`), which is the artboard's own order.
+
+            The cards themselves are unchanged: every control keeps exactly ONE home, and
+            `budgetLine`, `planEvents`, `stopsLine` and `zoneLine` are HANDED DOWN — the
+            derivations stay this component's and are never recomputed inside the rail
+            (§18 rule 1). */}
+        {data.trip && (
+          <div className="order-1 lg:order-2 mb-5 lg:mb-0 lg:w-80 lg:shrink-0">
+            <SlipRail
+              trip={data.trip}
+              tripId={tripId}
+              isOwner={isOwner}
+              isPrimary={isPrimary}
+              activities={allActivities}
+              planEvents={planEvents}
+              budgetLine={budgetLine}
+              stopsLine={stopsLine}
+              zoneLine={zoneLine}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

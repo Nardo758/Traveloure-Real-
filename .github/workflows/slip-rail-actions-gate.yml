@@ -1,0 +1,161 @@
+name: Slip Rail Actions Gate
+
+# Ledger `2026-09-06-slip-conformance` (CLAUDE.md Locked Decision 42).
+#
+# WHY THIS GATE EXISTS. That lane RELAID OUT the slip: the action rail moved into a fixed 320px
+# right column, its cards were reordered, the status counts and the List | Map toggle were merged
+# into one row, an Expert card and a "Stops & timezone" row were added, and the plan-level expert
+# picker moved off the event header. A relayout is the change most likely to LOSE a control
+# quietly — a card left out of the new container, a row dropped in a merge, a handler re-pointed
+# while a block is moved — and NONE of that throws. The rail simply stops offering a rail, and the
+# only signal is a traveler who cannot find it.
+#
+# TWO LAYERS, AND EACH SEES WHAT THE OTHER CANNOT:
+#   · the STATIC pin (`slip-conformance`, in build.yml) compares every control's testid and its
+#     handler TEXT against a committed inventory taken from `origin/main` BEFORE the relayout. It
+#     reads source, so it cannot see whether a control renders or whether pressing it works.
+#   · this gate PRESSES them, against the PR's own artifact served on localhost — never a
+#     deployment.
+#
+# STATED NEGATIVE SPACE (§18d — green means green-within-stated-bounds): two controls are asserted
+# UP TO the press and not beyond, because the first press leaves the platform and the CI server
+# runs with stub keys and no egress — "Get the Trip Pass" (a real PaymentIntent) and "Draft it with
+# AI" (an LLM generation). The spec says so in its own header. D6's role chips need an
+# admin-seeded occasion carrying `roles_needed`; their rules are proven purely in
+# `slip-conformance.test.ts`, and the §13 half that matters — no roles, no chips — is asserted here.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-slip-rail-actions:
+    name: e2e-slip-rail-actions (DOM gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert the spec exists
+        # A renamed or deleted spec makes Playwright report "0 passed" and exit 0, which would let
+        # this gate go green with nothing run. `passWithNoTests: false` in playwright.config.ts is
+        # the other half; this fails first, with a message that names the file.
+        run: |
+          if [ ! -f playwright/tests/slip-rail-actions.spec.ts ]; then
+            echo "::error file=.github/workflows/slip-rail-actions-gate.yml::playwright/tests/slip-rail-actions.spec.ts is missing — restore it or update this workflow."
+            exit 1
+          fi
+          echo "spec present ✅"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Start dev server (PR artifact — localhost only)
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Stub keys: stripe.service.ts throws at import without one, and the suite deliberately
+          # never reaches a real charge or a real generation (see the negative space above).
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          # Build identity — exposed via GET /api/version so the step below can assert the tested
+          # binary is this PR's artifact rather than a stale process.
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          # Each test registers a user, mints a plan and reloads the API-heavy slip from ONE
+          # loopback IP; the general /api limiter (100 req/min/IP) would 429 the later tests and
+          # the rail would never leave its skeleton. Test-only server. NEVER set in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+
+      - name: Verify build identity (artifact == PR commit)
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA. Tests would run against the wrong artifact."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA ✅"
+
+      - name: Press every rail action on a real plan slip
+        run: npx playwright test slip-rail-actions --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: slip-rail-actions-report
+          path: playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore

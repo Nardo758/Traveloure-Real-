@@ -47,10 +47,31 @@ export function ItemComments({
   tripId,
   itemId,
   className,
+  label,
+  hideCount,
 }: {
   tripId: string;
   itemId: string;
   className?: string;
+  /**
+   * What the MOUNTING SURFACE calls this thread (ledger `2026-09-06-slip-conformance`). The slip's
+   * item row says "Ask your expert about this" — the ratified `ItemRow` artboard's own words, held
+   * in `@/lib/slip-item-tools` beside the slip's other row labels. Absent = the default below, so
+   * the Trip Card and the Workstation mounts are byte-identical to what they were.
+   *
+   * A PROP, NOT A FORK. One component, one server contract; a second per-item thread beside this
+   * one because a surface wanted different words is the drift class §18 rule 1 names, and it is how
+   * the traveler's question and the expert's answer end up in two places.
+   */
+  label?: string;
+  /**
+   * Suppress the comment count on the toggle (the slip mount — the artboard draws none).
+   *
+   * §13 — this hides a REAL number, it never substitutes a fake one: the count still comes from
+   * this component's own per-item read and still renders inside the opened thread. Nothing here
+   * ever displays a count derived from anywhere but the thread it describes.
+   */
+  hideCount?: boolean;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -98,7 +119,14 @@ export function ItemComments({
       >
         <MessageSquare className="w-3 h-3" />
         <span>
-          {comments.length > 0 ? `${comments.length} comment${comments.length > 1 ? "s" : ""}` : "Comment"}
+          {/* The surface's own label wins; without one, the historic count/"Comment" toggle. When
+              the mount suppresses the count the label is the whole of it — never a "0" and never a
+              count from anywhere but this thread's own read (§13). */}
+          {label
+            ? label
+            : !hideCount && comments.length > 0
+              ? `${comments.length} comment${comments.length > 1 ? "s" : ""}`
+              : "Comment"}
         </span>
         {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </button>

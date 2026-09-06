@@ -1154,6 +1154,57 @@ jobs:
       - name: Slip small-additions pin
         run: npx tsx --test client/src/lib/__tests__/slip-small-additions.test.ts
 
+  slip-conformance:
+    name: slip-conformance (CLAUDE.md Locked Decision 42 D6/D16 - 2026-09-06-slip-conformance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" guard job: the suite imports client modules that resolve
+      # `@shared/*` through the tsconfig paths (`../earner-address` -> `@shared/handle`), so it
+      # needs the installed tree. Appending it to a guard job that skips `npm ci` fails with
+      # ERR_MODULE_NOT_FOUND, which is exactly the mistake that cost a CI cycle on #812.
+      - run: npm ci
+      # 2026-09-06-slip-conformance: the six ways the shipped slip differed from the ratified
+      # "Slip as the Surface" canvas. FIVE of the six are layout and copy, which no server test can
+      # see and no type can hold, and every one of them fails SILENTLY:
+      #   1 the rail rendered in the flow above the day list still shows every control - nothing
+      #     throws, the plan simply starts below the fold - and Build/Finish/Plan/Share reads as a
+      #     working rail while putting "Finalize plan" above the plan's own facts;
+      #   2 D6's role chips are the failure a restated list causes: a literal
+      #     florist/photographer/caterer array looks right on a wedding and is a taxonomy the client
+      #     invented, and a NULL `roles_needed` rendered as a claim is what Locked Decision 31
+      #     forbids by name ("never this occasion needs nobody");
+      #   3 a `/s/<handle>` link for an expert who claimed no handle is indistinguishable from a
+      #     live one until it is pressed (Locked Decision 40 - the handle IS the address);
+      #   4 `planVersion` (the transition-log ROW COUNT) and `finalVersion` (a real snapshot's)
+      #     both render as `v<n>`, so printing the wrong one at the top of a working plan is
+      #     invisible unless something pins WHICH surface may print one;
+      #   5 the slip's ask line must carry no count - the plancard activity has none, so a number
+      #     there could only come from somewhere other than the thread it describes (§13);
+      #   6 the Plan card's stops row must be a DOOR of the ONE planning modal, never a second
+      #     caller of Locked Decision 34's single replace-list stop writer.
+      # Every static pin reads the slip's FILE SET (SlipView + SlipRail) with comments stripped, so
+      # a pin is about the code rather than the prose explaining it - no literal call-site count and
+      # no single-file literal. Stated negative space: it cannot see whether anything RENDERS,
+      # whether a Tailwind class produces the intended geometry, or whether the rail is actually
+      # visible beside the list. Those are e2e and mock-audit answers.
+      # §18d — the inventory extractor's own committed fixtures run BEFORE the pin that depends on
+      # it. A wrong predicate is invisible by construction: an extractor that silently found no
+      # controls would compare an empty set to an empty set and report a green relayout.
+      - name: Slip action-inventory extractor self-test
+        run: node scripts/lib/slip-action-inventory.cjs --self-test
+      - name: Slip conformance pin
+        run: npx tsx --test client/src/lib/__tests__/slip-conformance.test.ts
+      # The rail regroup's own suite runs here too: this lane REPAIRED one of its pins (the
+      # "Stops & timezone is a later lane" absence became the row plus its one-writer rule), and a
+      # repaired pin is worth nothing if nothing runs it beside the change that repaired it.
+      - name: Slip rail pin
+        run: npx tsx --test client/src/lib/__tests__/slip-rail.test.ts
+
   item-origin-chip:
     name: item-origin-chip (CLAUDE.md Locked Decision 12 read-exposure - 2026-09-06-item-origin-chip)
     runs-on: ubuntu-latest
