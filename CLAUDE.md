@@ -309,6 +309,22 @@ This document captures architectural decisions to maintain consistency across co
     ready-made **clone** (the buyer bought a fixed plan; injecting their own held chips into a
     purchased product is content they did not ask that plan to carry). Those four still take the
     timezone — every mint site stamps the zone; only the traveler-owned ones drain the pen.
+    **THE PEN IS NOT THE AUTHOR OF THE EVENTS THE PLAN MODAL ITSELF COLLECTED (amended Sep 6,
+    2026 — ledger `2026-09-06-event-mint-dedupe`).** Both wrote them: the drain inside the mint,
+    and `PlanModal.commitPlan` a moment later against rows SEEDED FROM THAT SAME PEN — so a
+    "Build it myself" finish carrying a pen created every ticked event TWICE (a Kyoto wedding came
+    back holding "Ceremony, Reception, Ceremony, Reception"). **THE MODAL IS THE AUTHOR** of the
+    events it collected — it holds the occasion resolved on screen, which the drain can only guess
+    at from a stored slug, and it honours an untick the pen still remembers — so the finish
+    **RELEASES its own pen server-side, awaited, BEFORE it mints** (`releasePendingEventsPen`,
+    `client/src/lib/trip-context.ts`; a release that lands after `POST /api/trips` is no release
+    at all). Everything above is otherwise UNCHANGED: the drain keeps its whole job for every
+    OTHER mint door and for a pen the modal never comes back for, it stays idempotent, it still
+    never fails the mint, and it still creates nothing for an unresolvable occasion. The surviving
+    writer is idempotent too — `commitPlan` creates only what the plan does not already carry —
+    through the ONE identity rule `eventsNotYetOnPlan` (`shared/plan-events.ts`), which the drain,
+    the modal and the slip's "Organize into events" all call (§18 rule 1). **NO UNIQUE index and
+    NO DB CHECK was added** (publish-trap posture), and nothing dedupes in a reader.
 31. **An occasion NAMES THE ROLES IT NEEDS, and the names come from the taxonomy authority — never a
     new vocabulary (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-roles-needed`;
     migration 280).** `experience_types.roles_needed` is a `text[]` of

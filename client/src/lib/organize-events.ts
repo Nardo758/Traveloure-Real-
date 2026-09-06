@@ -42,7 +42,8 @@
  * Pure: no React, no fetch. Tested by `client/src/lib/__tests__/plan-islands.test.ts`.
  */
 import { showsSchedule, type OccasionSwitchRow } from "./occasion-switches";
-import { hasEventRow, type PlanEventDraft } from "./plan-events";
+import { eventsNotYetOnPlan } from "@shared/plan-events";
+import { type PlanEventDraft } from "./plan-events";
 
 /**
  * May the slip offer "Organize into events"?
@@ -63,21 +64,22 @@ export function canOrganizeIntoEvents(
 }
 
 /**
- * IDEMPOTENT BY TITLE — the same rule the pre-trip pen drain uses
- * (`server/services/pending-events.service.ts` skips a title that already has an event on the
- * trip), stated here for the client rail so the two doors agree.
+ * IDEMPOTENT BY TITLE — the client-side NAME for the ONE shared rule, `eventsNotYetOnPlan`
+ * (`shared/plan-events.ts`), which the pre-trip pen drain and the plan modal's own save also call.
  *
- * The eligibility gate already means the list starts empty, so this is not what makes the FIRST
- * save correct; it is what makes a double-click, a retried save, or a save racing a refetch
- * create nothing extra. Case-insensitive, because that is what `normalizePlanEvents` collapses
- * duplicates on.
+ * It stopped being stated here with ledger `2026-09-06-event-mint-dedupe`: this file held a
+ * faithful copy of the drain's rule, the modal held none at all, and a plan minted from a pen got
+ * every ticked event twice — the drain wrote them, the modal wrote them again a moment later, and
+ * neither could see the other. Three rails, one authority (§18 rule 1). The name survives because
+ * `SlipOrganizeEvents` reads better for it and because the call sites are what CI pins.
+ *
+ * The eligibility gate already means this rail's list starts empty, so this is not what makes the
+ * FIRST save correct; it is what makes a double-click, a retried save, or a save racing a refetch
+ * create nothing extra.
  */
 export function eventsNotYetCreated(
   drafts: readonly PlanEventDraft[],
   existingTitles: readonly (string | null | undefined)[],
 ): PlanEventDraft[] {
-  const existing: PlanEventDraft[] = existingTitles
-    .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
-    .map((t) => ({ title: t.trim() }));
-  return drafts.filter((d) => !hasEventRow(existing, d.title));
+  return eventsNotYetOnPlan(drafts, existingTitles);
 }
