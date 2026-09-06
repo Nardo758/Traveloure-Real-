@@ -970,6 +970,25 @@ jobs:
       - name: Door source-field pins
         run: npx tsx --test client/src/lib/__tests__/plan-entry-source-fields.test.ts
 
+  event-mint-dedupe:
+    name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # A traveler who ticked two events on step 5 got four rows: the server-side pre-trip pen
+      # drain inside `storage.createTrip` and the plan modal's own post-mint commit both created
+      # them, and the modal's rows were SEEDED FROM THAT SAME PEN. The behavioural proofs model
+      # the shared decision both writers now make; the static pins hold the two halves of the fix
+      # in place — the finish releases its pen BEFORE it mints, and the create loop is filtered by
+      # the ONE shared identity rule rather than a second copy of it.
+      - name: Event mint de-duplication
+        run: npx tsx --test client/src/lib/__tests__/event-mint-dedupe.test.ts
+
   privileged-field-completeness-guard:
     name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
     runs-on: ubuntu-latest

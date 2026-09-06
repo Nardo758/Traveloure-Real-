@@ -161,3 +161,57 @@ export function planEventRowValues(
     location: draft.location || cleanText(defaults.destination, MAX_PLAN_EVENT_PLACE) || null,
   };
 }
+
+/**
+ * ── TITLE IS THE IDENTITY OF AN EVENT INSIDE A PLAN, STATED ONCE ────────────────────────────
+ * Ledger `2026-09-06-event-mint-dedupe`.
+ *
+ * Three rails create the same kind of row and every one of them needs the same answer to "does
+ * this plan already carry this event?": the pre-trip pen drain at mint
+ * (`server/services/pending-events.service.ts`, whose rule 4 is exactly this), the plan modal's
+ * own save (`PlanModal.commitPlan`), and the slip's one-time "Organize into events"
+ * (`eventsNotYetCreated`). Each of them had, or was missing, its own copy — which is how a plan
+ * came to hold "Ceremony, Reception, Ceremony, Reception": the drain skipped nothing because
+ * nothing existed when it ran, and the modal a moment later skipped nothing because it never
+ * asked. One authority, three callers (§18 rule 1).
+ *
+ * WHAT IS AND IS NOT PART OF THE IDENTITY. The TITLE is, case- and space-insensitively, because
+ * that is what `normalizePlanEvents` already collapses a pen's own duplicates on. The day, the
+ * time and the place are NOT: they are answers a traveler can edit between two passes, and
+ * including them would fork one event into two the moment a time was corrected. An absent or
+ * blank existing title matches NOTHING (§13 — "no answer" is not a name, and must never swallow
+ * a real one).
+ *
+ * IT SKIPS; IT NEVER REWRITES. A row that is already on the plan keeps every answer it has —
+ * editing one is `PATCH /api/user-experiences/:id`, a different act with its own rail.
+ *
+ * THIS IS NOT A CONSTRAINT AND MUST NOT BECOME ONE. `user_experiences` carries no UNIQUE index
+ * and no CHECK for this, deliberately: a constraint added here is the publish-time drizzle-push
+ * failure the Coordination Prevention rules warn about, and it would also refuse a plan whose
+ * traveler genuinely wants two events of one name — which is theirs to decide on the surfaces
+ * that create one at a time, not this rule's.
+ */
+
+/** The identity key of an event title. Trimmed and lowercased — nothing else. */
+export function planEventTitleKey(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+/**
+ * The drafts a writer should actually create: those the plan does not already carry by title.
+ *
+ * @param drafts         what this rail is about to create, in the traveler's own order.
+ * @param existingTitles the titles the plan already holds. A blank/absent entry is ignored.
+ */
+export function eventsNotYetOnPlan(
+  drafts: readonly PlanEventDraft[],
+  existingTitles: readonly (string | null | undefined)[],
+): PlanEventDraft[] {
+  const existing = new Set<string>();
+  for (const title of existingTitles) {
+    if (typeof title !== "string") continue;
+    const key = planEventTitleKey(title);
+    if (key) existing.add(key);
+  }
+  return drafts.filter((draft) => !existing.has(planEventTitleKey(draft.title)));
+}

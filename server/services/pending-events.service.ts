@@ -50,6 +50,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { logger } from "../infrastructure/logger";
+import { eventsNotYetOnPlan } from "@shared/plan-events";
 import { drainRowValues, heldEventsFromContext, LEGACY_PEN_KEY, PEN_KEY } from "./pending-events.pure";
 
 export type DrainOutcome = {
@@ -131,19 +132,18 @@ export async function drainPendingEventsIntoTrip(input: {
     const existingRows = await db.execute(sql`
       SELECT title FROM user_experiences WHERE trip_id = ${tripId} AND user_id = ${userId}
     `);
-    const existing = new Set<string>(
-      ((existingRows as any).rows ?? [])
-        .map((r: any) => (typeof r.title === "string" ? r.title.trim().toLowerCase() : ""))
-        .filter(Boolean),
+    const existingTitles: Array<string | null> = ((existingRows as any).rows ?? []).map((r: any) =>
+      typeof r.title === "string" ? r.title : null,
     );
 
+    // THE IDENTITY RULE IS NOT STATED HERE — it is `eventsNotYetOnPlan` in `shared/plan-events.ts`
+    // (ledger `2026-09-06-event-mint-dedupe`), the ONE authority the plan modal's own save and the
+    // slip's "Organize into events" also call. A private copy of it in this file is precisely how
+    // this drain and the modal came to write the same two events twice in one click (§18 rule 1).
+    const toCreate = eventsNotYetOnPlan(held, existingTitles);
     let created = 0;
-    let skipped = 0;
-    for (const draft of held) {
-      if (existing.has(draft.title.toLowerCase())) {
-        skipped++;
-        continue;
-      }
+    const skipped = held.length - toCreate.length;
+    for (const draft of toCreate) {
       // Rule 6 (ledger `2026-09-04-event-time-ui`): a held row's OWN day, time and place are what
       // the traveler answered on step 5, and a field they did not answer inherits the PLAN's day
       // and destination through the ONE shared `planEventRowValues` — the same rule the modal's
