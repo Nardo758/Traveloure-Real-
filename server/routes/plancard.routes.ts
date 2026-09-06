@@ -128,13 +128,11 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // D3 (LD 42, Sep 5 2026): in_planning-only is NO LONGER sufficient — an in_planning row
       // carrying `expert_note` or `origin='expert'` is paid human work and survives the replace,
       // so the delete ANDs in the ONE expert-work clause (`itineraryItemNotExpertWork`), the same
-      // class `itineraryItemRebuildDeletable()` now carries — never a second predicate.
-      // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
-      // This transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
+      // class `itineraryItemRebuildDeletable()` now carries — never a second predicate. This
+      // transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
       // diary row); a plan rebuild is not a removal, so no per-row `item_removed` (§13, R15).
-      // rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/
-      // booked rows are preserved by construction (D-1 invariant) and expert-work rows by the D3
-      // clause ANDed into the WHERE; the full guard predicate is not re-stated here.
+      // rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/booked rows preserved by construction (D-1); expert work by the D3 clause ANDed into the WHERE.
+      // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
       await tx
         .delete(itineraryItems)
         .where(and(
