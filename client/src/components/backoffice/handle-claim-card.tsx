@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Link2, Copy, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useClaimHandle } from "@/hooks/use-claim-handle";
+import { clearPendingHandle } from "@/lib/pending-handle";
 
 export function HandleClaimCard({ currentHandle }: { currentHandle?: string | null }) {
   const { user } = useAuth() as {
@@ -21,23 +23,14 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const claimMutation = useMutation({
-    mutationFn: async (next: string) => {
-      const res = await fetch("/api/me/handle", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ handle: next }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.message ?? `Failed (${res.status})`);
-      return body as { handle: string };
+  // ONE client writer of PATCH /api/me/handle (ledger `2026-09-05-handles-are-claimed`): this
+  // card, the console claim banner and the two wizards' handle step all go through the hook.
+  const claimMutation = useClaimHandle({
+    onClaimed: (claimed) => {
+      // A handle held from an application wizard has served its purpose the moment one is claimed.
+      clearPendingHandle();
+      toast({ title: "Handle saved", description: `Your storefront: /s/${claimed}` });
     },
-    onSuccess: (data) => {
-      toast({ title: "Handle saved", description: `Your storefront: /s/${data.handle}` });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-    },
-    onError: (e: Error) => toast({ title: "Could not save handle", description: e.message, variant: "destructive" }),
   });
 
   const saved = claimMutation.data?.handle ?? existing;
@@ -112,7 +105,12 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
             data-testid="input-handle"
           />
           <Button
-            onClick={() => claimMutation.mutate(handle)}
+            onClick={() =>
+              claimMutation.mutate(handle, {
+                onError: (e: Error) =>
+                  toast({ title: "Could not save handle", description: e.message, variant: "destructive" }),
+              })
+            }
             disabled={claimMutation.isPending || handle.trim().length < 3}
             data-testid="button-save-handle"
           >

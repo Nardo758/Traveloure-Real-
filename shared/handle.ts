@@ -28,3 +28,13 @@ export function isHandleShape(value: string | null | undefined): boolean {
 export function normalizeHandle(value: string): string {
   return value.trim().toLowerCase();
 }
+
+/**
+ * Length bounds, stated ONCE. `HANDLE_RE` already encodes them (1 + {1,28} + 1 = 3–30), but the
+ * claim route's zod schema needs them as NUMBERS to produce its own min/max messages, and the
+ * suggestion helper needs them to truncate. Before this they were re-typed as literals at the
+ * route; a second copy is the derivation-drift class §18 rule 1 names — the day the cap moves,
+ * a restated `30` would silently disagree with the regex that actually decides.
+ */
+export const HANDLE_MIN_LENGTH = 3;
+export const HANDLE_MAX_LENGTH = 30;

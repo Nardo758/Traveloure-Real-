@@ -82,6 +82,58 @@ interface ExperienceMapProps {
   hotelLocation?: HotelLocation;
   transitRoutes?: Map<string, TransitRoute | null>;
   highlightedActivityId?: string | null;
+  /**
+   * The one door out of the no-location state — the mounting page's planning modal opener.
+   * §13: when no door is passed the panel states the absence and stops, rather than rendering a
+   * button that would do nothing (the `venue-search-panel` precedent, QA F7).
+   */
+  onSetLocation?: () => void;
+}
+
+/**
+ * The map's centre, or null when NOTHING real names one.
+ *
+ * §13 / Locked Decision 22(c) / 34: a map never falls back to a city centre. This component used
+ * to end its chain with a hardcoded Lower-Manhattan coordinate pair — so a plan with no
+ * destination drew New York under the traveler's itinerary, with markers spread around it, and
+ * nothing on screen said the coordinates were invented. Every candidate below is a REAL coordinate somebody stated:
+ * the resolved destination, the providers already on the map, a booked hotel, a booked activity.
+ * When they are all absent the answer is null and the caller renders no map.
+ */
+export function resolveMapCenter(input: {
+  destinationCenter?: { lat: number; lng: number } | null;
+  providers?: Array<{ id: string; lat: number; lng: number }>;
+  selectedProviderIds?: string[];
+  hotelLocation?: { lat: number; lng: number } | null;
+  activityLocations?: Array<{ lat: number; lng: number }>;
+}): { lat: number; lng: number } | null {
+  const finite = (p: { lat: number; lng: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng);
+
+  if (input.destinationCenter && finite(input.destinationCenter)) return input.destinationCenter;
+
+  const providers = (input.providers ?? []).filter(finite);
+  if (providers.length > 0) {
+    const selectedIds = input.selectedProviderIds ?? [];
+    const customVenues = providers.filter((p) => isCustomVenue(p.id));
+    const selectedItems = providers.filter((p) => selectedIds.includes(p.id));
+    const priority = customVenues.length > 0 ? customVenues : selectedItems.length > 0 ? selectedItems : providers;
+    return {
+      lat: priority.reduce((sum, p) => sum + p.lat, 0) / priority.length,
+      lng: priority.reduce((sum, p) => sum + p.lng, 0) / priority.length,
+    };
+  }
+
+  if (input.hotelLocation && finite(input.hotelLocation)) return input.hotelLocation;
+
+  const activities = (input.activityLocations ?? []).filter(finite);
+  if (activities.length > 0) {
+    return {
+      lat: activities.reduce((sum, a) => sum + a.lat, 0) / activities.length,
+      lng: activities.reduce((sum, a) => sum + a.lng, 0) / activities.length,
+    };
+  }
+
+  return null;
 }
 
 const categoryColors: Record<string, string> = {
@@ -129,7 +181,8 @@ const isCustomVenue = (id: string) => id.startsWith("custom-");
 function MapContent({ 
   providers,
   selectedProviderIds = [],
-  destinationCenter,
+  center,
+  recenterKey,
   onAddToCart,
   onRemoveFromCart,
   activityLocations = [],
@@ -139,7 +192,10 @@ function MapContent({
 }: { 
   providers: MapProvider[]; 
   selectedProviderIds?: string[];
-  destinationCenter?: { lat: number; lng: number } | null;
+  /** Already resolved and proven real by the caller — never a city-centre default (§13). */
+  center: { lat: number; lng: number };
+  /** Remount key — changes only when the DESTINATION changes, so the map recenters on it. */
+  recenterKey: string;
   onAddToCart?: (provider: MapProvider) => void;
   onRemoveFromCart?: (providerId: string) => void;
   activityLocations?: ActivityLocation[];
@@ -153,41 +209,17 @@ function MapContent({
   
   const isSelected = (id: string) => selectedProviderIds.includes(id);
 
-  const center = useMemo(() => {
-    // Prioritize destination center when available - this ensures the map
-    // follows the user's Travel Details destination, not stale provider data
-    if (destinationCenter) {
-      return destinationCenter;
-    }
-    
-    // Fall back to provider-based centering only if no destination is set
-    if (providers.length > 0) {
-      const customVenues = providers.filter(p => isCustomVenue(p.id));
-      const selectedItems = providers.filter(p => selectedProviderIds.includes(p.id));
-      
-      const priorityProviders = customVenues.length > 0 
-        ? customVenues 
-        : selectedItems.length > 0 
-          ? selectedItems 
-          : providers;
-      
-      const avgLat = priorityProviders.reduce((sum, p) => sum + p.lat, 0) / priorityProviders.length;
-      const avgLng = priorityProviders.reduce((sum, p) => sum + p.lng, 0) / priorityProviders.length;
-      return { lat: avgLat, lng: avgLng };
-    }
-    
-    // Default to New York if nothing else is available
-    return { lat: 40.7128, lng: -74.0060 };
-  }, [providers, selectedProviderIds, destinationCenter]);
-
-  // Create a stable key that changes when destination changes, forcing map to recenter
-  const mapKey = destinationCenter 
-    ? `map-${destinationCenter.lat.toFixed(4)}-${destinationCenter.lng.toFixed(4)}`
-    : 'map-default';
+  // The centre is RESOLVED BY THE CALLER (`resolveMapCenter` below) and is never null here: when
+  // nothing real names a place, `ExperienceMap` renders no map at all rather than mounting this
+  // component over a guessed coordinate. This component therefore has no fallback of its own.
+  //
+  // The remount key stays keyed on the DESTINATION (`recenterKey`), unchanged: it exists so a new
+  // destination recenters the map, and keying it on the resolved centre instead would remount the
+  // map every time a filter changed the provider average.
 
   return (
     <Map
-      key={mapKey}
+      key={recenterKey}
       defaultCenter={center}
       defaultZoom={12}
       gestureHandling="greedy"
@@ -359,7 +391,7 @@ function MapContent({
 }
 
 export function ExperienceMap({ 
-  providers,
+  providers = [],
   selectedProviderIds = [],
   destination,
   destinationCenter: parentDestinationCenter,
@@ -370,7 +402,8 @@ export function ExperienceMap({
   activityLocations = [],
   hotelLocation,
   transitRoutes,
-  highlightedActivityId
+  highlightedActivityId,
+  onSetLocation
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -407,6 +440,19 @@ export function ExperienceMap({
     return null;
   }, [parentDestinationCenter, locationData]);
 
+  // ONE resolution, shared by the map and by the decision NOT to draw one (§18 rule 1).
+  const center = useMemo(
+    () =>
+      resolveMapCenter({
+        destinationCenter,
+        providers,
+        selectedProviderIds,
+        hotelLocation,
+        activityLocations,
+      }),
+    [destinationCenter, providers, selectedProviderIds, hotelLocation, activityLocations],
+  );
+
   if (!apiKey) {
     return (
       <div className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)} style={{ height }}>
@@ -421,8 +467,44 @@ export function ExperienceMap({
     );
   }
 
-  // Always show the map - it will default to NYC if no destination is set
-  // This ensures users see the map immediately instead of a placeholder
+  /**
+   * NO LOCATION YET — §13 / Locked Decision 22(c), 34: "no map at all when the plan has no
+   * coordinates", never a city-centre fallback.
+   *
+   * The comment this replaces argued that the map should ALWAYS render, defaulting to New York
+   * when no destination was set, so that a traveler saw a map immediately instead of a
+   * placeholder. That is the defect stated as a feature, and it is retracted: post-publish QA
+   * (2026-09-05) opened a plan with no destination and got Lower Manhattan, plus a "N providers"
+   * chip counting markers that had been scattered around it. Nothing on screen said any of it
+   * was invented. An honest placeholder is the correct answer here.
+   *
+   * The copy is the SAME no-location state `venue-search-panel` already shows on this page's
+   * left column (QA F7), so the two halves of the screen now say the same true thing, and it
+   * carries the same one door out of it.
+   */
+  if (!center) {
+    return (
+      <div
+        className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)}
+        style={{ height }}
+        data-testid="experience-map-no-location"
+      >
+        <div className="text-center p-6 max-w-md">
+          <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-semibold mb-2">Your plan doesn't have a location yet</h3>
+          <p className="text-sm text-muted-foreground">
+            The map shows places once your plan names a location. Set one and it'll appear here.
+          </p>
+          {onSetLocation && (
+            <Button className="mt-5" onClick={onSetLocation} data-testid="button-set-location-from-map">
+              <MapPin className="w-4 h-4 mr-2" />
+              Set your location
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const selectedCount = selectedProviderIds.length;
 
@@ -445,7 +527,12 @@ export function ExperienceMap({
           <MapContent 
             providers={providers} 
             selectedProviderIds={selectedProviderIds}
-            destinationCenter={destinationCenter}
+            center={center}
+            recenterKey={
+              destinationCenter
+                ? `map-${destinationCenter.lat.toFixed(4)}-${destinationCenter.lng.toFixed(4)}`
+                : "map-default"
+            }
             onAddToCart={onAddToCart}
             onRemoveFromCart={onRemoveFromCart}
             activityLocations={activityLocations}
@@ -457,10 +544,21 @@ export function ExperienceMap({
       </MapErrorBoundary>
       
       <div className="absolute top-3 left-3 flex flex-col gap-2">
+        {/*
+          Counts the PINS ON THIS MAP, and now says so. Post-publish QA (2026-09-05) watched this
+          read "8 providers" and then "0 providers" the moment the destination modal was
+          dismissed — while the page's service list (`GET /api/provider-services`, not keyed on
+          destination) had not changed at all. It was never a count of providers found: it is
+          `mapProviders.length`, and that array is gated on the plan having a place to draw
+          around. "0 providers" therefore read as "we searched and found none", which is a claim
+          nobody made (§13). Two changes: the label names what it counts, and the whole overlay
+          only exists when there IS a map — with no centre the component returns its no-location
+          state above and this chip never renders a zero.
+        */}
         <div className="bg-white dark:bg-gray-900 rounded-md shadow-md p-2">
           <div className="flex items-center gap-2 text-xs">
             <Route className="w-4 h-4 text-primary" />
-            <span className="font-medium">{providers.length} providers</span>
+            <span className="font-medium" data-testid="map-pin-count">{providers.length} on this map</span>
           </div>
         </div>
         {selectedCount > 0 && (

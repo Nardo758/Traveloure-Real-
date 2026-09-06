@@ -64,7 +64,7 @@ function occurrences(haystack: string, needle: string): number {
   return n;
 }
 
-describe("S1/S2 — the experience template's three doors are ONE door", () => {
+describe("S1/S2 — the experience template's doors are ONE door", () => {
   const src = read(TEMPLATE);
   const DOOR = "openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })";
 
@@ -72,8 +72,18 @@ describe("S1/S2 — the experience template's three doors are ONE door", () => {
     assert.ok(src.includes(DOOR), "the ruled door shape is not present at all");
   });
 
-  it("passes it at ALL THREE call sites — two of three renders identically and the guard goes green", () => {
-    assert.equal(occurrences(src, DOOR), 3);
+  it("passes it at EVERY call site — a partial fix renders identically and the guard goes green", () => {
+    // Count the opener's CALL SITES, not a literal number: ledger
+    // 2026-09-05-template-card-and-preview-door turned the "Itinerary Preview" ribbon into a
+    // fourth door with this same shape, and a pinned `3` failed on a correct change. A comment
+    // that mentions `openPlanModal(` and the hook's own destructure are not doors.
+    const callSites = src
+      .split("\n")
+      .filter((l) => /openPlanModal\(/.test(l))
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .filter((l) => !/const \{ open: openPlanModal \}/.test(l));
+    assert.ok(callSites.length >= 3, `expected at least the three original doors, found ${callSites.length}`);
+    assert.equal(occurrences(src, DOOR), callSites.length, "every opener call site passes the one door shape");
     // And no bare opener survives beside them, at a CALL SITE — the file's prose mentions
     // `openPlanModal()` in a comment, and a comment is not a door.
     assert.ok(!/=>\s*openPlanModal\(\)/.test(src), "a bare arrow door survives");
