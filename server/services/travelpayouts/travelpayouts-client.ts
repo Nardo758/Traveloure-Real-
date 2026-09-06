@@ -25,9 +25,10 @@ export function getTravelpayoutsMarker(): string {
  * report echoes it back and the reconciliation matcher can adopt the REAL commission on an
  * exact match instead of ever estimating one. See docs/MONEY_MAP.md F-5.
  *
- * DORMANT: nothing calls buildAttributionSubId to rewrite an outbound link yet — that only
- * happens behind the `TP_SUBID_ATTRIBUTION=1` env flag, itself gated on a live echo test
- * confirming Travelpayouts actually returns the suffixed sub_id verbatim.
+ * LIVE since ledger `2026-09-05-affiliate-subid-live`. The ONE builder that rewrites an outbound
+ * link is `server/services/affiliate-attribution.service.ts` `buildAttributedAffiliateUrl`, which
+ * composes these two helpers; it is no longer flag-gated. This pair stays the single authority on
+ * the `<marker>.<token>` ENCODING — do not re-implement either half at a call site.
  */
 export function buildAttributionSubId(token: string): string {
   return `${getTravelpayoutsMarker()}.${token}`;
@@ -50,6 +51,11 @@ export function parseAttributionSubId(subId: string): { marker: string; token: s
 }
 
 /**
+ * SUPERSEDED by `affiliate-attribution.service.ts` `buildAttributedAffiliateUrl`, which is the ONE
+ * builder every outbound booking-request link goes through (ledger `2026-09-05-affiliate-subid-live`).
+ * Kept because it is the flag-gated shape the F-5 dormant-machinery tests pin; no production call
+ * site remains. Do not add one — a second rewriter is the derivation drift §18 rule 1 names.
+ *
  * MONEY_MAP F-5: rewrite `url`'s `sub_id` query param to the attribution token, but ONLY when
  * `enabled` (the caller passes `TP_SUBID_ATTRIBUTION==='1'` explicitly rather than this function
  * reading process.env itself) and the URL actually carries a `sub_id` param. Pure and directly

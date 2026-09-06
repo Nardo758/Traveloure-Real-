@@ -5366,11 +5366,13 @@ export default function ExpertWorkspace() {
                               )}
                               {req.userNotes && <div style={{ fontSize: 11, color: MID, background: GROUND, borderRadius: 6, padding: "4px 8px", marginBottom: 6 }}>{req.userNotes}</div>}
                               {req.expertNotes && <div data-testid={`text-expert-notes-${req.id}`} style={{ fontSize: 11, color: req.expertNotes.includes("[ATTACHMENT BLOCKED]") ? DANGER : MID, background: req.expertNotes.includes("[ATTACHMENT BLOCKED]") ? DANGER_SOFT : GROUND, borderRadius: 6, padding: "4px 8px", marginBottom: 6, whiteSpace: "pre-wrap" }}>{req.expertNotes}</div>}
-                              {req.affiliateUrl && (
-                                <a href={req.affiliateUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-booking-${req.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: BRAND, fontWeight: 600, textDecoration: "none", padding: "4px 9px", border: `1px solid ${BRAND}`, background: BRAND_SOFT, borderRadius: 7, marginBottom: 8 }}>
-                                  <ExternalLink style={{ width: 11, height: 11 }} />Open booking link
-                                </a>
-                              )}
+                              {/* §16 + MONEY_MAP F-5 (ledger `2026-09-05-affiliate-subid-live`): the partner URL
+                                  no longer reaches this client at all — the expert list strips it. The agent opens
+                                  the link through the server's tracked-open route, which resolves it, stamps this
+                                  request's id into the partner's attribution parameter, records the click and 302s. */}
+                              <a href={`/api/affiliate-booking-requests/${req.id}/open`} target="_blank" rel="noopener noreferrer" data-testid={`link-booking-${req.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: BRAND, fontWeight: 600, textDecoration: "none", padding: "4px 9px", border: `1px solid ${BRAND}`, background: BRAND_SOFT, borderRadius: 7, marginBottom: 8 }}>
+                                <ExternalLink style={{ width: 11, height: 11 }} />Open booking link
+                              </a>
                               {req.status !== "confirmed" && req.status !== "failed" && (
                                 <>
                                   <VerificationPanel verification={req.verification} testId={`verification-panel-${req.id}`} />

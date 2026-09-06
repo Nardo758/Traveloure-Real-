@@ -26,7 +26,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
 import { EgressBlockedError } from "../utils/egress-guard";
-import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
+import { buildAttributedAffiliateUrl } from "../services/affiliate-attribution.service";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
@@ -7544,14 +7544,17 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
       const status = expertId ? "assigned" : "pending";
 
-      // Same MONEY_MAP F-5 (dormant) sub_id attribution seam as the /from-catalog variant below:
-      // pre-generate the id so the flag-gated token can be baked into the stored URL up front.
+      // MONEY_MAP F-5 (LIVE — ledger `2026-09-05-affiliate-subid-live`): attribution is per
+      // REQUEST, so this row's id is stamped into the partner's own attribution parameter through
+      // the ONE builder. Pre-generate the id so the token is baked into affiliateUrl BEFORE the
+      // row is written once — never patched after. A partner whose link carries no attribution
+      // parameter gets the URL back byte-identical and says so (§13, never a fake parameter).
       const bookingRequestId = crypto.randomUUID();
-      const affiliateUrlToStore = applyAttributionSubId(
-        resolved.url,
-        bookingRequestId,
-        process.env.TP_SUBID_ATTRIBUTION === "1"
-      );
+      const attribution = buildAttributedAffiliateUrl({
+        affiliateUrl: resolved.url,
+        requestId: bookingRequestId,
+      });
+      const affiliateUrlToStore = attribution.url;
 
       const record = await storage.createAffiliateBookingRequest({
         id: bookingRequestId,
@@ -7621,18 +7624,19 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
       const status = expertId ? "assigned" : "pending";
 
-      // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
-      // future Travelpayouts commission report echoes it back and the reconciliation matcher can
-      // adopt a REAL amount on an exact match instead of ever estimating one. Pre-generate the id
-      // (rather than reading it back post-insert) so the token can be baked into affiliateUrl BEFORE
-      // it is stored — the record is written once, never patched. Flag OFF (default) → the pure
-      // applyAttributionSubId helper returns the URL unchanged — byte-identical current behavior.
+      // MONEY_MAP F-5 (LIVE — ledger `2026-09-05-affiliate-subid-live`): stamp the booking-request
+      // id onto the outbound link's attribution parameter so the partner's commission report echoes
+      // it back and the reconciliation matcher can adopt a REAL amount on an exact match instead of
+      // ever estimating one. Pre-generate the id (rather than reading it back post-insert) so the
+      // token can be baked into affiliateUrl BEFORE it is stored — the record is written once,
+      // never patched. Same ONE builder as the rail above; a partner with no attribution parameter
+      // gets the URL unchanged and the return shape says so (§13).
       const bookingRequestId = crypto.randomUUID();
-      const affiliateUrlToStore = applyAttributionSubId(
-        resolved.affiliateUrl,
-        bookingRequestId,
-        process.env.TP_SUBID_ATTRIBUTION === "1"
-      );
+      const attribution = buildAttributedAffiliateUrl({
+        affiliateUrl: resolved.affiliateUrl,
+        requestId: bookingRequestId,
+      });
+      const affiliateUrlToStore = attribution.url;
 
       const record = await storage.createAffiliateBookingRequest({
         id: bookingRequestId,
@@ -7691,6 +7695,104 @@ router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req
     } catch (err: any) {
       console.error("[AffiliateBooking] expert list error:", err);
       return res.status(500).json({ message: "Failed to fetch booking requests" });
+    }
+  });
+
+
+
+// §16 + MONEY_MAP F-5 (LIVE — ledger `2026-09-05-affiliate-subid-live`): THE TRACKED OPEN.
+//
+// The partner URL never reaches a client. Both list readers strip `affiliate_url` and both create
+// rails strip it from their response, so the ONE way anybody opens a partner link for an
+// `affiliate_booking_requests` row is this route: it resolves the URL server-side, runs it through
+// the ONE attribution builder, records an `affiliate_clicks` row carrying `booking_request_id`,
+// and 302s. Nothing is returned in a response body.
+//
+// WHO MAY OPEN IT — two audiences, one route:
+//   • the booking AGENT: an expert or admin, the same pooled-queue authorization the PATCH and the
+//     expert list use (this rail has never had per-row expertId ownership).
+//   • the TRAVELER whose request it is (`row.userId === session`), the traveler-facing tracked
+//     open. §14: the identity comes from the SESSION, never from the body or the query string.
+// Anyone else gets a 403 and no URL.
+//
+// The builder is IDEMPOTENT, which is why the open re-runs it rather than trusting the stored
+// string: a row created before this lane (or one whose partner link carried no attribution
+// parameter at create time) is attributed here on the way out, and a row created after it is
+// rewritten to the identical value. The stored row is deliberately NOT patched — it is written
+// once at create.
+//
+// §14/§15: no amount, no rate, no identity and no money movement is decided here. This is
+// attribution and click tracking only.
+router.get("/api/affiliate-booking-requests/:id/open", isAuthenticated, async (req, res) => {
+    try {
+      const sessionUserId = getUserId(req)!;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+      const { id } = req.params;
+      const row = await storage.getAffiliateBookingRequestById(id);
+      if (!row) return res.status(404).json({ message: "Request not found" });
+
+      const isOwner = row.userId === sessionUserId;
+      let openedBy: "user" | "expert" = "user";
+      if (!isOwner) {
+        const dbUser = await storage.getUser(sessionUserId);
+        const isAgent = !!dbUser && (isExpertRole(dbUser.role ?? "") || dbUser.role === "admin");
+        if (!isAgent) {
+          return res.status(403).json({ message: "Not authorized to open this booking link" });
+        }
+        openedBy = "expert";
+      }
+
+      if (!row.affiliateUrl) {
+        // §13: an absent link is said out loud, never papered over with a partner homepage.
+        return res.status(404).json({ message: "This request has no partner link to open" });
+      }
+
+      // Pre-generate the click id so the ONE builder sees the same attribution decision the click
+      // row records. The click id is deliberately NOT written into the URL — the partner report
+      // echoes exactly one attribution field and the booking-request id is the token the
+      // reconciliation matcher keys on (see affiliate-attribution.service.ts).
+      const clickId = crypto.randomUUID();
+      const attribution = buildAttributedAffiliateUrl({
+        affiliateUrl: row.affiliateUrl,
+        requestId: row.id,
+        clickId,
+      });
+
+      try {
+        await insertAffiliateClick({
+          id: clickId,
+          productId: null,
+          partnerId: null,
+          userId: sessionUserId,
+          tripId: row.tripId ?? null,
+          bookingRequestId: row.id,
+          referrer: req.headers.referer || null,
+          userAgent: (req.headers["user-agent"] as string) || null,
+          ipAddress: req.ip || null,
+          initiatedBy: openedBy,
+          agentType: null,
+          sessionId: row.partnerName || null,
+        });
+      } catch (clickErr) {
+        // Best-effort ledger write: a tracking failure must not strand the agent mid-booking. The
+        // attribution that actually earns the commission rides on the URL itself, which is built
+        // above regardless. Logged, never swallowed silently.
+        console.error(`[AffiliateBooking] click ledger write failed for ${id} (non-fatal):`, clickErr);
+      }
+
+      if (!attribution.attributed) {
+        // §13: say why a link went out unattributed — "this partner has no sub_id concept" and
+        // "we forgot to stamp it" must not render identically in the logs.
+        console.info(
+          `[AffiliateBooking] outbound open ${id} not attributed (${attribution.reason}) — partner ${row.partnerName}`,
+        );
+      }
+
+      // §16: the URL is never in a response BODY. It leaves only as a Location header.
+      return res.redirect(302, attribution.url);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] open error:", err);
+      return res.status(500).json({ message: "Failed to open booking link" });
     }
   });
 
@@ -7787,7 +7889,11 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           // Lost the atomic claim race — another request already confirmed this booking.
           // Idempotent no-op: return the current (already-confirmed) row, not a 404/error.
           const current = await storage.getAffiliateBookingRequestById(id);
-          if (current) return res.json({ ...current, alreadyConfirmed: true });
+          if (current) {
+            // §16: same strip as the success path below — never publish the partner URL.
+            const { affiliateUrl: _currentUrl, ...safeCurrent } = current;
+            return res.json({ ...safeCurrent, alreadyConfirmed: true });
+          }
         }
         return res.status(404).json({ message: "Request not found" });
       }
@@ -7886,12 +7992,16 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         }
       }
 
+      // §16 (ledger `2026-09-05-affiliate-subid-live`): the partner URL is NOT in this response
+      // either — it used to be ("Include affiliateUrl for expert responses"). The agent opens the
+      // link through GET /api/affiliate-booking-requests/:id/open, which resolves and attributes it
+      // server-side and 302s, so the attributed URL never exists client-side.
+      const { affiliateUrl: _patchedUrl, ...safeUpdated } = updated;
       if (attachmentBlocked) {
         console.warn(`[AffiliateBooking] attachment blocked for ${id} (expert ${sessionUserId}): ${attachmentReason}`);
-        return res.json({ ...updated, attachmentBlocked: true, attachmentReason });
+        return res.json({ ...safeUpdated, attachmentBlocked: true, attachmentReason });
       }
-      // Include affiliateUrl for expert responses
-      return res.json(updated);
+      return res.json(safeUpdated);
     } catch (err: any) {
       console.error("[AffiliateBooking] patch error:", err);
       return res.status(500).json({ message: "Failed to update booking request" });
