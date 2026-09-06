@@ -297,6 +297,16 @@ export interface PlanCardActivity {
    * sole write rails are the two server-verified item mutations.
    */
   userExperienceId?: string | null;
+  /**
+   * Migration 181 (ledger `2026-09-06-item-origin-chip`, CLAUDE.md Locked Decision 12) —
+   * `itinerary_items.origin`: WHO put this item on the plan. Mirrors `TripPlanActivity.origin`
+   * (shared/trip-plan.ts): PRESENT ONLY when the row really carries one, so an ABSENT key and a
+   * NULL both mean NOT RECORDED — never "the traveler added it" (§13). Rendered through the ONE
+   * mapping, `itemOriginChip` (client/src/lib/item-origin.ts), which draws no chip for an origin
+   * it does not recognise. Read-only on this contract: the column is stamped server-side at create
+   * and is client-settable on no rail.
+   */
+  origin?: string | null;
 }
 
 export interface PlanCardTransport {

@@ -1205,6 +1205,46 @@ jobs:
       - name: Slip rail pin
         run: npx tsx --test client/src/lib/__tests__/slip-rail.test.ts
 
+  item-origin-chip:
+    name: item-origin-chip (CLAUDE.md Locked Decision 12 read-exposure - 2026-09-06-item-origin-chip)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # Deps are REQUIRED, not optional: `plancard-origin-exposure.test.ts` walks and reads shipped
+      # source with node built-ins, but `item-origin.test.ts` IMPORTS the shipped helper, and the
+      # client lib graph resolves through the installed toolchain. Appending either suite to one of
+      # the built-ins-only guard jobs that skip `npm ci` fails with ERR_MODULE_NOT_FOUND.
+      - run: npm ci
+      # 2026-09-06-item-origin-chip (CLAUDE.md Locked Decision 12 / migration 181, and Locked
+      # Decision 42's D23 addendum). `itinerary_items.origin` becomes READABLE on the plancard's
+      # `full` channel and stays UNWRITABLE everywhere. Every rule here is invisible on happy-path
+      # data: read exposure is one line from write exposure, and a later lane "completing" the
+      # round trip by naming `origin` in an allowlist would let a traveler forge an item as
+      # "from your expert" on a plan no expert has touched — R4-R8 pin the omit list, every
+      # pick-based allowlist over the table, both create rails' strip-and-re-derive, the PATCH
+      # destructure and that no server file reads the column off a request body. R1-R3 pin
+      # present-only-when-set, because the column is nullable with no DB CHECK: an `origin: null`
+      # key, or a `?? "traveler"`, would put an authorship claim on every row predating the column
+      # and every screen would look correct (§13). R9-R11 pin that the three chip labels appear
+      # TOGETHER in exactly one module - the pin is the TRIPLE and the distinctive "you added",
+      # both derived from a walk of the file set rather than a literal count, so a second label
+      # table anywhere is a failure. R12 holds the teaser/preview early-returns above the activity
+      # builder so provenance cannot reach a public share card, and R13 pins that `aiSketch` stays
+      # server-derived now that the DTO carries origin (a whole-plan predicate shared with the
+      # AI-draft eligibility gate - §18 rule 1).
+      - name: Plancard origin read-exposure pin
+        run: npx tsx --test server/__tests__/plancard-origin-exposure.test.ts
+      # The pure half: the ONE mapping. O6-O10 are the §13 rules - NULL and an absent key are the
+      # same "not recorded" answer and neither is "you added"; a value outside the three draws no
+      # chip rather than an "unknown" pill; and the lookup cannot be walked into a prototype
+      # (a row holding "constructor" must be absent, not a function).
+      - name: Item origin chip mapping
+        run: npx tsx --test client/src/lib/__tests__/item-origin.test.ts
+
   ai-draft-eligibility-guard:
     name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)
     runs-on: ubuntu-latest
