@@ -285,6 +285,62 @@ test.describe('/services — filters', () => {
   });
 });
 
+// ── 3b. /services — the category deep link ──────────────────────────────────
+
+test.describe('/services — category deep link', () => {
+  /**
+   * THE CATEGORY DEEP LINK ACTUALLY FILTERS (ledger `2026-09-06-role-chips-filter`).
+   *
+   * The slip's D6 role chips link here as `/services?categoryKey=<service_categories.category_key>`
+   * (`client/src/lib/services-browse.ts` — the ONE spelling both ends import). QA found the browse
+   * rendering an ordinary UNFILTERED list for a real chip href, which is the failure nobody
+   * notices: no error, no 404, no empty state — a page that looks exactly like a discipline with
+   * no supply. Only a browser can see it, so it is asserted here.
+   *
+   * `tour_guide` is used because the CI database really carries it: migration
+   * `034_phase1_reconcile_service_categories.sql` (the taxonomy registry in
+   * `scripts/lib/taxonomy-registry.cjs`) assigns it to the `tours-experiences` row, which is also
+   * one of the curated chips. `florist` — the key QA used — is in the same registry but OUTSIDE
+   * the curated shortlist, and is asserted second because that is the case where the rail used to
+   * highlight "All" while the results were filtered: the page stating the opposite of what it
+   * showed.
+   */
+  test('?categoryKey= pre-filters the browse, and the applied category always has an active chip', async ({ page }) => {
+    // TWO full page loads of an unbundled dev server (~13s each on the CI runner) do not fit the
+    // 30s default. The budget is the only thing raised — every assertion below is web-first and
+    // resolves in milliseconds once the page is up.
+    test.slow();
+
+    // 1. A key the curated shortlist already carries.
+    await gotoPath(page, '/services?categoryKey=tour_guide');
+    const toursChip = page.getByTestId('button-quick-cat-tours-experiences');
+    await expect(toursChip).toBeVisible();
+    await expect(toursChip).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('button-quick-cat-all')).toHaveAttribute('aria-pressed', 'false');
+    // The section eyebrow names the category rather than the whole catalog. It renders only when
+    // the filtered set is non-empty; an empty set is proof of its own (the unfiltered browse has
+    // cards), so both outcomes are accepted and neither may read "All services".
+    const eyebrow = page.getByTestId('text-services-eyebrow');
+    if (await eyebrow.count()) {
+      await expect(eyebrow).not.toContainText('All services');
+      await expect(eyebrow).toContainText('Tours & Experiences');
+    } else {
+      await expect(page.getByTestId('services-no-results')).toBeVisible();
+    }
+
+    // 2. A key OUTSIDE the curated six still gets its own chip, so the applied filter is visible
+    //    and can be pressed off. Without it the rail highlighted "All" over filtered results.
+    await gotoPath(page, '/services?categoryKey=florist');
+    const floristChip = page.getByTestId('button-quick-cat-floral-decoration');
+    await expect(floristChip).toBeVisible();
+    await expect(floristChip).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('button-quick-cat-all')).toHaveAttribute('aria-pressed', 'false');
+    // §13 — the honest note is for a key the catalog does NOT carry. This one it does, so the
+    // note must be absent: a resolved filter is not an unresolvable one.
+    await expect(page.getByTestId('text-quick-cat-unmatched')).not.toBeAttached();
+  });
+});
+
 // ── 4. Add to cart ───────────────────────────────────────────────────────────
 
 test.describe('/services — add to cart', () => {

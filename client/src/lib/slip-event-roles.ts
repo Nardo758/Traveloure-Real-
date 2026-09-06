@@ -36,19 +36,22 @@
  */
 
 /**
- * The query parameter the marketplace browse actually reads for a category key
- * (`client/src/pages/discover.tsx` — the upsell deep-link, `?categoryKey=<category_key>`, resolved
- * against the loaded `/api/service-categories` rows). Named as a constant so no surface invents a
- * second spelling of a param the page would silently ignore: a link with the wrong key renders a
- * perfectly normal unfiltered browse, which is exactly the failure nobody notices.
+ * THE BROWSE'S URL CONTRACT IS NOT THIS MODULE'S TO STATE (ledger `2026-09-06-role-chips-filter`).
+ *
+ * These three were declared HERE, on the link side only, so the browse that reads them
+ * (`client/src/pages/discover.tsx`) spelled the param out again as a bare literal — two independent
+ * strings that happened to agree, which is the drift class §18 rule 1 names. A link carrying a
+ * param the page ignores renders a perfectly normal UNFILTERED browse: the failure nobody notices.
+ * They now live in `services-browse.ts`, which BOTH ends import, and are re-exported here so this
+ * module's existing readers (and their pins) are untouched.
  */
-export const SERVICES_BROWSE_CATEGORY_PARAM = "categoryKey" as const;
+import { servicesBrowseHref } from "@/lib/services-browse";
 
-/** The trip handoff the browse already reads, so Add to plan lands on THIS plan (LD 39). */
-export const SERVICES_BROWSE_TRIP_PARAM = "tripId" as const;
-
-/** The browse route itself — `/services` in `App.tsx`. Stated once. */
-export const SERVICES_BROWSE_PATH = "/services" as const;
+export {
+  SERVICES_BROWSE_CATEGORY_PARAM,
+  SERVICES_BROWSE_TRIP_PARAM,
+  SERVICES_BROWSE_PATH,
+} from "@/lib/services-browse";
 
 /** One chip: the raw category key, and where pressing it goes. */
 export interface SlipEventRoleChip {
@@ -72,11 +75,9 @@ function trimmed(value: unknown): string {
  * write to is refused there exactly as it is today.
  */
 export function serviceBrowseHrefForRole(categoryKey: string, tripId?: string | null): string {
-  const params = new URLSearchParams();
-  params.set(SERVICES_BROWSE_CATEGORY_PARAM, categoryKey);
-  const trip = trimmed(tripId);
-  if (trip) params.set(SERVICES_BROWSE_TRIP_PARAM, trip);
-  return `${SERVICES_BROWSE_PATH}?${params.toString()}`;
+  // ONE builder of that href (`services-browse.ts`), one more caller. A second assembly of the
+  // same query string here is how the link and the page start disagreeing (§18 rule 1).
+  return servicesBrowseHref(categoryKey, tripId);
 }
 
 /**

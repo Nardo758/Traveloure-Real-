@@ -1528,50 +1528,58 @@ export function SlipView({
               THE TOGGLE keeps its honest map gating: Map is offered only when at least one stop is
               genuinely located, and its disabled title says why.
 
-              §13 — the whole bar is ABSENT on a plan with no items. Both halves count the same
-              rows, so with none there is nothing true for either to say, and the canvas's
-              "Nothing added yet" placeholder is deliberately not rendered: the empty state below
-              already says it once, in the list's own words. */}
-          {allActivities.length > 0 && (
-            <div
-              className="flex items-center justify-between gap-3 flex-wrap"
-              data-testid="slip-viewbar"
-            >
-              <div className="min-w-0">
+              §13 ON AN EMPTY PLAN (ledger `2026-09-06-role-chips-filter`) — the bar RENDERS, and
+              its left half says "Nothing added yet" in the canvas's own words. It used to be
+              absent altogether, which took the List | Map toggle with it: a fresh plan had no
+              view control at all, and the one row the canvas draws simply was not there. The
+              zero-omitting rule is untouched and is the reason the placeholder is a SENTENCE
+              rather than "0 planning · 0 purchased" — a status no row is in is not a segment, and
+              four zeroes would be four claims about rows that do not exist. `SlipStatusStrip`
+              still returns null when every count is zero, so the two can never both draw. */}
+          <div
+            className="flex items-center justify-between gap-3 flex-wrap"
+            data-testid="slip-viewbar"
+          >
+            <div className="min-w-0">
+              {allActivities.length > 0 ? (
                 <SlipStatusStrip activities={allActivities} />
-              </div>
-              <div className="flex items-center gap-3 flex-wrap" data-testid="slip-view-toggle">
-                <div className="inline-flex rounded-md border border-border overflow-hidden">
-                  <button
-                    type="button"
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                    onClick={() => setSlipView("list")}
-                    data-testid="button-slip-view-list"
-                  >
-                    <ListIcon className="w-3.5 h-3.5" /> List
-                  </button>
-                  <button
-                    type="button"
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
-                    onClick={() => setSlipView("map")}
-                    disabled={!!mapDisabledReason}
-                    title={mapDisabledReason ?? undefined}
-                    data-testid="button-slip-view-map"
-                  >
-                    <MapIcon className="w-3.5 h-3.5" /> Map
-                  </button>
-                </div>
-                {slipView === "map" && (
-                  <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
-                    <span className="font-semibold text-foreground">
-                      {locatedActivities.length} of {allActivities.length}
-                    </span>{" "}
-                    stop{allActivities.length === 1 ? "" : "s"} located
-                  </span>
-                )}
-              </div>
+              ) : (
+                <p className="text-sm text-muted-foreground" data-testid="slip-viewbar-empty">
+                  Nothing added yet
+                </p>
+              )}
             </div>
-          )}
+            <div className="flex items-center gap-3 flex-wrap" data-testid="slip-view-toggle">
+              <div className="inline-flex rounded-md border border-border overflow-hidden">
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => setSlipView("list")}
+                  data-testid="button-slip-view-list"
+                >
+                  <ListIcon className="w-3.5 h-3.5" /> List
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  onClick={() => setSlipView("map")}
+                  disabled={!!mapDisabledReason}
+                  title={mapDisabledReason ?? undefined}
+                  data-testid="button-slip-view-map"
+                >
+                  <MapIcon className="w-3.5 h-3.5" /> Map
+                </button>
+              </div>
+              {slipView === "map" && (
+                <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
+                  <span className="font-semibold text-foreground">
+                    {locatedActivities.length} of {allActivities.length}
+                  </span>{" "}
+                  stop{allActivities.length === 1 ? "" : "s"} located
+                </span>
+              )}
+            </div>
+          </div>
 
       {/* ── S5 · THE TRIP-LEVEL EXPERT NOTE (ledger `2026-09-06-slip-small-additions`) ─────────
           Locked Decision 21's `trips.expert_traveler_note` — the note the expert wrote FOR the
