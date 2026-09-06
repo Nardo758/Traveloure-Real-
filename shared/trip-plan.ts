@@ -305,6 +305,30 @@ export interface TripPlanActivity {
    */
   userExperienceId?: string;
 
+  /**
+   * ADDITIVE (migration 181, ledger `2026-09-06-item-origin-chip`) — `itinerary_items.origin`, the
+   * item's PROVENANCE: who put it on the plan. App-enforced value set `ai | traveler | expert`
+   * (CLAUDE.md Locked Decision 12), stamped SERVER-SIDE at create from the actor's role and
+   * client-settable nowhere — `insertItineraryItemSchema` omits it and the PATCH rail strips it,
+   * so this is a READ-ONLY pass-through and this assembler is not one of its writers.
+   *
+   * PRESENT ONLY WHEN THE ROW REALLY CARRIES ONE, the same posture as `booking`,
+   * `userExperienceId` and `affiliateBooking` above: an unstamped item is byte-identical to before
+   * this field existed (an absent key, not a null one). An ABSENT key means NOT RECORDED — every
+   * row that predates migration 181, plus any write path D2 deliberately left unstamped — and is
+   * NEVER read as "the traveler added it" (§13). The consumer draws no chip at all.
+   *
+   * TYPED AS `string`, NOT A UNION, ON PURPOSE: the column is a nullable `varchar(20)` with NO DB
+   * CHECK (the publish-trap posture), so the database can hold a value outside the three and a
+   * union here would be a claim the schema does not enforce. The client's ONE mapping
+   * (`client/src/lib/item-origin.ts`) narrows it and treats anything else as absent.
+   *
+   * FULL LEVEL ONLY. The `teaser` and `preview` channels return before any activity is built, so
+   * provenance never reaches a public share/link card — it rides exactly the owner / assigned
+   * advisor / author gate the plancard route already applies.
+   */
+  origin?: string;
+
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */
   type: string;
