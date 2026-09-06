@@ -37,7 +37,12 @@ test.describe("Journey 4 — Expert Supply Side (Onboarding → Service → Book
     await page.fill("[data-testid='input-hourly-rate']", "150");
     await page.click("[data-testid='button-next-step']");
 
-    // ── Step 8: Review & Submit ────────────────────────────────────────
+    // ── Step 8: Review → Next ──────────────────────────────────────────
+    await page.click("[data-testid='button-next-step']");
+
+    // ── Step 9: Your public handle (ledger `2026-09-05-handles-are-claimed`) ───
+    // Optional and skippable by design — nothing gates on it, and it writes nothing at submit
+    // (an applicant is not yet an earner, so the claim rail would 403). Left as prefilled.
     await page.click("[data-testid='button-submit-application']");
     await page.waitForSelector("text=Application submitted", { timeout: 10000 });
 
@@ -132,7 +137,11 @@ test.describe("Journey 5 — Provider Supply Side (Onboarding → Service → Bo
     await page.check("[data-testid='checkbox-license']");
     await page.click("[data-testid='button-next-step']");
 
-    // ── Step 6: Review & Submit ────────────────────────────────────────
+    // ── Step 6: Review → Next ──────────────────────────────────────────
+    await page.click("[data-testid='button-next-step']");
+
+    // ── Step 7: Your public handle (ledger `2026-09-05-handles-are-claimed`) ───
+    // Optional and skippable by design — see the expert funnel's note above.
     await page.click("[data-testid='button-submit-application']");
     await page.waitForSelector("text=Application submitted", { timeout: 10000 });
 

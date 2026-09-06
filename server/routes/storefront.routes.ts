@@ -25,7 +25,7 @@ import { Router } from "express";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
-import { HANDLE_RE } from "@shared/handle";
+import { HANDLE_RE, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from "@shared/handle";
 import { isOwnerIdentityVerified } from "../utils/earner-verification";
 import fs from "fs";
 import path from "path";
@@ -73,8 +73,10 @@ const claimSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
-    .min(3, "Handle must be at least 3 characters")
-    .max(30, "Handle must be at most 30 characters"),
+    // §18 rule 1: the bounds come from `shared/handle.ts` — the module that owns HANDLE_RE, which
+    // is what actually decides. Re-typed literals here would be a second authority.
+    .min(HANDLE_MIN_LENGTH, `Handle must be at least ${HANDLE_MIN_LENGTH} characters`)
+    .max(HANDLE_MAX_LENGTH, `Handle must be at most ${HANDLE_MAX_LENGTH} characters`),
 });
 
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {

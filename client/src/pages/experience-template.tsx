@@ -92,7 +92,6 @@ import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
-import { PlanCard } from "@/components/plancard/PlanCard";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
@@ -1323,6 +1322,37 @@ export default function ExperienceTemplatePage() {
   });
   const customVenues = customVenuesResp?.data ?? [];
 
+  /**
+   * The "Itinerary Preview" control's ONE handler — ledger `2026-09-05-template-card-and-preview-door`.
+   *
+   * It used to build an optimizer comparison out of this page's cart. Locked Decision 41 put
+   * Optimize on the SLIP (the paid rail, review-first, with its own preview line and fee quote),
+   * and ratified Locked Decision 42 D8 says a plan still being built is READ at /plans/:tripId.
+   * A second optimizer door on an add surface is that decision written twice, so this one hands
+   * off instead. Which door it opens is decided by one fact — is this page bound to a plan:
+   *
+   *   • bound   → the slip. Nothing here quotes the fee, calls the pay gate or mints a
+   *               comparison; the slip owns all three.
+   *   • unbound → the ONE planning modal (ledger `2026-09-04-one-modal-many-doors`), because
+   *               there is no plan to optimize yet and a plan is what the traveler needs first.
+   *
+   * §13 / D12: neither door invents a destination or a date. The modal is precisely the surface
+   * that ASKS for them, and it is handed only what this page actually holds (an empty value is
+   * passed as `undefined` — absent means "not known", "" would be a stated blank).
+   *
+   * The slip address is written literally rather than through `planningRouteForTrip`: that helper
+   * routes a plan whose END DATE has passed to the trip card, and the date it would read here is
+   * this page's own form state, which is not guaranteed to be the linked plan's. A stale local
+   * date must not decide where the traveler lands.
+   */
+  const openItineraryPreviewDoor = () => {
+    if (linkedTripId) {
+      setLocation(`/plans/${linkedTripId}`);
+      return;
+    }
+    openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined });
+  };
+
   const createComparison = async () => {
     if (cart.length === 0) {
       toast({ variant: "destructive", title: "Cart is empty", description: "Add some services first" });
@@ -1330,6 +1360,24 @@ export default function ExperienceTemplatePage() {
     }
     if (!user) {
       toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
+      return;
+    }
+    // Ratified Locked Decision 42 D12 (and §13): no rail may invent a destination or a date.
+    // This block used to fall back to `today` for a missing start and `today + 7 days` for a
+    // missing end, which stamped a comparison — and everything downstream reads off it — with
+    // two dates the traveler never gave. An unanswered date is a finished answer ("not stated"),
+    // so the honest move is to ASK rather than to guess. The extraction is `calendarDateToIso`,
+    // the ONE this page already uses (§18 rule 1): these are the UTC-midnight instants
+    // `new Date("YYYY-MM-DD")` produces, and the old `.toISOString().split('T')[0]` read them
+    // back as INSTANTS, so a viewer west of UTC shifted every date a day early.
+    const startIso = calendarDateToIso(startDate);
+    const endIso = calendarDateToIso(endDate);
+    if (!startIso || !endIso) {
+      toast({
+        variant: "destructive",
+        title: "Add your dates first",
+        description: "Tell us when the plan starts and ends — we never fill in dates for you.",
+      });
       return;
     }
     setCreatingComparison(true);
@@ -1346,8 +1394,8 @@ export default function ExperienceTemplatePage() {
       const comparison = await createComparisonRequest({
         title: `${experienceType?.name || "Trip"} Experience`,
         destination: destination,
-        startDate: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
-        endDate: endDate?.toISOString().split('T')[0] || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        startDate: startIso,
+        endDate: endIso,
         budget: cartTotal.toString(),
         travelers: adults + kids,
         baselineItems: cartItems,
@@ -1861,8 +1909,22 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    // Show service markers when destination is set
-    const serviceMarkers = destination && destination.length >= 2
+    /**
+     * Service markers exist only when a REAL centre exists to place them around.
+     *
+     * §13 / Locked Decision 22(c), 34. This branch used to run on `destination` alone and then
+     * defaulted the base coordinate to a hardcoded Lower-Manhattan pair, so a plan whose
+     * destination had not resolved to coordinates got its whole service list scattered across
+     * New York with nothing saying so. A marker is a claim about WHERE something is; with no centre there
+     * is no such claim to make, so no marker is computed and `ExperienceMap` renders its
+     * no-location state instead of a map (there is no city-centre fallback left to land on).
+     *
+     * The offsets below remain a DISPLAY spread around the confirmed centre, not per-service
+     * geocodes — `provider_services` carries no coordinate on this rail. That is a separate,
+     * larger honesty question (LD 22(c)'s "unlocated stop stays visibly flagged"), recorded here
+     * rather than silently widened by this lane.
+     */
+    const serviceMarkers = destination && destination.length >= 2 && destinationCenter
       ? filteredServices.map((s, index) => {
           const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
           // Use golden angle distribution for spreading markers around destination
@@ -1871,9 +1933,9 @@ export default function ExperienceTemplatePage() {
           const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
           const latOffset = Math.cos(angle) * radius;
           const lngOffset = Math.sin(angle) * radius;
-          // Use destination center when available, otherwise fall back to NYC
-          const baseLat = destinationCenter?.lat ?? 40.7128;
-          const baseLng = destinationCenter?.lng ?? -74.0060;
+          // Non-null by the branch guard above — never a default coordinate.
+          const baseLat = destinationCenter.lat;
+          const baseLng = destinationCenter.lng;
           return {
             id: s.id.toString(),
             name: s.serviceName,
@@ -2114,51 +2176,48 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-4 h-4" />
                 Get Expert Help
               </Button>
-              {/* Generate Itinerary Button - Creates comparison directly */}
+              {/* The Itinerary Preview door — it hands off, it does not run the optimizer here
+                  (see `openItineraryPreviewDoor`). It carries no cart/date precondition on
+                  purpose: with no plan yet the modal is exactly what a traveler missing those
+                  answers needs, so disabling it would hide the door behind the gap it fills. */}
               <Button
                 size="sm"
-                onClick={createComparison}
-                disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
+                onClick={openItineraryPreviewDoor}
                 className="gap-1.5 bg-primary"
                 data-testid="button-generate-ribbon"
               >
-                {creatingComparison ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-                {creatingComparison ? "Building preview..." : "Itinerary Preview"}
+                <Sparkles className="w-4 h-4" />
+                {linkedTripId ? "Optimize on your plan" : "Start your plan"}
               </Button>
             </div>
           </div>
 
-          {/* Linked Trip PlanCard Preview */}
+          {/* Ledger `2026-09-05-template-card-and-preview-door`. A `PlanCard` stood here,
+              assembled from THIS PAGE's form state. Nothing on this page knows the plan's days,
+              activities, legs or time-of-day, so the card printed zeroes for all four — counts
+              nobody counted (§13) — and it passed the CART TOTAL as the plan's `budget`, which is
+              a different fact entirely: a budget is the traveler's own statement, made per event,
+              and the plan's total is DERIVED from those rows (ledger `2026-09-04-event-budget`).
+              Ratified Locked Decision 42 D8 settles where a plan is read: the trip card is not a
+              planning surface and a plan still being built is read on the slip. So this links to
+              the plan's own reader instead of redrawing a thinner copy of it beside the cart.
+
+              The Trip Strip is deliberately NOT mounted here: this page renders inside <Layout>,
+              which already mounts the ONE global <TripStrip /> (destination · dates · party · the
+              cart chip) for the plan in progress. A second mount would be a second copy of that
+              display — the drift class §18 rule 1 names. */}
           {linkedTripId && (
             <div className="w-full max-w-xl mx-auto mt-4 px-4 sm:px-0">
-              <PlanCard
-                trip={{
-                  id: linkedTripId,
-                  destination: destination || "",
-                  title: experienceType?.name,
-                  // QA F13 — the hero card rendered the day BEFORE the stored one. This page
-                  // holds its dates as the UTC-midnight instants `new Date("YYYY-MM-DD")`
-                  // produces (see the state above and every other read on this page, which
-                  // takes the UTC date part). Handing the card `.toISOString()` gave it an
-                  // INSTANT, and `parseTripDate` is right to read an instant as an instant —
-                  // so a viewer west of UTC saw "13 Nov–15 Nov" for a plan stored Nov 14–16
-                  // while the Trip Strip beside it (which parses the calendar string) said
-                  // "Nov 14 → Nov 16". The card wants a CALENDAR DAY, so hand it one, using
-                  // the same extraction the rest of this page already uses (§18 rule 1 — no
-                  // second parser). §13: an unset date stays undefined, never a guessed day.
-                  startDate: calendarDateToIso(startDate) || undefined,
-                  endDate: calendarDateToIso(endDate) || undefined,
-                  numberOfTravelers: adults + kids,
-                  budget: cartTotal,
-                  eventType: experienceType?.name?.toLowerCase(),
-                }}
-                stage="summary"
-                role="owner"
-              />
+              <Link href={`/plans/${linkedTripId}`}>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  data-testid="button-open-plan"
+                >
+                  <Calendar className="w-4 h-4" />
+                  Open your plan
+                </Button>
+              </Link>
             </div>
           )}
 
@@ -2951,6 +3010,7 @@ export default function ExperienceTemplatePage() {
                   selectedProviderIds={selectedProviderIds}
                   destination={destination}
                   destinationCenter={destinationCenter}
+                  onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                   onAddToCart={(provider) => addToCart({
                     id: provider.id,
                     type: provider.category,
@@ -3045,20 +3105,17 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-3 h-3" />
                 Expert
               </Button>
-              {/* Mobile Generate Itinerary Button */}
+              {/* The mobile rendering of the SAME control as `button-generate-ribbon`, so it
+                  shares its ONE handler (§18 rule 1) — a second copy is how two renderings of
+                  one control start meaning different things. */}
               <Button
                 size="sm"
-                onClick={createComparison}
-                disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
+                onClick={openItineraryPreviewDoor}
                 className="gap-1 px-2 bg-primary"
                 data-testid="button-generate-ribbon-mobile"
               >
-                {creatingComparison ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Sparkles className="w-3 h-3" />
-                )}
-                {creatingComparison ? "..." : "Preview"}
+                <Sparkles className="w-3 h-3" />
+                {linkedTripId ? "Optimize" : "Plan"}
               </Button>
               </div>
             </div>
@@ -3069,14 +3126,13 @@ export default function ExperienceTemplatePage() {
             <div className="flex-1 relative" style={{ height: 'calc(100vh - 48px)' }}>
               <ExperienceMap
                 destination={destination}
-                cart={cart.map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  type: item.type,
-                  price: item.price,
-                  quantity: 1,
-                  provider: "Platform Provider"
-                }))}
+                destinationCenter={destinationCenter}
+                providers={mapProviders}
+                selectedProviderIds={selectedProviderIds}
+                onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
+                /* `cart` was passed here and `ExperienceMap` has never declared or read it — a
+                   dead prop that also carried this mount's only type error. The cart is rendered
+                   by the floating summary below, not by the map. */
                 onRemoveFromCart={removeFromCart}
                 height="100%"
                 activityLocations={activityLocations}
@@ -3091,14 +3147,15 @@ export default function ExperienceTemplatePage() {
                     <span className="text-sm font-medium">{cart.length} items</span>
                     <span className="text-lg font-bold ml-2">${cartTotal}</span>
                   </div>
+                  {/* Third rendering of the same control (it floats over the mobile map), on
+                      the same one handler for the same reason. */}
                   <Button
                     size="sm"
-                    onClick={createComparison}
-                    disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
+                    onClick={openItineraryPreviewDoor}
                     className="bg-primary"
                   >
-                    {creatingComparison ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
-                    Preview
+                    <Sparkles className="w-4 h-4 mr-1" />
+                    {linkedTripId ? "Optimize" : "Plan"}
                   </Button>
                 </div>
               )}
@@ -3260,6 +3317,7 @@ export default function ExperienceTemplatePage() {
                     selectedProviderIds={selectedProviderIds}
                     destination={destination}
                     destinationCenter={destinationCenter}
+                    onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                     onAddToCart={(provider) => addToCart({
                       id: provider.id,
                       type: provider.category,

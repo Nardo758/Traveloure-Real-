@@ -74,9 +74,14 @@ jobs:
       # (trackSearchEvent / trackItineraryGenerated / trackBookingEvent — an interface with
       # optional members is not assignable to an index-signature type). The ratchet detected the
       # reduction and requires it to be locked in. Locked in, same PR.
+      # 132 measured 2026-09-05 (ledger `2026-09-05-build-id-and-map-fallback`): the mobile
+      # full-screen `ExperienceMap` mount in experience-template.tsx passed a `cart` prop the
+      # component has never declared or read — a dead prop carrying that mount's only TS2322.
+      # Deleting it removed the error; ZERO new type errors in any file this lane touched.
+      # Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '133'
+          TSC_BASELINE: '132'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -547,6 +552,20 @@ jobs:
       # from every send branch, and the lane-2 marker on every surface still addressed by id.
       - name: Earner address / chat URL pin (LD 40 lane 3)
         run: npx tsx --test client/src/lib/__tests__/earner-address.test.ts
+      # 2026-09-05-handles-are-claimed (CLAUDE.md Locked Decision 40). Post-publish QA found 0 of
+      # 12 public experts carrying a handle: the claim rail worked and the form existed, but it
+      # sat in Settings where nothing sent an earner to it — a failure with NO runtime signal at
+      # all, which is exactly why it needs a test. H1-H7 pin the ONE suggestion helper (a shape
+      # the server's own HANDLE_RE accepts; diacritics folded; §13 — a name that yields nothing
+      # returns null and NEVER a fabricated `name-2`; the cap is the server's and a truncation
+      # never leaves a trailing hyphen). B1 pins the prompt predicate, including that an
+      # UNANSWERED auth query asks nobody. S1-S7 read the SHIPPED files, because a prompt that
+      # silently stops mounting is the same invisible failure: the banner mounts on the ONE shell
+      # both consoles render through, both wizards carry the optional step prefilled from the same
+      # helper, NEITHER wizard calls the claim rail (an applicant is not yet an earner — 403), and
+      # there is EXACTLY ONE client writer of PATCH /api/me/handle.
+      - name: Handle claim prompt pin (LD 40)
+        run: npx tsx --test client/src/lib/__tests__/handle-claim-prompt.test.ts
       # Client analytics wrapper (docs/superpowers/specs/2026-09-05-custom-analytics-events-design.md):
       # trackEvent must be a SAFE NO-OP whenever the host-injected tracker is absent — during SSR,
       # in dev/preview, and in the tracker-load race — and must swallow a throwing tracker rather
@@ -585,6 +604,21 @@ jobs:
         run: |
           npx tsx --test server/__tests__/optimize-preview-on-slip.test.ts
           npx tsx --test client/src/lib/__tests__/optimize-preview-line.test.ts
+      # 2026-09-05-build-id-and-map-fallback: two post-publish QA defects whose whole failure mode
+      # is that they RENDER FINE. B1-B9/S1 pin the build-identity resolver — the ordered sources,
+      # and above all §13's all-miss answer (`commit: null`, `source: "unknown"`), because the way
+      # a build id fails is a PLAUSIBLE WRONG ANSWER (a stale env var, a leftover build-info.json,
+      # a short sha compared against a full $GITHUB_SHA) that a deploy check then believes. S1
+      # reads the shipped wiring: ONE resolver behind both /api/version and /api/health, the
+      # legacy `sha` key its two consumers parse, and the build script writing the file AFTER the
+      # bundle. C1-C5/S1-S5 pin the map's honesty boundary — the centre resolver returns NULL when
+      # nothing real names a place, both files are swept for coordinate literals, no fake marker
+      # coordinate is computed without a centre, and the "N providers" chip that flipped 8 -> 0 on
+      # a dismissed destination modal can no longer render a searched-and-found-none zero.
+      - name: Build identity + map city-centre fallback pin
+        run: |
+          npx tsx --test server/__tests__/build-info.test.ts
+          npx tsx --test client/src/lib/__tests__/map-no-city-center-fallback.test.ts
 
       # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
       # the free AI draft runs only on an EMPTY slip, its JSON recovery never repairs a truncated
@@ -1013,6 +1047,22 @@ jobs:
       # fetching the user's comparisons to work out which board a plan came from.
       - name: Proposal comparison map pin
         run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
+      # 2026-09-05-template-card-and-preview-door (LD 39/41, ratified LD 42 D8 + D12): the
+      # experience template stopped drawing a plan and stopped inventing dates. Both defects were
+      # invisible on happy-path data — the client-assembled `PlanCard` printed zeroes for days,
+      # activities, legs and time (counts nobody counted) and passed the CART TOTAL as the plan's
+      # budget, while the "Itinerary Preview" ribbon filled a missing start/end with TODAY and
+      # TODAY + 7 DAYS, so only a traveler who had NOT answered was given two dates they never
+      # gave. C1-C3 pin that the card is gone by import, by mount and by each fabricated prop's
+      # name, and that the page inherits Layout's ONE global Trip Strip rather than mounting a
+      # second copy; L1-L2 pin the replacement link and that /plans/:tripId is a real route;
+      # D1-D3 pin that no invented date survives in the file and that the surviving comparison
+      # rail refuses a missing date through the single calendar-day extraction; R1-R4 pin the
+      # hand-off — one handler behind all three renderings of the control, the slip when the page
+      # is bound and the ONE modal when it is not, quoting no fee and minting no comparison; S1
+      # pins the ratified door source shape (a blank passed as ABSENT, never as "").
+      - name: Experience-template plan door pin
+        run: npx tsx --test client/src/lib/__tests__/template-plan-door.test.ts
 
   ai-draft-eligibility-guard:
     name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)
