@@ -17,7 +17,7 @@
     "test:user-suspension": "tsx --test server/__tests__/user-suspension.db.test.ts",
     "test:instagram-frame": "tsx --test server/routes/__tests__/instagram-frame-passthrough.http.test.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsx script/build.ts",
+    "build": "tsx script/build.ts && node scripts/write-build-info.cjs",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "generate:mutation-auth": "tsx scripts/generate-mutation-auth-manifest.ts",

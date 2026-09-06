@@ -56,6 +56,9 @@ import {
   toSubmitPayload,
   type CaptureDraft,
 } from "@/components/neighborhood-claims/claim-capture-form";
+import { suggestHandle } from "@shared/handle-suggestion";
+import { HANDLE_MAX_LENGTH } from "@shared/handle";
+import { savePendingHandle } from "@/lib/pending-handle";
 import {
   saveApplicationDraft,
   loadApplicationDraft,
@@ -66,6 +69,12 @@ import {
 // Namespaced so the expert and provider funnels' drafts never collide.
 const DRAFT_KEY = "traveloure_expert_application_draft";
 
+// Ledger `2026-09-05-handles-are-claimed` (CLAUDE.md Locked Decision 40): "Your public handle" is
+// the LAST step in both funnels — after Review rather than before it — deliberately. It is the one
+// step that writes nothing on submit (an applicant is not yet an earner; see the step's own note),
+// so it cannot belong to the Review the applicant is confirming, and appending it leaves every
+// existing step number, gate and render condition untouched. It is OPTIONAL: `canProceed`'s
+// `default: return true` covers it, and an empty field holds nothing.
 const defaultSteps = [
   { id: 1, title: "Basic Info" },
   { id: 2, title: "Expertise" },
@@ -73,6 +82,7 @@ const defaultSteps = [
   { id: 4, title: "Experience" },
   { id: 5, title: "Availability" },
   { id: 6, title: "Review" },
+  { id: 7, title: "Your Handle" },
 ];
 
 const localExpertSteps = [
@@ -83,6 +93,7 @@ const localExpertSteps = [
   { id: 5, title: "Services" },
   { id: 6, title: "Availability" },
   { id: 7, title: "Review" },
+  { id: 8, title: "Your Handle" },
 ];
 
 const KNOWLEDGE_PROOF_QUESTIONS = [
@@ -236,6 +247,10 @@ export default function TravelExpertsPage() {
     // the expert catalog actually holds.
     plannerOfferingKey: "",
     agreeToTerms: false,
+    // The handle the applicant chose on the last step. `null` = UNTOUCHED (the suggestion is shown
+    // but has not been confirmed or edited); "" = deliberately cleared. Neither is a claim — see
+    // the step's note and `client/src/lib/pending-handle.ts`.
+    publicHandle: null as string | null,
     // Local Expert specific fields
     neighborhoods: [] as string[],
     // Field-knowledge claims (ruling 2026-08-29-neighborhood-claims): picked from city_neighborhoods,
@@ -293,6 +308,18 @@ export default function TravelExpertsPage() {
     setFormData((prev) => ({ ...prev, neighborhoodClaims: nextClaims, neighborhoods: nextClaims.map((c) => c.name) }));
   };
   const firstClaim = formData.neighborhoodClaims[0] ?? null;
+
+  // Ledger `2026-09-05-handles-are-claimed`: the suggestion, computed ONCE (one shared helper,
+  // `shared/handle-suggestion.ts`, read by this wizard, the provider wizard and the console
+  // banner) from the name the applicant has already typed on step 1. `null` when their name
+  // yields nothing usable — the field is then EMPTY and they type their own (§13: the helper
+  // never invents `name-2`).
+  const suggestedHandle = useMemo(
+    () => suggestHandle({ firstName: formData.firstName, lastName: formData.lastName }),
+    [formData.firstName, formData.lastName],
+  );
+  /** What the field shows: their own answer if they have given one, else the suggestion. */
+  const handleFieldValue = formData.publicHandle ?? suggestedHandle ?? "";
 
   // Gap 15: preselect the neighbourhood the recruitment link named, ONCE, and only when the
   // city's catalog actually holds a row with that name (case-insensitive, trimmed). A link
@@ -651,6 +678,12 @@ export default function TravelExpertsPage() {
       // reload) would serve that stale cache instead of the just-submitted form.
       queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] });
       clearApplicationDraft(DRAFT_KEY);
+      // The handle is HELD, not claimed. `PATCH /api/me/handle` refuses a non-earner with a 403,
+      // and an applicant only becomes an earner when an admin approves this application — so the
+      // wizard cannot write it here and this lane does not widen that gate. The console's
+      // "Claim your handle" banner offers it back pre-filled on the first visit after approval,
+      // where the claim is legitimate. An empty field holds nothing (§13).
+      savePendingHandle(handleFieldValue);
       // §13: a REFUSED offering and a never-chosen one are different facts, and the applicant is
       // the only person who can repair the first. Say it out loud rather than filing a silent NULL.
       const unrecorded = result?.offeringTypeKeyUnrecorded;
@@ -1844,6 +1877,43 @@ export default function TravelExpertsPage() {
                     </a>
                   </label>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 7/8: Your public handle — ledger `2026-09-05-handles-are-claimed` (LD 40).
+              OPTIONAL and never blocking: not being able to claim is honest, not being able to
+              APPLY is a funnel hole (the LD 27 posture). Nothing here is written at submit — see
+              the stash note in the mutation's onSuccess. */}
+          {((!isLocalExpert && currentStep === 7) || (isLocalExpert && currentStep === 8)) && (
+            <Card className="border-border" data-testid="step-handle-claim">
+              <CardHeader>
+                <CardTitle className="text-2xl text-foreground">Your public handle</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Your handle is the public name of your page — <code>/s/your-handle</code> — and
+                  the one address you can give a traveler out loud. We have suggested one from your
+                  name; change it to whatever you want to be known as. It is set up for you once
+                  your application is approved, and you can change it any time after that.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center rounded-md border border-border bg-muted/40 px-3 h-10 text-sm text-muted-foreground">
+                    /s/
+                  </div>
+                  <Input
+                    value={handleFieldValue}
+                    onChange={(e) => updateFormData("publicHandle", e.target.value.toLowerCase())}
+                    placeholder="your-name"
+                    maxLength={HANDLE_MAX_LENGTH}
+                    className="max-w-[280px]"
+                    data-testid="input-public-handle"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Lowercase letters, numbers and single hyphens. Optional — you can skip this and
+                  claim a handle from your dashboard later.
+                </p>
               </CardContent>
             </Card>
           )}

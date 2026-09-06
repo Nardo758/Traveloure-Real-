@@ -1079,7 +1079,11 @@ export interface IStorage {
 
   getAffiliateBookingRequestsByUser(userId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
 
-  getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<AffiliateBookingRequest[]>;
+  // §16 (ledger `2026-09-05-affiliate-subid-live`): the agent's list no longer carries the partner
+  // URL either. The booking agent opens it through the tracked-open route
+  // (GET /api/affiliate-booking-requests/:id/open), which resolves it server-side and 302s — the
+  // attributed URL never exists client-side. Same projection the traveler list already had.
+  getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
 
   updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // R4/F7 (§15): atomic pending→confirmed claim used by the confirm site so a duplicate/concurrent
@@ -7331,18 +7335,22 @@ export class DatabaseStorage implements IStorage {
     return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
   }
 
-  async getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<AffiliateBookingRequest[]> {
+  async getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
     const expertScope = or(
       eq(affiliateBookingRequests.expertId, expertId),
       sql`${affiliateBookingRequests.expertId} IS NULL`,
     )!;
-    return db
+    const rows = await db
       .select()
       .from(affiliateBookingRequests)
       .where(tripId
         ? and(expertScope, eq(affiliateBookingRequests.tripId, tripId))
         : expertScope)
       .orderBy(asc(affiliateBookingRequests.status), asc(affiliateBookingRequests.createdAt));
+    // §16 (ledger `2026-09-05-affiliate-subid-live`): strip the partner URL here, beside the
+    // traveler list's identical strip, so no caller of this reader can publish it by accident.
+    // The agent reaches the link through the tracked-open route, which 302s server-side.
+    return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
   }
 
   async updateAffiliateBookingRequest(

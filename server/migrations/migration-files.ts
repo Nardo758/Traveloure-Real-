@@ -1492,4 +1492,11 @@ export const MIGRATION_FILES = [
   // in `shared/schema.ts` in the same commit (deploy-push durability rule), and there is NO
   // backfill: a thread with no rows here is an older thread with no recorded context (§13).
   "287_conversation_contexts.sql",
+  // Ledger `2026-09-05-affiliate-subid-live` (MONEY_MAP F-5 live): three additive nullable FK
+  // columns carrying AFFILIATE ATTRIBUTION — `affiliate_clicks.booking_request_id` and
+  // `affiliate_earnings.booking_request_id` / `.trip_id`. All three ON DELETE SET NULL, NO CHECK
+  // (publish-trap posture), declared in `shared/schema.ts` in the same commit (deploy-push
+  // durability rule), and NO backfill: NULL is the honest "never stamped / never token-matched".
+  // Attribution only — no amount, rate, payout or status is touched anywhere in this lane.
+  "288_affiliate_attribution_links.sql",
 ] as const;

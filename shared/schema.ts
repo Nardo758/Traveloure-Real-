@@ -5948,6 +5948,13 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   sourceImpressionId: varchar("source_impression_id"), // FK to content_impressions.id (not enforced — opportunistic)
   clickContentType: text("click_content_type"),   // gem | expert | provider_service | ...
   clickContentId: text("click_content_id"),
+  // Migration 288, ledger `2026-09-05-affiliate-subid-live` (MONEY_MAP F-5 live): the
+  // `affiliate_booking_requests` row this outbound click was recorded for — the same id the
+  // partner's attribution parameter carries (`buildAttributedAffiliateUrl`). Additive NULLABLE,
+  // NO CHECK (publish-trap posture). NULL = this click was not an agent-booking open (the
+  // content-hub / iVisa / product-feed trackers), which is a finished answer, never a missing one.
+  bookingRequestId: varchar("booking_request_id")
+    .references(() => affiliateBookingRequests.id, { onDelete: "set null" }),
 }, (table) => [
   // Migration 085: partial indexes for affiliate attribution queries.
   // Declared here — drizzle push drops indexes absent from this file on publish.
@@ -6255,6 +6262,15 @@ export const affiliateEarnings = pgTable("affiliate_earnings", {
   reconciledAt: timestamp("reconciled_at"),
   reconciliationNotes: text("reconciliation_notes"),
   externalReportData: jsonb("external_report_data"), // Raw line from partner report
+  // Migration 288, ledger `2026-09-05-affiliate-subid-live`. The reconciliation matcher LINKS an
+  // adopted commission to the booking request its sub_id names, and to that request's trip — so a
+  // partner-reported commission is answerable to a plan, not only to a jsonb blob. Both additive
+  // NULLABLE with NO CHECK (publish-trap posture). Written ONLY by
+  // `affiliate-reconciliation.service.ts` on an EXACT token match (detection, §17 — never a guess,
+  // never an amount change). NULL = this earning was never matched by token, a finished answer.
+  bookingRequestId: varchar("booking_request_id")
+    .references(() => affiliateBookingRequests.id, { onDelete: "set null" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   contentTrackingNumber: varchar("content_tracking_number", { length: 25 }), // Links to content_registry
   confirmedAt: timestamp("confirmed_at"),
   paidAt: timestamp("paid_at"),

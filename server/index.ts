@@ -68,6 +68,7 @@ import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
 import { createCorsMiddleware } from "./middleware/cors-origins";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
+import { getBuildInfo, formatBuildBootLine } from "./services/build-info";
 
 const app = express();
 const httpServer = createServer(app);
@@ -236,23 +237,22 @@ app.get("/api/ready", (_req: Request, res: Response) => {
   });
 });
 
-// __GIT_SHA__ is injected at bundle time by esbuild's `define` (script/build.ts) from the real
-// `git rev-parse --short HEAD` at build time — the fix for Replit's Autoscale deploy not
-// injecting a GIT_COMMIT env var at runtime. Under dev-mode tsx (no esbuild define pass) the
-// identifier doesn't exist, so it's accessed only behind a typeof guard.
-declare const __GIT_SHA__: string | undefined;
-
-// Build-identity endpoint — lets CI confirm it is talking to the correct artifact.
-// Resolution order: the build-embedded SHA (works even when the deploy injects no env var) →
-// GIT_COMMIT (CI workflows set this for e2e-target environments) → GIT_SHA → "dev" locally.
+// Build-identity endpoint — lets CI (and a human on a post-publish walkthrough) confirm it is
+// talking to the correct artifact. The resolution order, the never-fabricate rule and the
+// evidence for which env vars Replit actually injects all live in ONE place:
+// `server/services/build-info.ts`. `GET /api/health` serves the SAME object under `build`; a
+// second resolver here is how the two endpoints would start disagreeing (§18 rule 1).
 app.get("/api/version", (_req: Request, res: Response) => {
-  const sha =
-    (typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined) ??
-    process.env.GIT_COMMIT ??
-    process.env.GIT_SHA ??
-    "dev";
+  const info = getBuildInfo();
   res.json({
-    sha,
+    ...info,
+    // Legacy key, kept deliberately: `.github/workflows/e2e-tests.yml` and
+    // `e2e/specs/public-smoke.spec.ts` both read `.sha`, and the workflow branches on the exact
+    // string "dev" to mean "this deploy cannot name its commit". `commit`/`source` are the
+    // honest §13 form (null / "unknown"); `sha` is that same answer in the shape those two
+    // consumers already parse. It is now the FULL sha, so the workflow's comparison against
+    // $GITHUB_SHA can actually match.
+    sha: info.commit ?? "dev",
     env: process.env.NODE_ENV ?? "development",
   });
 });
@@ -547,6 +547,15 @@ if (process.env.NODE_ENV === "production") {
 }
 
 (async () => {
+  // Build identity, printed BESIDE the [Migrations] summary — post-publish QA (2026-09-05) had no
+  // way to tell which commit a deploy was running and had to diff bundle hashes by hand three
+  // checks in a row. Resolved once here so the boot log and both endpoints report the same answer.
+  // §13: "unknown" when no source could name the commit — never a placeholder that reads real.
+  logger.info(
+    { build: getBuildInfo() },
+    formatBuildBootLine(),
+  );
+
   // Run migrations synchronously BEFORE the server accepts any connections.
   // A schema failure here exits the process — no requests land on a broken schema.
   try {

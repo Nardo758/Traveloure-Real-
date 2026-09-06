@@ -322,8 +322,15 @@ test("A7 the context insert schema is a pick-based ALLOWLIST (§19 / #PS18)", ()
 
 test("A8 there is ONE handle shape and ONE verification predicate (§18 rule 1)", () => {
   const storefront = read("server", "routes", "storefront.routes.ts");
-  assert.match(storefront, /import \{ HANDLE_RE \} from "@shared\/handle"/);
+  // The named list widened with ledger `2026-09-05-handles-are-claimed` (the route now also reads
+  // HANDLE_MIN_LENGTH/HANDLE_MAX_LENGTH from the same module instead of re-typing 3/30), so this
+  // pins the ONE SOURCE rather than one exact import line.
+  assert.match(storefront, /import \{[^}]*\bHANDLE_RE\b[^}]*\} from "@shared\/handle"/);
   assert.ok(!/const HANDLE_RE\s*=/.test(storefront), "a second copy of the handle regex");
+  assert.ok(
+    !/\.min\(3,|\.max\(30,/.test(storefront),
+    "the length bounds come from shared/handle.ts, never re-typed at the route",
+  );
   assert.match(storefront, /from "\.\.\/utils\/earner-verification"/);
   assert.ok(
     !/async function isOwnerIdentityVerified/.test(storefront),
