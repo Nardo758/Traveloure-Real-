@@ -552,6 +552,20 @@ jobs:
       # from every send branch, and the lane-2 marker on every surface still addressed by id.
       - name: Earner address / chat URL pin (LD 40 lane 3)
         run: npx tsx --test client/src/lib/__tests__/earner-address.test.ts
+      # 2026-09-05-handles-are-claimed (CLAUDE.md Locked Decision 40). Post-publish QA found 0 of
+      # 12 public experts carrying a handle: the claim rail worked and the form existed, but it
+      # sat in Settings where nothing sent an earner to it — a failure with NO runtime signal at
+      # all, which is exactly why it needs a test. H1-H7 pin the ONE suggestion helper (a shape
+      # the server's own HANDLE_RE accepts; diacritics folded; §13 — a name that yields nothing
+      # returns null and NEVER a fabricated `name-2`; the cap is the server's and a truncation
+      # never leaves a trailing hyphen). B1 pins the prompt predicate, including that an
+      # UNANSWERED auth query asks nobody. S1-S7 read the SHIPPED files, because a prompt that
+      # silently stops mounting is the same invisible failure: the banner mounts on the ONE shell
+      # both consoles render through, both wizards carry the optional step prefilled from the same
+      # helper, NEITHER wizard calls the claim rail (an applicant is not yet an earner — 403), and
+      # there is EXACTLY ONE client writer of PATCH /api/me/handle.
+      - name: Handle claim prompt pin (LD 40)
+        run: npx tsx --test client/src/lib/__tests__/handle-claim-prompt.test.ts
       # Client analytics wrapper (docs/superpowers/specs/2026-09-05-custom-analytics-events-design.md):
       # trackEvent must be a SAFE NO-OP whenever the host-injected tracker is absent — during SSR,
       # in dev/preview, and in the tracker-load race — and must swallow a throwing tracker rather
