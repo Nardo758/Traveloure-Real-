@@ -1148,6 +1148,14 @@ This document captures architectural decisions to maintain consistency across co
     amendment needs no migration**. "Message your expert" on the slip uses it, and the three
     original kinds are untouched.
 
+    **D23 — THE ITEM ROW'S ORIGIN CHIP IS READ EXPOSURE OF LOCKED DECISION 12'S COLUMN** (ledger
+    `2026-09-06-item-origin-chip`): the ratified `ItemRow` artboard's three-value provenance chip
+    (`traveler` = "you added", `ai` = "AI draft", `expert` = "from your expert") reads
+    `itinerary_items.origin` — carried on the plancard activity DTO present-only-when-set, `full`
+    channel only, NULL omitted and never rendered as an author (§13) — through the ONE mapping
+    `client/src/lib/item-origin.ts`; **no schema change, no migration and no new writer**, the
+    column stays server-stamped at create and client-settable nowhere.
+
 43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;
     ONE SOFT SAVE PROMPT (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-payment-method-posture`; this lane = `2026-09-05-wallets-on-platform-intents`).

@@ -462,8 +462,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // SKETCH? Server-derived from the rows (`origin='ai'` AND `routing_status='in_planning'` for
     // EVERY item, and at least one item), through the ONE predicate that also answers the
     // eligibility question about the same table (§18 rule 1). It rides HERE rather than being
-    // recomputed client-side because the plancard activity DTO deliberately carries no `origin`,
-    // so a client answering this would be guessing. §13: `false` for an empty plan — a blank slip
+    // recomputed client-side, and it STAYS here now that the activity DTO does carry `origin`
+    // (ledger `2026-09-06-item-origin-chip`): this is a WHOLE-PLAN predicate shared with the
+    // eligibility check, and a client re-deriving it from the item list would be a second author
+    // of the same answer, free to disagree with the one the eligibility gate uses (§18 rule 1).
+    // The per-item chip reads `origin`; this boolean is not that. §13: `false` for an empty plan — a blank slip
     // is not an AI sketch — and the client renders NOTHING when it is false, never the inverse
     // claim ("this plan is yours"). Additive; existing consumers ignore the key.
     const aiSketch = await isUntouchedAiDraft(tripId);

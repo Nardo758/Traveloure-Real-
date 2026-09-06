@@ -44,7 +44,7 @@ import {
   type PlanCardTransport,
   type RoutingStatus,
 } from "./plancard-types";
-import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
+import { OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
@@ -633,8 +633,18 @@ function SlipItemRow({
           />
         </div>
         {/* Status pill right-aligned — the SAME RoutingBadge every surface renders (ruling 8);
-            the slip shows the neutral Planning pill too (showPlanning). */}
-        <RoutingBadge activity={a} showPlanning />
+            the slip shows the neutral Planning pill too (showPlanning).
+
+            THE ORIGIN CHIP SITS BESIDE IT, AFTER IT, exactly as the ratified `ItemRow` artboard
+            draws the cluster (callout ②): the routing pill answers WHERE THE ITEM IS, the origin
+            chip answers WHO PUT IT THERE, and they are two taxonomies rather than one — which is
+            why the chip is a second pill and never a fourth routing value. Both render from the
+            DTO alone; `OriginBadge` returns null (no chip, no gap) for an item whose `origin` was
+            never stamped, so a legacy plan's rows are byte-identical to before this lane (§13). */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <RoutingBadge activity={a} showPlanning />
+          <OriginBadge activity={a} />
+        </div>
       </div>
     </div>
   );

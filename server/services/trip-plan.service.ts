@@ -836,6 +836,20 @@ export async function assembleTripPlan(
         ? { userExperienceId: (item as any).userExperienceId as string }
         : {}),
 
+      // Migration 181 (ledger `2026-09-06-item-origin-chip`, CLAUDE.md Locked Decision 12): the
+      // item's PROVENANCE — who put it on the plan. PRESENT ONLY when the row really carries one,
+      // the same present-only-when-real posture as `booking` and `userExperienceId` above, so an
+      // unstamped row (every item predating the column) serializes exactly as it did before this
+      // field existed. §13: an ABSENT key means NOT RECORDED and is never read as "the traveler
+      // added it" — the client draws no chip rather than guessing an author.
+      //
+      // READ-ONLY PASS-THROUGH. `origin` is stamped server-side at CREATE from the acting user's
+      // role and is client-settable nowhere (`insertItineraryItemSchema` omits it; the canonical
+      // PATCH rail strips it out of its raw destructure). Nothing here writes it, and exposing it
+      // adds no write rail: it is a non-money, non-identity fact about the caller's OWN plan,
+      // riding the `full` level only — teaser/preview return long before this builder runs.
+      ...((item as any).origin ? { origin: (item as any).origin as string } : {}),
+
       // Item 2 Phase 2: the affiliate agent-booking CTA — PRESENT ONLY when the item was grounded
       // to an affiliate_bookable product and a token was minted above (§16/§13, present-only-when-
       // real like `booking`, so every non-affiliate item is byte-identical to before).

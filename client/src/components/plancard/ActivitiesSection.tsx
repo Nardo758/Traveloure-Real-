@@ -22,6 +22,7 @@ import {
   useLiveNow, useVisitedActivities, getUpNextInfo,
 } from "./plancard-temporal";
 import { BOOKED_TINT, ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
+import { itemOriginChip } from "@/lib/item-origin";
 
 // ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
 // Governing docs: docs/briefs/RECONCILE_PHASE1_SCOPE.md §1 W7, docs/briefs/ROUTING_STATE_CONTRACT.md.
@@ -102,6 +103,41 @@ export function RoutingBadge({
       data-testid={`badge-routing-${testKey}-${activity.id}`}
     >
       {icon} {tint.label}
+    </span>
+  );
+}
+
+/**
+ * THE ITEM ORIGIN CHIP (ledger `2026-09-06-item-origin-chip`; the ratified `slip-canvas` `ItemRow`
+ * artboard, callout ②). Says WHO put the item on the plan, in the traveler's words — "you added",
+ * "AI draft", "from your expert".
+ *
+ * It lives HERE, beside `RoutingBadge`, because this file is the pill family's one home: the slip
+ * mounts both, and a surface that later wants the chip mounts this component rather than writing a
+ * second one. THE LABELS ARE NOT WRITTEN HERE — the one mapping is `itemOriginChip`
+ * (`client/src/lib/item-origin.ts`, §18 rule 1); this component only renders what it returns.
+ *
+ * §13 — IT RENDERS NOTHING RATHER THAN GUESSING. `itinerary_items.origin` is nullable and carries
+ * no DB CHECK, so an item that predates migration 181 (and any row holding a value outside the
+ * three) resolves to `null` and NO chip is drawn. There is no "unknown" chip and no default to
+ * "you added": who added an item is known only to the write that created it.
+ *
+ * The `expert` tone wears the SAME teal the expert note and the "With your expert" routing pill
+ * already wear (`ROUTING_TINTS.with_expert`, the token layer — no hex literals here), so an
+ * expert's mark on a plan reads as one colour across the surface; the traveler's own additions and
+ * the AI's draft are the neutral outline pill.
+ */
+export function OriginBadge({ activity }: { activity: PlanCardActivity }) {
+  const chip = itemOriginChip(activity.origin);
+  if (!chip) return null;
+  const isExpert = chip.tone === "expert";
+  return (
+    <span
+      className={isExpert ? PILL_BASE : `${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+      style={isExpert ? tintPillStyle(ROUTING_TINTS.with_expert) : undefined}
+      data-testid={`badge-origin-${activity.id}`}
+    >
+      {chip.label}
     </span>
   );
 }
