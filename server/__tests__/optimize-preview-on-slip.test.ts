@@ -46,6 +46,15 @@ const slipSrc = readFileSync(
   join(ROOT, "client", "src", "components", "plancard", "SlipView.tsx"),
   "utf-8",
 );
+// LD 42 wave 1.5 (ledger 2026-09-05-slip-rail-regroup) moved the Optimize block — button, preview line
+// and fee label — out of SlipView.tsx into the Build card in SlipRail.tsx. The slip SURFACE is both
+// files; S7 pins the surface, not one file, so a later move between the two cannot fake a pass or a
+// failure.
+const railSrc = readFileSync(
+  join(ROOT, "client", "src", "components", "plancard", "SlipRail.tsx"),
+  "utf8",
+);
+const slipSurfaceSrc = slipSrc + "\n" + railSrc;
 const cartSrc = readFileSync(join(ROOT, "client", "src", "pages", "cart.tsx"), "utf-8");
 
 /** A plan with real room to improve: five items crammed onto one day, all the same kind. */
@@ -274,18 +283,28 @@ test("S6: Trip Pass coverage on the fee endpoint is the SERVER's coversAction an
   assert.ok(feeBlock.includes("coveredByTripPass,"), "the answer is returned to the client");
 });
 
-test("S7: the slip renders the preview and its fee, and reads no extrapolated number", () => {
-  assert.ok(slipSrc.includes('data-testid="slip-optimize-preview"'));
-  assert.ok(slipSrc.includes('data-testid="slip-optimize-preview-fee"'));
-  assert.ok(slipSrc.includes('queryKey: ["/api/optimization-preview"'));
-  assert.ok(slipSrc.includes('queryKey: ["/api/optimization-fee"'));
+test("S7: the slip surface renders the preview and its fee, and reads no extrapolated number", () => {
+  // The Build card hands the testid to a shared RailNote (`testId="…"`), which renders it as
+  // `data-testid`; either spelling is the same rendered attribute.
   assert.ok(
-    slipSrc.includes("describeOptimizationPreview") && slipSrc.includes("formatOptimizationFeeLabel"),
+    slipSurfaceSrc.includes('data-testid="slip-optimize-preview"') ||
+      slipSurfaceSrc.includes('testId="slip-optimize-preview"'),
+    "the preview line carries its testid",
+  );
+  assert.ok(slipSurfaceSrc.includes('data-testid="slip-optimize-preview-fee"'));
+  assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-preview"'));
+  assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-fee"'));
+  assert.ok(
+    slipSurfaceSrc.includes("describeOptimizationPreview") && slipSurfaceSrc.includes("formatOptimizationFeeLabel"),
     "the slip reads the shared client module rather than composing its own copy",
   );
   for (const forbidden of ["estimatedSavingsPct", "estimatedCostDelta", "estimatedScheduleTighteningPct"]) {
-    assert.ok(!slipSrc.includes(forbidden), `the slip must not render ${forbidden}`);
+    assert.ok(!slipSurfaceSrc.includes(forbidden), `the slip must not render ${forbidden}`);
   }
-  // Owner-only, exactly like the button the line sits beside.
-  assert.ok(slipSrc.includes("const previewEnabled = isOwner && !optimizeDisabledReason;"));
+  // Owner-only, exactly like the button the line sits beside. The Build card additionally gates on
+  // the AI action being Optimize (LD 41(b): an empty slip offers Draft, and previews nothing).
+  assert.ok(
+    /const previewEnabled = isOwner && (aiAction === "optimize" && )?!optimizeDisabledReason;/.test(slipSurfaceSrc),
+    "the preview is enabled only for the owner beside a live Optimize",
+  );
 });

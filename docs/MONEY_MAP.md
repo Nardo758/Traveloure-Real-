@@ -25,6 +25,17 @@
 > regardless (it simply never fires without a token-bearing sub_id to match against). See the
 > struck F-4/F-5 entries below.
 >
+> **Update (branch `task-affiliate-subid-live`) — F-5 is now LIVE (ledger
+> `2026-09-05-affiliate-subid-live`).** The `TP_SUBID_ATTRIBUTION` flag is GONE from every call
+> site: attribution is per REQUEST and unconditional. Every outbound affiliate link built for an
+> `affiliate_booking_requests` row goes through ONE builder,
+> `server/services/affiliate-attribution.service.ts` `buildAttributedAffiliateUrl`, and the partner
+> report's echoed token is read back by the two PURE helpers that live in the same module
+> (`resolveExternalAttributionToken` / `selectTokenMatchCandidate` — §18 rule 1: the write and the
+> read of one convention do not live apart). Reconciliation now LINKS a token-matched commission to
+> its booking request and that request's trip (migration 288). Detection only — no amount, rate,
+> status or payout moved (§14/§15/§17). See the rewritten F-5 entry below.
+>
 > **Update (branch `claude/traveler-fee-collection`) — traveler service fee now CHARGED (ruling
 > 2026-09-02-traveler-fee-applies-everywhere).** The traveler service fee (`resolveTravelerServiceFee`,
 > rate + $25 cap from the `traveler_service_fee` band, §8/§14) is now a real charge on every
@@ -270,8 +281,8 @@ whichever invocation actually flips the row runs the earnings flip once, the oth
 Create: `storage.ts:3604`; from agent-booking confirm `content.routes.ts:6917` (**commission written "0.00"**
 — F-5; corrected mislabel, was previously miscited here as F-8, which is the unrelated `.env.example` finding).
 Reconciliation matcher: fuzzy UPDATE `affiliate-reconciliation.service.ts:~412`; **exact-token adoption UPDATE
-`:~370-390` (F-5, new in `claude/money-hardening-r2`, dormant until `TP_SUBID_ATTRIBUTION=1`)**; admin status
-PATCH `:~509`.
+`adoptExactTokenMatches` (F-5 — LIVE since ledger `2026-09-05-affiliate-subid-live`; it also writes
+`booking_request_id` + `trip_id`, migration 288)**; admin status PATCH `:~509`.
 
 ### `coordination_fee_credits`
 Insert on paid Event-optimize `optimization.routes.ts:459` (unique on `sourcePaymentIntentId`); claim
@@ -454,51 +465,68 @@ Publishable key `VITE_STRIPE_PUBLISHABLE_KEY` — also absent from `.env.example
   correctly, since the daily-summary write would need to run inside the same tx). **Filed (not
   built): the tx-aware refactor** — route the cart-confirm tx through the canonical writers
   directly (they'd need a `tx` param) instead of maintaining two hand-synced copies.
-- ~~**F-5 🟡 Agent-booking affiliate earnings recorded as `"0.00"`.**~~ **Machinery LANDED, adoption
-  DORMANT (`claude/money-hardening-r2`; decision-maker ratified design: never estimate a
-  commission, adopt only on an exact attribution match).** `content.routes.ts:~6917` still writes
-  `"0.00"` honestly at agent-booking confirm — unchanged, that part is correct (§13: the real
-  commission is genuinely unknown until the partner reports it). What's new:
-  - **Token helpers** (`travelpayouts-client.ts`): `buildAttributionSubId(token)` →
-    `<marker>.<token>`; `parseAttributionSubId(subId)` → `{marker, token}` (first-dot split, no dot
-    → `token: null`); `applyAttributionSubId(url, token, enabled)` — the pure, directly-testable
-    rewrite helper (`enabled=false` returns `url` unchanged, byte-identical).
-  - **Flag-gated outbound rewrite** (`content.routes.ts` `/api/affiliate-booking-requests/from-catalog`,
-    ~:6685-6740): when `TP_SUBID_ATTRIBUTION=1` (unset by default) AND the resolved affiliate URL
-    carries a `sub_id` param, it's rewritten to `buildAttributionSubId(<bookingRequestId>)` — the
-    booking-request id is pre-generated (`crypto.randomUUID()`) so it can be baked into the URL
-    **before** the row is written once (never patched after). Flag unset → `applyAttributionSubId`
-    is a no-op → current behavior is byte-identical (unit-tested both flag states).
-  - **Linkage found (item 3, no migration needed):** `affiliate_earnings.external_report_data` (jsonb,
-    written at `content.routes.ts:~6917`) already carries `{affiliateBookingRequestId: <id>}` — that's
-    the discoverable link between an `affiliate_earnings` row and its `affiliate_booking_requests`
-    row. The expert-earning side link is also discoverable: `storage.ts` `createAffiliateEarning`
-    (~:3612) credits the expert's share via `expert_earnings.referenceType='affiliate_earning'`,
-    `referenceId=<affiliate_earnings.id>`.
-  - **Exact-token adoption matcher** (`affiliate-reconciliation.service.ts`, private
-    `adoptExactTokenMatches`, runs **before** the existing fuzzy pass in `matchRecords`): for each
-    external row whose `sub_id` parses to a non-null token, finds the internal `unmatched` row
-    whose `external_report_data.affiliateBookingRequestId` equals that token and adopts the
-    partner-REPORTED amount verbatim (`total_commission`, `platform_share`/`expert_share` split via
-    the existing `resolveCommissionRates({source:"affiliate"})` — §8, no new literal),
-    `reconciliation_status='matched'`, `partner_reference_id`. Also updates the linked
-    `expert_earnings` row's `amount` when found; when no linked row is found, adopts only the
-    affiliate_earnings amount and appends a `reconciliation_notes` note flagging manual review
-    (this path is exercised in test but not hit in practice today, since the create-time chain
-    always creates the linked row when `expertId` is set). Idempotent (atomic
-    `WHERE reconciliation_status <> 'matched'` claim; a second run updates 0 rows). External rows
-    consumed here are skipped in the fuzzy pass (one partner report row is never credited twice).
-    The fuzzy pass's pre-existing `internalAmt === 0 → reject` guard is untouched and still the
-    only thing stopping a zero-amount row from being fuzzy-matched — exact-token adoption is the
-    ONLY path a zero-amount row can ever be matched through.
-  - **Still gated on:** a live echo test (Replit-side, separate — not part of this branch)
-    confirming Travelpayouts actually returns the suffixed `sub_id` verbatim on `execute_query`
-    action rows, before `TP_SUBID_ATTRIBUTION` is ever set to `1` anywhere real.
-    `.env.example` documents this explicitly.
-  - Tests: `server/__tests__/affiliate-reconciliation-token-adoption.test.ts` (11 cases — token
-    round-trip incl. no-dot/trailing-dot; `applyAttributionSubId` both flag states incl. malformed
-    URL; exact-token adoption incl. linked expert-earning; idempotent re-run; tokenless zero-row
-    never matches; nonzero fuzzy matching regression-proofed unaffected).
+- ~~**F-5 🟡 Agent-booking affiliate earnings recorded as `"0.00"`.**~~ **LIVE — ledger
+  `2026-09-05-affiliate-subid-live` (decision-maker ratified Sep 5, 2026, evening).** The
+  `claude/money-hardening-r2` machinery is no longer dormant and `TP_SUBID_ATTRIBUTION` is gone from
+  every call site. `content.routes.ts` still writes `"0.00"` honestly at agent-booking confirm —
+  unchanged, and still correct (§13: the real commission is genuinely unknown until the partner
+  reports it). What changed is that the report can now be matched with certainty.
+  - **ONE BUILDER — `server/services/affiliate-attribution.service.ts`
+    `buildAttributedAffiliateUrl({affiliateUrl, requestId, clickId?})`.** Attribution is per
+    REQUEST: the `affiliate_booking_requests` row id is written into the partner's OWN attribution
+    parameter as `<marker>.<requestId>` (Travelpayouts' documented `marker.SubID` convention). Two
+    parameters are eligible and neither is ever ADDED to a link that lacks it — `sub_id` (WeGoTrip
+    product links) and `marker` (GetTransfer, Aviasales). The marker HALF is read back off the
+    link, so a campaign-specific marker survives and the account marker is only the empty-value
+    fallback. **A partner with no attribution parameter — Viator (`mcid`), Impact/Fever (utm
+    campaign), 12Go (`affiliate_id`), Klook (`aff_code`), Omio/Busbud (`ref`), GetYourGuide/Tiqets
+    (`partner_id`), Airalo (`referral_code`) — gets the URL back BYTE-IDENTICAL and the return
+    shape SAYS SO** (`attributed:false` + a `reason`): never a fabricated parameter, and never a
+    silence in which "this partner has no sub_id concept" and "we forgot to stamp it" look the
+    same (§13). The builder never throws; it is idempotent.
+  - **THREE CALL SITES, all in `server/routes/content.routes.ts`:**
+    `POST /api/affiliate-booking-requests` (the id is pre-generated so the token is baked into
+    `affiliate_url` BEFORE the row is written once — never patched after);
+    `POST /api/affiliate-booking-requests/from-catalog` (same);
+    and **`GET /api/affiliate-booking-requests/:id/open` — the TRACKED OPEN, new here.**
+  - **§16 — the URL never reaches a client.** Both list readers now strip `affiliate_url`
+    (`storage.getAffiliateBookingRequestsByExpert` joins the traveler reader that already did) and
+    the PATCH response strips it (it used to carry it: *"Include affiliateUrl for expert
+    responses"*). The tracked open is therefore the ONE way anybody opens a partner link for one of
+    these rows: it resolves the URL server-side, re-runs the idempotent builder (so a legacy row is
+    attributed on the way out), records an `affiliate_clicks` row carrying `booking_request_id`,
+    and **302s** — the URL leaves only as a `Location` header, never in a response body. Authorized
+    for the booking AGENT (expert/admin, the same pooled-queue posture as the PATCH) or the
+    TRAVELER whose request it is; the identity is the SESSION's (§14). The client rail is
+    `client/src/pages/expert/workspace.tsx`, which now links to the route instead of to
+    `req.affiliateUrl`.
+  - **THE READ SIDE LIVES BESIDE THE WRITE SIDE (§18 rule 1).** `resolveExternalAttributionToken`
+    and `selectTokenMatchCandidate` moved into the attribution module: one place encodes the
+    convention and one place decodes it. Both are PURE (no DB, no network, no env), which is what
+    lets the matcher's decision be proved in plain CI —
+    `server/services/affiliate-reconciliation.service.ts` imports `server/db` and cannot be loaded
+    without a database.
+  - **RECONCILIATION LINKS, IT DOES NOT REPAIR (§17).** `adoptExactTokenMatches` still adopts the
+    partner-REPORTED amount verbatim on an exact token match (never estimates), and now ALSO writes
+    `affiliate_earnings.booking_request_id` and `.trip_id` (migration 288), resolved from
+    `affiliate_booking_requests` — never assumed: a request row that no longer exists leaves both
+    NULL, and a request with no trip leaves `trip_id` NULL. It changes no amount that a partner did
+    not report, marks nothing paid, and creates no booking. **An UNPARSEABLE sub_id yields a null
+    token, stays UNMATCHED, and is reported with its RAW value** on the unmatched-external list
+    (`ExternalCommission.attribution = {rawSubId, token}`) — never guessed onto a nearby booking
+    request, which is exactly the estimate this seam exists to refuse. The fuzzy pass's
+    `internalAmt === 0 → reject` guard is untouched and still the only thing stopping a
+    zero-amount row from being fuzzy-matched.
+  - **Schema (migration 288, additive nullable, NO CHECK, ON DELETE SET NULL, declared in
+    `shared/schema.ts`, no backfill):** `affiliate_clicks.booking_request_id`,
+    `affiliate_earnings.booking_request_id`, `affiliate_earnings.trip_id`. NULL is the honest
+    "never stamped / never token-matched" (§13).
+  - **Not touched:** `resolveCommissionRates`, the split, every earnings and payout path.
+    `check-money-endpoints.cjs` stays green with NO new `money-derive-ok` annotation.
+  - Tests: `server/__tests__/affiliate-subid-attribution.test.ts` (19 pure proofs — B1-B6 builder,
+    R1-R4 round-trip + matcher, S1-S5 §16 and no-money static pins), wired into `build.yml`. The
+    dormant-machinery suite `affiliate-reconciliation-token-adoption.test.ts` (DB-backed) is
+    unchanged and still pins `applyAttributionSubId`, which survives with no production caller.
 - ~~**F-6 🟢 Dead code.**~~ **FIXED (`claude/money-hardening-r1`).** `verifyStripeWebhookSignature`
   (`stripe.service.ts:240`, zero callers) and the `trips.routes.ts:72` Stripe client (zero call sites in that
   file) are both deleted.

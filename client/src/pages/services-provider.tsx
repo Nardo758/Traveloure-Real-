@@ -39,6 +39,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { isAffiliateCategory } from "@/lib/earn-roles";
+import { suggestHandle } from "@shared/handle-suggestion";
+import { HANDLE_MAX_LENGTH } from "@shared/handle";
+import { savePendingHandle } from "@/lib/pending-handle";
 import {
   saveApplicationDraft,
   loadApplicationDraft,
@@ -49,11 +52,17 @@ import {
 // Namespaced so the expert and provider funnels' drafts never collide.
 const DRAFT_KEY = "traveloure_provider_application_draft";
 
+// Ledger `2026-09-05-handles-are-claimed` (CLAUDE.md Locked Decision 40): "Your public handle" is
+// the LAST step, appended after Review rather than inserted before it — the same shape the expert
+// funnel uses, for the same two reasons: it writes nothing at submit (a provider applicant is not
+// yet an earner, so `PATCH /api/me/handle` would 403), and appending leaves every existing step
+// number and gate untouched. OPTIONAL — `canProceed`'s `default: return true` covers it.
 const steps = [
   { id: 1, title: "Business Info" },
   { id: 2, title: "Services" },
   { id: 3, title: "Details" },
   { id: 4, title: "Review" },
+  { id: 5, title: "Your Handle" },
 ];
 
 /**
@@ -142,6 +151,10 @@ export default function ServicesProviderPage() {
     hasInsurance: false,
     hasLicense: false,
     agreeToTerms: false,
+    // The handle the applicant chose on the last step. `null` = UNTOUCHED (the suggestion is shown
+    // but not confirmed or edited); "" = deliberately cleared. Neither is a claim — see
+    // `client/src/lib/pending-handle.ts`.
+    publicHandle: null as string | null,
   };
 
   // Restore a guest's in-progress draft (saved right before we sent them to sign
@@ -196,6 +209,14 @@ export default function ServicesProviderPage() {
     if (!signedInUser?.email) return;
     setFormData((prev) => (prev.email ? prev : { ...prev, email: signedInUser.email as string }));
   }, [signedInUser]);
+
+  // Ledger `2026-09-05-handles-are-claimed`: the suggestion, computed ONCE by the shared helper
+  // (`shared/handle-suggestion.ts` — the same one the expert wizard and the console banner read)
+  // from the BUSINESS name, which is what a provider's storefront is named after. `null` when the
+  // name yields nothing usable; the field is then empty and they type their own (§13).
+  const suggestedHandle = suggestHandle({ displayName: formData.businessName });
+  /** What the field shows: their own answer if they have given one, else the suggestion. */
+  const handleFieldValue = formData.publicHandle ?? suggestedHandle ?? "";
 
   const toggleCategory = (category: string) => {
     if (formData.serviceCategories.includes(category)) {
@@ -292,6 +313,11 @@ export default function ServicesProviderPage() {
     },
     onSuccess: () => {
       clearApplicationDraft(DRAFT_KEY);
+      // HELD, not claimed: `PATCH /api/me/handle` refuses a non-earner with a 403 and a provider
+      // applicant only becomes `service_provider` when an admin approves this registration, so
+      // the wizard cannot write it here and this lane does not widen that gate. The console's
+      // "Claim your handle" banner offers it back pre-filled after approval. Empty holds nothing.
+      savePendingHandle(handleFieldValue);
       toast({
         title: "Registration submitted!",
         description: "We'll review your registration and follow up by email.",
@@ -821,6 +847,44 @@ export default function ServicesProviderPage() {
                     </a>
                   </label>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 5: Your public handle — ledger `2026-09-05-handles-are-claimed` (LD 40).
+              OPTIONAL and never blocking: not being able to claim is honest, not being able to
+              APPLY is a funnel hole (the LD 27 posture). Nothing is written at submit — see the
+              stash note in the mutation's onSuccess. */}
+          {currentStep === 5 && (
+            <Card className="border-border" data-testid="step-handle-claim">
+              <CardHeader>
+                <CardTitle className="text-2xl text-foreground">Your public handle</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Your handle is the public name of your booking page —{" "}
+                  <code>/s/your-handle</code> — and the one address you can give a customer out
+                  loud. We have suggested one from your business name; change it to whatever you
+                  want to be known as. It is set up for you once your registration is approved, and
+                  you can change it any time after that.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center rounded-md border border-border bg-muted/40 px-3 h-10 text-sm text-muted-foreground">
+                    /s/
+                  </div>
+                  <Input
+                    value={handleFieldValue}
+                    onChange={(e) => updateFormData("publicHandle", e.target.value.toLowerCase())}
+                    placeholder="your-business"
+                    maxLength={HANDLE_MAX_LENGTH}
+                    className="max-w-[280px]"
+                    data-testid="input-public-handle"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Lowercase letters, numbers and single hyphens. Optional — you can skip this and
+                  claim a handle from your dashboard later.
+                </p>
               </CardContent>
             </Card>
           )}

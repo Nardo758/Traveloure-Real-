@@ -1,5 +1,10 @@
 import { and, isNull, notInArray, type SQL } from "drizzle-orm";
 import { itineraryItems } from "@shared/schema";
+import {
+  ITEM_MONEY_COMMITTED_STATUSES,
+  itineraryItemIsMoneyCommitted,
+  itineraryItemIsPaid,
+} from "@shared/itinerary-item-money";
 
 /**
  * D-1 money-safety guard (ledger 2026-08-31-two-surfaces-one-handoff).
@@ -30,3 +35,26 @@ export function itineraryItemRebuildDeletable(): SQL {
     isNull(itineraryItems.bookingId),
   )!;
 }
+
+/**
+ * ── THE SAME QUESTION, FOR ONE ROW (ledger `2026-09-05-slip-own-your-plan`, review R14) ──
+ *
+ * The predicate above is a WHERE clause: it answers "which rows may a rebuild replace?" for a set.
+ * The slip's ✕ and the trip-scoped DELETE ask the same question about ONE row already in hand, and
+ * §18 rule 1 refuses a second predicate that agrees with this one only by luck. The row-level
+ * answer therefore lives in `shared/itinerary-item-money.ts` — shared because the other asker is
+ * the CLIENT, which holds the plancard DTO rather than a DB row — and is re-exported here so the
+ * two forms of the answer sit beside each other and are read together.
+ *
+ * THE TWO SETS ARE DELIBERATELY NOT IDENTICAL, and the direction that matters is asserted in
+ * `server/__tests__/item-delete-booked-guard.test.ts`: every status the row-level predicate calls
+ * money-committed is ALSO in `REBUILD_PROTECTED_STATUSES`, so no rail can delete what the other
+ * protects. The rebuild set is WIDER (it also spares `ready_for_checkout`) because a machine wipe
+ * must not empty a traveler's checkout queue as a side effect, while a traveler pressing ✕ on
+ * their own not-yet-charged row is doing exactly what they meant to do (see that module's header).
+ */
+export {
+  ITEM_MONEY_COMMITTED_STATUSES,
+  itineraryItemIsMoneyCommitted,
+  itineraryItemIsPaid,
+};

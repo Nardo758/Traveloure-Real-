@@ -752,6 +752,9 @@ This document captures architectural decisions to maintain consistency across co
     underneath both, **`/experts/:id` is today the ONLY public profile an earner who has claimed NO
     handle has** — so removing the id there would not degrade honestly (§13), it would delete those
     earners from the site. Giving them a handle, or a handle-shaped hire rail, is the next lane.
+    **THE CLAIM PROMPT HAS LANDED** (ledger `2026-09-05-handles-are-claimed`): handles are ASKED
+    for — a persistent console banner and an optional last step in both application wizards,
+    prefilled by ONE shared `suggestHandle` helper — and never generated on an earner's behalf.
     **STILL NOT REMOVABLE, and out of this guard's predicate by design:** `ConversationSummary.
     otherUserId`, `?clientId=` and the WebSocket frame are all on AUTHENTICATED surfaces, so the
     guard does not scan them; they keep the prerequisites lane 3 recorded below.
@@ -1143,6 +1146,118 @@ This document captures architectural decisions to maintain consistency across co
     SPA catch-alls, which were answering Stripe's verification fetch with the SPA's 200-HTML "404
     – Lost at Sea?" page — the file itself remains an operator drop-in, and the dashboard
     registration remains the operator step this clause rules it to be.**
+
+44. **THE PLATFORM'S BOOKING AGENT IS THE AI COPILOT FIRST; A HUMAN OR A PARTNER API MAKES THE
+    PURCHASE; BROWSER CONTROL IS READ-ONLY (decision-maker ratified Sep 5, 2026, evening — ledger
+    `2026-09-05-ai-booking-agent`). NO SCHEMA CHANGE, NO MIGRATION, NO CODE IN THIS LANE — it is a
+    design ruling; content of record is `docs/design/AI_BOOKING_AGENT_BRIEF.md`.**
+    (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids,
+    which are date-slugs per ruling 25. 40–43 are present above; this is 44.)
+    The platform already promises the traveler, on every partner-fulfilled item, that *"our booking
+    agent will handle this and add it to your trip"* (`AffiliateBookButton.tsx`). Today that promise
+    is kept by a pooled human queue whose **assignment is `getExpertUserIds(10)[0]`** — the first
+    `role='expert'` row the table returns, with **no category and no city match** despite the
+    comment above the call claiming both (`server/routes/content.routes.ts:7534`,
+    `server/services/content-query.service.ts:568`) — and whose **traveler-facing read
+    (`GET /api/affiliate-booking-requests/user`) has ZERO callers in `client/`**. The one piece of
+    machine help that exists, the ratified verification leg
+    (`server/services/booking-verification.service.ts`), is mounted on the trip-scoped Workstation
+    only; the POOLED queue an unassigned request actually lands in
+    (`client/src/pages/expert/inbox.tsx` `AgentBookingRequestsSection`) has no verify control at all.
+    **(a) THE COPILOT IS ASSIGNED FIRST, BEFORE ANY HUMAN.** It researches (Tavily) and verifies
+    through the EXISTING verification leg — **extended, never forked**: `safeParseExtractedFacts` /
+    `buildFlagsAndVerdict` / `draftAgentNote` and the in-flight+throttle claim taken BEFORE the paid
+    calls are one implementation each, and a second extractor or a second verdict predicate beside
+    them is the derivation-drift class §18 rule 1 names. It resolves ambiguities with the traveler
+    (which time slot, which room class), prepares an exact purchase packet, and DRAFTS the
+    traveler-facing confirmation. **Humans see only requests that are READY TO BUY or FLAGGED.**
+    **(b) AN API PARTNER IS BOOKED END TO END BY THE AGENT** through the partner's booking API:
+    a REAL confirmation id, **idempotent by construction (§15** — CLAIM → AUTHORIZE → PROMOTE with
+    a TTL reclaim and the §15b pre-flight marker, never a compensating rollback**)**, **amount
+    server-derived from the partner's own priced availability response (§14)**, commission left at
+    the honest `"0.00"`-pending-partner-report the confirm path already writes (never estimated).
+    **AMADEUS IS CITED AS THE SHAPE, NOT AS RUNNING CODE, AND THE FILE SAYS SO:** ledger row 34
+    (2026-08-05) DROPPED it — service deleted, provider-health entry removed, `/api/amadeus/flights`
+    retired, `/api/amadeus/locations` reduced to a `location_cache` read — and revival needs new
+    credentials **and a new ruling**. **There is no partner BOOKING client anywhere in `server/`**
+    (grepped). So (b) is DESIGNED and UNBUILT, and a speculative client for an unsigned partner is
+    exactly the second unaudited money path this rule exists to refuse. The nearest live thing is
+    `viator.service.ts`'s `checkAvailability` — a real partner AVAILABILITY API with no booking
+    call, which makes it a better `researching` INPUT than a page extract and still not a purchase.
+    **(c) AN AFFILIATE (LINK) PARTNER GETS A ONE-CLICK HUMAN PURCHASE.** The human booking agent, or
+    the traveler themselves, presses the final buy on the partner's page opened through the
+    platform's TRACKED redirect (`sub_id` carrying the request id — the parallel lane
+    `2026-09-05-affiliate-subid-live`; the token is already baked into the STORED `affiliate_url` at
+    create by `applyAttributionSubId`, dormant behind `TP_SUBID_ATTRIBUTION`, and the reconciliation
+    matcher already adopts the partner's REAL reported amount off it rather than estimating).
+    **THE AGENT NEVER TYPES A CARD INTO A PARTNER FORM AND NEVER COMPLETES A PURCHASE BY BROWSER
+    AUTOMATION**, for three reasons each of which alone is sufficient: affiliate programs treat
+    automated conversions as FRAUD and it is the commission the whole rail exists to preserve that
+    is forfeited; a bot purchase is a **money movement with no server-verified actor and no
+    idempotent claim** (§14 wants the actor from the session, §15 wants a retry to produce one
+    effect — a headless press satisfies neither, and a re-run is a second REAL charge); and card
+    handling outside Stripe is a **PCI exposure** (the same hard gate MONEY_MAP §0a already sets for
+    Model B). **THE ONE RAIL THIS NEEDS DOES NOT EXIST:** `POST /api/content/affiliate-redirect` is
+    content-addressed, unauthenticated and hands the URL to whoever asks — right for its
+    informational job, wrong for this one. Phase 3 builds a **request-addressed,
+    authorization-gated** redirect admitting only the request's own traveler or its assigned agent.
+    **§16 IS NOT LOOSENED BY THAT:** §16 prohibits UNTRACKED raw outbound and off-site booking CTAs;
+    a tracked, gated, request-scoped redirect is the agent rail completing itself.
+    **(d) BROWSER CONTROL IS READ-ONLY.** Playwright or a hosted browser is for VERIFICATION and
+    PRICE CAPTURE where Tavily's extract falls short. Write-capable automation against a partner is
+    revisited **only with that partner's WRITTEN CONSENT, recorded in the ledger** — a ruling, not a
+    ticket.
+    **(e) THE STATUS VOCABULARY IS HONEST (§13):**
+    `received → researching → ready_to_buy → purchased_by_<human|traveler|api> → confirmed`, plus
+    `flagged` and `unavailable`. **"BOOKED" IS SAID ONLY WITH A CONFIRMATION IN HAND** — so
+    `purchased_by_*` (a named actor attempted a purchase) and `confirmed` (we hold the reference)
+    are DIFFERENT FACTS and are never collapsed, and the slip's bookings section (ruling 42 **D9**,
+    owner + `payer`-role audience, gated by the same `canPayBalance` predicate the route runs)
+    renders **"prepared, awaiting purchase" DISTINCTLY from "booked"**. `flagged` is a QUESTION and
+    `unavailable` is the PARTNER'S ANSWER — today's single `failed` bucket conflates them, which is
+    the §13 lie this vocabulary exists to prevent. Value set is **APP-ENFORCED with NO DB CHECK**
+    (the publish-trap posture; `status` is `varchar(30)` today and stays so) and **NO BACKFILL** —
+    a row that was `assigned` under the old vocabulary was assigned under it, and rewriting it to
+    `received` would invent a fact about work nobody did; readers map the legacy four explicitly and
+    say so. Statuses a HUMAN may set are allowlisted; `researching` and `purchased_by_api` are
+    **server-written only** — a human may not type themselves into a machine state.
+    **(f) COST AND HONESTY.** Every copilot model call writes `ai_cost_tracking` through the
+    EXISTING `trackAnthropicResponse` — and because that table is one of the two objects this file
+    already names as a **deploy-push casualty** (created by `025b_ai_cost_tracking.sql`, absent from
+    `shared/schema.ts`, so a publish drops it and the stamped migration never recreates it),
+    **declaring it is a prerequisite of multiplying call volume through it**, recorded here. The
+    copilot **never invents availability, price or policy — `null` WITH A REASON** — and **a partner
+    page that cannot be read leaves the request `researching` with the reason, NEVER
+    `ready_to_buy`**. Absent fields are OMITTED on the traveler surface, never zero-filled: a null
+    price is "the page did not state one", not "$0".
+    **NEGATIVE SPACE, and it is the load-bearing half.** This ruling creates **no second booking
+    store** (`affiliate_booking_requests`, `service_bookings`, and the cart as `itinerary_items`'
+    `ready_for_checkout` projection are the three, and there is no fourth); touches **no §14/§15/§17
+    invariant on the platform money path** (an affiliate purchase mints no platform PaymentIntent at
+    all — ruling 43(c)); **estimates no commission**; changes **nothing about how a request is
+    CREATED** (the §16 server-resolution rewrite — the client supplies a booking reference, never a
+    URL, and never receives one — is untouched and is what makes this lane safe to build at all);
+    and **does NOT fix the arbitrary human assignment**, which is recorded as a finding and needs
+    its own ruling. An `affiliate_booking_requests.status` describes a PARTNER purchase and an
+    `itinerary_items.routingStatus` describes OUR cart projection (ruling 39) — **never merged,
+    never mirrored, never derived from each other**.
+    **BUILD SEQUENCE = ruling 42's build order, WAVE 2b** (namespaced per ruling 37 — never a bare
+    "wave 2"), each phase appending its OWN ledger row: **Phase 0** assignment + status vocabulary
+    (no schema); **Phase 1** copilot research/prepare (extends the verification module, wires the
+    pooled queue's missing verify affordance, declares `ai_cost_tracking`); **Phase 2** API-partner
+    end-to-end (**blocked** — no signed partner exists on `main`); **Phase 3** the one-click human
+    purchase UX (**depends on** `2026-09-05-affiliate-subid-live` being on).
+    **SEVEN QUESTIONS ARE OPEN AND NAMED IN THE BRIEF, NOT DECIDED HERE:** the purchase packet's
+    carrier (jsonb beside `verification` vs a typed child table — schema, so it needs its own
+    ratification); which rail carries the copilot's question to the traveler (the LD 40 conversation
+    rail is structurally human↔human — `buildConversationId` concatenates two `users.id` — so (a)'s
+    phrasing needs one of three concrete answers, and **whichever wins, the copilot's words are
+    attributed to the COPILOT**, the same false-attribution line ruling 42 D4 drew for
+    `expert_note`); the snapshot staleness window (config, never a literal); the `sourceType`/
+    `userId` a copilot-initiated call writes to `ai_cost_tracking`; who SENDS the drafted
+    confirmation (the copilot only DRAFTS it); the `origin` a copilot-prepared, human-pressed
+    booking's itinerary item carries (the confirm path writes `origin:'expert'` today, true when an
+    expert pressed and false when the traveler did); and which partner is Phase 2's first.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

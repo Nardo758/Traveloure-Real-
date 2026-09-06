@@ -523,6 +523,12 @@ export async function getTripExpertAdvisor(tripId: string): Promise<any | null> 
       lef.id as expert_form_id, lef.first_name, lef.last_name,
       lef.bio, lef.specialties, lef.destinations, lef.hourly_rate,
       u.profile_image_url,
+      -- The expert's PUBLIC address (CLAUDE.md Locked Decision 40): a conversation is opened by
+      -- naming a handle, a serviceId or a bookingId -- never a users.id. The slip's rail reads
+      -- this to offer "Message <expert>". NULL = this expert has claimed no handle, and CLAUDE.md
+      -- section 13 says the reader must then say so out loud rather than render a dead control or
+      -- fall back to an id address. Owner-gated route; a handle is public by construction.
+      u.handle,
       COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
       COUNT(rr.id) as review_count
     FROM trip_expert_advisors tea
@@ -532,7 +538,7 @@ export async function getTripExpertAdvisor(tripId: string): Promise<any | null> 
     WHERE tea.trip_id = ${tripId} AND tea.status IN ('pending', 'accepted')
     GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
              lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
-             lef.destinations, lef.hourly_rate, u.profile_image_url
+             lef.destinations, lef.hourly_rate, u.profile_image_url, u.handle
     ORDER BY tea.assigned_at DESC
     LIMIT 1
   `);

@@ -6,7 +6,6 @@
  * briefly highlights that item row on mount.
  */
 import { Loader2 } from "lucide-react";
-import { TripPassCard } from "@/components/plancard/TripPassCard";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
@@ -48,10 +47,11 @@ export default function SlipViewPage() {
       {/* Concierge support — renders only when this trip is a ready-made clone the caller owns
           (ledger 2026-08-22-concierge-revision). Self-gating: null on any other trip. */}
       <ConciergeCard tripId={tripId!} />
-      {/* Trip Pass offer/status (ruling 2026-08-29-trip-pass) — the slip is where the
-          tripId is known, so the purchase mounts here; teal action (the slip's coral
-          budget belongs to Finalize). */}
-      <TripPassCard tripId={tripId!} />
+      {/* TRIP PASS MOVED INTO THE RAIL (ledger `2026-09-05-slip-rail-regroup`). The card itself is
+          unchanged and still the ONE purchase rail — it is now a row of the Build card, beside the
+          AI action it covers, rather than a floating card above the plan. Concierge stays here:
+          it is self-gating (null on any trip that is not a ready-made clone the caller owns) and
+          is a support statement, not a build action. */}
       <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} />
     </div>
   );

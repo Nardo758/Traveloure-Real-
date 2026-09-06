@@ -1,0 +1,185 @@
+/**
+ * slip-rail — the pure decisions behind the slip's action rail.
+ *
+ * Ledger `2026-09-05-slip-rail-regroup` (LD 42 build-order row 1.5); the canvas "rail" annotation
+ * in `slip-canvas/gen.py`. CLAUDE.md §13, §18 rule 1, Locked Decisions 30, 39, 40, 41.
+ *
+ * WHY A MODULE AND NOT INLINE JSX. Every one of these answers is a rule the rail must not restate
+ * in two places: which AI action a plan is offered, what a share link actually points at, what the
+ * calendar route is, and what may be said about an expert with no public address. Each one is the
+ * kind of fact that grows a second copy the moment a second surface needs it — the drift class
+ * §18 rule 1 names — so they live here, once, and the component reads them.
+ *
+ * NEGATIVE SPACE (§18d habit, stated for a client module too):
+ *  - these decide SHAPE and COPY only. Whether the traveler may run an optimization, whether the
+ *    free draft is allowed on this slip, whether a share token exists and whether the calendar
+ *    route will answer are all SERVER answers (`resolveOptimizerRunAuthorization`,
+ *    `resolveAiDraftEligibility`, `POST /api/trips/:id/share`, the calendar route's own gate).
+ *    Nothing here authorizes anything, and no caller may read it as having done so.
+ *  - nothing here counts money, resolves a fee or picks a rate (§14/§18).
+ */
+
+/** The four cards the rail regroups into, in render order. One name each, used as the testid tail. */
+export const SLIP_RAIL_CARDS = ["build", "plan", "share", "finish"] as const;
+export type SlipRailCard = (typeof SLIP_RAIL_CARDS)[number];
+
+// ── Build · the ONE AI action ─────────────────────────────────────────────────────────────────
+
+export type SlipBuildAiAction = "draft" | "optimize";
+
+/**
+ * WHICH AI ACTION THIS PLAN IS OFFERED — CLAUDE.md Locked Decision 41 (b): "the free AI draft runs
+ * only on an EMPTY slip. Any AI action on a slip that already holds items is Optimize, and goes
+ * through the existing pay gate. There is no second free rail hiding behind a different button."
+ *
+ * So the rail offers exactly ONE of the two, decided by the item count and nothing else:
+ *   0 items  ⇒ "draft"    — the free sketch; there is nothing to overwrite.
+ *   ≥1 item  ⇒ "optimize" — the existing gate, preview line and fee label.
+ *
+ * "EMPTY" COUNTS EVERY ROW IN EVERY STATUS, exactly as the server's own
+ * `decideAiDraftEligibility` does — a purchased row, an expert row and a plain planning row each
+ * make the slip non-empty. This is deliberately the same question stated on the same terms, not a
+ * looser client approximation: a client that offered Draft on a slip the server would refuse
+ * would be promising a free rebuild the traveler cannot have (§13). The SERVER still decides —
+ * it re-checks in the route and again inside the snapshot transaction — and a refusal is shown
+ * as its own sentence through `readSlipHasItemsRefusal`.
+ *
+ * A non-finite count is treated as "optimize": the cautious direction is never to offer a free
+ * wipe-and-rebuild on a plan we could not count.
+ */
+export function slipBuildAiAction(itemCount: number): SlipBuildAiAction {
+  if (!Number.isFinite(itemCount)) return "optimize";
+  return itemCount <= 0 ? "draft" : "optimize";
+}
+
+/**
+ * Honest disabled state for "Draft it with AI", mirroring `slipOptimizeDisabledReason`'s posture:
+ * the generate rail requires a real destination and a real date range and this surface never
+ * invents either (§13). Returns the tooltip when the action must be disabled, else null.
+ *
+ * It deliberately does NOT restate the empty-slip rule — that is `slipBuildAiAction`'s single
+ * answer above, and a second statement of it here is exactly the drift §18 rule 1 names.
+ */
+export function slipDraftDisabledReason(opts: {
+  destination: string | null | undefined;
+  startDate: string | null | undefined;
+  endDate: string | null | undefined;
+}): string | null {
+  if (!opts.destination) {
+    return "This plan has no destination yet — add one before drafting.";
+  }
+  if (!opts.startDate || !opts.endDate) {
+    return "This plan has no dates yet — add them before drafting.";
+  }
+  return null;
+}
+
+// ── Build · hand off to / message an expert ───────────────────────────────────────────────────
+
+/** The subset of `GET /api/trips/:id/expert-advisor`'s advisor row this rail reads. */
+export interface SlipRailAdvisor {
+  status?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  /** `users.handle` — the PUBLIC address (Locked Decision 40). NULL = none claimed. */
+  handle?: string | null;
+}
+
+/**
+ * THE HONEST SENTENCE for an advisor who has claimed no storefront handle.
+ *
+ * Locked Decision 40 says a conversation is opened by naming a `handle`, a `serviceId` or a
+ * `bookingId` — a `users.id` is INTERNAL and is not an address. An `advisor` context kind does
+ * not exist on the start rail today, and this plan holds no service or booking that names the
+ * expert, so a handle-less advisor genuinely has no address this surface can send to.
+ *
+ * §13: that is stated, not hidden. A greyed button implies a message could be sent under some
+ * condition the traveler could meet; the absence is not theirs to fix, so the rail says what is
+ * true and leaves the expert's standing (which the event headers already render) alone.
+ * D22's amendment — giving the start rail an `advisor` kind — is a separate lane.
+ */
+export const SLIP_EXPERT_NO_HANDLE_NOTE =
+  "This expert hasn't set up a public profile to message yet.";
+
+export type SlipExpertRailState =
+  /** No advisor on the plan — offer the ONE plan-level picker. */
+  | { kind: "hire" }
+  /** An advisor with a public handle — offer the ONE Message control. */
+  | { kind: "message"; name: string; handle: string; pending: boolean }
+  /** An advisor with no address — say so (see SLIP_EXPERT_NO_HANDLE_NOTE). */
+  | { kind: "no_handle"; name: string; pending: boolean };
+
+/** "Aya Tanaka" from the row, or null — never a placeholder name (§13). */
+export function slipAdvisorName(advisor: SlipRailAdvisor | null | undefined): string | null {
+  if (!advisor) return null;
+  const name = [advisor.first_name, advisor.last_name].filter(Boolean).join(" ").trim();
+  return name.length > 0 ? name : null;
+}
+
+/**
+ * The Build card's expert row, in one decision.
+ *
+ * The three states are three different facts and are never collapsed: no advisor at all, an
+ * advisor we can address, and an advisor we cannot. A PENDING advisor is still an advisor — the
+ * invitation is out — so the rail stops offering the picker and reports the standing instead;
+ * that is Locked Decision 12's line read from the traveler's side (a pending advisor may not
+ * WRITE; the traveler may still write to them).
+ */
+export function slipExpertRailState(advisor: SlipRailAdvisor | null | undefined): SlipExpertRailState {
+  if (!advisor) return { kind: "hire" };
+  const name = slipAdvisorName(advisor) ?? "your expert";
+  const pending = advisor.status === "pending";
+  const handle = typeof advisor.handle === "string" ? advisor.handle.trim() : "";
+  if (handle.length === 0) return { kind: "no_handle", name, pending };
+  return { kind: "message", name, handle, pending };
+}
+
+// ── Share ─────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * THE SHARE LINK, IN ONE PLACE (S10).
+ *
+ * The slip used to copy `${origin}/itinerary/${trip.id}`, which `App.tsx` redirects to
+ * `/trip/:id` — a ProtectedRoute. Every recipient who was not already signed in as the owner met
+ * a login wall, so the button "worked" and the link never did. This is the TOKEN link the
+ * platform's own share rail already mints: `POST /api/trips/:id/share` (owner-gated, idempotent
+ * retrieve-or-create) answers with the token, and `/trips/shared/:token` is the public,
+ * trip-shaped read that renders it.
+ *
+ * ONE builder, so the slip and `trip-details.tsx` (the rail's other caller) can never point at
+ * two different URLs for the same token (§18 rule 1). The trip id is deliberately NOT part of
+ * this URL: the token IS the address, and appending an internal id would put back exactly the
+ * thing the token exists to replace.
+ */
+export function slipShareUrl(origin: string, shareToken: string): string {
+  return `${origin}/trips/shared/${encodeURIComponent(shareToken)}`;
+}
+
+/** The trip-keyed `.ics` route (S11). Session-authenticated, gated like the plancard read. */
+export function slipCalendarPath(tripId: string): string {
+  return `/api/trips/${encodeURIComponent(tripId)}/calendar`;
+}
+
+/** The trip-keyed printable copy — unchanged, named here so the Share card states no path twice. */
+export function slipPdfPath(tripId: string): string {
+  return `/api/trips/${encodeURIComponent(tripId)}/pdf`;
+}
+
+// ── Finish ────────────────────────────────────────────────────────────────────────────────────
+
+/** Structural subset of `PlanCardActivity` the Finish card counts (kept import-free for tests). */
+export interface CheckoutCountableItem {
+  routingStatus?: string | null;
+  booking?: { id: string } | null;
+}
+
+/**
+ * How many rows are staged for checkout — the number on "Go to checkout (N)".
+ *
+ * Counts `ready_for_checkout` rows that are not already booked, which is what the cart projection
+ * holds. §13: ZERO means the card does not render the control at all rather than offering a
+ * checkout with nothing in it; the caller does that, and this only counts.
+ */
+export function countCheckoutReadyItems(items: readonly CheckoutCountableItem[]): number {
+  return items.filter((i) => !i.booking && i.routingStatus === "ready_for_checkout").length;
+}
