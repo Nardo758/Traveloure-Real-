@@ -86,28 +86,29 @@ export interface SlipRailAdvisor {
 }
 
 /**
- * THE HONEST SENTENCE for an advisor who has claimed no storefront handle.
+ * ── D22 CLOSED THE HANDLE-LESS ADVISOR (ledger `2026-09-05-slip-decisions-d18-d22`) ───────────
  *
- * Locked Decision 40 says a conversation is opened by naming a `handle`, a `serviceId` or a
- * `bookingId` — a `users.id` is INTERNAL and is not an address. An `advisor` context kind does
- * not exist on the start rail today, and this plan holds no service or booking that names the
- * expert, so a handle-less advisor genuinely has no address this surface can send to.
+ * This module used to carry a third state and a sentence for it: an advisor who had claimed no
+ * storefront handle had NO address, because Locked Decision 40's three kinds (`handle`,
+ * `serviceId`, `bookingId`) all address an EARNER from the marketplace and none of them addresses
+ * the person on your own plan. That sentence was honest and was not a product, and its own comment
+ * said the fix — "giving the start rail an `advisor` kind" — was a separate lane. This is that
+ * lane, so the state is GONE rather than kept beside its own replacement.
  *
- * §13: that is stated, not hidden. A greyed button implies a message could be sent under some
- * condition the traveler could meet; the absence is not theirs to fix, so the rail says what is
- * true and leaves the expert's standing (which the event headers already render) alone.
- * D22's amendment — giving the start rail an `advisor` kind — is a separate lane.
+ * The address is now the PLAN (`{ tripId }`, D22): the server resolves the counterpart from the
+ * trip plus the `trip_expert_advisors` row in a §12 access status. A handle is therefore no longer
+ * needed to message an advisor at all — it is kept on the state only as the DISPLAY fact it always
+ * was (the storefront a name can link to), never as the address.
  */
-export const SLIP_EXPERT_NO_HANDLE_NOTE =
-  "This expert hasn't set up a public profile to message yet.";
-
 export type SlipExpertRailState =
   /** No advisor on the plan — offer the ONE plan-level picker. */
   | { kind: "hire" }
-  /** An advisor with a public handle — offer the ONE Message control. */
-  | { kind: "message"; name: string; handle: string; pending: boolean }
-  /** An advisor with no address — say so (see SLIP_EXPERT_NO_HANDLE_NOTE). */
-  | { kind: "no_handle"; name: string; pending: boolean };
+  /**
+   * An advisor is on this plan — offer the ONE Message control, addressed by the PLAN.
+   * `handle` is `null` for an advisor who has claimed none, and that no longer withholds anything:
+   * the plan address does not need it (D22).
+   */
+  | { kind: "message"; name: string; handle: string | null; pending: boolean };
 
 /** "Aya Tanaka" from the row, or null — never a placeholder name (§13). */
 export function slipAdvisorName(advisor: SlipRailAdvisor | null | undefined): string | null {
@@ -119,19 +120,24 @@ export function slipAdvisorName(advisor: SlipRailAdvisor | null | undefined): st
 /**
  * The Build card's expert row, in one decision.
  *
- * The three states are three different facts and are never collapsed: no advisor at all, an
- * advisor we can address, and an advisor we cannot. A PENDING advisor is still an advisor — the
+ * TWO states since D22, and they are two different facts: no advisor on the plan at all (offer the
+ * ONE picker), or an advisor who can be messaged. A PENDING advisor is still an advisor — the
  * invitation is out — so the rail stops offering the picker and reports the standing instead;
  * that is Locked Decision 12's line read from the traveler's side (a pending advisor may not
- * WRITE; the traveler may still write to them).
+ * WRITE; the traveler may still write to them), and it is the SAME set the server's own
+ * `TRIP_ADVISOR_READ_ACCESS_STATUSES` admits on the start rail.
+ *
+ * §13 — WHAT IS STILL NOT INVENTED. A nameless advisor row gets the stated fallback "your expert"
+ * (`slipAdvisorName` returns null and the label says so generically) and a handle-less one gets
+ * `handle: null`, which the caller must not turn into a profile link. Neither is a placeholder for
+ * the ADDRESS, which is the plan and is always known.
  */
 export function slipExpertRailState(advisor: SlipRailAdvisor | null | undefined): SlipExpertRailState {
   if (!advisor) return { kind: "hire" };
   const name = slipAdvisorName(advisor) ?? "your expert";
   const pending = advisor.status === "pending";
-  const handle = typeof advisor.handle === "string" ? advisor.handle.trim() : "";
-  if (handle.length === 0) return { kind: "no_handle", name, pending };
-  return { kind: "message", name, handle, pending };
+  const raw = typeof advisor.handle === "string" ? advisor.handle.trim() : "";
+  return { kind: "message", name, handle: raw.length > 0 ? raw : null, pending };
 }
 
 // ── Share ─────────────────────────────────────────────────────────────────────────────────────

@@ -239,6 +239,64 @@ export function partyLabelForOccasion(
 }
 
 /**
+ * ── D21 · A GUEST-LIST OCCASION'S HEADER COUNTS BOTH POPULATIONS, NAMED ──────────────────────
+ *
+ * CLAUDE.md Locked Decision 42's D18–D22 addendum (ledger `2026-09-05-slip-decisions-d18-d22`),
+ * built by `2026-09-06-slip-small-additions`; the ratified `slip-canvas` header, which draws
+ * "Oct 2 – Oct 4, 2026 · 2 traveling · 64 invited · 4 events".
+ *
+ * THE TWO POPULATIONS ARE THE ONES LOCKED DECISION 37 KEEPS APART, and this is the line that says
+ * so on screen. The **traveling party** is `trips.adults`/`kids` — the plan's own columns, the
+ * people going. The **invited roster** is DERIVED from the events' `event_invites`
+ * (`GET /api/trips/:tripId/guests`, one row per person, deduplicated by normalised email). They
+ * are different people, they are never merged into one number, and a header that printed only one
+ * of them would be answering a question nobody asked.
+ *
+ * WHY THE WORD IS "traveling" AND NOT THE OCCASION'S NOUN. Where a guest list exists the occasion's
+ * `vocabulary` is usually "guests", and "2 guests · 64 invited" would name the same word twice for
+ * two different populations — the exact merge Locked Decision 37 forbids, worn as copy. So the
+ * traveling party takes the participle the artboard draws and the roster takes "invited"; the
+ * occasion's own noun still governs every plan WITHOUT a guest list, through `partyCountLabel`
+ * below, which this function DELEGATES to rather than re-deriving (§18 rule 1).
+ *
+ * §13 — EVERY ABSENCE IS PRESERVED, IN BOTH DIRECTIONS:
+ *   · a roster that has not loaded, one the viewer may not read (the route is owner-tier because
+ *     the rows carry emails and dietary notes) and one with nobody on it all pass `null`/`0` here
+ *     and get the ORDINARY party label — never "0 invited", which is a claim about the guest list
+ *     rather than about our knowledge of it;
+ *   · a plan whose party was never stated renders the invited count ALONE rather than inventing a
+ *     party of one to sit in front of it;
+ *   · an occasion still in flight has `hasGuestList === undefined`, which is not `true`, so the
+ *     line falls through to `partyLabelForOccasion`'s own unresolved handling and prints the count
+ *     with no noun. Nothing here has to know that rule — it just does not claim the guest branch.
+ *
+ * NO NEW COLUMN, and no second count anywhere: `invitedCount` is the SERVER's own `totals.invited`
+ * off the roster the slip already reads.
+ */
+export function planHeaderCountLabel(
+  partyCount: number | null | undefined,
+  invitedCount: number | null | undefined,
+  vocabulary: string | null | undefined,
+  hasGuestList: boolean | null | undefined,
+  occasionResolved: boolean,
+): string {
+  const invited =
+    typeof invitedCount === "number" && Number.isFinite(invitedCount) && invitedCount > 0
+      ? invitedCount
+      : null;
+
+  // The guest branch is claimed ONLY by an occasion that explicitly HAS a guest list and a roster
+  // that actually carries somebody. Anything else is the label this header has always printed.
+  if (hasGuestList === true && invited !== null) {
+    const party = partyCountOnly(partyCount);
+    const invitedPart = `${invited} invited`;
+    return party ? `${party} traveling · ${invitedPart}` : invitedPart;
+  }
+
+  return partyLabelForOccasion(partyCount, vocabulary, hasGuestList, occasionResolved);
+}
+
+/**
  * ── THE PARTY COUNT CAN BE TYPED, NOT ONLY STEPPED (decision-maker, step 4) ──────────────────
  *
  * THE DEFECT. The plan modal's step-4 steppers rendered their centre as a read-only `<span>`, so

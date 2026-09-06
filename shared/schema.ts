@@ -1713,9 +1713,15 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
 // joined), deliberately NOT the public HMAC id: the public id is a keyed projection that must stay
 // recomputable from — and rotatable independently of — what is stored.
 //
-// `contextKind` is `storefront` | `service` | `booking`, APP-ENFORCED by the pick-based allowlist
-// below and by CONVERSATION_CONTEXT_KINDS, with NO DB CHECK (the publish-trap posture, migrations
-// 181/195/273/275/276/277/279/280/281/282/284).
+// `contextKind` is `storefront` | `service` | `booking` | `advisor`, APP-ENFORCED by the pick-based
+// allowlist below and by CONVERSATION_CONTEXT_KINDS, with NO DB CHECK (the publish-trap posture,
+// migrations 181/195/273/275/276/277/279/280/281/282/284).
+//
+// `advisor` was added by CLAUDE.md Locked Decision 42's D22 amendment (ledger
+// `2026-09-05-slip-decisions-d18-d22`) — a PLAN-SCOPED thread between a traveler and the advisor on
+// their own plan, whose `contextId` is the `trips.id`. It needed NO MIGRATION, which is the whole
+// reason the column carries no CHECK: migration 287 said so in as many words, and D10 said a fourth
+// kind would be "a code change and not a publish trap". This is that code change.
 //
 // NO ROWS = an OLDER thread with no recorded context, and readers say so (§13) — never a guessed
 // `storefront`. There is no backfill. Written SERVER-SIDE ONLY (the start rail); no client body
@@ -1724,7 +1730,7 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
 //
 // Table + UNIQUE + index are declared HERE per the deploy-push durability rule: an object this file
 // does not declare is dropped by the publish-time push and never recreated.
-export const conversationContextKindEnum = ["storefront", "service", "booking"] as const;
+export const conversationContextKindEnum = ["storefront", "service", "booking", "advisor"] as const;
 export type ConversationContextKind = (typeof conversationContextKindEnum)[number];
 
 export const conversationContexts = pgTable("conversation_contexts", {

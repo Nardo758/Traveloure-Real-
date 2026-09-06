@@ -64,7 +64,11 @@ import {
   type PlanEvent,
 } from "@/lib/slip-events";
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
-import { eventCountLabel, partyLabelForOccasion } from "@/lib/plan-vocabulary";
+import { eventCountLabel, planHeaderCountLabel } from "@/lib/plan-vocabulary";
+import { slipStopsLine, slipZoneLine, type SlipDestinationRow } from "@/lib/slip-meta";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { TripExpertNote } from "./TripExpertNote";
+import { ItemComments } from "./ItemComments";
 import { HireExpertDialog } from "./HireExpertDialog";
 // LD 42 rows 1.6 / S1 / S2 / D16 (ledger `2026-09-05-slip-own-your-plan`): the owner's own hands on
 // their own plan. The RULES are pure and live in `@/lib/slip-item-tools`; the buttons and the four
@@ -109,6 +113,16 @@ export interface SlipTrip {
   finalVersion?: number | null;
   /** §21 traveler-facing trip-level note — same DTO field PlanCard passes to the map's notes layer. */
   expertTravelerNote?: string | null;
+  /**
+   * S7 (ledger `2026-09-06-slip-small-additions`) — Locked Decision 30's ONE IANA zone per plan
+   * (`trips.timezone`, migration 279), server-derived at mint and never client-settable.
+   *
+   * OPTIONAL AND ABSENT-WHEN-UNSET, not nullable-and-present: the plancard route SPREADS the key
+   * only when the column holds a zone, so `undefined` here means NOT CAPTURED and the header
+   * renders NO zone line at all. Locked Decision 30 forbids the alternatives by name — never UTC,
+   * never the server's zone, never the nearest guess (§13).
+   */
+  timezone?: string;
 }
 
 export interface SlipData extends PlanCardData {
@@ -132,6 +146,18 @@ export interface SlipData extends PlanCardData {
    * simply does not render; `false` renders nothing either, never the inverse claim (§13).
    */
   aiSketch?: boolean;
+  /**
+   * S6 (ledger `2026-09-06-slip-small-additions`) — the plan's ORDERED STOPS, migration 281 /
+   * Locked Decision 34, exactly as the plancard route already ships them. Nothing new is requested
+   * for this lane: the key was already on the wire with no reader on this surface.
+   *
+   * §13 — AN EMPTY ARRAY MEANS NOT CAPTURED, NOT "no destination". There is no backfill, so every
+   * legacy plan arrives here with `[]` and the header falls back EXPLICITLY to
+   * `trip.destination` — the position-0 mirror — which is what that ruling requires of every
+   * reader. `slipStopsLine` does the falling back, through the SAME `seedStops` the plan modal's
+   * step 2 seeds its editor from (§18 rule 1).
+   */
+  destinations?: SlipDestinationRow[];
   meta?: PlanCardData["meta"] & {
     deliveredBy?: { expertId: string; name: string | null; avatar: string | null } | null;
   };
@@ -214,6 +240,8 @@ function SlipHeader({
   eventCount,
   partyLabel,
   isHidden,
+  isOwner,
+  onEditStops,
 }: {
   data: SlipData;
   hasOptimized: boolean;
@@ -230,12 +258,33 @@ function SlipHeader({
   partyLabel: string;
   /** `default_visibility: hidden` — the proposal case (re-audit A21). */
   isHidden: boolean;
+  /** D16 — the stops line's Edit affordance is the OWNER'S, like every other edit on this slip. */
+  isOwner: boolean;
+  /**
+   * S6 — opens the ONE plan modal, whose step 2 IS the ordered stop-list editor. Deliberately a
+   * callback rather than an editor of its own: Locked Decision 34 gives the client ONE stop writer
+   * (`plan-stops-writer.ts`), and the modal's step 2 is its ONE editing surface. A second list
+   * editor here would be a second caller of that writer with its own read-before-replace, which is
+   * exactly the mistake the replace-list contract warns about (a caller that sends a list it did
+   * not first read silently drops stops it never saw).
+   */
+  onEditStops: () => void;
 }) {
   const trip = data.trip;
   const start = safeDate(trip?.startDate);
   const end = safeDate(trip?.endDate);
   const phase = derivePhase(start, end);
   const version = trip?.planVersion;
+
+  // ── S6 / S7 — WHERE THIS PLAN GOES, AND WHICH ZONE ITS TIMES ARE READ IN ────────────────────
+  // Both lines are §13 rules first (see `@/lib/slip-meta`): the stops line falls back EXPLICITLY
+  // to `trips.destination` when the plan has no `trip_destinations` rows (Locked Decision 34 — no
+  // backfill, so that is every legacy plan and the absence is not an error), and the zone line is
+  // OMITTED ENTIRELY when `trips.timezone` is unset (Locked Decision 30 — never UTC, never the
+  // server's zone, never a guess). Neither derives a distance, a duration or a route: the arrow is
+  // an ORDER (Locked Decision 22(c)).
+  const stopsLine = slipStopsLine(trip?.destination, data.destinations);
+  const zoneLine = slipZoneLine(trip?.timezone);
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
@@ -321,6 +370,44 @@ function SlipHeader({
           </span>
         ) : null}
       </p>
+      {/* ── S6 · THE STOPS LINE, and S7 · THE ZONE LINE — the ratified header's third row ───────
+          "Kyoto → Osaka  |  Times shown in Asia/Tokyo  ·  Edit ›". Three independent renders, and
+          each absence is its own finished answer (§13):
+            · NO STOPS LINE AT ALL only when the plan names nowhere, which `trips.destination`
+              being NOT NULL makes impossible for a loaded plan — so in practice this always says
+              at least the headline destination, and never an empty arrow-joined string.
+            · NO ZONE LINE when `trips.timezone` is unset. The separator goes with it, so the row
+              does not render a dangling rule (Locked Decision 30).
+            · NO EDIT LINK for a non-owner (D16), and it OPENS THE ONE PLAN MODAL rather than
+              mounting a second stop editor (Locked Decision 34's one-writer rule). */}
+      {(stopsLine || zoneLine) && (
+        <div
+          className="flex items-center gap-2.5 flex-wrap text-xs text-muted-foreground"
+          data-testid="slip-meta-place"
+        >
+          {stopsLine && (
+            <span className="font-mono text-foreground" data-testid="slip-meta-stops">
+              {stopsLine}
+            </span>
+          )}
+          {stopsLine && zoneLine && <span className="text-border" aria-hidden="true">|</span>}
+          {zoneLine && (
+            <span className="font-mono" data-testid="slip-meta-timezone">
+              {zoneLine}
+            </span>
+          )}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={onEditStops}
+              className="underline underline-offset-2 hover:text-foreground"
+              data-testid="slip-meta-stops-edit"
+            >
+              Edit ›
+            </button>
+          )}
+        </div>
+      )}
       {/* LD 41 (c) — THE FREE DRAFT IS A SKETCH, SAID OUT LOUD. Nothing on the slip previously
           told a traveler that the plan in front of them was an AI first pass rather than a
           researched one, so the free draft and a delivered plan read identically. Rendered ONLY
@@ -428,6 +515,7 @@ function SlipItemRow({
   activity,
   isOwner,
   isExpertViewer,
+  hasAdvisor,
   expertName,
   hasOptimized,
   highlighted,
@@ -440,6 +528,12 @@ function SlipItemRow({
   activity: PlanCardActivity;
   isOwner: boolean;
   isExpertViewer: boolean;
+  /**
+   * S3 — an advisor in a §12 access status is on this plan. Resolved ONCE by `SlipView` (see the
+   * note beside `hasAdvisor` there) and handed down, never re-asked per row: a per-row advisor
+   * query would be N requests for one fact about the plan.
+   */
+  hasAdvisor: boolean;
   expertName: string | null;
   hasOptimized: boolean;
   highlighted: boolean;
@@ -496,6 +590,26 @@ function SlipItemRow({
               source on this DTO — apply does not persist variant move metadata onto
               itinerary_items — so none render. Real data only. */}
           {a.expertNote && <ExpertNoteBlock note={a.expertNote} expertName={expertName} />}
+          {/* ── S3 · "ASK YOUR EXPERT ABOUT THIS" (ledger `2026-09-06-slip-small-additions`) ─────
+              The ratified `ItemRow` artboard draws this directly under the Expert Note block, and
+              it is the EXISTING per-item thread (`ItemComments`, migration 165 — the same
+              component the Trip Card's ActivitiesSection and the Workstation's item editor mount,
+              against the same `GET/POST /api/trips/:tripId/items/:itemId/comments` rails). One
+              component, one more mount; a second per-item thread beside it would be the drift
+              class §18 rule 1 names, and it is how the traveler's question and the expert's answer
+              would end up in two places.
+
+              DRAWN ONLY WHEN THERE IS SOMEBODY TO ASK, and for the two people who are on the
+              conversation: the OWNER and the ADVISOR. With no advisor on the plan the line is
+              ABSENT, not greyed — there is nobody it could address (§13), which is the artboard's
+              own annotation and the same posture the rail's expert row takes.
+
+              NO FABRICATED COUNT. The component's toggle shows a count from its OWN real per-item
+              read, never from this DTO: the plancard activity carries no comment count, and a
+              number derived here would be a guess. An empty thread reads "No comments yet". */}
+          {hasAdvisor && (isOwner || isExpertViewer) && (
+            <ItemComments tripId={tripId} itemId={a.id} className="mt-2" />
+          )}
           {showActions && (
             <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`slip-routing-actions-${a.id}`}>
               <RoutingActions
@@ -1037,6 +1151,52 @@ export function SlipView({
   const isOwner = data.tripRole === "owner";
   const isExpertViewer = data.tripRole === "expert";
   const expertName = expertFirstName(data);
+  // S6 — the stops line's Edit affordance is a DOOR of the ONE planning modal (Locked Decision
+  // 33's opener, Locked Decision 34's one stop editor), never a second editor mounted here.
+  const { open: openPlanModal } = usePlanning();
+
+  /**
+   * ── D21 · THE INVITED COUNT (ledger `2026-09-05-slip-decisions-d18-d22`) ─────────────────────
+   * The SERVER's own `totals.invited` off the derived roster (`GET /api/trips/:tripId/guests`,
+   * Locked Decision 37 — one row per person, deduplicated by normalised email, computed and never
+   * stored). This surface counts NOTHING: a second count on the client is the drift class §18
+   * rule 1 names, and `SlipLogisticsSection`'s own totals block already reads this exact key, so
+   * react-query serves both from ONE cache entry and ONE request.
+   *
+   * §13 — every failure mode is an UNKNOWN, not an empty roster: a 401/403 (the route is
+   * owner-tier because the rows carry emails and dietary notes), a 404, an offline tab and a
+   * still-loading read all leave `invitedCount` null, and `planHeaderCountLabel` then prints the
+   * ordinary party label rather than "0 invited". `retry: false` is deliberate for the same
+   * reason it is on the totals block: a refusal must not be retried into a zero.
+   */
+  const { data: guestRoster } = useQuery<{ totals?: { invited?: number } }>({
+    queryKey: [`/api/trips/${tripId}/guests`],
+    enabled: !!tripId,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const invitedCount =
+    typeof guestRoster?.totals?.invited === "number" ? guestRoster.totals.invited : null;
+
+  /**
+   * ── S3 · IS THERE ANYBODY TO ASK? (ledger `2026-09-06-slip-small-additions`) ─────────────────
+   * "Ask your expert about this" opens the item's own thread and notifies the advisor, so it is
+   * drawn ONLY when an advisor in a §12 access status is actually on this plan — with none, the
+   * line is ABSENT rather than greyed: there is nobody it could address, and that absence is not
+   * the traveler's to fix (§13, the same posture the rail's expert row takes).
+   *
+   * TWO VIEWERS, TWO WAYS OF KNOWING, and neither is a second predicate. An EXPERT viewing this
+   * slip IS the advisor — `tripRole === "expert"` is `getTripRole`'s answer, which is already
+   * gated on the canonical access statuses — so their presence is proof by construction. The
+   * OWNER asks the same owner-gated advisor read the rail's Build card uses (one endpoint, one
+   * cache entry, no second query shape for the same fact); that route is owner-only and would 404
+   * for anyone else, which is exactly why it is not the expert's signal.
+   */
+  const { data: slipAdvisorData } = useQuery<{ advisor: { status?: string | null } | null }>({
+    queryKey: [`/api/trips/${tripId}/expert-advisor`],
+    enabled: isOwner && !!tripId,
+  });
+  const hasAdvisor = isExpertViewer || !!slipAdvisorData?.advisor;
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
   const planVersion = data.trip?.planVersion ?? transitions.length;
@@ -1199,8 +1359,17 @@ export function SlipView({
    * to `partyCountLabel`, fallback included, the moment it settles. Nothing about the settled
    * render changes.
    */
-  const partyLabel = partyLabelForOccasion(
+  /**
+   * ── AND D21 ADDS THE SECOND POPULATION (ledger `2026-09-05-slip-decisions-d18-d22`) ──────────
+   * Where the occasion HAS a guest list and the derived roster carries invitees, the header names
+   * BOTH populations — "2 traveling · 64 invited" — because Locked Decision 37 keeps the traveling
+   * party and the invited roster apart and a header printing one of them answers half a question.
+   * `planHeaderCountLabel` DELEGATES straight back to `partyLabelForOccasion` for every plan
+   * without a guest list, so nothing about the settled render above changes (§18 rule 1).
+   */
+  const partyLabel = planHeaderCountLabel(
     data.trip?.travelers ?? null,
+    invitedCount,
     occasion?.vocabulary ?? null,
     occasion?.defaultGuests ?? null,
     occasionResolved,
@@ -1239,6 +1408,11 @@ export function SlipView({
         eventCount={countPlanEvents(planEvents)}
         partyLabel={partyLabel}
         isHidden={occasionIsHidden}
+        isOwner={isOwner}
+        /* S6 — the ONE plan modal, whose step 2 IS the ordered stop-list editor (Locked Decision
+           34's one-writer rule). The SAME opener the Trip Strip's Edit uses, with no source: the
+           modal reads the plan the traveler is already on. */
+        onEditStops={() => openPlanModal()}
       />
 
       {/* THE STATUS STRIP — routing-status counts and nothing else. It keeps the ONE taxonomy the
@@ -1299,6 +1473,36 @@ export function SlipView({
             </span>
           )}
         </div>
+      )}
+
+      {/* ── S5 · THE TRIP-LEVEL EXPERT NOTE (ledger `2026-09-06-slip-small-additions`) ─────────
+          Locked Decision 21's `trips.expert_traveler_note` — the note the expert wrote FOR the
+          traveler about the plan as a whole. It has been on this DTO since §21 landed and this
+          surface drew nothing with it; `PlanCard` has rendered it all along, which meant the same
+          delivered note was visible on the finalized card and invisible on the plan the traveler
+          actually works in.
+
+          THE SAME COMPONENT, NOT A MIRRORED BLOCK. `TripExpertNote` is PlanCard's own treatment
+          extracted verbatim (amber inset, 💡, "From your expert"); a second copy of "how a note
+          from your expert looks" is the drift class §18 rule 1 names.
+
+          THREE FIELDS, ONE RENDERED. `trips.expert_notes` is the Workstation's PRIVATE build
+          notes and must never reach a traveler surface (Locked Decision 21 says so by name); it
+          is not on this payload and is not read here. The per-item `itinerary_items.expert_note`
+          keeps its own inline block on each row.
+
+          LIST VIEW ONLY, and that is not a gate on the note — it is where the artboard puts it.
+          The map view already renders the same note through `MapControlCenter`'s notes layer
+          (`expertTravelerNote` is passed to it below), and drawing it twice on one screen would
+          be the duplication this whole lane's neighbours keep removing.
+
+          §13 — absent, empty or whitespace-only renders NOTHING (the component decides): no empty
+          callout, and never "your expert hasn't left a note", which is a claim about their work. */}
+      {slipView === "list" && (
+        <TripExpertNote
+          expertTravelerNote={data.trip?.expertTravelerNote}
+          testId="slip-trip-expert-note"
+        />
       )}
 
       {slipView === "map" && data.trip ? (
@@ -1398,6 +1602,7 @@ export function SlipView({
                       activity={a}
                       isOwner={isOwner}
                       isExpertViewer={isExpertViewer}
+                      hasAdvisor={hasAdvisor}
                       expertName={expertName}
                       hasOptimized={hasOptimized}
                       highlighted={highlighted === a.id}

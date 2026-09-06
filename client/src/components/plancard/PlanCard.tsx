@@ -31,6 +31,7 @@ import { UpNextHero } from "./UpNextHero";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
+import { TripExpertNote } from "./TripExpertNote";
 import { ProposalColumn } from "./ProposalColumn";
 import {
   Dialog,
@@ -1048,22 +1049,15 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             placeholder while the sibling server route is still landing, no empty callout once it
             has. Near the top, ahead of the day-by-day content, same position as the plan-approval
             banner above it. */}
-        {plancardData?.trip?.expertTravelerNote?.trim() && (
-          <div
-            className="mx-3 sm:mx-5 mt-2.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5"
-            data-testid="text-plancard-expert-note"
-          >
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-[12px]">💡</span>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                From your expert
-              </span>
-            </div>
-            <p className="text-[12.5px] text-amber-900 dark:text-amber-200 whitespace-pre-wrap leading-relaxed">
-              {plancardData.trip.expertTravelerNote}
-            </p>
-          </div>
-        )}
+        {/* EXTRACTED, NOT REWRITTEN (ledger `2026-09-06-slip-small-additions`, S5). The treatment
+            below moved verbatim into `TripExpertNote` so the SLIP can render the same note the
+            same way; a mirrored copy over there would be the drift class §18 rule 1 names. This
+            call site keeps its own testid and its own margins, and the render is unchanged. */}
+        <TripExpertNote
+          expertTravelerNote={plancardData?.trip?.expertTravelerNote}
+          testId="text-plancard-expert-note"
+          className="mx-3 sm:mx-5 mt-2.5"
+        />
 
         {/* Concierge — front and center for TRAVELERS; suppressed in the Workstation embed
             (a hire-an-expert module shown to the expert is duplicate/contradictory chrome). */}

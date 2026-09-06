@@ -1077,6 +1077,77 @@ This document captures architectural decisions to maintain consistency across co
     landed and what it left, so this entry stays the ruling and the ledger stays the record of
     which parts of it are real.
 
+    **ADDENDUM — D18–D22, THE FIVE THE CANVAS DREW AS PENDING (decision-maker ratified Sep 5,
+    2026, evening — ledger `2026-09-05-slip-decisions-d18-d22`).** The slip canvas
+    (`slip-canvas/gen.py`) drew a DEFAULT for four open questions and marked each with a coral
+    `pending` chip, and a fifth fell out of the rail's own honest note about an expert nobody
+    could message. All five are now ruled. They are recorded HERE, in this entry's voice, because
+    each one settles a clause of the seventeen rather than opening a new subject; **nothing above
+    is renumbered**.
+
+    **D18 — THERE IS NO UNDO AFTER AN OPTIMIZE APPLY, AND THE CANVAS DRAWS NONE.** Apply replaces
+    every in-planning row in ONE transaction and nothing holds the previous set, so an "Undo"
+    control would promise a restore no code path can perform (§13). The safeguard is the one that
+    already exists and is ratified: the run is **REVIEW-FIRST** (LD 41 (d) — the free heuristic
+    preview beside Optimize, then the comparison board), and the **baseline column** on that board
+    is "Your plan" as it stands (LD 41 (e)), so what would change is seen BEFORE the charge and
+    before the write. **NO PRE-APPLY SNAPSHOT IS INTRODUCED**: deciding otherwise means deciding
+    where that snapshot lives, what it costs to keep, and how it interacts with D3's protected set
+    — a schema question nobody has ratified. "See what changed" ships alone; it is a record of the
+    apply, never an offer to reverse it.
+
+    **D19 — "MY EXPERT HANDLES THESE" NEVER MEANS THE EXPERT PAYS.** D2's Finalize question routes
+    items to the expert; routing is about WHO ARRANGES a booking, never about whose card is
+    charged. The routed items land in the expert's **Workstation queue with a notification**, the
+    expert arranges them, and **the traveler pays each booking at checkout** through the rails
+    §14/§15 already govern — amount server-derived, actor from the session, transitions atomic.
+    **NO EXPERT-PAYS-FOR-TRAVELER RAIL EXISTS AND NONE IS BUILT**: an earner fronting a traveler's
+    money is a second money path with a second refund story and a second insolvency question, and
+    it is not created as a side effect of a routing control. The copy on the Finalize chooser says
+    who ARRANGES, and never implies who pays.
+
+    **D20 — AN OCCASION MAY NOT RENAME ITS EVENTS.** The word is **"events"** on every surface,
+    including a golf trip's rounds and a conference's sessions. `eventCountLabel`
+    (`client/src/lib/plan-vocabulary.ts`) stays the ONE spelling (§18 rule 1). A per-occasion event
+    noun would be a **SEVENTH SWITCH** on `experience_types`, and ruling 28's six are booleans and
+    enums a traveler flips inside the plan — a noun is neither. **THE FLAVOUR LIVES IN THE EVENT'S
+    OWN TITLE**, which the traveler already writes ("Round 1 · Kyoto Golf Club"), so nothing is
+    lost by keeping the container's name constant; what would be lost by varying it is a single
+    word for a single concept across the slip, the picker, the guest board and the PDF. Migration
+    276's `vocabulary` column keeps its own job unchanged — it names the PEOPLE
+    (travelers|guests|attendees), never the things they attend.
+
+    **D21 — A GUEST-LIST OCCASION'S HEADER COUNTS BOTH POPULATIONS, NAMED.** Where the occasion
+    has a guest list (`default_guests` true) and the derived roster carries invitees, the slip
+    header reads **"N traveling · M invited"**; where it does not, it reads the party-noun label it
+    already read. The two populations are the ones Locked Decision 37 keeps apart — the
+    **TRAVELING PARTY** (`trips.adults`/`kids`, the plan's own columns) and the **INVITED ROSTER**
+    (derived from the events' `event_invites`, `GET /api/trips/:tripId/guests`) — and naming both
+    is the whole point: they are different people and **are never merged into one number**.
+    **ONE LABEL DERIVATION** (`plan-vocabulary.ts`, beside `partyCountLabel` and delegating to it
+    for the no-guest-list case), **NO NEW COLUMN**, and no second count anywhere — the invited
+    number is the SERVER's own `totals.invited` off the roster the slip already reads. §13 holds
+    in both directions: a roster that has not answered, one the viewer may not read and one with
+    nobody on it all render the party label ALONE — never "0 invited" — and a plan whose party was
+    never stated renders the invited count alone rather than inventing a party of one.
+
+    **D22 — LOCKED DECISION 40 IS AMENDED: THE CONTEXT KINDS GAIN `advisor`.** LD 40 named three
+    address kinds — `handle`, `serviceId`, `bookingId` — and said they were the whole set. They
+    were the whole set **for an EARNER addressed from the marketplace**, and they left a real
+    thread unaddressable: the traveler and the advisor **on their own plan**. An advisor who has
+    claimed no storefront handle had no address at all, and the rail said so out loud rather than
+    render a dead button (`SLIP_EXPERT_NO_HANDLE_NOTE`), which was honest and was not a product.
+    A fourth kind, **`advisor`**, is a **PLAN-SCOPED** thread: the client names `{ tripId }` — a
+    plan, not a person — and the SERVER resolves the counterpart from the trip plus the
+    `trip_expert_advisors` row in a §12 access status (owner ⇒ the plan's advisor; advisor ⇒ the
+    plan's owner). **A USER ID OR A HANDLE IS NEVER ACCEPTED FOR THIS KIND** — that is LD 40's own
+    rule, unweakened: the recipient stays server-derived, the response still carries no user id,
+    and an unresolvable address is still ONE 404 so the rail cannot be used to probe which trips
+    exist. `conversation_contexts.context_kind` is **app-enforced with NO DB CHECK** precisely so a
+    fourth kind is a code change and not a publish trap (LD 40's own note, and D10's), so **this
+    amendment needs no migration**. "Message your expert" on the slip uses it, and the three
+    original kinds are untouched.
+
 43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;
     ONE SOFT SAVE PROMPT (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-payment-method-posture`; this lane = `2026-09-05-wallets-on-platform-intents`).

@@ -4,9 +4,17 @@
  * Ledger `2026-09-05-user-id-is-internal`, CLAUDE.md Locked Decision 40. Lane 1 of 3.
  *
  * `users.id` is INTERNAL. A conversation is opened by naming WHAT it is about — a storefront
- * handle, a public service, or a booking the caller is already on — and the SERVER resolves the
- * counterpart. Nothing here reads a recipient id from a body, and nothing here returns one:
- * §14's identity rule, applied to the other end of the message.
+ * handle, a public service, a booking the caller is already on, or the PLAN a traveler and an
+ * advisor share — and the SERVER resolves the counterpart. Nothing here reads a recipient id from
+ * a body, and nothing here returns one: §14's identity rule, applied to the other end of the
+ * message.
+ *
+ * D22 (ledger `2026-09-05-slip-decisions-d18-d22`) added the fourth kind, `advisor`, and needed NO
+ * migration: `conversation_contexts.context_kind` is app-enforced with no DB CHECK precisely so a
+ * new kind is a code change rather than a publish-time push failure. Nothing else on this route
+ * moved — the `.strict()` allowlist, the block check, the ONE rate limiter and the opaque
+ * conversation id are all unchanged, and the plan address goes through the same refusal shape as
+ * the other three.
  *
  * LANE 1 ADDS, IT DOES NOT REMOVE. The existing id-addressed rails (`POST /api/chats`,
  * `POST /api/chat/start`, `POST /api/messages` with `recipientId`) all still work and are annotated
@@ -43,7 +51,10 @@ const router = Router();
  * POST /api/conversations/start — open (or re-open) a thread with an earner BY CONTEXT.
  *
  * Body is a `.strict()` pick-based allowlist (§19): exactly one of `{handle}`, `{serviceId}`,
- * `{bookingId}`, plus an optional `about` (≤500 chars) sent as the first message. `.strict()` is
+ * `{bookingId}`, `{tripId}`, plus an optional `about` (≤500 chars) sent as the first message.
+ * `{tripId}` is the D22 plan-scoped advisor thread — it names a PLAN and never a person, and the
+ * counterpart (owner ⇒ the plan's advisor in a §12 access status, advisor ⇒ the owner) is resolved
+ * server-side; a plan the caller is not on is the same 404 as a plan that does not exist. `.strict()` is
  * load-bearing — a legacy `{ receiverId }` body is a 400 here, not a silently ignored key, so a
  * client that ports by renaming the URL fails loudly rather than appearing to work.
  *

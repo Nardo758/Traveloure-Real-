@@ -4,9 +4,9 @@
  * CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`), LANE 3.
  *
  * `users.id` is INTERNAL. Lane 1 added the server rails: a conversation is opened by naming WHAT
- * it is about — a storefront `handle`, a public `serviceId`, or a `bookingId` the caller is on —
- * and the server resolves the counterpart and answers with an OPAQUE conversation id and a
- * recipient card that carries no user id at all. This module is the client half: ONE place that
+ * it is about — a storefront `handle`, a public `serviceId`, a `bookingId` the caller is on, or
+ * (D22) a `tripId` whose plan they share with an advisor — and the server resolves the counterpart
+ * and answers with an OPAQUE conversation id and a recipient card that carries no user id at all. This module is the client half: ONE place that
  * decides which address a surface holds, and ONE place that calls the rail (§18 rule 1). A second
  * copy of either decision is how a surface ends up quietly posting a user id again.
  *
@@ -27,11 +27,15 @@
 // rail and this module. A second `toLowerCase()` here would be the drift that rule names.
 import { normalizeHandle } from "@shared/handle";
 
-/** The three address kinds, and they are the whole set (Locked Decision 40). */
+/**
+ * The address kinds, and they are the whole set (Locked Decision 40, amended by its D22 addendum,
+ * ledger `2026-09-05-slip-decisions-d18-d22`).
+ */
 export type ContactAddress =
   | { handle: string }
   | { serviceId: string }
-  | { bookingId: string };
+  | { bookingId: string }
+  | { tripId: string };
 
 /** What a calling surface holds. Every field optional; exactly one must be non-empty. */
 export interface ContactAddressInput {
@@ -41,6 +45,13 @@ export interface ContactAddressInput {
   serviceId?: string | null;
   /** A booking the caller is already on — resolves server-side to the OTHER party. */
   bookingId?: string | null;
+  /**
+   * D22 — a PLAN the caller is on, which resolves server-side to the OTHER person on it (owner ⇒
+   * the plan's advisor, advisor ⇒ the owner). It names a PLAN and never a person, which is why it
+   * is an address and not the `receiverId` this whole module exists to refuse: the counterpart of
+   * this one kind depends on who is asking, so only the server can resolve it.
+   */
+  tripId?: string | null;
 }
 
 export type ContactAddressResult =
@@ -66,14 +77,16 @@ export function resolveContactAddress(input: ContactAddressInput): ContactAddres
   const handle = present(input.handle);
   const serviceId = present(input.serviceId);
   const bookingId = present(input.bookingId);
-  const given = [handle, serviceId, bookingId].filter((v) => v !== null);
+  const tripId = present(input.tripId);
+  const given = [handle, serviceId, bookingId, tripId].filter((v) => v !== null);
 
   if (given.length === 0) return { ok: false, reason: "none" };
   if (given.length > 1) return { ok: false, reason: "ambiguous" };
 
   if (handle) return { ok: true, address: { handle: normalizeHandle(handle.replace(/^@/, "")) } };
   if (serviceId) return { ok: true, address: { serviceId } };
-  return { ok: true, address: { bookingId: bookingId! } };
+  if (bookingId) return { ok: true, address: { bookingId } };
+  return { ok: true, address: { tripId: tripId! } };
 }
 
 /** The recipient card the start rail answers with. NO USER ID — the handle is the public name. */

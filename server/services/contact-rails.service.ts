@@ -4,8 +4,9 @@
  * Ledger `2026-09-05-user-id-is-internal`, CLAUDE.md Locked Decision 40.
  *
  * `users.id` is INTERNAL. A conversation is opened by naming WHAT it is about — a storefront
- * handle, a public service, or a booking the caller is already on — and this module turns that
- * address into a recipient. It is §14's identity rule applied to the OTHER end of the message: the
+ * handle, a public service, a booking the caller is already on, or (D22, ledger
+ * `2026-09-05-slip-decisions-d18-d22`) the PLAN a traveler and an advisor share — and this module
+ * turns that address into a recipient. It is §14's identity rule applied to the OTHER end of the message: the
  * ACTOR already comes from the session and never from `req.body`, and after this ruling neither
  * does the RECIPIENT.
  *
@@ -26,10 +27,17 @@ import {
   insertConversationContextSchema,
   providerServices,
   serviceBookings,
+  tripExpertAdvisors,
+  trips,
   userAndExpertChats,
   users,
   type ConversationContextKind,
 } from "@shared/schema";
+// D22 — the §12 access allow-list, applied HERE in SQL exactly as `isTripAdvisor` applies it, so
+// there is ONE statement of which advisor statuses grant access and the pure rule below never
+// restates it (§18 rule 1). `pending` is in this set deliberately: Locked Decision 12 stops a
+// pending advisor WRITING; it has never stopped the traveler writing to them.
+import { TRIP_ADVISOR_READ_ACCESS_STATUSES } from "../utils/trip-advisor";
 import { normalizeHandle } from "@shared/handle";
 import { isEarnerRole } from "@shared/roles";
 import { addressKindOf, type ContactStartBody } from "@shared/contact-address";
@@ -38,6 +46,7 @@ import { isOwnerIdentityVerified } from "../utils/earner-verification";
 import {
   contextLabel,
   resolveBookingCounterpart,
+  resolvePlanCounterpart,
   type ConversationContextView,
 } from "./contact-rails.pure";
 
@@ -103,6 +112,45 @@ export async function resolveContactTarget(
     if (!service) return { ok: false, reason: "not_found" };
     if (service.ownerId === sessionUserId) return { ok: false, reason: "self" };
     return { ok: true, target: { recipientId: service.ownerId, context: { kind: "service", id: service.id } } };
+  }
+
+  if (kind === "tripId") {
+    // D22 — THE PLAN-SCOPED ADVISOR THREAD. The client names a PLAN and never a person; the
+    // counterpart is resolved from the trip's own rows, which is the ONLY reason this kind is safe
+    // (§14's identity rule, applied to the other end of the message).
+    //
+    // Two reads, both scoped to the one trip: its owner, and its advisors in a §12 access status.
+    // The status filter is the canonical allow-list, in SQL, exactly as `isTripAdvisor` writes it
+    // — one statement of the rule, never a second copy (§18 rule 1).
+    const [trip] = await db
+      .select({ id: trips.id, ownerId: trips.userId })
+      .from(trips)
+      .where(eq(trips.id, body.tripId!))
+      .limit(1);
+    // A trip that does not exist and a trip that is nobody's business of the caller's are the SAME
+    // 404 (§13) — this rail must not be usable to discover which trip ids are real.
+    if (!trip) return { ok: false, reason: "not_found" };
+
+    const advisors = await db
+      .select({ userId: tripExpertAdvisors.localExpertId, assignedAt: tripExpertAdvisors.assignedAt })
+      .from(tripExpertAdvisors)
+      .where(
+        and(
+          eq(tripExpertAdvisors.tripId, trip.id),
+          inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_READ_ACCESS_STATUSES]),
+        ),
+      );
+
+    const counterpart = resolvePlanCounterpart(
+      { ownerId: trip.ownerId ?? null, advisors },
+      sessionUserId,
+    );
+    // Not a party to this plan, or a plan with no advisor yet: one answer, and it is the same one
+    // (§13). A traveler whose plan has no advisor has nobody to message, and the slip therefore
+    // renders no Message row at all rather than a control that 404s.
+    if (!counterpart) return { ok: false, reason: "not_found" };
+    if (counterpart === sessionUserId) return { ok: false, reason: "self" };
+    return { ok: true, target: { recipientId: counterpart, context: { kind: "advisor", id: trip.id } } };
   }
 
   // bookingId — the caller must already be a party to it. The ownership rule itself is
@@ -229,6 +277,20 @@ async function loadConversationContexts(
     for (const s of svc) serviceNames.set(s.id, s.name);
   }
 
+  // D22 — a PLAN-scoped advisor thread names a trip. Its LABEL is the plan's own title, never its
+  // id: a trip id is an internal key (Locked Decision 40's whole subject, one table over) and is
+  // not a thing to show a person. A plan with no title resolves to no name at all, and
+  // `contextLabel` then says "A plan" rather than inventing one (§13).
+  const planIds = rows.filter((r) => r.contextKind === "advisor").map((r) => r.contextId);
+  const planTitles = new Map<string, string>();
+  if (planIds.length > 0) {
+    const plans = await db
+      .select({ id: trips.id, title: trips.title })
+      .from(trips)
+      .where(inArray(trips.id, planIds));
+    for (const t of plans) if (t.title) planTitles.set(t.id, t.title);
+  }
+
   const bookingRefs = new Map<string, string>();
   if (bookingIds.length > 0) {
     const bks = await db
@@ -245,7 +307,9 @@ async function loadConversationContexts(
         ? serviceNames.get(row.contextId)
         : kind === "booking"
           ? bookingRefs.get(row.contextId)
-          : row.contextId; // a storefront context IS the handle
+          : kind === "advisor"
+            ? planTitles.get(row.contextId) // undefined ⇒ "A plan", never the trip id (§13)
+            : row.contextId; // a storefront context IS the handle
     const list = out.get(row.conversationId) ?? [];
     list.push({ kind, id: row.contextId, label: contextLabel(kind, row.contextId, name ?? null) });
     out.set(row.conversationId, list);
