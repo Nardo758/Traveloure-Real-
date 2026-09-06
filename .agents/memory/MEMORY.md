@@ -64,3 +64,4 @@
 - [Playwright audit captures](playwright-audit-captures.md) — HTML reporter can clear custom files under playwright-report; use line reporter when preserving screenshot evidence.
 - [Development database host guard](dev-database-host-guard.md) — Replit development databases can use Neon hostnames; gate fixture seeds by environment flags, not host matching.
 - [Vite context identity](vite-context-identity.md) — shared React contexts can split across Fast Refresh revisions; preserve their identity in Vite hot data.
+- [Publish only from origin/main](publish-only-from-main.md) — the agent never publishes, never commits on main; a publish builds the WORKSPACE, so a checkout ahead of main ships unreviewed code with every check green.

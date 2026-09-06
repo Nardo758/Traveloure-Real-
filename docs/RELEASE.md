@@ -14,6 +14,91 @@ offers the **destructive** "copy dev database over production" option.
 > ⚠️ **Never click "Copy development database and data to production."** It
 > overwrites prod with dev, wiping real users/bookings/earnings. Choose **Cancel**.
 
+## Step 0 — publish only from a clean `main` at `origin/main`
+
+**This step comes before every other one on this page, migration or no migration.**
+
+A Replit Autoscale publish **does not read `origin`. It builds the workspace
+filesystem.** So a checkout carrying a commit that is not on `main` publishes that
+commit to production, and branch protection cannot stop it — it never sees the
+publish. On 2026-09-06 that is exactly what happened: the push of a local commit was
+rejected, the publish succeeded anyway, and commit `96c39f5` served real users while
+`origin/main` had never seen it. Every check was green.
+
+`scripts/publish-preflight.cjs` now runs as the **first step of the deployment build**
+(`.replit` `[deployment] build` → `npm run build:prod`) and fails the build unless all
+four hold:
+
+| # | Condition | Why |
+|---|-----------|-----|
+| 1 | current branch is `main` | lane work reaches production by MERGING, never by publishing the lane checkout |
+| 2 | `git status --porcelain` is empty | any staged, modified **or untracked** file would ship unreviewed — untracked counts, because the build can read it |
+| 3 | `HEAD` == `origin/main` | the 2026-09-06 incident, exactly |
+| 4 | `package-lock.json` has zero `replit.local` | the lockfile-purity rule, at the last moment it can still be caught |
+
+`npm run dev` and CI's `npm run build` are untouched — the script enforces only under
+`--strict` (which the deployment build passes) or a truthy `REPLIT_DEPLOYMENT`, and is
+a one-line no-op everywhere else. To see where the checkout stands at any time:
+
+```bash
+npm run preflight:publish -- --strict     # prints the verdict; changes nothing
+```
+
+### The operator sequence
+
+1. **Reset the workspace to the reviewed branch.** There is no override flag for the
+   preflight; the fix is always the checkout.
+
+   ```bash
+   git checkout main && git fetch origin && git reset --hard origin/main
+   ```
+
+   `git status` must now be empty and `git rev-parse HEAD` must equal
+   `git rev-parse origin/main`. If `git status` still lists untracked files, decide
+   each one — either commit it through a PR or delete it. Do not publish over it.
+
+2. **Run the app once** (the Run button / `npm run dev`) and read the boot log. Two
+   JSON lines must appear, in this order:
+
+   - `"Migrations complete"` — with its `appliedCount` / `skippedCount`. On a normal
+     republish `applied` is empty; a non-empty list means this publish is landing new
+     migrations, which is when the CHECK / UNIQUE preflights below apply.
+   - `Server started`.
+
+   A `FATAL: Database migrations failed` line means **stop** — do not publish.
+
+3. **Publish.** The build prints the preflight's own block first:
+
+   ```
+   publish-preflight (strict) — CLAUDE.md 'Branch and publish rule'
+     branch          main
+     HEAD            <40-char sha>
+     origin/main     <the same sha>
+     last migration  288_affiliate_attribution_links.sql
+   ```
+
+   If it prints `publish-preflight FAILED`, the build stops and nothing is deployed.
+   Fix the checkout (step 1) and start again.
+
+4. **Decline any SQL.** If the publish offers to run its own SQL — especially `DROP`
+   or `ALTER` — choose **Cancel**, every time, no variant approved (`CLAUDE.md` §20).
+   That prompt means the workspace checkout and the production database disagree, not
+   that production needs the SQL. Fix by syncing the checkout, never by approving the
+   diff. If destructive SQL still appears after a clean reset, decline and **STOP** —
+   escalate.
+
+5. **Confirm what actually booted.** Compare the deployment's own log against the two
+   lines the preflight printed in step 3:
+
+   - the `[build] commit <sha>` line (`GET /api/version` / `GET /api/health` report the
+     same) must equal the `HEAD` above;
+   - `"Migrations complete"` must name a count consistent with `last migration`.
+
+   **The preflight cannot make this comparison** — it can see whether this checkout is
+   publishable, not whether the deployed build came from it. That is why it prints the
+   left-hand side, and why this step is a human one. See the script header's
+   NEGATIVE SPACE section for the rest of what it does not cover.
+
 ## Before every publish that includes a migration adding/changing a CHECK
 
 1. **Run the preflight against production** (not dev):
@@ -44,7 +129,7 @@ offers the **destructive** "copy dev database over production" option.
 5. **Verify the new build is live** (not a stale deploy): probe a route that only
    exists post-change and confirm JSON, not the Vite HTML catch-all.
 
-## Maintaining the preflight
+## Maintaining the CHECK preflight
 
 When a new migration adds a CHECK over an enum-like column, add an entry to
 `CONSTRAINT_MANIFEST` in `scripts/preflight-prod-constraints.cjs`: the allowed
