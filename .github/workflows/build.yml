@@ -907,6 +907,53 @@ jobs:
       - name: Category-reachability guard
         run: node scripts/check-category-reachability.cjs
 
+  category-key-repair:
+    name: category-key-repair (ledger 2026-09-06-category-key-repair — migration 289)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # Migration 034's ORIGINAL form assigned nothing where a slug did not match; it was later
+      # repaired to an UPSERT, but a stamped migration never re-runs, so production still carries
+      # the pre-repair outcome (25 of 27 rows with a NULL `category_key`). That state cannot be
+      # reproduced by running the chain — the chain applies 034's REPAIRED form and comes out
+      # clean, which is exactly why the bug survived every green run. So this test BUILDS the
+      # production shape in a throwaway schema (table shape copied from the real one, UNIQUE
+      # constraints included) and proves the repair on it: 24 keys once each, no duplicate name /
+      # slug / key, `venue` and `custom_other` byte-unchanged, a second run a byte-for-byte no-op,
+      # and a drifted slug repaired BY NAME in place. Also runs both taxonomy guards as real
+      # processes with 289 registered.
+      - name: Migration 289 category_key repair
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/category-key-repair.db.test.ts
+
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
     runs-on: ubuntu-latest

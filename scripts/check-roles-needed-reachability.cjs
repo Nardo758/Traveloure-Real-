@@ -35,7 +35,11 @@
  *   2. Every key seeded in `rolesNeeded:` (server/seeds/experience-template-tabs.seed.ts) is in
  *      `OCCASION_ROLE_KEYS` — so the enum cannot be bypassed by editing the seeder alone.
  *   3. No `category_key` (or category slug) is claimed by two registry migrations. The registry is
- *      a UNION, not an override chain — enforced in the shared module, surfaced here.
+ *      a UNION, not an override chain — enforced in the shared module, surfaced here. The ONE
+ *      declared exception is a REPAIR entry (`TAXONOMY_REPAIRS`, ledger
+ *      `2026-09-06-category-key-repair`): a file that re-writes another's pairs on databases where
+ *      the first write never landed. It claims nothing, may not introduce or re-point a key, and is
+ *      legal only because the registry DECLARES it — never because the file says so about itself.
  *
  * NEGATIVE SPACE — what this guard does NOT check (§18d: green means green-within-stated-bounds)
  * ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -76,10 +80,12 @@ function seededKeys(ts) {
 
 /**
  * @param {Array<{file: string, sql: string}>} sources — the registry files, in apply order.
+ * @param {{ repairs?: Record<string, string> }} [options] — REPAIR declarations, passed straight
+ *        through to `collectTaxonomy`; the real run uses the registry's own `TAXONOMY_REPAIRS`.
  */
-function check(sources, schemaTs, seedTs) {
+function check(sources, schemaTs, seedTs, options = {}) {
   const errors = [];
-  const taxonomy = collectTaxonomy(sources);
+  const taxonomy = collectTaxonomy(sources, options);
   // Registry-level failures (rule 3: duplicate key/slug across files; an unparseable registry
   // file) are reported first and are fatal — every rule below reads the union they describe.
   errors.push(...taxonomy.errors);
@@ -156,6 +162,43 @@ const REGISTRY_AB = [
   { file: "fixture/285.sql", sql: FIX_SQL_B },
 ];
 
+/**
+ * A REPAIR of fixture A (ledger `2026-09-06-category-key-repair`): it re-assigns A's OWN pairs and
+ * introduces nothing. Registered as a repair it must pass; registered as a plain authority the SAME
+ * text must fail as a duplicate — that contrast is the fixture that proves the declaration, not the
+ * file, is what makes a repair legal.
+ */
+const FIX_SQL_A_REPAIR = [
+  "-- repair of fixture/034.sql: same pairs, written again for databases that missed them",
+  "INSERT INTO service_categories",
+  "  (name, slug, description, category_type, verification_required, is_active, sort_order,",
+  "   category_key, source_type, launch_tier, commission_band_key, insurance_band,",
+  "   risk_profile, requires_background_check)",
+  "VALUES",
+  "  ('Floral & Decoration',  'floral-decoration',",
+  "   'Florists',",
+  "   'service_provider', true, true, 12,",
+  "   'florist', 'platform_provider', 'core', 'commercial', 2, 'low', false),",
+  "  ('Caterer',              'caterer',",
+  "   'Caterers',",
+  "   'service_provider', true, true, 13,",
+  "   'caterer', 'platform_provider', 'core', 'commercial', 2, 'low', false)",
+  "ON CONFLICT DO NOTHING;",
+].join("\n");
+
+/** The same repair, but naming a key its target never carried — a second authority in disguise. */
+const FIX_SQL_A_REPAIR_OUT_OF_SCOPE = FIX_SQL_A_REPAIR
+  .replace("'Caterer'", "'Officiant'")
+  .replace("'caterer',\n", "'officiant',\n")
+  .replace("'caterer', 'platform_provider'", "'officiant', 'platform_provider'");
+
+const REGISTRY_AB_REPAIR = [
+  { file: "fixture/034.sql", sql: FIX_SQL_A },
+  { file: "fixture/285.sql", sql: FIX_SQL_B },
+  { file: "fixture/289.sql", sql: FIX_SQL_A_REPAIR },
+];
+const REPAIR_DECL = { "fixture/289.sql": "fixture/034.sql" };
+
 function selfTest() {
   const okSchema = 'export const OCCASION_ROLE_KEYS = [\n  "florist",\n  "caterer",\n] as const;';
   const okSeed = 'rolesNeeded: ["florist", "caterer"],';
@@ -179,6 +222,13 @@ function selfTest() {
     ["REGISTRY — that same key is UNREACHABLE when the second migration is not registered", () => check(onlyA, venueSchema, venueSeed).some((e) => e.includes('"venue"'))],
     ["REGISTRY — a key in NEITHER migration is caught", () => check(REGISTRY_AB, 'export const OCCASION_ROLE_KEYS = [\n  "florist",\n  "ballroom",\n] as const;', okSeed).some((e) => e.includes("ballroom"))],
     ["REGISTRY — the SAME key claimed by BOTH migrations FAILS (a fork, not a union)", () => check([{ file: "fixture/034.sql", sql: FIX_SQL_A + "\n" + FIX_SQL_B }, { file: "fixture/285.sql", sql: FIX_SQL_B_DUP }], venueSchema, venueSeed).some((e) => e.includes("REGISTRY DUPLICATE") && e.includes('"venue"'))],
+    // ── REPAIR entries (ledger `2026-09-06-category-key-repair`) ──────────────────────────────
+    ["REPAIR — a declared repair re-assigning its target's own pairs PASSES", () => check(REGISTRY_AB_REPAIR, venueSchema, venueSeed, { repairs: REPAIR_DECL }).length === 0],
+    ["REPAIR — the SAME file UNDECLARED is still a duplicate (the declaration is what makes it legal)", () => check(REGISTRY_AB_REPAIR, venueSchema, venueSeed, { repairs: {} }).some((e) => e.includes("REGISTRY DUPLICATE"))],
+    ["REPAIR — a repair naming a key its target does not carry FAILS as out of scope", () => check([{ file: "fixture/034.sql", sql: FIX_SQL_A }, { file: "fixture/285.sql", sql: FIX_SQL_B }, { file: "fixture/289.sql", sql: FIX_SQL_A_REPAIR_OUT_OF_SCOPE }], venueSchema, venueSeed, { repairs: REPAIR_DECL }).some((e) => e.includes("REGISTRY REPAIR SCOPE") && e.includes("officiant"))],
+    ["REPAIR — a repair whose TARGET is not registered FAILS", () => check([{ file: "fixture/285.sql", sql: FIX_SQL_B }, { file: "fixture/289.sql", sql: FIX_SQL_A_REPAIR }], venueSchema, venueSeed, { repairs: REPAIR_DECL }).some((e) => e.includes("REGISTRY REPAIR TARGET"))],
+    ["REPAIR — a repair CLAIMS nothing: the union is unchanged by adding one", () => { const a = collectTaxonomy(REGISTRY_AB); const b = collectTaxonomy(REGISTRY_AB_REPAIR, { repairs: REPAIR_DECL }); return b.errors.length === 0 && a.keys.size === b.keys.size && [...a.keys].every((k) => b.keys.has(k)); }],
+    ["REPAIR — an EMPTY repair file still fails REGISTRY PARSE, never passes vacuously", () => check([{ file: "fixture/034.sql", sql: FIX_SQL_A }, { file: "fixture/285.sql", sql: FIX_SQL_B }, { file: "fixture/289.sql", sql: "-- nothing here" }], venueSchema, venueSeed, { repairs: REPAIR_DECL }).some((e) => e.includes("REGISTRY PARSE"))],
   ];
   let failed = 0;
   for (const [name, fn] of cases) {

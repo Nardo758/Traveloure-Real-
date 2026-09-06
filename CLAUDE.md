@@ -370,6 +370,33 @@ This document captures architectural decisions to maintain consistency across co
     picker's role hint — the two surfaces this unblocks, both shipped deliberately blank — are
     separate lanes. This one gives them something true to read.
 
+    **A REGISTRY MIGRATION MAY ALSO REPAIR AN EARLIER ONE (amended Sep 6, 2026 — ledger
+    `2026-09-06-category-key-repair`; migration 289).** A stamped migration NEVER re-runs, so a
+    migration that was WRONG when a database applied it stays wrong on that database forever, even
+    after the file on disk is corrected. Migration 034 is that case: its original
+    `UPDATE … WHERE slug` form assigned nothing where a slug did not match and nothing where the
+    legacy row was absent, and although it was later repaired to an UPSERT, **production still
+    carries the pre-repair outcome** — 27 `service_categories` rows, exactly two with a
+    `category_key` (`custom_other`, `venue`), and no row at all behind `caterer` or `officiant`. So
+    every `roles_needed` key but `venue` names a category the catalog does not carry, and the role
+    chips (ruling 42 D6) resolve to nothing. **289 assigns EXACTLY 034's 24 keys and no others** —
+    never `venue`, never a key of its own — matching an existing row by SLUG, then by
+    `lower(btrim(name))`, then INSERTing 034's canonical row only where NEITHER identifier is on the
+    table. Every write is guarded by `category_key IS NULL` (an admin-tuned band, copy or partner key
+    is never clobbered) and a second run is a byte-for-byte no-op. It is **DATA ONLY — no ALTER, no
+    CHECK, no index, no DEFAULT change** — so `scripts/preflight-prod-constraints.cjs` needs no new
+    manifest entry and the deploy push has nothing to fail on. Because the registry refuses a
+    `category_key` claimed by two migrations, 289 is registered as a **REPAIR** — `TAXONOMY_REPAIRS`
+    in `scripts/lib/taxonomy-registry.cjs`, `<repairing file> → <repaired file>` — whose pairs must
+    all already be claimed by its target and which CLAIMS nothing, so the taxonomy union is
+    unchanged; the identical file undeclared still fails as a duplicate, because **the declaration is
+    the licence, not the file's own say-so**. **§13, and it is the load-bearing half:** a row whose
+    slug AND name have both drifted is UNREACHABLE by this repair — 289 would create 034's canonical
+    row beside it — so that case is handed to a human by the read-only
+    `scripts/preview-category-key-repair.cjs`, run against the real database BEFORE publishing. It
+    does no fuzzy matching and offers no suggestions: a guess presented as a finding is how the wrong
+    row gets keyed.
+
 32. **NO EXPERT TOUCHPOINT EXISTS WITHOUT A SLIP; the slip is the intake, and the expert reads it
     LIVE (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-slip-precondition`).** The
     traveler enters the basics on the Trip/Plan slip, that mints the `trips` row, and only then can
