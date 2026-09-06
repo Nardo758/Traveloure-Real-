@@ -44,7 +44,14 @@
  *
  * Auth: unchanged. The modal itself is open to guests; branches prompt at their EXISTING gates.
  */
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type Context,
+} from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -107,7 +114,22 @@ interface PlanningApi {
   close: () => void;
 }
 
-const PlanningContext = createContext<PlanningApi | null>(null);
+interface PlanningHotData {
+  planningContext?: Context<PlanningApi | null>;
+}
+
+// Keep the context object itself stable across Vite Fast Refresh updates. If this module is
+// replaced while an already-mounted Layout still holds the previous module revision, creating a
+// fresh context here leaves its usePlanning() calls disconnected from the refreshed provider even
+// though the component tree is correctly nested. Vite's per-module hot data survives replacement,
+// so both revisions continue to share one context identity until the next full page load.
+const planningHotData = import.meta.hot?.data as PlanningHotData | undefined;
+const PlanningContext =
+  planningHotData?.planningContext ?? createContext<PlanningApi | null>(null);
+
+if (planningHotData) {
+  planningHotData.planningContext = PlanningContext;
+}
 
 export function usePlanning(): PlanningApi {
   const ctx = useContext(PlanningContext);
