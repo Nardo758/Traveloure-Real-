@@ -624,22 +624,35 @@ describe("6 — Stops & timezone opens the ONE modal and restates neither line",
   });
 
   /**
-   * THE ROW'S LABEL MAY NOT BE THE HALF THAT GIVES WAY (ledger `2026-09-06-role-chips-filter`).
+   * NEITHER HALF OF A RAIL ROW IS CUT — THE ROW WRAPS (ledger `2026-09-06-role-chips-filter`,
+   * completed by `2026-09-06-publish-preflight`).
    *
    * Both halves of a `RailRow` were `truncate` inside a 320px rail, so at a ~1110px viewport the
-   * row rendered as "Stops & ti…" — a control whose own name the traveler cannot read, while its
-   * meta kept full width. The meta is the half that can afford to yield: it composes lines the
-   * header already prints in full. Source pin, because Tailwind geometry is the browser's answer
-   * and this suite has no DOM (its own stated negative space).
+   * row rendered as "Stops & ti…" — a control whose own name the traveler cannot read. Making the
+   * label wrap and the meta shrink fixed the LABEL and left the META cut instead: the Plan card's
+   * "Stops & timezone" meta measured scrollWidth 207 against clientWidth 161 even at 1920px, so
+   * "Kyoto, Japan · Times shown in Asia/Tokyo" still rendered with an ellipsis. A 320px rail has
+   * no line wide enough for both halves, so the ROW wraps: `flex-wrap` on the button, and a meta
+   * that does not fit beside its label drops to its own full-width second line.
+   *
+   * Source pin, because Tailwind geometry is the browser's answer and this suite has no DOM (its
+   * own stated negative space).
    */
-  it("the label wraps and the meta yields — no ellipsised row name", () => {
+  it("neither half is truncated — the label wraps and the row wraps", () => {
     const row = functionBody(railCode, "function RailRow");
     assert.doesNotMatch(row, /<span className="truncate">\{label\}/, "the label is not truncated");
     assert.match(row, /whitespace-normal break-words">\{label\}/, "it wraps instead");
     // The Button base is `whitespace-nowrap`; the row must override it or wrapping cannot happen.
     assert.match(row, /const className =[\s\S]{0,200}whitespace-normal/);
-    // And the meta shrinks FIRST — `truncate` alone cannot shrink below its content in a flex row.
-    assert.match(row, /min-w-0 shrink[\s\S]{0,120}truncate/, "the meta yields, with an ellipsis");
+    // The row itself wraps, so an over-wide meta gets its own line rather than an ellipsis.
+    assert.match(row, /const className =[\s\S]{0,200}flex-wrap/, "the row wraps");
+    // And the meta is never ellipsised: no `truncate` anywhere in the row.
+    assert.doesNotMatch(row, /truncate/, "the meta is not truncated either");
+    assert.match(
+      row,
+      /ml-auto[\s\S]{0,160}whitespace-normal break-words text-right/,
+      "the meta wraps, right-aligned, still pushed right when it fits beside the label",
+    );
   });
 
   it("the stale 'later lane' note is gone, and the anchors row is named for what it opens", () => {

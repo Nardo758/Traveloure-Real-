@@ -871,6 +871,19 @@ jobs:
         run: node scripts/check-duplicate-migration-prefixes.cjs --self-test
       - name: Duplicate-migration-prefix guard
         run: node scripts/check-duplicate-migration-prefixes.cjs
+      # Ledger `2026-09-06-publish-preflight`. Lodged in THIS job because it is the other
+      # publish-hygiene guard that needs no `npm ci`, no DB and no build — the preflight is Node
+      # built-ins only, and it prints the migration registry's last entry, which is this job's
+      # subject matter. CI runs the SELF-TEST (the predicate, over committed fixtures) and then the
+      # script's ADVISORY path: CI checks out a detached HEAD at a PR head, so every one of the
+      # four publish conditions is legitimately false here and enforcing would fail every PR. The
+      # advisory run is the proof that the no-op branch really is a no-op — if someone ever makes
+      # the script enforce unconditionally, this job goes red instead of every publish going green.
+      # Strict mode runs only from `.replit`'s `[deployment] build` → `npm run build:prod`.
+      - name: Publish-preflight predicate self-test
+        run: node scripts/publish-preflight.cjs --self-test
+      - name: Publish-preflight is a no-op outside a deployment build
+        run: node scripts/publish-preflight.cjs
 
   category-reachability-guard:
     name: category-reachability-guard (ledger 2026-09-04-taxonomy-reconcile)

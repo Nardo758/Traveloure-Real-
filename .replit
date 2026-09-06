@@ -12,7 +12,13 @@ PORT = "5000"
 [deployment]
 deploymentTarget = "autoscale"
 run = ["npm", "start"]
-build = ["npm", "run", "build"]
+# Ledger `2026-09-06-publish-preflight`: the DEPLOYMENT build is `build:prod`, which is
+# `node scripts/publish-preflight.cjs --strict && npm run build`. The preflight refuses to
+# build unless this workspace is a clean `main` at `origin/main` with a pure lockfile — the
+# 2026-09-06 incident published 96c39f5 from a checkout carrying an unmerged local commit.
+# CI and `npm run dev` are untouched: they run `npm run build` / `dev`, where the preflight
+# is never invoked at all. Do not change this back to `npm run build`.
+build = ["npm", "run", "build:prod"]
 
 [workflows]
 runButton = "Project"

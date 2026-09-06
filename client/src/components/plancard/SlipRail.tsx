@@ -180,9 +180,23 @@ function RailRow({
   // composes the header's own two lines), while the label appears nowhere else.
   //
   // So the label WRAPS (`whitespace-normal`, no truncation — the Button is already `h-auto`, and
-  // `whitespace-nowrap` from the Button base is overridden on the row) and the meta SHRINKS FIRST
-  // (`min-w-0 shrink` beside its `truncate`, which without `min-w-0` cannot shrink below its
-  // content in a flex row). Nothing about the row's labels, testids or handlers changes.
+  // `whitespace-nowrap` from the Button base is overridden on the row).
+  //
+  // THE META THEN WRAPPED TOO — LATE, AND ONLY BY ELLIPSIS (ledger `2026-09-06-publish-preflight`).
+  // Shrinking the meta fixed the LABEL and left the meta unreadable: at 1920px the Plan card's
+  // "Stops & timezone" meta measured scrollWidth 207 against clientWidth 161, so
+  // "Kyoto, Japan · Times shown in Asia/Tokyo" rendered as "Kyoto, Japan · Times sho…". A 320px
+  // rail simply has no line wide enough for both halves, and `truncate` answers that by DELETING
+  // the plan's destination and zone from the row — which is the §13 shape of the problem: the row
+  // still looks complete.
+  //
+  // So the ROW wraps instead of either half being cut: `flex-wrap` on the button, and the meta
+  // keeps `min-w-0` but drops `shrink`/`truncate` for `whitespace-normal break-words text-right`.
+  // A meta that fits beside its label still sits on the same line, right-aligned by `ml-auto` (so
+  // every other rail row is visually unchanged); one that does not fit drops to its own full-width
+  // second line, where it has the whole 320px rather than the ~161px left over beside the label,
+  // and wraps rather than truncating if even that is not enough. Nothing about the row's labels,
+  // testids or handlers changes.
   const inner = (
     <>
       <span className="flex items-center gap-2 min-w-0 text-left">
@@ -190,14 +204,14 @@ function RailRow({
         <span className="whitespace-normal break-words">{label}</span>
       </span>
       {meta ? (
-        <span className="ml-auto pl-2 min-w-0 shrink font-mono text-[10px] font-normal text-muted-foreground truncate">
+        <span className="ml-auto pl-2 min-w-0 font-mono text-[10px] font-normal text-muted-foreground whitespace-normal break-words text-right">
           {meta}
         </span>
       ) : null}
     </>
   );
   const className =
-    "w-full justify-start h-auto py-2 px-2.5 text-[13px] font-semibold whitespace-normal";
+    "w-full justify-start h-auto py-2 px-2.5 text-[13px] font-semibold whitespace-normal flex-wrap";
 
   if (href && external) {
     return (
