@@ -18,6 +18,16 @@
  *                         SAME primitive the logistics family uses for temporal anchors: injected
  *                         into the prompt as an immovable commitment, never emitted as a variant
  *                         item, never re-planned, never deleted at apply.
+ *   EXPERT WORK         → CONSTRAINT ONLY, THE SAME CLASS (CLAUDE.md Locked Decision 42 D3,
+ *                         ratified Sep 5 2026). A row carrying `expert_note` (ruling 21) or
+ *                         `origin='expert'` (ruling 12) is PAID HUMAN WORK sitting in a row a
+ *                         machine may rewrite — "expert work is protected where money is
+ *                         protected". Whatever its routing status, it is read as a fixed
+ *                         commitment: injected as a constraint, NEVER emitted as a suggestion,
+ *                         never re-planned, never deleted at apply. The class test is the ONE
+ *                         row-level predicate `itineraryItemIsExpertWork`
+ *                         (shared/itinerary-item-expert.ts) — never a second, parallel
+ *                         "is this expert work?" expression written beside it (D3, §18 rule 1).
  *   with_expert         → NEVER read. Expert-owned and still fluid: not a constraint, not an input.
  *
  * This module is the SINGLE place that read-set is expressed. Both optimizer entry points
@@ -37,6 +47,7 @@
 import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, providerServices } from "@shared/schema";
+import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import type { FixedCommitment, ItineraryItem as OptimizerBaselineItem } from "../itinerary-optimizer";
 
 export type { OptimizerBaselineItem };
@@ -49,10 +60,12 @@ const CONSTRAINT_STATUS = "purchased";
 export interface TripOptimizerInputs {
   /** `in_planning` + `ready_for_checkout`, in plan order (day, then sortOrder). */
   baselineItems: OptimizerBaselineItem[];
-  /** `purchased` — prompt constraints only; never emitted, never re-planned. */
+  /** `purchased` + D3 expert work — prompt constraints only; never emitted, never re-planned. */
   fixedCommitments: FixedCommitment[];
-  /** Honest counts for logging/diagnostics (§13 — reported, never inferred). */
-  counts: { optimizable: number; purchased: number };
+  /** Honest counts for logging/diagnostics (§13 — reported, never inferred). `purchased` counts
+   *  ONLY purchased rows; D3 expert-work constraints carry their own count, so the two classes
+   *  a fixedCommitment can belong to are never conflated. */
+  counts: { optimizable: number; purchased: number; expertProtected: number };
 }
 
 /**
@@ -167,9 +180,16 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
 
   const baselineItems: OptimizerBaselineItem[] = [];
   const fixedCommitments: FixedCommitment[] = [];
+  let expertProtected = 0;
 
   for (const { item, service } of rows) {
-    if (item.routingStatus === CONSTRAINT_STATUS) {
+    // D3: expert work joins the constraint class WHATEVER its routing status — an in_planning
+    // row carrying an expert's note, or authored by the expert, is paid human work the optimizer
+    // may see (as a fixed point) but never move, replace, or drop.
+    if (item.routingStatus === CONSTRAINT_STATUS || itineraryItemIsExpertWork(item)) {
+      if (itineraryItemIsExpertWork(item) && item.routingStatus !== CONSTRAINT_STATUS) {
+        expertProtected++;
+      }
       fixedCommitments.push({
         id: item.id,
         name: item.title,
@@ -220,7 +240,7 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
   return {
     baselineItems,
     fixedCommitments,
-    counts: { optimizable: baselineItems.length, purchased: fixedCommitments.length },
+    counts: { optimizable: baselineItems.length, purchased: fixedCommitments.length - expertProtected, expertProtected },
   };
 }
 

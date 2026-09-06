@@ -228,9 +228,9 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
       improvementRoom: preview.improvementRoom,
       weakest: preview.weakest,
       dimensions: preview.dimensions,
-      // Purchased items the run would treat as fixed points. Counted from the same read-set,
-      // never assumed.
-      fixedCount: inputs.counts.purchased,
+      // Items the run would treat as fixed points — purchased rows AND D3 expert work, counted
+      // from the same read-set's actual constraint list, never assumed (§13).
+      fixedCount: inputs.fixedCommitments.length,
     });
   } catch (err: any) {
     console.error("[optimization-preview:trip] error:", err);
