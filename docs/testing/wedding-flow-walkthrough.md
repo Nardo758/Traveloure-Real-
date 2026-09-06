@@ -179,8 +179,14 @@ is `2026-09-04-one-modal-many-doors`).
 
 ## 7 · The slip — `/plans/:tripId`
 
-- Header: `slip-header`, `slip-title`, `slip-meta`, `slip-tracking-ref`, `slip-phase-chip`.
-- Status strip: `slip-status-strip` with `slip-count-<status>` per routing state.
+- Header: `slip-header`, `slip-title`, `slip-meta`, `slip-phase-chip`. **No slip number and no
+  version** here (ledger `2026-09-06-slip-conformance`): a version exists only once the plan is
+  final, and it is the finished card's `slip-final-version-chip`.
+- View bar: `slip-viewbar` — ONE row holding `slip-status-strip` (with `slip-count-<status>` per
+  routing state) and the `slip-view-toggle`. Absent on a plan with no items.
+- Rail: `slip-rail` in its own fixed column beside the day list at ≥lg (`slip-columns`), stacking
+  above it below lg. Cards run Build → Plan → Share → Finish, with `slip-rail-expert` above them
+  when the plan has an advisor.
 - **Events**: one card per `user_experiences` row — `slip-event-<id>`, `slip-event-title-<id>`,
   `slip-event-meta-<id>` (the "Fri, Oct 2 15:00 · Nanzen-ji" line, ONE derivation shared with the
   picker), and the owner-only time edit `slip-event-time-<id>`.
@@ -197,7 +203,10 @@ found broken, so check it deliberately.
 - **Expected:** one `slip-event-<id>` card **per event you ticked at step 5**, grouped under day
   headings (`slip-day-heading-<n>` for one of the plan's own days; `slip-day-heading-date-YYYY-MM-DD`
   for a day only the events name). Each card carries its title, `slip-event-meta-<id>`, the
-  owner-only `slip-event-time-<id>` / `slip-event-budget-<id>` / `slip-event-hire-<id>` affordances,
+  owner-only `slip-event-time-<id>` / `slip-event-budget-<id>` affordances, the advisor standing
+  (`slip-event-advisor-<id>`) and — where the occasion states `roles_needed` — the D6 role chips
+  (`slip-event-roles-<id>`). The old `slip-event-hire-<id>` button is GONE: the expert picker has
+  ONE home, the rail's Build card.
   and a body reading **`slip-event-empty-<id>` → "Nothing added under this event yet"**.
 - **`slip-meta` and the body must AGREE.** "4 events" in the header ⇒ four cards below it. The old
   behaviour — "4 events" over "No items on this plan yet." and no cards at all — is the defect.

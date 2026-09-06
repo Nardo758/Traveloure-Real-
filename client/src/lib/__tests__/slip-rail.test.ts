@@ -286,11 +286,32 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     assert.ok(rail.includes("<SlipLogisticsSection"), "guests/party/anchors/organize are re-mounted");
     assert.ok(rail.includes("<VendorContractBoard"), "the contract board gets its one mount");
     assert.ok(rail.includes("<TripPassCard"), "Trip Pass is the existing card, moved");
-    // STOPS & TIMEZONE are a later lane and must not be drawn as a placeholder (§13).
+    // STOPS & TIMEZONE — REPAIRED, NOT DELETED (ledger `2026-09-06-slip-conformance`).
+    //
+    // This pin used to assert the row's ABSENCE, with the reason "S6/S7 are a later lane — no
+    // placeholder row promises them" (§13). That lane landed: the row now states what the plan
+    // actually answers and opens the ONE planning modal. The assertion is turned around to hold
+    // what the ruling ACTUALLY protects rather than deleted, because the thing worth guarding was
+    // never the absence — it was that this row must not become a SECOND stop editor. Locked
+    // Decision 34 gives the client exactly one stop writer (`plan-stops-writer.ts`) with exactly
+    // one editing surface (the modal's step 2), and a replace-list caller that sends a list it did
+    // not first read silently drops stops it never saw.
+    const railCode = stripComments(rail);
     assert.ok(
-      !stripComments(rail).includes("Stops &amp; timezone") &&
-        !stripComments(rail).includes("Stops & timezone"),
-      "S6/S7 are a later lane — no placeholder row promises them",
+      railCode.includes("Stops & timezone"),
+      "the Plan card carries the ratified Stops & timezone row",
+    );
+    assert.ok(railCode.includes("openPlanModal()"), "and it opens the ONE planning modal");
+    assert.ok(
+      !railCode.includes("savePlanStops") && !railCode.includes("/destinations"),
+      "the rail never writes stops itself — one client writer, one editing surface (LD 34)",
+    );
+    // And its meta COMPOSES the header's own two lines rather than deriving them a second time
+    // (§18 rule 1): the rail takes them as props and calls only the composer.
+    assert.ok(railCode.includes("slipPlanMetaLine("), "the row meta is the composed header lines");
+    assert.ok(
+      !railCode.includes("slipStopsLine(") && !railCode.includes("slipZoneLine("),
+      "the rail derives neither line — SlipView resolves both once and hands them down",
     );
   });
 

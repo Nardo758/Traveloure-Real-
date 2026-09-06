@@ -243,9 +243,19 @@ export function SlipLogisticsSection({
       <Collapsible open={anchorsOpen} onOpenChange={setAnchorsOpen}>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className="w-full justify-between" data-testid="button-toggle-slip-anchors">
+            {/* ── "MAIN MOMENT & SCHEDULE CHECK" (ledger `2026-09-06-slip-conformance`) ────────
+                Renamed from "Flight, hotel & timing (optional)", because that is not what this
+                row opens. `TemporalAnchorManager` is mounted here with NO `allowedTypes`, so it
+                offers every `temporal_anchors` type the platform has — ceremony, reception,
+                proposal moment, rehearsal, hair & makeup, dinner, meeting and `custom`, which is
+                the type the planning modal writes THE MAIN MOMENT as — beside the flight and
+                hotel ones. Under it sit the schedule validator, the energy budget, the anchor
+                suggestions and the occasion's own schedule-template presets. The old label named
+                two of a dozen anchor types and hid the one a wedding, a proposal or a golf trip
+                is actually built around; the ratified Plan card names this row for what it is. */}
             <span className="flex items-center gap-2">
               <Plane className="w-4 h-4 text-blue-600" />
-              Flight, hotel &amp; timing (optional)
+              Main moment &amp; schedule check
             </span>
             <ChevronRight className={`w-4 h-4 transition-transform ${anchorsOpen ? "rotate-90" : ""}`} />
           </Button>

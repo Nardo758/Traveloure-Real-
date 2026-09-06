@@ -1,0 +1,87 @@
+{
+  "button-slip-view-list": [
+    "onClick:() => setSlipView(\"list\")"
+  ],
+  "button-slip-view-map": [
+    "onClick:() => setSlipView(\"map\")"
+  ],
+  "button-toggle-slip-contracts": [],
+  "slip-action-calendar": [
+    "href:slipCalendarPath(tripId)"
+  ],
+  "slip-action-draft-ai": [
+    "onClick:() => draft.mutate()"
+  ],
+  "slip-action-finalize-plan": [
+    "onClick:() => finalizeMutation.mutate(undefined, { onSuccess: (data) => { if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true); }, })"
+  ],
+  "slip-action-go-to-checkout": [
+    "href:/cart"
+  ],
+  "slip-action-hire-expert": [
+    "onClick:() => setHireOpen(true)"
+  ],
+  "slip-action-message-expert": [
+    "onClick:() => void askExpert({ tripId, subject: trip.title || trip.destination || null, fallbackName: expertState.name, returnTo: `/plans/${tripId}`, })"
+  ],
+  "slip-action-optimize": [
+    "onClick:() => { if (optimizing || creatingComparison || optimizeDisabledReason) return; setBuildAroundOpen(true); }"
+  ],
+  "slip-action-optimize-wrap": [],
+  "slip-action-pdf": [
+    "href:slipPdfPath(tripId)"
+  ],
+  "slip-action-reopen": [
+    "onClick:() => reopenMutation.mutate()"
+  ],
+  "slip-action-share": [
+    "onClick:() => share.mutate()"
+  ],
+  "slip-action-view-trip-card": [
+    "href:`/trip/${trip.id}`"
+  ],
+  "slip-ai-sketch-note": [],
+  "slip-browse-services": [
+    "href:`/services?tripId=${encodeURIComponent(tripId)}`"
+  ],
+  "slip-day-list-loading": [],
+  "slip-draft-note": [],
+  "slip-empty-items": [],
+  "slip-expert-note": [],
+  "slip-final-version-chip": [],
+  "slip-header": [],
+  "slip-log-toggle": [
+    "onClick:() => setExpanded((v) => !v)"
+  ],
+  "slip-map-view": [],
+  "slip-meta": [],
+  "slip-meta-events": [],
+  "slip-meta-party": [],
+  "slip-meta-place": [],
+  "slip-meta-stops": [],
+  "slip-meta-stops-edit": [
+    "onClick:onEditStops"
+  ],
+  "slip-meta-timezone": [],
+  "slip-optimize-preview": [],
+  "slip-optimize-preview-fee": [],
+  "slip-optimized-badge": [],
+  "slip-phase-chip": [],
+  "slip-plan-budget": [],
+  "slip-private-badge": [],
+  "slip-rail": [],
+  "slip-rail-trip-pass": [],
+  "slip-see-what-changed": [
+    "href:`/itinerary-comparison/${data.lastComparisonId}`"
+  ],
+  "slip-status-strip": [],
+  "slip-title": [],
+  "slip-tracking-ref": [],
+  "slip-transition-log": [],
+  "slip-trip-card-primary-banner": [],
+  "slip-trip-expert-note": [],
+  "slip-view-toggle": [],
+  "text-slip-map-located": [],
+  "text-slip-map-unlocated": [],
+  "trip-pass-covered-label": []
+}

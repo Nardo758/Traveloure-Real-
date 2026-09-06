@@ -83,6 +83,13 @@ export interface SlipRailAdvisor {
   last_name?: string | null;
   /** `users.handle` — the PUBLIC address (Locked Decision 40). NULL = none claimed. */
   handle?: string | null;
+  /**
+   * `users.profile_image_url`, as the owner-gated advisor read already ships it (snake_case, like
+   * every other key on that raw row). NULL = this expert has uploaded no photo, and the card then
+   * draws their INITIALS rather than a stock face — a placeholder portrait is a picture of a
+   * person who does not exist (§13).
+   */
+  profile_image_url?: string | null;
 }
 
 /**
@@ -188,4 +195,42 @@ export interface CheckoutCountableItem {
  */
 export function countCheckoutReadyItems(items: readonly CheckoutCountableItem[]): number {
   return items.filter((i) => !i.booking && i.routingStatus === "ready_for_checkout").length;
+}
+
+// ── The advisor's STANDING, in one sentence ───────────────────────────────────────────────────
+
+/** The two spellings, stated once so no surface writes a third. */
+export const SLIP_ADVISOR_PENDING_FALLBACK_NAME = "your expert" as const;
+export const SLIP_ADVISOR_ADVISING_FALLBACK_NAME = "An expert" as const;
+
+/**
+ * WHAT THIS PLAN'S ADVISOR IS, SAID THE SAME WAY EVERYWHERE (ledger `2026-09-06-slip-conformance`).
+ *
+ * Two surfaces state an advisor's standing — the EVENT HEADER (where the traveler is standing when
+ * they think about who is helping) and the RAIL's Expert card (D6's move put the hire control in
+ * Build and left the standing where it was). Before this lane the sentence was written inline in
+ * `SlipView`'s event affordance and nowhere else; the rail's new card would have been a second
+ * copy, which is the derivation-drift class §18 rule 1 names — and the day "pending" gains a third
+ * meaning the two would disagree about the same row.
+ *
+ * The wording is UNCHANGED from the event header's own, fallbacks included:
+ *   pending  ⇒ "Request sent — awaiting <name>"   — the invitation is out and nothing has been
+ *               accepted, which is Locked Decision 12's line read from the traveler's side.
+ *   anything ⇒ "<Name> is advising this plan"
+ *   else
+ *
+ * §13 — NO ETA, ever. Nothing on the platform knows when an expert will answer, so no sentence
+ * here promises one. A nameless row keeps the stated generic fallback rather than a blank or an
+ * invented name, and the two fallbacks differ because they sit in different grammatical slots.
+ *
+ * Returns `null` when there is NO advisor: that is not a standing, and a caller must render
+ * nothing rather than a sentence about an absence.
+ */
+export function slipAdvisorStandingLine(advisor: SlipRailAdvisor | null | undefined): string | null {
+  if (!advisor) return null;
+  const name = slipAdvisorName(advisor);
+  if (advisor.status === "pending") {
+    return `Request sent — awaiting ${name ?? SLIP_ADVISOR_PENDING_FALLBACK_NAME}`;
+  }
+  return `${name ?? SLIP_ADVISOR_ADVISING_FALLBACK_NAME} is advising this plan`;
 }

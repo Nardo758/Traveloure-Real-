@@ -49,8 +49,10 @@ import {
   CalendarPlus,
   CheckCircle2,
   ChevronRight,
+  ExternalLink,
   FileDown,
   Loader2,
+  MapPin,
   MessageCircle,
   Plus,
   Share2,
@@ -61,6 +63,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -85,14 +88,26 @@ import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-plan-actions";
 import {
   countCheckoutReadyItems,
+  slipAdvisorStandingLine,
   slipBuildAiAction,
   slipCalendarPath,
   slipDraftDisabledReason,
   slipExpertRailState,
   slipPdfPath,
   slipShareUrl,
+  type SlipExpertRailState,
   type SlipRailAdvisor,
 } from "@/lib/slip-rail";
+// S6/S7 — the Plan card's "Stops & timezone" row composes the header's OWN two lines; it derives
+// neither (§18 rule 1). Both arrive as props from `SlipView`, which resolves them once.
+import { slipPlanMetaLine } from "@/lib/slip-meta";
+// The row is a DOOR of the ONE planning modal (Locked Decision 33's opener), whose step 2 IS the
+// ordered stop-list editor (Locked Decision 34's one client writer) — never a second stop editor.
+import { usePlanning } from "@/contexts/PlanningContext";
+// Locked Decision 40: an earner's PUBLIC page is their handle's. `earnerProfilePath` is the ONE
+// builder of it, and with no `id` on this row its documented id fallback cannot fire — a
+// handle-less advisor resolves to `null`, which is exactly §13's answer here (no link at all).
+import { earnerProfilePath } from "@/lib/earner-address";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { tripCardForcedPrimaryByDateAlone } from "@shared/trip-primary-surface";
@@ -223,11 +238,19 @@ function BuildCard({
   tripId,
   isOwner,
   activities,
+  expertState,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
   activities: PlanCardActivity[];
+  /**
+   * The expert row's state, resolved ONCE by `SlipRail` from the ONE owner-gated advisor read
+   * (ledger `2026-09-06-slip-conformance`). It used to be fetched here; the Expert card above now
+   * reads the same row, and two `useQuery` calls for one fact — even sharing a cache entry — is
+   * two places the same answer is derived (§18 rule 1).
+   */
+  expertState: SlipExpertRailState;
 }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -403,13 +426,6 @@ function BuildCard({
 
   // ── The expert (ONE picker, ONE message control) ────────────────────────────────────────────
   const [hireOpen, setHireOpen] = useState(false);
-  // The SAME owner-gated advisor read the event headers already use — one endpoint, one cache
-  // entry, no second query shape for the same fact.
-  const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null }>({
-    queryKey: [`/api/trips/${tripId}/expert-advisor`],
-    enabled: isOwner && !!tripId,
-  });
-  const expertState = slipExpertRailState(advisorData?.advisor ?? null);
 
   return (
     <RailCard card="build" title="Build">
@@ -593,6 +609,99 @@ function BuildCard({
   );
 }
 
+// ── Expert ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * THE EXPERT CARD — who is on this plan, above everything they might be asked to do.
+ *
+ * Ledger `2026-09-06-slip-conformance`; the ratified `SlipExpert` artboard's own rail card. The
+ * rail previously named the advisor only inside the Build card's "Message <name>" row, so the
+ * person helping with the plan appeared as a verb rather than as somebody who is here.
+ *
+ * IT READS THE SAME ROW THE BUILD CARD DOES — one owner-gated advisor read, resolved by `SlipRail`
+ * and handed to both (§18 rule 1). No second query, and no second opinion about who the advisor is.
+ *
+ * WHAT IT DRAWS, and every one of them is a real value or nothing at all (§13):
+ *  · the PHOTO when `users.profile_image_url` is set, and otherwise the person's INITIALS. Never a
+ *    stock portrait, which is a picture of somebody who does not exist.
+ *  · the NAME the row carries, or the stated generic fallback the rail already uses.
+ *  · the STANDING — pending or advising — through `slipAdvisorStandingLine`, the SAME sentence the
+ *    event header states, spelled once. No ETA: nothing knows when an expert will answer.
+ *  · "View storefront" ONLY when the expert has claimed a handle. Locked Decision 40 makes the
+ *    handle the public address, and `earnerProfilePath` returns `null` without one — so the row is
+ *    ABSENT rather than a dead button or a placeholder link to a page that does not exist. It is
+ *    never addressed by `users.id`, which this payload deliberately does not carry.
+ *
+ * NO MESSAGE CONTROL HERE. That lives once, in Build (D22's plan-addressed `advisor` kind), and the
+ * card says so out loud so the absence reads as a decision rather than a gap.
+ *
+ * NO ADVISOR ⇒ NO CARD. "Nobody is advising this plan" is not a status worth a card; the Build
+ * card's "Hand off to a local expert" is the answer to that state, and it is the only one.
+ */
+function ExpertCard({
+  advisor,
+  expertState,
+}: {
+  /**
+   * The raw advisor row, for the two DISPLAY facts the rail state deliberately does not carry —
+   * the photo and the standing sentence. `slipExpertRailState` answers "which control does the
+   * Build card offer"; widening it with presentation fields would make one type answer two
+   * questions and would change what every existing caller receives.
+   */
+  advisor: SlipRailAdvisor | null;
+  expertState: SlipExpertRailState;
+}) {
+  if (expertState.kind !== "message") return null;
+  const storefront = earnerProfilePath({ handle: expertState.handle });
+  const initials = expertState.name.slice(0, 2).toUpperCase();
+  const standing = slipAdvisorStandingLine(advisor);
+  const avatarUrl =
+    typeof advisor?.profile_image_url === "string" && advisor.profile_image_url.trim().length > 0
+      ? advisor.profile_image_url
+      : null;
+  return (
+    <Card data-testid="slip-rail-expert">
+      <CardContent className="p-3 space-y-2">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Expert
+        </p>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Avatar className="h-9 w-9 flex-shrink-0">
+            <AvatarImage src={avatarUrl ?? undefined} alt="" />
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground" data-testid="slip-rail-expert-name">
+              {expertState.name}
+            </p>
+            {/* §13 — a row with no standing to state draws no line, never "status unknown". */}
+            {standing && (
+              <p
+                className="font-mono text-[10px] leading-snug text-muted-foreground"
+                data-testid="slip-rail-expert-standing"
+              >
+                {standing}
+              </p>
+            )}
+          </div>
+        </div>
+        {storefront && (
+          <RailRow
+            label="View storefront"
+            meta="public page"
+            icon={<ExternalLink className="w-3.5 h-3.5" />}
+            href={storefront}
+            testId="slip-rail-expert-storefront"
+          />
+        )}
+        <RailNote testId="slip-rail-expert-message-note">
+          Message them from the Build card — it is the one place that conversation opens.
+        </RailNote>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Plan ──────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -603,22 +712,38 @@ function BuildCard({
  * the EXISTING `VendorContractBoard`; the budget total is the EXISTING derived line, passed in
  * rather than recomputed (§18 rule 1 — `planBudgetLine` has one caller and it stays SlipView's).
  *
- * STOPS & TIMEZONE are deliberately ABSENT (S6/S7 are a later lane). §13: a placeholder row for a
- * surface that does not exist would be a promise, so there is none.
+ * STOPS & TIMEZONE ARE HERE NOW (ledger `2026-09-06-slip-conformance`). This card's own comment
+ * used to say they were a later lane and that a placeholder row would be a promise (§13) — the
+ * lane landed, so the row states what the plan actually answers to both questions and opens the
+ * ONE planning modal, whose step 2 IS the ordered stop-list editor.
  */
 function PlanCard({
   tripId,
   isOwner,
   planEvents,
   budgetLine,
+  stopsLine,
+  zoneLine,
 }: {
   tripId: string;
   isOwner: boolean;
   planEvents: readonly PlanEvent[];
   /** The plan's DERIVED budget total, or null when no event states one (never "$0" — §13). */
   budgetLine: string | null;
+  /**
+   * The header's OWN two lines, resolved once by `SlipView` and handed down (§18 rule 1). This card
+   * composes them into one row meta through `slipPlanMetaLine` and derives NEITHER: a second
+   * `slipStopsLine(...)` here is how the row and the header would start disagreeing about the same
+   * columns. `null` on both ⇒ the row still draws (it is the door to the editor) with no meta —
+   * never an invented "not set", which is a claim about the plan.
+   */
+  stopsLine: string | null;
+  zoneLine: string | null;
 }) {
   const [contractsOpen, setContractsOpen] = useState(false);
+  // Locked Decision 33's opener. No source: the modal reads the plan the traveler is already on,
+  // exactly as the header's own `Edit ›` calls it.
+  const { open: openPlanModal } = usePlanning();
 
   // A non-owner viewer gets neither the logistics collapsibles (owner-only by ruling) nor the
   // contract board (its read tier is broader, but the card would then hold one row); with the
@@ -627,6 +752,22 @@ function PlanCard({
 
   return (
     <RailCard card="plan" title="Plan">
+      {/* ── STOPS & TIMEZONE (S6/S7) — the row the ratified Plan card draws, and the SECOND door
+          to the ONE stop editor rather than a second editor. Locked Decision 34 gives the client
+          exactly one stop writer (`plan-stops-writer.ts`) with exactly one editing surface (the
+          modal's step 2); a list editor mounted here would be a second caller of that
+          replace-list writer with its own read-before-replace, which is how stops nobody saw get
+          silently dropped. Owner-only, like the header's own Edit affordance (D16). */}
+      {isOwner && (
+        <RailRow
+          label="Stops & timezone"
+          meta={slipPlanMetaLine(stopsLine, zoneLine)}
+          icon={<MapPin className="w-3.5 h-3.5" />}
+          onClick={() => openPlanModal()}
+          testId="slip-plan-stops"
+        />
+      )}
+
       {isOwner && <SlipLogisticsSection tripId={tripId} planEvents={planEvents} />}
 
       {/* THE CONTRACT BOARD — `vendor_contracts` had four owner-gated read endpoints and, on this
@@ -964,6 +1105,8 @@ export function SlipRail({
   activities,
   planEvents,
   budgetLine,
+  stopsLine,
+  zoneLine,
 }: {
   trip: SlipTrip;
   tripId: string;
@@ -972,13 +1115,56 @@ export function SlipRail({
   activities: PlanCardActivity[];
   planEvents: readonly PlanEvent[];
   budgetLine: string | null;
+  /** The header's own stops/zone lines, resolved once by `SlipView` (§18 rule 1). */
+  stopsLine: string | null;
+  zoneLine: string | null;
 }) {
+  /**
+   * THE ONE ADVISOR READ FOR THE WHOLE RAIL (ledger `2026-09-06-slip-conformance`).
+   *
+   * The Build card fetched this itself; the Expert card above it needs the same row, and two
+   * `useQuery` calls for one fact — even sharing a cache entry — are two places the same answer is
+   * derived (§18 rule 1). Owner-gated at the route (it 404s for anyone else), which is why it is
+   * only enabled for the owner: the expert viewing this slip IS the advisor and has no need of a
+   * card about themself.
+   */
+  const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null }>({
+    queryKey: [`/api/trips/${tripId}/expert-advisor`],
+    enabled: isOwner && !!tripId,
+  });
+  const advisor = advisorData?.advisor ?? null;
+  const expertState = slipExpertRailState(advisor);
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 items-start" data-testid="slip-rail">
-      <BuildCard trip={trip} tripId={tripId} isOwner={isOwner} activities={activities} />
-      <FinishCard trip={trip} isOwner={isOwner} isPrimary={isPrimary} activities={activities} />
-      <PlanCard tripId={tripId} isOwner={isOwner} planEvents={planEvents} budgetLine={budgetLine} />
+    /**
+     * ONE COLUMN AT `lg`, which is where the rail sits in its own 320px track (the caller owns the
+     * width — see `SlipView`). Below that it is full width, so two-up keeps the four cards from
+     * becoming four screens of scrolling before the plan.
+     *
+     * DOM ORDER IS THE RULING'S ORDER — Expert · Build · Plan · Share · Finish — and it is the
+     * order in every layout, so nothing about it depends on the breakpoint. It was
+     * Build · Finish · Plan · Share, which only ever read correctly as a two-column grid and put
+     * "Finalize plan" above the plan's own facts.
+     */
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="slip-rail">
+      <ExpertCard advisor={advisor} expertState={expertState} />
+      <BuildCard
+        trip={trip}
+        tripId={tripId}
+        isOwner={isOwner}
+        activities={activities}
+        expertState={expertState}
+      />
+      <PlanCard
+        tripId={tripId}
+        isOwner={isOwner}
+        planEvents={planEvents}
+        budgetLine={budgetLine}
+        stopsLine={stopsLine}
+        zoneLine={zoneLine}
+      />
       <ShareCard trip={trip} tripId={tripId} isOwner={isOwner} />
+      <FinishCard trip={trip} isOwner={isOwner} isPrimary={isPrimary} activities={activities} />
     </div>
   );
 }
