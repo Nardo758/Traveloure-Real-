@@ -10,7 +10,7 @@ import { db } from "../db";
 import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { logItemTransition } from "../services/item-transition-log.service";
@@ -63,15 +63,21 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // so a comparison can name someone else's trip. This handler then wipes that trip
     // (`deleteItineraryItemsByTrip`) and re-inserts the variant, so without a trip-side check any
     // authenticated user could destroy and overwrite any other user's itinerary. BOTH checks must
-    // hold: the comparison-ownership check above AND the canonical trip authorization here
-    // (owner ‖ trip-assigned expert ‖ trip author ‖ audit-logged admin), performed BEFORE the delete.
-    const denied = await authorizeTripLogistics(
-      comparison.tripId,
-      userId,
-      "POST /api/itinerary-comparisons/:id/apply-to-trip",
-    );
+    // hold: the comparison-ownership check above AND the trip authorization here, performed BEFORE
+    // the delete.
+    // D17 (LD 42, Sep 5 2026): apply-to-trip IS the optimizer's write — it deletes and re-inserts
+    // the plan's items — so it is authorized by the item-mutation predicate
+    // (`getTripWriteRole`/`canMutateTrip`: owner ‖ WRITE-status advisor, NEVER pending, plus the
+    // mutation handlers' parallel author branch), NOT the logistics read tier that granted pending
+    // advisors and audit-logged admin. ONE predicate for every item write (§18 rule 1).
     // Local convention in this router: `{ error }` bodies, 403 for an authorized-user-wrong-trip.
-    if (denied) return res.status(denied.status).json({ error: denied.message });
+    {
+      const tripRole = await getTripWriteRole(comparison.tripId, userId);
+      const authorMayApply = canMutateTrip(tripRole) ? false : await isTripAuthor(comparison.tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayApply) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    }
 
     // Find best variant: prefer selectedVariantId, else top AI variant by optimizationScore
     let variant: any = null;

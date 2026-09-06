@@ -52,6 +52,18 @@ jobs:
       - name: Well-known static mount pin (LD 43(e))
         run: npx tsx --test server/__tests__/well-known-static.test.ts
 
+      # 2026-09-06-optimizer-run-predicate (CLAUDE.md Locked Decision 42 D17): the optimizer run —
+      # paid, free re-run, or Trip Pass — REWRITES the plan's items, so all four run gates
+      # (comparison create, generate, apply-to-trip, optimize-order + its dead twin) are authorized
+      # by the item-mutation predicate (getTripWriteRole/canMutateTrip: owner ‖ WRITE-status
+      # advisor, NEVER pending, plus the parallel author branch), never the logistics read tier.
+      # Pure + static pins: per-handler predicate presence, no authorizeTripLogistics( call in any
+      # run gate, pending excluded at the predicate by construction, no second authorization
+      # module invented, and the scope-discipline pins (reorder's D1 gate and the READ-shaped
+      # preview are untouched).
+      - name: Optimizer run predicate pin (LD 42 D17)
+        run: npx tsx --test server/__tests__/optimizer-run-predicate.test.ts
+
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
       # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER
       # ONLY EVER MOVES DOWN: a lane that removes errors lowers TSC_BASELINE in the
