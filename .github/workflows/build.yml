@@ -35,6 +35,23 @@ jobs:
       - name: Production build (syntax/bundle gate — does NOT run tsc)
         run: npm run build
 
+      # 2026-09-05-well-known-static (CLAUDE.md Locked Decision 43(e)): Stripe verifies an Apple
+      # Pay domain by fetching /.well-known/apple-developer-merchantid-domain-association, and the
+      # SPA catch-all was answering that fetch with 200-HTML ("404 – Lost at Sea?"), so the domain
+      # could not be registered and nothing logged a thing (§9: a dead endpoint returns 200-HTML,
+      # NOT 404). O1-O4 pin the ONE thing that makes the fix work — the mount's SOURCE POSITION,
+      # above serveStatic()'s pre-bind catch-all and above setupVite()/mountSpaFallback();
+      # B1-B4 boot a real express app on loopback (no DB, no Stripe) and pin byte-identical
+      # text/plain delivery, an uncached response, a PLAIN 404 for an unknown .well-known path and
+      # an honest 404 when the directory is absent entirely, plus the traversal/dotfile refusals.
+      # It runs HERE, immediately after the
+      # build, because D3 — the dotfile directory surviving Vite's publicDir copy into
+      # dist/public — is the half a source-only test cannot see; without a build it says so and
+      # skips rather than passing quietly. F1/F2 pin the association file: byte-shape when it is
+      # committed, and a documented operator drop-in while it is not.
+      - name: Well-known static mount pin (LD 43(e))
+        run: npx tsx --test server/__tests__/well-known-static.test.ts
+
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
       # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER
       # ONLY EVER MOVES DOWN: a lane that removes errors lowers TSC_BASELINE in the
