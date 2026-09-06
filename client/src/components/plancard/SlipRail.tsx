@@ -171,20 +171,33 @@ function RailRow({
   primary?: boolean;
   testId: string;
 }) {
+  // LAYOUT (ledger `2026-09-06-role-chips-filter`). Both halves used to be `truncate` inside a
+  // 320px rail, so the row's own NAME was the thing that gave way: at a ~1110px viewport "Stops &
+  // timezone" rendered as "Stops & ti…" while its meta — a composed line that can run to
+  // "Kyoto → Osaka · Times shown in Asia/Tokyo" — kept its width. A control whose label is
+  // ellipsised is a control the traveler cannot read, and the meta is the half that can afford to
+  // yield: it RESTATES facts the header already prints in full (§18 rule 1 — `slipPlanMetaLine`
+  // composes the header's own two lines), while the label appears nowhere else.
+  //
+  // So the label WRAPS (`whitespace-normal`, no truncation — the Button is already `h-auto`, and
+  // `whitespace-nowrap` from the Button base is overridden on the row) and the meta SHRINKS FIRST
+  // (`min-w-0 shrink` beside its `truncate`, which without `min-w-0` cannot shrink below its
+  // content in a flex row). Nothing about the row's labels, testids or handlers changes.
   const inner = (
     <>
-      <span className="flex items-center gap-2 min-w-0">
+      <span className="flex items-center gap-2 min-w-0 text-left">
         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" /> : icon}
-        <span className="truncate">{label}</span>
+        <span className="whitespace-normal break-words">{label}</span>
       </span>
       {meta ? (
-        <span className="ml-auto pl-2 font-mono text-[10px] font-normal text-muted-foreground truncate">
+        <span className="ml-auto pl-2 min-w-0 shrink font-mono text-[10px] font-normal text-muted-foreground truncate">
           {meta}
         </span>
       ) : null}
     </>
   );
-  const className = "w-full justify-start h-auto py-2 px-2.5 text-[13px] font-semibold";
+  const className =
+    "w-full justify-start h-auto py-2 px-2.5 text-[13px] font-semibold whitespace-normal";
 
   if (href && external) {
     return (

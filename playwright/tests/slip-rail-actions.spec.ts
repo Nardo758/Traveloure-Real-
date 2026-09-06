@@ -103,6 +103,9 @@ test("A1: the rail is a fixed right column at lg, and stacks above the list belo
 test("A2: the view bar is ONE row — the status counts beside the List | Map toggle", async ({
   page,
 }) => {
+  // Two slips are opened here (a plan with a row, and an empty one), and an unbundled dev server
+  // spends most of that budget compiling. Only the budget is raised; every assertion is web-first.
+  test.slow();
   const tripId = await registerAndCreateTrip(page, "viewbar");
   await addItem(page, tripId);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -118,6 +121,24 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
   const mapBtn = page.getByTestId("button-slip-view-map");
   await expect(mapBtn).toBeDisabled();
   await expect(mapBtn).toHaveAttribute("title", /located/i);
+
+  // AND ON AN EMPTY PLAN THE ROW IS STILL THERE (ledger `2026-09-06-role-chips-filter`). The bar
+  // used to be gated on the plan already holding rows, so a fresh plan had no view bar at all and
+  // therefore no List | Map toggle — a control that simply was not on the page, which no source
+  // pin can see. The left half reads the canvas's "Nothing added yet" and the toggle keeps its
+  // honest disabled Map. §13 is untouched in the half that matters: the COUNT SEGMENTS stay
+  // zero-omitting, so the strip must be absent rather than rendering "0 planning · 0 purchased".
+  const emptyTrip = await registerAndCreateTrip(page, "viewbar-empty");
+  await openSlip(page, emptyTrip);
+  const emptyBar = page.getByTestId("slip-viewbar");
+  await expect(emptyBar).toBeVisible();
+  await expect(emptyBar.getByTestId("slip-viewbar-empty")).toHaveText("Nothing added yet");
+  await expect(emptyBar.getByTestId("slip-status-strip")).toHaveCount(0);
+  await expect(emptyBar.getByTestId("slip-view-toggle")).toBeVisible();
+  await expect(page.getByTestId("button-slip-view-list")).toBeEnabled();
+  const emptyMapBtn = page.getByTestId("button-slip-view-map");
+  await expect(emptyMapBtn).toBeDisabled();
+  await expect(emptyMapBtn).toHaveAttribute("title", /located/i);
 });
 
 // ── 2 · the Build card's rails ────────────────────────────────────────────────────────────────

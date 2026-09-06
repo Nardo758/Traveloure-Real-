@@ -54,6 +54,9 @@ import {
   serviceBrowseHrefForRole,
   slipEventRoleChips,
 } from "../slip-event-roles";
+// The ONE home of the browse's URL contract (ledger `2026-09-06-role-chips-filter`). Imported
+// here so the pin below reads the same module both ends of the contract do.
+import { servicesBrowseHref } from "../services-browse";
 import { SLIP_RAIL_CARDS, slipAdvisorStandingLine, slipExpertRailState } from "../slip-rail";
 import { slipPlanMetaLine, slipStopsLine, slipZoneLine } from "../slip-meta";
 import { SLIP_ASK_EXPERT_LABEL } from "../slip-item-tools";
@@ -143,6 +146,12 @@ const ALLOWED_ADDITIONS = {
   "slip-rail-expert-message-note": "3 — says out loud that Message lives once, in Build",
   // 6 · the Plan card's stops row
   "slip-plan-stops": "6 — Stops & timezone, a DOOR of the ONE planning modal (LD 33/34)",
+  // 1 (continued) · ledger `2026-09-06-role-chips-filter`. The merged bar rendered only when the
+  // plan already held rows, so a FRESH plan had no view bar and therefore no List | Map toggle at
+  // all — the canvas draws that row with "Nothing added yet" beside the toggle. This is the
+  // placeholder, not a new action: it carries no handler, and the zero-omitting rule on the count
+  // SEGMENTS is untouched (§13 — four zeroes would be four claims about rows that do not exist).
+  "slip-viewbar-empty": "1 — the empty plan's placeholder, so the view toggle still renders",
 } as const;
 
 const ALLOWED_REMOVALS = {
@@ -269,6 +278,36 @@ describe("1 — the rail is a fixed right column, and its cards run Build → Pl
     // The map's honest gate is untouched: Map is offered only when a stop is genuinely located.
     assert.match(viewCode, /mapDisabledReason/);
   });
+
+  /**
+   * AN EMPTY PLAN STILL GETS THE ROW (ledger `2026-09-06-role-chips-filter`).
+   *
+   * The bar was gated on `allActivities.length > 0`, which took the List | Map toggle down with
+   * the counts: a fresh plan had no view control at all and the canvas's one row was simply
+   * absent. It renders unconditionally now, with "Nothing added yet" where the counts go.
+   *
+   * §13 IS UNCHANGED IN THE HALF THAT MATTERS: the count SEGMENTS stay zero-omitting.
+   * `SlipStatusStrip` still returns null when every count is zero, so the placeholder and the
+   * segments can never both draw, and the bar never renders "0 planning · 0 purchased" — four
+   * claims about rows that do not exist.
+   */
+  it("the viewbar renders on an EMPTY plan, with a sentence rather than zeroes", () => {
+    const barStart = viewCode.indexOf('data-testid="slip-viewbar"');
+    assert.ok(barStart > 0, "the viewbar is still addressable");
+    // The bar's own element is not behind an items gate. The old shape was
+    // `{allActivities.length > 0 && (<div data-testid="slip-viewbar"`.
+    const beforeBar = viewCode.slice(Math.max(0, barStart - 300), barStart);
+    assert.doesNotMatch(
+      beforeBar,
+      /allActivities\.length > 0 && \(\s*<div/,
+      "the whole bar must not be gated on the plan already holding rows",
+    );
+    assert.match(viewCode, /data-testid="slip-viewbar-empty"/, "the placeholder exists");
+    assert.match(viewCode, /Nothing added yet/, "in the canvas's own words");
+    // The segments' zero-omitting rule is where it always was — in the strip itself.
+    const strip = functionBody(viewCode, "function SlipStatusStrip");
+    assert.match(strip, /segments\.length === 0\) return null/, "a zero count is still no segment");
+  });
 });
 
 // ── 2 · D6 ON THE EVENT HEADER ────────────────────────────────────────────────────────────────
@@ -303,14 +342,88 @@ describe("2 — D6: the event header asks the PROVIDER question, and reads the r
     const discover = readClient("pages/discover.tsx");
     assert.match(
       discover,
-      /urlParams\.get\("categoryKey"\)/,
-      "the browse still reads the param these chips send",
+      /urlParams\.get\(SERVICES_BROWSE_CATEGORY_PARAM\)/,
+      "the browse still reads the param these chips send — through the shared constant",
     );
     // The trip rides too, so Add to plan lands on THIS plan (LD 39's one rail).
     assert.match(discover, /urlParams\.get\("tripId"\)/);
     assert.match(serviceBrowseHrefForRole("florist", "t1"), /tripId=t1/);
     // With no trip in hand nothing is invented — the param is simply absent.
     assert.doesNotMatch(serviceBrowseHrefForRole("florist", null), /tripId/);
+  });
+
+  /**
+   * ONE SPELLING, ON BOTH ENDS (ledger `2026-09-06-role-chips-filter`, §18 rule 1).
+   *
+   * The lane before this one named the param a constant on the LINK side only, so the page that
+   * READS it spelled `"categoryKey"` out again as a bare literal: two independent strings that
+   * happened to agree. QA found the browse rendering unfiltered for a real chip href, and the
+   * class of failure is silent by construction — a param the page ignores looks exactly like a
+   * category with no supply.
+   *
+   * The pin is over a DERIVED file set (the two ends of the contract plus the slip's own files),
+   * not a count of occurrences: a later lane may add a third surface that links into the browse,
+   * and it will be caught the moment it types the literal instead of importing the constant.
+   */
+  it("§18 rule 1 — the param literal exists in ONE module; both ends import it", () => {
+    const DECLARING = "lib/services-browse.ts";
+    // Every file in the contract, derived from the roles it plays: the declaring module, the
+    // browse that reads the URL, the module that builds the href, and the slip files that draw
+    // the chips. No literal count anywhere.
+    const CONTRACT_FILES = [DECLARING, "pages/discover.tsx", "lib/slip-event-roles.ts", ...SLIP_FILES];
+    // A QUOTED occurrence of the param name — the spelling that makes it a URL param. The bare
+    // identifier `categoryKey` is a legitimate OBJECT FIELD on the `/api/service-categories` rows
+    // and this pin is deliberately blind to it (stated negative space, §18d).
+    const quoted = /["'`]categoryKey["'`]/g;
+    for (const rel of CONTRACT_FILES) {
+      const body = stripComments(readClient(rel));
+      const hits = body.match(quoted) ?? [];
+      if (rel === DECLARING) {
+        assert.ok(hits.length > 0, `${DECLARING} is the one place the param is spelled`);
+      } else {
+        assert.equal(
+          hits.length,
+          0,
+          `${rel} spells the browse param itself — import SERVICES_BROWSE_CATEGORY_PARAM from ` +
+            `${DECLARING} instead, or the two ends of one contract drift apart silently.`,
+        );
+      }
+    }
+    // And both ends really do import it, rather than agreeing by accident.
+    assert.match(
+      stripComments(readClient("pages/discover.tsx")),
+      /import \{[^}]*SERVICES_BROWSE_CATEGORY_PARAM[^}]*\} from "@\/lib\/services-browse"/,
+      "the browse imports the constant",
+    );
+    assert.match(
+      stripComments(readClient("lib/slip-event-roles.ts")),
+      /from "@\/lib\/services-browse"/,
+      "the chip builder reads the same module",
+    );
+    // The href the chips send and the href the shared builder makes are the same string.
+    assert.equal(serviceBrowseHrefForRole("florist", "t1"), servicesBrowseHref("florist", "t1"));
+  });
+
+  /**
+   * §13 — WHAT THE BROWSE DOES WITH A KEY IT CANNOT RESOLVE, AND WITH ONE IT CAN.
+   *
+   * Two silent failures, both found by QA on the shipped build: a key the loaded categories do not
+   * carry filtered NOTHING and said nothing, and a key OUTSIDE the curated six-chip shortlist
+   * filtered the results while the rail still highlighted "All" — the page stating the opposite of
+   * what it was showing. Both are source pins because neither is visible to a pure unit: this
+   * suite cannot mount the page (its own stated negative space), and the browser proof is the
+   * e2e case in `playwright/tests/discover-tabs.spec.ts`.
+   */
+  it("§13 — an unresolvable key is said out loud, and the applied filter always has a chip", () => {
+    const discover = stripComments(readClient("pages/discover.tsx"));
+    // The unmatched state is NOT the loading state: it requires categories to have actually
+    // arrived. An unanswered fetch is not "no such category".
+    assert.match(discover, /const deepLinkUnmatched =[\s\S]{0,160}categories\?\.length/);
+    assert.match(discover, /data-testid="text-quick-cat-unmatched"/, "and it renders a line");
+    // The chip rail draws the curated shortlist PLUS the applied filter when it is not in it.
+    assert.match(discover, /const quickCategories = useMemo/);
+    assert.match(discover, /QUICK_CATEGORY_SLUGS/, "the shortlist is named once and read twice");
+    assert.match(discover, /aria-pressed=\{selectedCategory === cat\.id\}/, "active is stated");
   });
 
   it("the surface READS the row and restates no role list of its own", () => {
@@ -508,6 +621,25 @@ describe("6 — Stops & timezone opens the ONE modal and restates neither line",
     // And SlipView resolves them ONCE, for the header and the rail both.
     assert.equal((viewCode.match(/slipStopsLine\(/g) ?? []).length, 1);
     assert.equal((viewCode.match(/slipZoneLine\(/g) ?? []).length, 1);
+  });
+
+  /**
+   * THE ROW'S LABEL MAY NOT BE THE HALF THAT GIVES WAY (ledger `2026-09-06-role-chips-filter`).
+   *
+   * Both halves of a `RailRow` were `truncate` inside a 320px rail, so at a ~1110px viewport the
+   * row rendered as "Stops & ti…" — a control whose own name the traveler cannot read, while its
+   * meta kept full width. The meta is the half that can afford to yield: it composes lines the
+   * header already prints in full. Source pin, because Tailwind geometry is the browser's answer
+   * and this suite has no DOM (its own stated negative space).
+   */
+  it("the label wraps and the meta yields — no ellipsised row name", () => {
+    const row = functionBody(railCode, "function RailRow");
+    assert.doesNotMatch(row, /<span className="truncate">\{label\}/, "the label is not truncated");
+    assert.match(row, /whitespace-normal break-words">\{label\}/, "it wraps instead");
+    // The Button base is `whitespace-nowrap`; the row must override it or wrapping cannot happen.
+    assert.match(row, /const className =[\s\S]{0,200}whitespace-normal/);
+    // And the meta shrinks FIRST — `truncate` alone cannot shrink below its content in a flex row.
+    assert.match(row, /min-w-0 shrink[\s\S]{0,120}truncate/, "the meta yields, with an ellipsis");
   });
 
   it("the stale 'later lane' note is gone, and the anchors row is named for what it opens", () => {

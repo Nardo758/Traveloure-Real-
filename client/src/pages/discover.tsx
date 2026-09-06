@@ -77,12 +77,31 @@ import {
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId, serviceDetailHref } from "@/lib/trip-target";
+// The browse's OWN url contract, stated once and shared with every surface that links in (the
+// slip's D6 role chips are the first — ledger `2026-09-06-role-chips-filter`, §18 rule 1). This
+// page is the READER; a bare literal here is how a link and the page it points at drift apart.
+import { SERVICES_BROWSE_CATEGORY_PARAM } from "@/lib/services-browse";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import type { LucideIcon } from "lucide-react";
 
 // Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
 // Applied inline the same way Fraunces is (runtime theme fonts, loaded in index.html).
 const EARN_MONO = "'Geist Mono', ui-monospace, monospace";
+/**
+ * THE CURATED CHIP SHORTLIST on /services — a handful of disciplines, deliberately not the whole
+ * taxonomy (the rail says so under itself). Hoisted out of the JSX so the same list can be read
+ * BOTH to draw the chips and to decide whether the currently applied filter is already among them
+ * (ledger `2026-09-06-role-chips-filter`) — two copies of "which chips are curated" is the drift
+ * class §18 rule 1 names.
+ */
+const QUICK_CATEGORY_SLUGS = [
+  "tours-experiences",
+  "food-culinary",
+  "photography-videography",
+  "transportation-logistics",
+  "health-wellness",
+  "visa-assistance",
+] as const;
 const SERVICE_SORT_OPTIONS = [
   { value: "rating", label: "Top Rated" },
   { value: "reviews", label: "Most Reviews" },
@@ -873,16 +892,48 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     queryKey: ["/api/service-categories"],
   });
 
-  // Upsell deep-link (issue #51): ?categoryKey=<service_categories.category_key>
-  // preselects the matching category. Resolves to the row id via the already-loaded
-  // categories array — the one source; no per-surface categoryKey→id map.
-  const upsellCategoryKey = urlParams.get("categoryKey");
+  // Category deep-link (issue #51; ledger `2026-09-06-role-chips-filter`):
+  // ?categoryKey=<service_categories.category_key> preselects the matching category. Resolved to
+  // the row id via the already-loaded categories array — the one source; no per-surface
+  // categoryKey→id map, which would be a second taxonomy beside the registry's.
+  //
+  // THE PARAM NAME IS THE SHARED CONSTANT, NOT A LITERAL. Every surface that links in builds the
+  // href from `services-browse.ts` and this page reads it with the same name, so the two ends of
+  // one contract cannot drift (§18 rule 1). They already had: the slip's D6 role chips named the
+  // param a constant on the LINK side while this reader spelled it out again.
+  const upsellCategoryKey = urlParams.get(SERVICES_BROWSE_CATEGORY_PARAM);
+  const deepLinkCategory = useMemo(
+    () =>
+      upsellCategoryKey && categories?.length
+        ? (categories.find((c) => c.categoryKey === upsellCategoryKey) ?? null)
+        : null,
+    [upsellCategoryKey, categories],
+  );
+  // §13 — A KEY THE CATALOG DOES NOT CARRY IS SAID OUT LOUD, NEVER SWALLOWED. Silently rendering
+  // the full browse for an unresolvable key is the failure nobody notices: the page looks
+  // perfectly normal and the traveler believes they are looking at that discipline. `categories`
+  // still loading is NOT this state — an unanswered fetch is not "no such category".
+  const deepLinkUnmatched = !!upsellCategoryKey && !!categories?.length && !deepLinkCategory;
   useEffect(() => {
-    if (upsellCategoryKey && categories?.length) {
-      const match = categories.find((c) => c.categoryKey === upsellCategoryKey);
-      if (match) setSelectedCategory(match.id);
-    }
-  }, [upsellCategoryKey, categories]);
+    if (deepLinkCategory) setSelectedCategory(deepLinkCategory.id);
+  }, [deepLinkCategory]);
+
+  // THE CHIPS THE RAIL DRAWS: the curated shortlist, PLUS the applied filter when the shortlist
+  // does not carry it. §13 — without that addition a deep link to a discipline outside the six
+  // (a florist, an officiant) filtered the results while the rail highlighted "All", so the page
+  // stated the opposite of what it was showing. The extra chip is not a new taxonomy: it is the
+  // row already selected, drawn so the traveler can see it and press it off.
+  const quickCategories = useMemo(() => {
+    if (!categories?.length) return [] as ServiceCategory[];
+    const shortlist = QUICK_CATEGORY_SLUGS.map((slug) =>
+      categories.find((c) => c.slug === slug),
+    ).filter((c): c is ServiceCategory => !!c);
+    const applied =
+      selectedCategory !== "all" ? categories.find((c) => c.id === selectedCategory) : undefined;
+    return applied && !shortlist.some((c) => c.id === applied.id)
+      ? [...shortlist, applied]
+      : shortlist;
+  }, [categories, selectedCategory]);
 
   const { data: result, isLoading: servicesLoading } = useQuery<DiscoverResult>({
     queryKey: [
@@ -1565,6 +1616,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                         type="button"
                         onClick={() => setSelectedCategory("all")}
                         data-testid="button-quick-cat-all"
+                        aria-pressed={selectedCategory === "all"}
                         className={cn(
                           "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
                           selectedCategory === "all"
@@ -1574,33 +1626,36 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                       >
                         All
                       </button>
-                      {[
-                        "tours-experiences",
-                        "food-culinary",
-                        "photography-videography",
-                        "transportation-logistics",
-                        "health-wellness",
-                        "visa-assistance",
-                      ]
-                        .map((slug) => categories.find((c: any) => c.slug === slug))
-                        .filter(Boolean)
-                        .map((cat: any) => (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => setSelectedCategory(cat.id)}
-                            data-testid={`button-quick-cat-${cat.slug}`}
-                            className={cn(
-                              "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
-                              selectedCategory === cat.id
-                                ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
-                                : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
-                            )}
-                          >
-                            {cat.name}
-                          </button>
-                        ))}
+                      {quickCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSelectedCategory(cat.id)}
+                          data-testid={`button-quick-cat-${cat.slug}`}
+                          aria-pressed={selectedCategory === cat.id}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
+                            selectedCategory === cat.id
+                              ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                              : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                          )}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
                     </div>
+                    {/* §13 — a deep link naming a category this catalog does not carry is stated,
+                        not swallowed. Without this the page renders an ordinary full browse and
+                        the traveler believes they are looking at that discipline. */}
+                    {deepLinkUnmatched && (
+                      <p
+                        className="text-[11.5px] text-[color:var(--earn-coral-ink)] mb-2"
+                        style={{ fontFamily: EARN_MONO }}
+                        data-testid="text-quick-cat-unmatched"
+                      >
+                        Showing every service — this catalog has no “{upsellCategoryKey}” category to filter by.
+                      </p>
+                    )}
                     <p className="text-[11.5px] text-[color:var(--earn-muted)] mb-6" style={{ fontFamily: EARN_MONO }}>
                       Quick category filters for this destination — a curated shortlist, not the full taxonomy.
                     </p>
@@ -1628,7 +1683,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             count + an editorial Fraunces heading + a real match line (§13). */}
                         <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
                           <div>
-                            <p className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>
+                            <p
+                              className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]"
+                              style={{ fontFamily: EARN_MONO }}
+                              data-testid="text-services-eyebrow"
+                            >
                               {selectedCategory === "all"
                                 ? "All services"
                                 : (categories?.find((c: any) => c.id === selectedCategory)?.name ?? "Services")}
