@@ -1106,6 +1106,20 @@ jobs:
       # surface is still exactly the five paths that existed before this lane.
       - name: Booked-item delete refusal pin
         run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
+
+  slip-small-additions:
+    name: slip-small-additions (CLAUDE.md Locked Decision 42 D18-D22 - 2026-09-06-slip-small-additions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # Unlike the node-built-ins-only guard jobs, BOTH suites below import shared/ modules that
+      # pull in `zod` (shared/contact-address.ts, shared/schema.ts), so this job installs deps.
+      # Appending them to a guard job that skips `npm ci` fails with ERR_MODULE_NOT_FOUND.
+      - run: npm ci
       # 2026-09-05-slip-decisions-d18-d22 + 2026-09-06-slip-small-additions (CLAUDE.md Locked
       # Decision 42's D18-D22 addendum, build-order row 1.3). D22 amends Locked Decision 40 with a
       # FOURTH context kind, `advisor`: the client names a PLAN and the server resolves the
