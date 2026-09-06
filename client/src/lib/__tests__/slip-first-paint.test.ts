@@ -63,6 +63,11 @@ const hookSrc = readFileSync(
   join(ROOT, "client", "src", "hooks", "use-occasion-switches.ts"),
   "utf-8",
 );
+/** The vocabulary module itself — A3 checks that a wrapping helper DELEGATES to the gated one. */
+const vocabSrc = readFileSync(
+  join(ROOT, "client", "src", "lib", "plan-vocabulary.ts"),
+  "utf-8",
+);
 
 /**
  * Source with its comments removed, so an assertion about what the CODE does is not satisfied (or
@@ -208,15 +213,35 @@ describe("A — the call sites use the gate rather than reaching past it", () =>
     }
   });
 
-  it("A3: SlipView's party line goes through partyLabelForOccasion with the resolved flag", () => {
+  it("A3: SlipView's party line goes through a GATED helper, with the resolved flag", () => {
+    /**
+     * THE INVARIANT, not the function name (ledger `2026-09-06-slip-small-additions`). This pin
+     * originally named `partyLabelForOccasion` outright and broke the moment D21 put
+     * `planHeaderCountLabel` in front of it — which is the pin-rule failure it was written to
+     * prevent, one layer up: the rule it protects is that the RESOLUTION SIGNAL reaches whatever
+     * decides the label, and that the UNGATED rail is not reachable from this surface. Both are
+     * still exactly true; only the name of the outermost helper moved.
+     *
+     * `planHeaderCountLabel` is admitted because it DELEGATES to `partyLabelForOccasion` rather
+     * than re-deriving anything — asserted below against `plan-vocabulary.ts` itself, so this pin
+     * cannot be satisfied by a look-alike that quietly drops the gate.
+     */
+    const GATED = ["partyLabelForOccasion(", "planHeaderCountLabel("];
+    const used = GATED.filter((name) => slipViewSrc.includes(name));
     assert.ok(
-      slipViewSrc.includes("partyLabelForOccasion("),
-      "SlipView must render its party label through the gated helper",
+      used.length > 0,
+      "SlipView must render its party label through a gated helper (partyLabelForOccasion, or one that delegates to it)",
     );
-    assert.ok(
-      /partyLabelForOccasion\([\s\S]{0,240}?occasionResolved,\s*\)/.test(slipViewSrc),
-      "…and must pass the resolution signal into it",
-    );
+    for (const name of used) {
+      const call = new RegExp(`${name.replace("(", "\\(")}[\\s\\S]{0,320}?occasionResolved,\\s*\\)`);
+      assert.ok(call.test(slipViewSrc), `…and must pass the resolution signal into ${name})`);
+    }
+    if (slipViewSrc.includes("planHeaderCountLabel(")) {
+      assert.ok(
+        /export function planHeaderCountLabel\([\s\S]*?partyLabelForOccasion\(/.test(vocabSrc),
+        "planHeaderCountLabel must DELEGATE to the gated helper, never re-derive the label",
+      );
+    }
     // The ungated helper must no longer be reachable from this surface at all.
     assert.ok(
       !/\bpartyCountLabel\(/.test(slipViewSrc),

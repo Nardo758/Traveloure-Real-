@@ -46,7 +46,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  SLIP_EXPERT_NO_HANDLE_NOTE,
   SLIP_RAIL_CARDS,
   countCheckoutReadyItems,
   slipAdvisorName,
@@ -157,7 +156,7 @@ describe("slip rail — the ONE AI action, and its honest absences", () => {
     }
   });
 
-  it("R3 the expert row has three states, and a handle-less advisor gets a sentence", () => {
+  it("R3 the expert row has TWO states since D22, and a handle-less advisor is still messageable", () => {
     assert.deepEqual(slipExpertRailState(null), { kind: "hire" });
     assert.deepEqual(slipExpertRailState(undefined), { kind: "hire" });
 
@@ -180,13 +179,18 @@ describe("slip rail — the ONE AI action, and its honest absences", () => {
     assert.equal(pending.kind, "message");
     assert.equal(pending.kind === "message" && pending.pending, true);
 
-    // No handle ⇒ no address exists (LD 40: a users.id is not an address), so the rail says so.
+    // D22 (ledger `2026-09-05-slip-decisions-d18-d22`) — a handle-less advisor USED to have no
+    // address at all under LD 40's three kinds, and the rail printed a sentence instead of a
+    // control. The `advisor` kind addresses the PLAN, so the Message row is offered for every
+    // advisor on it; the handle survives only as the DISPLAY fact it always was.
     const noHandle = slipExpertRailState({ status: "accepted", first_name: "Aya", handle: null });
-    assert.equal(noHandle.kind, "no_handle");
-    assert.equal(noHandle.kind === "no_handle" && noHandle.name, "Aya");
-    // Whitespace is not a handle.
-    assert.equal(slipExpertRailState({ status: "accepted", handle: "   " }).kind, "no_handle");
-    assert.match(SLIP_EXPERT_NO_HANDLE_NOTE, /public profile/i);
+    assert.equal(noHandle.kind, "message");
+    assert.equal(noHandle.kind === "message" && noHandle.name, "Aya");
+    assert.equal(noHandle.kind === "message" && noHandle.handle, null);
+    // Whitespace is not a handle — and is null rather than "", so a caller cannot build "/s/   ".
+    const blank = slipExpertRailState({ status: "accepted", handle: "   " });
+    assert.equal(blank.kind, "message");
+    assert.equal(blank.kind === "message" && blank.handle, null);
 
     // §13: a nameless advisor row is never given a fabricated name.
     assert.equal(slipAdvisorName({ first_name: null, last_name: null }), null);

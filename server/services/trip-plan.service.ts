@@ -1119,6 +1119,17 @@ export async function assembleTripPlan(
         // §21 (migration 187): the traveler-facing trip-level Expert Note. PlanCard renders it as
         // "From your expert". The PRIVATE trips.expertNotes must never appear on this object.
         expertTravelerNote: (trip as any).expertTravelerNote ?? null,
+        // Locked Decision 30 (migration 279) — the plan's ONE IANA zone, SERVER-DERIVED at mint
+        // from `trips.destination` and never client-settable. It rides so a surface can say which
+        // zone the plan's wall-clock times are read in (S7, ledger `2026-09-06-slip-small-additions`).
+        //
+        // §13 — SPREAD, NOT ASSIGNED: the key is ABSENT when the trip has no zone rather than
+        // becoming a `null` a reader has to interpret, which is the same treatment
+        // `planComparisonRef` gives the comparison id below. NULL means NOT CAPTURED (a
+        // destination outside the eight launch markets), and Locked Decision 30 is explicit that a
+        // reader must then say NOTHING about the zone — never UTC, never the server's zone, never
+        // the nearest guess, because a wrong zone is worse than an honest silence.
+        ...((trip as any).timezone ? { timezone: String((trip as any).timezone) } : {}),
       },
       changeLog,
       metrics: metricsMap,

@@ -26,6 +26,10 @@
  *    snapshot exists `/trip/:id` has nothing of its own to render and bounces back here, so the
  *    control promised a surface that did not exist (§13). The Trip Card is reachable from the
  *    Finish card the moment the plan is finalized, and nowhere else.
+ *  · `slip-expert-no-handle` — GONE with D22 (ledger `2026-09-05-slip-decisions-d18-d22`). The
+ *    rail said out loud that a handle-less advisor had no address, which was true under Locked
+ *    Decision 40's three kinds and is no longer: the `advisor` kind addresses the PLAN, so the
+ *    Message row is offered for every advisor on it and the sentence has nothing left to say.
  *  · `AssignExpertSlot` / `button-find-expert` — ONE PICKER (D7). The slip carried two advisor
  *    pickers writing through two different routes: `AssignExpertSlot` → the raw-body
  *    `POST /api/trips/:id/expert-advisor`, and `HireExpertDialog` → the pick-based, §19-shaped
@@ -87,7 +91,6 @@ import {
   slipExpertRailState,
   slipPdfPath,
   slipShareUrl,
-  SLIP_EXPERT_NO_HANDLE_NOTE,
   type SlipRailAdvisor,
 } from "@/lib/slip-rail";
 import { useAskExpert } from "@/lib/use-ask-expert";
@@ -491,7 +494,8 @@ function BuildCard({
         </>
       )}
 
-      {/* THE EXPERT — three states, three different facts (see `slipExpertRailState`). */}
+      {/* THE EXPERT — two states since D22 (see `slipExpertRailState`): nobody on the plan, or
+          somebody to message. */}
       {isOwner && expertState.kind === "hire" && (
         <>
           <RailRow
@@ -519,9 +523,13 @@ function BuildCard({
           icon={<MessageCircle className="w-3.5 h-3.5" />}
           onClick={() =>
             void askExpert({
-              // Locked Decision 40: the conversation is opened by naming the HANDLE. No user id
-              // is sent and none comes back.
-              handle: expertState.handle,
+              // D22 (ledger `2026-09-05-slip-decisions-d18-d22`) — THE ADDRESS IS THE PLAN. The
+              // client names `{ tripId }` and the SERVER resolves the counterpart from the trip
+              // plus its `trip_expert_advisors` row in a §12 access status. No user id and no
+              // handle is sent, and none comes back: Locked Decision 40's rule is unweakened, and
+              // this is the amendment that finally makes a handle-less advisor reachable — the
+              // rail used to print a sentence here instead of a control.
+              tripId,
               subject: trip.title || trip.destination || null,
               fallbackName: expertState.name,
               returnTo: `/plans/${tripId}`,
@@ -529,11 +537,6 @@ function BuildCard({
           }
           testId="slip-action-message-expert"
         />
-      )}
-      {isOwner && expertState.kind === "no_handle" && (
-        <RailNote testId="slip-expert-no-handle">
-          {expertState.name} is on this plan. {SLIP_EXPERT_NO_HANDLE_NOTE}
-        </RailNote>
       )}
 
       {/* TRIP PASS — the entitlement that covers AI runs on this trip. The EXISTING card, moved

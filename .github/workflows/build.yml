@@ -1089,6 +1089,39 @@ jobs:
       # surface is still exactly the five paths that existed before this lane.
       - name: Booked-item delete refusal pin
         run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
+      # 2026-09-05-slip-decisions-d18-d22 + 2026-09-06-slip-small-additions (CLAUDE.md Locked
+      # Decision 42's D18-D22 addendum, build-order row 1.3). D22 amends Locked Decision 40 with a
+      # FOURTH context kind, `advisor`: the client names a PLAN and the server resolves the
+      # counterpart from the trip plus its `trip_expert_advisors` row in a §12 access status. Every
+      # rule is invisible on happy-path data — a rail that quietly accepted `{ tripId, receiverId }`
+      # would work for every honest client and would have put back exactly the addressing that
+      # ruling removed; "owner => advisor, advisor => owner" is a two-way rule a one-way
+      # implementation passes from the traveler's side; and a plan with NO advisor must be the SAME
+      # 404 as a plan that does not exist, because a helpful 403 tells a caller which trip ids are
+      # real. V1-V3 pin the vocabulary, the closed address set and that an advisor context is
+      # labelled by the plan's TITLE and never leaks the trip id; B1-B3 pin the `.strict()` refusal
+      # of a user id, a handle or a second address beside the trip; R1-R5 pin the resolution in both
+      # directions, the stranger, the both-roles case and the STATED multi-advisor tie-break; A1-A5
+      # pin the shipped resolver (the canonical §12 allow-list rather than a re-typed literal, no
+      # body-sourced identity, one refusal reason) and that D22 needed NO migration because
+      # `context_kind` deliberately carries no CHECK.
+      - name: Advisor conversation-context pin
+        run: npx tsx --test server/__tests__/advisor-conversation-context.test.ts
+      # The client half of the same lane: the five small things the slip could not say. Every one
+      # is an ABSENCE rule and an absence leaves no trace — S5 renders `trips.expert_traveler_note`
+      # and its PRIVATE sibling `trips.expert_notes` would render identically if a caller ever
+      # reached for it (Locked Decision 21 forbids merging the three by name); S6's fallback to
+      # `trips.destination` fires for EVERY legacy plan because `trip_destinations` has no backfill;
+      # S7's NULL must render NOTHING, and a `?? "UTC"` added by a future tidy-up is invisible on
+      # any plan whose zone is set (Locked Decision 30 forbids that substitution by name); D21 is
+      # about two populations that must never merge into one number, whose failure mode is
+      # "0 invited" on a roster that has not answered; and S3's line must be ABSENT rather than
+      # greyed when no advisor is on the plan. Every static pin reads the slip's FILE SET
+      # (SlipView + SlipRail) and asserts over their union, with comments stripped so a pin is
+      # about the code rather than the prose explaining it — no literal call-site count, no
+      # single-file literal.
+      - name: Slip small-additions pin
+        run: npx tsx --test client/src/lib/__tests__/slip-small-additions.test.ts
 
   ai-draft-eligibility-guard:
     name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)

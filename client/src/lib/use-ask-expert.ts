@@ -12,10 +12,11 @@ import {
 /**
  * Shared "Ask an expert" / "Message" action.
  *
- * CANONICAL (CLAUDE.md Locked Decision 40, lane 3): a caller says WHAT the conversation is about —
- * a storefront `handle`, a public `serviceId`, or a `bookingId` it is already on — and this hook
- * opens the thread through `POST /api/conversations/start`, which resolves the recipient
- * SERVER-SIDE and answers with an opaque conversation id. The traveler then lands on
+ * CANONICAL (CLAUDE.md Locked Decision 40, lane 3; amended by its D22 addendum, ledger
+ * `2026-09-05-slip-decisions-d18-d22`): a caller says WHAT the conversation is about — a storefront
+ * `handle`, a public `serviceId`, a `bookingId` it is already on, or a `tripId` whose plan the two
+ * people share — and this hook opens the thread through `POST /api/conversations/start`, which
+ * resolves the recipient SERVER-SIDE and answers with an opaque conversation id. The traveler then lands on
  * `/chat?conversation=<opaque id>`. No user id is sent, and none comes back.
  *
  * DEPRECATED, kept for the rows that have no address yet: `expertId` (a `users.id`) and the
@@ -92,6 +93,7 @@ export function useAskExpert() {
       handle,
       serviceId,
       bookingId,
+      tripId,
       expertId,
       returnTo,
       fallbackName,
@@ -106,7 +108,7 @@ export function useAskExpert() {
       // CANONICAL PATH (Locked Decision 40). An `ambiguous` result is a caller bug and is treated
       // as no address at all rather than resolved in a priority order — the server refuses two
       // addresses for the same reason (§13).
-      const addressed = resolveContactAddress({ handle, serviceId, bookingId });
+      const addressed = resolveContactAddress({ handle, serviceId, bookingId, tripId });
       if (addressed.ok) {
         const started = await startConversation(addressed.address);
         if (started) {
