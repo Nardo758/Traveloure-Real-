@@ -11406,6 +11406,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // an item can only be stamped 'expert' by a caller who actually has write access.
       delete itemData.origin;
       itemData.origin = isAdvisor ? "expert" : "traveler";
+      // D4 (LD 42, ratified Sep 5 2026): `expert_note` is the SAME authorship class as
+      // `suggestedBy`/`origin` above — the insert schema does NOT omit it (the column post-dates
+      // that omit list: D4's "a privileged column reachable by default through a body schema
+      // nobody re-read"), so an owner or ready-made author could mint a row carrying a note
+      // labelled as the expert's. Stripped from the generic parse for every caller; only a
+      // WRITE-status advisor (`isAdvisor` — accepted/assigned, never pending) re-admits it,
+      // mirroring the suggestedBy shape exactly.
+      const expertNoteFromBody = req.body?.expertNote;
+      delete itemData.expertNote;
+      if (isAdvisor && typeof expertNoteFromBody === "string") {
+        itemData.expertNote = expertNoteFromBody;
+      }
       // Ledger 2026-09-03-slip-convergence — the ONE door for the migration-275 booking inputs.
       // `insertItineraryItemSchema` OMITS slotId/checkIn/checkOut precisely so the generic body
       // parse above cannot grant them; they are re-admitted here through a pick-based ALLOWLIST

@@ -11,6 +11,7 @@ import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { itineraryItemNotExpertWork } from "../services/itinerary-rebuild-guard";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { logItemTransition } from "../services/item-transition-log.service";
@@ -118,14 +119,23 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // `ready_for_checkout` / `purchased` rows survive untouched (a `purchased` row carries
       // `booking_id`, migration 159). Inserted variant items take the migration-159 default
       // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
+      // D3 (LD 42, Sep 5 2026): in_planning-only is NO LONGER sufficient — an in_planning row
+      // carrying `expert_note` or `origin='expert'` is paid human work and survives the replace,
+      // so the delete ANDs in the ONE expert-work clause (`itineraryItemNotExpertWork`), the same
+      // class `itineraryItemRebuildDeletable()` now carries — never a second predicate.
       // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
       // This transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
       // diary row); a plan rebuild is not a removal, so no per-row `item_removed` (§13, R15).
-      // rebuild-guard-exempt: in_planning-only — deletes only in_planning rows (see the comment above),
-      // so ready_for_checkout/purchased/booked rows are preserved by construction (D-1 invariant).
+      // rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/
+      // booked rows are preserved by construction (D-1 invariant) and expert-work rows by the D3
+      // clause ANDed into the WHERE; the full guard predicate is not re-stated here.
       await tx
         .delete(itineraryItems)
-        .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")));
+        .where(and(
+          eq(itineraryItems.tripId, tripId),
+          eq(itineraryItems.routingStatus, "in_planning"),
+          itineraryItemNotExpertWork(),
+        ));
       const [remaining] = await tx
         .select({ n: count() })
         .from(itineraryItems)

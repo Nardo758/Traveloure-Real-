@@ -144,7 +144,7 @@ import type {
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition, type TransitionActorType } from "./services/item-transition-log.service";
-import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
+import { itineraryItemRebuildDeletable, itineraryItemNotExpertWork } from "./services/itinerary-rebuild-guard";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { resolveTripTimezone } from "./services/trip-timezone";
 import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
@@ -7974,17 +7974,25 @@ export class DatabaseStorage implements IStorage {
   // replaces the plan, but a `with_expert` / `ready_for_checkout` / `purchased` item is NOT the
   // optimizer's to replace — a `purchased` row carries `booking_id` (migration 159), so wiping it
   // severs a real booking from its plan item. Only `in_planning` rows are replaceable.
+  // D3 (LD 42, Sep 5 2026): and only in_planning rows that are NOT expert work — a row carrying
+  // `expert_note` or `origin='expert'` is paid human work, spared by the ONE expert-work clause
+  // (`itineraryItemNotExpertWork`), never a second predicate.
   // DELIBERATELY a NEW method: `deleteItineraryItemsByTrip` keeps its total-wipe semantics for its
   // own (currently zero other) callers — this does not change any existing behaviour.
   async deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }> {
     // item-removed:replace — the routing-aware apply-to-trip replace (in_planning rows the
     // optimizer is about to re-insert). Its live sibling (plancard.routes.ts apply) already logs a
     // trip-scoped `variant_applied` event; this is a plan rebuild, not a removal (§13, R15).
-    // rebuild-guard-exempt: in_planning-only — the WHERE deletes only in_planning rows, so a
-    // ready_for_checkout/purchased/booked row is preserved by construction (the guard's own invariant).
+    // rebuild-guard-exempt: in_planning-only AND not-expert-work — the WHERE deletes only
+    // in_planning non-expert rows, so ready_for_checkout/purchased/booked rows are preserved by
+    // construction (D-1 invariant) and expert-work rows by the D3 clause ANDed in below.
     const deleted = await db
       .delete(itineraryItems)
-      .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")))
+      .where(and(
+        eq(itineraryItems.tripId, tripId),
+        eq(itineraryItems.routingStatus, "in_planning"),
+        itineraryItemNotExpertWork(),
+      ))
       .returning({ id: itineraryItems.id });
     // Everything still on the trip after the delete is, by construction, a routed row we preserved.
     const [remaining] = await db
