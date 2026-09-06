@@ -1029,6 +1029,28 @@ function FinishCard({
   // owner-gated server-side, so the card would be a list of 403s.
   if (!isOwner) return null;
 
+  // THE CHOOSER IS MOUNTED OUTSIDE BOTH STATES, AND THAT PLACEMENT IS LOAD-BEARING.
+  //
+  // Finalize's designed effect is "snapshot the Trip Card AND open the chooser on top of the
+  // snapshot" — the two happen on ONE press. But the press is exactly what flips this card's
+  // state: `finalizeMutation` invalidates the plancard query, `trip.finalizedAt` arrives set,
+  // `tripCardIsPrimary` turns true, and the pre-final branch is replaced by the Finished one.
+  // While the modal lived INSIDE the pre-final branch (the shape the rail regroup carried over
+  // from `SlipView`, where it had always sat OUTSIDE the `!trip.finalizedAt` conditional), the
+  // `setFinalizeModalOpen(true)` in that same `onSuccess` set state on a subtree React was about
+  // to unmount: the snapshot was written, the toast fired, every server-side effect landed — and
+  // the chooser never rendered. Nothing threw, and the only signal was a traveler who pressed
+  // Finalize and was never asked how to book. It is mounted here, above the branch, so the state
+  // it is opened from and the state it opens into both keep it alive.
+  const chooser = (
+    <FinalizeBookingModal
+      open={finalizeModalOpen}
+      onOpenChange={setFinalizeModalOpen}
+      trip={{ id: trip.id, destination: trip.destination, travelers: trip.travelers }}
+      activities={activities}
+    />
+  );
+
   if (isPrimary) {
     return (
       <RailCard card="finish" title="Finished">
@@ -1053,6 +1075,7 @@ function FinishCard({
             testId="slip-action-reopen"
           />
         )}
+        {chooser}
       </RailCard>
     );
   }
@@ -1085,12 +1108,7 @@ function FinishCard({
           testId="slip-action-go-to-checkout"
         />
       )}
-      <FinalizeBookingModal
-        open={finalizeModalOpen}
-        onOpenChange={setFinalizeModalOpen}
-        trip={{ id: trip.id, destination: trip.destination, travelers: trip.travelers }}
-        activities={activities}
-      />
+      {chooser}
     </RailCard>
   );
 }
