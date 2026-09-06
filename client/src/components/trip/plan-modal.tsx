@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import {
   clearTripContext,
   getTripContext,
+  releasePendingEventsPen,
   switchTripContext,
   updateTripContext,
   useTripContext,
@@ -44,6 +45,7 @@ import {
   type PlanStop,
 } from "@/lib/plan-stops";
 import { savePlanStops } from "@/lib/plan-stops-writer";
+import { eventsNotYetCreated } from "@/lib/organize-events";
 import {
   eventsToCreate,
   hasEventRow,
@@ -749,6 +751,32 @@ export function PlanModal({
    * Best-effort by design: this runs after the context write, and a 4xx (guest, non-owner, a
    * revoked advisor) leaves the context save standing rather than failing the whole modal.
    */
+  /**
+   * The titles this plan's events already carry, or NULL when they could not be read (ledger
+   * `2026-09-06-event-mint-dedupe`).
+   *
+   * NULL AND [] ARE DIFFERENT ANSWERS (§13): `[]` is "this plan holds no events", which authorizes
+   * creating all of them; `null` is "we could not tell", which authorizes nothing and leaves the
+   * create exactly as it behaved before this lane. The list route answers the caller's OWN
+   * experiences, so it is filtered to this trip here rather than trusting every row it returns.
+   *
+   * Safe to read straight after a mint: `storage.createTrip` AWAITS the pen drain before it
+   * answers, so anything the drain wrote is already visible by the time the mint resolves.
+   */
+  async function readExistingEventTitles(tripId: string): Promise<string[] | null> {
+    try {
+      const res = await apiRequest("GET", "/api/user-experiences");
+      const rows: Array<{ tripId?: string | null; title?: string | null }> = await res.json();
+      if (!Array.isArray(rows)) return null;
+      return rows
+        .filter((r) => r?.tripId === tripId)
+        .map((r) => (typeof r?.title === "string" ? r.title : ""))
+        .filter((t) => t.length > 0);
+    } catch {
+      return null;
+    }
+  }
+
   async function writeMainMomentAnchor(tripId: string, dateYmd: string, time: string) {
     // Local wall-clock → instant, the same conversion TemporalAnchorManager does on its
     // `datetime-local` input. The traveler typed a time in their own day, not in UTC.
@@ -970,13 +998,34 @@ export function PlanModal({
             console.warn("[plan-modal] main moment not saved as an anchor:", err?.message);
           });
         }
-        // ONE event per ticked row. An event inside a plan IS a `user_experiences` row bound to
-        // the trip (Locked Decision 29) — there is no second event artifact, and this posts to the
-        // SAME owner-scoped, allowlist-bodied route the slip's "set up guest list" already uses.
-        // `startTime` rides the SAME pick-based allowlist (`userExperienceBodySchema`), narrowed by
-        // the one format authority `userExperienceStartTimeSchema` (migration 282, Locked
-        // Decision 35) — no second admission rail was opened for it.
-        for (const row of rowsToCreate) {
+        /**
+         * ONE event per ticked row, AND ONLY WHAT THE PLAN DOES NOT ALREADY CARRY (ledger
+         * `2026-09-06-event-mint-dedupe`). An event inside a plan IS a `user_experiences` row bound
+         * to the trip (Locked Decision 29) — there is no second event artifact, and this posts to
+         * the SAME owner-scoped, allowlist-bodied route the slip's "set up guest list" already
+         * uses. `startTime` rides the SAME pick-based allowlist (`userExperienceBodySchema`),
+         * narrowed by the one format authority `userExperienceStartTimeSchema` (migration 282,
+         * Locked Decision 35) — no second admission rail was opened for it.
+         *
+         * THE FILTER IS THE SECOND LAYER, not the fix. The fix is that the finish RELEASES its own
+         * pre-trip pen before it mints, so the server-side drain never writes these rows in the
+         * first place (Locked Decision 30 (b); the pen and the modal both wrote them, and a plan
+         * came back holding "Ceremony, Reception, Ceremony, Reception"). This layer catches what
+         * ordering cannot: a release the server never confirmed, a pen left by another session,
+         * and a traveler who finishes or saves twice. It is the SAME `eventsNotYetOnPlan` the
+         * drain and the slip's "Organize into events" call — one authority (§18 rule 1).
+         *
+         * §13 — AN UNREADABLE PLAN IS NOT AN EMPTY ONE. When the read fails we do not know what
+         * the plan holds, so `existingTitles` is null and every row is created exactly as before
+         * this lane: creating a duplicate the traveler can delete beats silently dropping an event
+         * they asked for, and the release above has already made the duplicate unlikely.
+         */
+        const existingTitles =
+          rowsToCreate.length > 0 ? await readExistingEventTitles(tripId) : null;
+        const eventsToWrite = existingTitles
+          ? eventsNotYetCreated(rowsToCreate, existingTitles)
+          : rowsToCreate;
+        for (const row of eventsToWrite) {
           // The ONE inheritance rule, shared with the pre-trip pen drain: a day or place the
           // traveler answered is kept, one they did not is the PLAN's own (§18 rule 1 — a second
           // copy here is how the two doors would start disagreeing). The TIME has no fallback:
@@ -1116,6 +1165,22 @@ export function PlanModal({
     try {
       let bound: string | undefined;
       if (branch === "myself" && !getTripContext().tripId && mintPlan) {
+        /**
+         * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the
+         * table before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked
+         * Decision 30 (b)). `storage.createTrip` awaits the server-side pen drain, and the rows
+         * on screen were SEEDED from that same pen — so without this, every ticked event is
+         * created twice in one click: once by the drain, once by `commitPlan` below.
+         *
+         * The modal wins the authorship because it holds what the drain can only guess at: the
+         * occasion resolved on screen (the drain creates NOTHING when a stored slug does not
+         * resolve — its rule 5), and an untick the pen still remembers. The pen keeps its whole
+         * job for every other mint door and for a pen this modal never comes back for.
+         *
+         * AWAITED, and its answer is deliberately NOT branched on: a release the server did not
+         * confirm leaves `commitPlan`'s idempotency filter to do exactly what it is there for.
+         */
+        await releasePendingEventsPen();
         const outcome = await mintPlan({
           destination: destination.trim(),
           startDate,

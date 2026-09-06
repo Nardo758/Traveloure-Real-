@@ -378,6 +378,56 @@ function schedulePush(context: TripContext): void {
   }, 1500);
 }
 
+/**
+ * RELEASE THE PRE-TRIP EVENT PEN — the modal taking its own held events off the table before it
+ * mints. Ledger `2026-09-06-event-mint-dedupe`; CLAUDE.md Locked Decision 30 (b).
+ *
+ * ── WHY THIS EXISTS AND WHY IT IS AWAITED ───────────────────────────────────────────────────
+ * The pen (`pendingEvents` / the legacy `pendingEventTitles`) is drained SERVER-SIDE inside the
+ * mint: `storage.createTrip` awaits `drainPendingEventsIntoTrip`, which promotes every held title
+ * into a `user_experiences` row. The plan modal's own save then creates the rows that are ON
+ * SCREEN — and those rows were SEEDED FROM THAT SAME PEN, so a finish that mints with a pen in
+ * hand writes every ticked event twice. The modal is the author of the events it collected (it
+ * holds the resolved occasion, and it honours an untick the pen still remembers), so it clears the
+ * pen first and the drain then has nothing of its to replay.
+ *
+ * It is AWAITED, and it disarms the 1.5s debounced push it just armed, because a release that
+ * lands after `POST /api/trips` is not a release at all — the drain would read the pen it was
+ * meant to empty. That is the same ordering `clearTripContext` closes for the plan as a whole.
+ *
+ * It clears ONLY the two pen keys: every other held planning field (dates, party, stops, step 4's
+ * answers) survives, because this is not a "clear plan".
+ *
+ * @returns whether the SERVER confirmed the write. `false` is not an error — the caller carries on
+ *          and the modal's create is idempotent by title against what the plan already holds, so
+ *          an unconfirmed release costs nothing beyond that second layer doing its job. A guest
+ *          (401) and an offline tab both land here honestly rather than silently.
+ */
+export async function releasePendingEventsPen(): Promise<boolean> {
+  // The local half through the ONE local writer — so the on-screen seed, the change event and the
+  // stored blob all agree, exactly as any other context write does.
+  const next = updateTripContext({ pendingEvents: [], pendingEventTitles: [] });
+  // The push `updateTripContext` just armed carries this same blob 1.5s from now; this call sends
+  // it immediately instead, so the mint that follows cannot outrun it.
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = undefined;
+  }
+  if (typeof fetch !== "function") return false;
+  try {
+    const res = await fetch(`/api/trip-context${tripScopedQuery(next)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ context: next }),
+    });
+    return res.ok;
+  } catch {
+    // Offline / guest — best-effort, exactly like every other write in this module.
+    return false;
+  }
+}
+
 let hydrated = false;
 /**
  * Bumped by every `clearTripContext`. A hydrate that started BEFORE a clear must not land AFTER
