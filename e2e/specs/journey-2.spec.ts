@@ -186,11 +186,16 @@ test.describe('Journey 2D — Expert advisor request from the slip', () => {
     }
 
     // Trip Card rebuild Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): choosing an
-    // expert is a planning decision, so the advisor-request affordance moved off the (now
-    // removed) trip-details Expert tab onto the SLIP (/plans/:tripId) — AssignExpertSlot's
-    // "Add a local expert" button (button-find-expert). It renders for the owner while no
-    // expert is assigned; an already-assigned trip surfaces the expert on the summary card
-    // and the slot renders nothing, so accept either state.
+    // expert is a planning decision, so the advisor-request affordance lives on the SLIP
+    // (/plans/:tripId).
+    //
+    // REWRITTEN for ledger `2026-09-05-slip-rail-regroup`: the slip carried TWO advisor pickers
+    // (AssignExpertSlot's `button-find-expert` and the pick-based HireExpertDialog), and the rail
+    // regroup retired the first — ONE picker (D7). The affordance is now the Build card's
+    // "Hand off to a local expert" (`slip-action-hire-expert`), and once an advisor exists the
+    // SAME row becomes the one Message control (`slip-action-message-expert`) or, for an expert
+    // with no public handle, the honest `slip-expert-no-handle` sentence. Every one of those is a
+    // resolved advisor state; what must never happen is a Build card showing none of them.
     const firstCardTestId = await page
       .locator(SELECTORS.tripCard)
       .first()
@@ -202,20 +207,33 @@ test.describe('Journey 2D — Expert advisor request from the slip', () => {
     const slip = page.locator(`[data-testid="slip-view-${tripId}"]`);
     await slip.waitFor({ state: 'visible', timeout: 25_000 });
 
-    // Let the slot's advisor query resolve, then read the two legitimate end states.
+    // The Build card is the rail's home for the expert row; wait for the card itself, then let
+    // its advisor query resolve.
     await page
-      .waitForSelector('[data-testid="button-find-expert"]', { timeout: 15_000 })
+      .locator('[data-testid="slip-rail-build"]')
+      .waitFor({ state: 'visible', timeout: 15_000 })
       .catch(() => null);
-    const hasCta = await page
-      .locator('[data-testid="button-find-expert"]')
+    await page
+      .waitForSelector('[data-testid="slip-action-hire-expert"]', { timeout: 15_000 })
+      .catch(() => null);
+
+    const hasHire = await page
+      .locator('[data-testid="slip-action-hire-expert"]')
       .isVisible()
       .catch(() => false);
-    const slotHidden =
-      (await page.locator('[data-testid="slip-assign-expert-slot"]').count()) === 0;
+    const hasMessage = await page
+      .locator('[data-testid="slip-action-message-expert"]')
+      .isVisible()
+      .catch(() => false);
+    const hasNoHandleNote =
+      (await page.locator('[data-testid="slip-expert-no-handle"]').count()) > 0;
 
-    // Either the assign CTA is offered (no expert yet), or the slot is legitimately absent
-    // (an expert is already assigned) — never a broken slip that shows neither the CTA nor a
-    // resolved advisor state.
-    expect(hasCta || slotHidden, 'slip offers the advisor-request CTA or has an expert assigned').toBe(true);
+    // Exactly one of the three advisor states is rendered: the picker (no advisor yet), the
+    // Message control (an advisor we can address), or the honest sentence for an advisor with no
+    // public handle. A Build card showing none of them is the broken slip this asserts against.
+    expect(
+      hasHire || hasMessage || hasNoHandleNote,
+      'the Build card renders one of the three advisor states',
+    ).toBe(true);
   });
 });
