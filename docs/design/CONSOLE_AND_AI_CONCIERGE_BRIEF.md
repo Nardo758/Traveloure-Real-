@@ -399,6 +399,85 @@ listing, expert and ready-made read, so a surface that draws its own button has 
 listings; the affiliate and curated branches (rows 8–9) pass through unchanged. `resolveContentCTA` stays as the
 content-type half; `resolveBuyAction` wraps it. Nothing is deleted until every card reads the wrapper.
 
+### 11.6 Impact classes: what the offering catalogs already say about the trip
+
+The delivery method says HOW a thing is fulfilled. The offering catalogs say WHAT the seller does, and that is what
+decides whether a plan is touched, created, or never involved. Both catalogs were inventoried (55
+`expert_offering_types` rows across five tiers; 21 provider disciplines plus `venue`; the four `aff_*` partner keys),
+together with every payment model the platform runs. Two facts fall out.
+
+**Fact 1 — the expert catalog has no price, no duration and no delivery method per offering.** The eighteen "Service
+Tier" presets the walkthrough saw are simply the twelve `advisory` and six `live_support` rows; price, duration and
+method are entered per listing. So the LISTING (`provider_services`) stays the unit of sale for experts and providers
+alike, and the offering key is a classifier on it, never a product.
+
+**Fact 2 — an expert never mints a trip for a client.** There are exactly two expert modes: *assignment*, working
+inside the traveler's own trip through `trip_expert_advisors`, and *authoring*, an ownerless build that becomes a
+store listing. "The expert creates the slip" is therefore not a flow the code has or should have: the traveler mints
+the slip (LD 32, the precondition), and the expert's paid work is delivered INSIDE it (`workspace-status → delivered`,
+then the traveler approves). That is the model the resolver adopts for every planning purchase.
+
+#### The seven impact classes
+
+`impact` is a fourth row fact, derived from the offering key's tier (expert) or category (provider) by one shared
+lookup, never stored (the bookability posture). The resolver reads it beside `kind`, `deliveryMethod` and
+`bookingMode`.
+
+| Class | Who | Charged when | Row(s) | The seller delivers | Trip impact | Plan required? |
+|---|---|---|---|---|---|---|
+| **consult** | expert `advisory` (12) and `specialized` (14, incl. `location_scout`, `content_scout`) | full at booking; payout on the completion rule (session end / artifact / provider-declared) | `service_bookings` | a session, a written brief (PDF on the listing), or a chat | **none** — the deliverable attaches to the booking; the expert may later *suggest* onto a plan only as its advisor | **optional** — "Attach to a plan?" so the expert reads it live; never required |
+| **plan_work** | expert `planning` (11) and the plan-shaped `coordination` rows (`done_for_you_booking`, `group_trip_coord`, `booking_concierge`, `vendor_wrangler`, `occasion_coordination`) | upfront, or deposit + balance where the listing opts in; payout HELD until `delivered`, released by the traveler's approval | `service_bookings` + `trip_expert_advisors` (one author, `upsertTripAdvisorRow`) | plan work inside the traveler's slip: items, notes, route; then "delivered" → approve / request changes | **edits and adds items on the existing slip**; items the expert touches are protected (D3) | **yes** — minted by the traveler through the planner before purchase (LD 32) |
+| **event_coordination** | the six planner keys (`wedding_planner` … `date_night_designer`) | one upfront fee = max(floor, percent × stated budget), from `fee_bands`; vendor milestones tracked off-platform (`vendor_contracts.payment_schedule`) | `coordination_states` + advisor row | timeline, vendor matrix and gaps, bookings, confirmations, run on the day | attaches to an owned plan and its events; the coordinator edits inside | **yes**, and an event on it |
+| **live_trip** | expert `live_support` (6) | full at booking for a window (the trip's dates); payout on the provider-declared rule | `service_bookings` + advisor row for the window | text / call / video during the trip; `reservation_on_fly` and `booking_concierge` may add items | **may add items to the live plan**, only through the advisor write rail | **yes** — there is nothing to support without one |
+| **on_ground** | every provider discipline except lodging; any expert listing with `in_person` / `hybrid` | full, or deposit + balance by `balance_due_at` | `service_bookings` | the service, at a time and a place | **a dated, placed item** on a day or under an event (roles_needed for event vendors) | optional at Add (guest cart), required at Book |
+| **stay** | `accommodation` — property and room shapes, per-night | deposit + balance | `service_bookings` with stay dates (migration 275) | the stay | **a stay item spanning nights** | optional at Add, required at Book |
+| **store_clone** | `ready_made_trips` | flat, upfront | `ready_made_purchases` → **new `trips`** | the plan itself, plus one consult and one revision | **creates a new plan owned by the buyer** | no — it makes one |
+
+Partner items (`aff_*`) are a class of their own already: the agent rail (§16, LD 44), never a platform charge.
+
+**What this changes in the resolver (11.5).** Two rows gain a condition and one ask becomes conditional.
+
+- `which_plan` is asked only when `impact ∈ {plan_work, event_coordination, live_trip}` or the buyer pressed **Book**
+  on an `on_ground` / `stay` listing. For a **consult** it becomes an optional "Attach to a plan?" and never blocks.
+  A traveler with no plan can buy a Hidden-Gems Shortlist; they cannot buy a Full Custom Itinerary until the planner
+  has minted the slip it will be built in.
+- `plan_work` and `live_trip` landings create the advisor row on authorization through the ONE author
+  (`upsertTripAdvisorRow`), so buying the work and hiring the person are one act. This retires the second "expert
+  does plan work" rail: today the paid expert-review PaymentIntent (`POST /api/expert-requests/payment-intent`,
+  `base + pct × cost`) and a planning-tier listing sold through checkout are two ways to buy the same thing. Ruling 11
+  below picks one.
+- `event_coordination` keeps its own fee rail (`coordination_states`); the resolver's landing is
+  `coordination_request`, and the event on the plan is chosen the way the WhichEvent picker already does.
+
+#### What the study found that the design must carry
+
+| # | Finding | Disposition |
+|---|---|---|
+| G1 | Two rails sell expert plan work: the expert-review PaymentIntent and a planning-tier listing at checkout | **Ruling 11** — one rail. Recommendation: the LISTING at checkout (price and deposit are the listing's, §14 amount server-derived), with the review-fee rail kept only for the AI-plan-polish escalation until it is folded. |
+| G2 | The six planner rows carry provider-side delivery vocabulary (`in_person`, `hybrid`) in the expert catalog | Already acknowledged in migration 283; harmless under the impact class, since class is by KEY. Record, do not repair. |
+| G3 | Three `specialized` rows are "the Local Expert equivalent" (`local_city_itinerary`, `local_perfect_day`, `local_neighbourhood_plan`) but render on the Trip Planner card | They are **plan_work**, not consult, and belong on whichever card their tier maps to; the class is what matters to the buyer. Note for the /earn lane. |
+| G4 | Executive Assistant has a signup door on /earn with no catalog rows behind it | Not a buy-side concern; flagged to the earn lane (a door to nothing is a funnel hole). |
+| G5 | The provider catalog carries no delivery hint at all; lodging is only known by the Workstation shape | `impact` for providers derives from `category_key` (`accommodation` → stay; everything else → on_ground) and the listing's `deliveryMethod`; nothing new is stored. |
+| G6 | Trip Pass's `expert_revision` and `ai_task` coverage are unenforced (LD 41 f) | Unchanged here; the resolver never reads entitlements — the checkout does. |
+| G7 | "Scout" exists only as catalog rows (`location_scout`, `content_scout`) and is sold as an ordinary listing | Correct under **consult**: a written or video deliverable, full payment at booking, no trip impact. A deposit is the listing's opt-in, not a class rule. |
+| G8 | `vendor_contracts` milestones are off-platform bookkeeping (no Stripe, no revenue) | Stays that way; the coordinator's tool, not a buyer flow. The balance rail on `service_bookings` is the on-platform deposit model. |
+
+#### Two more rulings
+
+11. **Expert plan work is sold as a listing at checkout, and buying it hires the expert.** One rail: the planning-tier
+    listing's own price and deposit through `/api/checkout`; on authorization the advisor row is written by the one
+    author, the work is delivered inside the traveler's slip, and the payout is held until the traveler approves.
+    The expert-review PaymentIntent survives only for the AI-plan-polish escalation until that is folded in.
+12. **A consult never requires a plan.** Advisory and specialized offerings are bought with or without one; attaching
+    is offered, not asked. Plan work, live support and coordination require the slip the work happens in.
+
+#### Lanes added to §10
+
+| Lane | Needs | Schema | Blocked by | Scope | Guard |
+|---|---|---|---|---|---|
+| **L24-impact-class** | none | no | — | One shared lookup `impactClassFor(offeringKey \| categoryKey, deliveryMethod)` in `shared/`, derived from the registries (`earn-roles.ts` tiers, the taxonomy registry); read by the resolver and by the listing wizard's own step list, so buy side and sell side agree. | pure test over all 55 + 22 keys; the registry guards refuse an unclassified key |
+| **L25-plan-work-one-rail** | ruling 11 | no | L23 · L24 | Planning-tier listings bought at checkout write the advisor row on authorization (one more caller of `upsertTripAdvisorRow`, inside the promotion); payout held until approval; the review-fee rail scoped to AI-plan polish. | check-advisor-row-author; check-money-endpoints; promotion suite untouched |
+
 ### 11.2 Findings, verified, dispositioned
 
 | # | Finding (row) | Verified in source | Disposition |
