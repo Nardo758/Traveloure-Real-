@@ -418,11 +418,14 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
   //   5. Poll (bounded) for an AI variant (itinerary_variants.source='ai_optimized').
   //   6. POST /api/itinerary-comparisons/:id/apply-to-trip → assert the APPLY contract via DB:
   //      ≥1 variant, items updated, a trip-scoped `variant_applied` item_transition_log row
-  //      (item_id NULL — Lane-S ruling 16), losing UNSHARED variants discarded, selected variant
+  //      (item_id NULL — Lane-S ruling 16), ALL variants RETAINED (adopt-finalize-conform D-4
+  //      supersedes ruling 14's R3 losing-variant discard — the review board stays revisitable
+  //      after apply; see server/routes/plancard.routes.ts apply-to-trip), selected variant
   //      retained + comparison.selected_variant_id/optimized_at stamped.
   //
   // Robust assertions (NOT the brittle "exactly 3"): ≥1 AI variant; apply → items rebuilt;
-  // variant_applied trip-level log; losing unshared variants deleted; selected variant kept.
+  // variant_applied trip-level log; losing variants RETAINED (D-4 revisitable board — NOT the
+  // old R3 discard); selected variant kept + stamped.
   //
   // FINDING (J1.3 app blocker — the fee is NOT the blocker): with the fee paid for real in TEST
   // mode and the gate satisfied (create-comparison → 201, optimizer kicked off), the async
@@ -436,7 +439,7 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
   // the bounded budget we mark this test fixme AT RUNTIME with the sharpened reason (an explicit,
   // logged skip — never a silent pass); the paid-fee facts up to that point are hard-asserted.
   // matrix-id: J1.3
-  test("J1.3 optimize (paid, TEST mode) → apply best → variant_applied + losing-variant discard", async ({ page }) => {
+  test("J1.3 optimize (paid, TEST mode) → apply best → variant_applied + variants retained (D-4)", async ({ page }) => {
     test.setTimeout(240_000);
     const request = page.request;
 
@@ -562,7 +565,11 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     ).length;
     expect(itemsAfter, "apply must leave the trip with itinerary items").toBeGreaterThan(0);
 
-    // (c) losing UNSHARED variants discarded; (d) the selected variant retained + stamped.
+    // (c) ALL variants RETAINED — adopt-finalize-conform D-4 supersedes ruling 14's R3
+    // losing-variant discard: the review board stays REVISITABLE after apply (the ratified
+    // "pick stops from any proposal" board promise), so apply must NOT delete losing variants
+    // (server/routes/plancard.routes.ts apply-to-trip — the R3 discard was removed there).
+    // (d) the selected variant retained + stamped.
     const [cmpAfter] = await q<{ selected_variant_id: string | null; optimized_at: string | null }>(
       `SELECT selected_variant_id, optimized_at FROM itinerary_comparisons WHERE id=$1`,
       [comparisonId],
@@ -576,13 +583,11 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     );
     const selectedStillExists = variantsAfterRows.some((v) => v.id === cmpAfter.selected_variant_id);
     expect(selectedStillExists, "the selected/applied variant must be RETAINED after apply").toBe(true);
-    // With >1 variant before apply, losing unshared variants are discarded → fewer rows remain.
-    if (variantsBefore > 1) {
-      expect(
-        variantsAfterRows.length,
-        "losing UNSHARED variants must be discarded (fewer variants remain than before apply)",
-      ).toBeLessThan(variantsBefore);
-    }
+    // D-4: losing variants are RETAINED, not discarded — apply leaves the variant set untouched.
+    expect(
+      variantsAfterRows.length,
+      "D-4 revisitable board: apply must RETAIN all variants (no losing-variant discard)",
+    ).toBe(variantsBefore);
   });
 });
 
