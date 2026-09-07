@@ -40,14 +40,45 @@ test.describe("Journey 7 — Event Coordination (Wedding)", () => {
     const fullCard = page.locator("[data-testid='card-concierge-full']");
     await expect(fullCard).toContainText("Full / Done-for-You");
 
-    // ── Step 5: Pick Expert tier ────────────────────────────────────────
-    await expertCard.locator("[data-testid='button-concierge-pick-expert']").click();
-    await page.waitForSelector("text=Your request is in", { timeout: 10000 });
+    // ── Step 5: Pick Expert tier — the OPEN is a read (L19) ─────────────
+    // Ledger `2026-09-07-request-is-a-click` (brief §11.2 F2): pressing the tier button used
+    // to PATCH the concierge request and POST a real lead in one press. It now opens the
+    // review sheet and writes NOTHING. This assertion is the negative half: every request the
+    // page makes is recorded, and the expert-request rail must be absent from that record
+    // until the sheet's own Send button is pressed.
+    const expertRequestPosts: string[] = [];
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/expert-requests")) {
+        expertRequestPosts.push(req.url());
+      }
+    });
 
-    // ── Step 6: Verify expert request created ───────────────────────────
-    // The expert request should have been created with the concierge context
-    // We can verify by checking the API or by looking at the success state
+    await expertCard.locator("[data-testid='button-concierge-pick-expert']").click();
+    await page.waitForSelector("[data-testid='expert-request-review']", { timeout: 10000 });
+    // Give any (forbidden) in-flight write time to appear before asserting its absence.
+    await page.waitForTimeout(1000);
+    expect(expertRequestPosts, "opening the review must create no expert request").toHaveLength(0);
+
+    // The sheet says what goes out, to whom, and at what price — never a name the routing has
+    // not chosen yet, and never a basic the traveler did not state.
+    const review = page.locator("[data-testid='expert-request-review']");
+    await expect(review.locator("[data-testid='expert-request-review-recipient']")).toContainText(
+      "A local expert we match",
+    );
+    await expect(review.locator("[data-testid='expert-request-review-price']")).toBeVisible();
+
+    // Cancel closes with nothing sent, and the tier button can be pressed again.
+    await review.locator("[data-testid='button-cancel-expert-request']").click();
+    await expect(review).toBeHidden();
+    expect(expertRequestPosts, "cancelling must create no expert request").toHaveLength(0);
+
+    // ── Step 6: Send from the review sheet, and only then is a request created ─
+    await expertCard.locator("[data-testid='button-concierge-pick-expert']").click();
+    await page.waitForSelector("[data-testid='expert-request-review']", { timeout: 10000 });
+    await page.locator("[data-testid='button-send-expert-request']").click();
+    await page.waitForSelector("text=Your request is in", { timeout: 10000 });
     await expect(page.locator("text=Your request is in")).toBeVisible();
+    expect(expertRequestPosts.length, "the send creates exactly one request").toBe(1);
 
     // ── Step 7: Sign out and sign in as expert ──────────────────────────
     await page.goto(`${BASE}/api/logout`); // or however logout works
