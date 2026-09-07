@@ -1443,6 +1443,40 @@ This document captures architectural decisions to maintain consistency across co
     R-J ratified for connected agents: agents build and stage, humans pay). The build sequence is
     the brief's §10: eighteen lanes in four waves, serial, one ledger row per lane; L16 (the paid
     drawer) needs its own design brief before build, and L17 waits on LD 44 phase 0.
+    **(6) HAS LANDED (lane L9, ledger `2026-09-07-trip-card-one-page`).** `/trip/:id` is ONE page —
+    the full-stage `PlanCard` plus a 320px right rail (Booking agent · Your expert · Suggestion ·
+    Back to planning); the Itinerary/Bookings/Logistics tab shell and the page's stock-photo hero
+    are gone, purchases render in the card's Purchases drawer and in the My-bookings ledger, and
+    the booking-agent card is a PLACEHOLDER until L16/L17 that reads only the stages today's rows
+    carry (LD 44 (e)'s legacy four mapped explicitly; it never claims a copilot exists). Two
+    invariants bind every lane after: **all plan-time reasoning is ONE module,
+    `shared/plan-timing.ts`** — lane L10 owns its start-instant half and the 48-hour window (which
+    it IMPORTS from `shared/trip-primary-surface.ts`, so that constant does not move and the two
+    files must never import each other both ways), and L9 added the wall-clock half on those same
+    primitives; and **a countdown renders only where `trips.timezone` exists** (LD 30 — no usable
+    zone ⇒ no instant at all), with the temporal engine's "90 minutes per item" assumption deleted
+    in favour of an item's own `end_time`. `tripCardIsPrimary`'s no-zone answer is UNCHANGED: making
+    it zone-aware requires moving that constant, which is a deliberate later lane. Two things the
+    lane found and did NOT change: the pre-final case renders an honest NOTICE with one action to
+    the slip rather than the redirect D8's wording implies (two armed specs assert the notice), and
+    `GET /api/trips/:id/expert-advisor` still returns ONE advisor where D7 rules it returns all.
+    **(8) HAS LANDED (lane L10, ledger `2026-09-07-home-time-axis`).** ONE server reader —
+    `GET /api/me/upcoming` over the PURE `buildUpcomingRows` (`server/services/upcoming.service.ts`)
+    — emits six dated kinds, each naming the column that produced it: an unpaid booking
+    (`service_bookings.status`, dated by the EXISTING `resolveServiceDate`), a balance
+    (`balance_due_at`), the handover (derived `start − 48h`), a trip start (`trips.start_date`), an
+    event (`user_experiences.event_date`; invites carry no deadline column, so none is shown) and
+    an occasion whose Plus draft FIRED end to end (`occasion_drafts`, LD 26). §14 applied to
+    reads: the owner is the session, never the query string. §13: an undated row is OMITTED, no
+    `tz` is claimed for a NULL-timezone plan (LD 30 — the row becomes a calendar day), and nothing
+    is zero-filled. **The 48-hour window is ONE derivation shared with the Trip Card lane** —
+    `shared/plan-timing.ts`, which IMPORTS `TRIP_CARD_HANDOVER_WINDOW_MS` rather than restating it
+    and is pinned to agree with `tripCardIsPrimary`'s own date arm (§18 rule 1). Home now renders
+    Coming up · Since you were here · the home-city block · the start strip, and the plan card,
+    the routing counts, the expert panels and the message previews are GONE from it — their
+    information lives on My plans, the slip, Experts, Discover and Inbox; no component file and no
+    endpoint was deleted, and the now-importerless panels are recorded in that ledger row as
+    §18c candidates for a later lane, not acted on here.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

@@ -125,7 +125,10 @@ function normaliseEmail(raw: unknown): string {
  * counting a maybe as attending would inflate a number a host caters against. A `maybe` guest is
  * therefore visible in the roster as awaiting a reply, never as a confirmed head.
  */
-function toRsvp(status: unknown): Exclude<PlanGuestRsvp, "not_invited"> {
+// Exported (ledger `2026-09-07-home-time-axis`): Home's event row counts "answered" invites with
+// THIS mapping — `attending`/`declined` have answered, `pending` has not — never a second reading
+// of `rsvp_status` (§18 rule 1).
+export function toRsvp(status: unknown): Exclude<PlanGuestRsvp, "not_invited"> {
   switch (clean(status).toLowerCase()) {
     case "accepted":
       return "attending";

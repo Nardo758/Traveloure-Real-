@@ -220,6 +220,7 @@ import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
 import planActivityRoutes from "./routes/plan-activity.routes";
+import upcomingRoutes from "./routes/upcoming.routes";
 import routingRoutes from "./routes/routing.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
@@ -1182,6 +1183,10 @@ export async function registerRoutes(
   // read-only, session-scoped, cross-trip read of item_transition_log for non-traveler actors
   // (expert/agent/checkout). Zero writes. Mounted per §9.
   app.use(planActivityRoutes);
+  // Home's time axis (Locked Decision 45 (8), ledger `2026-09-07-home-time-axis`):
+  // GET /api/me/upcoming — read-only, session-scoped, the dated rows across the session user's
+  // own plans, nearest first. Zero writes. Same posture as plan-activity above.
+  app.use(upcomingRoutes);
 
   // Per-item routing transitions (Trip-Canon Lane 1 W1, Phase 1b):
   // POST /api/trips/:tripId/items/:itemId/route — the four traveler/expert edges of the

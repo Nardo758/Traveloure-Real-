@@ -25,7 +25,8 @@ export function BottomActionBar({
   destination,
   shareToken,
   advisor,
-}: BottomActionBarProps & { advisor?: AdvisorLite | null }) {
+  onShare,
+}: BottomActionBarProps & { advisor?: AdvisorLite | null; onShare?: () => void }) {
   const { toast } = useToast();
 
   const handleMaps = () => {
@@ -34,6 +35,12 @@ export function BottomActionBar({
   };
 
   const handleShare = () => {
+    // Ledger `2026-09-07-trip-card-one-page`: the page's token share rail, when it owns one —
+    // the fallback `/itinerary/:id` URL below is a ProtectedRoute redirect (S10's finding).
+    if (onShare) {
+      onShare();
+      return;
+    }
     const shareUrl = shareToken
       ? `${window.location.origin}/itinerary-view/${shareToken}`
       : `${window.location.origin}/itinerary/${tripId}`;

@@ -301,6 +301,28 @@ test("A10: Finalize writes a version and opens the chooser; then View as Trip ca
   await viewCard.click();
   await expect(page).toHaveURL(new RegExp(`/trip/${tripId}`), { timeout: 15_000 });
 
+  // ── L9 (ledger `2026-09-07-trip-card-one-page`; CLAUDE.md Locked Decision 45 (6)) ────────────
+  // THE TRIP CARD IS ONE PAGE. A final plan renders the card and the rail with NO tab shell; the
+  // three triggers the shell carried are gone. The static pins read the source; this asserts the
+  // page a traveler actually gets.
+  await expect(page.getByTestId("trip-card-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId(`card-plan-${tripId}`)).toBeVisible({ timeout: 30_000 });
+  for (const tab of ["tab-itinerary", "tab-bookings", "tab-logistics"]) {
+    await expect(page.getByTestId(tab)).toHaveCount(0);
+  }
+  // The right rail renders for the owner, with the booking-agent card in its ruled vocabulary.
+  // §13: this plan has no affiliate booking requests, so the card SAYS SO rather than drawing a
+  // stage strip for stages nobody is in — and it never claims a copilot exists.
+  await expect(page.getByTestId("trip-card-rail")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("trip-card-rail-booking-agent")).toBeVisible();
+  await expect(page.getByTestId("trip-card-booking-agent-empty")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("trip-card-booking-agent-list")).toHaveCount(0);
+  // No advisor on this plan ⇒ the Expert card says so; the hire picker stays on the slip (D16).
+  await expect(page.getByTestId("trip-card-expert-none")).toBeVisible();
+  // §13: the Purchases drawer renders because the payload ANSWERED (an empty booking list), and
+  // it says there are none rather than showing a spinner or a fabricated row.
+  await expect(page.getByTestId(`collapsed-purchases-${tripId}`)).toBeVisible();
+
   await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
   const reopenPost = page.waitForResponse(
     (r) => r.url().includes(`/api/trips/${tripId}/reopen`) && r.request().method() === "POST",
@@ -323,4 +345,28 @@ test("A11: the working header prints no version; §13 — no roles, no chips", a
   await expect(page.getByTestId("slip-meta-stops")).toContainText("Kyoto");
   await page.getByTestId("slip-meta-stops-edit").click();
   await expect(page.getByTestId("plan-modal")).toBeVisible({ timeout: 15_000 });
+});
+
+// ── 7 · /trip/:id is not a planning surface (L9; LD 42 D8) ────────────────────────────────────
+
+test("A12: a PRE-FINAL plan on /trip/:id gets the notice and one action to the slip, never a card", async ({
+  page,
+}) => {
+  // Ledger `2026-09-07-trip-card-one-page`. The tab shell is gone, and with it the risk that a
+  // plan with no final quietly renders an editable second planning surface. The pre-final branch
+  // keys on `finalVersion` — the SAME rule `PlanCard` applies — and this asserts it still fires
+  // for a plan that was never finalized, and that no card, rail or tab renders behind it.
+  const tripId = await registerAndCreateTrip(page, "prefinal");
+  await addItem(page, tripId);
+  await page.goto(`${BASE_URL}/trip/${tripId}`, { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByTestId("trip-not-final-notice")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("trip-card-page")).toHaveCount(0);
+  await expect(page.getByTestId("trip-card-rail")).toHaveCount(0);
+  for (const tab of ["tab-itinerary", "tab-bookings", "tab-logistics"]) {
+    await expect(page.getByTestId(tab)).toHaveCount(0);
+  }
+
+  await page.getByTestId("button-go-to-slip").click();
+  await expect(page).toHaveURL(new RegExp(`/plans/${tripId}`), { timeout: 15_000 });
 });

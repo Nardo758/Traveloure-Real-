@@ -1509,3 +1509,68 @@ jobs:
       # cannot see that anything renders, which is the concierge e2e's answer.
       - name: Concierge tier → planning finish map pin
         run: npx tsx --test client/src/lib/__tests__/concierge-tiers.test.ts
+
+  trip-card-one-page:
+    name: trip-card-one-page (CLAUDE.md Locked Decision 45 (6) — 2026-09-07-trip-card-one-page)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # npm ci per OPERATING_PROCEDURE §3 — never a "Node built-ins only" job: the timing suite
+      # imports `shared/trip-primary-surface.ts`, which is real module resolution.
+      - run: npm ci
+      # L9 of the Console & AI Concierge brief. THREE SUITES, THREE SILENT FAILURE SHAPES.
+      #  · plan-timing-wall-clock: L9's HALF of `shared/plan-timing.ts` — the TIME-OF-DAY
+      #    primitives, built on lane L10's zone engine (two lanes wrote that module in parallel;
+      #    L10's start-instant half and its own suite are the base and are unchanged). NO usable
+      #    zone ⇒ NO instant, so no countdown is ever claimed against a plan that carries none
+      #    (LD 30, §13), and a DST spring-forward is corrected rather than overshot.
+      #  · trip-card-status: LD 44 (e)'s vocabulary read off the rows that exist TODAY — the
+      #    legacy four mapped EXPLICITLY, "Booked" said only with a confirmation in hand, and a
+      #    §15b `payment_pending` claim rendered as prepared rather than booked.
+      #  · trip-card-one-page: static pins over the shipped source (comments stripped) — no tab
+      #    shell, one rail, one suggestions mount, the pre-final branch intact (LD 42 D8), no
+      #    invented item duration, and the countdown gated on the plan's zone.
+      # NEGATIVE SPACE: all three are pure — no DOM, no DB, no network — so none can see whether
+      # anything RENDERS. That is `playwright/tests/slip-rail-actions.spec.ts` A10/A12's answer
+      # (the armed DOM gate this lane extended rather than adding a spec beside it).
+      - name: Plan timing — wall-clock half (L10 owns the start-instant half and its suite)
+        run: npx tsx --test shared/__tests__/plan-timing-wall-clock.test.ts
+      - name: Trip Card status readers
+        run: npx tsx --test client/src/lib/__tests__/trip-card-status.test.ts
+      - name: Trip Card one-page pins
+        run: npx tsx --test client/src/lib/__tests__/trip-card-one-page.test.ts
+
+  home-time-axis:
+    name: home-time-axis (CLAUDE.md Locked Decision 45 (8) — 2026-09-07-home-time-axis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: these suites import `shared/` and a client module
+      # (OPERATING_PROCEDURE §3 — #812 lost a CI cycle to exactly that).
+      - run: npm ci
+      # The ONE plan-start instant and the ONE 48-hour handover window (shared/plan-timing.ts,
+      # read by Home's time axis and by the Trip Card lane). The window itself is IMPORTED from
+      # shared/trip-primary-surface.ts and never restated (§18 rule 1); T8 pins that the unzoned
+      # answer is byte-identical to `tripCardIsPrimary`'s date arm, so the two readers cannot
+      # disagree about a plan carrying no timezone (Locked Decision 30).
+      - name: Plan timing pins
+        run: npx tsx --test shared/__tests__/plan-timing.test.ts
+      # The PURE builder behind GET /api/me/upcoming: undated rows omitted (§13 — every kind
+      # states its date source), nearest-first ordering, the window edge, no `tz` claim on a
+      # NULL-timezone plan, the occasion row absent until a Plus draft has fired end to end
+      # (Locked Decision 26), and no "0 invites"/zero-filled count anywhere. No DB, no clock.
+      - name: Upcoming builder pins
+        run: npx tsx --test server/services/__tests__/upcoming.test.ts
+      # The client half: the mono relative-day label (a calendar day is read on the VIEWER's
+      # calendar, an instant as an instant — no zone invented either way) and the ONE derived
+      # greeting sentence, which never says "0 things are due".
+      - name: Home time-axis client pins
+        run: npx tsx --test client/src/lib/__tests__/home-time-axis.test.ts
