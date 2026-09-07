@@ -19,6 +19,10 @@
  *  - nothing here counts money, resolves a fee or picks a rate (§14/§18).
  */
 
+// The services-browse URL contract is stated ONCE, in its own module, and both ends import it
+// (§18 rule 1) — see `slipBrowseServicesHref` below.
+import { buildServicesBrowseHref } from "@/lib/services-browse";
+
 /** The four cards the rail regroups into, in render order. One name each, used as the testid tail. */
 export const SLIP_RAIL_CARDS = ["build", "plan", "share", "finish"] as const;
 export type SlipRailCard = (typeof SLIP_RAIL_CARDS)[number];
@@ -181,11 +185,16 @@ export function slipShareUrl(origin: string, shareToken: string): string {
  * §13 — THE DOOR PASSES ONLY WHAT IS TRUE. A plan with no usable destination string passes NO
  * `location` at all rather than an empty or placeholder one: an absent param is how `/services` is
  * told "not known", and it then leaves its filter empty rather than inventing a city.
+ *
+ * IT DELEGATES (lane L22, ledger `2026-09-07-doors-pass-tripid`; §18 rule 1). It used to assemble
+ * the query string itself, spelling `tripId` and `location` as bare literals beside the same two
+ * names in `services-browse.ts` — two independent strings that happened to agree, and whose
+ * disagreement would render a perfectly ordinary UNFILTERED browse with no error to show for it.
+ * The builder is now the one in that module; the "pass only what is true" rule lives there too, so
+ * the behaviour of this function is byte-for-byte what it was.
  */
 export function slipBrowseServicesHref(tripId: string, destination?: string | null): string {
-  const base = `/services?tripId=${encodeURIComponent(tripId)}`;
-  const city = typeof destination === "string" ? destination.trim() : "";
-  return city ? `${base}&location=${encodeURIComponent(city)}` : base;
+  return buildServicesBrowseHref({ tripId, location: destination });
 }
 
 /** The trip-keyed `.ics` route (S11). Session-authenticated, gated like the plancard read. */

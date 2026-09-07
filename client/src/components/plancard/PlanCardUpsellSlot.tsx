@@ -17,6 +17,11 @@ export type UpsellSurface = "plancard_pretrip" | "plancard_ontrip";
 
 interface PlanCardUpsellSlotProps {
   tripId: string;
+  /**
+   * The plan's own destination (lane L22, ledger `2026-09-07-doors-pass-tripid`; LD 42 D13).
+   * Optional because a caller that does not hold one must pass NOTHING (§13).
+   */
+  destination?: string | null;
   eventType?: string;
   startDate?: string;
   endDate?: string;
@@ -38,6 +43,7 @@ function inWindow(surface: UpsellSurface, startDate?: string, endDate?: string):
 
 export function PlanCardUpsellSlot({
   tripId,
+  destination,
   eventType,
   startDate,
   endDate,
@@ -51,6 +57,7 @@ export function PlanCardUpsellSlot({
       <UpsellSlot
         surface={surface}
         tripId={tripId}
+        destination={destination}
         contextPayload={{ templateKey: eventType ?? "travel" }}
       />
     </div>

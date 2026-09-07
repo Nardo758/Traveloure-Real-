@@ -1636,3 +1636,65 @@ jobs:
       # no writer.
       - name: Inbox context pins
         run: npx tsx --test client/src/lib/__tests__/inbox-context.test.ts
+
+  discover-in-shell:
+    name: discover-in-shell (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-discover-in-shell)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: the suite imports client modules.
+      - run: npm ci
+      # Lane L11's "For your plan" strip. §13 is the whole point: Locked Decision 31 forbids
+      # rendering a NULL `roles_needed` as "this occasion needs nobody", and R2 pins that every
+      # empty shape — no events, NULL, `[]`, all-blank — produces the SAME silence. R4 pins that
+      # the plan-wide derivation DELEGATES to the slip's, so a role cannot appear on one surface
+      # and be hidden on the other (§18 rule 1). R5 reads the component source, because "renders
+      # nothing" for an unreadable plan is not observable from a pure function.
+      - name: Discover plan-context pins
+        run: npx tsx --test client/src/lib/__tests__/discover-plan-context.test.ts
+
+  doors-pass-tripid:
+    name: doors-pass-tripid (CLAUDE.md Locked Decision 42 D13/D15 — 2026-09-07-doors-pass-tripid)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # §18d: the guard's own fixtures run BEFORE the guard, so a wrong predicate cannot report a
+      # green run. This lane extended `check-planning-entry` with a second door shape (a browse
+      # navigation carries its context on a URL, not in a PlanningSource) and replaced the now-false
+      # "a bare storefront CTA passes" fixture with D15's two.
+      - name: planning-entry guard self-test
+        run: node scripts/check-planning-entry.cjs --self-test
+      - name: planning-entry guard
+        run: node scripts/check-planning-entry.cjs
+      # B2 is the §13 half — a blank tripId or location is DROPPED, never sent as a placeholder,
+      # because an absent param is how the browse is told "not known". B3 pins that the two named
+      # helpers still emit byte-for-byte what they did, so no pinned caller moved. B5/B6 pin that
+      # D15's return address is a HANDLE and never a `users.id` (Locked Decision 40).
+      - name: Services-browse door pins
+        run: npx tsx --test client/src/lib/__tests__/services-browse-doors.test.ts
+
+  extraction-date-anchor:
+    name: extraction-date-anchor (Console & AI Concierge brief F5 — 2026-09-07-extraction-date-anchor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # Pure — `today` is an argument, so there is no model call, no network and no date-dependent
+      # flakiness. A5 is the rule that matters: a past date is WITHHELD and reported verbatim, never
+      # moved to a year nobody stated (§13). A3 pins that this lane changed what the model KNOWS and
+      # not what it is asked to do — a silently relaxed conservatism rule is the regression.
+      - name: Extraction date-anchor pins
+        run: npx tsx --test server/__tests__/trip-context-extraction.test.ts

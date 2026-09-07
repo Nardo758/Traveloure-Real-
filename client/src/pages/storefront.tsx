@@ -701,12 +701,22 @@ export default function StorefrontPage() {
                   falling back to a form's city/country. Forwarding it as `city` would put a
                   neighbourhood into the modal's destination field and present it as the traveler's
                   stated destination. Nothing else on this page names a city, so nothing is passed.
-                  (Locked Decision 42 D15's return-to context — "a plan started from an expert ends
-                  with that expert offered to choose" — is a wave-2 lane and is NOT passed here yet.) */}
+                  WHAT IT DOES PASS (lane L22, ledger `2026-09-07-doors-pass-tripid`; Locked
+                  Decision 42 **D15**): the RETURN ADDRESS. A plan started from this earner ends
+                  back at this earner rather than in a `/experts` browse for the person whose page
+                  the traveler was already standing on. Addressed by HANDLE (Locked Decision 40 —
+                  `users.id` is internal and is never a public address), and §13 holds: an earner
+                  row with no claimed handle passes NOTHING and the finish keeps the browse it has
+                  always shown. */}
               {!isOwnStorefront && (
                 <PlanEntryCta
                   variant="outline"
                   className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                  source={
+                    earner.handle
+                      ? { returnTo: { kind: "expert", handle: String(earner.handle) } }
+                      : undefined
+                  }
                   testId="button-plan-entry-storefront"
                 />
               )}

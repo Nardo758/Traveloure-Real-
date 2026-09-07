@@ -446,17 +446,22 @@ function Router() {
       {/* Marketplace un-group (ledger 2026-08-23-marketplace-ungroup): each surface is its
           OWN page with its own single masthead and NO tab bar; the nav "Marketplace"
           dropdown deep-links straight here. */}
+      {/* L11 (ledger `2026-09-07-discover-in-shell`, CLAUDE.md Locked Decision 45 (7)): the four
+          Marketplace surfaces render INSIDE the console shell for a signed-in traveler, through the
+          SAME `BrowseShell` chooser L1 already gave `/experts`, `/cart` and
+          `/discover/location/:city` (§18 rule 1 — the routes never decide their own chrome). A
+          guest keeps the public `Layout`: public browse is a public surface. */}
       <Route path="/destinations">
-        <Layout><DiscoverPage surface="travelpulse" /></Layout>
+        <BrowseShell><DiscoverPage surface="travelpulse" /></BrowseShell>
       </Route>
       <Route path="/ready-made">
-        <Layout><DiscoverPage surface="packages" /></Layout>
+        <BrowseShell><DiscoverPage surface="packages" /></BrowseShell>
       </Route>
       <Route path="/events">
-        <Layout><DiscoverPage surface="events" /></Layout>
+        <BrowseShell><DiscoverPage surface="events" /></BrowseShell>
       </Route>
       <Route path="/services">
-        <Layout><DiscoverPage surface="services" /></Layout>
+        <BrowseShell><DiscoverPage surface="services" /></BrowseShell>
       </Route>
       {/* The old tabbed shell URL. A smart redirect maps ?tab= onto the surface route and
           forwards every other query param (deep links carried q/city/category state). */}

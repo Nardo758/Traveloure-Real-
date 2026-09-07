@@ -1233,6 +1233,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             {!isViewer && !embedded && stage === "full" && (
               <PlanCardUpsellSlot
                 tripId={trip.id}
+                destination={trip.destination}
                 eventType={(trip as any).eventType}
                 startDate={trip.startDate}
                 endDate={trip.endDate}
@@ -1245,6 +1246,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             {!isViewer && !embedded && stage === "full" && (
               <PlanCardUpsellSlot
                 tripId={trip.id}
+                destination={trip.destination}
                 eventType={(trip as any).eventType}
                 startDate={trip.startDate}
                 endDate={trip.endDate}
