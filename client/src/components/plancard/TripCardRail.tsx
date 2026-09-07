@@ -5,9 +5,11 @@
  * Four cards, in the board's order, every one reading a rail that already exists:
  *   1 BOOKING AGENT — a PLACEHOLDER until L16/L17 mount the drawer. It reads this plan's
  *     `affiliate_booking_requests` rows (the traveler's own, `GET /api/affiliate-booking-requests/
- *     user?tripId=` — owner from the SESSION, the trip id only a filter, §14) and renders the
- *     Locked Decision 44 (e) vocabulary strip ONLY for the stages the rows actually carry, through
- *     the one explicit legacy map (`lib/booking-agent-status.ts`). It never claims a copilot exists.
+ *     user?tripId=` — owner from the SESSION, the trip id only a filter, §14) and draws ONE ROW
+ *     PER REQUEST, each carrying the Locked Decision 44 (e) stage the row ACTUALLY holds, through
+ *     the one explicit legacy map (`lib/booking-agent-status.ts`). No stage is drawn for a stage
+ *     nobody is in, and it never claims a copilot exists — the board's "Ask the agent" control is
+ *     the L16/L17 drawer and is deliberately absent here.
  *   2 YOUR EXPERT — the owner-gated advisor read (`GET /api/trips/:id/expert-advisor`), rendered
  *     through the slip's own `slipExpertRailState` / `slipAdvisorStandingLine` (§18 rule 1), with
  *     Message addressed by the PLAN (LD 40 D22) and a storefront link only when a handle exists.
@@ -30,7 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { tripCardForcedPrimaryByDateAlone } from "@shared/trip-primary-surface";
-import { bookingAgentStrip } from "@/lib/booking-agent-status";
+import { readBookingAgentStatus } from "@/lib/booking-agent-status";
 import { earnerProfilePath } from "@/lib/earner-address";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
@@ -93,7 +95,7 @@ function BookingAgentCard({ tripId }: { tripId: string }) {
     queryKey: ["/api/affiliate-booking-requests/user", { tripId }],
     staleTime: 60_000,
   });
-  const strip = bookingAgentStrip(data ?? []);
+  const rows = data ?? [];
   return (
     <RailCard card="booking-agent" title="Booking agent">
       {isLoading ? (
@@ -101,25 +103,36 @@ function BookingAgentCard({ tripId }: { tripId: string }) {
         <RailNote testId="trip-card-booking-agent-loading">Checking this plan's booking requests…</RailNote>
       ) : isError ? (
         <RailNote testId="trip-card-booking-agent-error">Couldn't load this plan's booking requests.</RailNote>
-      ) : strip.length === 0 ? (
+      ) : rows.length === 0 ? (
         <RailNote testId="trip-card-booking-agent-empty">
           No booking-agent requests on this plan.
         </RailNote>
       ) : (
-        <ul className="space-y-1" data-testid="trip-card-booking-agent-strip">
-          {strip.map((cell) => (
-            <li
-              key={cell.stage}
-              className="flex items-center justify-between gap-2 rounded-md border border-[color:var(--earn-border)] px-2 py-1.5 text-[12px]"
-              data-testid={`trip-card-booking-agent-stage-${cell.stage}`}
-            >
-              <span className="flex items-center gap-1.5 min-w-0">
-                <ShoppingBag className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-                <span className="truncate">{cell.label}</span>
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{cell.count}</span>
-            </li>
-          ))}
+        // The board draws ONE ROW PER REQUEST — its name, and the stage the row actually carries.
+        // §13: an item with no recorded name is shown as "Booking request", never guessed at.
+        <ul className="space-y-1" data-testid="trip-card-booking-agent-list">
+          {rows.map((row) => {
+            const reading = readBookingAgentStatus(row);
+            return (
+              <li
+                key={row.id}
+                className="rounded-md border border-[color:var(--earn-border)] px-2 py-1.5 text-[12px]"
+                data-testid={`trip-card-booking-agent-row-${row.id}`}
+                data-stage={reading.stage}
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <ShoppingBag className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                  <span className="truncate">{row.itemName?.trim() || "Booking request"}</span>
+                </span>
+                <span
+                  className="mt-0.5 block font-mono text-[10px] text-muted-foreground"
+                  data-testid={`trip-card-booking-agent-stage-${row.id}`}
+                >
+                  {reading.label}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
       {/* The card says what it is. No copilot is claimed: the rows record a human queue. */}

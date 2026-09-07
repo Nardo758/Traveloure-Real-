@@ -9,8 +9,8 @@
  *       Booked; failed→a legacy stage that is neither flagged nor unavailable
  *   B2  the ruled values pass through by name once phase 0 writes them
  *   B3  an unknown or empty status is shown as itself, never as the nearest ruled state
- *   B4  the strip has one cell per stage the rows actually carry, in ruled order, with counts;
- *       an empty input is an empty strip
+ *   B4  the reading is per ROW (the board draws one row per request) — a row's stage never
+ *       depends on its neighbours
  *   B5  "Booked" is never the word for a claim: payment_pending reads as prepared; the paid
  *       statuses read as booked; anything else verbatim; NULL ⇒ no label
  *
@@ -19,7 +19,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bookingAgentStrip, readBookingAgentStatus } from "../booking-agent-status";
+import { readBookingAgentStatus } from "../booking-agent-status";
 import { readPurchaseStatus } from "../purchase-status";
 
 describe("B1 the legacy four, mapped explicitly", () => {
@@ -69,27 +69,22 @@ describe("B3 unknown and empty", () => {
   });
 });
 
-describe("B4 the strip", () => {
-  it("one cell per stage present, ruled order, counted", () => {
-    const strip = bookingAgentStrip([
+describe("B4 a list of rows reads row by row", () => {
+  // The rail draws ONE ROW PER REQUEST (the ratified `TripCard` board), so the reading is applied
+  // per row and never aggregated: two rows in the same legacy state stay two rows, and a row's
+  // stage never depends on its neighbours.
+  it("each row keeps its own stage", () => {
+    const rows = [
       { status: "confirmed", confirmationRef: "X" },
       { status: "pending" },
       { status: "pending" },
       { status: "assigned" },
       { status: "confirmed" },
-    ]);
+    ];
     assert.deepEqual(
-      strip.map((c) => [c.stage, c.count]),
-      [
-        ["received", 2],
-        ["assigned_legacy", 1],
-        ["purchased_by_human", 1],
-        ["confirmed", 1],
-      ],
+      rows.map((r) => readBookingAgentStatus(r).stage),
+      ["confirmed", "received", "received", "assigned_legacy", "purchased_by_human"],
     );
-  });
-  it("an empty input is an empty strip — the caller says 'no requests' itself", () => {
-    assert.deepEqual(bookingAgentStrip([]), []);
   });
 });
 
