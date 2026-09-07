@@ -259,7 +259,7 @@ and the checkout page's move onto the plan projection, which is a gate inside L7
 | **L16-ask-ai-drawer** | ruling 3 | no | L15 · own brief | The drawer, pre-final on the slip and post-final on the Trip Card. A task answers as a proposal on the EXISTING suggestions rail (origin `ai`), applied through the existing approve path; charged at apply through the existing payment-intent pattern with an idempotency key; expert items protected (D3). Needs its own design brief before build. | `SlipRail.tsx` · `ExpertSuggestionsPanel.tsx` · suggestions + payments routes · `fee_bands concierge:ai_task` | check-money-endpoints · §15 claim before charge · check-ai-draft-eligibility |
 | **L17-booking-agent-tab** | LD 44 phase 0 | no | L9 · L16 · LD 44 phase 0 | Reads `affiliate_booking_requests` in the ruled vocabulary. Blocked until LD 44 phase 0 lands the status vocabulary. | Trip Card drawer · affiliate-booking-requests reader | blocked |
 
-### Status as of `7e3294c` (resynced 2026-09-07)
+### Status as of `1918714` (2026-09-07, evening — six more lanes dispatched, five landed)
 
 | Lane | State | Ledger row |
 |---|---|---|
@@ -269,13 +269,65 @@ and the checkout page's move onto the plan projection, which is a gate inside L7
 | L3-my-plans-rows | **landed** — `plan-row-model.ts`, Final section, Show all, no progress bar | `2026-09-07-my-plans-rows` |
 | L4-trip-card-honesty | **landed** — no Null Island, hero returns null, `ItineraryCard` deleted, one maps handoff | `2026-09-07-trip-card-honesty` |
 | L5-start-with-ai-door | **landed** — draft panel opens the modal; bound conversations open their slip; the panel mints nothing | `2026-09-07-start-with-ai-door` |
-| L6 · L8 · L9 · L10 · L11 · L15 | **unblocked** — rulings ratified, blockers landed | — |
+| L18-client-pen-scope | **landed** — the pen is keyed by principal, sign-out clears only the client pen, sign-in hands a guest's ANSWERS to the existing server pen only when it is empty; the browse door passes the plan's own destination | `2026-09-07-client-pen-scope` |
+| L19-request-is-a-click | **landed** — one shared review sheet on both surfaces; the open is a read, the send is a click; the slip mint moved onto Send | `2026-09-07-request-is-a-click` |
+| L24-impact-class | **landed** — `impactClassFor` over both catalogs, derived never stored; `shared/expert-offerings.ts` pins the 55-key tier map to its migrations | `2026-09-07-impact-class` |
+| L10-home-time-axis | **landed** — `GET /api/me/upcoming` over a pure builder, six dated kinds each naming its source column, undated rows omitted; the plan card, counts and messages left Home | `2026-09-07-home-time-axis` |
+| L9-trip-card-one-page | **in review** (PR #848) — one page, no tab shell; purchases in a drawer and the ledger; countdown only where a zone exists | `2026-09-07-trip-card-one-page` |
+| L6-concierge-door | **HELD for a ruling** (PR #849) — see "Two decisions this wave asks for" below | `2026-09-07-concierge-door` |
+| L8 · L11 · L15 | **unblocked** — rulings ratified, blockers landed | — |
 | L7-trip-cart-retire | **unblocked**, still gated on its own audit of `cart.tsx`; the cart fee line (F3 / L20) is a decision before it | — |
-| L12 · L13 · L14 · L18 · L19 · L21 · L22 · L24 | **dispatchable**, no ruling needed | — |
+| L12 · L13 · L14 · L21 · L22 | **dispatchable**, no ruling needed | — |
 | L16-ask-ai-drawer | blocked on L15 and its own brief | — |
 | L17-booking-agent-tab | blocked on LD 44 phase 0 | — |
 | L20-cart-fee-line | **awaiting the decision-maker** (money) | — |
 | L23 · L25 | awaiting **rulings 9–12** (§11.4, §11.6), not yet in the ledger | — |
+
+### Two decisions this wave asks for
+
+**A · Where the Trip Card's logistics content belongs.** The deleted Logistics tab was not empty: it
+rendered eight live reads (participant RSVP, payment and dietary stats, a budget summary with its
+category breakdown, the alert summary, the participant roster, the contracts board). The ratified
+board draws no home for any of it. L9 mounted the existing component, unedited, in an owner-only
+collapsed drawer rather than let real data vanish with the tab — **a deviation from the artboard,
+flagged not hidden**. Keep the drawer, or rule where that content lives.
+
+**B · Whether a door may own one branch's downstream (amends Locked Decision 33).** LD 33 rules that
+doors differ in exactly two things: what arrives pre-filled and which step opens first. The concierge
+door needs a third: its Expert tier must record the tier choice and send the expert request through
+L19's review sheet after the modal's finish mints the slip. L6 added ONE optional
+`PlanningSource.onFinish` hook (the D15 precedent; `runBranch` stays the default for every other
+door) rather than a fifth `PlanningBranch` or a per-door `if` inside the shared finish runner. The
+alternative is that the Expert tier becomes the generic `/experts` browse — which removes the hook
+**and the review sheet with it**. PR #849 is held unmerged pending this ruling.
+
+### Corrections the lanes sent back (recorded, not silently absorbed)
+
+- **§7 and LD 42 D8 both say "REDIRECTS".** The pre-final case renders an honest notice with one
+  action to the slip, and two armed specs assert that notice. The wording, not the code, is what is
+  wrong.
+- **LD 42 D7's all-advisors reader is not true on `main`.** `GET /api/trips/:id/expert-advisor`
+  still returns one row; the Trip Card rail shows the one it returns. D7's own lane owns the change.
+- **The `TripCard` artboard's "2 traveling · 24 invited" (D21) cannot render on that surface** — the
+  invited half needs the derived guest roster the Trip Card does not read. The party label renders
+  alone, which D21's own §13 clause permits.
+- **§2 overreaches on "party size".** `PlanningSource` has no party field and should not grow one; a
+  single stated total is `TripContext.travelers`, which the modal already preserves.
+- **§10's "the quote page and the dead cart handoff go" is half right.** The page goes; the
+  `/api/concierge/quote` route has three other consumers (`EscalationCTA` and two specs) and stays.
+- **Finding F2 understated its own defect.** The concierge expert request did not merely lack a
+  `tripId`: with no `tripId`, no `variantId` and no `planSnapshot` the handler returned **400**, and
+  the UI never read `res.ok`, so it announced "Your request is in" for a request the server had
+  refused. That is a §13 lie, not only an LD 32 hole.
+- **Home's `Coming up` cannot date every unpaid booking.** There is no `service_bookings.booking_date`;
+  the date comes from the existing `resolveServiceDate`, so a claim with neither a booked slot nor a
+  checkout snapshot date is undated and therefore omitted. Named, not invented.
+- **The artboard's occasion row promises a FUTURE draft arrival.** The only "has fired" signal exists
+  *after* the draft is built, so the row says a draft is ready, never that one will arrive.
+- **Two lanes wrote `shared/plan-timing.ts` in parallel.** Reconciled at landing into one module:
+  L10's file verbatim (start instants, the window imported from `shared/trip-primary-surface.ts`,
+  never restated) plus L9's appended wall-clock half. `tripCardIsPrimary`'s no-zone answer is
+  unchanged; making it zone-aware requires moving that constant and is a later lane.
 
 Note: rulings 9–12 postdate W0 and are not ratified; L23 and L25 wait on them. The three planner-tier "Local
 Expert equivalent" rows (G3) and the Executive Assistant door (G4) are recorded, not laned.
