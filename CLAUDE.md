@@ -1401,6 +1401,43 @@ This document captures architectural decisions to maintain consistency across co
     booking's itinerary item carries (the confirm path writes `origin:'expert'` today, true when an
     expert pressed and false when the traveler did); and which partner is Phase 2's first.
 
+45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
+    OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows
+    `2026-09-07-concierge-conversation-trip-id`, `-concierge-page-is-a-door`,
+    `-ask-ai-drawer-paid-task`, `-trip-cart-leaves-sidebar`, `-my-events-folds-into-my-plans`,
+    `-trip-card-loses-tab-shell`, `-console-one-grammar`, `-home-owns-time-axis`; content of record
+    is the Console & AI Concierge brief, `docs/design/CONSOLE_AND_AI_CONCIERGE_BRIEF.md`).**
+    (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids,
+    which are date-slugs per ruling 25. 40–44 are present above; this is 45.)
+    The core ruling: every AI surface is a control on the slip that reads the plan live and writes
+    ONLY through proposals — the AI Planner splits at the mint (before it, a door into the one
+    planning modal; after it, a drawer on that plan's slip), and the console stops being ten peer
+    destinations and becomes one spine, **My plans**, with every other tab a view that reads plans
+    and lands its actions on one plan's slip. **The eight:** **(1)** a nullable trip id on the AI
+    conversation row, so a conversation can belong to a plan — additive, no CHECK, declared in
+    `shared/models/chat.ts`; **(2)** the concierge page becomes a DOOR into the one modal on the
+    `/quick-start` retirement pattern (LD 42 D14), its guest claim token surviving — the three-tier
+    chooser exists three times today and one question answered in three places is the drift class
+    §18 rule 1 names; **(3)** the "Ask AI about this plan" drawer on the slip is the home of the
+    PAID AI task (`concierge:ai_task`) — every answer is a proposal, apply is the traveler's click,
+    charged only on apply, expert items protected per LD 42 D3; **(4)** Trip Cart LEAVES the
+    sidebar — checkout is reached from the slip's Finish card and the Finalize chooser, the route
+    kept as the guest fallback until G2, gated on the checkout page reading the plan's
+    `ready_for_checkout` items (LD 39's no-second-store) rather than `cart_items`; **(5)** My events
+    folds into My plans — a done-for-you engagement is a card on its plan's slip, the money rail
+    untouched; **(6)** the Trip Card loses its tab shell — one page: frozen plan, live status, the
+    booking-agent drawer, a typographic hero when no market photo is known (never a photo of
+    nowhere); **(7)** the traveler console adopts the ONE site grammar — coral primary (`#E85D55`),
+    the earn tokens, Fraunces headings, Geist Mono eyebrows — and Discover, Experts and checkout
+    render INSIDE `DashboardLayout`; **(8)** Home owns the TIME AXIS, AMENDING R-A — dated rows
+    across every plan, nearest first, a row with no date omitted never guessed, plus what changed
+    since the last visit; no plan card, no counts, no messages, which live on My plans, the slip
+    and Inbox. **EVERY AI WRITE IS A PROPOSAL** — free draft on empty, Optimize or a paid task on
+    non-empty, apply on confirm, expert work protected per D3; no fourth AI write path (the posture
+    R-J ratified for connected agents: agents build and stage, humans pay). The build sequence is
+    the brief's §10: eighteen lanes in four waves, serial, one ledger row per lane; L16 (the paid
+    drawer) needs its own design brief before build, and L17 waits on LD 44 phase 0.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
