@@ -1224,15 +1224,22 @@ export async function registerRoutes(
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
-  // NOT here. 57 of its handlers duplicate inline registrations below that are the
+  // NOT here. Some of its handlers duplicate inline registrations below that are the
   // documented-canonical, battle-tested copies (they carry divergent auth models +
   // side-effects like expert-notify-on-add that the router copies lack). Mounting the
   // router HERE (before the inline routes) silently made the stale router copies win for
   // core trip CRUD / generate-itinerary / itinerary-comparisons / budget+transactions.
-  // Mounting it AFTER the inline routes lets the canonical inline copies win those 57
+  // Mounting it AFTER the inline routes lets the canonical inline copies win those
   // paths, while the router still serves its 32 UNIQUE (consumer-backed) endpoints
-  // (anchors, transport-legs, itinerary-share, expert-review, logistics, …). The full
-  // delete-the-57-duplicates sweep is filed (needs per-handler auth-model reconciliation).
+  // (anchors, transport-legs, itinerary-share, expert-review, logistics, …).
+  // S4 SWEEP (ledger `2026-09-07-shadowed-trip-twins`): the fourteen POST mutation twins
+  // (claim, participants, bulk-invite, contracts, transactions, split, calculate-split,
+  // itinerary-items, reorder, optimize-order, activate-transport, emergency-contacts,
+  // emergency/initialize, alerts) were proven unreachable (each inline twin responds and
+  // never calls next()) and DELETED from trips.routes.ts; `check-trip-route-shadows`
+  // guards both halves (no resurrection, no canonical removal). The remaining duplicate
+  // registrations (GETs and read paths) are still filed as a future sweep — each needs
+  // the same per-handler auth-model reconciliation before deletion.
 
   // Expert routes — role management, service templates, vendor coordination, constraints,
   // provider blackout dates, assigned trips, knowledge nuggets, visa info, and more.
