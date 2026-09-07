@@ -2477,6 +2477,11 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
+  // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here
+  // (migration 109), so a non-canonical value used to sail through zod and 500 on insert
+  // (sweep F4: `deliveryMethod:'virtual'` → provider_services_delivery_method_check violation).
+  // Field-level so it survives `.partial()` on the PATCH path, same as every vocabulary above.
+  deliveryMethod: z.enum(deliveryMethodEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
   // valid on any path — POST and PATCH /api/provider/services both parse this schema, and both
   // persisted price=-50 straight to a row (even at status=active/approval_status=submitted).

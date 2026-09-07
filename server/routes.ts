@@ -3735,6 +3735,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (err instanceof ServiceLocationError) {
         return res.status(400).json({ message: err.message, code: "INVALID_LOCATION_POINT" });
       }
+      // Defense-in-depth (sweep F4): insertProviderServiceSchema now validates every vocabulary
+      // client-side, but if schema/constraint drift ever recurs, a CHECK violation is a CLIENT
+      // error (400), never a bare 500. Drizzle wraps the driver error — the pg code lives on
+      // `.cause` (same read-through as admin.routes.ts offeringWriteError).
+      const pgCode = (err as any)?.code ?? (err as any)?.cause?.code;
+      if (pgCode === "23514") {
+        return res.status(400).json({ message: "Value violates a database constraint", code: "CONSTRAINT_VIOLATION" });
+      }
       console.error("Error creating provider service:", err);
       res.status(500).json({ message: "Failed to create service" });
     }
@@ -4103,6 +4111,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       if (err instanceof ServiceLocationError) {
         return res.status(400).json({ message: err.message, code: "INVALID_LOCATION_POINT" });
+      }
+      // Same defense-in-depth as the create path (sweep F4): a CHECK violation is a CLIENT
+      // error (400), never a bare 500. Drizzle wraps the driver error — pg code on `.cause`.
+      const pgCode = (err as any)?.code ?? (err as any)?.cause?.code;
+      if (pgCode === "23514") {
+        return res.status(400).json({ message: "Value violates a database constraint", code: "CONSTRAINT_VIOLATION" });
       }
       res.status(500).json({ message: "Failed to update service" });
     }
