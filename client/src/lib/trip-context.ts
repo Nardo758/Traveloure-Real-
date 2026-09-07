@@ -153,7 +153,49 @@ export type TripContextPatch = Omit<Partial<TripContext>, "startDate" | "endDate
   endDate?: string | Date | null;
 };
 
-const STORAGE_KEY = "experienceContext";
+// ── THE PEN IS KEYED BY PRINCIPAL (lane L18, ledger `2026-09-07-client-pen-scope`) ────────────
+//
+// THE DEFECT. This blob lived under ONE sessionStorage key, never namespaced by user and never
+// cleared when the account changed, while the SERVER pen (`PUT /api/trip-context`,
+// `server/routes/trip-context.routes.ts`) has always been per user. So the client pen followed the
+// BROWSER TAB and not the account: the Chrome walkthrough of 2026-09-07 (rows 1, 4, 8, 14) carried
+// one guest's "New York City Date Night" into two different signed-in accounts, one of which held
+// nineteen real plans, and with it the "Your Trip" banner, the cart's trip and the `/services`
+// location filter.
+//
+// THE SHAPE OF THE FIX. There is one key per PRINCIPAL: the legacy key IS the guest pen (so an
+// in-flight guest session, and the two behavioural gates that seed it directly, are untouched), and
+// a signed-in traveler reads `experienceContext:u:<id>`. `activePrincipal` is module state bound by
+// exactly ONE function, `bindPenPrincipal`, called from `useTripContextSync` at the one layout
+// mount — a second binder is the derivation-drift class §18 rule 1 names.
+//
+// §13 — "WE DO NOT KNOW YET" IS NOT "GUEST". Until auth resolves, nothing binds and nothing is
+// cleared; the pen simply reads the guest key it has always read. An unresolved answer is never
+// rendered as a negative one.
+export const GUEST_PEN_KEY = "experienceContext";
+/** A signed-in traveler's pen. One key per `users.id` — the id is a LOCAL storage key here, never published (Locked Decision 40 governs payloads, not this tab's own store). */
+export const USER_PEN_PREFIX = "experienceContext:u:";
+
+/** The ONE naming rule for a pen key. `null` = the guest pen (the legacy key). */
+export function penKeyFor(principal: string | null): string {
+  return principal === null ? GUEST_PEN_KEY : `${USER_PEN_PREFIX}${principal}`;
+}
+
+/**
+ * WHOSE PEN THIS MODULE IS CURRENTLY READING AND WRITING. `null` = the guest pen, which is also
+ * the pre-binding default: a page that never resolves auth behaves exactly as it did before this
+ * lane. Written ONLY by `bindPenPrincipal`.
+ */
+let activePrincipal: string | null = null;
+
+/** Read-only view of the bound principal — for tests and for a caller that must say whose pen it read. */
+export function getPenPrincipal(): string | null {
+  return activePrincipal;
+}
+
+function storageKey(): string {
+  return penKeyFor(activePrincipal);
+}
 const CHANGE_EVENT = "trip-context-change";
 /**
  * Fired by `clearTripContext` ONLY — "the traveler cleared the plan", which is a different fact
@@ -186,7 +228,7 @@ function normalizeDate(value: string | Date | null | undefined): string | undefi
 
 export function getTripContext(): TripContext {
   try {
-    const parsed = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
+    const parsed = JSON.parse(sessionStorage.getItem(storageKey()) || "{}");
     return parsed && typeof parsed === "object" ? (parsed as TripContext) : {};
   } catch {
     return {};
@@ -239,7 +281,7 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   }
   const next = { ...current, ...sanitized } as TripContext;
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    sessionStorage.setItem(storageKey(), JSON.stringify(next));
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -309,7 +351,7 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
   const next = { ...base, ...sanitized } as TripContext;
 
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    sessionStorage.setItem(storageKey(), JSON.stringify(next));
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -484,7 +526,7 @@ export async function hydrateTripContextFromServer(): Promise<void> {
     );
     if (addedKeys.length === 0) return; // local already has everything
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      sessionStorage.setItem(storageKey(), JSON.stringify(merged));
       window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
     } catch {
       /* ignore */
@@ -494,11 +536,148 @@ export async function hydrateTripContextFromServer(): Promise<void> {
   }
 }
 
-/** Mount once (traveler layout): hydrates the context from the server on load. */
-export function useTripContextSync(): void {
+/**
+ * Mount once (traveler layout): BINDS the pen to whoever is signed in, and hydrates that
+ * principal's own server row. See `bindPenPrincipal` below for what a change of principal does.
+ */
+export function useTripContextSync(principal: PenPrincipal): void {
+  // `undefined` is the THIRD state and it is load-bearing (§13): auth has not answered yet, so the
+  // principal is UNKNOWN — not guest. Binding it to `null` here would clear a signed-in traveler's
+  // pen on every cold load, in the window before `GET /api/auth/user` returns.
   useEffect(() => {
-    void hydrateTripContextFromServer();
-  }, []);
+    if (principal === undefined) return;
+    void bindPenPrincipal(principal);
+  }, [principal]);
+}
+
+// ── BINDING THE PRINCIPAL — the ONE place the pen changes hands ────────────────────────────────
+
+/**
+ * `undefined` = auth has not resolved (bind NOTHING); `null` = a guest; a string = `users.id`.
+ * Three states, because "we do not know yet" and "nobody is signed in" are different facts and the
+ * pen must not treat them alike.
+ */
+export type PenPrincipal = string | null | undefined;
+
+/**
+ * HAND THE GUEST'S ANSWERS TO THE ACCOUNT, ONCE, AND ONLY INTO AN EMPTY SERVER PEN.
+ *
+ * There was no guest→user handoff for the pen before this lane — `SignInModal.migrateGuestCart`
+ * moves `cart_items` and `claimGuestConcierge` claims a concierge request; neither touches
+ * `trip_contexts`. So this is a new CALLER of the EXISTING `PUT /api/trip-context` rail and not a
+ * new rail (no route, no schema, no column).
+ *
+ * THE RULES, and none is optional:
+ *  · The guest key is read ONCE and REMOVED either way. A guest pen must never be readable by an
+ *    account after the account exists — that is the whole defect.
+ *  · The ACCOUNT'S OWN PLAN WINS. A non-empty server pen is never overwritten; the guest blob is
+ *    dropped. This is the walkthrough's nineteen-plan account, which must not inherit a stranger's
+ *    date night.
+ *  · A server read that FAILS hands nothing over (§13). A 401, an offline tab or a 500 is "we have
+ *    no answer", not "the account has no plan", and only the second would license a write.
+ *  · A PLAN IDENTITY IS NOT HANDED OVER. `tripId` / `userExperienceId` / `id` are dropped: a guest
+ *    owns no `trips` row (every mint is behind the sign-in gate), so an identity in a guest pen is
+ *    never the new account's to adopt — §14's "the actor comes from the session", read on the
+ *    client's own store. The traveler's ANSWERS (destination, dates, party, events, stops) carry.
+ */
+async function handOffGuestPen(): Promise<void> {
+  let guestPen: TripContext = {};
+  try {
+    const raw = sessionStorage.getItem(GUEST_PEN_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object") guestPen = parsed as TripContext;
+  } catch {
+    /* unreadable guest pen — nothing to hand over */
+  }
+  try {
+    sessionStorage.removeItem(GUEST_PEN_KEY);
+  } catch {
+    /* ignore */
+  }
+  const { tripId: _tripId, userExperienceId: _uxId, id: _legacyId, ...answers } = guestPen;
+  if (Object.keys(answers).length === 0) return;
+  if (typeof fetch !== "function") return;
+  try {
+    // The LEGACY per-user row deliberately (no `?tripId=`): the handed-over blob carries no trip
+    // identity by the rule above, so there is no trip-scoped row it could belong to.
+    const res = await fetch("/api/trip-context", { credentials: "include" });
+    if (!res.ok) return; // no answer ⇒ no write
+    const data = await res.json().catch(() => null);
+    const server = data?.context;
+    if (server && typeof server === "object" && Object.keys(server).length > 0) return; // the account's own wins
+    const put = await fetch("/api/trip-context", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ context: answers }),
+    });
+    if (!put.ok) return;
+    sessionStorage.setItem(storageKey(), JSON.stringify(answers));
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    /* offline — best-effort, exactly like every other write in this module */
+  }
+}
+
+/**
+ * BIND THE PEN TO A PRINCIPAL. Idempotent: called on every auth-resolved render, and a call that
+ * names the principal already bound does nothing at all.
+ *
+ * SIGN-OUT (a principal → `null`) CLEARS THE CLIENT PEN AND ONLY THE CLIENT PEN. Every pen key in
+ * this tab goes, the armed debounce is disarmed and an in-flight hydrate is invalidated — the same
+ * three writers `clearTripContext` closes — and `TRIP_CONTEXT_CLEARED_EVENT` is fired so a surface
+ * holding its own copy of the basics can tell this from an un-hydrated read. What it deliberately
+ * does NOT do is `pushClear`: the SERVER pen is the signed-out traveler's own saved planning and
+ * survives their leaving the tab. Signing out is not clearing your plan.
+ *
+ * SIGN-IN (`null` → a principal) switches the key and hands the guest pen over per the rules
+ * above. A principal → a DIFFERENT principal switches the key and hands NOTHING over: user A's
+ * answers are not user B's, and there is no honest way to attribute them.
+ */
+export async function bindPenPrincipal(next: string | null): Promise<void> {
+  const previous = activePrincipal;
+  if (previous === next) return;
+  // Whatever was scheduled or in flight belongs to the OUTGOING principal.
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = undefined;
+  }
+  clearGeneration += 1;
+  // The next principal gets its own one-shot hydrate from its own server row.
+  hydrated = false;
+  activePrincipal = next;
+
+  if (next === null) {
+    // Sign-out: drop every pen this tab holds, guest key included. Collected first — removing
+    // while iterating `sessionStorage.key(i)` re-indexes the store and skips entries.
+    try {
+      const stale: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i);
+        if (key === GUEST_PEN_KEY || (key && key.startsWith(USER_PEN_PREFIX))) stale.push(key);
+      }
+      for (const key of stale) sessionStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+      window.dispatchEvent(new CustomEvent(TRIP_CONTEXT_CLEARED_EVENT));
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  if (previous === null) {
+    await handOffGuestPen();
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    /* ignore */
+  }
+  await hydrateTripContextFromServer();
 }
 
 /**
@@ -570,7 +749,7 @@ export function clearTripContext(): void {
   // (3) Any hydrate already in flight is now describing a plan that no longer exists.
   clearGeneration += 1;
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(storageKey());
   } catch {
     /* ignore */
   }
@@ -608,7 +787,7 @@ export function useTripContext(): [TripContext, (patch: TripContextPatch) => voi
   useEffect(() => {
     const refresh = () => setContext(getTripContext());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY || e.key === null) refresh();
+      if (e.key === storageKey() || e.key === null) refresh();
     };
     window.addEventListener(CHANGE_EVENT, refresh);
     window.addEventListener("storage", onStorage);
