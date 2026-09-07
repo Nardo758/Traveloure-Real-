@@ -1,3 +1,6 @@
+// Load .env first (dev machines; gitignored). dotenv never overrides vars already
+// set in the environment, so production shells and deploy platforms are unaffected.
+import "dotenv/config";
 import "./validate-env";
 import express, { type Request, Response, NextFunction, RequestHandler } from "express";
 import crypto from "crypto";
@@ -552,12 +555,25 @@ async function runDatabaseSeeding() {
 // Unknown /.well-known/* paths get a plain-text 404 from that mount — never the SPA.
 mountWellKnown(app);
 
-const _productionPort = parseInt(process.env.PORT || "5000", 10);
+// CLI args (--port / --host, either `--port 7100` or `--port=7100`) override the
+// PORT env var, which overrides the 5000 default — a preview runner that forwards
+// host/port flags to `npm run dev` must be able to choose the bind. ONE resolver
+// for both listen sites (§18 rule 1).
+function resolveListenArg(name: string): string | undefined {
+  const argv = process.argv.slice(2);
+  const eq = argv.find((a) => a.startsWith(`--${name}=`));
+  if (eq) return eq.slice(name.length + 3);
+  const i = argv.indexOf(`--${name}`);
+  return i !== -1 ? argv[i + 1] : undefined;
+}
+const _listenPort = parseInt(resolveListenArg("port") || process.env.PORT || "5000", 10);
+const _listenHost = resolveListenArg("host") || "0.0.0.0";
+
 if (process.env.NODE_ENV === "production") {
   serveStatic(app);
   // SO_REUSEPORT is unsupported on Windows — leaving it on makes the bind fail on any port.
-  httpServer.listen({ port: _productionPort, host: "0.0.0.0", reusePort: process.platform !== "win32" }, () => {
-    logger.info({ port: _productionPort }, "Server pre-bound: static serving active, migrations pending");
+  httpServer.listen({ port: _listenPort, host: _listenHost, reusePort: process.platform !== "win32" }, () => {
+    logger.info({ port: _listenPort }, "Server pre-bound: static serving active, migrations pending");
   });
 }
 
@@ -902,13 +918,12 @@ if (process.env.NODE_ENV === "production") {
   if (process.env.NODE_ENV === "production") {
     // Server is already listening (pre-bound before migrations).
     // API routes are now registered — call startup tasks directly.
-    onServerReady(_productionPort);
+    onServerReady(_listenPort);
   } else {
-    const port = parseInt(process.env.PORT || "5000", 10);
     // SO_REUSEPORT is unsupported on Windows — leaving it on makes the bind fail on any port.
     httpServer.listen(
-      { port, host: "0.0.0.0", reusePort: process.platform !== "win32" },
-      () => onServerReady(port),
+      { port: _listenPort, host: _listenHost, reusePort: process.platform !== "win32" },
+      () => onServerReady(_listenPort),
     );
   }
 })();
