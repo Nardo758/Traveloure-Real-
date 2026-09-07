@@ -182,6 +182,20 @@ const REQUIRED_SOURCE_FIELDS = [
     forbid: ["city", "destination"],
     why: "Home's doors create a NEW plan; the destinations Home holds belong to existing ones (§13)",
   },
+  // Ledger `2026-09-07-start-with-ai-door` (L5, brief §9). The AI planner's draft panel is a DOOR:
+  // "Continue in the planner" opens the ONE modal with what the TripContext draft holds —
+  // `destination` and `experienceSlug`, both exact-vocabulary matches, passed conditionally.
+  // Dates/travelers are NOT in the source literal: the modal reads TripContext for them itself.
+  // `experienceType` is FORBIDDEN: TripContext.eventType is an `eventTypeEnum` member and
+  // TripContext.experienceType is a display NAME — neither is one of the five FROZEN coarse keys
+  // PlanningSource.experienceType accepts (ruling 2026-09-01-moment-key), so forwarding either
+  // would be a wrong-vocabulary guess wearing a prefill's clothes (§13).
+  {
+    file: "client/src/components/ai-planner-draft-panel.tsx",
+    require: ["destination", "experienceSlug"],
+    forbid: ["experienceType"],
+    why: "the AI door passes the draft's destination and occasion slug; eventType is a different vocabulary (§13)",
+  },
 ];
 
 /** Does this source offer one of the two ruled entry shapes? */
@@ -391,6 +405,17 @@ function selfTest() {
   const EXPERIENCES = "client/src/pages/experiences.tsx";
   const STOREFRONT = "client/src/pages/storefront.tsx";
   const DASHBOARD = "client/src/pages/dashboard.tsx";
+  // Ledger `2026-09-07-start-with-ai-door` (L5): the AI draft panel's door and its failure modes.
+  const PANEL = "client/src/components/ai-planner-draft-panel.tsx";
+  const doorPanel =
+    'const { open: openPlanner } = usePlanning();\n' +
+    'onClick={() => openPlanner({ ...(destination ? { destination } : {}), ...(context.experienceSlug ? { experienceSlug: context.experienceSlug } : {}) })}';
+  const doorPanelBare = 'const { open: openPlanner } = usePlanning();\nonClick={() => openPlanner()}';
+  // The vocabulary-confusion bug the forbid exists for: eventType is an eventTypeEnum member,
+  // NOT one of the five frozen coarse keys PlanningSource.experienceType accepts.
+  const doorPanelWrongVocab =
+    'const { open: openPlanner } = usePlanning();\n' +
+    'onClick={() => openPlanner({ destination, experienceType: eventType })}';
 
   cases.push(
     ["D13 · a door passing its required key passes", () => req(TEMPLATE, doorAlias).length === 0],
@@ -415,6 +440,11 @@ function selfTest() {
     // the destinations the page holds belong to existing plans.
     ["D13 · a Home door passing nothing passes", () => req(DASHBOARD, withIntake).length === 0],
     ["D13 · a Home door seeding an existing plan's destination FAILS (§13)", () => req(DASHBOARD, 'const [o,setIntakeOpen]=useState(false);\n<Button onClick={() => setIntakeOpen(true)} />\n<IntakePanel open={o} city={selectedTrip.destination} />').some((e) => e.includes("ruled NOT to pass"))],
+    // Ledger `2026-09-07-start-with-ai-door` (L5): the AI door passes destination + experienceSlug
+    // (conditional spreads count), never experienceType (wrong vocabulary).
+    ["D13 · the AI door passing destination + experienceSlug conditionally passes", () => req(PANEL, doorPanel).length === 0],
+    ["D13 · the AI door passing NOTHING fails", () => req(PANEL, doorPanelBare).some((e) => e.includes("does not pass `destination`"))],
+    ["D13 · the AI door forwarding eventType as experienceType FAILS (frozen coarse keys only)", () => req(PANEL, doorPanelWrongVocab).some((e) => e.includes("ruled NOT to pass"))],
   );
 
   let failed = 0;

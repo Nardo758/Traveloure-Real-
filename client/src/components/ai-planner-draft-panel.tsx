@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Calendar, Users, Sparkles, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useTripContext, type TripContext } from "@/lib/trip-context";
-import { useCreateTrip } from "@/hooks/use-trips";
-import type { InsertTrip } from "@shared/schema";
+import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 
 /**
  * AiPlannerDraftPanel — Console Realign R-D (docs/briefs/CONSOLE_REALIGN_BRIEF.md, Lane E6).
@@ -23,10 +22,17 @@ import type { InsertTrip } from "@shared/schema";
  *      established → the endpoint returns `{ fields: {} }` and nothing here changes — the chat is
  *      never blocked by this.
  *
- * "Create this plan" uses the ONE create rail (R-B: useCreateTrip → POST /api/trips) — no trip is
- * persisted unless this button is pressed. Minimum required is destination + both dates, mirroring
- * client/src/components/intake-panel.tsx (the reference implementation for payload shape, incl. the
- * "<destination> Trip" title default).
+ * "Continue in the planner" (ledger `2026-09-07-start-with-ai-door`, CONSOLE_AND_AI_CONCIERGE_BRIEF
+ * §9) is a DOOR, not a mint: it opens the ONE plan modal through usePlanning().open with exactly
+ * the fields this panel holds — `destination` and `experienceSlug`, both conditional so nothing
+ * is invented (§13). Dates/travelers need no passing: the modal reads TripContext directly, and
+ * the steps it skips none of will ask for whatever is still missing. `eventType` is deliberately
+ * NOT forwarded as `experienceType`: TripContext.eventType is an `eventTypeEnum` member
+ * (`eventTypeForSlug` — vacation/birthday/proposal/…), while PlanningSource.experienceType is one
+ * of the five FROZEN coarse keys the generator accepts (travel|wedding|corporate|event|retreat,
+ * ruling 2026-09-01-moment-key). There is no honest bridge between them, so the door passes
+ * nothing rather than a wrong-vocabulary guess. A conversation already bound to a plan
+ * (`tripId` set) opens THAT plan's slip instead of the modal.
  */
 export function AiPlannerDraftPanel({
   conversationId,
@@ -63,7 +69,7 @@ export function AiPlannerDraftPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, extractionTrigger]);
 
-  const createTrip = useCreateTrip();
+  const { open: openPlanner } = usePlanning();
 
   const destination = context.destination?.trim() || null;
   const startDate = context.startDate || null;
@@ -71,11 +77,13 @@ export function AiPlannerDraftPanel({
   const travelers = context.travelers ?? null;
   const eventType = context.eventType || null;
 
-  const canCreate = !!destination && !!startDate && !!endDate;
   const missing: string[] = [];
   if (!destination) missing.push("a destination");
   if (!startDate || !endDate) missing.push("travel dates");
-  const missingHint = missing.length > 0 ? `Add ${missing.join(" and ")} to create this plan` : null;
+  const missingHint =
+    !context.tripId && missing.length > 0
+      ? `The planner will ask for ${missing.join(" and ")}.`
+      : null;
 
   function formatDateRange(start: string | null, end: string | null): string {
     if (!start || !end) return "";
@@ -88,25 +96,16 @@ export function AiPlannerDraftPanel({
     }
   }
 
-  function handleCreate() {
-    if (!canCreate || !destination || !startDate || !endDate) return;
-    const payload: InsertTrip = {
-      title: `${destination} Trip`,
-      destination,
-      startDate,
-      endDate,
-      // Locked Decision 42 (D11 interim) / ledger `2026-09-05-mint-market-slug-invariant`: the AI
-      // context carries a party TOTAL, never a split, so only the total is sent. `adults: travelers`
-      // plus an UNCONDITIONAL `kids: 0` fabricated a split nobody stated — and the `kids: 0` was
-      // sent even when the traveler count itself was unknown. adults/kids stay NULL (§13).
-      ...(travelers ? { numberOfTravelers: travelers } : {}),
-      ...(eventType ? { eventType } : {}),
-    } as InsertTrip;
-
-    createTrip.mutate(payload, {
-      onSuccess: (trip) => {
-        navigate(`/plans/${trip.id}`);
-      },
+  function handleContinue() {
+    // A conversation bound to a plan opens that plan's slip (past end date → the Trip Card,
+    // via the one route helper), never a second copy of it through the modal.
+    if (context.tripId) {
+      navigate(planningRouteForTrip(context.tripId, context.endDate));
+      return;
+    }
+    openPlanner({
+      ...(destination ? { destination } : {}),
+      ...(context.experienceSlug ? { experienceSlug: context.experienceSlug } : {}),
     });
   }
 
@@ -156,20 +155,13 @@ export function AiPlannerDraftPanel({
         <div className="pt-2 border-t border-border">
           <Button
             className="w-full"
-            disabled={!canCreate || createTrip.isPending}
-            onClick={handleCreate}
-            data-testid="button-create-plan-from-ai"
+            onClick={handleContinue}
+            data-testid="button-continue-in-planner"
           >
-            {createTrip.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating…
-              </>
-            ) : (
-              "Create this plan"
-            )}
+            {context.tripId ? "Open this plan" : "Continue in the planner"}
           </Button>
-          {!canCreate && missingHint && (
-            <p className="text-xs text-muted-foreground mt-2 text-center" data-testid="text-create-plan-hint">
+          {missingHint && (
+            <p className="text-xs text-muted-foreground mt-2 text-center" data-testid="text-continue-plan-hint">
               {missingHint}
             </p>
           )}
