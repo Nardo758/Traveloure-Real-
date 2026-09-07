@@ -15,7 +15,7 @@ import {
   AlertCircle, Share2, MessageCircle, User, ExternalLink,
   CheckCircle, XCircle, Eye, MapPin, Pencil, Check, X, Clock,
 } from "lucide-react";
-import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
+import type { ActivityDiff, TransportDiff } from "@/lib/itinerary-diff";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";

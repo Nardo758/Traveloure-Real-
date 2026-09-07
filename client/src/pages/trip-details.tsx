@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
+import { openInMaps } from "@/lib/navigate";
 
 type Section = "activities" | "transport";
 
@@ -158,19 +159,13 @@ export default function TripDetails() {
   // expert is surfaced by the family's advisor strip on the summary card (A10/A12) and the
   // full-stage EscalationCTA (B10) — both must-not-regress, both already rendering.
 
-  // Open destination in maps
-  const openInMaps = () => {
+  // Open destination in maps — L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`):
+  // ONE maps handoff (`lib/navigate.ts`). This used to hand-roll Apple and Google search URLs
+  // inline — a second builder that knew nothing of the platform preference, the Waze arm, or
+  // the {0,0}-guard the canonical path owns.
+  const openDestinationInMaps = () => {
     if (!trip?.destination) return;
-    
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const query = encodeURIComponent(trip.destination);
-    
-    if (isIOS) {
-      window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
-    } else {
-      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
-    }
-    
+    openInMaps({ destination: { name: trip.destination } });
     toast({ title: "Opening Maps", description: `Showing ${trip.destination}` });
   };
 
@@ -275,7 +270,7 @@ export default function TripDetails() {
           <Button 
             variant="outline" 
             className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
-            onClick={openInMaps}
+            onClick={openDestinationInMaps}
             data-testid="button-open-maps-mobile"
           >
             <MapPin className="w-4 h-4 md:mr-2" />
@@ -407,7 +402,7 @@ export default function TripDetails() {
                   <div className="hidden md:flex gap-2">
                     <Button 
                       variant="outline"
-                      onClick={openInMaps}
+                      onClick={openDestinationInMaps}
                       data-testid="button-open-maps"
                     >
                       <MapPin className="w-4 h-4 mr-2" />

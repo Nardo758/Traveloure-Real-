@@ -59,6 +59,15 @@ interface GeocodedActivity extends PlanCardActivity {
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
+/**
+ * ONE located-pin predicate (§18 rule 1) — the pin layer, the viewport framing and the
+ * initial-center derivation all read it. A stop with no coordinates is simply not mapped;
+ * this component fabricates no coordinate (§13).
+ */
+function isLocated(a: PlanCardActivity): boolean {
+  return a.lat != null && a.lng != null;
+}
+
 // LD 41 comparison series styling. A dashed Google polyline is a zero-opacity stroke plus a
 // repeating dash symbol (the same shape `transport-modes.ts` uses for walking legs).
 const SECONDARY_SERIES_COLOR = "#94A3B8";
@@ -74,6 +83,7 @@ function MapContent({
   tripId,
   connectorMode,
   secondaryActivities,
+  fallbackCenter,
 }: {
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
@@ -85,6 +95,9 @@ function MapContent({
   connectorMode: "transport" | "sequence";
   /** LD 41: the comparison series' already-located stops (empty when nothing is compared). */
   secondaryActivities: PlanCardActivity[];
+  /** L4: the server-geocoded DESTINATION center, resolved by the OUTER component (which needs
+   *  it to decide whether mounting a map canvas is honest at all). Null = no honest center. */
+  fallbackCenter: { lat: number; lng: number } | null;
 }) {
   const map = useMap();
   // Pins read coordinates directly from the server response. Coordinates are
@@ -94,7 +107,7 @@ function MapContent({
   const geocodedActivities = useMemo<GeocodedActivity[]>(
     () =>
       (activities || [])
-        .filter((a) => a.lat != null && a.lng != null)
+        .filter(isLocated)
         .map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! })),
     [activities],
   );
@@ -103,19 +116,10 @@ function MapContent({
   const geocodedSecondary = useMemo<GeocodedActivity[]>(
     () =>
       (secondaryActivities || [])
-        .filter((a) => a.lat != null && a.lng != null)
+        .filter(isLocated)
         .map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! })),
     [secondaryActivities],
   );
-
-  // Center fallback (a day with no geolocated stops) uses the single server
-  // geocode path — the same GET /api/geocode the Expert Workspace uses.
-  const { data: center } = useQuery<{ lat: number; lng: number }>({
-    queryKey: ["/api/geocode", destination],
-    queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(destination)}`).then((r) => r.json()),
-    enabled: !!destination && geocodedActivities.length === 0 && geocodedSecondary.length === 0,
-    staleTime: Infinity,
-  });
 
   useEffect(() => {
     if (!map || typeof google === "undefined" || !google.maps) return;
@@ -128,11 +132,11 @@ function MapContent({
         bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
       });
       map.fitBounds(bounds, 60);
-    } else if (center?.lat != null && center?.lng != null) {
-      map.setCenter({ lat: center.lat, lng: center.lng });
+    } else if (fallbackCenter) {
+      map.setCenter(fallbackCenter);
       map.setZoom(13);
     }
-  }, [map, geocodedActivities, geocodedSecondary, center]);
+  }, [map, geocodedActivities, geocodedSecondary, fallbackCenter]);
 
   const expertNoteActivities = geocodedActivities.filter(a => a.expertNote && a.expertNote.trim().length > 0);
 
@@ -391,6 +395,28 @@ export function MapControlCenter({
 
   const day = days[selectedDay];
 
+  // L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): the map NEVER defaults to
+  // Null Island (0,0) — a canvas that opens there is a map of nowhere wearing the plan's name
+  // (§13). The initial center is the day's first LOCATED stop; a day with no located stops asks
+  // the ONE server geocode path (GET /api/geocode — the same one the Expert Workspace uses) for
+  // the destination; until one of those answers, no map canvas is mounted.
+  const dayActivities = day?.activities ?? [];
+  const comparisonActivities = secondarySeries?.activities ?? [];
+  const firstLocated = [...dayActivities, ...comparisonActivities].find(isLocated) ?? null;
+  const { data: geocodedDestination, isLoading: geocodingDestination } = useQuery<{ lat?: number; lng?: number }>({
+    queryKey: ["/api/geocode", tripDestination],
+    queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(tripDestination)}`).then((r) => r.json()),
+    enabled: !!tripDestination && !firstLocated,
+    staleTime: Infinity,
+  });
+  const destinationCenter =
+    geocodedDestination?.lat != null && geocodedDestination?.lng != null
+      ? { lat: geocodedDestination.lat, lng: geocodedDestination.lng }
+      : null;
+  const initialCenter = firstLocated
+    ? { lat: firstLocated.lat!, lng: firstLocated.lng! }
+    : destinationCenter;
+
   const toggleLayer = useCallback((key: "activities" | "transport" | "expertNotes") => {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
@@ -432,40 +458,53 @@ export function MapControlCenter({
           className={`relative overflow-hidden ${compact ? "h-[360px] rounded-xl" : "h-[420px]"}`}
           data-testid={`map-area-${tripId}`}
         >
-          <MapErrorBoundary
-            fallback={
-              <div className="h-full bg-muted flex items-center justify-center">
-                <p className="text-muted-foreground text-sm">Map unavailable</p>
-              </div>
-            }
-          >
-            <APIProvider apiKey={MAPS_API_KEY}>
-              <Map
-                mapId={GOOGLE_MAPS_MAP_ID}
-                style={{ width: "100%", height: "100%" }}
-                defaultZoom={13}
-                defaultCenter={{ lat: 0, lng: 0 }}
-                gestureHandling="greedy"
-                disableDefaultUI={false}
-                zoomControl={true}
-                mapTypeControl={false}
-                streetViewControl={false}
-                fullscreenControl={false}
-              >
-                <MapContent
-                  activities={day.activities || []}
-                  transports={day.transports || []}
-                  destination={tripDestination}
-                  layers={layers}
-                  selectedPinId={selectedPinId}
-                  onSelectPin={setSelectedPinId}
-                  tripId={tripId}
-                  connectorMode={connectorMode}
-                  secondaryActivities={secondarySeries?.activities ?? []}
-                />
-              </Map>
-            </APIProvider>
-          </MapErrorBoundary>
+          {initialCenter ? (
+            <MapErrorBoundary
+              fallback={
+                <div className="h-full bg-muted flex items-center justify-center">
+                  <p className="text-muted-foreground text-sm">Map unavailable</p>
+                </div>
+              }
+            >
+              <APIProvider apiKey={MAPS_API_KEY}>
+                <Map
+                  mapId={GOOGLE_MAPS_MAP_ID}
+                  style={{ width: "100%", height: "100%" }}
+                  defaultZoom={13}
+                  defaultCenter={initialCenter}
+                  gestureHandling="greedy"
+                  disableDefaultUI={false}
+                  zoomControl={true}
+                  mapTypeControl={false}
+                  streetViewControl={false}
+                  fullscreenControl={false}
+                >
+                  <MapContent
+                    activities={day.activities || []}
+                    transports={day.transports || []}
+                    destination={tripDestination}
+                    layers={layers}
+                    selectedPinId={selectedPinId}
+                    onSelectPin={setSelectedPinId}
+                    tripId={tripId}
+                    connectorMode={connectorMode}
+                    secondaryActivities={secondarySeries?.activities ?? []}
+                    fallbackCenter={destinationCenter}
+                  />
+                </Map>
+              </APIProvider>
+            </MapErrorBoundary>
+          ) : (
+            /* §13: no located stops and no geocoded destination = no honest center, so no map
+               canvas at all — never a Null Island default. */
+            <div className="h-full bg-muted flex items-center justify-center px-4 text-center">
+              <p className="text-muted-foreground text-sm" data-testid={`map-no-center-${tripId}`}>
+                {geocodingDestination
+                  ? `Locating ${tripDestination}…`
+                  : "No mapped stops for this day yet"}
+              </p>
+            </div>
+          )}
 
           {!compact && <div className="absolute top-4 left-4 flex gap-1 z-10" data-testid={`map-day-selector-${tripId}`}>
             {days.map((d, i) => (

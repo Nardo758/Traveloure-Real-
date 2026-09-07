@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { openInMaps as openInMapsCanonical } from "@/lib/navigate";
 import {
   Sparkles,
   Check,
@@ -461,7 +462,7 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
 function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destination?: string }) {
   const { toast } = useToast();
 
-  const openInMaps = () => {
+  const openAllInMaps = () => {
     // Collect unique locations from items, filtering out empty ones
     const locations = items
       .map(item => item.location)
@@ -469,37 +470,23 @@ function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destin
       .filter((loc, index, self) => self.indexOf(loc) === index); // unique
 
     if (locations.length === 0) {
-      toast({ 
-        title: "No locations found", 
+      toast({
+        title: "No locations found",
         description: "This itinerary doesn't have specific locations to show on the map.",
         variant: "destructive"
       });
       return;
     }
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    
-    if (locations.length === 1) {
-      // Single location - simple search
-      const query = encodeURIComponent(locations[0]);
-      if (isIOS) {
-        window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
-      } else {
-        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
-      }
-    } else {
-      // Multiple locations — always use Google Maps for waypoint routes.
-      // Apple Maps doesn't support multi-waypoint directions; the canonical
-      // rule lives in openInMaps() in navigate.ts (Apple→Google escape-hatch).
-      const origin = encodeURIComponent(locations[0]);
-      const dest = encodeURIComponent(locations[locations.length - 1]);
-      const waypoints = locations.slice(1, -1).map(loc => encodeURIComponent(loc)).join("|");
-      const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
-      window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
-    }
-    
-    toast({ 
-      title: "Opening Maps", 
+    // L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): ONE maps handoff
+    // (`lib/navigate.ts`). This used to hand-roll Apple and Google search/directions URLs
+    // inline — a second builder that bypassed the platform preference, the Waze arm, and the
+    // Apple multi-waypoint escape hatch the canonical path owns (name-only stops fall back to
+    // a name search there, never a null-island coordinate).
+    openInMapsCanonical({ waypoints: locations.map((name) => ({ name })) });
+
+    toast({
+      title: "Opening Maps",
       description: `Showing ${locations.length} location${locations.length > 1 ? 's' : ''}`
     });
   };
@@ -508,7 +495,7 @@ function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destin
     <Button
       variant="ghost"
       size="sm"
-      onClick={(e) => { e.stopPropagation(); openInMaps(); }}
+      onClick={(e) => { e.stopPropagation(); openAllInMaps(); }}
       className="flex-1 gap-2 text-muted-foreground hover:text-foreground"
       data-testid="button-open-in-maps"
     >
