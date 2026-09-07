@@ -26,10 +26,11 @@
  * own derivation from the actor's trip role (never client-supplied, §12/D2).
  *
  * Delivered note: the expert PATCHes that same item with `expertNote` (the traveler-facing
- * per-item note, §21) -> the owning traveler's PlanCard (client/src/pages/trip-details.tsx ->
- * ActivitiesSection) renders it behind `expert-note-callout-<itemId>` /
- * `button-toggle-expert-note-<itemId>` / `text-expert-note-<itemId>` — the real testids, found by
- * inspecting ActivitiesSection.tsx (no fabricated selector).
+ * per-item note, §21) -> the owning traveler's TRIP SLIP (/plans/:id, SlipView.tsx) renders it
+ * in `slip-expert-note` behind a "Note from {expertName}" label — the two-surface model:
+ * delivered expert work lives on the slip; the Trip Card (/trip/:id) is the snapshot surface
+ * with the "Not final yet" guard. (Step 9 asserted the Card's
+ * `expert-note-callout-<itemId>` until the 2026-09-06 sweep F3 retargeted it here.)
  */
 import { test, expect, request as pwRequest } from "@playwright/test";
 import {
