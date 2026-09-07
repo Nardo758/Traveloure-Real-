@@ -49,6 +49,7 @@ import {
   CalendarPlus,
   CheckCircle2,
   ChevronRight,
+  Crown,
   ExternalLink,
   FileDown,
   Loader2,
@@ -109,6 +110,15 @@ import { usePlanning } from "@/contexts/PlanningContext";
 // builder of it, and with no `id` on this row its documented id fallback cannot fire — a
 // handle-less advisor resolves to `null`, which is exactly §13's answer here (no link at all).
 import { earnerProfilePath } from "@/lib/earner-address";
+// Ledger `2026-09-07-my-events-fold` — the ONE spelling of an engagement's title / status / fee
+// words, shared with `/my-events` (§18 rule 1). No amount and no charge decision rides with it.
+import {
+  engagementFee,
+  engagementStatusLabel,
+  engagementTitle,
+  engagementsForPlan,
+  type CoordinationEngagementRow,
+} from "@/lib/coordination-engagement";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { tripCardForcedPrimaryByDateAlone } from "@shared/trip-primary-surface";
@@ -731,6 +741,75 @@ function ExpertCard({
   );
 }
 
+// ── Coordination ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * THE COORDINATION CARD — the done-for-you engagement THIS plan is under.
+ *
+ * Ledger `2026-09-07-my-events-fold` (CLAUDE.md Locked Decision 45 (5); brief §10 row L8). "My
+ * events" was a peer console destination listing `coordination_states` rows; ruling 5 folds it
+ * into My plans, and a plan is where its own engagement belongs.
+ *
+ * THE FEE-PAY RAIL IS UNTOUCHED, AND DELIBERATELY DOES NOT MOUNT HERE. Quoting and charging the
+ * coordination fee is a money path (§14/§15) with one home — `/my-events`, whose Elements sheet,
+ * one-click saved-card branch and `/pay/confirm` this lane did not open. A second mount of a
+ * charge is a second place its claim and its idempotency have to be remembered, so the card
+ * NAMES the fee's state and LINKS to that rail rather than re-hosting it.
+ *
+ * §13, both directions:
+ *   · No engagement on this plan ⇒ NO CARD. "Nobody is coordinating this plan" is not a status
+ *     worth a card, and the empty state for that is the concierge page, not a rail slot.
+ *   · `coordination_states.trip_id` is NULLABLE, so an engagement with no plan appears on NO
+ *     slip. It is not attached to the nearest-looking plan; it keeps rendering where it renders
+ *     today, on `/my-events`, which is why that route stays live.
+ *
+ * OWNER ONLY. `GET /api/coordination-states` is scoped to the SESSION user server-side (§14), so
+ * an advisor viewing this slip would read their OWN engagements and see none of the traveler's —
+ * a card that silently answers a different question. The read is simply not enabled for them.
+ */
+function CoordinationCard({ tripId, isOwner }: { tripId: string; isOwner: boolean }) {
+  const { data } = useQuery<CoordinationEngagementRow[]>({
+    queryKey: ["/api/coordination-states"],
+    enabled: isOwner && !!tripId,
+  });
+  const engagements = engagementsForPlan(data, tripId);
+  if (engagements.length === 0) return null;
+  return (
+    <Card data-testid="slip-rail-coordination">
+      <CardContent className="p-3 space-y-2">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Coordination
+        </p>
+        {engagements.map((engagement) => {
+          const status = engagementStatusLabel(engagement.status);
+          const fee = engagementFee(engagement.feePaymentStatus);
+          return (
+            <div key={engagement.id} className="space-y-1.5" data-testid={`slip-rail-coordination-${engagement.id}`}>
+              <div className="flex items-start gap-2 min-w-0">
+                <Crown className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-primary" />
+                <p className="min-w-0 text-sm font-semibold text-foreground">
+                  {engagementTitle(engagement)}
+                </p>
+              </div>
+              <p className="font-mono text-[10px] leading-snug text-muted-foreground">
+                {/* §13 — a row with no recorded stage prints the fee state alone, never "Intake". */}
+                {status ? `${status} · ${fee.label}` : fee.label}
+              </p>
+              <RailRow
+                label={fee.tone === "due" || fee.tone === "pending" ? "Coordination fee" : "Engagement details"}
+                meta="my events"
+                icon={<ChevronRight className="w-3.5 h-3.5" />}
+                href="/my-events"
+                testId={`slip-rail-coordination-open-${engagement.id}`}
+              />
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Plan ──────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1177,6 +1256,10 @@ export function SlipRail({
      */
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="slip-rail">
       <ExpertCard advisor={advisor} expertState={expertState} />
+      {/* Ledger `2026-09-07-my-events-fold` — renders ONLY when this plan has an engagement, so
+          the ruling's order (Expert · Build · Plan · Share · Finish) is unchanged for every plan
+          that has none. It sits beside Expert because both answer "who is working on this". */}
+      <CoordinationCard tripId={tripId} isOwner={isOwner} />
       <BuildCard
         trip={trip}
         tripId={tripId}

@@ -2,6 +2,15 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useChats } from "@/hooks/use-chat";
+// Ledger `2026-09-07-inbox-context` — the context join lives in a React-free module so it keeps
+// its proof without a DOM. This hook joins; it never labels (§18 rule 1).
+import {
+  contextsByCounterpartId,
+  type ConversationSummaryRow,
+  type ConversationThreadContext,
+} from "@/lib/inbox-context";
+
+export type { ConversationThreadContext };
 
 export interface ConversationThread {
   /**
@@ -38,13 +47,21 @@ export interface ConversationThread {
    *  aggregate count has a real server source too, GET /api/messages/unread/count, but a
    *  cheap per-conversation breakdown of it doesn't need its own route). */
   unreadCount: number;
+  /**
+   * WHAT THIS CONVERSATION IS ABOUT — the thread's `conversation_contexts` rows, joined from
+   * `GET /api/messages` (ledger `2026-09-07-inbox-context`; CLAUDE.md Locked Decision 40, and
+   * D22's fourth `advisor` kind). The server RESOLVES and LABELS them; a client that restated a
+   * label would be the derivation-drift class §18 rule 1 names, so `label` is rendered verbatim.
+   *
+   * §13, AND IT IS THE POINT: an EMPTY array is the honest answer for an OLDER thread — one that
+   * predates migration 287, which was deliberately not backfilled. It renders NO chip. It is never
+   * shown as `storefront`, which is a claim nobody made. The array is also empty when the joined
+   * `/api/messages` page did not cover this thread (that read is capped at 50) — the same silence,
+   * for a different reason, and neither is worth a guess.
+   */
+  contexts: ConversationThreadContext[];
 }
 
-/** One row of `GET /api/messages` — only the two fields this hook reads are declared. */
-interface ConversationSummaryRow {
-  publicId?: string | null;
-  otherUserId?: string | null;
-}
 
 /**
  * Groups the session user's `/api/chats` rows into one thread per conversation partner,
@@ -92,6 +109,13 @@ export function useConversationThreads(): { threads: ConversationThread[]; isLoa
     return map;
   }, [summaries]);
 
+  // The SAME join, one field over (ledger `2026-09-07-inbox-context`). It is deliberately the same
+  // read rather than a second one: `/api/messages` is where the server already resolves and labels
+  // a thread's contexts, and re-deriving them anywhere else would be two implementations of one
+  // answer (§18 rule 1). A thread the join does not cover gets `[]` — which is exactly what an
+  // older thread with no rows gets, and both render nothing (§13).
+  const contextsByCounterpart = useMemo(() => contextsByCounterpartId(summaries), [summaries]);
+
   const threads = useMemo<ConversationThread[]>(() => {
     const byCounterpart = new Map<string, { row: any; latest: number; unreadCount: number }>();
     for (const c of (chats as any[] | null | undefined) ?? []) {
@@ -120,8 +144,9 @@ export function useConversationThreads(): { threads: ConversationThread[]; isLoa
         lastMessage: row.message ?? null,
         lastMessageAt: row.createdAt ?? null,
         unreadCount,
+        contexts: contextsByCounterpart.get(counterpartId) ?? [],
       }));
-  }, [chats, user?.id, publicIdByCounterpart]);
+  }, [chats, user?.id, publicIdByCounterpart, contextsByCounterpart]);
 
   return { threads, isLoading };
 }

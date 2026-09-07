@@ -26,7 +26,6 @@ import {
   Compass,
   ShoppingCart,
   Package,
-  Crown,
   Inbox,
 } from "lucide-react";
 
@@ -36,9 +35,17 @@ import {
 // "Notifications" are retired — Messages folds into the Inbox module's Messages tab (/chat
 // itself stays routed as the thread page, just no longer has its own sidebar entry) and
 // Notifications' unique functions rehome into Inbox's Updates tab + the bell popover (E4).
-// "Experts" is repointed from /chat (an unexamined first-commit artifact) to /experts. Final
-// traveler sidebar (10 entries): Home, My plans, Start with AI, Discover, Experts, Bookings,
-// My events, Trip Cart, Inbox, Profile.
+// "Experts" is repointed from /chat (an unexamined first-commit artifact) to /experts.
+//
+// "My events" is RETIRED (ledger `2026-09-07-my-events-fold`; CLAUDE.md Locked Decision 45 (5)).
+// A done-for-you coordination engagement is a card on ITS PLAN'S slip, so it is reached through My
+// plans rather than as a peer destination. The `/my-events` ROUTE stays live and keeps the fee-pay
+// rail: `coordination_states.trip_id` is nullable, so an engagement with no plan has no slip to
+// render on, and a redirect would delete it (and its unpaid fee) from the product instead of
+// folding it (§13). `/concierge`'s Done-for-you card still lands there.
+//
+// Traveler sidebar (9 entries): Home, My plans, Start with AI, Discover, Experts, Bookings,
+// Trip Cart, Inbox, Profile.
 const menuGroups = [
   {
     label: "Plan",
@@ -55,7 +62,6 @@ const menuGroups = [
       { title: "Discover", href: "/discover", icon: Users },
       { title: "Experts", href: "/experts", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
-      { title: "My events", href: "/my-events", icon: Crown },
       { title: "Trip Cart", href: "/cart", icon: ShoppingCart },
     ],
   },

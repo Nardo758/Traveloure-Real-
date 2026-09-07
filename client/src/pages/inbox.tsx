@@ -160,6 +160,27 @@ function MessagesTab() {
                     <p className={`text-foreground truncate ${thread.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
                       {thread.displayName || "Expert"}
                     </p>
+                    {/* WHAT THE CONVERSATION IS ABOUT (ledger `2026-09-07-inbox-context`; LD 40,
+                        and D22's `advisor` kind). The label is the SERVER's own — resolved and
+                        worded by `contextLabel`, rendered verbatim, never restated here (§18
+                        rule 1). §13, and it is the point of the row: a thread with no recorded
+                        context is an OLDER thread and draws NO chip — never "storefront", which
+                        is a claim nobody made. Every context the server returned is drawn, so a
+                        thread about two things is not silently reported as being about one. */}
+                    {thread.contexts.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                        {thread.contexts.map((ctx) => (
+                          <Badge
+                            key={`${ctx.kind}-${ctx.id}`}
+                            variant="secondary"
+                            className="px-1.5 py-0 text-[10px] font-normal max-w-full truncate"
+                            data-testid={`inbox-thread-context-${ctx.kind}`}
+                          >
+                            {ctx.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     {thread.lastMessage && (
                       <p className="text-sm text-muted-foreground truncate">{thread.lastMessage}</p>
                     )}
