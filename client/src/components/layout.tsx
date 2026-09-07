@@ -575,7 +575,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const wasOpenRef = useRef(false);
   const shouldReduceMotion = useReducedMotion();
-  useTripContextSync();
+  // THE PEN FOLLOWS THE ACCOUNT, NOT THE TAB (lane L18, ledger `2026-09-07-client-pen-scope`).
+  // The three-state principal is passed exactly as the header's own `isAuthLoading` reasoning
+  // above: `undefined` while auth is unresolved (bind nothing — an unresolved answer is not a
+  // negative one), `null` for a guest, the id for a signed-in traveler. This is the ONE binder.
+  useTripContextSync(isAuthLoading ? undefined : ((user as { id?: string } | null | undefined)?.id ?? null));
 
   // Escape key + click-outside close
   useEffect(() => {

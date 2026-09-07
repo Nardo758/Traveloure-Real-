@@ -168,6 +168,26 @@ export function slipShareUrl(origin: string, shareToken: string): string {
   return `${origin}/trips/shared/${encodeURIComponent(shareToken)}`;
 }
 
+/**
+ * "BROWSE SERVICES FOR THIS TRIP" — the door, and it passes what it holds (LD 42 **D13**).
+ * Lane L18, ledger `2026-09-07-client-pen-scope`.
+ *
+ * THE DEFECT. The row passed `tripId` alone, so `/services` filled its `location` filter from the
+ * fallback chain in `discover.tsx` — which ended at the CLIENT PEN's destination. The pen followed
+ * the browser tab rather than the account (the other half of this lane), so a traveler browsing
+ * "for this trip" could be filtered to a city belonging to a different plan, or to a guest session
+ * that was never theirs. The plan is sitting right here; the door had no business asking a store.
+ *
+ * §13 — THE DOOR PASSES ONLY WHAT IS TRUE. A plan with no usable destination string passes NO
+ * `location` at all rather than an empty or placeholder one: an absent param is how `/services` is
+ * told "not known", and it then leaves its filter empty rather than inventing a city.
+ */
+export function slipBrowseServicesHref(tripId: string, destination?: string | null): string {
+  const base = `/services?tripId=${encodeURIComponent(tripId)}`;
+  const city = typeof destination === "string" ? destination.trim() : "";
+  return city ? `${base}&location=${encodeURIComponent(city)}` : base;
+}
+
 /** The trip-keyed `.ics` route (S11). Session-authenticated, gated like the plancard read. */
 export function slipCalendarPath(tripId: string): string {
   return `/api/trips/${encodeURIComponent(tripId)}/calendar`;

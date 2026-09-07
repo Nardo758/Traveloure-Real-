@@ -807,7 +807,22 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
 
   // Search and filter state
   const initialQuery = urlParams.get("q") || "";
-  const initialLocation = urlParams.get("location") || expertHandoffDestination || tripDestination;
+  // THE LOCATION FILTER READS THE PLAN, NEVER THE PEN, ON A TRIP-SCOPED BROWSE
+  // (lane L18, ledger `2026-09-07-client-pen-scope`; LD 42 **D13**).
+  //
+  // A `?tripId=` says this browse is FOR THAT PLAN, and the door that opened it passes the plan's
+  // own destination as `?location=` (`slipBrowseServicesHref`). The client pen may describe a
+  // DIFFERENT plan — before this lane it could even describe a guest session in the same tab — so
+  // falling back to it here would filter a trip-scoped browse to somebody else's city while the
+  // screen says "for this trip".
+  //
+  // §13: with a `tripId` and no `location`, the filter is left EMPTY rather than guessed. An
+  // unfiltered browse is honest; a wrong city that looks authoritative is not. The pen fallback
+  // survives untouched for an ordinary, plan-less visit to `/services`, which is what it is for.
+  const initialLocation =
+    urlParams.get("location") ||
+    expertHandoffDestination ||
+    (expertHandoffTripId ? "" : tripDestination);
   const readNumberParam = (name: string) => {
     const value = Number(urlParams.get(name));
     return Number.isFinite(value) && value > 0 ? value : 0;
