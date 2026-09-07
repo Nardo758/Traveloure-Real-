@@ -143,11 +143,18 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
 
 // ── 2 · the Build card's rails ────────────────────────────────────────────────────────────────
 
-test("A3: Browse services opens the marketplace carrying this plan's id", async ({ page }) => {
+test("A3: Browse services carries this plan's id AND this plan's own destination", async ({ page }) => {
   const tripId = await registerAndCreateTrip(page, "browse");
   await openSlip(page, tripId);
   await page.getByTestId("slip-browse-services").click();
   await expect(page).toHaveURL(new RegExp(`/services\\?tripId=${tripId}`), { timeout: 15_000 });
+  // Lane L18, ledger `2026-09-07-client-pen-scope` (brief §11.2 F7). The door passes the PLAN's
+  // destination (LD 42 D13). Before this, `/services` filled its location filter from the client
+  // pen — which followed the browser tab rather than the account — so a browse launched "for this
+  // trip" could be filtered to a different plan's city while the screen said otherwise.
+  await expect(page).toHaveURL(/[?&]location=Kyoto%2C(%20|\+)Japan/);
+  // And the receiving page shows it: the filter is the plan's, read off the URL, not the pen.
+  await expect(page.getByTestId("input-location")).toHaveValue("Kyoto, Japan", { timeout: 15_000 });
 });
 
 test("A4: Hand off to a local expert opens the ONE picker", async ({ page }) => {
