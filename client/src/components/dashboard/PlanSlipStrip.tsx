@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ChevronRight } from "lucide-react";
 import type { SlipData } from "@/components/plancard/SlipView";
 import type { RoutingStatus } from "@/components/plancard/plancard-types";
+import { routingCountsFromPlancard } from "@/lib/plan-row-model";
 
 /**
  * PlanSlipStrip — R-A: the compact one-line strip that caps the dashboard's embedded Plan
@@ -35,18 +36,9 @@ export function PlanSlipStrip({ tripId }: { tripId: string }) {
 
   if (!data) return null;
 
-  const days = data.days ?? [];
-  const activities = days.flatMap((d) => d.activities ?? []);
-  const counts: Record<RoutingStatus, number> = {
-    in_planning: 0,
-    with_expert: 0,
-    ready_for_checkout: 0,
-    purchased: 0,
-  };
-  for (const a of activities) {
-    if (a.booking || a.routingStatus === "purchased") counts.purchased++;
-    else if (a.routingStatus) counts[a.routingStatus]++;
-  }
+  // L3 (ledger `2026-09-07-my-plans-rows`): the count derivation is the ONE shared pure function
+  // (`routingCountsFromPlancard`) — the strip and the My plans row can never drift apart.
+  const counts = routingCountsFromPlancard(data);
   const segments = ROUTING_ORDER.map((status) => ({ status, n: counts[status] })).filter((s) => s.n > 0);
   const trackingNumber = data.trip?.trackingNumber || null;
 
