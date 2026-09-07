@@ -232,9 +232,9 @@ their own security lanes per §14/§15.
 | # | Question | Blocks |
 |---|----------|--------|
 | ~~A1~~ | ✅ **ANSWERED (2026-09-07): the amendment stands.** Decision-maker merged **#849** — a door MAY carry one optional `onFinish` hook (grounded in LD 42 D15's existing "a door's context shapes the finish" ruling; the modal's steps, gates, and the default branch rail are untouched). L6 concierge door is on main. | — |
-| A2 | **Where the Trip Card's logistics content lives** — participant RSVP, payments, dietary, budget with category breakdown, alerts, roster, contracts. Currently in an owner-only collapsed drawer, which deviates from the ratified board. | Trip Card lanes |
-| A3 | **The cart's fee line** — it charges the traveler the 25% provider commission as "Platform fee", not the ruled 7% capped at $25. A money decision; **no checkout ships before it.** | Cart lane |
-| A4 | **Four unratified rulings** — one resolver as sole author of the buy button; untimed items as their own group; plan work sold as a listing at checkout; a consult never requiring a plan. | Buy-side resolver, plan-work rail |
+| ~~A2~~ | ✅ **ANSWERED (2026-09-07): keep the drawer.** The owner-only collapsed drawer on `/trip/:id` stays, and the ratified board is AMENDED to draw it — participant RSVP, payments, dietary, budget with its category breakdown, alerts, roster and contracts are real reads with no other home, and deleting the tab must not delete the data. Recorded as an amendment, not a silent deviation. | — |
+| A3 | ⏳ **DEFAULT ACCEPTED, NUMBERS TO BE RE-CONFIRMED AT THE CHARGE (2026-09-07).** The ruling taken: the cart shows the TRAVELER service fee (7% capped at $25) resolved from `fee_bands`, and the PROVIDER commission is never added on top of the traveler's price. Because this moves money, the cart lane must put the resolved figures in front of the decision-maker BEFORE the line changes — §14 (server-derived amount) and §8 (no rate literal) bind the implementation either way. **No checkout ships before that confirmation.** | Cart lane |
+| ~~A4~~ | ✅ **PART-ANSWERED (2026-09-07).** Rulings **9** (one resolver is the sole author of the buy button and the landing rule) and **10** (untimed items render as their own group on the implicit event, never hidden and never given a time) are **RATIFIED as written** — both describe what the code already does. Rulings **11** (plan work sold as a listing at checkout) and **12** (a consult never requires a plan) are **DEFERRED** until the resolver lane needs them, so nothing is ratified in the abstract. | Buy-side resolver unblocked; plan-work rail still waits on 11 |
 
 ## B. Defects found and deliberately not fixed
 
@@ -249,10 +249,10 @@ their own security lanes per §14/§15.
 
 | # | Drift |
 |---|-------|
-| C1 | D8 and the brief say the pre-final Trip Card redirects; it renders a notice with one action, and two specs assert the notice. |
-| C2 | The Trip Card header cannot show D21's invited count without reading the guest roster. |
-| C3 | The brief says the concierge door passes party size; there is no such field and there should not be one. |
-| C4 | The brief says the quote route goes; the page goes, the route has three consumers. |
+| ~~C1~~ | ✅ **CORRECTED 2026-09-07** — CLAUDE.md D8 now says in-line that the implementation renders a notice naming the slip, and that "REDIRECT" is to be read as "does not open as a planning surface". No behaviour change; the two armed specs stay green. |
+| ~~C2~~ | ✅ **RECORDED 2026-09-07** in the brief's §7 — the Trip Card renders the party label alone, which D21's own §13 clause permits; the invited half needs the derived roster the Trip Card does not read, and adding a second roster fetch for a header line was refused. |
+| ~~C3~~ | ✅ **CORRECTED 2026-09-07** in the brief's §2 — the door passes destination and the catalog-resolved occasion; a stated party TOTAL rides in trip context as `travelers`, and `PlanningSource` grows no party field. |
+| ~~C4~~ | ✅ **CORRECTED 2026-09-07** in the brief's §10 L6 row — the quote PAGE is retired; `POST /api/concierge/quote` stays and is where the lead plus its guest claim token is still captured. |
 
 ## D. Test coverage gaps
 
@@ -268,6 +268,29 @@ their own security lanes per §14/§15.
 - **Blocked:** the cart lane (its own audit + A3) · conversation trip link (needs a migration) ·
   Ask AI drawer (needs its own design brief) · booking-agent tab (waits on the agent status
   vocabulary) · buy-side resolver and plan-work rail (wait on A4).
+
+## G. The cheapest completion path (agreed 2026-09-07)
+
+Measured from this session: a clean lane run costs 350k–500k tokens, an interrupted or
+reconciled one about double, and the fixed cost of a run orienting itself dominates a small lane.
+So the remaining work is **batched**, run **serially** (the one parallel pair collided on a shared
+module and cost more than the lane), and held to hard limits: no repo sweeps, 150-word ledger rows,
+250-word PR bodies, no local browser proving unless extending an already-armed spec, and a
+validation set fixed in advance.
+
+| step | work | state |
+|---|---|---|
+| 1 | A2 / A3 / A4 answered above | done |
+| 2 | Docs, wording corrections C1–C4, register, housekeeping — no agent | this PR |
+| 3 | Batch 1: my-events fold · inbox context · the missing Home browser gate | dispatched |
+| 4 | Batch 2: Discover in the shell · doors pass the trip id · extraction date anchor | queued |
+| 5 | Batch 3: bookings by plan · orphaned-component deletion · all-advisors reader · concierge ownership check | queued |
+| 6 | Cart lane, after A3's numbers are confirmed | blocked |
+| 7 | Buy-side resolver (ruling 9/10 now ratified); plan-work rail still waits on ruling 11 | partly unblocked |
+
+**Deliberately not started:** the two staging-only journey specs (unverifiable from here, left
+recorded), the undated-booking gap (needs a column nobody has ratified), the Ask AI drawer (needs
+its own design brief) and the booking-agent tab (waits on a status vocabulary that does not exist).
 
 ## F. Housekeeping
 
