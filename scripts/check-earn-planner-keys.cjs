@@ -11,7 +11,10 @@
  * `expert_offering_types.service_tier` carries a DB CHECK over five values, so the six planner
  * rows had to land in the EXISTING `coordination` tier — which means no tier can separate a
  * wedding planner from a Reservation Lifeline, and the split is instead an explicit list,
- * `EVENT_PLANNER_OFFERING_KEYS` in `client/src/lib/earn-roles.ts`.
+ * `EVENT_PLANNER_OFFERING_KEYS` in `shared/expert-offerings.ts` (it lived in
+ * `client/src/lib/earn-roles.ts` until lane L24, ledger `2026-09-07-impact-class`, moved it into
+ * `shared/` so the impact-class lookup could read the SAME list rather than copy it; earn-roles
+ * re-exports it verbatim).
  *
  * A list like that can drift in BOTH directions, and each direction is its own bug:
  *
@@ -65,11 +68,11 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const ROLES = path.join(ROOT, "client/src/lib/earn-roles.ts");
+const ROLES = path.join(ROOT, "shared/expert-offerings.ts");
 const MIGRATIONS_DIR = path.join(ROOT, "server/migrations");
 const OWN_MIGRATION = "283_expert_planner_offering_types.sql";
 
-/** The EVENT_PLANNER_OFFERING_KEYS array literal in earn-roles.ts. */
+/** The EVENT_PLANNER_OFFERING_KEYS array literal in shared/expert-offerings.ts. */
 function listedKeys(ts) {
   const m = ts.match(/export const EVENT_PLANNER_OFFERING_KEYS = \[([\s\S]*?)\] as const;/);
   if (!m) return null;
@@ -110,7 +113,7 @@ function check(rolesTs, files) {
 
   const listed = listedKeys(rolesTs);
   if (listed === null) {
-    errors.push("Could not find `export const EVENT_PLANNER_OFFERING_KEYS = [...] as const;` in client/src/lib/earn-roles.ts.");
+    errors.push("Could not find `export const EVENT_PLANNER_OFFERING_KEYS = [...] as const;` in shared/expert-offerings.ts.");
     return errors;
   }
   if (listed.size === 0) {

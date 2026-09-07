@@ -41,14 +41,24 @@
  * without a deploy and no percentage is hardcoded.
  */
 
-export const EXPERT_TIERS = [
-  "advisory",
-  "planning",
-  "coordination",
-  "live_support",
-  "specialized",
-] as const;
-export type ExpertTier = (typeof EXPERT_TIERS)[number];
+/**
+ * THE TIER LIST AND THE PLANNER KEY LIST NOW LIVE IN `shared/expert-offerings.ts`
+ * (lane L24, ledger `2026-09-07-impact-class`) and are RE-EXPORTED here verbatim.
+ *
+ * They moved because the impact-class lookup needs them too and `shared/` cannot import from
+ * `client/` — a second copy of either list is the derivation-drift class §18 rule 1 names, and
+ * `EVENT_PLANNER_OFFERING_KEYS` is a partition rule that is wrong the moment two copies differ.
+ * `scripts/check-earn-planner-keys.cjs` reads the shared file; every importer of this module is
+ * unchanged.
+ */
+export {
+  EXPERT_TIERS,
+  EVENT_PLANNER_OFFERING_KEYS,
+  isEventPlannerOfferingKey,
+} from "@shared/expert-offerings";
+export type { ExpertTier, EventPlannerOfferingKey } from "@shared/expert-offerings";
+
+import { EXPERT_TIERS, isEventPlannerOfferingKey, type ExpertTier } from "@shared/expert-offerings";
 
 export type RoleKey = "service_provider" | "event_planner" | "trip_planner" | "local_expert";
 export type Track = "in-person" | "remote";
@@ -74,33 +84,6 @@ export const EVENT_CATEGORY_KEYS = [
   // via the complement rule, which is where it would land if this list stayed silent.
   "venue",
 ] as const;
-
-/**
- * Expert offering KEYS that belong to the Event Planner card, checked BEFORE
- * the tier mapping below (ledger `2026-09-04-earn-planner-roles`). These are
- * the six `expert_offering_types` rows migration 283 seeds into the EXISTING
- * `coordination` tier — a planner who RUNS the event, as distinct from the
- * event VENDORS the same card lists out of the provider catalog.
- *
- * This list is the partition rule, and `scripts/check-earn-planner-keys.cjs`
- * fails CI if it and migration 283 ever disagree in either direction.
- *
- * Keys are UNSUFFIXED on purpose: `expert_offering_types` and
- * `service_offering_types` are separate tables with separate
- * UNIQUE(offering_type_key) constraints, so `proposal_planner`,
- * `party_planner` and `date_night_designer` exist in both — and because
- * /start/events forwards `?offeringTypeKey=` to BOTH doors, a shared key
- * resolves in whichever catalog the chosen door reads.
- */
-export const EVENT_PLANNER_OFFERING_KEYS = [
-  "wedding_planner",
-  "wedding_day_of_coordinator",
-  "proposal_planner",
-  "party_planner",
-  "corporate_event_coordinator",
-  "date_night_designer",
-] as const;
-export type EventPlannerOfferingKey = (typeof EVENT_PLANNER_OFFERING_KEYS)[number];
 
 /**
  * Expert tiers that belong to the Trip Planner card (planning the trip,
@@ -191,11 +174,6 @@ export function roleForProviderCategory(categoryKey: string): RoleKey {
   return (EVENT_CATEGORY_KEYS as readonly string[]).includes(categoryKey)
     ? "event_planner"
     : "service_provider";
-}
-
-/** True iff this expert-catalog key is one of the six planner roles (migration 283). */
-export function isEventPlannerOfferingKey(offeringTypeKey: string): boolean {
-  return (EVENT_PLANNER_OFFERING_KEYS as readonly string[]).includes(offeringTypeKey);
 }
 
 /**
