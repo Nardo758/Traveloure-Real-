@@ -274,6 +274,11 @@ async function populateMultiDayPasses(
 // ============================================================================
 
 const TRANSPORT_COMMISSION_DEFAULT = 0.10; // fee-literal-ok: documented last-resort fallback BEHIND the booking_fee_configs lookup in resolveTransportCommissionRate() below — the §8 safe-failure posture (same as coordination_floor and getFee's DEFAULT_FEE_CENTS). Surfaced by the ruling-42 fee-gate predicate fix; 10% is within spec range 4-12%
+// fee-literal-ok (security-audit finding 12, 2026-09-01): the four partner margins below are
+// spec defaults consulted ONLY after the booking_fee_configs lookup in
+// resolveAffiliateMarginRate() (`affiliate_margin_<partner>` rows, admin-editable) — the same
+// DB-first-with-fallback posture as TRANSPORT_COMMISSION_DEFAULT above. Annotated so a rate
+// held in a map literal is never invisible to the fee gate's negative space (§18d).
 const AFFILIATE_MARGIN_DEFAULTS: Record<string, number> = {
   "12go": 0.12,
   omio: 0.08,
@@ -314,7 +319,7 @@ async function resolveAffiliateMarginRate(partner: string): Promise<number> {
   } catch {
     // booking_fee_configs not yet on this DB; use approved default
   }
-  return AFFILIATE_MARGIN_DEFAULTS[partner] ?? 0.08;
+  return AFFILIATE_MARGIN_DEFAULTS[partner] ?? 0.08; // fee-literal-ok: unknown-partner last resort, consulted ONLY after the booking_fee_configs lookup above — spec default margin, same posture as TRANSPORT_COMMISSION_DEFAULT
 }
 
 // ============================================================================
