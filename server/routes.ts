@@ -168,6 +168,7 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
 import { resolveItemEventLink } from "./services/item-event-link.service";
+import { enforceTripComparisonRetention } from "./services/comparison-retention.service";
 // LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
 // shared by the comparison create and regenerate handlers below.
 import {
@@ -8644,6 +8645,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
         })
         .returning();
+
+      // Owner ruling 2026-09-06 (the sweep's F2 open question, ruled): a trip keeps its
+      // NEWEST 3 optimizer runs — creating the 4th AUTHORIZED run discards the oldest
+      // unapplied ones (the whole run tree cascades; APPLIED runs are protected provenance
+      // and don't consume the window). Fires only on an authorized run so free
+      // pending_payment rows can't evict paid runs; a stale pending_payment row sitting
+      // oldest is exactly the junk the ruling wants gone. Non-fatal (§15b posture): the new
+      // run is already inserted and valid — a sweep failure must never turn it into a 500.
+      if (tripId && canRunOptimizer) {
+        try {
+          const discarded = await enforceTripComparisonRetention(tripId);
+          if (discarded.length > 0) {
+            console.log(`[comparison-retention] trip ${tripId}: discarded ${discarded.length} oldest run(s) beyond the 3-run window`);
+          }
+        } catch (retentionErr) {
+          console.error("[comparison-retention] sweep failed (non-fatal):", (retentionErr as any)?.message);
+        }
+      }
 
       // LD 41: announce a pass-covered run the same way the charge gate announces a suppressed
       // charge. No-op for every other basis (the function itself decides — one place, §18 rule 1).
