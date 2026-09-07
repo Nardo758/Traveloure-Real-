@@ -17,17 +17,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex min-h-screen w-full" style={{ background: "#FAFAF8" }}>
+      {/* console-scope (LD 45 ruling 7): the traveler console reads the ONE site grammar —
+          shadcn primary resolves to coral #E85D55, not the traveler pink of the public
+          surfaces. The scope class carries the tokens; the raw console hex literals that
+          used to live here are gone (sidebar reads tokens). */}
+      <div className="console-scope flex min-h-screen w-full" style={{ background: "var(--console-ground)" }}>
         <DashboardSidebar />
         <div className="flex flex-col flex-1 min-w-0">
           <header
-            className="flex items-center justify-between h-[52px] px-5 sticky top-0 z-40 bg-white"
-            style={{ borderBottom: "1px solid #E8E8E2" }}
+            className="flex items-center justify-between h-[52px] px-5 sticky top-0 z-40"
+            style={{ background: "var(--console-card)", borderBottom: "1px solid var(--console-line)" }}
           >
             <div className="flex items-center gap-2">
               <SidebarTrigger
-                className="h-8 w-8 rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
-                style={{ border: "1px solid #E8E8E2" }}
+                className="h-8 w-8 rounded-lg text-[var(--console-mid)] hover:bg-[hsl(var(--muted))]"
+                style={{ border: "1px solid var(--console-line)" }}
                 data-testid="button-dashboard-sidebar-toggle"
               />
               <Link href="/" data-testid="link-logo" className="flex items-center hover:opacity-80 transition-opacity">

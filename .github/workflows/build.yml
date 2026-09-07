@@ -1369,3 +1369,29 @@ jobs:
         run: node scripts/check-ai-draft-eligibility.cjs --self-test
       - name: AI-draft eligibility guard
         run: node scripts/check-ai-draft-eligibility.cjs
+
+  console-grammar:
+    name: console-grammar (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-console-one-grammar)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" guard job: the suite is pure source pins, but the house
+      # rule (OPERATING_PROCEDURE §3) is that every new test lands in a job that runs npm ci —
+      # a future pin that imports a client module must not rediscover #812's ERR_MODULE_NOT_FOUND.
+      - run: npm ci
+      # 2026-09-07-console-one-grammar (L1 of the Console & AI Concierge brief). Two silent
+      # failure shapes: a page body outside `.console-scope` renders perfectly with every shadcn
+      # primary resolving to traveler pink beside the console's coral (two reds, one screen), and
+      # a route wrapped in the public Layout renders perfectly with the sidebar simply absent on
+      # that tab. Neither is visible to tsc, to a server test, or to any gate that does not read
+      # the shipped source. The pins read the FILE SET (dashboard-layout + dashboard-sidebar +
+      # browse-shell + App.tsx route blocks + discover-location + index.css) with comments
+      # stripped — the invariant, never a literal call-site count. Negative space (stated in the
+      # suite): these pins cannot see whether anything RENDERS — that is the lane's Playwright
+      # screenshot guard and the e2e gates' answer.
+      - name: Console grammar pin
+        run: npx tsx --test client/src/lib/__tests__/console-grammar.test.ts

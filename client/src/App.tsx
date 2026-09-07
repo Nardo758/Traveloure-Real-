@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { BrowseShell } from "@/components/browse-shell";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
@@ -399,7 +400,9 @@ function Router() {
         <VerifyEmailPage />
       </Route>
       <Route path="/experts">
-        <Layout><ExpertsPage /></Layout>
+        {/* L1 / LD 45 (7): inside the console shell for a signed-in traveler;
+            public Layout chrome for a guest (one chooser — BrowseShell). */}
+        <BrowseShell><ExpertsPage /></BrowseShell>
       </Route>
       <Route path="/experts/:id">
         <PageErrorBoundary fallbackHeading="Expert Not Found">
@@ -475,7 +478,9 @@ function Router() {
         </PageErrorBoundary>
       </Route>
       <Route path="/cart">
-        <Layout><CartPage /></Layout>
+        {/* L1 / LD 45 (7): checkout inside the console shell when signed in;
+            guests keep the public chrome — /cart stays the guest fallback (LD 45 (4)). */}
+        <BrowseShell><CartPage /></BrowseShell>
       </Route>
 
       <Route path="/itinerary-view/:token">
