@@ -107,6 +107,34 @@ export interface PlanningSource {
    * surface yet; when one is built it passes `authoring: true` here and needs nothing else.
    */
   authoring?: boolean;
+  /**
+   * THE DOOR'S OWN FINISH (ledger `2026-09-07-concierge-door`, CLAUDE.md Locked Decision 45 (2)).
+   *
+   * Called with the branch the traveler chose and the plan as the modal committed it, BEFORE the
+   * default rail below runs. Return **true** to say "this door handled that branch"; the default
+   * rail is then skipped and the modal simply closes. Return false/undefined — or omit the hook
+   * entirely, which every existing door does — and every branch behaves exactly as it always has.
+   *
+   * WHY A DOOR MAY OWN A FINISH AT ALL. Locked Decision 42 (D15) already ruled that a door's own
+   * context shapes what the finish DOES with the plan (a plan started from a listing "finishes
+   * with that listing offered for Add to plan"). The concierge door is the same shape one step
+   * further on: its Destination Concierge tier is a ROUTED LEAD — the platform matches the expert
+   * after the send — while the generic `local` rail is a BROWSE of `/experts`. Both are "get a
+   * local expert"; only the door knows which of the two the traveler asked for, and only the door
+   * holds the concierge request the lead belongs to.
+   *
+   * IT GRANTS NOTHING AND DERIVES NOTHING. It is a hand-back, not a permission: every gate
+   * downstream of it — the sign-in gate, `POST /api/trips`' own ownership, `POST
+   * /api/expert-requests`' `isAuthenticated` + `verifyTripOwnership` — is the server's and is
+   * untouched. It also runs AFTER `commitPlan`, so a door that handles a finish is reading the
+   * plan the traveler just described rather than the one they had before.
+   *
+   * NOT A SECOND BRANCH RUNNER. `runBranch` below stays THE default rail for every branch and
+   * every door; this is an override a door opts into for a branch it has its own rail for. A
+   * per-door `if` written INSIDE `runBranch` would be the drift class §18 rule 1 names — the
+   * shared runner would then have to remember every door's exceptions.
+   */
+  onFinish?: (branch: PlanningBranch, plan: CommittedPlan) => boolean;
 }
 
 interface PlanningApi {
@@ -235,6 +263,14 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
    */
   const runBranch = useCallback(
     (branch: PlanningBranch, plan: CommittedPlan) => {
+      // THE DOOR'S OWN FINISH first (see `PlanningSource.onFinish`). A door that handles the
+      // branch takes the screen from here; the modal closes and the default rail below is not
+      // run. Everything else — including every door that sets no hook — falls straight through,
+      // so the four branches keep the downstream behaviour Locked Decision 33 gave them.
+      if (source?.onFinish?.(branch, plan) === true) {
+        setModalOpen(false);
+        return;
+      }
       if (branch === "ai") {
         setCommitted(plan);
         setModalOpen(false);

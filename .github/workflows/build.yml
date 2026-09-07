@@ -1483,6 +1483,33 @@ jobs:
       - name: Expert-request review pin
         run: npx tsx --test client/src/lib/__tests__/expert-request-review.test.ts
 
+  concierge-door:
+    name: concierge-door (Console & AI Concierge brief L6 — 2026-09-07-concierge-door)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" guard job: the suite imports a client module, and the house
+      # rule (OPERATING_PROCEDURE §3) is that every new test lands in a job that runs npm ci.
+      - run: npm ci
+      # CLAUDE.md Locked Decision 45 (2): `/concierge` is a DOOR into the one plan modal, and the
+      # TIER CHOICE IS THAT MODAL'S FINISH. The correspondence between the two vocabularies is a
+      # rule that fails SILENTLY in both directions — a wrong forward answer deep-opens the modal
+      # onto a CTA the door never named, and a wrong reverse answer files a tier the traveler
+      # never picked into the concierge funnel. Neither throws and neither renders differently
+      # enough to notice, which is exactly why the map is one pure module with a pinned test
+      # rather than a condition written at a call site (§18 rule 1). C2 is the §13 half: `full`
+      # is a coordination ENGAGEMENT, not a way to build a plan, so it maps to NOTHING — mapping
+      # it onto a fifth branch would put a money-adjacent rail inside the shared finish runner.
+      # Negative space: this is a pure map. It cannot see that the door PASSES what it holds —
+      # that is check-planning-entry's required-field list (Locked Decision 42 D13) — and it
+      # cannot see that anything renders, which is the concierge e2e's answer.
+      - name: Concierge tier → planning finish map pin
+        run: npx tsx --test client/src/lib/__tests__/concierge-tiers.test.ts
+
   trip-card-one-page:
     name: trip-card-one-page (CLAUDE.md Locked Decision 45 (6) — 2026-09-07-trip-card-one-page)
     runs-on: ubuntu-latest

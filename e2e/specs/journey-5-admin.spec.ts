@@ -25,17 +25,21 @@ test.describe("Journey 5 — Admin Fee Propagation & Trust", () => {
     await page.goto(`${BASE}/api/logout`);
     await loginAsTestAccount(page, "traveler");
 
-    // ── Step 5: Navigate to concierge and request a wedding quote ─────
-    await page.goto(`${BASE}/concierge?eventType=wedding`);
-    await page.waitForSelector("[data-testid='intent-form']", { timeout: 10000 });
-    await page.fill("[data-testid='input-intent']", "Wedding in Santorini");
-    await page.fill("[data-testid='input-destination']", "Santorini");
-    await page.click("[data-testid='button-submit-intent']");
+    // ── Step 5: Ask the concierge router what a wedding now costs ──────
+    // Ledger `2026-09-07-concierge-door` (CLAUDE.md Locked Decision 45 (2)): `/concierge` is a
+    // DOOR into the one plan modal and no longer renders three priced tier cards, so the fee is
+    // asserted where it is actually RESOLVED — the router's own response — rather than off a
+    // surface that no longer draws it. This is the same fact the card used to show, read one
+    // layer closer to the band the admin just edited (§8: the price comes from `fee_bands`,
+    // never from a literal in the client).
+    const quote = await page.request.post(`${BASE}/api/concierge/quote`, {
+      data: { intent: "Wedding in Santorini", destination: "Santorini", eventType: "wedding" },
+    });
+    expect(quote.status(), `concierge/quote failed: ${await quote.text()}`).toBe(200);
+    const quoted = await quote.json();
 
-    // ── Step 6: Verify the AI tier shows the new fee ───────────────────
-    await page.waitForSelector("[data-testid='concierge-delivery-options']", { timeout: 15000 });
-    const aiCard = page.locator("[data-testid='card-concierge-ai']");
-    await expect(aiCard).toContainText("$49.99");
+    // ── Step 6: The new band is what the router prices the platform tier at ──
+    expect(quoted.route?.ai?.priceCents, "the edited wedding band must reach the quote").toBe(4999);
   });
 
   test("Admin triggers payout → expert receives funds via Stripe Connect", async ({ page }) => {

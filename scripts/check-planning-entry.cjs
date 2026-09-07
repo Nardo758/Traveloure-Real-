@@ -196,6 +196,25 @@ const REQUIRED_SOURCE_FIELDS = [
     forbid: ["experienceType"],
     why: "the AI door passes the draft's destination and occasion slug; eventType is a different vocabulary (§13)",
   },
+  // Ledger `2026-09-07-concierge-door` (L6, brief §2; CLAUDE.md Locked Decision 45 (2)). The
+  // concierge intent form is a DOOR: it asks for a destination and a type before anything else,
+  // so it passes both rather than letting the modal ask again. `experienceSlug` is the CATALOG's
+  // slug, resolved through `findOccasionByKey` against `GET /api/experience-types` — the form's
+  // own `eventType` list is the FEE vocabulary, and half of it (`vacation`, `anniversary`,
+  // `other`) resolves to no `experience_types` row at all, so an unresolvable answer passes
+  // NOTHING and the modal asks step 1 (Locked Decision 33 rule 2).
+  // `experienceType` is FORBIDDEN for the same reason it is on the AI door: PlanningSource's
+  // `experienceType` is one of five FROZEN coarse keys (ruling 2026-09-01-moment-key) and this
+  // form's values are a different vocabulary, so forwarding one would be a guess wearing a
+  // prefill's clothes (§13). The party size is deliberately NOT a PlanningSource field — it is a
+  // single stated total and rides in trip context as `travelers`, which is the one field that
+  // holds exactly that.
+  {
+    file: "client/src/pages/concierge/index.tsx",
+    require: ["destination", "experienceSlug"],
+    forbid: ["experienceType"],
+    why: "the concierge door holds the destination and the type the intent form just asked for",
+  },
 ];
 
 /** Does this source offer one of the two ruled entry shapes? */
@@ -416,6 +435,17 @@ function selfTest() {
   const doorPanelWrongVocab =
     'const { open: openPlanner } = usePlanning();\n' +
     'onClick={() => openPlanner({ destination, experienceType: eventType })}';
+  // Ledger `2026-09-07-concierge-door` (L6): the concierge intent form's door, and its two
+  // failure modes — passing nothing, and forwarding the form's fee-vocabulary eventType.
+  const CONCIERGE = "client/src/pages/concierge/index.tsx";
+  const doorConcierge =
+    'const { open: openPlanModal } = usePlanning();\n' +
+    'openPlanModal({ ...(s.destination ? { destination: s.destination } : {}), ...(occasion ? { experienceSlug: occasion.slug } : {}), onFinish: h });';
+  const doorConciergeBare =
+    'const { open: openPlanModal } = usePlanning();\nopenPlanModal({ onFinish: h });';
+  const doorConciergeWrongVocab =
+    'const { open: openPlanModal } = usePlanning();\n' +
+    'openPlanModal({ destination: s.destination, experienceSlug: occasion.slug, experienceType: s.eventType });';
 
   cases.push(
     ["D13 · a door passing its required key passes", () => req(TEMPLATE, doorAlias).length === 0],
@@ -445,6 +475,11 @@ function selfTest() {
     ["D13 · the AI door passing destination + experienceSlug conditionally passes", () => req(PANEL, doorPanel).length === 0],
     ["D13 · the AI door passing NOTHING fails", () => req(PANEL, doorPanelBare).some((e) => e.includes("does not pass `destination`"))],
     ["D13 · the AI door forwarding eventType as experienceType FAILS (frozen coarse keys only)", () => req(PANEL, doorPanelWrongVocab).some((e) => e.includes("ruled NOT to pass"))],
+    // Ledger `2026-09-07-concierge-door` (L6): the concierge intent form is a door, and the
+    // occasion it passes is the CATALOG's slug — never the form's own fee-vocabulary eventType.
+    ["D13 · the concierge door passing destination + a resolved slug passes", () => req(CONCIERGE, doorConcierge).length === 0],
+    ["D13 · the concierge door passing NOTHING fails", () => req(CONCIERGE, doorConciergeBare).some((e) => e.includes("does not pass `destination`"))],
+    ["D13 · the concierge door forwarding the form's eventType as experienceType FAILS", () => req(CONCIERGE, doorConciergeWrongVocab).some((e) => e.includes("ruled NOT to pass"))],
   );
 
   let failed = 0;

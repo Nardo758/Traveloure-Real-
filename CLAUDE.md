@@ -1418,7 +1418,13 @@ This document captures architectural decisions to maintain consistency across co
     `shared/models/chat.ts`; **(2)** the concierge page becomes a DOOR into the one modal on the
     `/quick-start` retirement pattern (LD 42 D14), its guest claim token surviving — the three-tier
     chooser exists three times today and one question answered in three places is the drift class
-    §18 rule 1 names; **(3)** the "Ask AI about this plan" drawer on the slip is the home of the
+    §18 rule 1 names — **LANDED** (lane L6, ledger `2026-09-07-concierge-door`): the intent form
+    opens the one modal with the destination and the CATALOG-resolved occasion slug it holds, the
+    tier→finish map is one pure module (`client/src/lib/concierge-tiers.ts` — `ai` → the free
+    draft, `expert` → the local-expert finish now carrying a real `tripId` per LD 32, `full` →
+    NOTHING, since a coordination engagement is not a way to build a plan and keeps the rail it
+    already has), the dead `/cart?…&concierge=` hand-off is deleted (§18c) and the guest claim
+    token is untouched; **(3)** the "Ask AI about this plan" drawer on the slip is the home of the
     PAID AI task (`concierge:ai_task`) — every answer is a proposal, apply is the traveler's click,
     charged only on apply, expert items protected per LD 42 D3; **(4)** Trip Cart LEAVES the
     sidebar — checkout is reached from the slip's Finish card and the Finalize chooser, the route
