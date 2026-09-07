@@ -1,26 +1,47 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
-import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Calendar, Users } from "lucide-react";
+import { Loader2, Plus, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { PlanCard } from "@/components/plancard/PlanCard";
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { WishlistSection } from "@/components/dashboard/WishlistSection";
-import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
-import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
-import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
-import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
-import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
-import { PlanSlipStrip } from "@/components/dashboard/PlanSlipStrip";
 import { WhileYouWereAway } from "@/components/dashboard/WhileYouWereAway";
-import { TodaysMove } from "@/components/dashboard/TodaysMove";
+import { ComingUp, useUpcoming } from "@/components/dashboard/ComingUp";
+import { HomeCity } from "@/components/dashboard/HomeCity";
 import { IntakePanel } from "@/components/intake-panel";
-import { parseTripDate } from "@/lib/calendar-date";
-import { syncActiveTripToContext } from "@/lib/trip-selection";
+import { greetingSentence } from "@/lib/home-time-axis";
+
+/**
+ * Home — OWNS THE TIME AXIS (CLAUDE.md Locked Decision 45 (8); ledger `2026-09-07-home-time-axis`,
+ * executing ruling row `2026-09-07-home-owns-time-axis`, which AMENDS R-A). Anatomy (artboard
+ * `Home`, Console & AI Concierge brief § Home):
+ *
+ *   Greeting          — ONE sentence derived from the FIRST upcoming row (`greetingSentence`), a
+ *                       neutral greeting when there is none; never "0 things are due".
+ *   Coming up         — dated rows across EVERY plan, nearest first, from the ONE reader
+ *                       `GET /api/me/upcoming`; a row with no date is omitted, never guessed.
+ *   Since you were here — diary rows + pending suggestions (Accept / Decline inline, through the
+ *                       ONE review rail) + a notifications count that links to Inbox. Messages
+ *                       stay in Inbox.
+ *   <City> · your city — renders only when `users.home_city` is set; trends from the real
+ *                       endpoint, occasions from the ones the member registered.
+ *   Start strip       — New plan (the IntakePanel door L2 landed — `2026-09-07-home-honesty`;
+ *                       its collapse into the one modal is LD 42 D11, a later lane) · Start with AI
+ *                       (the sidebar's own door, `/ai-assistant`, which L5 made a door).
+ *
+ * WHAT LEFT THIS PAGE, and where it lives now (ruling 8: no plan card, no counts, no messages):
+ *   PlanCard (summary stage) + the trip-selector chips → My plans (`/my-trips`) and the slip.
+ *   PlanSlipStrip (routing counts)                     → the My plans row (L3) and the slip.
+ *   TodaysMove (count-derived single move)             → the slip's own status counts / Finish card.
+ *   ActionItemsPanel (notification previews)           → Inbox (`/inbox?tab=updates`).
+ *   ActiveExpertsPanel                                 → My plans rows and the slip's Expert card.
+ *   TopExpertsPanel                                    → Experts (`/experts`).
+ *   RecommendedServices                                → Discover / the slip's Build card.
+ *   TravelPulsePanel (dark ticker)                     → the home-city block reads the SAME endpoint.
+ *   SavedTripsSection / WishlistSection STAY for now — saved places move to Discover under L11.
+ */
 
 interface Notification {
   id: string | number;
@@ -29,52 +50,14 @@ interface Notification {
   type?: string;
   createdAt?: string;
   tripId?: string | null;
-  // Server field (shared/schema.ts `is_read` → `isRead`). `read` does not exist on the
-  // API response — normalized to it below, mirroring notifications.tsx:109's
-  // `read: n.isRead ?? false`, so "actions needed" and mark-as-read agree everywhere.
+  // Server field (shared/schema.ts `is_read` → `isRead`); normalized to `read` below, mirroring
+  // notifications.tsx so the digest's "new" count agrees with the bell everywhere.
   isRead?: boolean;
   read?: boolean;
 }
 
-// FIX 3 (W1c polish): dashboard selected-trip persistence. Keyed per-user so a shared/kiosk
-// browser doesn't leak one account's selection into another's session. Read/write are
-// best-effort — a storage failure (private mode, quota) must never break the dashboard.
-function dashboardTripStorageKey(userId: string): string {
-  return `dashboard-selected-trip-${userId}`;
-}
-
-function readStoredTripId(userId: string): string | null {
-  try {
-    return localStorage.getItem(dashboardTripStorageKey(userId));
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredTripId(userId: string, tripId: string): void {
-  try {
-    localStorage.setItem(dashboardTripStorageKey(userId), tripId);
-  } catch {
-    // best-effort — never block the UI on a storage failure
-  }
-}
-
-const CTA_CARDS = [
-  {
-    icon: "+",
-    label: "New experience",
-    sub: "Travel, wedding, event",
-    href: "/experiences",
-    testId: "cta-new-experience",
-  },
-  {
-    icon: "🔍",
-    label: "Find experts",
-    sub: "In your destinations",
-    href: "/experts",
-    testId: "cta-find-experts",
-  },
-];
+const FRAUNCES = "'Fraunces', Georgia, serif";
+const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
@@ -82,61 +65,21 @@ export default function Dashboard() {
   const { data: notificationsData } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
   });
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  // R-C / L2 home-honesty (ledger `2026-09-07-home-honesty`): BOTH create doors on this page —
-  // the "New experience" CTA tile and the empty-state "Create Your First Plan" button — open the
-  // ONE intake panel (R-C). The empty state used to call `usePlanning().open`, a SECOND modal
-  // with a different flow, so which planner a traveler met depended on whether they had plans.
+  // R-C / L2 home-honesty (ledger `2026-09-07-home-honesty`): every create door on this page opens
+  // the ONE IntakePanel. Kept as landed; the D11 modal-collapse is a separate lane.
   const [intakeOpen, setIntakeOpen] = useState(false);
-  // Only attempt the localStorage restore once per mount — subsequent trips-list refetches
-  // (e.g. after a mutation) must not fight a since-made explicit selection.
-  const hasAttemptedRestore = useRef(false);
 
   const now = new Date();
   const allPlans = trips ?? [];
-  const activePlans = allPlans.filter(t => new Date(t.endDate ?? 0) >= now);
+  const activePlans = allPlans.filter((t) => new Date(t.endDate ?? 0) >= now);
 
-  // Default to soonest upcoming trip; user click overrides
-  const soonestTripId = [...activePlans].sort(
-    (a, b) => new Date(a.startDate ?? 0).getTime() - new Date(b.startDate ?? 0).getTime()
-  )[0]?.id ?? null;
-  const effectiveTripId = selectedTripId ?? soonestTripId;
-  const selectedTrip = activePlans.find(t => t.id === effectiveTripId) ?? null;
-
-  // FIX 3: restore the last-selected trip on reload, but only once the trips list has
-  // actually loaded AND the stored id is still present in it — otherwise fall back to the
-  // existing soonest-upcoming-trip default (effectiveTripId above already does that when
-  // selectedTripId stays null).
-  useEffect(() => {
-    if (hasAttemptedRestore.current) return;
-    if (isLoading || !user?.id) return;
-    hasAttemptedRestore.current = true;
-    const storedTripId = readStoredTripId(user.id);
-    if (storedTripId && activePlans.some(t => t.id === storedTripId)) {
-      setSelectedTripId(storedTripId);
-    }
-    // activePlans is derived from `trips` each render; keying off `trips`/`isLoading`/`user?.id`
-    // avoids re-running on every render while still waiting for the real fetched list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, user?.id, trips]);
-
-  // #972: the trip chip below previously only flipped this page's own local
-  // `selectedTripId` state — it never told the site-wide TripContext which
-  // trip is now active, so /cart (and anywhere else reading TripContext) kept
-  // acting on whichever trip was bound before the click. Selecting a chip
-  // must atomically re-key TripContext to the clicked trip's OWN data (see
-  // syncActiveTripToContext) in the SAME handler that updates local state.
-  const selectTrip = (trip: (typeof activePlans)[number]) => {
-    setSelectedTripId(trip.id);
-    if (user?.id) writeStoredTripId(user.id, trip.id);
-    syncActiveTripToContext(trip);
-  };
+  const upcoming = useUpcoming(!!user?.id);
 
   if (isLoading) {
     return (
       <DashboardLayout>
         <div className="min-h-[60vh] flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin" style={{ color: "#E85D55" }} />
+          <Loader2 className="w-10 h-10 animate-spin" style={{ color: "var(--earn-coral-ink)" }} />
         </div>
       </DashboardLayout>
     );
@@ -153,298 +96,63 @@ export default function Dashboard() {
     );
   }
 
-  // Normalize the server's `isRead` → `read`, the same one-liner notifications.tsx:109
-  // already uses — without it, `n.read` is undefined for every row (field-name
-  // mismatch) and every notification counts as unread forever, even after being
-  // marked read via the bell popover or the /notifications page.
-  const notifications = (notificationsData ?? []).map(n => ({ ...n, read: n.isRead ?? false }));
-  // R-I(2): "urgent"/"action" are notification `type`s no server code ever writes (grepped
-  // every createNotification/insertNotification/db.insert(notifications) call site), so this
-  // count was structurally always 0. The real, actually-written types that call a traveler to
-  // act are booking_request, expert_suggestion, itinerary_update, and booking_confirmed.
-  const ACTIONABLE_NOTIFICATION_TYPES = new Set([
-    "booking_request",
-    "expert_suggestion",
-    "itinerary_update",
-    "booking_confirmed",
-  ]);
-  const actionsNeeded = notifications.filter(
-    n => !n.read && n.type && ACTIONABLE_NOTIFICATION_TYPES.has(n.type)
-  ).length;
+  const notifications = (notificationsData ?? []).map((n) => ({ ...n, read: n.isRead ?? false }));
 
-  const greetingSub =
-    activePlans.length > 0
-      ? `${activePlans.length} active plan${activePlans.length !== 1 ? "s" : ""}${
-          actionsNeeded > 0
-            ? ` · ${actionsNeeded} action${actionsNeeded !== 1 ? "s" : ""} needed today`
-            : ""
-        }`
-      : allPlans.length > 0
-      ? "Ready for your next adventure?"
-      : "Start planning your first experience";
-
-  const destinations = activePlans.map(t => t.destination).filter(Boolean);
+  // The greeting sentence is derived from the FIRST upcoming row and nothing else. While the
+  // rows are loading there is no first row to derive from, so the line is withheld rather than
+  // shown as the neutral greeting for a moment and then replaced (§13: a shown default and a
+  // derived answer are different facts).
+  const greeting = upcoming.data ? greetingSentence(upcoming.data.rows, now, user?.firstName) : null;
 
   return (
     <DashboardLayout>
       <div className="p-3 sm:p-6" data-testid="dashboard-content">
-        {/* Greeting — full width above panels */}
-        <div className="pt-4 mb-4">
+        {/* Greeting — Fraunces masthead, one derived sentence */}
+        <div className="pt-4 mb-6">
           <div
-            className="text-[22px] font-medium pb-0.5"
-            style={{ color: "#1A1A18" }}
+            className="text-[10.5px] uppercase tracking-[0.12em] mb-1"
+            style={{ fontFamily: MONO, color: "var(--earn-muted)" }}
+          >
+            home
+          </div>
+          <h1
+            className="text-[26px] leading-tight"
+            style={{ fontFamily: FRAUNCES, color: "var(--earn-ink)" }}
             data-testid="text-welcome"
           >
             Welcome back, {user?.firstName || "Traveler"}
-          </div>
-          <div
-            className="text-[14px]"
-            style={{ color: "#7A7A72" }}
-            data-testid="text-greeting-sub"
-          >
-            {greetingSub}
-          </div>
+          </h1>
+          {greeting && (
+            <div className="text-[14px] mt-1" style={{ color: "var(--earn-muted)" }} data-testid="text-greeting-sub">
+              {greeting}
+            </div>
+          )}
         </div>
 
-        {/* Two-panel layout */}
-        <div className="flex gap-5">
-          {/* LEFT: Main content */}
+        <div className="flex gap-6">
+          {/* LEFT: the time axis */}
           <div className="flex-1 min-w-0">
-            {/* R-H: Today's move (single highest-urgency real item on the active trip) +
-                While you were away (real-data digest since the last visit). Additive —
-                the CTA row / saved trips / active plans layout below is unchanged (R-A). */}
-            <TodaysMove
-              tripId={selectedTrip?.id ?? null}
-              destination={selectedTrip?.destination}
-              startDate={selectedTrip?.startDate}
-              endDate={selectedTrip?.endDate}
-            />
-            <WhileYouWereAway
-              userId={user?.id}
-              notifications={notifications}
-              activePlans={activePlans}
-              selectedTrip={selectedTrip}
-            />
+            <ComingUp data={upcoming.data} isLoading={upcoming.isLoading} now={now} />
 
-            {/* CTA Row */}
-            <div className="flex gap-2.5 mb-[18px]">
-              {CTA_CARDS.map((card) => {
-                const sub = card.sub;
-                const cardBody = (
-                  <div
-                    className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
-                    style={{ background: "#F3F3EE" }}
-                    data-testid={card.testId}
-                  >
-                    <div className="text-[18px] mb-1">{card.icon}</div>
-                    <div
-                      className="text-[13px] font-medium"
-                      style={{ color: "#1A1A18" }}
-                    >
-                      {card.label}
-                    </div>
-                    <div
-                      className="text-[11px] mt-0.5"
-                      style={{ color: "#7A7A72" }}
-                    >
-                      {sub}
-                    </div>
-                  </div>
-                );
-                // R-C: "New experience" keeps its look but opens the intake panel instead
-                // of navigating to /experiences.
-                if (card.href === "/experiences") {
-                  return (
-                    <button
-                      key={card.testId}
-                      type="button"
-                      className="flex-1 text-left"
-                      onClick={() => setIntakeOpen(true)}
-                    >
-                      {cardBody}
-                    </button>
-                  );
-                }
-                return (
-                  <Link
-                    key={card.testId}
-                    href={card.href}
-                    className="flex-1"
-                  >
-                    {cardBody}
-                  </Link>
-                );
-              })}
+            <WhileYouWereAway userId={user?.id} notifications={notifications} activePlans={activePlans} />
+
+            {/* Start strip (also rendered in the right rail on wide screens) */}
+            <div className="grid grid-cols-2 gap-3 mb-7 lg:hidden" data-testid="start-strip-mobile">
+              <StartTiles onNewPlan={() => setIntakeOpen(true)} />
             </div>
 
+            {/* Saved places stay here until L11 moves them to Discover. */}
             <SavedTripsSection />
-
             <WishlistSection />
-
-            {/* Active Plans */}
-            <div
-              className="text-sm font-medium mb-3 flex items-center justify-between"
-              style={{ color: "#1A1A18" }}
-            >
-              <span>Your active plans</span>
-              {activePlans.length > 0 && (
-                <Link href="/my-trips">
-                  <span
-                    className="text-[12px] cursor-pointer hover:underline"
-                    style={{ color: "#2E8B8B" }}
-                    data-testid="link-view-all-plans"
-                  >
-                    View all
-                  </span>
-                </Link>
-              )}
-            </div>
-
-            {activePlans.length > 0 ? (
-              <div className="mb-6 max-w-[480px]" data-testid="active-plans-section">
-                {/* Compact trip selector row — visible when there are 2+ plans */}
-                {activePlans.length > 1 && (
-                  <div
-                    className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide"
-                    data-testid="trip-selector-row"
-                  >
-                    {activePlans.map((trip) => {
-                      const isSelected = trip.id === effectiveTripId;
-                      const dest = trip.destination?.split(",")[0] ?? "Trip";
-                      // QA F3 — `trips.start_date`/`end_date` are Postgres DATE columns and reach
-                      // the client as bare "YYYY-MM-DD"; `new Date()` reads those as UTC midnight,
-                      // so every viewer west of UTC saw the plan start a day early. `parseTripDate`
-                      // is the ONE date-only parser (`@/lib/calendar-date`). §13 — an unparseable
-                      // value stays null and the chip simply carries no dates.
-                      const d1 =
-                        parseTripDate(trip.startDate)?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? null;
-                      const d2 =
-                        parseTripDate(trip.endDate)?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? null;
-                      const start = new Date(trip.startDate ?? 0);
-                      const end = new Date(trip.endDate ?? 0);
-                      const isActive = now >= start && now <= end;
-                      const daysUntil = start > now
-                        ? Math.ceil((start.getTime() - now.getTime()) / 86400000)
-                        : null;
-                      const status = isActive
-                        ? "Active"
-                        : daysUntil != null && daysUntil <= 7
-                        ? "Soon"
-                        : "Upcoming";
-                      return (
-                        <button
-                          key={trip.id}
-                          onClick={() => selectTrip(trip)}
-                          data-testid={`trip-chip-${trip.id}`}
-                          className={`flex-shrink-0 text-left rounded-xl px-3 py-2.5 border transition-all ${
-                            isSelected
-                              ? "bg-primary/10 border-primary"
-                              : "bg-card border-border hover:border-primary/40"
-                          }`}
-                        >
-                          <div
-                            className={`text-[13px] font-semibold truncate max-w-[140px] ${
-                              isSelected ? "text-primary" : "text-foreground"
-                            }`}
-                          >
-                            {dest}
-                          </div>
-                          {d1 && d2 && (
-                            <div className="text-[11px] text-muted-foreground mt-0.5">
-                              {d1}–{d2}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 mt-1">
-                            <span
-                              className={`text-[9px] font-bold uppercase tracking-widest ${
-                                isActive
-                                  ? "text-green-600 dark:text-green-400"
-                                  : isSelected
-                                  ? "text-primary"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              {status}
-                            </span>
-                            {trip.numberOfTravelers != null && trip.numberOfTravelers > 0 && (
-                              <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
-                                <Users className="w-2.5 h-2.5" />
-                                {trip.numberOfTravelers}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Stage-A summary card for the selected/soonest trip, capped by the R-A
-                    compact slip strip (tracking ref + routing-status counts + "Open slip").
-                    Trip Card rebuild Phase 4 (ledger 2026-08-31-stage-a-dashboard): the dashboard's
-                    at-a-glance card is the summary stage — the full command center lives at its own
-                    surface, the Trip Card (/trip/:id), which the summary card links into. The summary
-                    fires ONE plancard query; there is exactly one such card on this page (the selected
-                    trip in focus), never one per list row. */}
-                {selectedTrip && (
-                  <>
-                    <PlanSlipStrip tripId={selectedTrip.id} />
-                    <PlanCard
-                      trip={selectedTrip as any}
-                      index={0}
-                      role="owner"
-                      stage="summary"
-                    />
-                  </>
-                )}
-              </div>
-            ) : (
-              <Card
-                className="border-2 border-dashed mb-6"
-                style={{ borderColor: "#E8E8E2" }}
-              >
-                <CardContent className="p-8 text-center">
-                  <div
-                    className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
-                    style={{ background: "#FFE3E8" }}
-                  >
-                    <Calendar
-                      className="w-8 h-8"
-                      style={{ color: "#E85D55" }}
-                    />
-                  </div>
-                  <h3
-                    className="text-lg font-semibold mb-2"
-                    style={{ color: "#1A1A18" }}
-                  >
-                    No active plans
-                  </h3>
-                  <p className="mb-4" style={{ color: "#7A7A72" }}>
-                    Start planning your next adventure!
-                  </p>
-                  <Button
-                    className="text-white"
-                    style={{ background: "#E85D55" }}
-                    onClick={() => setIntakeOpen(true)}
-                    data-testid="button-first-plan"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Your First Plan
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <RecommendedServices destinations={destinations} />
           </div>
 
-          {/* RIGHT: Intelligence panel */}
-          <div className="w-[260px] flex-shrink-0 hidden lg:block">
-            <div className="sticky top-16 space-y-3">
-              <TravelPulsePanel />
-              <ActionItemsPanel notifications={notifications} />
-              <ActiveExpertsPanel trips={activePlans} />
-              <TopExpertsPanel destinations={destinations} />
+          {/* RIGHT rail */}
+          <div className="w-[280px] flex-shrink-0 hidden lg:block">
+            <div className="sticky top-16 space-y-4">
+              <div className="grid grid-cols-1 gap-3" data-testid="start-strip">
+                <StartTiles onNewPlan={() => setIntakeOpen(true)} />
+              </div>
+              <HomeCity enabled={!!user?.id} />
             </div>
           </div>
         </div>
@@ -452,5 +160,33 @@ export default function Dashboard() {
 
       <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
+  );
+}
+
+/** The two start tiles: New plan (the IntakePanel door) · Start with AI (the sidebar's AI door). */
+function StartTiles({ onNewPlan }: { onNewPlan: () => void }) {
+  const tile = "rounded-[14px] px-4 py-3.5 text-left transition-colors hover:bg-[color:var(--earn-chip)] w-full";
+  const tileStyle = { background: "var(--earn-card)", border: "1px solid var(--earn-border)" } as const;
+  return (
+    <>
+      <button type="button" className={tile} style={tileStyle} onClick={onNewPlan} data-testid="cta-new-experience">
+        <div className="flex items-center gap-2 text-[13.5px] font-medium" style={{ color: "var(--earn-ink)" }}>
+          <Plus className="w-4 h-4" style={{ color: "var(--earn-coral-ink)" }} />
+          New plan
+        </div>
+        <div className="text-[11.5px] mt-0.5" style={{ color: "var(--earn-muted)" }}>
+          Opens the planner.
+        </div>
+      </button>
+      <Link href="/ai-assistant" className={tile} style={tileStyle} data-testid="cta-start-with-ai">
+        <div className="flex items-center gap-2 text-[13.5px] font-medium" style={{ color: "var(--earn-ink)" }}>
+          <Sparkles className="w-4 h-4" style={{ color: "var(--earn-teal-ink)" }} />
+          Start with AI
+        </div>
+        <div className="text-[11.5px] mt-0.5" style={{ color: "var(--earn-muted)" }}>
+          Describe it in a sentence.
+        </div>
+      </Link>
+    </>
   );
 }

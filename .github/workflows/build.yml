@@ -1516,3 +1516,34 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/trip-card-status.test.ts
       - name: Trip Card one-page pins
         run: npx tsx --test client/src/lib/__tests__/trip-card-one-page.test.ts
+
+  home-time-axis:
+    name: home-time-axis (CLAUDE.md Locked Decision 45 (8) — 2026-09-07-home-time-axis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: these suites import `shared/` and a client module
+      # (OPERATING_PROCEDURE §3 — #812 lost a CI cycle to exactly that).
+      - run: npm ci
+      # The ONE plan-start instant and the ONE 48-hour handover window (shared/plan-timing.ts,
+      # read by Home's time axis and by the Trip Card lane). The window itself is IMPORTED from
+      # shared/trip-primary-surface.ts and never restated (§18 rule 1); T8 pins that the unzoned
+      # answer is byte-identical to `tripCardIsPrimary`'s date arm, so the two readers cannot
+      # disagree about a plan carrying no timezone (Locked Decision 30).
+      - name: Plan timing pins
+        run: npx tsx --test shared/__tests__/plan-timing.test.ts
+      # The PURE builder behind GET /api/me/upcoming: undated rows omitted (§13 — every kind
+      # states its date source), nearest-first ordering, the window edge, no `tz` claim on a
+      # NULL-timezone plan, the occasion row absent until a Plus draft has fired end to end
+      # (Locked Decision 26), and no "0 invites"/zero-filled count anywhere. No DB, no clock.
+      - name: Upcoming builder pins
+        run: npx tsx --test server/services/__tests__/upcoming.test.ts
+      # The client half: the mono relative-day label (a calendar day is read on the VIEWER's
+      # calendar, an instant as an instant — no zone invented either way) and the ONE derived
+      # greeting sentence, which never says "0 things are due".
+      - name: Home time-axis client pins
+        run: npx tsx --test client/src/lib/__tests__/home-time-axis.test.ts

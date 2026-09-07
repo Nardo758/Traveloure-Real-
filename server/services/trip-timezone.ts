@@ -38,17 +38,9 @@ export function resolveTripTimezone(destination: string | null | undefined): str
 }
 
 /**
- * Is this string an IANA zone this runtime can actually resolve? Used by readers before they act
- * on a stored value: the column has NO DB CHECK (publish-trap posture), so a row could carry a
- * value this Node build's ICU data does not know, and the honest response to that is the same as
- * NULL's — fall back to the zone-free behaviour, never to a substitute zone.
+ * `isUsableTimeZone` MOVED to `shared/plan-timing.ts` (ledger `2026-09-07-home-time-axis`) so the
+ * zone-aware start instant — which Home's time axis and the Trip Card both read — has one home
+ * the client bundle can import. Re-exported here unchanged for this module's existing callers;
+ * the rule it states (an unusable zone is answered exactly as NULL is) travelled with it.
  */
-export function isUsableTimeZone(timeZone: string | null | undefined): timeZone is string {
-  if (!timeZone) return false;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone });
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { isUsableTimeZone } from "@shared/plan-timing";
