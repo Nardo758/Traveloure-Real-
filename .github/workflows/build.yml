@@ -444,6 +444,19 @@ jobs:
       # plan-steps, which the step above already runs).
       - name: Clear-plan durability pin
         run: npx tsx --test client/src/lib/__tests__/clear-plan.test.ts
+      # Lane L18, ledger `2026-09-07-client-pen-scope` (Console & AI Concierge brief §11.2 F4/F7).
+      # The client pen lived under ONE sessionStorage key, never namespaced by user and never
+      # cleared on sign-in/out, while the SERVER pen is per user — so the "Your Trip" banner, the
+      # cart's trip and the /services location filter followed the browser TAB, not the account,
+      # and a guest's plan survived into two different signed-in accounts. A failure here is
+      # invisible on screen (every surface renders a perfectly ordinary plan; it is only wrong
+      # about whose), which is why it is pinned against the module. P1 two principals never read
+      # each other's pen; P2 sign-out clears the CLIENT pen and only the client pen; P3 the guest
+      # handoff writes once, only into an EMPTY server pen, never on a failed read, never a plan
+      # identity; P4 the browse door's `location` reads the PLAN, and passes nothing when the plan
+      # has no destination (§13).
+      - name: Client pen principal-scope pin
+        run: npx tsx --test client/src/lib/__tests__/client-pen-scope.test.ts
       # Step 4's centre is now a TYPED input as well as a stepper (decision-maker request), so one
       # normaliser serves two controls on one state (§18 rule 1). P6a-P6e pin the invariants a
       # free-text field is the obvious way to break: empty stays empty (Locked Decision 33's

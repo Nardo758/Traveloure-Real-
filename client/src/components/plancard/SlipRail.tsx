@@ -89,6 +89,7 @@ import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-pl
 import {
   countCheckoutReadyItems,
   slipAdvisorStandingLine,
+  slipBrowseServicesHref,
   slipBuildAiAction,
   slipCalendarPath,
   slipDraftDisabledReason,
@@ -461,7 +462,7 @@ function BuildCard({
           label="Browse services for this trip"
           meta="/services"
           icon={<Plus className="w-3.5 h-3.5" />}
-          href={`/services?tripId=${encodeURIComponent(tripId)}`}
+          href={slipBrowseServicesHref(tripId, trip.destination)}
           testId="slip-browse-services"
         />
       )}

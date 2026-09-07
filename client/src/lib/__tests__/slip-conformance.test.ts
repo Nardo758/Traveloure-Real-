@@ -154,6 +154,24 @@ const ALLOWED_ADDITIONS = {
   "slip-viewbar-empty": "1 — the empty plan's placeholder, so the view toggle still renders",
 } as const;
 
+/**
+ * A control whose HANDLER EXPRESSION a later ruling deliberately changed, with the reason and the
+ * value it now carries. The pin's invariant is "a relayout may move a control; it may not re-wire
+ * one" — which is about a control quietly acquiring a DIFFERENT destination, not about the same
+ * destination being composed by a named function. So a re-point is DECLARED here, exactly as an
+ * addition or a removal is, rather than the pin being loosened for every control at once.
+ */
+const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
+  "slip-browse-services": {
+    to: ["href:slipBrowseServicesHref(tripId, trip.destination)"],
+    reason:
+      "lane L18, ledger `2026-09-07-client-pen-scope` — the SAME `/services?tripId=` destination, " +
+      "now built by the one named door helper so it can also pass the PLAN's own destination as " +
+      "`location`. Before this, `/services` filled that filter from the client pen, which " +
+      "followed the browser tab rather than the account (brief §11.2 F4/F7).",
+  },
+};
+
 const ALLOWED_REMOVALS = {
   "slip-tracking-ref":
     "4 — the working header prints no slip number and no version. `planVersion` is the " +
@@ -184,6 +202,15 @@ describe("0 — the relayout lost nothing and re-wired nothing", () => {
   it("no control gained, lost or re-pointed a handler", () => {
     for (const [id, targets] of Object.entries(before)) {
       if (id in ALLOWED_REMOVALS) continue;
+      const repoint = ALLOWED_REPOINTS[id];
+      if (repoint) {
+        assert.deepEqual(
+          shipped[id],
+          repoint.to,
+          `${id} is a DECLARED re-point and must carry exactly its declared target. Reason: ${repoint.reason}`,
+        );
+        continue;
+      }
       assert.deepEqual(
         shipped[id],
         targets,
