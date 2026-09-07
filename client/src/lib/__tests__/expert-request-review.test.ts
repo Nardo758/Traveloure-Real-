@@ -9,7 +9,7 @@
  * invisible to every other layer: the code compiled, the route answered 200, and the toast said
  * something true about a request that had genuinely been sent — the lie was that the traveler
  * never asked for it. `experience-template.tsx` POSTed `/api/expert-requests` from the handler
- * that OPENED the Get Expert Help dialog (after minting a slip), and `DeliveryOptions.tsx`
+ * that OPENED the Get Expert Help dialog (after minting a slip), and the concierge surface
  * POSTed the same rail from the Destination Concierge tier's button. Nothing in tsc, in a server
  * test or in any grep gate can see that a network write hangs off a control that reads as a way
  * to LOOK at something. What can see it is a pin that asks WHICH FUNCTION the write lives in.
@@ -64,7 +64,11 @@ const RULES = "lib/expert-request-review.ts";
  */
 const SURFACES: { file: string; sender: string }[] = [
   { file: "pages/experience-template.tsx", sender: "sendExpertHelpRequest" },
-  { file: "components/concierge/DeliveryOptions.tsx", sender: "sendExpertRequest" },
+  // Ledger `2026-09-07-concierge-door` (L6): the concierge tier CARDS were retired when
+  // `/concierge` became a door into the one plan modal, so the Destination Concierge surface
+  // moved from `components/concierge/DeliveryOptions.tsx` (deleted) onto the page itself. The
+  // sender kept its name and the invariant is unchanged — the file it lives in is what moved.
+  { file: "pages/concierge/index.tsx", sender: "sendExpertRequest" },
 ];
 
 /**
@@ -152,17 +156,22 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
     }
   });
 
-  it("W2 the template page's slip mint is on the send path too, never on the open", () => {
+  it("W2 a surface's slip mint is on the send path too, never on the open", () => {
     // Locked Decision 32: the slip is the precondition FOR the request. Minting one just to
     // open a review screen would write a `trips` row for a request the traveler never sent.
-    const src = stripComments(readClient("pages/experience-template.tsx"));
-    for (const call of ["ensureSlipForExpertRequest(", "mintTripSlip("]) {
-      for (const at of occurrences(src, call)) {
-        const fn = enclosingFunction(src, at);
-        assert.ok(
-          fn === "sendExpertHelpRequest" || fn === null,
-          `${call} reached from ${fn} — the mint belongs on the send path`,
-        );
+    // Held over the whole SURFACE SET since ledger `2026-09-07-concierge-door`: the concierge
+    // surface acquired the same mint when its Expert tier started carrying a real `tripId`, and
+    // one rule stated once for both is the point (§18 rule 1). `null` is the import line.
+    for (const { file, sender } of SURFACES) {
+      const src = stripComments(readClient(file));
+      for (const call of ["ensureSlipForExpertRequest(", "mintTripSlip("]) {
+        for (const at of occurrences(src, call)) {
+          const fn = enclosingFunction(src, at);
+          assert.ok(
+            fn === sender || fn === null,
+            `${file}: ${call} reached from ${fn} — the mint belongs on the send path`,
+          );
+        }
       }
     }
   });
@@ -199,15 +208,30 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
       const fn = enclosingFunction(template, at);
       assert.notEqual(fn, "openExpertChat", "the door must not call the sender");
     }
-    const concierge = stripComments(readClient("components/concierge/DeliveryOptions.tsx"));
+    // The concierge DOOR moved with ledger `2026-09-07-concierge-door`: the tier cards were
+    // retired and the tier choice IS the plan modal's finish, so the control that opens the
+    // review is the door's own finish handler. Same invariant, one surface along — the handler
+    // may open the review and may record the funnel's chosen tier, and may not send the lead.
+    const concierge = stripComments(readClient("pages/concierge/index.tsx"));
     assert.ok(
-      /data-testid="button-concierge-pick-expert"/.test(concierge),
-      "the tier button keeps its testid",
+      /function handlePlanFinish\(/.test(concierge),
+      "the concierge door's finish handler is the door — an async door is a door that awaits a write",
     );
     assert.ok(
-      /onClick=\{\(\) => setExpertReviewOpen\(true\)\}/.test(concierge),
-      "the tier button opens the review and nothing else",
+      concierge.includes("setExpertFinish({ lead: next, plan })"),
+      "choosing the local-expert finish opens the review and nothing else",
     );
+    for (const at of occurrences(concierge, "sendExpertRequest")) {
+      const lineStart = concierge.lastIndexOf("\n", at) + 1;
+      const lineEnd = concierge.indexOf("\n", at);
+      const line = concierge.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      if (DECLARATION.test(line)) continue;
+      assert.notEqual(
+        enclosingFunction(concierge, at),
+        "handlePlanFinish",
+        "the door must not call the sender",
+      );
+    }
   });
 
   it("W5 the sheet itself writes nothing", () => {
@@ -238,11 +262,20 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
     );
   });
 
-  it("W7 the concierge price the sheet shows is the tier card's own line", () => {
-    const src = stripComments(readClient("components/concierge/DeliveryOptions.tsx"));
-    assert.ok(src.includes("const expertPriceLabel ="), "the tier price is resolved once");
-    assert.ok(src.includes("{expertPriceLabel}"), "the card renders that line");
-    assert.ok(src.includes("priceLabel={expertPriceLabel}"), "the sheet is handed the same line");
+  it("W7 the concierge price the sheet shows is the surface's own single derivation", () => {
+    // Repaired, not deleted, by ledger `2026-09-07-concierge-door`: the tier CARD that used to
+    // render this line was retired with the three-tier chooser, so "the card renders it" is no
+    // longer a fact to pin. What survives — and is the reason the pin existed — is that the
+    // concierge surface derives the expert price EXACTLY ONCE and HANDS it to the sheet, so the
+    // review can never quote a number the surface does not stand behind (§18 rule 1).
+    const src = stripComments(readClient("pages/concierge/index.tsx"));
+    assert.ok(src.includes("function expertPriceLabel("), "the tier price is resolved once");
+    assert.ok(src.includes("priceLabel={expertPriceLabel("), "the sheet is handed that same line");
+    assert.equal(
+      occurrences(src, "Intl.NumberFormat").length,
+      1,
+      "one price formatter on the surface — a second is how the sheet and the surface disagree",
+    );
   });
 
   it("W8 the pure module is imported by both the sheet and the free-lead surface", () => {
