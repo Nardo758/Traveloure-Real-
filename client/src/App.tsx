@@ -503,6 +503,11 @@ function Router() {
       <Route path="/my-bookings">
         <Redirect to="/bookings" />
       </Route>
+      {/* Ledger `2026-09-07-my-events-fold` (Locked Decision 45 (5)): the SIDEBAR entry is retired
+          — a coordination engagement is a card on its plan's slip — but this route stays LIVE and
+          is NOT redirected. `coordination_states.trip_id` is nullable, so an engagement with no
+          plan has no slip; redirecting would delete it, and its unpaid fee, rather than fold it
+          (§13). This page also remains the ONE home of the coordination fee-pay rail. */}
       <Route path="/my-events">
         {() => <ProtectedRoute component={MyEventsPage} />}
       </Route>

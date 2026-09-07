@@ -152,6 +152,12 @@ const ALLOWED_ADDITIONS = {
   // placeholder, not a new action: it carries no handler, and the zero-omitting rule on the count
   // SEGMENTS is untouched (§13 — four zeroes would be four claims about rows that do not exist).
   "slip-viewbar-empty": "1 — the empty plan's placeholder, so the view toggle still renders",
+  // Ledger `2026-09-07-my-events-fold` (Locked Decision 45 (5)). A LATER ruling's card, declared
+  // here for the reason this list exists: a control that appears without a named ruling behind it
+  // is exactly what the pin refuses. It renders ONLY when this plan has a `coordination_states`
+  // row, hosts NO charge (the fee-pay rail stays on `/my-events`), and its per-engagement rows
+  // carry template testids the extractor does not see — which is why only the card is listed.
+  "slip-rail-coordination": "L8 — the done-for-you engagement on ITS plan, folded off /my-events",
 } as const;
 
 /**

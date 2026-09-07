@@ -1574,3 +1574,47 @@ jobs:
       # greeting sentence, which never says "0 things are due".
       - name: Home time-axis client pins
         run: npx tsx --test client/src/lib/__tests__/home-time-axis.test.ts
+
+  my-events-fold:
+    name: my-events-fold (CLAUDE.md Locked Decision 45 (5) — 2026-09-07-my-events-fold)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: the suite imports a client module
+      # (OPERATING_PROCEDURE §3 — #812 lost a CI cycle to exactly that).
+      - run: npm ci
+      # The ONE spelling of a coordination engagement's title / status / fee words, shared by the
+      # slip's Coordination card and `/my-events` (§18 rule 1), plus §13's absences: a trip-less
+      # engagement belongs to NO plan and is attached to none, a status-less row draws no badge,
+      # and an unrecognised fee state is never reported as paid. W1–W3 read the three surface
+      # files as text — they pin that the fee-pay rail did NOT move, that the sidebar entry is
+      # retired, and that `/my-events` is NOT redirected (a redirect would delete the trip-less
+      # engagements, and their unpaid fees, from the product).
+      - name: My-events fold pins
+        run: npx tsx --test client/src/lib/__tests__/coordination-engagement.test.ts
+      # The rail's own static inventory, which this lane added a declared card to.
+      - name: Slip conformance pins (rail inventory)
+        run: npx tsx --test client/src/lib/__tests__/slip-conformance.test.ts
+
+  inbox-context:
+    name: inbox-context (CLAUDE.md Locked Decision 40 + D22 — 2026-09-07-inbox-context)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: the suite imports a client module.
+      - run: npm ci
+      # The thread-list context join. §13 is the point of the lane: migration 287 was deliberately
+      # written with NO backfill, so a thread that predates it has no context row and must draw NO
+      # chip — never "storefront", a claim nobody made. X5/X6 pin that the client renders the
+      # SERVER's own label and writes none of its own (§18 rule 1), and that this READ lane opened
+      # no writer.
+      - name: Inbox context pins
+        run: npx tsx --test client/src/lib/__tests__/inbox-context.test.ts

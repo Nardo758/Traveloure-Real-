@@ -7,6 +7,15 @@
  * (credit-aware, §7), and lets the traveler PAY the fee via the same Stripe Elements flow
  * the rest of the app uses (POST /pay → Elements → POST /pay/confirm). The fee amount is
  * always server-derived (§14) — the client never sends an amount.
+ *
+ * FOLDED INTO MY PLANS, BUT NOT DELETED (ledger `2026-09-07-my-events-fold`; CLAUDE.md Locked
+ * Decision 45 (5)). An engagement that names a plan now ALSO renders as a Coordination card on
+ * that plan's slip, and the sidebar entry is retired. This page stays ROUTED and stays the home of
+ * the fee-pay rail, for the reason the ruling's own §13 requires: `coordination_states.trip_id` is
+ * NULLABLE, so an engagement with no plan has no slip to render on. Redirecting this route away
+ * would delete those engagements — and their unpaid fee — from the product rather than fold them,
+ * so no redirect was added. `/concierge`'s Done-for-you card still lands here, which is how the
+ * page stays reachable without a nav entry.
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -22,9 +31,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { Crown, Calendar, MapPin, CheckCircle2, Loader2, Sparkles, RefreshCcw } from "lucide-react";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
+// Ledger `2026-09-07-my-events-fold`: the title / status / fee WORDS are shared with the slip's
+// Coordination card, so one engagement reads the same on both surfaces (§18 rule 1). The fee RAIL
+// below — quote, /pay, /pay/confirm — is untouched by that lane.
+import { engagementFee, engagementStatusLabel, engagementTitle } from "@/lib/coordination-engagement";
 
 interface Engagement {
   id: string;
+  /** Nullable: an engagement can exist with no plan. One WITH a plan also renders on that slip. */
+  tripId?: string | null;
   experienceType: string;
   status: string | null;
   path: string | null;
@@ -48,21 +63,21 @@ interface FeeQuote {
 const money = (cents: number, currency = "USD") =>
   new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 
-const titleCase = (s: string) => s.replace(/(^|[_\s-])(\w)/g, (_, __, c) => " " + c.toUpperCase()).trim();
-
 function StatusBadge({ status }: { status: string | null }) {
-  const s = status || "intake";
-  return <Badge variant="secondary" className="capitalize">{titleCase(s)}</Badge>;
+  // §13: a row that records no status draws NO badge. This used to render the column's own
+  // `intake` default for a NULL, which put a stage on screen nobody recorded.
+  const label = engagementStatusLabel(status);
+  if (!label) return null;
+  return <Badge variant="secondary" className="capitalize">{label}</Badge>;
 }
 
 function FeeBadge({ feePaymentStatus }: { feePaymentStatus: string }) {
-  if (feePaymentStatus === "paid")
-    return <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">Fee paid</Badge>;
-  if (feePaymentStatus === "refunded")
-    return <Badge className="bg-gray-100 text-gray-600 border border-gray-200">Fee refunded</Badge>;
-  if (feePaymentStatus === "pending")
-    return <Badge variant="outline">Payment in progress</Badge>;
-  return <Badge variant="outline">Fee due</Badge>;
+  const fee = engagementFee(feePaymentStatus);
+  if (fee.tone === "paid")
+    return <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">{fee.label}</Badge>;
+  if (fee.tone === "refunded")
+    return <Badge className="bg-gray-100 text-gray-600 border border-gray-200">{fee.label}</Badge>;
+  return <Badge variant="outline">{fee.label}</Badge>;
 }
 
 function EngagementCard({ engagement }: { engagement: Engagement }) {
@@ -167,7 +182,7 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
         <div className="flex items-start justify-between gap-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Crown className="w-4 h-4 text-primary" />
-            {titleCase(engagement.experienceType)} coordination
+            {engagementTitle(engagement)}
           </CardTitle>
           <div className="flex items-center gap-2">
             <StatusBadge status={engagement.status} />
