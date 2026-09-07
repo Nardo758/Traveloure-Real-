@@ -29,9 +29,11 @@ export function ActionItemsPanel({ notifications }: ActionItemsPanelProps) {
         >
           <div
             className="w-[5px] h-[5px] rounded-full mt-[5px] flex-shrink-0"
-            style={{
-              background: n.type === "urgent" ? "#E24B4A" : "#EF9F27",
-            }}
+            // L2 home-honesty (ledger `2026-09-07-home-honesty`): this used to branch on
+            // `n.type === "urgent"` for a red dot — but no server code ever writes that type
+            // (R-I(2) grepped every createNotification call site), so the red branch was
+            // unreachable. One amber dot is the honest rendering.
+            style={{ background: "#EF9F27" }}
           />
           <span className="text-[10px] text-foreground leading-snug">
             {n.message || n.type || "Action needed"}
