@@ -9,12 +9,17 @@
  * this line for every other item write path. ONE predicate, one more caller — a second "may this
  * person rewrite the plan?" test is the drift class §18 rule 1 names.
  *
- * THE FOUR RUN GATES (plus the one mount-order-dead twin, kept in sync):
+ * THE FOUR RUN GATES (plus the mount-order-dead twin, WHENEVER ONE EXISTS):
  *   1. POST /api/itinerary-comparisons                    (routes.ts, tripId branch)
  *   2. POST /api/itinerary-comparisons/:id/generate       (routes.ts — the paid/free-rerun/pass run)
  *   3. POST /api/itinerary-comparisons/:id/apply-to-trip  (plancard.routes.ts — the rewrite itself)
- *   4. POST /api/trips/:tripId/itinerary/optimize-order   (routes.ts live + trips.routes.ts twin —
- *      declared a trip-item mutation path by its own D1 comment)
+ *   4. POST /api/trips/:tripId/itinerary/optimize-order   (routes.ts live; declared a trip-item
+ *      mutation path by its own D1 comment). The trips.routes.ts twin was DELETED as
+ *      mount-order-dead by ledger `2026-09-07-shadowed-twins`, so this pin covers it
+ *      CONDITIONALLY: a twin that does not exist cannot drift, and a twin that comes back is
+ *      held to the same predicate as the live copy (R6). Resurrection is independently refused
+ *      by `scripts/check-trip-route-shadows.cjs`; this pin is the second half of that rule, not
+ *      a restatement of it.
  *
  * What these hold:
  *   R1  every run gate resolves `getTripWriteRole` and admits via `canMutateTrip`, with the
@@ -55,6 +60,24 @@ function handlerSlice(src: string, startMarker: string, endMarker: string): stri
   return src.slice(start, end);
 }
 
+/**
+ * The text of one handler when it is registered at all, else null. Used ONLY for a copy whose
+ * absence is itself correct — today the optimize-order twin. The strict `handlerSlice` stays the
+ * default everywhere else: a live gate that vanishes must still fail loudly.
+ */
+function optionalHandlerSlice(src: string, startMarker: string, endMarker: string): string | null {
+  const start = src.indexOf(startMarker);
+  if (start === -1) return null;
+  const end = src.indexOf(endMarker, start + startMarker.length);
+  return src.slice(start, end > start ? end : undefined);
+}
+
+const OPTIMIZE_ORDER_TWIN = optionalHandlerSlice(
+  tripsRoutesSrc,
+  'router.post("/api/trips/:tripId/itinerary/optimize-order"',
+  'router.post("/api/itinerary/estimate-travel"',
+);
+
 const RUN_GATES: Array<[name: string, slice: string]> = [
   [
     "POST /api/itinerary-comparisons (create)",
@@ -72,10 +95,11 @@ const RUN_GATES: Array<[name: string, slice: string]> = [
     "POST /api/trips/:tripId/itinerary/optimize-order (live)",
     handlerSlice(routesSrc, 'app.post("/api/trips/:tripId/itinerary/optimize-order"', 'app.post("/api/itinerary/estimate-travel"'),
   ],
-  [
-    "POST /api/trips/:tripId/itinerary/optimize-order (dead twin)",
-    handlerSlice(tripsRoutesSrc, 'router.post("/api/trips/:tripId/itinerary/optimize-order"', 'router.post("/api/itinerary/estimate-travel"'),
-  ],
+  ...(OPTIMIZE_ORDER_TWIN
+    ? ([["POST /api/trips/:tripId/itinerary/optimize-order (mount-order-dead twin)", OPTIMIZE_ORDER_TWIN]] as Array<
+        [name: string, slice: string]
+      >)
+    : []),
 ];
 
 /** Every .ts under server/, tests excluded. */
@@ -91,6 +115,27 @@ function serverFiles(dir: string, out: string[] = []): string[] {
   }
   return out;
 }
+
+describe("R6 — the deleted twin is covered by its absence, not by silence", () => {
+  it("either trips.routes.ts registers no optimize-order twin, or the twin is pinned above", () => {
+    // The failure this closes: a pin that REQUIRED the twin's text turned a correct deletion into
+    // a red gate, which invites deleting the pin (OPERATING_PROCEDURE §3 forbids that — a pin is
+    // repaired to assert the invariant). The invariant is "no copy of this route rewrites a plan
+    // without the mutation predicate", and a copy that does not exist satisfies it.
+    if (OPTIMIZE_ORDER_TWIN === null) {
+      assert.doesNotMatch(
+        tripsRoutesSrc,
+        /router\.post\(\s*["']\/api\/trips\/:tripId\/itinerary\/optimize-order["']/,
+        "no twin was sliced, so none may be registered under a different spelling either",
+      );
+      return;
+    }
+    assert.ok(
+      RUN_GATES.some(([name]) => name.includes("mount-order-dead twin")),
+      "a registered twin must be in RUN_GATES and held to R1-R3",
+    );
+  });
+});
 
 describe("R1 — every run gate uses the item-mutation predicate, in the mutation rail's shape", () => {
   for (const [name, slice] of RUN_GATES) {
