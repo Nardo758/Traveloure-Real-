@@ -378,6 +378,14 @@ jobs:
       # updating the enum fails HERE rather than at a traveler's screen.
       - name: Occasion roles-needed pin
         run: npx tsx --test shared/__tests__/roles-needed.test.ts
+      # 2026-09-07-impact-class (lane L24, Console & AI Concierge brief §11.6): `impactClassFor`
+      # necessarily carries a committed mirror of BOTH offering catalogs, because neither table can
+      # be read from a pure module — and an unpinned mirror is a second catalog waiting to drift
+      # (§18 rule 1). E1/E2 pin the 55 expert keys and their tiers to migrations 039/062/065/283 in
+      # both directions; P1 pins the provider half to the SAME taxonomy registry roles-needed R3
+      # reads; N1-N3 hold the §13 line — an unknown key is NULL and never a nearest class.
+      - name: Impact class pin
+        run: npx tsx --test shared/__tests__/impact-class.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
@@ -1447,3 +1455,30 @@ jobs:
       # screenshot guard and the e2e gates' answer.
       - name: Console grammar pin
         run: npx tsx --test client/src/lib/__tests__/console-grammar.test.ts
+
+  expert-request-review:
+    name: expert-request-review (Console & AI Concierge brief L19 — 2026-09-07-request-is-a-click)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" guard job: the suite imports a client module, and the house
+      # rule (OPERATING_PROCEDURE §3) is that every new test lands in a job that runs npm ci.
+      - run: npm ci
+      # Two surfaces sent a real expert lead on a control that reads as a way to LOOK at
+      # something: `/experiences/:slug`'s "Get Expert Help" minted a slip and POSTed
+      # /api/expert-requests as the dialog OPENED, and the Destination Concierge tier's
+      # "Request expert" POSTed the same rail on one press. Both failures are invisible to tsc,
+      # to every server test and to every grep gate — the code compiled, the route answered 200,
+      # and the toast described a request that really had been sent. W1 walks the SURFACE FILE
+      # SET (comments stripped), discovers every reach for the endpoint and asserts each one's
+      # ENCLOSING FUNCTION is the review sheet's send handler — no literal call-site count, so a
+      # later lane may add or remove a send site and the pin still fails the moment one lands on
+      # a door. Negative space, stated in the suite: these pins are static, so they cannot see
+      # whether the sheet RENDERS or whether a button is reachable — that is the concierge e2e's
+      # answer (e2e/specs/journey-7.spec.ts, extended by the same lane).
+      - name: Expert-request review pin
+        run: npx tsx --test client/src/lib/__tests__/expert-request-review.test.ts

@@ -8,9 +8,20 @@
  * CTA wiring (Phase 6 minimum):
  *   AI    → PATCH chosenTier=ai, then hand off to /cart?step=optimize where the
  *           existing Stripe Elements flow handles checkout.
- *   Expert → PATCH chosenTier=expert + POST /api/expert-requests with the AI
- *            snapshot/intent context. Surface success state.
+ *   Expert → REVIEW SHEET first; its Send button PATCHes chosenTier=expert and POSTs
+ *            /api/expert-requests with the AI snapshot/intent context. Surface success state.
  *   Full   → PATCH chosenTier=full. Surface "admin will follow up" state.
+ *
+ * AN EXPERT REQUEST IS A CLICK, NEVER A BUTTON PRESS THAT MEANT SOMETHING ELSE (lane L19,
+ * ledger `2026-09-07-request-is-a-click`; the brief's finding F2). "Request expert" used to
+ * PATCH the concierge request and POST a real lead on ONE press and answer "Request received" —
+ * no review, no price, no way back. It now opens the SHARED review sheet
+ * (`ExpertRequestReviewSheet`, the same one `/experiences/:slug` opens), which writes nothing;
+ * everything that was in `handleExpert` moved onto that sheet's Send button, unchanged. The
+ * price the sheet shows is THIS card's own "from $N" line, passed in rather than recomputed —
+ * a second price derivation beside the one on screen is the drift class §18 rule 1 names.
+ * The LD 32(b) hole underneath (the rail still accepts a request with no `tripId`) is lane L6's
+ * and is deliberately untouched here: this lane adds a stop screen, not a server rule.
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -20,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock, LogIn } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { updateTripContext } from "@/lib/trip-context";
+import { ExpertRequestReviewSheet } from "@/components/expert-request-review-sheet";
 
 export interface ConciergeRoute {
   ai: { priceCents: number; currency: string; available: boolean; disabled: boolean };
@@ -54,10 +66,21 @@ export function DeliveryOptions({
   const [success, setSuccess] = useState<{ tier: "expert" | "full"; message: string } | null>(null);
   const [isGuestFull, setIsGuestFull] = useState(false);
   const [fullError, setFullError] = useState<string | null>(null);
+  // L19: pressing the tier button OPENS this and nothing else. No PATCH, no POST, no state
+  // beyond "the traveler is looking at the review".
+  const [expertReviewOpen, setExpertReviewOpen] = useState(false);
   const { openSignInModal } = useSignInModal();
 
   const { suggestVsAdd, branch } = route;
   const isEvent = branch === "event";
+
+  // THE tier's price line, resolved ONCE (§18 rule 1). The card below renders it and the review
+  // sheet is HANDED it, so the sheet can never quote a number the card does not show. A tier
+  // with no quoted price says so — never a fabricated 0 (§13).
+  const expertPriceLabel =
+    route.expert.priceCents !== undefined
+      ? `from ${formatPrice(route.expert.priceCents)}`
+      : "Quote on request";
 
   async function patchTier(tier: "ai" | "expert" | "full") {
     // The PATCH is possession-gated server-side (P0 fix): normally the browser
@@ -104,7 +127,12 @@ export function DeliveryOptions({
     }
   }
 
-  async function handleExpert() {
+  /**
+   * L19: everything that used to run on the tier button's click now runs HERE, on the review
+   * sheet's Send button, byte-for-byte the same two calls in the same order. The only change is
+   * WHEN they run — nothing above this function writes anything any more.
+   */
+  async function sendExpertRequest() {
     setBusy("expert");
     try {
       await patchTier("expert");
@@ -127,6 +155,7 @@ export function DeliveryOptions({
           },
         }),
       });
+      setExpertReviewOpen(false);
       setSuccess({
         tier: "expert",
         message: route.expert.available
@@ -296,11 +325,7 @@ export function DeliveryOptions({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="text-2xl font-bold">
-            {route.expert.priceCents !== undefined
-              ? <>from {formatPrice(route.expert.priceCents)}</>
-              : <>Quote on request</>}
-          </div>
+          <div className="text-2xl font-bold">{expertPriceLabel}</div>
           {/* Phase 3: Commission split transparency. */}
           {route.expert.commissionRate !== undefined && (
             <div className="text-xs text-muted-foreground">
@@ -317,7 +342,8 @@ export function DeliveryOptions({
             className="w-full"
             variant={route.expert.available ? "default" : "secondary"}
             disabled={busy !== null}
-            onClick={handleExpert}
+            // L19: opening the review is a READ. The send is the sheet's own button.
+            onClick={() => setExpertReviewOpen(true)}
             data-testid="button-concierge-pick-expert"
           >
             {busy === "expert" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
@@ -327,6 +353,22 @@ export function DeliveryOptions({
           </Button>
         </CardContent>
       </Card>
+
+      {/* L19's stop screen. It writes nothing; `sendExpertRequest` is reached only from its
+          Send button. The basics are what this surface actually holds — the concierge intent
+          form asks for a destination and an intent and never for dates or a party, so those
+          rows read "Not set" rather than being filled in for the traveler (§13). */}
+      <ExpertRequestReviewSheet
+        open={expertReviewOpen}
+        onOpenChange={setExpertReviewOpen}
+        basics={{ destination }}
+        priceLabel={expertPriceLabel}
+        note={intent}
+        sending={busy === "expert"}
+        onSend={sendExpertRequest}
+        sendLabel={route.expert.available ? "Send request" : "Join queue"}
+        title={isEvent ? "Add a coordinator to this event?" : "Send this to a destination concierge?"}
+      />
 
       {/* Full / Done-for-You */}
       <Card

@@ -115,6 +115,8 @@ import { resolveTargetTripId } from "@/lib/trip-target";
 // Locked Decision 32 lane (a): no expert touchpoint without a slip. The mint door, the §13
 // "dates are asked for, never invented" checks and the slip-first ordering all live there.
 import { ensureSlipForExpertRequest, mintTripSlip } from "@/lib/trip-slip";
+import { ExpertRequestReviewSheet } from "@/components/expert-request-review-sheet";
+import { EXPERT_REQUEST_FREE_PRICE } from "@/lib/expert-request-review";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 import { DestinationTransfersSection } from "@/components/destination-transfers-section";
@@ -1159,6 +1161,11 @@ export default function ExperienceTemplatePage() {
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [expertHelpDialogOpen, setExpertHelpDialogOpen] = useState(false);
+  // L19 (ledger `2026-09-07-request-is-a-click`): the review sheet the "Get Expert Help"
+  // controls open. Opening it writes NOTHING — no slip is minted and no lead is sent until its
+  // Send button is pressed.
+  const [expertReviewOpen, setExpertReviewOpen] = useState(false);
+  const [expertRequestSending, setExpertRequestSending] = useState(false);
   const [aiItineraryDialogOpen, setAiItineraryDialogOpen] = useState(false);
   const [expertHelpTab, setExpertHelpTab] = useState<"ai-match" | "chat">("ai-match");
   
@@ -1543,7 +1550,28 @@ export default function ExperienceTemplatePage() {
     interests: selectedInterests,
   });
 
-  const openExpertChat = async () => {
+  /**
+   * THE DOOR. L19 (ledger `2026-09-07-request-is-a-click`, the brief's finding F1): opening
+   * "Get Expert Help" used to mint a slip and POST `/api/expert-requests` before the traveler
+   * saw anything, then toast "Shared with an expert" — the OPEN was the SEND. This function is
+   * now a READ: it checks the one thing a signed-out traveler must be told, and opens the review
+   * sheet. Everything that writes lives in `sendExpertHelpRequest`, on that sheet's Send button.
+   */
+  const openExpertChat = () => {
+    if (!user) {
+      // Minting a slip needs an account, so a signed-out traveler has no honest way through
+      // this door yet. Saying so beats opening a review of a request that cannot be sent.
+      toast({
+        title: "Sign in to get expert help",
+        description: "Your plan is saved to your account before an expert can pick it up.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setExpertReviewOpen(true);
+  };
+
+  const sendExpertHelpRequest = async () => {
     // THE SLIP IS THE PRECONDITION FOR THE TOUCHPOINT ITSELF, not just for the lead (Locked
     // Decision 32 lane (a), ledger `2026-09-04-template-inquiry-slip`). The Expert Help dialog
     // is AI expert matching plus a live advisor chat — an expert touchpoint — so it does not
@@ -1555,9 +1583,10 @@ export default function ExperienceTemplatePage() {
     // on this page; the dialog opens only once one is in hand, and the request only goes out
     // bound to it. A trip already in trip context is REUSED, never duplicated. Every one of
     // those decisions lives in `@/lib/trip-slip` — none is restated here.
+    // Second layer, kept deliberately: the door above already refuses a signed-out traveler,
+    // and this is the one that guards the WRITE. A check on the control that opens a screen is
+    // never the thing that keeps a request out.
     if (!user) {
-      // Minting a slip needs an account, so a signed-out traveler has no honest way through
-      // this door yet. Saying so beats opening a dialog whose expert can never be reached.
       toast({
         title: "Sign in to get expert help",
         description: "Your plan is saved to your account before an expert can pick it up.",
@@ -1574,7 +1603,10 @@ export default function ExperienceTemplatePage() {
     const alreadyShared = sig === lastSharedPlanRef.current;
     if (!alreadyShared) lastSharedPlanRef.current = sig;
 
-    const outcome = await ensureSlipForExpertRequest(
+    setExpertRequestSending(true);
+    let outcome: Awaited<ReturnType<typeof ensureSlipForExpertRequest>>;
+    try {
+      outcome = await ensureSlipForExpertRequest(
       {
         existingTripId: getTripContext().tripId,
         basics: {
@@ -1622,7 +1654,15 @@ export default function ExperienceTemplatePage() {
           return res;
         },
       },
-    );
+      );
+    } finally {
+      setExpertRequestSending(false);
+    }
+
+    // The review has done its job either way — a refusal is reported on the sheet's own toast,
+    // so the sheet closes on every outcome and the traveler is never left staring at a Send
+    // button that already ran.
+    setExpertReviewOpen(false);
 
     if (outcome.status === "sent") {
       toast({
@@ -3416,6 +3456,25 @@ export default function ExperienceTemplatePage() {
           }}
         />
         
+        {/* L19's stop screen (ledger `2026-09-07-request-is-a-click`). It writes nothing: the
+            slip mint and the `POST /api/expert-requests` both live behind its Send button, in
+            `sendExpertHelpRequest`. The basics are the page's OWN stated values — an unset date
+            reads "Not set" rather than being filled in for the traveler (§13) — and the price is
+            the free lead rail's, which mints no PaymentIntent. */}
+        <ExpertRequestReviewSheet
+          open={expertReviewOpen}
+          onOpenChange={setExpertReviewOpen}
+          basics={{
+            destination,
+            startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
+            endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
+            party: adults + kids,
+          }}
+          priceLabel={EXPERT_REQUEST_FREE_PRICE}
+          sending={expertRequestSending}
+          onSend={sendExpertHelpRequest}
+        />
+
         {/* Expert Help Dialog - AI Matching + Chat */}
         <Dialog open={expertHelpDialogOpen} onOpenChange={setExpertHelpDialogOpen}>
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
