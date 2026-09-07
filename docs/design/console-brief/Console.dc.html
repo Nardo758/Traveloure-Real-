@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&amp;family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FAFAF8; color: #1A1A18; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #1E3A5F; text-decoration: none; } a:hover { color: #E85D55; }
+    * { box-sizing: border-box; }
+    p { margin: 0; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #FAFAF8; display: flex;">
+
+  <div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #E8E8E2; background: #FFFFFF;">
+    <div style="height: 52px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #E8E8E2; font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 600; color: #1E3A5F;">Traveloure</div>
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px 10px;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: #AEAEA6; padding: 0 10px 4px;">Plan</span>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #E85D55; background: rgba(232,93,85,0.08);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E85D55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span style="flex: 1;">My plans</span><span style="font-family: 'Geist Mono', monospace; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #E85D55;">spine</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 8V4M8 4h8M8 14h.01M16 14h.01"/></svg><span style="flex: 1;">Start with AI</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: #AEAEA6; padding: 0 10px 4px;">Marketplace</span>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-4 2 2-6z"/></svg><span>Discover</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-5-6.3"/></svg><span>Experts</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span>Bookings</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: #AEAEA6; padding: 0 10px 4px;">Inbox</span>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></svg><span style="flex: 1;">Inbox</span><span style="min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #E85D55; color: #FFFFFF; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center;">3</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: #AEAEA6; padding: 0 10px 4px;">Account</span>
+        <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: #1A1A18;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Profile</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px; border: 1px dashed #E7E4DD; border-radius: 10px;">
+        <span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em; color: #E85D55;">Absorbed into the slip</span>
+        <span style="font-size: 12.5px; color: #9AA1A9; text-decoration: line-through;">Trip Cart</span>
+        <span style="font-size: 12.5px; color: #9AA1A9; text-decoration: line-through;">My events</span>
+        <span style="font-size: 11px; line-height: 1.45; color: #7A7A72;">Checkout from the Finish card. A done-for-you engagement is a card on its plan.</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px; padding: 32px 40px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #6A7480;">Proposed console · ten tabs become eight</span>
+      <h1 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 700; color: #1E3A5F;">One spine, every other tab a view</h1>
+      <span style="font-size: 14px; color: #6A7480;">Every view reads plans and lands its actions on one plan's slip. Nothing edits a plan anywhere else.</span>
+    </div>
+
+    <div style="display: flex; align-items: stretch; gap: 0; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF; overflow: hidden;">
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; width: 260px; background: #FBF4EE; border-right: 1px solid #E7E4DD;">
+        <span style="font-family: 'Geist Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #E85D55;">The spine</span>
+        <span style="font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 600; color: #1E3A5F;">My plans</span>
+        <span style="font-size: 12.5px; line-height: 1.5; color: #1F2733;">One row per plan. "New plan" opens the one modal.</span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: center; width: 56px; color: #9AA1A9;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9AA1A9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; flex: 1; border-right: 1px solid #E7E4DD;">
+        <span style="font-family: 'Geist Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #226B6B;">Pre-final</span>
+        <span style="font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 600; color: #1E3A5F;">The slip · /plans/:tripId</span>
+        <span style="font-size: 12.5px; line-height: 1.5; color: #1F2733;">The planning surface. Owner edits, expert reads live, AI proposes. Finalize lives on its rail.</span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: center; width: 56px; color: #9AA1A9;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9AA1A9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; flex: 1;">
+        <span style="font-family: 'Geist Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #6A7480;">Post-final</span>
+        <span style="font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 600; color: #1E3A5F;">Trip Card · /trip/:id</span>
+        <span style="font-size: 12.5px; line-height: 1.5; color: #1F2733;">The frozen read-out plus live booking status. The drawer mounts here too, as the booking agent.</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #1E3A5F;">Home</span><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6A7480;">view</span></div>
+        <span style="font-size: 13px; line-height: 1.5; color: #1F2733;">While you were away · Today's move · active plan strip. Every line traces to a real row.</span>
+        <div style="display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #F0EEE8; font-family: 'Geist Mono', monospace; font-size: 11px; color: #226B6B;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#226B6B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span>deep-links to a slip</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #1E3A5F;">Start with AI</span><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6A7480;">door</span></div>
+        <span style="font-size: 13px; line-height: 1.5; color: #1F2733;">Renamed from AI planner. The conversational way to fill the modal's five questions. Never edits an existing plan.</span>
+        <div style="display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #F0EEE8; font-family: 'Geist Mono', monospace; font-size: 11px; color: #226B6B;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#226B6B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span>the modal, then the slip drawer</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #1E3A5F;">Discover · Experts</span><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6A7480;">browse</span></div>
+        <span style="font-size: 13px; line-height: 1.5; color: #1F2733;">Always carry an "adding to: Kyoto wedding · change" chip, so browsing is a view of one plan's Add rail.</span>
+        <div style="display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #F0EEE8; font-family: 'Geist Mono', monospace; font-size: 11px; color: #226B6B;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#226B6B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span>Add to plan · Hire needs a slip</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #1E3A5F;">Bookings</span><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6A7480;">ledger</span></div>
+        <span style="font-size: 13px; line-height: 1.5; color: #1F2733;">Cross-plan money after purchase: escrow confirm, disputes, reviews, refunds. Kept deliberately.</span>
+        <div style="display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #F0EEE8; font-family: 'Geist Mono', monospace; font-size: 11px; color: #226B6B;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#226B6B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span>each row links to its plan</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #1E3A5F;">Inbox</span><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6A7480;">human</span></div>
+        <span style="font-size: 13px; line-height: 1.5; color: #1F2733;">Messages and updates from people. AI threads never appear here; they live on the plan.</span>
+        <div style="display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #F0EEE8; font-family: 'Geist Mono', monospace; font-size: 11px; color: #226B6B;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#226B6B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span>advisor threads are plan-scoped</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid #E7E4DD; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #1E3A5F;">Profile</span><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6A7480;">account</span></div>
+        <span style="font-size: 13px; line-height: 1.5; color: #1F2733;">Home city for Plus, payment methods in Stripe's vault, travel preferences.</span>
+        <div style="display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #F0EEE8; font-family: 'Geist Mono', monospace; font-size: 11px; color: #6A7480;"><span>unchanged</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 14px;">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; border: 1px dashed #E85D55; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 7px; border-radius: 5px; background: #E85D55; color: #FFFFFF;">needs ruling 4</span><span style="font-family: 'Fraunces', Georgia, serif; font-size: 15px; font-weight: 600; color: #1E3A5F;">Trip Cart leaves the sidebar</span></div>
+        <span style="font-size: 12.5px; line-height: 1.5; color: #1F2733;">Gate: the checkout page reads the plan's ready-for-checkout items for a signed-in traveler, not its own cart table. The route stays as the guest fallback until G2.</span>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; border: 1px dashed #E85D55; border-radius: 12px; background: #FFFFFF;">
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="font-family: 'Geist Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 7px; border-radius: 5px; background: #E85D55; color: #FFFFFF;">needs ruling 5</span><span style="font-family: 'Fraunces', Georgia, serif; font-size: 15px; font-weight: 600; color: #1E3A5F;">My events folds into My plans</span></div>
+        <span style="font-size: 12.5px; line-height: 1.5; color: #1F2733;">A done-for-you engagement can only exist on a plan (Decision 32). Its status and fee payment become a card on that plan's slip. The money rail does not move.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
