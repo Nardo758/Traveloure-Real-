@@ -40,7 +40,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays, differenceInDays } from "date-fns";
-import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
+import type { ActivityDiff, TransportDiff } from "@/lib/itinerary-diff";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { cn } from "@/lib/utils";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
