@@ -299,12 +299,26 @@ describe("P3 — the guest handoff", () => {
 
 // ── P4 ────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Compare a browse href by its PARSED parameters, never by its literal spelling. `%20` and `+`
+ * are both a space in a query string and `URLSearchParams` decodes either, so asserting one
+ * spelling pins an implementation detail rather than the rule — which is what happened when the
+ * door moved onto the shared `buildServicesBrowseHref` (ledger `2026-09-07-doors-pass-tripid`)
+ * and this pin went red over an encoder change that no reader can observe. The rule is: the plan's
+ * id and the plan's own destination, and nothing else.
+ */
+function browseParams(href: string): Record<string, string> {
+  const [path, query = ""] = href.split("?");
+  assert.equal(path, "/services", "the browse door always lands on /services");
+  return Object.fromEntries(new URLSearchParams(query).entries());
+}
+
 describe("P4 — the browse door reads the PLAN, never the pen", () => {
   it("carries the plan's own destination beside its id", () => {
-    assert.equal(
-      slipBrowseServicesHref("trip-1", "Kyoto, Japan"),
-      "/services?tripId=trip-1&location=Kyoto%2C%20Japan",
-    );
+    assert.deepEqual(browseParams(slipBrowseServicesHref("trip-1", "Kyoto, Japan")), {
+      tripId: "trip-1",
+      location: "Kyoto, Japan",
+    });
   });
 
   it("passes NO location when the plan has no usable destination (§13)", () => {
@@ -320,9 +334,9 @@ describe("P4 — the browse door reads the PLAN, never the pen", () => {
   it("the href is built from the plan alone — a pen in the same tab cannot reach it", async () => {
     await bindPenPrincipal("user-a");
     updateTripContext({ destination: "Lisbon, Portugal" });
-    assert.equal(
-      slipBrowseServicesHref("trip-1", "Kyoto, Japan"),
-      "/services?tripId=trip-1&location=Kyoto%2C%20Japan",
-    );
+    assert.deepEqual(browseParams(slipBrowseServicesHref("trip-1", "Kyoto, Japan")), {
+      tripId: "trip-1",
+      location: "Kyoto, Japan",
+    });
   });
 });
