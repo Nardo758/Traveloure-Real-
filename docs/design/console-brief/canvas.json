@@ -1,0 +1,175 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 8200,
+      "title": "Brief \u00b7 draft for ruling",
+      "print": "flow"
+    },
+    {
+      "file": "Console.dc.html",
+      "x": 1000,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "1 \u00b7 Console \u00b7 one spine"
+    },
+    {
+      "file": "SlipDrawer.dc.html",
+      "x": 2560,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "title": "1 \u00b7 Slip \u00b7 Ask AI drawer open"
+    },
+    {
+      "file": "AILifecycle.dc.html",
+      "x": 4120,
+      "y": 0,
+      "w": 1440,
+      "h": 740,
+      "title": "1 \u00b7 The AI actor across a plan's life"
+    },
+    {
+      "file": "HomeBefore.dc.html",
+      "x": 1000,
+      "y": 1220,
+      "w": 1440,
+      "h": 1680,
+      "title": "2 \u00b7 Home \u00b7 today"
+    },
+    {
+      "file": "Home.dc.html",
+      "x": 2560,
+      "y": 1220,
+      "w": 1440,
+      "h": 1120,
+      "title": "2 \u00b7 Home \u00b7 proposed"
+    },
+    {
+      "file": "MyPlansBefore.dc.html",
+      "x": 4120,
+      "y": 1220,
+      "w": 1440,
+      "h": 1160,
+      "title": "2 \u00b7 My plans \u00b7 today"
+    },
+    {
+      "file": "MyPlans.dc.html",
+      "x": 5680,
+      "y": 1220,
+      "w": 1440,
+      "h": 1080,
+      "title": "2 \u00b7 My plans \u00b7 proposed"
+    },
+    {
+      "file": "DiscoverBefore.dc.html",
+      "x": 1000,
+      "y": 2900,
+      "w": 1440,
+      "h": 960,
+      "title": "2 \u00b7 Discover \u00b7 today"
+    },
+    {
+      "file": "Discover.dc.html",
+      "x": 2560,
+      "y": 2900,
+      "w": 1440,
+      "h": 1320,
+      "title": "2 \u00b7 Discover \u00b7 proposed"
+    },
+    {
+      "file": "StartWithAI.dc.html",
+      "x": 4120,
+      "y": 2900,
+      "w": 1440,
+      "h": 830,
+      "title": "2 \u00b7 Start with AI"
+    },
+    {
+      "file": "Experts.dc.html",
+      "x": 5680,
+      "y": 2900,
+      "w": 1440,
+      "h": 900,
+      "title": "2 \u00b7 Experts"
+    },
+    {
+      "file": "Bookings.dc.html",
+      "x": 1000,
+      "y": 4580,
+      "w": 1440,
+      "h": 820,
+      "title": "2 \u00b7 Bookings"
+    },
+    {
+      "file": "Inbox.dc.html",
+      "x": 2560,
+      "y": 4580,
+      "w": 1440,
+      "h": 760,
+      "title": "2 \u00b7 Inbox"
+    },
+    {
+      "file": "Profile.dc.html",
+      "x": 4120,
+      "y": 4580,
+      "w": 1440,
+      "h": 900,
+      "title": "2 \u00b7 Profile"
+    },
+    {
+      "file": "TripCard.dc.html",
+      "x": 1000,
+      "y": 5600,
+      "w": 1440,
+      "h": 1140,
+      "title": "3 \u00b7 Trip Card \u00b7 post-final, desktop"
+    },
+    {
+      "file": "TripCardMobile.dc.html",
+      "x": 2560,
+      "y": 5600,
+      "w": 390,
+      "h": 844,
+      "title": "3 \u00b7 Trip Card \u00b7 live day, phone"
+    },
+    {
+      "file": "BuildSequence.dc.html",
+      "x": 7240,
+      "y": 0,
+      "w": 1880,
+      "h": 1560,
+      "title": "1 \u00b7 Build sequence \u00b7 four waves"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "row-ai",
+      "x": 1000,
+      "y": -140,
+      "w": 560,
+      "text": "ROW 1 \u00b7 The AI Concierge on the slip, and the build sequence\nConsole map, the slip with the Ask AI drawer open, the AI actor across a plan's life, and the eighteen lanes in four waves (also section 10 of the brief)."
+    },
+    {
+      "id": "row-tabs",
+      "x": 1000,
+      "y": 1060,
+      "w": 720,
+      "text": "ROW 2 \u00b7 The console tabs. Home, My plans and Discover are drawn as pairs: today's page recreated from source on the left, the proposed page on the right. Coral-numbered strip under each 'today' board lists what the redraw answers. Teal chips = a defect closed. Coral chips = needs a ruling."
+    },
+    {
+      "id": "row-card",
+      "x": 1000,
+      "y": 5460,
+      "w": 560,
+      "text": "ROW 3 \u00b7 The Trip Card fixed\nPost-final desktop card with no tab shell, and the phone's live day. The brief's section 7 lists what the June spec got and what is still open."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
