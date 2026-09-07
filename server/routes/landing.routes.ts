@@ -33,6 +33,7 @@ import {
   MOMENT_KEYS,
   MOMENT_EVENT_KINDS,
 } from "../services/landing-moments";
+import { getUserId } from "../utils/auth";
 import {
   composeLandingHero,
   deriveWantedSlot,
@@ -198,7 +199,11 @@ router.post("/api/landing/moments/event", async (req, res) => {
     return res.status(400).json({ message: "Invalid moment event" });
   }
   const { momentKey, kind, position, sessionId } = parsed.data;
-  const userId = (req.user as any)?.id ?? null; // best-effort; the surface is public
+  // Security-audit finding 16 (2026-09-01): `(req.user as any)?.id` attributed every
+  // EMAIL-AUTH user as anonymous — that session shape is `{claims:{sub}}` with no top-level
+  // `id` (emailAuth.ts). getUserId covers all three auth shapes and is null-safe on this
+  // public surface (utils/auth.ts: "always use this helper").
+  const userId = getUserId(req); // null when anonymous — best-effort attribution stays honest
   try {
     await db.insert(landingMomentEvents).values({
       momentKey,
