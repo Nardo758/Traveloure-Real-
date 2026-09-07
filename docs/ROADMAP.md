@@ -211,3 +211,65 @@ invite page (trust + §16 disintermediation-resistance).
 **Sequencing picture:** P1 (merge) → P2+E2 ∥ A0/A1 → P3 → A2/A3 → E1/E3/E4 (then E5–E8
 by value). Each phase lands via its own PR + gates; money-touching items (E1, E6) get
 their own security lanes per §14/§15.
+
+---
+
+# Console & AI Concierge Program — Open Register (compiled 2026-09-07)
+
+> Compiled from the brief, the ledger and each lane's report — not memory.
+> Brief of record: `docs/design/CONSOLE_AND_AI_CONCIERGE_BRIEF.md`.
+> **Artboard of record:** `docs/design/console-brief/main-artboard/Main.dc.html`
+> ("The AI Concierge on the slip, and the console around it" design canvas export —
+> committed per the preservation rule recorded at `2026-09-07-slip-canvas-unrecoverable`;
+> serve the folder and open the file, `file://` blocks its runtime).
+>
+> **Landed:** W0 #832/#834 · preview fix #835 · L1 console grammar #836 ·
+> L2 home honesty #837 · L3 my-plans rows #838 · L4 trip-card honesty #841 ·
+> L5 start-with-AI door #842.
+
+## A. Waiting on the decision-maker — nothing moves until these are answered
+
+| # | Question | Blocks |
+|---|----------|--------|
+| A1 | **Does a door get a third axis?** PR **#849** (L6, `task-concierge-door`) adds one optional finish hook so the concierge tier can own its branch's downstream. Locked Decision 33 says doors differ in two things only. Allow the amendment — or the fallback: the Expert tier opens the generic experts browse and both the hook and the review sheet come out. **#849 is conflict-free and green-validated, HELD UNMERGED.** | L6 |
+| A2 | **Where the Trip Card's logistics content lives** — participant RSVP, payments, dietary, budget with category breakdown, alerts, roster, contracts. Currently in an owner-only collapsed drawer, which deviates from the ratified board. | Trip Card lanes |
+| A3 | **The cart's fee line** — it charges the traveler the 25% provider commission as "Platform fee", not the ruled 7% capped at $25. A money decision; **no checkout ships before it.** | Cart lane |
+| A4 | **Four unratified rulings** — one resolver as sole author of the buy button; untimed items as their own group; plan work sold as a listing at checkout; a consult never requiring a plan. | Buy-side resolver, plan-work rail |
+
+## B. Defects found and deliberately not fixed
+
+| # | Defect |
+|---|--------|
+| B1 | `concierge_requests.tripId` is written straight from the request body with no ownership check — a claimed guest concierge request has no verified link to the plan it produced. |
+| B2 | The expert-advisor reader returns one advisor where D7 rules it returns all. |
+| B3 | Home cannot date every unpaid booking — no booking-date column; the fallback needs a booked slot or a checkout snapshot. Undated ones are omitted rather than invented (§13). |
+| B4 | Six dashboard components now have no importers, and one endpoint has no reader. Recorded as deletion candidates, untouched. |
+
+## C. Wording that overstates the code (brief or ruling vs ground truth)
+
+| # | Drift |
+|---|-------|
+| C1 | D8 and the brief say the pre-final Trip Card redirects; it renders a notice with one action, and two specs assert the notice. |
+| C2 | The Trip Card header cannot show D21's invited count without reading the guest roster. |
+| C3 | The brief says the concierge door passes party size; there is no such field and there should not be one. |
+| C4 | The brief says the quote route goes; the page goes, the route has three consumers. |
+
+## D. Test coverage gaps
+
+| # | Gap |
+|---|-----|
+| D1 | No armed browser gate covers Home at all — the Home assertions the brief asked for exist nowhere. Needs a new spec with a green run recorded. |
+| D2 | Two journey specs were rewritten onto the new flow but are staging-only and unexecuted, and both were already failing on selectors that never existed. |
+
+## E. Lanes not yet built
+
+- **Ready now, no ruling needed:** my-events fold · Discover in the shell · bookings by plan ·
+  inbox context · the extraction date anchor · doors passing the trip id.
+- **Blocked:** the cart lane (its own audit + A3) · conversation trip link (needs a migration) ·
+  Ask AI drawer (needs its own design brief) · booking-agent tab (waits on the agent status
+  vocabulary) · buy-side resolver and plan-work rail (wait on A4).
+
+## F. Housekeeping
+
+- Six agent worktrees remain on disk for merged branches.
+- The type-error baseline still sits at **132** with two pre-existing errors no lane introduced.
