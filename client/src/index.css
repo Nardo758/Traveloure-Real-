@@ -91,17 +91,19 @@
   --earn-chip: #F6F5F1;
 }
 
-/* ── Earner back-office console scope (decision-maker ratified Jul 27, 2026) ──
-   TWO PALETTES BY DESIGN: the Traveler surface keeps the global brand above
-   (--primary #FF385C, cool greys); the earner back office (expert + provider
-   consoles) is a different product with the warm console palette (#E85D55 +
-   #1A1A18/#7A7A72/#E8E8E2/#FAFAF8). Scoped via this class on BackofficeShell's
-   root — every bg-primary / text-foreground / border inside the console resolves
-   to the console palette with ZERO traveler blast radius. Design-audit fixes
-   1+2: collapses the two-reds-on-one-screen split and makes the ~50 cards using
-   shadcn semantics (`border`, `text-muted-foreground`) console-conformant
-   without touching page files. Do not restyle console pages with raw hex —
-   use tokens; this scope makes them correct. */
+/* ── Console scope (earner back office ratified Jul 27, 2026; EXTENDED to the
+   traveler console by LD 45 ruling 7, ledger 2026-09-07-console-one-grammar) ──
+   TWO PALETTES BY DESIGN: the PUBLIC traveler surfaces keep the global brand
+   above (--primary #FF385C, cool greys); BOTH consoles — the earner back office
+   (BackofficeShell) and, since LD 45 (7), the traveler console (DashboardLayout)
+   — read the warm console palette (#E85D55 + #1A1A18/#7A7A72/#E8E8E2/#FAFAF8).
+   Scoped via this class on the shell root — every bg-primary / text-foreground /
+   border inside either console resolves to the console palette with ZERO public
+   blast radius. Design-audit fixes 1+2: collapses the two-reds-on-one-screen
+   split and makes the ~50 cards using shadcn semantics (`border`,
+   `text-muted-foreground`) console-conformant without touching page files. Do
+   not restyle console pages with raw hex — use tokens; this scope makes them
+   correct. */
 .console-scope {
   --primary: 3 76% 62%; /* #E85D55 */
   --primary-hover: 3 66% 52%; /* darkened coral */

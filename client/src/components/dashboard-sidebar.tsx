@@ -95,8 +95,8 @@ export function DashboardSidebar() {
   const inboxUnreadCount = (unreadNotifications?.count ?? 0) + (unreadMessages?.count ?? 0);
 
   return (
-    <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
-      <SidebarHeader className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3" style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}>
+    <Sidebar collapsible="icon" style={{ background: "var(--console-card)", borderRight: "1px solid var(--console-line)" }}>
+      <SidebarHeader className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3" style={{ borderBottom: "1px solid var(--console-line)", minHeight: 56 }}>
         <Link href="/" className="flex items-center" data-testid="link-sidebar-logo">
           <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
         </Link>
@@ -107,7 +107,7 @@ export function DashboardSidebar() {
           <SidebarGroup key={group.label} className="mb-3 p-0">
             <SidebarGroupLabel
               className="text-[10px] font-semibold uppercase tracking-[1.2px] px-2.5 mb-1 h-auto group-data-[collapsible=icon]:hidden"
-              style={{ color: "#AEAEA6" }}
+              style={{ color: "var(--console-faint)" }}
             >
               {group.label}
             </SidebarGroupLabel>
@@ -132,8 +132,8 @@ export function DashboardSidebar() {
                         tooltip={item.title}
                         className={
                           isActive
-                            ? "bg-[rgba(232,85,85,0.08)] text-[#E85D55] font-semibold"
-                            : "text-[#7A7A72] hover:text-[#1A1A18] hover:bg-[#F3F3EE]"
+                            ? "bg-[var(--console-brand-soft)] text-[var(--console-brand)] font-semibold"
+                            : "text-[var(--console-mid)] hover:text-[var(--console-ink)] hover:bg-[hsl(var(--muted))]"
                         }
                       >
                         <Link href={item.href} data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
@@ -142,7 +142,7 @@ export function DashboardSidebar() {
                           {item.href === "/inbox" && inboxUnreadCount > 0 && (
                             <span
                               className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center flex-shrink-0"
-                              style={{ background: "#E85D55" }}
+                              style={{ background: "var(--console-brand)" }}
                               data-testid="badge-sidebar-inbox-unread"
                             >
                               {inboxUnreadCount > 9 ? "9+" : inboxUnreadCount}
@@ -159,26 +159,26 @@ export function DashboardSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5" style={{ borderTop: "1px solid #E8E8E2" }}>
+      <SidebarFooter className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5" style={{ borderTop: "1px solid var(--console-line)" }}>
         {user && (
           <div className="flex items-center gap-2.5 mb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mb-0">
             <div
               className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-semibold text-white flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #E85D55, #1E3A5F)" }}
+              style={{ background: "linear-gradient(135deg, var(--console-brand), var(--earn-navy))" }}
             >
               {initials}
             </div>
             <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
+              <p className="text-[13px] font-medium truncate" style={{ color: "var(--console-ink)" }}>
                 {user.firstName} {user.lastName}
               </p>
-              <p className="text-[11px] truncate" style={{ color: "#7A7A72" }}>{user.email}</p>
+              <p className="text-[11px] truncate" style={{ color: "var(--console-mid)" }}>{user.email}</p>
             </div>
           </div>
         )}
         <Button
           variant="ghost"
-          className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="w-full justify-start text-[var(--console-mid)] hover:text-[var(--console-brand)] hover:bg-[var(--console-brand-soft)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           onClick={() => logout()}
           data-testid="button-sidebar-logout"
         >

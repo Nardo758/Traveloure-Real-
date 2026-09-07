@@ -348,3 +348,71 @@ test.describe('Logo — admin sidebar (/admin/dashboard)', () => {
     console.log('[logo-test] PASS admin sidebar (/admin/dashboard)');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. Browse surfaces inside the console shell (LD 45 ruling 7, ledger
+//    2026-09-07-console-one-grammar): a signed-in account on /experts or /cart
+//    sees the console sidebar; a guest keeps the public chrome (the /cart guest
+//    fallback, LD 45 (4)). The dashboard-only sidebar toggle
+//    (button-dashboard-sidebar-toggle) is the distinguishing signal — the logo
+//    testid is shared by both chromes and cannot tell them apart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Shell — browse surfaces inside the console (LD 45 (7))', () => {
+  test.use({ storageState: 'playwright/.auth/admin.json' });
+
+  let sessionOk = false;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/api/auth/session`);
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const authenticated = body.authenticated === true;
+    console.log(`[shell-test] browse-shell session — authenticated=${authenticated}`);
+
+    if (IS_CI && !authenticated) {
+      throw new Error(
+        `[shell-test] Admin storageState did not yield an authenticated session for ` +
+        `the browse-shell check. Got: ${JSON.stringify(body)}.`,
+      );
+    }
+    sessionOk = authenticated;
+  });
+
+  for (const path of ['/experts', '/cart']) {
+    test(`${path} renders the console sidebar when signed in`, async ({ page }) => {
+      if (!sessionOk) {
+        test.skip(
+          true,
+          'No authenticated session available — seed CI users and run with PW_AUTH_SETUP=1',
+        );
+        return;
+      }
+      await gotoAndSettle(page, path);
+      if (!didNotRedirect(page, path)) {
+        test.skip(true, `Redirected away from ${path} — session may be stale`);
+        return;
+      }
+      await expect(
+        page.getByTestId('button-dashboard-sidebar-toggle'),
+        `[browse-shell] ${path} must render inside DashboardLayout for a signed-in account — ` +
+          'the console sidebar toggle is absent, so the public chrome owns the tab (LD 45 (7))',
+      ).toBeAttached({ timeout: 8_000 });
+      console.log(`[shell-test] PASS ${path} inside the console shell`);
+    });
+  }
+});
+
+test.describe('Shell — guests keep the public chrome (LD 45 (4) fallback)', () => {
+  test('/experts renders no console sidebar for a guest', async ({ page }) => {
+    await gotoAndSettle(page, '/experts');
+    if (!didNotRedirect(page, '/experts')) {
+      test.skip(true, 'Redirected away from /experts — cannot evaluate guest chrome');
+      return;
+    }
+    await expect(
+      page.getByTestId('button-dashboard-sidebar-toggle'),
+      '[browse-shell] a guest on /experts must NOT see the console sidebar — the public chrome is the guest fallback',
+    ).toHaveCount(0);
+    console.log('[shell-test] PASS /experts guest keeps the public chrome');
+  });
+});

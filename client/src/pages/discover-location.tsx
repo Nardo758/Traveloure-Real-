@@ -2,7 +2,10 @@ import { useRef, useEffect, useState } from "react";
 import { useParams, useSearch, useLocation, Link } from "wouter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
-import { Layout, NAV_LEAF_ICONS } from "@/components/layout";
+import { NAV_LEAF_ICONS } from "@/components/layout";
+// L1 / LD 45 (7): the page's chrome is the console shell for a signed-in
+// traveler, the public Layout for a guest — one chooser, never per-page.
+import { BrowseShell } from "@/components/browse-shell";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
@@ -2069,19 +2072,19 @@ export default function DiscoverLocationPage() {
 
   if (!city) {
     return (
-      <Layout>
+      <BrowseShell>
         <div className="container mx-auto px-4 py-12 max-w-3xl">
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>No city specified.</AlertDescription>
           </Alert>
         </div>
-      </Layout>
+      </BrowseShell>
     );
   }
 
   return (
-    <Layout>
+    <BrowseShell>
       {/* ── Band (earn-grammar header + Marketplace rail) — FULL-BLEED ─────
           The band section carries its own inner `container max-w-6xl`, so it
           lives OUTSIDE the narrower body wrapper below and spans the viewport
@@ -2262,6 +2265,6 @@ export default function DiscoverLocationPage() {
           onOpenChange={setAddToExperienceOpen}
         />
       </div>
-    </Layout>
+    </BrowseShell>
   );
 }
