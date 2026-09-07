@@ -1,10 +1,13 @@
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, format } from "date-fns";
-import { Users, Share2, Download, CheckCircle2, RefreshCw } from "lucide-react";
+import { Users, Share2, Download, CheckCircle2, RefreshCw, CalendarPlus, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { parseCalendarDate } from "@/lib/calendar-date";
+import { slipZoneLine } from "@/lib/slip-meta";
+import { slipCalendarPath, slipPdfPath } from "@/lib/slip-rail";
+import { partyCountLabel } from "@/lib/plan-vocabulary";
 
 interface HeroSectionProps {
   trip: PlanCardTrip;
@@ -40,6 +43,22 @@ interface HeroSectionProps {
    * center mid-revision.
    */
   revising?: boolean;
+  /**
+   * Ledger `2026-09-07-trip-card-one-page` — the anatomy's "dates · market · timezone · party ·
+   * advisor" line and the Share / Calendar / PDF controls, on the ONE header both stages share.
+   * `timezone` is `trips.timezone` (absent ⇒ no zone line, LD 30); `advisorName` is the ONE
+   * `slipAdvisorName` reading of the owner-gated advisor row (absent ⇒ no advisor line, §13).
+   */
+  timezone?: string | null;
+  advisorName?: string | null;
+  /**
+   * The page's share rail (the token link — `POST /api/trips/:id/share`, ledger S10). When given,
+   * Share calls it instead of copying the `/itinerary/:id` URL, which redirects to a
+   * ProtectedRoute and works only for the owner already signed in.
+   */
+  onShare?: () => void;
+  /** Calendar (.ics) and PDF are session-gated routes: rendered only for a session that may read them. */
+  showExports?: boolean;
 }
 
 /**
@@ -93,13 +112,21 @@ export function HeroControls({
   trip,
   traveloureScore,
   shareToken,
+  onShare,
+  showExports = false,
 }: {
   trip: PlanCardTrip;
   traveloureScore: number | null | undefined;
   shareToken: string | null | undefined;
+  onShare?: () => void;
+  showExports?: boolean;
 }) {
   const { toast } = useToast();
   function handleShare() {
+    if (onShare) {
+      onShare();
+      return;
+    }
     const shareUrl = shareToken
       ? `${window.location.origin}/itinerary-view/${shareToken}`
       : `${window.location.origin}/itinerary/${trip.id}`;
@@ -124,15 +151,42 @@ export function HeroControls({
         <Share2 className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Share</span>
       </button>
-      <Link href={`/itinerary/${trip.id}`} className="hidden sm:block">
-        <button
-          className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
-          data-testid={`button-export-${trip.id}`}
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Export</span>
-        </button>
-      </Link>
+      {showExports ? (
+        /* Ledger `2026-09-07-trip-card-one-page`: Calendar and PDF are the SAME two routes the
+           slip's Share card offers (`slipCalendarPath` / `slipPdfPath` — one spelling, §18 rule 1).
+           They replace the old "Export" link, which pointed at `/itinerary/:id` — a redirect back
+           to `/trip/:id`, i.e. a button that went nowhere. */
+        <>
+          <a
+            href={slipCalendarPath(trip.id)}
+            download
+            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
+            data-testid={`button-calendar-${trip.id}`}
+          >
+            <CalendarPlus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Calendar</span>
+          </a>
+          <a
+            href={slipPdfPath(trip.id)}
+            download
+            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
+            data-testid={`button-pdf-${trip.id}`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">PDF</span>
+          </a>
+        </>
+      ) : (
+        <Link href={`/itinerary/${trip.id}`} className="hidden sm:block">
+          <button
+            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
+            data-testid={`button-export-${trip.id}`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+        </Link>
+      )}
     </div>
   );
 }
@@ -152,6 +206,10 @@ export function HeroSection({
   finalDress = false,
   finalVersion = null,
   revising = false,
+  timezone = null,
+  advisorName = null,
+  onShare,
+  showExports = false,
 }: HeroSectionProps) {
   // The full-stage header is now PlanCardHeader (Phase 2b) — it sources its own destination photo.
   function safeDate(raw: string | null | undefined): Date | null {
@@ -202,6 +260,14 @@ export function HeroSection({
         transitTime: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-",
       }}
       testId={`plancard-hero-${trip.id}`}
+      // Locked Decision 30: the zone line is the slip header's OWN spelling; NULL ⇒ no line.
+      zoneLine={slipZoneLine(timezone)}
+      // The party, through the ONE label derivation. A count of exactly 1 is NOT shown: on rows
+      // minted before the party pair was captured, `1` is the uncaptured mask (migration 241 /
+      // D3's held decision), and printing it would state a party nobody gave (§13) — the same
+      // line the `> 1` travelers badge below already draws.
+      partyLabel={trip.numberOfTravelers > 1 ? partyCountLabel(trip.numberOfTravelers) : null}
+      expertName={advisorName}
       badges={
         <>
           <FinalVersionChip tripId={trip.id} finalDress={finalDress} finalVersion={finalVersion} revising={revising} />
@@ -215,7 +281,15 @@ export function HeroSection({
           )}
         </>
       }
-      topRight={<HeroControls trip={trip} traveloureScore={traveloureScore} shareToken={shareToken} />}
+      topRight={
+        <HeroControls
+          trip={trip}
+          traveloureScore={traveloureScore}
+          shareToken={shareToken}
+          onShare={onShare}
+          showExports={showExports}
+        />
+      }
     />
   );
 }

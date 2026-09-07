@@ -1437,6 +1437,20 @@ This document captures architectural decisions to maintain consistency across co
     R-J ratified for connected agents: agents build and stage, humans pay). The build sequence is
     the brief's §10: eighteen lanes in four waves, serial, one ledger row per lane; L16 (the paid
     drawer) needs its own design brief before build, and L17 waits on LD 44 phase 0.
+    **(6) HAS LANDED (lane L9, ledger `2026-09-07-trip-card-one-page`).** `/trip/:id` is ONE page —
+    the full-stage `PlanCard` plus a 320px right rail (Booking agent · Your expert · Suggestion ·
+    Back to planning); the Itinerary/Bookings/Logistics tab shell and the page's stock-photo hero
+    are gone, purchases render in the card's Purchases drawer and in the My-bookings ledger, and
+    the booking-agent card is a PLACEHOLDER until L16/L17 that reads only the stages today's rows
+    carry (LD 44 (e)'s legacy four mapped explicitly; it never claims a copilot exists). Two
+    invariants moved with it and bind every lane after: **the 48-hour handover window and a plan's
+    zoned instant are ONE derivation, `shared/plan-timing.ts`** (`tripCardIsPrimary` delegates;
+    NULL zone ⇒ compare on the calendar DATE alone — never UTC, never the device clock, LD 30), and
+    **a countdown renders only where `trips.timezone` exists**, with the temporal engine's
+    "90 minutes per item" assumption deleted in favour of an item's own `end_time`. Two things the
+    lane found and did NOT change: the pre-final case renders an honest NOTICE with one action to
+    the slip rather than the redirect D8's wording implies (two armed specs assert the notice), and
+    `GET /api/trips/:id/expert-advisor` still returns ONE advisor where D7 rules it returns all.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

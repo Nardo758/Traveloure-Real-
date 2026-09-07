@@ -1442,3 +1442,36 @@ jobs:
       # screenshot guard and the e2e gates' answer.
       - name: Console grammar pin
         run: npx tsx --test client/src/lib/__tests__/console-grammar.test.ts
+
+  trip-card-one-page:
+    name: trip-card-one-page (CLAUDE.md Locked Decision 45 (6) — 2026-09-07-trip-card-one-page)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # npm ci per OPERATING_PROCEDURE §3 — never a "Node built-ins only" job: the timing suite
+      # imports `shared/trip-primary-surface.ts`, which is real module resolution.
+      - run: npm ci
+      # L9 of the Console & AI Concierge brief. THREE SUITES, THREE SILENT FAILURE SHAPES.
+      #  · plan-timing: the 48-hour window and the plan-zone instant, ONE derivation shared with
+      #    lane L10 (§18 rule 1). The old arm read `new Date("YYYY-MM-DD")` — UTC midnight, which
+      #    is neither the plan's zone nor the viewer's — and nothing pinned it. NULL zone ⇒ the
+      #    date alone, never UTC and never the device clock dressed as the plan's (LD 30, §13).
+      #  · trip-card-status: LD 44 (e)'s vocabulary read off the rows that exist TODAY — the
+      #    legacy four mapped EXPLICITLY, "Booked" said only with a confirmation in hand, and a
+      #    §15b `payment_pending` claim rendered as prepared rather than booked.
+      #  · trip-card-one-page: static pins over the shipped source (comments stripped) — no tab
+      #    shell, one rail, one suggestions mount, the pre-final branch intact (LD 42 D8), no
+      #    invented item duration, and the countdown gated on the plan's zone.
+      # NEGATIVE SPACE: all three are pure — no DOM, no DB, no network — so none can see whether
+      # anything RENDERS. That is `playwright/tests/slip-rail-actions.spec.ts` A10/A12's answer
+      # (the armed DOM gate this lane extended rather than adding a spec beside it).
+      - name: Plan timing pins (shared with L10)
+        run: npx tsx --test shared/__tests__/plan-timing.test.ts
+      - name: Trip Card status readers
+        run: npx tsx --test client/src/lib/__tests__/trip-card-status.test.ts
+      - name: Trip Card one-page pins
+        run: npx tsx --test client/src/lib/__tests__/trip-card-one-page.test.ts

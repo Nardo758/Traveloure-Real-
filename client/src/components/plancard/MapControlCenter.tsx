@@ -64,8 +64,21 @@ const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
  * initial-center derivation all read it. A stop with no coordinates is simply not mapped;
  * this component fabricates no coordinate (§13).
  */
-function isLocated(a: PlanCardActivity): boolean {
+export function isLocated(a: PlanCardActivity): boolean {
   return a.lat != null && a.lng != null;
+}
+
+/**
+ * "X of Y located" for a day — the view bar's Map label (ledger `2026-09-07-trip-card-one-page`,
+ * brief §7 anatomy). Reads the SAME predicate the pin layer reads, so the label and the map can
+ * never disagree about which stops are on it (§18 rule 1). NULL when the day has no stops at all
+ * — a label about zero stops is not drawn.
+ */
+export function locatedCountLabel(activities: readonly PlanCardActivity[] | undefined): string | null {
+  const total = activities?.length ?? 0;
+  if (total === 0) return null;
+  const located = activities!.filter(isLocated).length;
+  return `${located} of ${total} located`;
 }
 
 // LD 41 comparison series styling. A dashed Google polyline is a zero-opacity stroke plus a

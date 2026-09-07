@@ -1,28 +1,51 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTrip } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Package, Share2, Copy, Check, XCircle } from "lucide-react";
+import { Loader2, Sparkles, ArrowLeft, MapPin, Copy, Check, XCircle, Package, ChevronDown } from "lucide-react";
 import { TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
-import { format, differenceInDays, isValid } from "date-fns";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import { type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import { TripCardRail } from "@/components/plancard/TripCardRail";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
-import { openInMaps } from "@/lib/navigate";
+import { slipShareUrl } from "@/lib/slip-rail";
 
-type Section = "activities" | "transport";
+/**
+ * THE TRIP CARD IS ONE PAGE (ledger `2026-09-07-trip-card-one-page`; Console & AI Concierge
+ * brief §7 anatomy; CLAUDE.md Locked Decision 45 (6)).
+ *
+ * The Itinerary / Bookings / Logistics `Tabs` shell is gone. The page is: the full-stage
+ * `PlanCard` (hero = the SAME `PlanCardHeader` + `MetricStrip` the summary card draws; view bar
+ * Plan | Map with "X of Y located"; the day list; the collapsed drawers — Note from your expert ·
+ * Budget · Purchases · Change history) in the main column, and `TripCardRail` (Booking agent ·
+ * Your expert · Suggestion from your expert · Back to planning) in a 320px right column.
+ *
+ * WHAT THE TWO DELETED TABS CARRIED, AND WHERE IT WENT:
+ *   · Bookings tab — a permanent empty state ("No Bookings Yet"). Purchases now live in the
+ *     card's Purchases drawer (every `service_bookings` row on this plan, prepared ≠ booked) and
+ *     in the cross-plan Bookings ledger (My bookings).
+ *   · Logistics tab — `TripLogisticsDashboard`, which renders REAL data from eight live reads
+ *     (participant RSVP + payment + dietary stats, the budget summary and its category
+ *     breakdown, the alert summary, the participant roster, the contracts board) plus a Planning
+ *     tab whose three panels (temporal anchors, schedule validator, energy budget) also have a
+ *     home on the SLIP. The component is mounted here UNCHANGED — it has two other call sites and
+ *     editing it would change them too — inside ONE collapsed "Logistics" drawer below the card,
+ *     owner-only, mounted only when opened so its reads do not fire on a page that never asks.
+ *     That drawer is NOT on the ratified board: it is kept so no real data is lost with the tab,
+ *     and it is reported as a deviation for the decision-maker rather than taken silently.
+ *
+ * The page-level photo hero (`picsum.photos/seed/<destination>` — a photo of nowhere, the §13
+ * lie L4 removed from the card's own hero) is gone; the card's typographic hero is the page's.
+ */
 
 /**
  * Mobile-lens audit #1 fix (found in behavioral verification): the pre-existing
@@ -47,19 +70,6 @@ function computeLiveDayNumber(startDate: string | undefined, endDate: string | u
   return Math.min(Math.max(daysInto, 1), totalDays);
 }
 
-function getActivityIcon(type: string) {
-  switch (type?.toLowerCase()) {
-    case "food": return Utensils;
-    case "travel": return Plane;
-    case "rest": return Bed;
-    case "adventure": return Camera;
-    case "shopping": return ShoppingCart;
-    case "culture":
-    case "sightseeing": return Camera;
-    default: return Coffee;
-  }
-}
-
 // Phase 3b (row 12): the ProviderService type went with the "Available Services" grid — the
 // services surface is /services now, which owns its own Service type.
 
@@ -72,8 +82,8 @@ export default function TripDetails() {
   const searchStr = useSearch();
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(searchStr);
-  const initialTab = searchParams.get("tab") || "itinerary";
-  const deepSection = searchParams.get("section");
+  // `?tab=` and `?section=` still arrive from the `/itinerary/:id` redirects in App.tsx; with no
+  // tab shell they select nothing and are ignored.
   const justOptimized = searchParams.get("optimized") === "1";
   const { data: trip, isLoading, isError: tripError, refetch: refetchTrip } = useTrip(id || "");
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the
@@ -90,23 +100,16 @@ export default function TripDetails() {
   });
   // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
   // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
-  // `as any`: itineraryData is a free-shape jsonb column typed `{}` at the ORM layer (see the
-  // pre-existing identical casts a few hundred lines below, e.g. `itinerary.days.map(...)`) —
-  // matching the file's existing convention rather than introducing a new typing approach.
   const hasExistingItineraryItems = !!plancardData?.days?.some(
     (day) => (day.activities?.length ?? 0) > 0,
   );
   const { toast } = useToast();
-  const { user } = useAuth();
   const { open: openPlanning } = usePlanning();
-  const [activeTab, setActiveTab] = useState(initialTab);
-  const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
-  const [section, setSection] = useState<Section>(initialSection);
-  const [showFullItinerary, setShowFullItinerary] = useState(false);
   // Phase 3b: showAnchorCapture removed with the flight/hotel capture (moved to the slip, row 13).
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [logisticsOpen, setLogisticsOpen] = useState(false);
   // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the expert-picker + reject-suggestion
   // state moved to the slip family (AssignExpertDialog / ExpertSuggestionsPanel). Rows 8/9/10/11.
   // G7: "Plan ready" banner
@@ -126,7 +129,8 @@ export default function TripDetails() {
       return res.json() as Promise<{ success: boolean; shareToken: string }>;
     },
     onSuccess: (data) => {
-      const link = `${window.location.origin}/trips/shared/${data.shareToken}`;
+      // S10: ONE builder of the token link, shared with the slip's Share card (§18 rule 1).
+      const link = slipShareUrl(window.location.origin, data.shareToken);
       setShareLink(link);
       setShareOpen(true);
     },
@@ -160,14 +164,8 @@ export default function TripDetails() {
   // full-stage EscalationCTA (B10) — both must-not-regress, both already rendering.
 
   // Open destination in maps — L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`):
-  // ONE maps handoff (`lib/navigate.ts`). This used to hand-roll Apple and Google search URLs
-  // inline — a second builder that knew nothing of the platform preference, the Waze arm, or
-  // the {0,0}-guard the canonical path owns.
-  const openDestinationInMaps = () => {
-    if (!trip?.destination) return;
-    openInMaps({ destination: { name: trip.destination } });
-    toast({ title: "Opening Maps", description: `Showing ${trip.destination}` });
-  };
+  // ONE maps handoff (`lib/navigate.ts`), and since this lane it is the CARD's own Maps control
+  // (desktop button + mobile bottom bar) — the page-level duplicates went with the photo hero.
 
   // Phase 3b (row 12; ledger 2026-08-31-manifest-is-the-boundary): the on-trip Add-to-cart rail
   // (servicesResult query, handleAddToCart, addToCartMutation) was removed with the "Available
@@ -215,10 +213,13 @@ export default function TripDetails() {
   // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the Trip Card does not exist before Make
   // final. A trip with NO final renders an honest notice + one action to the slip, and NOTHING else —
   // planning lives on /plans/:tripId, never on /trip/:id. This is the sentence that closes the
-  // flow-audit's "/trip/:id is a second planning surface" finding. `plancardData.trip.finalVersion`
-  // is the source of truth: null ⇒ no final has ever been cut (finalizedAt alone can't tell "never
-  // finalized" from "reopened"). We wait for the plancard query to resolve so the notice never
-  // flashes ahead of data; an errored/absent payload falls through to the normal render.
+  // flow-audit's "/trip/:id is a second planning surface" finding (Locked Decision 42 D8).
+  // `plancardData.trip.finalVersion` is the source of truth: null ⇒ no final has ever been cut
+  // (finalizedAt alone can't tell "never finalized" from "reopened"). We wait for the plancard
+  // query to resolve so the notice never flashes ahead of data; an errored/absent payload falls
+  // through to the normal render. NOTE: this is a NOTICE with one action, not an automatic
+  // redirect — journey-1 and the finalize spec both assert the notice; the D8 wording says
+  // "redirect", and the difference is recorded in the lane's ledger row rather than changed here.
   if (!itineraryLoading && plancardData != null && plancardData.trip?.finalVersion == null) {
     return (
       <div
@@ -240,97 +241,21 @@ export default function TripDetails() {
     );
   }
 
-  const startDate = parseCalendarDate(trip.startDate);
-  const endDate = parseCalendarDate(trip.endDate);
-  const duration = startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0;
+  // The page's own role reading: the plancard DTO's `tripRole` (the server's answer). The rail's
+  // every read is owner-gated, so it mounts for the owner only.
+  const isOwner = plancardData?.tripRole === "owner";
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      {/* Hero Header */}
-      <div className="relative h-[45vh] min-h-[350px]">
-        <img 
-          src={`https://picsum.photos/seed/${encodeURIComponent(trip.destination)}/1600/900`}
-          alt={trip.destination}
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
-        
-        {/* Back Button */}
-        <div className="absolute top-4 left-4">
-          <Link href="/dashboard">
-            <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-        </div>
-
-        {/* Open in Maps Button (top right) */}
-        <div className="absolute top-4 right-4">
-          <Button 
-            variant="outline" 
-            className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
-            onClick={openDestinationInMaps}
-            data-testid="button-open-maps-mobile"
-          >
-            <MapPin className="w-4 h-4 md:mr-2" />
-            <span className="hidden md:inline">Open in Maps</span>
+    <div className="min-h-screen bg-background pb-20" data-testid="trip-card-page">
+      {/* Top row — Back only. The photo hero, "Open in Maps" and "Share with friends" that sat
+          here are the card's own now (hero, Maps button, Share control). */}
+      <div className="container mx-auto px-4 pt-4">
+        <Link href="/dashboard">
+          <Button variant="ghost" size="sm" data-testid="button-back">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
           </Button>
-        </div>
-
-        {/* Trip Info */}
-        <div className="absolute bottom-0 left-0 right-0 container mx-auto px-4 pb-8">
-          <div className="max-w-4xl">
-            <div className="flex items-center gap-2 mb-3">
-              <Badge className="bg-white/20 backdrop-blur-md text-white border-0">
-                <MapPin className="w-3 h-3 mr-1" />
-                {trip.destination}
-              </Badge>
-              {/* Phase 3b (drift-audit §C row 3): the dead `trip.status` badge is removed — trips.status
-                  is a §13 dead field (never advances past its born value); a trip's phase derives from
-                  dates, never this column. */}
-              {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
-                  field a sibling change adds to GET /api/trips/:id (nullable — coded
-                  defensively in case this lands before that field does). Honest: renders
-                  nothing when there's no assigned expert / no workspace activity yet. */}
-              {(() => {
-                const status = (trip as any).expertWorkspaceStatus as string | null | undefined;
-                if (status === "draft" || status === "in_review") {
-                  return (
-                    <Badge className="bg-amber-500/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
-                      Expert draft in progress
-                    </Badge>
-                  );
-                }
-                if (status === "delivered") {
-                  return (
-                    <Badge className="bg-emerald-600/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
-                      Delivered by your expert
-                    </Badge>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-            <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">{trip.title}</h1>
-            <div className="flex flex-wrap gap-6 text-white/90">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                {startDate && endDate
-                  ? `${format(startDate, "MMMM d")} – ${format(endDate, "MMMM d, yyyy")}`
-                  : "Dates not set"}
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5" />
-                {duration} {duration === 1 ? 'day' : 'days'}
-              </div>
-              <div className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                {trip.numberOfTravelers} Traveler{trip.numberOfTravelers !== 1 ? 's' : ''}
-              </div>
-            </div>
-          </div>
-        </div>
+        </Link>
       </div>
 
       {/* G7: "Plan ready" banner — shown after optimization redirect */}
@@ -378,217 +303,168 @@ export default function TripDetails() {
         </div>
       )}
 
-      {/* Content */}
-      <div className="container mx-auto px-4 -mt-6 relative z-10">
-        <Card className="shadow-xl border-0">
-          <CardContent className="p-0">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="border-b border-border px-6 pt-4">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                  {/* Mobile-lens audit #7: min-h-11 keeps each trigger's touch target at the
-                      ~44px guideline via padding growth only — labels/icons unchanged. */}
-                  <TabsList className="bg-muted/50">
-                    <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
-                    <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
-                    {/* Phase 3b (row 12): the Expert tab is removed — assigning/messaging an expert
-                        moved to the slip + family; the services grid moved to /services. */}
-                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
-                      <Package className="w-3.5 h-3.5" />
-                      Logistics
-                    </TabsTrigger>
-                    {/* Phase 3b (row 14): the Guests tab moved to the slip (SlipLogisticsSection). */}
-                  </TabsList>
-
-                  <div className="hidden md:flex gap-2">
-                    <Button 
-                      variant="outline"
-                      onClick={openDestinationInMaps}
-                      data-testid="button-open-maps"
-                    >
-                      <MapPin className="w-4 h-4 mr-2" />
-                      Open in Maps
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => shareMutation.mutate(trip.id)}
-                      disabled={shareMutation.isPending}
-                      data-testid="button-share-trip"
-                    >
-                      {shareMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Share2 className="w-4 h-4 mr-2" />
-                      )}
-                      Share with friends
-                    </Button>
-                    {/* Phase 3b (drift-audit §C row 5): the destructive "Regenerate Plan" is removed
-                        from the Trip Card entirely — no Regenerate on the card ever again. Rebuilding
-                        the AI plan is a planning action and lives on the slip; the card renders the
-                        finalized snapshot only. */}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6">
-                <TabsContent value="itinerary" className="mt-0 space-y-6">
-                  {/* Phase 3b (row 13): the flight/hotel-time capture moved to the slip
-                      (SlipLogisticsSection) — anchors are planning input, so they live where
-                      planning happens, not on the finalized Trip Card. */}
-
-                  {/* Itinerary Timeline */}
-                  {itineraryLoading ? (
-                    <div className="space-y-6">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="space-y-3">
-                          <div className="flex items-center gap-4">
-                            <Skeleton className="w-12 h-12 rounded-full" />
-                            <div className="space-y-2">
-                              <Skeleton className="h-4 w-24" />
-                              <Skeleton className="h-3 w-36" />
-                            </div>
-                          </div>
-                          <div className="ml-6 pl-6 border-l-2 border-border space-y-3">
-                            {[1, 2, 3].map((j) => (
-                              <Skeleton key={j} className="h-16 rounded-xl" />
-                            ))}
-                          </div>
-                        </div>
+      {/* ONE PAGE: main column (the card) + the 320px rail at lg. Below lg the rail follows the
+          card, two-up at sm so it is not four screens of scrolling. */}
+      <div className="container mx-auto px-4 mt-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
+          <div className="min-w-0 space-y-4">
+            {/* Phase 3b (row 13): the flight/hotel-time capture moved to the slip
+                (SlipLogisticsSection) — anchors are planning input, so they live where
+                planning happens, not on the finalized Trip Card. */}
+            {itineraryLoading ? (
+              <div className="space-y-6">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-3">
+                    <div className="flex items-center gap-4">
+                      <Skeleton className="w-12 h-12 rounded-full" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-3 w-36" />
+                      </div>
+                    </div>
+                    <div className="ml-6 pl-6 border-l-2 border-border space-y-3">
+                      {[1, 2, 3].map((j) => (
+                        <Skeleton key={j} className="h-16 rounded-xl" />
                       ))}
                     </div>
-                  ) : itineraryError ? (
-                    /* Mobile-lens audit #6: a failed itinerary fetch previously fell into the
-                       "No Itinerary Yet" branch below, wrongly inviting the traveler to
-                       generate a fresh (destructive) plan during a network blip. Distinct
-                       honest error + retry instead. */
-                    <div className="text-center py-16" data-testid="itinerary-network-error">
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Can't reach Traveloure</h3>
-                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                        We couldn't load your itinerary. Check your connection and try again.
-                      </p>
-                      <Button onClick={() => refetchItinerary()} data-testid="button-retry-itinerary-fetch">
-                        Retry
-                      </Button>
-                    </div>
-                  ) : !hasExistingItineraryItems ? (
-                    <div className="text-center py-16">
-                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Sparkles className="w-8 h-8 text-primary" />
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Itinerary Yet</h3>
-                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                        Generate a personalized day-by-day plan for {trip.destination} using AI.
-                      </p>
-                      {/* Phase 3b (drift-audit §C row 5): the on-card "Generate My Itinerary"
-                          (destructive generate) is removed — planning/generation lives on the slip,
-                          never the card. The planning entry stays as a single link. */}
-                      <div className="flex justify-center">
-                        <Button
-                          variant="outline"
-                          onClick={() =>
-                            // Locked Decision 42 (D13), ledger `2026-09-05-doors-source-fields`:
-                            // a door passes what it HOLDS. This one holds the trip row, so it adds
-                            // the occasion the plan already carries — `trips.experience_type`, the
-                            // coarse machine key (D1's `experience_type_id` is a wave-3 lane and
-                            // this row does not have it yet). §13: `experienceType` is nullable and
-                            // is passed through AS IS — undefined when the plan never stated one,
-                            // never a nearest-looking key chosen here to fill the field.
-                            openPlanning({
-                              branch: "ai",
-                              destination: trip?.destination,
-                              tripId: trip?.id,
-                              experienceType: trip?.experienceType ?? undefined,
-                            })
-                          }
-                          data-testid="button-plan-with-preferences"
-                        >
-                          <MapPin className="w-4 h-4 mr-2" />
-                          Plan with Preferences
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    (() => {
-                      const planCardTrip: PlanCardTrip = {
-                        id: trip.id,
-                        destination: trip.destination ?? "",
-                        title: trip.title ?? undefined,
-                        startDate: (() => {
-                          return calendarDateToIso(trip.startDate);
-                        })(),
-                        endDate: (() => {
-                          return calendarDateToIso(trip.endDate);
-                        })(),
-                        numberOfTravelers: trip.numberOfTravelers ?? 1,
-                        budget: trip.budget ?? undefined,
-                        eventType: trip.eventType ?? undefined,
-                      };
-                      const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
-                      const initialDayIndex = liveDayNumber == null
-                        ? -1
-                        : (plancardData?.days ?? []).findIndex((day) => day.dayNum === liveDayNumber);
-
-                      return (
-                        <PlanCard
-                          role="owner"
-                          stage="full"
-                          trip={planCardTrip}
-                          initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
-                        />
-                      );
-                    })()
-                  )}
-                </TabsContent>
-
-                <TabsContent value="bookings" className="mt-0">
-                  <div className="space-y-6">
-                    {/* Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff, drift-audit §C row 6):
-                        the stale "Booking Summary / Total Pending" card that summed a
-                        `generatedItinerary` jsonb blob is REMOVED. The Trip Card renders live
-                        booking status from the finalized snapshot joined to real service_bookings
-                        rows — a stale blob must never be the money source of truth. */}
-                    <div className="text-center py-16">
-                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
-                        <Plane className="w-8 h-8 text-muted-foreground" />
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Bookings Yet</h3>
-                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                        Add flights, hotels, and activities to your trip to keep everything organized in one place.
-                      </p>
-                      {/* Phase 3b (drift-audit §C row 7): the inert "Add a Booking" button (no handler)
-                          is removed — adding a booking happens on the slip / marketplace, not here. */}
-                    </div>
                   </div>
-                </TabsContent>
-
-                {/* Phase 3b (row 12; ledger 2026-08-31-manifest-is-the-boundary): the "Available
-                    Services for Your Trip" grid and the whole Expert tab are removed. Adding a
-                    service to this trip is now the /services grid's own job — its Add-to-trip
-                    targets the active trip (cart-is-slip), and the slip carries a "Browse services
-                    for this trip →" link. Assigning/​messaging an expert moved to the slip + the
-                    family (rows 8-11). This partially discharges cart-is-slip Phase 2. */}
-
-                <TabsContent value="logistics" className="mt-0 space-y-6">
-                  {id && (
-                    <TripLogisticsDashboard
-                      tripId={id}
-                      tripName={trip?.title || trip?.destination || "Trip"}
-                      budget={typeof trip?.budget === 'number' ? trip.budget : 0}
-                      destination={trip?.destination || "destination"}
-                    />
-                  )}
-                  {/* Phase 3b (row 13): the temporal-anchor cluster (TemporalAnchorManager,
-                      ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel,
-                      WeddingAnchorPresets) moved to the slip (SlipLogisticsSection) — anchors are
-                      optimizer constraints, i.e. planning input. TripLogisticsDashboard stays. */}
-                </TabsContent>
-
-                {/* Phase 3b (row 14): the Guests tab (GuestInviteManager / "Set up guest list")
-                    moved to the slip (SlipLogisticsSection). Share (B3) covers the post-final
-                    companion case. */}
+                ))}
               </div>
-            </Tabs>
-          </CardContent>
-        </Card>
+            ) : itineraryError ? (
+              /* Mobile-lens audit #6: a failed itinerary fetch previously fell into the
+                 "No Itinerary Yet" branch below, wrongly inviting the traveler to
+                 generate a fresh (destructive) plan during a network blip. Distinct
+                 honest error + retry instead. */
+              <div className="text-center py-16" data-testid="itinerary-network-error">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Can't reach Traveloure</h3>
+                <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                  We couldn't load your itinerary. Check your connection and try again.
+                </p>
+                <Button onClick={() => refetchItinerary()} data-testid="button-retry-itinerary-fetch">
+                  Retry
+                </Button>
+              </div>
+            ) : !hasExistingItineraryItems ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Itinerary Yet</h3>
+                <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                  Generate a personalized day-by-day plan for {trip.destination} using AI.
+                </p>
+                {/* Phase 3b (drift-audit §C row 5): the on-card "Generate My Itinerary"
+                    (destructive generate) is removed — planning/generation lives on the slip,
+                    never the card. The planning entry stays as a single link. */}
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      // Locked Decision 42 (D13), ledger `2026-09-05-doors-source-fields`:
+                      // a door passes what it HOLDS. This one holds the trip row, so it adds
+                      // the occasion the plan already carries — `trips.experience_type`, the
+                      // coarse machine key (D1's `experience_type_id` is a wave-3 lane and
+                      // this row does not have it yet). §13: `experienceType` is nullable and
+                      // is passed through AS IS — undefined when the plan never stated one,
+                      // never a nearest-looking key chosen here to fill the field.
+                      openPlanning({
+                        branch: "ai",
+                        destination: trip?.destination,
+                        tripId: trip?.id,
+                        experienceType: trip?.experienceType ?? undefined,
+                      })
+                    }
+                    data-testid="button-plan-with-preferences"
+                  >
+                    <MapPin className="w-4 h-4 mr-2" />
+                    Plan with Preferences
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              (() => {
+                const planCardTrip: PlanCardTrip = {
+                  id: trip.id,
+                  destination: trip.destination ?? "",
+                  title: trip.title ?? undefined,
+                  startDate: calendarDateToIso(trip.startDate),
+                  endDate: calendarDateToIso(trip.endDate),
+                  numberOfTravelers: trip.numberOfTravelers ?? 1,
+                  budget: trip.budget ?? undefined,
+                  eventType: trip.eventType ?? undefined,
+                };
+                const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
+                const initialDayIndex = liveDayNumber == null
+                  ? -1
+                  : (plancardData?.days ?? []).findIndex((day) => day.dayNum === liveDayNumber);
+
+                return (
+                  <PlanCard
+                    role="owner"
+                    stage="full"
+                    trip={planCardTrip}
+                    initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
+                    // The rail owns "Suggestion from your expert" on this page — one mount.
+                    suggestionsHome="rail"
+                    // The token share rail (S10) is the card's Share control on this page.
+                    onShare={() => shareMutation.mutate(trip.id)}
+                  />
+                );
+              })()
+            )}
+
+            {/* LOGISTICS — the former tab's REAL data, kept in one collapsed drawer (see the
+                file header). Owner-only, collapsed by default, mounted only when opened so its
+                eight reads do not fire on a page that never asks for them. */}
+            {isOwner && id && (
+              <Collapsible open={logisticsOpen} onOpenChange={setLogisticsOpen} className="border border-border rounded-xl bg-card overflow-hidden" data-testid="trip-card-logistics-drawer">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full min-h-11 flex items-center justify-between gap-2 px-4 py-3 text-left"
+                    data-testid="trip-card-logistics-drawer-trigger"
+                  >
+                    <span className="flex items-center gap-2 text-[13px] font-bold text-foreground">
+                      <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                      Logistics
+                      <span className="font-mono text-[10px] font-normal text-muted-foreground">participants · budget · contracts</span>
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground flex-shrink-0 transition-transform ${logisticsOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-4 pb-4 pt-2 border-t border-border/40">
+                    {logisticsOpen && (
+                      <TripLogisticsDashboard
+                        tripId={id}
+                        tripName={trip?.title || trip?.destination || "Trip"}
+                        budget={typeof trip?.budget === "number" ? trip.budget : 0}
+                        destination={trip?.destination || "destination"}
+                      />
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+
+          {/* THE RIGHT RAIL (320px at lg). Owner-only; every read it makes is owner-gated. */}
+          <aside className="min-w-0 lg:sticky lg:top-4" data-testid="trip-card-rail-column">
+            <TripCardRail
+              trip={{
+                id: trip.id,
+                title: trip.title ?? null,
+                destination: trip.destination ?? null,
+                startDate: calendarDateToIso(trip.startDate) || null,
+                endDate: calendarDateToIso(trip.endDate) || null,
+                finalizedAt: plancardData?.trip?.finalizedAt ?? null,
+                // Locked Decision 30: the DTO SPREADS the zone only when captured; absent ⇒ null.
+                timezone: plancardData?.trip?.timezone ?? null,
+              }}
+              isOwner={isOwner}
+            />
+          </aside>
+        </div>
       </div>
 
       {/* Share Dialog */}

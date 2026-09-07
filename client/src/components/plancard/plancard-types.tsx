@@ -266,6 +266,13 @@ export interface PlanCardActivity {
   type: string;
   status: string;
   time: string;
+  /**
+   * `itinerary_items.end_time` — a WALL-CLOCK "HH:MM" read in the plan's `trips.timezone`, carried
+   * as-is off the TripPlan DTO (`endTime`). NULL = the row never said when it ends, and the temporal
+   * engine then computes NO end for it (ledger `2026-09-07-trip-card-one-page` — the old "90 minutes
+   * per item" assumption is gone).
+   */
+  endTime?: string | null;
   location: string;
   lat?: number;
   lng?: number;
@@ -514,7 +521,17 @@ export interface PlanCardData {
    * pre-migration response or before the server route is wired → renders nothing (§13), never a
    * placeholder.
    */
-  trip?: { finalizedAt?: string | null; finalVersion?: number | null; expertTravelerNote?: string | null };
+  trip?: {
+    finalizedAt?: string | null;
+    finalVersion?: number | null;
+    expertTravelerNote?: string | null;
+    /**
+     * Locked Decision 30 — the plan's ONE IANA zone, SPREAD by the plancard route only when the
+     * column holds one. `undefined` = NEVER CAPTURED: the card renders no zone line and no
+     * countdown (never UTC, never the server's, never the device's dressed as the plan's).
+     */
+    timezone?: string;
+  };
 }
 
 export interface PlanCardTrip {
@@ -629,6 +646,18 @@ export interface PlanCardProps {
    * Itinerary content (day selector, sections, activities, transport) still renders.
    */
   embedded?: boolean;
+  /**
+   * Ledger `2026-09-07-trip-card-one-page` (Locked Decision 45 (6)). Where the expert-suggestion
+   * Accept/Decline panel renders: inside the card (default — every existing mount) or in the Trip
+   * Card page's right rail, which then mounts the SAME `ExpertSuggestionsPanel` itself. One
+   * renderer, one mount per page; never both.
+   */
+  suggestionsHome?: "card" | "rail";
+  /**
+   * The page's share rail (the token link). Forwarded to the header's Share control and the
+   * mobile bottom bar so the card has ONE share path when the page owns one.
+   */
+  onShare?: () => void;
 }
 
 export interface PlanCardScore {

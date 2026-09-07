@@ -116,6 +116,7 @@ import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
+import { useReopenMutation } from "./use-reopen-mutation";
 import { HireExpertDialog } from "./HireExpertDialog";
 import { SlipLogisticsSection } from "./SlipLogisticsSection";
 import { TripPassCard } from "./TripPassCard";
@@ -987,26 +988,8 @@ function useFinalizeMutation(tripId: string) {
   });
 }
 
-function useReopenMutation(tripId: string) {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/reopen`);
-      return (await res.json()) as { alreadyOpen: boolean };
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't reopen plan",
-        description: err?.message || "Please try again",
-        variant: "destructive",
-      });
-    },
-  });
-}
+// `useReopenMutation` moved to `./use-reopen-mutation` (ledger `2026-09-07-trip-card-one-page`)
+// so the Trip Card rail's "Back to planning" is the same call — one implementation, two callers.
 
 /**
  * THE FINISH CARD — two states and no more.
@@ -1047,6 +1030,9 @@ function FinishCard({
   const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({
     startDate: trip.startDate,
     endDate: trip.endDate,
+    // Locked Decision 30 / ledger `2026-09-07-trip-card-one-page`: the same date-arm predicate the
+    // Trip Card's "Back to planning" reads, in the plan's zone when one was captured.
+    timezone: trip.timezone ?? null,
   });
   // Reopen is owner-gated server-side (verifyTripOwnership) and only offered when it would
   // actually change something — never when the date arm alone already forces Trip Card primacy.

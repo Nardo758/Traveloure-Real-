@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import type { TraveloureMode } from "@/lib/navigate";
+import { countdownAllowed, zonedTodayIso, zonedWallClockToInstant } from "@shared/plan-timing";
 
 export type TemporalState = "past" | "upcoming" | "future";
 
@@ -25,8 +26,9 @@ export function nowHHMM(d: Date): string {
   return `${padTwo(d.getHours())}:${padTwo(d.getMinutes())}`;
 }
 
-export function parseActivityTime(timeStr: string, dateStr: string): Date | null {
-  if (!timeStr || !dateStr) return null;
+/** "9:00 AM" / "09:00" / "21:15" → "HH:MM" (24h), or null for anything else. */
+export function activityTimeToWallClock(timeStr: string | null | undefined): string | null {
+  if (!timeStr) return null;
   const m = timeStr.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
   if (!m) return null;
   let h = parseInt(m[1]);
@@ -34,26 +36,61 @@ export function parseActivityTime(timeStr: string, dateStr: string): Date | null
   const ap = m[3]?.toLowerCase();
   if (ap === "pm" && h !== 12) h += 12;
   if (ap === "am" && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return `${padTwo(h)}:${padTwo(min)}`;
+}
+
+/**
+ * The instant an activity's wall clock falls on.
+ *
+ * WITH a plan zone (`trips.timezone`, Locked Decision 30): the wall clock is read in THAT zone,
+ * through the one shared derivation (`shared/plan-timing.ts`).
+ * WITHOUT one (NULL = never captured): the DEVICE's local clock — the stated fallback, not a
+ * claim about the plan. It keeps "Live today" and the row states working for a plan whose zone
+ * is unknown; the COUNTDOWN is withheld separately (`formatCountdown`), because a countdown is a
+ * claim about an instant and this fallback is not one.
+ */
+export function parseActivityTime(timeStr: string, dateStr: string, timezone?: string | null): Date | null {
+  if (!timeStr || !dateStr) return null;
+  const wall = activityTimeToWallClock(timeStr);
+  if (!wall) return null;
+  if (countdownAllowed(timezone)) return zonedWallClockToInstant(dateStr, wall, timezone);
   const parts = dateStr.split("-").map(Number);
+  const [h, min] = wall.split(":").map(Number);
   return new Date(parts[0], parts[1] - 1, parts[2], h, min, 0, 0);
 }
 
+/**
+ * Row states for the live day.
+ *
+ * Ledger `2026-09-07-trip-card-one-page` (brief §7 "New · timezone"): the "90 minutes per item"
+ * assumption is GONE. An item is past when it was marked visited, when its OWN `endTime` has
+ * passed, or — for an item with no end time — when a LATER item on the same day has already
+ * STARTED (the successor's real start bounds it; no duration is invented). An item with no end
+ * time and no started successor stays "upcoming" until the traveler marks it, which is the
+ * honest reading of a row that never said how long it runs (§13).
+ */
 export function computeTemporalStates(
   activities: PlanCardActivity[],
   dateStr: string,
   now: Date,
   visited: Set<string>,
+  timezone?: string | null,
 ): Record<string, TemporalState> {
   const out: Record<string, TemporalState> = {};
   let foundUpcoming = false;
-  for (const act of activities) {
+  const starts = activities.map((a) => parseActivityTime(a.time, dateStr, timezone));
+  for (let i = 0; i < activities.length; i++) {
+    const act = activities[i];
     if (visited.has(act.id)) {
       out[act.id] = "past";
       continue;
     }
-    const t = parseActivityTime(act.time, dateStr);
-    const end = t ? new Date(t.getTime() + 90 * 60_000) : null;
-    if (end && now > end) {
+    const end = act.endTime ? parseActivityTime(act.endTime, dateStr, timezone) : null;
+    const endedByOwnClock = !!end && now > end;
+    const laterHasStarted =
+      !end && starts.slice(i + 1).some((s) => s != null && now >= s);
+    if (endedByOwnClock || laterHasStarted) {
       out[act.id] = "past";
     } else if (!foundUpcoming) {
       out[act.id] = "upcoming";
@@ -176,12 +213,16 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
   legs: TLeg[],
   now: Date,
   visited: Set<string>,
+  /** `trips.timezone` — Locked Decision 30. NULL ⇒ the device's date/clock, stated in `parseActivityTime`. */
+  timezone?: string | null,
 ): UpNextInfo<TLeg> {
-  const isLiveDay = !!day && day.date === todayIso(now);
+  // "Today" is the plan's zone's today when a zone was captured; the device's otherwise.
+  const today = zonedTodayIso(now, timezone) ?? todayIso(now);
+  const isLiveDay = !!day && day.date === today;
   const activities = day?.activities ?? [];
 
   const states = isLiveDay
-    ? computeTemporalStates(activities, day!.date, now, visited)
+    ? computeTemporalStates(activities, day!.date, now, visited, timezone)
     : ({} as Record<string, TemporalState>);
 
   const upNextIndex = isLiveDay ? activities.findIndex((a) => states[a.id] === "upcoming") : -1;
@@ -203,9 +244,22 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
   return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, showNowLine };
 }
 
-/** Real countdown to a real startTime — "Now" once started/passed, else "In Xm"/"In Xh Ym". */
-export function formatCountdown(activity: PlanCardActivity, dateStr: string, now: Date): string | null {
-  const start = parseActivityTime(activity.time, dateStr);
+/**
+ * Real countdown to a real startTime — "Now" once started/passed, else "In Xm"/"In Xh Ym".
+ *
+ * RENDERS ONLY WHEN THE PLAN CARRIES A TIMEZONE (Locked Decision 30; ledger
+ * `2026-09-07-trip-card-one-page`). A countdown is a claim about an instant, and a plan whose zone
+ * was never captured has no instant to count to — the device clock presented as the plan's would
+ * be wrong by whole hours and look authoritative. NULL ⇒ the caller shows the time and no countdown.
+ */
+export function formatCountdown(
+  activity: PlanCardActivity,
+  dateStr: string,
+  now: Date,
+  timezone: string | null | undefined,
+): string | null {
+  if (!countdownAllowed(timezone)) return null;
+  const start = parseActivityTime(activity.time, dateStr, timezone);
   if (!start) return null;
   const diffMs = start.getTime() - now.getTime();
   if (diffMs <= 0) return "Now";

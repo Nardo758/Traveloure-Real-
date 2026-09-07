@@ -306,6 +306,12 @@ interface ActivitiesSectionProps {
   templateConfig: TemplateConfig;
   legs?: InlineTransportLegData[];
   /**
+   * `trips.timezone` (Locked Decision 30; ledger `2026-09-07-trip-card-one-page`) — the zone the
+   * day's wall clocks are read in for "Live today", the now-line and the row states. NULL/absent ⇒
+   * the device clock, the stated fallback in `plancard-temporal.ts`.
+   */
+  timezone?: string | null;
+  /**
    * W7: routing actions (send-to-expert / add-to-checkout / etc.) render ONLY for the trip owner —
    * the contract matrix marks every other viewer (expert, admin, share/collaborator) READ-only on
    * routing state. The badge itself is NOT gated on this — it renders for every viewer.
@@ -479,6 +485,7 @@ export function ActivitiesSection({
   day,
   templateConfig,
   legs = [],
+  timezone = null,
   isOwner = false,
   isExpertViewer = false,
 }: ActivitiesSectionProps) {
@@ -490,7 +497,7 @@ export function ActivitiesSection({
   if (!day) return null;
 
   const { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, lastPastIndex, showNowLine } =
-    getUpNextInfo(day, legs, now, visited);
+    getUpNextInfo(day, legs, now, visited, timezone);
 
   const upNextMode: TraveloureMode = canonicalMode(
     upNextLeg ? (legModes[upNextLeg.id] || upNextLeg.userSelectedMode || upNextLeg.recommendedMode || "walk") : "walk"

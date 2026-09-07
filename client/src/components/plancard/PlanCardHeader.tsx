@@ -28,6 +28,16 @@ interface PlanCardHeaderProps {
   metrics: PlanCardHeaderMetrics;
   /** optional "Expert: Sofia C." line appended to the location row */
   expertName?: string | null;
+  /**
+   * Ledger `2026-09-07-trip-card-one-page` (brief §7 anatomy: "dates · market · timezone · party ·
+   * advisor"). Both are OPTIONAL and OMITTED when absent (§13): the zone line is
+   * `slipZoneLine(trips.timezone)` — NULL when the plan's zone was never captured (Locked
+   * Decision 30: never UTC, never a guess) — and the party label is `partyCountLabel(...)`, ""
+   * when the party was never stated. Neither is derived here; the caller passes the ONE
+   * derivation's answer (§18 rule 1).
+   */
+  zoneLine?: string | null;
+  partyLabel?: string | null;
   /** extra pills next to the status (e.g. "Expert review pending") */
   badges?: React.ReactNode;
   /** top-right region (countdown, delete, share…) */
@@ -42,6 +52,8 @@ export function PlanCardHeader({
   statusLabel,
   metrics,
   expertName,
+  zoneLine,
+  partyLabel,
   badges,
   topRight,
   testId,
@@ -103,7 +115,26 @@ export function PlanCardHeader({
               claims without also matching the destination or the expert's name. */}
           📍 {destination} ·{" "}
           <span data-testid={testId ? `${testId}-dates` : undefined}>{dateRange}</span>
-          {expertName ? ` · Expert: ${expertName}` : ""}
+          {zoneLine ? (
+            <>
+              {" · "}
+              <span className="font-mono" data-testid={testId ? `${testId}-zone` : undefined}>
+                {zoneLine}
+              </span>
+            </>
+          ) : null}
+          {partyLabel ? (
+            <>
+              {" · "}
+              <span data-testid={testId ? `${testId}-party` : undefined}>{partyLabel}</span>
+            </>
+          ) : null}
+          {expertName ? (
+            <>
+              {" · "}
+              <span data-testid={testId ? `${testId}-advisor` : undefined}>Expert: {expertName}</span>
+            </>
+          ) : null}
         </div>
 
         {/* 4-up metric strip */}

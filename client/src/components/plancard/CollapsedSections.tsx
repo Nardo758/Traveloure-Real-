@@ -15,6 +15,8 @@ import { ChangeLogPanel } from "./ChangeLogPanel";
 import { TransportSection } from "./TransportSection";
 import type { PlanCardChange, PlanCardDay } from "./plancard-types";
 import type { TripPlanBooking } from "@shared/trip-plan";
+import { Link } from "wouter";
+import { readPurchaseStatus } from "@/lib/purchase-status";
 
 interface CollapsedSectionsProps {
   tripId: string;
@@ -105,14 +107,19 @@ export function CollapsedSections({
   const budgetPercent =
     budgetNum && budgetNum > 0 && totalCostNum != null ? Math.min(100, Math.round((totalCostNum / budgetNum) * 100)) : null;
 
-  // W7 — bookings no plan item points at (a booking made before migration 159's booking_id key
-  // existed, or bought outside the plan). Real bookings ALREADY rendered inline via
-  // `activity.booking` are excluded so nothing appears twice (§13: presence is the booked state,
-  // read off the same field the badge reads).
-  const linkedBookingIds = new Set(
-    (days ?? []).flatMap((d) => d.activities.map((a) => a.booking?.id).filter((id): id is string => !!id)),
-  );
-  const unlinkedBookings = (bookings ?? []).filter((b) => !linkedBookingIds.has(b.id));
+  // PURCHASES (ledger `2026-09-07-trip-card-one-page`; Locked Decision 45 (6), LD 42 D9, LD 44 (e)).
+  // The Bookings TAB the Trip Card used to carry was a permanent empty state; this drawer is
+  // where purchases live on the card now, beside the cross-plan Bookings ledger (My bookings).
+  // It reads EVERY real `service_bookings` row on this plan — the SAME `bookings` list the slip's
+  // bookings section reads off the plancard payload — and labels each one through the ONE
+  // purchase-status reading, so "prepared, awaiting purchase" (a §15b claim) is never dressed as
+  // "booked". W7's rule (list only rows no item points at) is retired here: the drawer is the
+  // plan's purchase LEDGER and the inline row badge is a per-item marker; the two are different
+  // views of one row, not a duplicate. §13: the drawer renders only when the payload ANSWERED
+  // (`bookings` present — the share/teaser channels and the embed's `days` prop never carry it),
+  // and an answered-but-empty list says so in words, never a spinner and never a placeholder row.
+  const purchaseRows = bookings ?? null;
+  void days;
 
   return (
     <div className="flex flex-col gap-2 px-3 sm:px-5 pb-3" data-testid={`collapsed-sections-${tripId}`}>
@@ -204,37 +211,63 @@ export function CollapsedSections({
         </SectionShell>
       )}
 
-      {unlinkedBookings.length > 0 && (
+      {purchaseRows && (
         <SectionShell
           icon={<ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />}
           title="Purchases"
-          meta={`${unlinkedBookings.length} booking${unlinkedBookings.length !== 1 ? "s" : ""}`}
+          meta={purchaseRows.length > 0 ? `${purchaseRows.length} booking${purchaseRows.length !== 1 ? "s" : ""}` : undefined}
           testId={`collapsed-purchases-${tripId}`}
         >
           <div className="flex flex-col gap-2 pt-2">
-            {unlinkedBookings.map((b) => (
-              <div
-                key={b.id}
-                className="flex items-center justify-between gap-2 text-[12.5px] py-1"
-                data-testid={`purchase-row-${b.id}`}
-              >
-                <span className="text-foreground font-medium truncate">
-                  {b.serviceName ?? "Booking"}
-                </span>
-                <span className="flex items-center gap-2 flex-shrink-0">
-                  {b.status && (
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {b.status}
-                    </span>
-                  )}
-                  {b.totalAmount != null && (
-                    <span className="font-bold text-foreground tabular-nums">
-                      ${Number(b.totalAmount).toLocaleString()}
-                    </span>
-                  )}
-                </span>
-              </div>
-            ))}
+            {purchaseRows.length === 0 && (
+              <p className="text-[12.5px] text-muted-foreground" data-testid={`text-no-purchases-${tripId}`}>
+                No purchases on this plan yet.
+              </p>
+            )}
+            {purchaseRows.map((b) => {
+              const reading = readPurchaseStatus(b.status);
+              return (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between gap-2 text-[12.5px] py-1"
+                  data-testid={`purchase-row-${b.id}`}
+                  data-purchase-kind={reading?.kind}
+                >
+                  <span className="text-foreground font-medium truncate">
+                    {b.serviceName ?? "Booking"}
+                  </span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    {/* §13: a row with no recorded status draws no label — never "booked" by default. */}
+                    {reading && (
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wide ${
+                          reading.kind === "booked"
+                            ? "text-[color:var(--earn-green-ink)]"
+                            : reading.kind === "prepared"
+                              ? "text-[color:var(--earn-gold-ink)]"
+                              : "text-muted-foreground"
+                        }`}
+                        data-testid={`purchase-status-${b.id}`}
+                      >
+                        {reading.label}
+                      </span>
+                    )}
+                    {b.totalAmount != null && (
+                      <span className="font-bold text-foreground tabular-nums">
+                        ${Number(b.totalAmount).toLocaleString()}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-muted-foreground pt-1">
+              Every booking across your plans is in{" "}
+              <Link href="/my-bookings" className="underline underline-offset-2" data-testid={`link-bookings-ledger-${tripId}`}>
+                My bookings
+              </Link>
+              .
+            </p>
           </div>
         </SectionShell>
       )}
