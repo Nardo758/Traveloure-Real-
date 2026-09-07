@@ -501,31 +501,18 @@ router.patch(api.trips.update.path, async (req, res) => {
     }
   });
 
-// POST /api/trips/:id/claim — link a guest trip to an authenticated user
-// Called after a guest signs up, to claim their draft trips.
-router.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
-    try {
-      const trip = await storage.getTrip(req.params.id);
-      if (!trip) return res.status(404).json({ message: "Trip not found" });
+// ── S4 SWEEP (ledger 2026-09-07-shadowed-trip-twins) ─────────────────────────────────
+// FOURTEEN §9 mount-order-dead POST twins were deleted here (they always lost to the
+// inline routes.ts registrations; tripsRoutes mounts LAST): claim, participants,
+// participants/bulk-invite, contracts, transactions, transactions/split,
+// budget/calculate-split, itinerary-items, itinerary/reorder, itinerary/optimize-order,
+// activate-transport, emergency-contacts, emergency/initialize, alerts.
+// PORT-FORWARD WARNING (from the deleted banners, preserved): if any of these handlers
+// is ever reintroduced HERE, the live routes.ts copies carry admission allowlists the
+// deleted copies lacked — the booking-input allowlist (itineraryItemBookingInputsSchema)
+// and the item→event pairing check (itineraryItemEventLinkSchema + resolveItemEventLink).
+// Reintroduce by MOVING the canonical handler, never by resurrecting a stale copy.
 
-      const { shareToken } = req.body;
-      if (!shareToken || trip.shareToken !== shareToken) {
-        return res.status(401).json({ message: "Invalid share token" });
-      }
-
-      // Only unclaimed (null userId) trips can be claimed
-      if (trip.userId) {
-        return res.status(409).json({ message: "Trip already claimed" });
-      }
-
-      const userId = getUserId(req)!;
-      const updated = await storage.claimTrip(req.params.id, userId);
-      res.json(updated);
-    } catch (err) {
-      console.error("[trips] claim error:", err);
-      res.status(500).json({ message: "Failed to claim trip" });
-    }
-  });
 
 
 router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
@@ -944,62 +931,8 @@ router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHand
   }));
 
 
-// §9 mount-order-dead twin (this handler always loses to the identically-routed
-// POST /api/trips/:tripId/participants in routes.ts, which registers first). ANNOTATED, not
-// duplicated — the migration-275 precedent, and the same disposition the bulk-invite and
-// contract-create twins below already carry.
-//
-// The LIVE copy admits its body through `tripParticipantCreateSchema`, the §19 pick-based
-// allowlist derived from the PATCH rail's own allowlist (ledger `2026-09-04-plan-islands`,
-// declared beside it in content.routes.ts). This copy still parses the bare DENYLIST
-// `insertTripParticipantSchema`, which is strictly WORSE than what the live rail carried before
-// that change — it does not even strip `userId`, the L20 authorization grant. It is left as-is
-// deliberately: importing the allowlist from a sibling router to fix a handler that can never
-// receive a request would add a module edge for no runtime effect, and copying the field list
-// here is exactly the second-author drift §18 rule 1 names. If mount order ever changes, this
-// handler must adopt `tripParticipantCreateSchema` BEFORE it goes live, not after.
-router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      if (!await verifyTripOwnership(req.params.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const validatedData = insertTripParticipantSchema.parse({
-        ...req.body,
-        tripId: req.params.tripId,
-      });
-      const participant = await coordinationService.createParticipant(validatedData);
-      res.status(201).json(participant);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
-      }
-      res.status(500).json({ message: "Failed to create participant" });
-    }
-  });
 
 
-// §9 mount-order-dead twin (this handler always loses to the identically-routed
-// POST /api/trips/:tripId/participants/bulk-invite in routes.ts). ESCALATED, not fixed:
-// the live copy gates on `authorizeTripOwnerTier` (owner ‖ trip author ‖ audit-logged
-// admin — deliberately WITHOUT the assigned-expert branch, "L20 tier 4 — participant PII
-// is OWNER-only, never an assigned expert" per the live copy's comment). That helper is a
-// private, unexported function local to routes.ts (a hard-excluded file for this lane) —
-// it is not reachable from here, and `authorizeTripLogistics` is NOT an equivalent
-// substitute (it WOULD admit the assigned expert, reopening exactly the disclosure the
-// live gate exists to prevent). Left unauthorized rather than mis-gated; the fix belongs
-// to whoever owns routes.ts / the reconciliation sweep — either export/hoist
-// `authorizeTripOwnerTier` into the shared trip-logistics-auth module, or apply it here
-// once it is reachable.
-router.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
-    try {
-      const { emails } = req.body;
-      const participants = await coordinationService.bulkInvite(req.params.tripId, emails);
-      res.status(201).json(participants);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to send invites" });
-    }
-  });
 
   // --- Vendor Contracts Routes ---
 
@@ -1044,28 +977,6 @@ router.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, 
   });
 
 
-// §9 mount-order-dead twin (this handler always loses to the identically-routed
-// POST /api/trips/:tripId/contracts in routes.ts). ESCALATED, not fixed: the live copy
-// gates vendor-CONTRACT CREATION on `authorizeTripOwnerTier` (owner ‖ author ‖
-// audit-logged admin, no assigned-expert branch — "creating a financial/legal artifact on
-// the traveler's trip is owner-only", per the live copy's block comment), while contract
-// READS there use the broader `authorizeTripLogistics`. That owner-tier helper is a
-// private, unexported function local to routes.ts (hard-excluded for this lane) and is not
-// reachable here; substituting `authorizeTripLogistics` would wrongly admit the assigned
-// expert into creating financial/legal artifacts, which the live gate exists to prevent.
-// Left unauthorized rather than mis-gated — see the participants/bulk-invite twin above
-// for the same reasoning; fix belongs to routes.ts's owner / the reconciliation sweep.
-router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
-    try {
-      const contract = await vendorManagementService.createContract({
-        ...req.body,
-        tripId: req.params.tripId,
-      });
-      res.status(201).json(contract);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create contract" });
-    }
-  });
 
 // Document upload for vendor contracts.
 //
@@ -1282,58 +1193,10 @@ router.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, r
   });
 
 
-// §9 mount-order-dead twins (this handler and the two below always lose to their
-// identically-routed POST /api/trips/:tripId/transactions[/split] and
-// /budget/calculate-split in routes.ts). ESCALATED, not fixed: the live block ("L20 tier
-// 1 — money-between-people is OWNER-only (+ author/admin)") gates EVERY handler in this
-// budget/transactions block — reads included — on `authorizeTripOwnerTier`, explicitly
-// NOT `authorizeTripLogistics`, because "an assigned expert has their own commission view
-// and never needs it" per the live copy's comment. That owner-tier helper is a private,
-// unexported function local to routes.ts (hard-excluded for this lane); substituting
-// `authorizeTripLogistics` here would wrongly admit the assigned expert into another
-// party's money-between-people ledger. Left unauthorized rather than mis-gated — same
-// reasoning as the participants/bulk-invite and contracts twins above; fix belongs to
-// routes.ts's owner / the reconciliation sweep.
-router.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
-    try {
-      const transaction = await budgetService.createTransaction({
-        ...req.body,
-        tripId: req.params.tripId,
-      });
-      res.status(201).json(transaction);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create transaction" });
-    }
-  });
 
 
-router.post("/api/trips/:tripId/transactions/split", isAuthenticated, async (req, res) => {
-    try {
-      const { totalAmount, category, description, paidByParticipantId, splits } = req.body;
-      const transactions = await budgetService.createSplitTransaction(
-        req.params.tripId,
-        totalAmount,
-        category,
-        description,
-        paidByParticipantId,
-        splits
-      );
-      res.status(201).json(transactions);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create split transaction" });
-    }
-  });
 
 
-router.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async (req, res) => {
-    try {
-      const { totalAmount, method, customSplits } = req.body;
-      const splits = await budgetService.calculateSplit(req.params.tripId, totalAmount, method, customSplits);
-      res.json(splits);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to calculate split" });
-    }
-  });
 
 
 router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
@@ -1539,44 +1402,6 @@ router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, asyn
     }
   });
 
-  // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
-//
-// §9 MOUNT-ORDER NOTE (ledger 2026-09-03-slip-convergence): this copy is SHADOWED. routes.ts
-// registers its own `app.post("/api/trips/:tripId/itinerary-items")` before `app.use(tripsRoutes)`,
-// so THAT handler is the one serving traffic and the one this lane extended with the migration-275
-// booking-input ALLOWLIST (`itineraryItemBookingInputsSchema`). The allowlist is deliberately NOT
-// duplicated here: a second implementation of the same admission decision is the derivation-drift
-// class §18 rule 1 names. If this copy is ever promoted to live, port the allowlist parse with it —
-// without it a repointed marketplace add silently loses the traveler's slot and stay dates.
-//
-// SAME NOTE, SECOND LANE (ledger 2026-09-03-item-event-link, migration 277): the live copy also
-// carries the item→EVENT allowlist (`itineraryItemEventLinkSchema`) and the server-side
-// trip↔event pairing check (`resolveItemEventLink`). Also deliberately NOT duplicated here. If
-// this copy is ever promoted to live, port BOTH — without the pairing check a client could staple
-// an item to an event on a trip it does not belong to (§14).
-router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const { tripId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest activities, not add them directly" : "Access denied" });
-      }
-      const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      // §12: itinerary_items.origin is stamped server-side from the ACTOR's role, never trusted
-      // from req.body (the insert schema omits it; the PATCH path already strips it). An owner's
-      // manual add is 'traveler'; an assigned advisor/expert's is 'expert'. This is the provenance
-      // a cloned ready-made trip's buyer-added items were previously missing (audit finding).
-      const origin = tripRole === "expert" ? "expert" : "traveler";
-      const item = await storage.createItineraryItem({ ...parsed.data, origin } as any);
-      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
-      res.status(201).json(item);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create itinerary item" });
-    }
-  });
 
 
 // RETIRED (V4 rail-unification, Aug 7 2026): this was already a §9 mount-order-dead twin of
@@ -1607,49 +1432,8 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
   });
 
 
-router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const { tripId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot reorder activities" : "Access denied" });
-      }
-      const { dayNumber, itemIds } = req.body;
-      const items = await itineraryIntelligenceService.reorderItems(tripId, dayNumber, itemIds);
-      logItineraryChange(tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", tripRole!);
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to reorder items" });
-    }
-  });
 
 
-// §9 mount-order-dead twin (this handler always loses to the identically-routed
-// POST /api/trips/:tripId/itinerary/optimize-order in routes.ts — see registerRoutes'
-// tripsRoutes mount comment). Kept in sync for safety only.
-// SECURITY (P0-b IDOR, kept safe for the reconciliation sweep): this endpoint carried
-// `isAuthenticated` ONLY — no trip authorization at all — despite reordering the trip's own
-// itinerary. D17 (LD 42, Sep 5 2026): mirrors the live copy's re-point to the item-mutation
-// predicate (`getTripWriteRole`/`canMutateTrip` + the parallel author branch) — the optimizer
-// surface is an item write and is gated by the same predicate as every other item write.
-router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const tripRole = await getTripWriteRole(req.params.tripId, userId);
-      const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(req.params.tripId, userId);
-      if (!canMutateTrip(tripRole) && !authorMayRun) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      const { dayNumber } = req.body;
-      const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
-      res.json({ optimizedOrder });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to optimize order" });
-    }
-  });
 
 
 router.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) => {
@@ -1666,95 +1450,6 @@ router.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) 
   // Creates or reuses an itinerary comparison+variant for the trip's AI-generated itinerary,
   // then calculates and persists real transport legs so users can select modes.
 
-router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
-    try {
-      const { tripId } = req.params;
-      const userId = getReqUserId(req);
-
-      const trip = await storage.getTrip(tripId);
-      if (!trip || trip.userId !== userId) return res.status(404).json({ error: "Trip not found" });
-
-      const genItinerary = await storage.getGeneratedItineraryByTripId(tripId);
-      if (!(genItinerary as any)?.itineraryData) {
-        return res.status(404).json({ error: "No generated itinerary found for this trip" });
-      }
-
-      let comparison = await storage.getComparisonByTripAndUser(tripId, userId);
-      if (!comparison) {
-        comparison = await storage.createItineraryComparison({
-          userId,
-          tripId,
-          title: trip.title || trip.destination || "My Trip",
-          destination: trip.destination,
-          status: "active",
-        });
-      }
-
-      let variant = await storage.getAiVariantByComparison(comparison.id);
-      if (!variant) {
-        variant = await storage.createItineraryVariant({
-          comparisonId: comparison.id,
-          name: "AI Generated",
-          source: "ai",
-          status: "active",
-        });
-      }
-
-      const data: any = (genItinerary as any).itineraryData;
-      const daysData: any[] = data?.days || data?.dailyItinerary || [];
-
-      const activities: import("../services/transport-leg-calculator").ActivityLocation[] = [];
-      for (const day of daysData) {
-        const dayNum: number = day.day || day.dayNumber || 1;
-        const dayActs: any[] = day.activities || [];
-        dayActs.forEach((act: any, idx: number) => {
-          if (act.lat && act.lng) {
-            activities.push({
-              id: act.id || `day${dayNum}-act${idx}`,
-              name: act.title || act.name || "Activity",
-              lat: parseFloat(act.lat),
-              lng: parseFloat(act.lng),
-              scheduledTime: act.time || act.startTime || `${9 + idx}:00`,
-              dayNumber: dayNum,
-              order: idx,
-            });
-          }
-        });
-      }
-
-      if (activities.length < 2) {
-        return res.json({ variantId: variant.id, legs: [], message: "Not enough geolocated activities to calculate transport" });
-      }
-
-      await calculateTransportLegs(variant.id, activities, trip.destination || "", {});
-
-      const savedLegs = await storage.getTransportLegsByVariantId(variant.id);
-
-      return res.json({
-        variantId: variant.id,
-        legs: savedLegs.map(leg => ({
-          id: leg.id,
-          legOrder: leg.legOrder,
-          dayNumber: leg.dayNumber,
-          fromName: leg.fromName,
-          toName: leg.toName,
-          fromLat: leg.fromLat,
-          fromLng: leg.fromLng,
-          toLat: leg.toLat,
-          toLng: leg.toLng,
-          recommendedMode: leg.recommendedMode,
-          userSelectedMode: leg.userSelectedMode,
-          distanceDisplay: leg.distanceDisplay,
-          estimatedDurationMinutes: leg.estimatedDurationMinutes,
-          estimatedCostUsd: leg.estimatedCostUsd,
-          alternativeModes: leg.alternativeModes || [],
-        })),
-      });
-    } catch (err: any) {
-      console.error("Activate transport error:", err);
-      res.status(500).json({ error: "Failed to activate transport" });
-    }
-  });
 
 
 // RETIRED (V4 rail-unification, Aug 7 2026): §9 mount-order-dead twin of
@@ -1783,38 +1478,8 @@ router.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, asy
   });
 
 
-// §9 mount-order-dead twins (this handler and the one below always lose to their
-// identically-routed POST /api/trips/:tripId/emergency-contacts and /emergency/initialize
-// in routes.ts). ESCALATED, not fixed: the live copies gate on `authorizeTripOwnerTier`
-// (owner-only, no assigned-expert branch — note the GET reads in this same block DO use
-// the broader `authorizeTripLogistics`, so this is a deliberate read/write split, not an
-// oversight). That owner-tier helper is a private, unexported function local to routes.ts
-// (hard-excluded for this lane); substituting `authorizeTripLogistics` would wrongly admit
-// the assigned expert into owner-only writes. Left unauthorized rather than mis-gated —
-// same reasoning as the other owner-tier twins above; fix belongs to routes.ts's owner /
-// the reconciliation sweep.
-router.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
-    try {
-      const contact = await emergencyService.createContact({
-        ...req.body,
-        tripId: req.params.tripId,
-      });
-      res.status(201).json(contact);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create emergency contact" });
-    }
-  });
 
 
-router.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (req, res) => {
-    try {
-      const { countryCode } = req.body;
-      const result = await emergencyService.initializeTripEmergencyInfo(req.params.tripId, countryCode);
-      res.status(201).json(result);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to initialize emergency info" });
-    }
-  });
 
 
 router.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
@@ -1837,33 +1502,6 @@ router.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res
   });
 
 
-// §9 mount-order-dead twin (this handler always loses to the identically-routed
-// POST /api/trips/:tripId/alerts in routes.ts — see registerRoutes' tripsRoutes mount
-// comment). Kept in sync for safety only.
-// SECURITY (found during the L21 sweep, kept safe for the reconciliation sweep): this
-// endpoint carried `isAuthenticated` ONLY — no trip authorization — despite writing a
-// safety alert onto the trip. The live copy gates on `authorizeTripLogistics` (owner ‖
-// assigned expert ‖ author ‖ audit-logged admin — the ONE tier-3 write an assigned expert
-// may perform, per the live copy's comment), so that is mirrored here.
-router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const denied = await authorizeTripLogistics(
-        req.params.tripId,
-        userId,
-        "POST /api/trips/:tripId/alerts",
-      );
-      if (denied) return res.status(denied.status).json({ message: denied.message });
-
-      const alert = await emergencyService.createAlert({
-        ...req.body,
-        tripId: req.params.tripId,
-      });
-      res.status(201).json(alert);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create alert" });
-    }
-  });
 
 
 router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
