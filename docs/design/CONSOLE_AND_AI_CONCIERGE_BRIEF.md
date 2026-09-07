@@ -500,6 +500,18 @@ control anywhere; the one advisor rail exists only on the slip.
 
 "Start a plan" is retired: it was question 2 without the person. Nothing else on the page is a door.
 
+#### Buttons versus cards: a person is a button, a product is a card
+
+| Element | Kind | Where | Behaviour |
+|---|---|---|---|
+| **Message @handle** | action button | hero | storefront enquiry; no plan needed |
+| **Plan with {name}** | action button | hero, experts with `plan_work` / `live_trip` only | with priced plan-work listings: a chooser of those cards; with none: the free advisor invitation ("Mika will reply with what she offers") |
+| Share | utility | hero | not a buy action |
+| Consult · Plan work · Live support · Coordination · On the ground · Stay | offering cards | Services lane | each card's button from `resolveBuyAction`; impact class as the card's eyebrow; hidden booking mode renders "Enquire", which is Message with the listing named |
+| A plan they built | offering card | Ready-made lane | Get this trip |
+
+There is no third buy button; "Start a plan" is removed. The hero button is only a shortcut into the plan-work cards.
+
 #### The header: what the plan chip does here
 
 Signed in with a plan chip set, the hero carries the same chip every browse surface carries — "Planning: Your Kyoto
