@@ -205,8 +205,11 @@ function toUtcDayString(value: unknown): string | null {
  * and nothing else. Returning null is a real answer: it means the platform does not know when this
  * service happens, and a completion timer must not run on a date nobody recorded.
  */
-async function resolveServiceDate(
-  booking: BookingRow,
+// Exported (ledger `2026-09-07-home-time-axis`): Home's unpaid-booking row is dated by THIS
+// derivation — booked slot first, then the checkout snapshot, else undated and omitted — never a
+// second answer to "when does this booking happen" (§18 rule 1; the audit above is the reason).
+export async function resolveServiceDate(
+  booking: Pick<BookingRow, "slotId" | "bookingDetails">,
 ): Promise<{ date: string; source: "booked_slot" | "scheduled_date" } | null> {
   if (booking.slotId) {
     const [slot] = await db
