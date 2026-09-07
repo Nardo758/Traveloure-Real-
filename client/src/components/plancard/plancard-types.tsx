@@ -152,7 +152,13 @@ export function getTemplateConfig(occasion?: PlanCardSkinInput): TemplateConfig 
 
 /**
  * Curated destination → Unsplash CDN photo.
- * Keyed by lowercase city/country keyword. Falls back to a generic travel shot.
+ * Keyed by lowercase city/country keyword.
+ *
+ * L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): there is NO generic fallback
+ * anymore. The three generic keys below (`beach`, `mountains`, `travel`) are kept as data but are
+ * never matched — a destination containing "beach" is not THE beach photo's place, and an
+ * unmatched destination used to silently draw the generic `travel` shot: a photo of nowhere is
+ * the §13 lie. An unmatched destination returns NULL and the header draws its typographic block.
  */
 const DESTINATION_PHOTOS: Record<string, string> = {
   // Japan
@@ -218,17 +224,26 @@ const DESTINATION_PHOTOS: Record<string, string> = {
   travel: "photo-1488085061387-422e29b40080",
 };
 
+/** Generic-keyword keys are stock MOODS, not places — never matched against a destination (§13). */
+const GENERIC_PHOTO_KEYS = new Set(["beach", "mountains", "travel"]);
+
 function unsplashUrl(id: string): string {
   return `https://images.unsplash.com/${id}?w=900&auto=format&fit=crop&q=80`; // fee-literal-ok: image width URL param, not fee config
 }
 
+/**
+ * The hero photo for a destination, or NULL when no curated photo honestly matches. Callers
+ * render their typographic block on null — a photo of nowhere is worse than no photo (§13,
+ * ledger `2026-09-07-trip-card-honesty`; the generic-travel fallback this replaced was the lie).
+ */
 export function getDestinationPhoto(destination: string | undefined | null): string | null {
-  if (!destination) return unsplashUrl(DESTINATION_PHOTOS.travel);
+  if (!destination) return null;
   const lower = destination.toLowerCase();
   for (const [key, id] of Object.entries(DESTINATION_PHOTOS)) {
+    if (GENERIC_PHOTO_KEYS.has(key)) continue;
     if (lower.includes(key)) return unsplashUrl(id);
   }
-  return unsplashUrl(DESTINATION_PHOTOS.travel);
+  return null;
 }
 
 export function getEnergyProfile(day: PlanCardDay | undefined | null): string {

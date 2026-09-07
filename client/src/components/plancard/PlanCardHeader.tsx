@@ -5,7 +5,12 @@ import { getDestinationPhoto } from "./plancard-types";
 /**
  * PlanCardHeader — shared header used by the summary card. Shows a destination
  * photo behind a dark-to-transparent scrim (same pattern as HeroSection so the
- * two stages feel continuous). Falls back to a gradient when no photo is found.
+ * two stages feel continuous).
+ *
+ * L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): `getDestinationPhoto` now
+ * returns NULL for a destination with no curated photo (the generic `travel` fallback was a
+ * photo of nowhere — the §13 lie). With no photo the header draws its TYPOGRAPHIC block — the
+ * navy gradient, the serif title, the 📍 line — as the intended rendering, not a broken image.
  */
 export interface PlanCardHeaderMetrics {
   days: React.ReactNode;
@@ -54,6 +59,7 @@ export function PlanCardHeader({
     <div
       className="relative overflow-hidden text-white px-4 pt-4 pb-3 bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40"
       data-testid={testId}
+      data-hero={photoUrl ? "photo" : "typographic"}
     >
       {/* Destination photo */}
       {photoUrl && (

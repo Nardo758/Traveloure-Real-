@@ -1054,6 +1054,27 @@ jobs:
       - name: Door source-field pins
         run: npx tsx --test client/src/lib/__tests__/plan-entry-source-fields.test.ts
 
+  trip-card-honesty:
+    name: trip-card-honesty (L4 — 2026-09-07-trip-card-honesty)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # L4 (Console & AI Concierge brief): the map never defaults to Null Island, the dead
+      # ItineraryCard file is gone, Maps URL string literals live only in the canonical
+      # handoff libs, and the hero returns NULL for an unmatched destination (the generic
+      # travel shot was a photo of nowhere — §13). Predicate fixtures FIRST (§18d).
+      - name: Trip-card-honesty guard predicate self-test
+        run: node scripts/check-trip-card-honesty.cjs --self-test
+      - name: Trip-card-honesty guard
+        run: node scripts/check-trip-card-honesty.cjs
+      - name: Hero photo honesty pins
+        run: npx tsx --test client/src/components/plancard/__tests__/hero-photo-honesty.test.ts
+
   plan-row-model:
     name: plan-row-model (L3 my-plans-rows — 2026-09-07-my-plans-rows)
     runs-on: ubuntu-latest
