@@ -1054,6 +1054,24 @@ jobs:
       - name: Door source-field pins
         run: npx tsx --test client/src/lib/__tests__/plan-entry-source-fields.test.ts
 
+  plan-row-model:
+    name: plan-row-model (L3 my-plans-rows — 2026-09-07-my-plans-rows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # The My plans row model, pure: which section a plan belongs to (Traveling now · Final ·
+      # In planning · Past — dates win over paperwork; undated non-final reads as planning, never
+      # as epoch-1970 "past"), the routing-status counts off the plancard DTO (shared verbatim by
+      # PlanSlipStrip), the funnel-ordered next action, and the Message-only-with-an-advisor gate.
+      # No DOM, no DB, no network.
+      - name: Plan row model pins
+        run: npx tsx --test client/src/lib/__tests__/plan-row-model.test.ts
+
   event-mint-dedupe:
     name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)
     runs-on: ubuntu-latest
