@@ -259,6 +259,27 @@ and the checkout page's move onto the plan projection, which is a gate inside L7
 | **L16-ask-ai-drawer** | ruling 3 | no | L15 · own brief | The drawer, pre-final on the slip and post-final on the Trip Card. A task answers as a proposal on the EXISTING suggestions rail (origin `ai`), applied through the existing approve path; charged at apply through the existing payment-intent pattern with an idempotency key; expert items protected (D3). Needs its own design brief before build. | `SlipRail.tsx` · `ExpertSuggestionsPanel.tsx` · suggestions + payments routes · `fee_bands concierge:ai_task` | check-money-endpoints · §15 claim before charge · check-ai-draft-eligibility |
 | **L17-booking-agent-tab** | LD 44 phase 0 | no | L9 · L16 · LD 44 phase 0 | Reads `affiliate_booking_requests` in the ruled vocabulary. Blocked until LD 44 phase 0 lands the status vocabulary. | Trip Card drawer · affiliate-booking-requests reader | blocked |
 
+### Status as of `7e3294c` (resynced 2026-09-07)
+
+| Lane | State | Ledger row |
+|---|---|---|
+| W0-ledger | **landed** (rulings 1–8 = CLAUDE.md Locked Decision 45; slip canvas recorded unrecoverable). Artboards not yet committed. | `2026-09-07-console-one-grammar` … `-home-owns-time-axis`, `-slip-canvas-unrecoverable` |
+| L1-console-grammar | **landed** — one grammar; `/experts`, `/cart`, `/discover/location/:city` inside the shell (`browse-shell.tsx`) | `2026-09-07-console-one-grammar-code` |
+| L2-home-honesty | **landed** — one create door (IntakePanel), real advisors, dead controls out | `2026-09-07-home-honesty` |
+| L3-my-plans-rows | **landed** — `plan-row-model.ts`, Final section, Show all, no progress bar | `2026-09-07-my-plans-rows` |
+| L4-trip-card-honesty | **landed** — no Null Island, hero returns null, `ItineraryCard` deleted, one maps handoff | `2026-09-07-trip-card-honesty` |
+| L5-start-with-ai-door | **landed** — draft panel opens the modal; bound conversations open their slip; the panel mints nothing | `2026-09-07-start-with-ai-door` |
+| L6 · L8 · L9 · L10 · L11 · L15 | **unblocked** — rulings ratified, blockers landed | — |
+| L7-trip-cart-retire | **unblocked**, still gated on its own audit of `cart.tsx`; the cart fee line (F3 / L20) is a decision before it | — |
+| L12 · L13 · L14 · L18 · L19 · L21 · L22 · L24 | **dispatchable**, no ruling needed | — |
+| L16-ask-ai-drawer | blocked on L15 and its own brief | — |
+| L17-booking-agent-tab | blocked on LD 44 phase 0 | — |
+| L20-cart-fee-line | **awaiting the decision-maker** (money) | — |
+| L23 · L25 | awaiting **rulings 9–12** (§11.4, §11.6), not yet in the ledger | — |
+
+Note: rulings 9–12 postdate W0 and are not ratified; L23 and L25 wait on them. The three planner-tier "Local
+Expert equivalent" rows (G3) and the Executive Assistant door (G4) are recorded, not laned.
+
 **Order inside a wave.** Wave 1: L1 first, because every later screen lane assumes the shell; then L2–L5 in any
 order. Wave 2: L6 and L10 first, since the doors and Home are what a traveler meets; L7 only after its audit; L9
 before L16 can mount its tab; L12–L14 whenever a builder is free. Wave 3: L15 before L16; L17 waits on LD 44 phase 0
