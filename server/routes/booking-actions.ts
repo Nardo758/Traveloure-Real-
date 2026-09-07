@@ -869,10 +869,13 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
 /**
  * GET /api/trips/mine/advisors — traveler-side mirror of /api/expert/assigned-trips (above).
  * Returns the SESSION traveler's own trips' real active advisor linkage
- * ({ trip_id, expert_id, status }, pending|accepted). Built for chat.tsx's inline plan-events
+ * ({ trip_id, expert_id, status, expert_first_name, expert_last_name,
+ * expert_profile_image_url }, pending|accepted). Built for chat.tsx's inline plan-events
  * feature (claude/chat-plan-events) to resolve which trip is "shared" with a given expert
  * conversation partner — the same real linkage getExpertAssignedTrips already gives the expert
- * side, mirrored in reverse. Read-only, session-scoped (§14 — never a body-supplied userId).
+ * side, mirrored in reverse. The expert name/avatar fields are additive (L2 home-honesty, ledger
+ * `2026-09-07-home-honesty`): Home's Active experts panel lists these same real advisors.
+ * Read-only, session-scoped (§14 — never a body-supplied userId).
  */
 router.get('/trips/mine/advisors', isAuthenticated, async (req, res) => {
   try {

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
-import { usePlanning } from "@/contexts/PlanningContext";
 import { Link } from "wouter";
 import { Plus, Loader2, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -35,13 +34,6 @@ interface Notification {
   // `read: n.isRead ?? false`, so "actions needed" and mark-as-read agree everywhere.
   isRead?: boolean;
   read?: boolean;
-}
-
-interface Conversation {
-  id: number;
-  title: string;
-  userId?: string | null;
-  createdAt: string;
 }
 
 // FIX 3 (W1c polish): dashboard selected-trip persistence. Keyed per-user so a shared/kiosk
@@ -85,18 +77,16 @@ const CTA_CARDS = [
 ];
 
 export default function Dashboard() {
-  const { open: openPlanning } = usePlanning();
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
-  const { data: notificationsData, isLoading: notifLoading } = useQuery<Notification[]>({
+  const { data: notificationsData } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
   });
-  const { data: conversations, isLoading: convsLoading } = useQuery<Conversation[]>({
-    queryKey: ["/api/conversations"],
-  });
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  // R-A/R-C: the "New experience" CTA keeps its exact look but opens the intake panel
-  // instead of navigating to /experiences (CONSOLE_REALIGN_BRIEF.md).
+  // R-C / L2 home-honesty (ledger `2026-09-07-home-honesty`): BOTH create doors on this page —
+  // the "New experience" CTA tile and the empty-state "Create Your First Plan" button — open the
+  // ONE intake panel (R-C). The empty state used to call `usePlanning().open`, a SECOND modal
+  // with a different flow, so which planner a traveler met depended on whether they had plans.
   const [intakeOpen, setIntakeOpen] = useState(false);
   // Only attempt the localStorage restore once per mount — subsequent trips-list refetches
   // (e.g. after a mutation) must not fight a since-made explicit selection.
@@ -194,7 +184,6 @@ export default function Dashboard() {
       : "Start planning your first experience";
 
   const destinations = activePlans.map(t => t.destination).filter(Boolean);
-  const convList = conversations ?? [];
 
   return (
     <DashboardLayout>
@@ -436,7 +425,7 @@ export default function Dashboard() {
                   <Button
                     className="text-white"
                     style={{ background: "#E85D55" }}
-                    onClick={() => openPlanning()}
+                    onClick={() => setIntakeOpen(true)}
                     data-testid="button-first-plan"
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -454,10 +443,7 @@ export default function Dashboard() {
             <div className="sticky top-16 space-y-3">
               <TravelPulsePanel />
               <ActionItemsPanel notifications={notifications} />
-              <ActiveExpertsPanel
-                conversations={convList}
-                trips={activePlans}
-              />
+              <ActiveExpertsPanel trips={activePlans} />
               <TopExpertsPanel destinations={destinations} />
             </div>
           </div>

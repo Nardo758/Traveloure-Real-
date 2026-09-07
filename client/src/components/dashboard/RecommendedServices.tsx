@@ -137,7 +137,7 @@ export function RecommendedServices({
           return (
             <div
               key={svc.id}
-              className="flex items-center gap-3 px-3 py-2.5 bg-card border border-border cursor-pointer hover:bg-muted/20 transition-colors"
+              className="flex items-center gap-3 px-3 py-2.5 bg-card border border-border transition-colors"
               style={{
                 borderRadius:
                   i === 0
@@ -189,21 +189,13 @@ export function RecommendedServices({
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <div className="text-sm font-semibold text-foreground mb-1">
+                <div className="text-sm font-semibold text-foreground">
                   ${price > 0 ? price.toFixed(0) : "—"}
                 </div>
-                <button
-                  className="text-[9px] px-2.5 py-1 rounded font-medium border transition-colors"
-                  style={{
-                    borderColor: "#E85D55",
-                    color: "#E85D55",
-                    borderWidth: "0.5px",
-                    background: "transparent",
-                  }}
-                  data-testid={`button-add-service-${svc.id}`}
-                >
-                  Add to cart
-                </button>
+                {/* L2 home-honesty (ledger `2026-09-07-home-honesty`): the "Add to cart" button
+                    here had NO onClick — a control that did nothing (CONSOLE_AND_AI_CONCIERGE_BRIEF).
+                    Removed rather than wired to a second cart path; the ruled add-to-cart door
+                    lives on the service/detail surfaces. */}
               </div>
             </div>
           );

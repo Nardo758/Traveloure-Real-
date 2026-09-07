@@ -845,11 +845,25 @@ export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
  * only trip_expert_advisors is truly written), so it cannot serve as the real link. This is that
  * real, minimal, read-only reverse.
  */
-export async function getTravelerTripAdvisors(userId: string): Promise<Array<{ trip_id: string; expert_id: string; status: string }>> {
+// L2 home-honesty (ledger `2026-09-07-home-honesty`): the expert NAME fields are additive —
+// the original consumer (chat.tsx plan-events) reads only trip_id/expert_id/status, and the
+// Home "Active experts" panel needs a name to list a real advisor honestly (§13) instead of
+// repainting an AI conversation title as one.
+export async function getTravelerTripAdvisors(userId: string): Promise<Array<{
+  trip_id: string;
+  expert_id: string;
+  status: string;
+  expert_first_name: string | null;
+  expert_last_name: string | null;
+  expert_profile_image_url: string | null;
+}>> {
   const result = await db.execute(sql`
-    SELECT t.id as trip_id, tea.local_expert_id as expert_id, tea.status
+    SELECT t.id as trip_id, tea.local_expert_id as expert_id, tea.status,
+           u.first_name as expert_first_name, u.last_name as expert_last_name,
+           u.profile_image_url as expert_profile_image_url
     FROM trip_expert_advisors tea
     JOIN trips t ON t.id = tea.trip_id
+    JOIN users u ON u.id = tea.local_expert_id
     WHERE t.user_id = ${userId} AND tea.status IN ('pending', 'accepted')
     ORDER BY tea.assigned_at DESC
   `);

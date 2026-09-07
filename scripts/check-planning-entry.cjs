@@ -171,6 +171,17 @@ const REQUIRED_SOURCE_FIELDS = [
     forbid: ["city", "destination"],
     why: "earner.location is a neighbourhood as often as a city (§13)",
   },
+  // Ledger `2026-09-07-home-honesty` (L2). Home's TWO create doors — the "New experience" CTA
+  // tile and the empty-state "Create Your First Plan" button — both open the ONE IntakePanel.
+  // What the page holds (the destinations of EXISTING active plans) is not the destination of
+  // the NEW plan being created, so like the ticker rail the doors pass nothing (D13 second
+  // clause): seeding the new plan with an existing plan's city would be an invented answer.
+  {
+    file: "client/src/pages/dashboard.tsx",
+    require: [],
+    forbid: ["city", "destination"],
+    why: "Home's doors create a NEW plan; the destinations Home holds belong to existing ones (§13)",
+  },
 ];
 
 /** Does this source offer one of the two ruled entry shapes? */
@@ -379,6 +390,7 @@ function selfTest() {
   const CHAT = "client/src/pages/chat.tsx";
   const EXPERIENCES = "client/src/pages/experiences.tsx";
   const STOREFRONT = "client/src/pages/storefront.tsx";
+  const DASHBOARD = "client/src/pages/dashboard.tsx";
 
   cases.push(
     ["D13 · a door passing its required key passes", () => req(TEMPLATE, doorAlias).length === 0],
@@ -399,6 +411,10 @@ function selfTest() {
     ["D13 · a missing required-field file fails loudly", () => checkSourceFields({}).some((e) => e.includes("REQUIRED_SOURCE_FIELDS"))],
     // `open(` alone must not be the token: window.open and setOpen are not planning doors.
     ["D13 · window.open is not a planning opener", () => sourceRegions('window.open("https://x.example/?city=Kyoto");').length === 0],
+    // Ledger `2026-09-07-home-honesty` (L2): Home's doors create a NEW plan, so they pass nothing —
+    // the destinations the page holds belong to existing plans.
+    ["D13 · a Home door passing nothing passes", () => req(DASHBOARD, withIntake).length === 0],
+    ["D13 · a Home door seeding an existing plan's destination FAILS (§13)", () => req(DASHBOARD, 'const [o,setIntakeOpen]=useState(false);\n<Button onClick={() => setIntakeOpen(true)} />\n<IntakePanel open={o} city={selectedTrip.destination} />').some((e) => e.includes("ruled NOT to pass"))],
   );
 
   let failed = 0;
