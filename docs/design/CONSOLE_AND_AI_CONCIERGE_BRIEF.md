@@ -478,6 +478,123 @@ Partner items (`aff_*`) are a class of their own already: the agent rail (§16, 
 | **L24-impact-class** | none | no | — | One shared lookup `impactClassFor(offeringKey \| categoryKey, deliveryMethod)` in `shared/`, derived from the registries (`earn-roles.ts` tiers, the taxonomy registry); read by the resolver and by the listing wizard's own step list, so buy side and sell side agree. | pure test over all 55 + 22 keys; the registry guards refuse an unclassified key |
 | **L25-plan-work-one-rail** | ruling 11 | no | L23 · L24 | Planning-tier listings bought at checkout write the advisor row on authorization (one more caller of `upsertTripAdvisorRow`, inside the promotion); payout held until approval; the review-fee rail scoped to AI-plan polish. | check-advisor-row-author; check-money-endpoints; promotion suite untouched |
 
+### 11.7 The storefront: user flows from `/s/:handle`
+
+**What the page holds today** (`client/src/pages/storefront.tsx`): one hero card (cover, eyebrow "Local expert
+storefront" / "Service provider storefront", name, verified and away badges, location, a facts strip of offerings ·
+reviews · member since · gems shared), **Message @handle** and **Share**, an about block, a trust strip, then two
+lanes: **Services** (cards whose label is already derived from `bookingMode`: Book / "Request to book →" /
+"Enquire →") and **Ready-made trips**, plus a message band at the foot. The header's **"Start a plan"** opens the
+planner with no expert attached and no return address (walkthrough rows 2, 7). There is no "plan with this person"
+control anywhere; the one advisor rail exists only on the slip.
+
+**The storefront answers three questions, in this order, and each has exactly one control.**
+
+1. *Can I talk to you?* — **Message**. A storefront enquiry (LD 40 `{ handle }`); no plan needed (ruling 12).
+2. *Will you build my trip with me?* — **Plan with {name}** (experts whose catalog includes a `plan_work` or
+   `live_trip` offering; never drawn for a provider). This is the ONE advisor rail from a new door; the slip must
+   exist first (LD 32), and the door passes `returnTo: { kind: 'expert', handle }` so the planner comes back here.
+3. *What can I buy from you?* — the **Services** lane, every card's button from `resolveBuyAction` (11.5) with the
+   card's `impact` class (11.6) shown as its eyebrow (Consult · Plan work · Live support · On the ground · Stay),
+   and the **Ready-made** lane.
+
+"Start a plan" is retired: it was question 2 without the person. Nothing else on the page is a door.
+
+#### The header: what the plan chip does here
+
+Signed in with a plan chip set, the hero carries the same chip every browse surface carries — "Planning: Your Kyoto
+wedding · change" — and every card resolves against it. A plan in another city is not hidden; the city-mismatch
+guard runs after the landing, as it does from Discover. With no chip and several plans, the first press asks which
+plan once and remembers it for the visit. A guest sees the page in full; the buttons say what they will ask for.
+
+#### Flow A · Consult (advisory / specialized, e.g. Hidden-Gems Shortlist, a location scout)
+
+1. Card → **Book** (instant) or **Request to book** (request mode). Detail shows delivery method, duration, price,
+   and "No plan needed".
+2. The ask-sheet: sign in if guest → **"Attach to a plan?" (optional, skippable)** → slot if scheduled (call /
+   video) → party only if the listing asks.
+3. Pay in full. A `service_bookings` row; payout on the completion rule. No item is placed on any plan.
+4. Delivery by method: a session at the slot, a PDF on the booking's deliverable rail, or an async thread. If
+   attached, the expert reads that plan live and may **suggest** onto it only as its advisor (they are not one yet;
+   attaching is read access to the plancard payload, not a write grant).
+5. Bookings shows the row named "Hidden-Gems Shortlist · Mika Tanaka"; the slip shows nothing unless attached, in
+   which case a one-line "Consult with Mika · delivered" sits on the plan's Expert card.
+
+#### Flow B · Plan work (planning tier, e.g. Full Custom Itinerary; and Plan with {name})
+
+1. **Plan with {name}** in the hero, or a plan-work listing's **Book**. Detail says out loud: "Built inside your
+   plan. You keep the slip; Mika works in it; you approve what she delivers."
+2. The ask-sheet: sign in → **which plan** (required; "New plan" opens the planner pre-filled with the expert's
+   city and returns here with the minted slip, D15) → the listing's deposit or full price shown from the row (§14).
+3. Pay. On authorization the promotion writes the advisor row through the ONE author (`upsertTripAdvisorRow`,
+   status `accepted`) inside the same transaction as the booking (ruling 11). The slip's Expert card now names Mika
+   and the Build card's hire row disappears.
+4. Mika works in the Workstation on the traveler's slip. Items she adds carry `origin: 'expert'` and are protected
+   (D3). The traveler watches live and can message from the slip (D22).
+5. Mika presses **Delivered**. The slip shows the approval banner; the traveler **approves** or **requests changes**.
+   Approval releases the held payout and flips Mika to suggest-only. A balance, if the listing took a deposit, is
+   paid from the slip's balance section (D9) by `balance_due_at`.
+6. Plan with {name} with no listing behind it (an expert who has published none) is the free advisor invitation
+   `HireExpertDialog` already sends, and says so: "Mika will reply with what she offers."
+
+#### Flow C · Live support during the trip (live_support, e.g. "Text a Local")
+
+1. Card → **Book**. Detail: "Covers your trip's dates. Mika can add reservations to your plan while you travel."
+2. The ask-sheet: sign in → **which plan** (required, and it must carry dates; a plan with none sends the traveler to
+   set them first) → pay in full for the window.
+3. Advisor row for the plan (the same author), scoped by the plan's dates in copy, not in a new column: the row is
+   an ordinary advisor row; the WINDOW is the listing's promise and the plan's dates, both already on record.
+4. During the trip: the thread lives in the plan's advisor context (D22); `reservation_on_fly` and
+   `booking_concierge` add items through the advisor write rail, visibly "from your expert".
+
+#### Flow D · Event coordination (the six planner keys)
+
+1. Card → **Request** (these are never instant). Detail: the fee rule in words, from the bands: "a coordination fee
+   of the floor or the percent of your stated budget, whichever is higher".
+2. The ask-sheet: sign in → **which plan** → **which event** (the WhichEvent picker; "Set up an event" if the plan
+   has none) → the stated budget, read from the event (`user_experiences.budget`), never typed here.
+3. The landing is a `coordination_states` row on that plan and event, unpaid, with the quote; the coordinator is
+   assigned by the existing admin rail; the traveler pays the fee from the slip's Plan card. Vendor milestones are
+   the coordinator's tool (off-platform bookkeeping), never a buyer step.
+
+#### Flow E · On the ground and Stay (a provider's storefront, or an expert's in-person listing)
+
+1. Card → **Add to plan** or **Book**. Add is a plan write with no charge; Book births the row in checkout.
+2. The ask-sheet: sign in → which plan (Add: optional for a guest, who lands in the guest cart) → **slot** for a
+   scheduled method (or nights for a stay) → party.
+3. A dated, placed item on the chosen day or event; a stay spans its nights. Deposit or full per the listing; the
+   balance from the slip.
+
+#### Flow F · Ready-made (the second lane)
+
+Unchanged and already honest: **Get this trip** → sign in → pay → a new plan owned by the buyer, with the
+included consult and revision on its concierge card. The only addition is the return address: after the clone, a
+"Back to Mika's storefront" link, because the buyer came from here.
+
+#### Guest and member, on this page
+
+| Buyer | Message | Plan with {name} | Consult | Plan work / Live | On the ground | Ready-made |
+|---|---|---|---|---|---|---|
+| Guest | sign in first | sign in, then the planner | sign in at pay | sign in, then the planner | Add → guest cart; Book → sign in | sign in at pay |
+| Member, no plan | opens | the planner, returns here | buys; attach skipped | the planner, returns here | Add asks which plan → New plan | buys |
+| Member, chip set | opens | one press, carries `tripId` | buys; "Attach to Your Kyoto wedding?" | one press, carries `tripId` | lands on the chip's plan | buys |
+
+#### What changes in code (folded into existing lanes)
+
+- **L22** — the storefront becomes a named door: "Plan with {name}" passes `returnTo` and the expert's city; "Start
+  a plan" is removed; the required-field list in `check-planning-entry.cjs` gains it.
+- **L23** — the services lane's card label reads `resolveBuyAction` (the `bookingMode` switch it already has is the
+  seed of that); the impact eyebrow comes from **L24**.
+- **L25** — a plan-work purchase writes the advisor row on authorization; "Plan with {name}" with no listing keeps
+  the free invitation.
+- **Storefront visibility** — "Plan with {name}" is drawn only when the earner's catalog contains a `plan_work` or
+  `live_trip` key (the impact lookup), which is what keeps a provider's storefront from offering an advisor it
+  cannot be (§4: experts are not a service category, and providers are not advisors).
+
+The storefront is the one public page an earner owns (LD 40), so this is also where every earner-side copy line
+about payment lives: "paid in full", "deposit now, balance by {date}", "held until you approve". Each is derived
+from the listing's own deposit plan and the class, never typed by the earner.
+
 ### 11.2 Findings, verified, dispositioned
 
 | # | Finding (row) | Verified in source | Disposition |
