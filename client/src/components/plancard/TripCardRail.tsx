@@ -50,8 +50,6 @@ export interface TripCardRailTrip {
   startDate?: string | null;
   endDate?: string | null;
   finalizedAt?: string | null;
-  /** `trips.timezone` — absent when never captured (Locked Decision 30). */
-  timezone?: string | null;
 }
 
 interface TripCardRailProps {
@@ -218,12 +216,18 @@ function BackToPlanningCard({ trip }: { trip: TripCardRailTrip }) {
   const [, navigate] = useLocation();
   // The SAME suppression the slip's Finish card applies to its Reopen (§18 rule 1): inside the
   // 48-hour window or underway the Trip Card is primary regardless, so reopening would change
-  // nothing visible and offering it would be a false reversal (R-F). Zone-aware via LD 30; with
-  // no zone the date-alone comparison `shared/plan-timing.ts` states.
+  // nothing visible and offering it would be a false reversal (R-F).
+  //
+  // IT IS THE ZONE-FREE PREDICATE, DELIBERATELY, AND THAT IS NOT AN OVERSIGHT. Making
+  // `tripCardForcedPrimaryByDateAlone` zone-aware means `shared/trip-primary-surface.ts` reading
+  // `shared/plan-timing.ts`, which imports the window constant back from it — a cycle. Lane L10
+  // owns that module and its import direction; a lane may not silently reverse it, and two
+  // predicates answering "is the Trip Card already primary?" would be the drift §18 rule 1 names.
+  // So this rail asks the ONE existing question, gets the answer the slip gets, and the zone-aware
+  // refinement is left to whichever lane moves the constant deliberately.
   const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({
     startDate: trip.startDate,
     endDate: trip.endDate,
-    timezone: trip.timezone ?? null,
   });
   if (!trip.finalizedAt || forcedByDateAlone) return null;
   return (

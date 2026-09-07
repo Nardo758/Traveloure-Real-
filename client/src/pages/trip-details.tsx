@@ -458,8 +458,6 @@ export default function TripDetails() {
                 startDate: calendarDateToIso(trip.startDate) || null,
                 endDate: calendarDateToIso(trip.endDate) || null,
                 finalizedAt: plancardData?.trip?.finalizedAt ?? null,
-                // Locked Decision 30: the DTO SPREADS the zone only when captured; absent ⇒ null.
-                timezone: plancardData?.trip?.timezone ?? null,
               }}
               isOwner={isOwner}
             />

@@ -1483,10 +1483,11 @@ jobs:
       # imports `shared/trip-primary-surface.ts`, which is real module resolution.
       - run: npm ci
       # L9 of the Console & AI Concierge brief. THREE SUITES, THREE SILENT FAILURE SHAPES.
-      #  · plan-timing: the 48-hour window and the plan-zone instant, ONE derivation shared with
-      #    lane L10 (§18 rule 1). The old arm read `new Date("YYYY-MM-DD")` — UTC midnight, which
-      #    is neither the plan's zone nor the viewer's — and nothing pinned it. NULL zone ⇒ the
-      #    date alone, never UTC and never the device clock dressed as the plan's (LD 30, §13).
+      #  · plan-timing-wall-clock: L9's HALF of `shared/plan-timing.ts` — the TIME-OF-DAY
+      #    primitives, built on lane L10's zone engine (two lanes wrote that module in parallel;
+      #    L10's start-instant half and its own suite are the base and are unchanged). NO usable
+      #    zone ⇒ NO instant, so no countdown is ever claimed against a plan that carries none
+      #    (LD 30, §13), and a DST spring-forward is corrected rather than overshot.
       #  · trip-card-status: LD 44 (e)'s vocabulary read off the rows that exist TODAY — the
       #    legacy four mapped EXPLICITLY, "Booked" said only with a confirmation in hand, and a
       #    §15b `payment_pending` claim rendered as prepared rather than booked.
@@ -1496,8 +1497,8 @@ jobs:
       # NEGATIVE SPACE: all three are pure — no DOM, no DB, no network — so none can see whether
       # anything RENDERS. That is `playwright/tests/slip-rail-actions.spec.ts` A10/A12's answer
       # (the armed DOM gate this lane extended rather than adding a spec beside it).
-      - name: Plan timing pins (shared with L10)
-        run: npx tsx --test shared/__tests__/plan-timing.test.ts
+      - name: Plan timing — wall-clock half (L10 owns the start-instant half and its suite)
+        run: npx tsx --test shared/__tests__/plan-timing-wall-clock.test.ts
       - name: Trip Card status readers
         run: npx tsx --test client/src/lib/__tests__/trip-card-status.test.ts
       - name: Trip Card one-page pins

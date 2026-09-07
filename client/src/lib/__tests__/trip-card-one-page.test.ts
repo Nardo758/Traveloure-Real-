@@ -112,7 +112,7 @@ describe("T4 no invented duration", () => {
 describe("T5 the countdown needs the plan's zone (LD 30)", () => {
   it("formatCountdown refuses without one", () => {
     const temporal = code("components/plancard/plancard-temporal.ts");
-    assert.match(temporal, /countdownAllowed\(timezone\)/, "formatCountdown must gate on countdownAllowed");
+    assert.match(temporal, /isUsableTimeZone\(timezone\)/, "formatCountdown must gate on the zone predicate");
     assert.match(temporal, /from\s+"@shared\/plan-timing"/, "the zone derivation is the ONE shared module");
   });
   it("the Up-next hero passes the plan's zone through", () => {

@@ -1030,9 +1030,6 @@ function FinishCard({
   const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({
     startDate: trip.startDate,
     endDate: trip.endDate,
-    // Locked Decision 30 / ledger `2026-09-07-trip-card-one-page`: the same date-arm predicate the
-    // Trip Card's "Back to planning" reads, in the plan's zone when one was captured.
-    timezone: trip.timezone ?? null,
   });
   // Reopen is owner-gated server-side (verifyTripOwnership) and only offered when it would
   // actually change something — never when the date arm alone already forces Trip Card primacy.

@@ -1443,11 +1443,14 @@ This document captures architectural decisions to maintain consistency across co
     are gone, purchases render in the card's Purchases drawer and in the My-bookings ledger, and
     the booking-agent card is a PLACEHOLDER until L16/L17 that reads only the stages today's rows
     carry (LD 44 (e)'s legacy four mapped explicitly; it never claims a copilot exists). Two
-    invariants moved with it and bind every lane after: **the 48-hour handover window and a plan's
-    zoned instant are ONE derivation, `shared/plan-timing.ts`** (`tripCardIsPrimary` delegates;
-    NULL zone ⇒ compare on the calendar DATE alone — never UTC, never the device clock, LD 30), and
-    **a countdown renders only where `trips.timezone` exists**, with the temporal engine's
-    "90 minutes per item" assumption deleted in favour of an item's own `end_time`. Two things the
+    invariants bind every lane after: **all plan-time reasoning is ONE module,
+    `shared/plan-timing.ts`** — lane L10 owns its start-instant half and the 48-hour window (which
+    it IMPORTS from `shared/trip-primary-surface.ts`, so that constant does not move and the two
+    files must never import each other both ways), and L9 added the wall-clock half on those same
+    primitives; and **a countdown renders only where `trips.timezone` exists** (LD 30 — no usable
+    zone ⇒ no instant at all), with the temporal engine's "90 minutes per item" assumption deleted
+    in favour of an item's own `end_time`. `tripCardIsPrimary`'s no-zone answer is UNCHANGED: making
+    it zone-aware requires moving that constant, which is a deliberate later lane. Two things the
     lane found and did NOT change: the pre-final case renders an honest NOTICE with one action to
     the slip rather than the redirect D8's wording implies (two armed specs assert the notice), and
     `GET /api/trips/:id/expert-advisor` still returns ONE advisor where D7 rules it returns all.

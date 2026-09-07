@@ -1167,14 +1167,7 @@ function TransitionLogFooter({
 /** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
  *  uses, so client and scheduler agree on when Trip Card becomes primary. */
 function primaryInputFromTrip(trip: SlipTrip | undefined) {
-  // Ledger `2026-09-07-trip-card-one-page`: the zone rides so the window/underway arms are read in
-  // the plan's zone (Locked Decision 30); absent ⇒ the date-alone posture `shared/plan-timing.ts` states.
-  return {
-    finalizedAt: trip?.finalizedAt ?? null,
-    startDate: trip?.startDate ?? null,
-    endDate: trip?.endDate ?? null,
-    timezone: trip?.timezone ?? null,
-  };
+  return { finalizedAt: trip?.finalizedAt ?? null, startDate: trip?.startDate ?? null, endDate: trip?.endDate ?? null };
 }
 
 // ── TripCardPrimaryBanner ─────────────────────────────────────────────────────────────

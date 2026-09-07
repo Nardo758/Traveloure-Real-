@@ -1,70 +1,203 @@
 /**
- * plan-timing — WHEN a plan starts, read in the plan's own zone, and the two questions every
- * traveler surface asks about that instant: "are we inside the 48-hour handover window?" and
- * "is the plan underway?".
+ * plan-timing.ts — WHEN a plan starts, as an instant, and the ONE 48-hour handover window.
+ * Ledger `2026-09-07-home-time-axis` (lane L10); CLAUDE.md Locked Decisions 30 and 45 (8), §13,
+ * §18 rule 1. Pure: no drizzle, no fetch, no clock of its own (`now` is always passed in).
  *
- * Ledger `2026-09-07-trip-card-one-page` (Console & AI Concierge brief lane L9); shared with lane
- * L10 (Home time axis), which needs the SAME window. CLAUDE.md Locked Decision 30 (a plan's
- * timezone), §13, §18 rule 1.
+ * WHY THIS FILE EXISTS. Two lanes built in parallel — Home's time axis (L10) and the Trip Card's
+ * one page (L9) — both need "the moment the Trip Card takes over", and a second derivation of that
+ * moment is the drift class §18 rule 1 names. The window ITSELF already had one home before either
+ * lane: `TRIP_CARD_HANDOVER_WINDOW_MS` in `shared/trip-primary-surface.ts` (Console Realign R-F),
+ * read by the client's `tripCardIsPrimary` and by the server's T-48h nudge scheduler. This module
+ * does NOT restate it — it imports that constant and adds the one thing neither reader had: a
+ * ZONE-AWARE start instant, now that a plan can carry `trips.timezone` (Locked Decision 30).
  *
- * WHY ONE MODULE. `shared/trip-primary-surface.ts` already carried a 48-hour window arm and an
- * underway arm, both computed off `new Date(startDate)` — a bare "YYYY-MM-DD" parsed as UTC
- * midnight, which is neither the plan's zone nor the viewer's. Lane L9 (the Trip Card's "Back to
- * planning" suppression and its countdown) and lane L10 (Home's dated rows) both need the same
- * window, and a second derivation beside the first is the drift class §18 rule 1 names. So the
- * derivation lives HERE, once, and `tripCardIsPrimary` delegates to it.
- *
- * THE NULL-TIMEZONE POSTURE, stated once so every reader inherits it (Locked Decision 30):
- *   `trips.timezone` is NULL when the plan's zone was NEVER CAPTURED (a destination outside the
- *   launch markets). With no zone, a wall-clock date has NO instant we can honestly claim — not
- *   UTC, not the server's zone, not the viewer's device zone presented as the plan's. So:
- *   · `planStartInstant` / `zonedWallClockToInstant` return NULL — there is no instant to give.
- *   · the window and underway predicates COMPARE ON THE DATE ALONE: the viewer's local calendar
- *     date against the plan's calendar dates, whole days, no hour-of-day claim. This is the
- *     coarse answer that stays true in every zone rather than a precise one that is true in
- *     exactly one — and a caller that needs an instant (a countdown) gets NULL and renders none.
- *
- * PURE: no drizzle, no fetch, no clock of its own (`now` is always an argument). `Intl` with an
- * IANA `timeZone` is the only zone arithmetic used — no library, no offset table of our own.
+ * THE NULL-TIMEZONE POSTURE (Locked Decision 30, §13). `trips.start_date` is a DATE column — a
+ * calendar day, not an instant. With a usable IANA zone the day's midnight in THAT zone is the
+ * start instant. With NULL the platform does not know where that day is, so the instant is the
+ * day's UTC midnight — EXACTLY the parse `tripCardIsPrimary` has always applied to the same string
+ * — and the caller must treat the result as a CALENDAR-DATE comparison with no zone claimed
+ * (`planStartInstant` says which case it is through `zoned`). Never the server's zone, never the
+ * viewer's, never a nearest market: a wrong zone looks authoritative and is worse than none.
  */
+import { TRIP_CARD_HANDOVER_WINDOW_MS } from "./trip-primary-surface";
 
-/** The T-48h handover window (Console Realign ruling R-F), in hours. The ONE statement of it. */
-export const HANDOVER_WINDOW_HOURS = 48;
+/** The ONE handover window (48 hours), re-exported so a reader here never spells the number. */
+export const HANDOVER_WINDOW_MS = TRIP_CARD_HANDOVER_WINDOW_MS;
 
-const MS_PER_HOUR = 60 * 60 * 1000;
-const MS_PER_DAY = 24 * MS_PER_HOUR;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})/;
 
-export interface CalendarDate {
-  year: number;
-  month: number; // 1–12
-  day: number; // 1–31
+/**
+ * Is this string an IANA zone THIS runtime can resolve? The column carries no DB CHECK (publish-trap
+ * posture), so a stored value can be one this Node build's ICU data does not know, and the honest
+ * response to that is NULL's: fall back to the zone-free reading, never to a substitute zone.
+ * (Moved here from `server/services/trip-timezone.ts`, which re-exports it — one implementation.)
+ */
+export function isUsableTimeZone(timeZone: string | null | undefined): timeZone is string {
+  if (!timeZone) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** "YYYY-MM-DD" (or a timestamp whose date part is that) → [y, m, d], or null when unparseable. */
+export function calendarParts(value: string | Date | null | undefined): [number, number, number] | null {
+  if (!value) return null;
+  const raw = value instanceof Date ? (isNaN(value.getTime()) ? "" : value.toISOString()) : String(value).trim();
+  const m = raw.match(DATE_ONLY_RE);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  // Reject Feb 30 and friends: round-trip through UTC and compare.
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) return null;
+  return [y, mo, d];
+}
+
+/** Wall-clock parts of an instant in a zone, read off Intl — no offset table of our own. */
+function wallClockInZone(instant: Date, timeZone: string): { y: number; mo: number; d: number; h: number; mi: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(instant);
+  const pick = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? NaN);
+  return { y: pick("year"), mo: pick("month"), d: pick("day"), h: pick("hour"), mi: pick("minute") };
 }
 
 /**
- * Read the calendar date out of a "YYYY-MM-DD" string, a longer ISO string (its leading date is
- * taken AS WRITTEN — no zone conversion, because a trip date column is a wall-clock date), or a
- * `Date` (its LOCAL calendar date). NULL for anything else — never a guessed date.
+ * The instant of LOCAL MIDNIGHT of a calendar day in an IANA zone. Two Intl round-trips: guess UTC
+ * midnight, read the zone's wall clock at that guess, shift by the difference, and read once more
+ * for the DST-transition edge (a day whose midnight does not exist resolves to the first instant
+ * of that day, which is what a calendar renders for it).
  */
-export function parseCalendarDateParts(value: string | Date | null | undefined): CalendarDate | null {
-  if (value == null) return null;
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) return null;
-    return { year: value.getFullYear(), month: value.getMonth() + 1, day: value.getDate() };
+export function zonedMidnight(y: number, mo: number, d: number, timeZone: string): Date {
+  // The wall clock we want to read at the answer is exactly the day's UTC-midnight tuple.
+  const target = Date.UTC(y, mo - 1, d);
+  let guess = target;
+  for (let i = 0; i < 2; i++) {
+    const w = wallClockInZone(new Date(guess), timeZone);
+    const asUtc = Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi);
+    // How far the zone's wall clock at `guess` is from the wall clock we want — measured against
+    // the fixed target, never against the moving guess (that doubles the offset).
+    const diff = asUtc - target;
+    if (diff === 0) break;
+    guess -= diff;
   }
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return null;
-  const parts = { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
-  // Reject an impossible date (Feb 30) rather than letting Date.UTC roll it into March.
-  const probe = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  if (
-    probe.getUTCFullYear() !== parts.year ||
-    probe.getUTCMonth() !== parts.month - 1 ||
-    probe.getUTCDate() !== parts.day
-  ) {
-    return null;
-  }
-  return parts;
+  return new Date(guess);
 }
+
+export interface PlanStartInstant {
+  /** The start instant. */
+  instant: Date;
+  /**
+   * true  ⇒ `instant` is local midnight in the plan's own zone (a real instant).
+   * false ⇒ the plan carries no usable zone; `instant` is the day's UTC midnight — a CALENDAR
+   *         DATE stand-in with no zone claimed (Locked Decision 30). Readers compare days, not
+   *         clocks, and render no zone.
+   */
+  zoned: boolean;
+  /** The calendar day the instant belongs to, "YYYY-MM-DD" — the same in both cases. */
+  day: string;
+}
+
+/**
+ * When does this plan start? `startDate` is `trips.start_date` (a calendar day); `timezone` is
+ * `trips.timezone` (nullable). Returns null only when the day itself cannot be parsed — an absent
+ * or unparseable start is NOT a plan that starts "now", it is one with no start to report (§13).
+ */
+export function planStartInstant(
+  startDate: string | Date | null | undefined,
+  timezone: string | null | undefined,
+): PlanStartInstant | null {
+  const parts = calendarParts(startDate);
+  if (!parts) return null;
+  const [y, mo, d] = parts;
+  const day = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  if (isUsableTimeZone(timezone)) {
+    return { instant: zonedMidnight(y, mo, d, timezone), zoned: true, day };
+  }
+  // NULL / unusable zone: UTC midnight of the calendar day — the parse `tripCardIsPrimary` has
+  // always used for this string. No zone is claimed; `zoned: false` says so to the caller.
+  return { instant: new Date(Date.UTC(y, mo - 1, d)), zoned: false, day };
+}
+
+/**
+ * The instant the handover window OPENS: `start − window`. Same posture as `planStartInstant`
+ * (a `zoned: false` result is a calendar-date stand-in). Null when the start cannot be parsed.
+ */
+export function handoverInstant(
+  startDate: string | Date | null | undefined,
+  timezone: string | null | undefined,
+  windowMs: number = HANDOVER_WINDOW_MS,
+): PlanStartInstant | null {
+  const start = planStartInstant(startDate, timezone);
+  if (!start) return null;
+  const instant = new Date(start.instant.getTime() - windowMs);
+  return { instant, zoned: start.zoned, day: instant.toISOString().slice(0, 10) };
+}
+
+/**
+ * Is `now` inside the handover window — at or after `start − window`? (Whether the plan is ALSO
+ * underway or finished is not this predicate's question; `tripCardIsPrimary` OR's those arms.)
+ *
+ * With a NULL zone the comparison is against the day's UTC midnight, i.e. a calendar-date
+ * comparison with no zone claimed — the same answer `tripCardIsPrimary` gives today, so the two
+ * readers can never disagree about a plan that carries no zone. An unparseable start is `false`:
+ * nothing real to derive from ⇒ the window is not claimed to be open (§13).
+ */
+export function isInsideHandoverWindow(
+  now: Date,
+  startDate: string | Date | null | undefined,
+  timezone: string | null | undefined,
+  windowMs: number = HANDOVER_WINDOW_MS,
+): boolean {
+  const opens = handoverInstant(startDate, timezone, windowMs);
+  if (!opens) return false;
+  return now.getTime() >= opens.instant.getTime();
+}
+
+/** Calendar-day arithmetic in UTC, "YYYY-MM-DD" in → "YYYY-MM-DD" out. Null on an unparseable day. */
+export function addCalendarDays(day: string | null | undefined, days: number): string | null {
+  const parts = calendarParts(day);
+  if (!parts) return null;
+  const [y, mo, d] = parts;
+  return new Date(Date.UTC(y, mo - 1, d) + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** The UTC calendar day of an instant, "YYYY-MM-DD". */
+export function utcDay(instant: Date): string {
+  return instant.toISOString().slice(0, 10);
+}
+
+/**
+ * "What day is it" for a plan: the wall-clock day of `instant` in the plan's zone when it has a
+ * usable one, else the UTC day (the NULL posture above — a calendar-date reading, no zone claimed).
+ */
+export function calendarDayOf(instant: Date, timezone: string | null | undefined): string {
+  if (!isUsableTimeZone(timezone)) return utcDay(instant);
+  const w = wallClockInZone(instant, timezone);
+  return `${String(w.y).padStart(4, "0")}-${String(w.mo).padStart(2, "0")}-${String(w.d).padStart(2, "0")}`;
+}
+
+// ── A TIME OF DAY, not just a day (lane L9, ledger `2026-09-07-trip-card-one-page`) ────────────
+//
+// TWO LANES, ONE MODULE, AND THIS IS THE SEAM. L10 (above) needs the moment a plan STARTS — a
+// calendar day, so midnight is the only clock it ever reads. L9 needs the moment an ITEM starts:
+// `itinerary_items.start_time` / `end_time` are WALL-CLOCK "HH:MM" strings (Locked Decision 30
+// keeps them uncoverted), and the Trip Card must decide whether one has passed and whether a
+// countdown may be claimed at all. That is the same zone question one derivative down, so it lives
+// HERE rather than in a second timing module (§18 rule 1) — and it is built on L10's primitives
+// (`isUsableTimeZone`, `calendarParts`, `zonedMidnight`) rather than beside them. Nothing above
+// this line was changed by L9: the start-instant posture, the window and their answers are L10's.
 
 /** "HH:MM" (24h) → minutes since midnight, or NULL for anything that is not that shape. */
 export function parseWallClockMinutes(time: string | null | undefined): number | null {
@@ -77,159 +210,40 @@ export function parseWallClockMinutes(time: string | null | undefined): number |
   return h * 60 + min;
 }
 
-/** True when `Intl` knows this IANA zone. An unknown string is treated exactly like NULL (§13). */
-export function isKnownTimezone(timezone: string | null | undefined): boolean {
-  if (!timezone || typeof timezone !== "string" || timezone.trim().length === 0) return false;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** The wall clock `instant` reads as in `timezone`, as UTC-encoded epoch ms (for offset math). */
-function zonedWallClockAsUtcMs(instant: Date, timezone: string): number {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const parts: Record<string, number> = {};
-  for (const p of fmt.formatToParts(instant)) {
-    if (p.type !== "literal") parts[p.type] = Number(p.value);
-  }
-  // Some engines report midnight as hour 24 under h23 on older ICU; normalise.
-  const hour = parts.hour === 24 ? 0 : parts.hour;
-  return Date.UTC(parts.year, parts.month - 1, parts.day, hour, parts.minute, parts.second);
+/** Minutes since midnight that `instant` reads as in `timeZone` — the ONE number the correction
+ *  below needs. (L10's `wallClockInZone` returns the full tuple and is module-private; reading the
+ *  single field here rather than widening a reviewed export.) */
+function wallClockMinutesInZone(instant: Date, timeZone: string): number {
+  const w = wallClockInZone(instant, timeZone);
+  return w.h * 60 + w.mi;
 }
 
 /**
- * The instant at which `date` `time` occurs in `timezone`. NULL when the zone is NULL/unknown, the
- * date is not a calendar date, or the time is not "HH:MM" (an absent time means midnight ONLY
- * when the caller says so — pass "00:00"; this function never assumes it).
+ * The instant at which `date` `time` occurs in `timezone` — the TIME-OF-DAY sibling of
+ * `zonedMidnight`, which it builds on rather than re-deriving an offset.
  *
- * Offset resolution is the standard two-pass fixed point over `Intl` (a first guess at the UTC
- * encoding, corrected by the zone's own reading of that guess, then corrected once more so a
- * DST edge between the two passes still lands on the right side).
+ * NULL when the zone is absent or unusable, when the date is not a calendar day, or when the time
+ * is not "HH:MM". **An absent time is never treated as midnight** — that is a claim the row did
+ * not make (§13); a caller that means midnight passes "00:00".
+ *
+ * DST: midnight-plus-minutes overshoots on a spring-forward day (the offset changes between the
+ * two), so the result is corrected once by the difference between the wall clock it actually
+ * lands on and the one asked for. A day whose exact wall clock does not exist resolves to the
+ * nearest real instant rather than to a fabricated one.
  */
 export function zonedWallClockToInstant(
   date: string | Date | null | undefined,
   time: string | null | undefined,
   timezone: string | null | undefined,
 ): Date | null {
-  if (!isKnownTimezone(timezone)) return null;
-  const d = parseCalendarDateParts(date);
+  if (!isUsableTimeZone(timezone)) return null;
+  const parts = calendarParts(date);
   const minutes = parseWallClockMinutes(time);
-  if (!d || minutes == null) return null;
-  const zone = String(timezone);
-  const wallAsUtc = Date.UTC(d.year, d.month - 1, d.day, Math.floor(minutes / 60), minutes % 60, 0);
-  let guess = wallAsUtc;
-  for (let i = 0; i < 2; i++) {
-    const offset = zonedWallClockAsUtcMs(new Date(guess), zone) - guess;
-    guess = wallAsUtc - offset;
-  }
+  if (!parts || minutes == null) return null;
+  const [y, mo, d] = parts;
+  const midnight = zonedMidnight(y, mo, d, timezone);
+  let guess = midnight.getTime() + minutes * 60_000;
+  const landed = wallClockMinutesInZone(new Date(guess), timezone);
+  if (landed !== minutes) guess -= (landed - minutes) * 60_000;
   return new Date(guess);
-}
-
-/**
- * The instant the plan STARTS — midnight of `startDate` in the plan's zone. NULL when there is no
- * zone (Locked Decision 30: never UTC, never the server's, never the device's dressed as the
- * plan's) or no parseable start date.
- */
-export function planStartInstant(
-  startDate: string | Date | null | undefined,
-  timezone: string | null | undefined,
-): Date | null {
-  return zonedWallClockToInstant(startDate, "00:00", timezone);
-}
-
-/**
- * The plan's zone read of the calendar date `now` falls on ("YYYY-MM-DD"). NULL without a zone:
- * a caller falling back to the device's date must say so at the call site.
- */
-export function zonedTodayIso(now: Date, timezone: string | null | undefined): string | null {
-  if (!isKnownTimezone(timezone)) return null;
-  const utcMs = zonedWallClockAsUtcMs(now, String(timezone));
-  const d = new Date(utcMs);
-  const y = String(d.getUTCFullYear()).padStart(4, "0");
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-/** Whole calendar days from `now`'s LOCAL date to `date` (negative = already past). NULL = unparseable. */
-export function calendarDaysUntil(date: string | Date | null | undefined, now: Date): number | null {
-  const target = parseCalendarDateParts(date);
-  if (!target) return null;
-  const today = parseCalendarDateParts(now)!;
-  const a = Date.UTC(today.year, today.month - 1, today.day);
-  const b = Date.UTC(target.year, target.month - 1, target.day);
-  return Math.round((b - a) / MS_PER_DAY);
-}
-
-/**
- * Inside the handover window: `now >= start − hours`.
- *
- * With a zone: `start` is the plan's own midnight and the comparison is exact.
- * With NO zone: THE DATE ALONE — the viewer's local calendar date is within `ceil(hours/24)` days
- * of the start date (48h ⇒ from two days before, at the viewer's own midnight). No hour-of-day
- * is claimed for a plan whose zone was never captured (Locked Decision 30, §13).
- *
- * A start date that cannot be parsed is NEVER inside the window — the honest default is "not yet",
- * never a fabricated handover.
- */
-export function isInsideHandoverWindow(
-  now: Date,
-  startDate: string | Date | null | undefined,
-  timezone: string | null | undefined,
-  hours: number = HANDOVER_WINDOW_HOURS,
-): boolean {
-  const start = planStartInstant(startDate, timezone);
-  if (start) return now.getTime() >= start.getTime() - hours * MS_PER_HOUR;
-  // NULL zone ⇒ compare on the date alone (see the header).
-  const days = calendarDaysUntil(startDate, now);
-  if (days == null) return false;
-  return days <= Math.ceil(hours / 24);
-}
-
-/**
- * Underway: `start <= now <= end`, where `end` is the END of the end date (the plan is still
- * underway at 23:59 on its last day).
- *
- * With a zone: exact, in the plan's zone. With NO zone: the date alone — the viewer's local
- * calendar date lies between the two calendar dates inclusive. A missing or unparseable end date
- * is NEVER "underway" — an open-ended claim is not one the row made.
- */
-export function isPlanUnderway(
-  now: Date,
-  startDate: string | Date | null | undefined,
-  endDate: string | Date | null | undefined,
-  timezone: string | null | undefined,
-): boolean {
-  const start = planStartInstant(startDate, timezone);
-  const endStart = planStartInstant(endDate, timezone);
-  if (start && endStart) {
-    const endExclusive = endStart.getTime() + MS_PER_DAY;
-    return now.getTime() >= start.getTime() && now.getTime() < endExclusive;
-  }
-  // NULL zone ⇒ the date alone.
-  const untilStart = calendarDaysUntil(startDate, now);
-  const untilEnd = calendarDaysUntil(endDate, now);
-  if (untilStart == null || untilEnd == null) return false;
-  return untilStart <= 0 && untilEnd >= 0;
-}
-
-/**
- * Whether a COUNTDOWN may be rendered against this plan's times at all. Locked Decision 30: a
- * countdown is a claim about an instant, and only a captured zone makes that claim true. Without
- * one a surface shows the wall-clock time and NO countdown.
- */
-export function countdownAllowed(timezone: string | null | undefined): boolean {
-  return isKnownTimezone(timezone);
 }

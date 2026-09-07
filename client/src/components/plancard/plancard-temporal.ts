@@ -10,7 +10,11 @@ import { useEffect, useState } from "react";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import type { TraveloureMode } from "@/lib/navigate";
-import { countdownAllowed, zonedTodayIso, zonedWallClockToInstant } from "@shared/plan-timing";
+// Ledger `2026-09-07-trip-card-one-page`, reconciled onto lane L10's `shared/plan-timing.ts`
+// (ledger `2026-09-07-home-time-axis`): ONE zone module, so `isUsableTimeZone` is the ONE answer
+// to "may a zone-dependent claim be made about this plan" and `calendarDayOf` the ONE reading of
+// "what day is it there". Neither is restated here (§18 rule 1).
+import { calendarDayOf, isUsableTimeZone, zonedWallClockToInstant } from "@shared/plan-timing";
 
 export type TemporalState = "past" | "upcoming" | "future";
 
@@ -54,7 +58,7 @@ export function parseActivityTime(timeStr: string, dateStr: string, timezone?: s
   if (!timeStr || !dateStr) return null;
   const wall = activityTimeToWallClock(timeStr);
   if (!wall) return null;
-  if (countdownAllowed(timezone)) return zonedWallClockToInstant(dateStr, wall, timezone);
+  if (isUsableTimeZone(timezone)) return zonedWallClockToInstant(dateStr, wall, timezone);
   const parts = dateStr.split("-").map(Number);
   const [h, min] = wall.split(":").map(Number);
   return new Date(parts[0], parts[1] - 1, parts[2], h, min, 0, 0);
@@ -216,8 +220,11 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
   /** `trips.timezone` — Locked Decision 30. NULL ⇒ the device's date/clock, stated in `parseActivityTime`. */
   timezone?: string | null,
 ): UpNextInfo<TLeg> {
-  // "Today" is the plan's zone's today when a zone was captured; the device's otherwise.
-  const today = zonedTodayIso(now, timezone) ?? todayIso(now);
+  // "Today" is the plan's zone's today when a zone was captured; the DEVICE's otherwise — the
+  // pre-existing behaviour, kept explicitly at the call site. (`calendarDayOf` answers UTC for an
+  // unzoned plan, which is right for L10's calendar-date question and wrong for "is the traveler
+  // looking at today's day list", so the fallback is chosen here rather than inside it.)
+  const today = isUsableTimeZone(timezone) ? calendarDayOf(now, timezone) : todayIso(now);
   const isLiveDay = !!day && day.date === today;
   const activities = day?.activities ?? [];
 
@@ -258,7 +265,7 @@ export function formatCountdown(
   now: Date,
   timezone: string | null | undefined,
 ): string | null {
-  if (!countdownAllowed(timezone)) return null;
+  if (!isUsableTimeZone(timezone)) return null;
   const start = parseActivityTime(activity.time, dateStr, timezone);
   if (!start) return null;
   const diffMs = start.getTime() - now.getTime();

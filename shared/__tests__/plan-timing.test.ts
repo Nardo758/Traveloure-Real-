@@ -1,177 +1,102 @@
 /**
- * PLAN TIMING — the one 48-hour window and the one zoned-instant derivation, pinned.
- * Lane L9 of the Console & AI Concierge brief; ledger `2026-09-07-trip-card-one-page`.
- * CLAUDE.md Locked Decision 30, §13, §18 rule 1. Shared with lane L10 (Home time axis).
- *
- * WHY THIS EXISTS. `tripCardIsPrimary`'s window arm used to read `new Date("YYYY-MM-DD")`, which
- * is UTC midnight — neither the plan's zone nor the viewer's — and nothing pinned it. The Trip
- * Card's "Back to planning" suppression, its countdown and Home's dated rows all hang on the same
- * two questions, so the derivation is one module and these are its proofs.
- *
- * What these hold:
- *   T1  a zoned wall clock resolves to the right instant, DST edges included
- *   T2  NULL / unknown zone ⇒ NO instant (never UTC, never the device's clock)
- *   T3  the window is exact with a zone and date-alone without one
- *   T4  underway is exact with a zone (inclusive of the last day) and date-alone without one
- *   T5  `tripCardIsPrimary` delegates: finalized wins; window; underway; nothing ⇒ false
- *   T6  countdown is allowed only with a known zone
- *
- * Pure: no DB, no DOM, no network, no clock of its own — `now` is always explicit.
- * Run: npx tsx --test shared/__tests__/plan-timing.test.ts
+ * plan-timing — the ONE zone-aware plan-start instant and the 48-hour handover window
+ * (ledger `2026-09-07-home-time-axis`; CLAUDE.md Locked Decision 30, §13, §18 rule 1).
+ * Pure: no DB, no network, no wall clock.
  */
-import { describe, it } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  calendarDaysUntil,
-  countdownAllowed,
+  HANDOVER_WINDOW_MS,
+  addCalendarDays,
+  calendarDayOf,
+  calendarParts,
+  handoverInstant,
   isInsideHandoverWindow,
-  isPlanUnderway,
-  parseCalendarDateParts,
-  parseWallClockMinutes,
+  isUsableTimeZone,
   planStartInstant,
-  zonedTodayIso,
-  zonedWallClockToInstant,
+  zonedMidnight,
 } from "../plan-timing";
-import { tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "../trip-primary-surface";
+import { TRIP_CARD_HANDOVER_WINDOW_MS, tripCardIsPrimary } from "../trip-primary-surface";
 
-describe("T1 zoned wall clock → instant", () => {
-  it("Tokyo has no DST: 2026-09-10 16:00 Asia/Tokyo is 07:00Z", () => {
-    const d = zonedWallClockToInstant("2026-09-10", "16:00", "Asia/Tokyo");
-    assert.equal(d?.toISOString(), "2026-09-10T07:00:00.000Z");
-  });
-  it("Paris in summer is UTC+2, in winter UTC+1 — the offset follows the date, not the zone", () => {
-    assert.equal(
-      zonedWallClockToInstant("2026-07-01", "12:00", "Europe/Paris")?.toISOString(),
-      "2026-07-01T10:00:00.000Z",
-    );
-    assert.equal(
-      zonedWallClockToInstant("2026-12-01", "12:00", "Europe/Paris")?.toISOString(),
-      "2026-12-01T11:00:00.000Z",
-    );
-  });
-  it("New York midnight on a DST-change day still lands on that day's midnight", () => {
-    // 2026-03-08 is the US spring-forward date; midnight is before the 02:00 jump (EST, UTC-5).
-    assert.equal(planStartInstant("2026-03-08", "America/New_York")?.toISOString(), "2026-03-08T05:00:00.000Z");
-    // The day after, midnight is EDT (UTC-4).
-    assert.equal(planStartInstant("2026-03-09", "America/New_York")?.toISOString(), "2026-03-09T04:00:00.000Z");
-  });
-  it("a longer ISO string contributes ONLY its leading date — no zone conversion of a date column", () => {
-    assert.equal(
-      planStartInstant("2026-09-10T23:30:00.000Z", "Asia/Tokyo")?.toISOString(),
-      "2026-09-09T15:00:00.000Z",
-    );
-  });
-  it("shape guards: an impossible date or a non-HH:MM time is NULL, never rolled forward", () => {
-    assert.equal(parseCalendarDateParts("2026-02-30"), null);
-    assert.equal(parseCalendarDateParts("not a date"), null);
-    assert.equal(parseWallClockMinutes("25:00"), null);
-    assert.equal(parseWallClockMinutes("9:5"), null);
-    assert.equal(parseWallClockMinutes("09:05"), 545);
-    assert.equal(zonedWallClockToInstant("2026-09-10", null, "Asia/Tokyo"), null);
-  });
+test("T1: the window is the ONE constant from trip-primary-surface, never restated", () => {
+  assert.equal(HANDOVER_WINDOW_MS, TRIP_CARD_HANDOVER_WINDOW_MS);
 });
 
-describe("T2 NULL zone ⇒ no instant (Locked Decision 30)", () => {
-  it("null, empty and unknown zones all answer NULL", () => {
-    assert.equal(planStartInstant("2026-09-10", null), null);
-    assert.equal(planStartInstant("2026-09-10", undefined), null);
-    assert.equal(planStartInstant("2026-09-10", ""), null);
-    assert.equal(planStartInstant("2026-09-10", "Mars/Olympus_Mons"), null);
-    assert.equal(zonedTodayIso(new Date("2026-09-10T00:00:00Z"), null), null);
-  });
-  it("zonedTodayIso reads the calendar date in the plan's zone, not the device's", () => {
-    // 23:30Z on the 9th is already the 10th in Tokyo.
-    assert.equal(zonedTodayIso(new Date("2026-09-09T23:30:00Z"), "Asia/Tokyo"), "2026-09-10");
-    assert.equal(zonedTodayIso(new Date("2026-09-09T23:30:00Z"), "America/Los_Angeles"), "2026-09-09");
-  });
+test("T2: a zoned plan starts at LOCAL midnight in its zone (Kyoto 00:00 = 15:00Z the day before)", () => {
+  const s = planStartInstant("2026-10-02", "Asia/Tokyo");
+  assert.ok(s);
+  assert.equal(s.zoned, true);
+  assert.equal(s.day, "2026-10-02");
+  assert.equal(s.instant.toISOString(), "2026-10-01T15:00:00.000Z");
 });
 
-describe("T3 the 48-hour handover window", () => {
-  const start = "2026-09-10";
-  it("with a zone: exact — one minute before T-48h is outside, T-48h itself is inside", () => {
-    // Tokyo midnight on the 10th = 2026-09-09T15:00Z; T-48h = 2026-09-07T15:00Z.
-    assert.equal(isInsideHandoverWindow(new Date("2026-09-07T14:59:00Z"), start, "Asia/Tokyo"), false);
-    assert.equal(isInsideHandoverWindow(new Date("2026-09-07T15:00:00Z"), start, "Asia/Tokyo"), true);
-    assert.equal(isInsideHandoverWindow(new Date("2026-09-12T15:00:00Z"), start, "Asia/Tokyo"), true);
-  });
-  it("without a zone: the DATE ALONE — from two calendar days before, at the viewer's own midnight", () => {
-    // Local-time constructors: the viewer's calendar date is what is compared.
-    const threeDaysBefore = new Date(2026, 8, 7, 23, 59);
-    const twoDaysBefore = new Date(2026, 8, 8, 0, 1);
-    assert.equal(isInsideHandoverWindow(threeDaysBefore, start, null), false);
-    assert.equal(isInsideHandoverWindow(twoDaysBefore, start, null), true);
-    assert.equal(calendarDaysUntil(start, twoDaysBefore), 2);
-  });
-  it("a start date that cannot be parsed is NEVER inside the window", () => {
-    assert.equal(isInsideHandoverWindow(new Date(), null, "Asia/Tokyo"), false);
-    assert.equal(isInsideHandoverWindow(new Date(), "soon", null), false);
-  });
-  it("the hours argument is honoured (L10 may ask for a different window)", () => {
-    assert.equal(isInsideHandoverWindow(new Date("2026-09-08T15:00:00Z"), start, "Asia/Tokyo", 24), true);
-    assert.equal(isInsideHandoverWindow(new Date("2026-09-08T14:59:00Z"), start, "Asia/Tokyo", 24), false);
-  });
+test("T3: NULL zone ⇒ UTC midnight of the calendar day, flagged unzoned — the tripCardIsPrimary parse", () => {
+  const s = planStartInstant("2026-10-02", null);
+  assert.ok(s);
+  assert.equal(s.zoned, false);
+  assert.equal(s.instant.toISOString(), "2026-10-02T00:00:00.000Z");
+  assert.equal(s.instant.getTime(), new Date("2026-10-02").getTime());
 });
 
-describe("T4 underway", () => {
-  it("with a zone: from the plan's midnight through the END of its last day", () => {
-    assert.equal(isPlanUnderway(new Date("2026-09-09T14:59:00Z"), "2026-09-10", "2026-09-12", "Asia/Tokyo"), false);
-    assert.equal(isPlanUnderway(new Date("2026-09-09T15:00:00Z"), "2026-09-10", "2026-09-12", "Asia/Tokyo"), true);
-    // 23:59 Tokyo on the 12th = 14:59Z on the 12th: still underway.
-    assert.equal(isPlanUnderway(new Date("2026-09-12T14:59:00Z"), "2026-09-10", "2026-09-12", "Asia/Tokyo"), true);
-    assert.equal(isPlanUnderway(new Date("2026-09-12T15:00:00Z"), "2026-09-10", "2026-09-12", "Asia/Tokyo"), false);
-  });
-  it("without a zone: the date alone, inclusive of both ends", () => {
-    assert.equal(isPlanUnderway(new Date(2026, 8, 9, 23, 59), "2026-09-10", "2026-09-12", null), false);
-    assert.equal(isPlanUnderway(new Date(2026, 8, 10, 0, 1), "2026-09-10", "2026-09-12", null), true);
-    assert.equal(isPlanUnderway(new Date(2026, 8, 12, 23, 59), "2026-09-10", "2026-09-12", null), true);
-    assert.equal(isPlanUnderway(new Date(2026, 8, 13, 0, 1), "2026-09-10", "2026-09-12", null), false);
-  });
-  it("a missing end date is never underway — no open-ended claim", () => {
-    assert.equal(isPlanUnderway(new Date(2026, 8, 10, 12), "2026-09-10", null, null), false);
-    assert.equal(isPlanUnderway(new Date("2026-09-10T12:00:00Z"), "2026-09-10", null, "Asia/Tokyo"), false);
-  });
+test("T4: an unusable zone string is answered exactly as NULL is", () => {
+  assert.equal(isUsableTimeZone("Mars/Olympus_Mons"), false);
+  const s = planStartInstant("2026-10-02", "Mars/Olympus_Mons");
+  assert.ok(s);
+  assert.equal(s.zoned, false);
 });
 
-describe("T5 tripCardIsPrimary delegates to the one derivation", () => {
-  it("finalized wins regardless of dates", () => {
-    assert.equal(tripCardIsPrimary({ finalizedAt: "2026-01-01T00:00:00Z", now: new Date(2020, 0, 1) }), true);
-  });
-  it("window arm, zoned", () => {
-    assert.equal(
-      tripCardIsPrimary({ startDate: "2026-09-10", endDate: "2026-09-12", timezone: "Asia/Tokyo", now: new Date("2026-09-07T15:00:00Z") }),
-      true,
-    );
-    assert.equal(
-      tripCardIsPrimary({ startDate: "2026-09-10", endDate: "2026-09-12", timezone: "Asia/Tokyo", now: new Date("2026-09-07T14:59:00Z") }),
-      false,
-    );
-  });
-  it("window arm, date-alone when the zone is NULL", () => {
-    assert.equal(
-      tripCardIsPrimary({ startDate: "2026-09-10", endDate: "2026-09-12", now: new Date(2026, 8, 8, 0, 1) }),
-      true,
-    );
-    assert.equal(
-      tripCardIsPrimary({ startDate: "2026-09-10", endDate: "2026-09-12", now: new Date(2026, 8, 7, 23, 59) }),
-      false,
-    );
-  });
-  it("nothing real to derive from ⇒ the slip stays primary (false)", () => {
-    assert.equal(tripCardIsPrimary({ now: new Date() }), false);
-    assert.equal(tripCardForcedPrimaryByDateAlone({ startDate: null, endDate: null }), false);
-  });
-  it("forced-by-date-alone ignores finalizedAt by construction", () => {
-    assert.equal(
-      tripCardForcedPrimaryByDateAlone({ startDate: "2026-09-10", endDate: "2026-09-12", timezone: "Asia/Tokyo", now: new Date("2026-09-01T00:00:00Z") }),
-      false,
-    );
-  });
+test("T5: an unparseable start yields null, never 'now'", () => {
+  assert.equal(planStartInstant(null, "Asia/Tokyo"), null);
+  assert.equal(planStartInstant("", null), null);
+  assert.equal(planStartInstant("2026-02-30", null), null);
+  assert.equal(calendarParts("not a date"), null);
 });
 
-describe("T6 a countdown needs a known zone", () => {
-  it("allowed only with a zone Intl knows", () => {
-    assert.equal(countdownAllowed("Asia/Tokyo"), true);
-    assert.equal(countdownAllowed(null), false);
-    assert.equal(countdownAllowed("Not/A_Zone"), false);
-  });
+test("T6: handoverInstant = start − window, in the plan's zone", () => {
+  const h = handoverInstant("2026-10-02", "Asia/Tokyo");
+  assert.ok(h);
+  assert.equal(h.zoned, true);
+  assert.equal(h.instant.toISOString(), "2026-09-29T15:00:00.000Z");
+});
+
+test("T7: NULL zone ⇒ the handover degrades to a calendar day two days before the start", () => {
+  const h = handoverInstant("2026-10-02", null);
+  assert.ok(h);
+  assert.equal(h.zoned, false);
+  assert.equal(h.day, "2026-09-30");
+});
+
+test("T8: isInsideHandoverWindow agrees with tripCardIsPrimary's date arm for an unzoned plan", () => {
+  const start = "2026-10-02";
+  const justBefore = new Date("2026-09-29T23:59:59Z");
+  const justAfter = new Date("2026-09-30T00:00:00Z");
+  assert.equal(isInsideHandoverWindow(justBefore, start, null), false);
+  assert.equal(isInsideHandoverWindow(justAfter, start, null), true);
+  assert.equal(tripCardIsPrimary({ startDate: start, now: justBefore }), false);
+  assert.equal(tripCardIsPrimary({ startDate: start, now: justAfter }), true);
+});
+
+test("T9: a zoned plan's window opens on the zone's clock, not UTC's", () => {
+  const start = "2026-10-02";
+  assert.equal(isInsideHandoverWindow(new Date("2026-09-29T14:59:59Z"), start, "Asia/Tokyo"), false);
+  assert.equal(isInsideHandoverWindow(new Date("2026-09-29T15:00:00Z"), start, "Asia/Tokyo"), true);
+});
+
+test("T10: an unparseable start never claims the window is open", () => {
+  assert.equal(isInsideHandoverWindow(new Date(), null, "Asia/Tokyo"), false);
+});
+
+test("T11: zonedMidnight survives a DST transition day (Europe/London, 2026-03-29)", () => {
+  const m = zonedMidnight(2026, 3, 29, "Europe/London");
+  assert.equal(m.toISOString(), "2026-03-29T00:00:00.000Z"); // GMT until 01:00 that morning
+  const s = zonedMidnight(2026, 7, 1, "Europe/London");
+  assert.equal(s.toISOString(), "2026-06-30T23:00:00.000Z"); // BST
+});
+
+test("T12: calendarDayOf reads the zone's day when zoned, UTC's when not", () => {
+  const instant = new Date("2026-10-01T20:00:00Z");
+  assert.equal(calendarDayOf(instant, "Asia/Tokyo"), "2026-10-02");
+  assert.equal(calendarDayOf(instant, null), "2026-10-01");
+  assert.equal(addCalendarDays("2026-10-01", -2), "2026-09-29");
+  assert.equal(addCalendarDays("nope", 1), null);
 });

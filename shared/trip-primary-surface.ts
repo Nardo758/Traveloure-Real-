@@ -12,9 +12,7 @@
 // phase and this rule are both date-derived, matching the existing `derivePhase` convention in
 // client/src/components/plancard/SlipView.tsx.
 
-import { HANDOVER_WINDOW_HOURS, isInsideHandoverWindow, isPlanUnderway } from "./plan-timing";
-
-export const TRIP_CARD_HANDOVER_WINDOW_MS = HANDOVER_WINDOW_HOURS * 60 * 60 * 1000; // T-48h
+export const TRIP_CARD_HANDOVER_WINDOW_MS = 48 * 60 * 60 * 1000; // T-48h
 
 export interface TripCardPrimaryInput {
   /** ISO timestamp string, Date, or null/undefined — mirrors the DTO's `finalizedAt` field. */
@@ -23,17 +21,14 @@ export interface TripCardPrimaryInput {
   startDate?: string | Date | null;
   /** ISO date/timestamp string, or Date — the trip's endDate. */
   endDate?: string | Date | null;
-  /**
-   * `trips.timezone` (Locked Decision 30) — the zone the two dates are READ IN. Ledger
-   * `2026-09-07-trip-card-one-page`: the window and underway arms now come from ONE derivation,
-   * `shared/plan-timing.ts` (§18 rule 1 — lane L10's Home time axis reads the same one). With a
-   * zone the arms are exact; with NULL (never captured) they compare ON THE DATE ALONE — the
-   * viewer's local calendar date against the plan's calendar dates — rather than the old
-   * `new Date("YYYY-MM-DD")` reading, which was UTC midnight dressed as the plan's own clock.
-   */
-  timezone?: string | null;
   /** Defaults to `new Date()` — pass explicitly for deterministic tests. */
   now?: Date;
+}
+
+function toDate(v: string | Date | null | undefined): Date | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 /**
@@ -47,14 +42,15 @@ export function tripCardIsPrimary(input: TripCardPrimaryInput): boolean {
   if (input.finalizedAt) return true;
 
   const now = input.now ?? new Date();
-  const timezone = input.timezone ?? null;
+  const start = toDate(input.startDate);
+  const end = toDate(input.endDate);
 
-  // Arm 2 — the T-48h window, read in the plan's zone (date-alone when there is none).
-  if (isInsideHandoverWindow(now, input.startDate, timezone)) return true;
+  if (start) {
+    const handoverAt = new Date(start.getTime() - TRIP_CARD_HANDOVER_WINDOW_MS);
+    if (now >= handoverAt) return true;
+  }
 
-  // Arm 3 — underway. Kept as its own arm even though a plan inside its dates is necessarily past
-  // its own T-48h: the two are different facts and the slip names them separately.
-  if (isPlanUnderway(now, input.startDate, input.endDate, timezone)) return true;
+  if (start && end && now >= start && now <= end) return true;
 
   return false;
 }
