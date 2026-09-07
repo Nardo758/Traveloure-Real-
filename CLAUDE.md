@@ -999,6 +999,12 @@ This document captures architectural decisions to maintain consistency across co
     applies** — the rule is read, never restated (a second copy of "is this plan final?" would
     drift the day the definition moves). The **contract board moves to the slip**, where the plan
     it describes lives.
+    **WORDING CORRECTED TO MATCH THE CODE (2026-09-07, decision-maker accepted the register's C1;
+    no behaviour change):** the implementation does not bounce the browser — it renders an honest
+    NOTICE naming the slip with one action to it, which two armed specs assert (`journey-1`,
+    `finalize-booking-modal`). Read "REDIRECT" here as "does not open as a planning surface, and
+    sends the traveler to the slip"; a literal bounce would break those specs and tell the
+    traveler nothing about why they moved.
 
     **D9 — THE BOOKINGS SECTION LIVES ON THE SLIP, AND ITS AUDIENCE IS §15d's.** Balance payment
     (§15d) is offered in a bookings section **on the slip**, visible to **the owner and a

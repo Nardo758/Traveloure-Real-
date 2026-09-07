@@ -69,9 +69,12 @@ Keyed to plan state, never a sidebar destination.
 | **Ask AI about this plan** (rulings 1, 3) | A drawer on the slip | Where the $2.99 task lives, charged only on apply. The AI reads the same plancard payload the expert reads live and answers with a proposal that lands like an expert suggestion. The pre-mint conversation continues here, one AI thread per plan. Trip Pass coverage of tasks is on the pricing map but has no charge site (LD 41 f), so the drawer does not claim it. |
 | **The booking agent** (LD 44) | The same drawer, mounted on the Trip Card after Finalize | Flips to the copilot vocabulary: researching, ready to buy, flagged, unavailable. "Booked" only with a confirmation in hand. Polish becomes a task; escalate-to-human opens the one expert picker. |
 
-**The concierge page becomes a door.** Its intent form already holds destination, occasion and party size, so under
-D13 it passes those into the one modal and the tier choice becomes the modal's finish. The guest claim token
-survives because the door still captures the lead before sign-in.
+**The concierge page becomes a door.** Its intent form holds a destination and an occasion, so under D13 it passes
+those into the one modal and the tier choice becomes the modal's finish. **Corrected on landing (2026-09-07):** it
+does NOT pass a party size — `PlanningSource` has no such field and grows none; a single stated total rides in trip
+context as `travelers`, which the modal already preserves. An occasion the catalog cannot resolve passes nothing and
+step 1 is asked. The guest claim token survives because the door still captures the lead before sign-in, through
+`POST /api/concierge/quote`, which is **kept**: the quote PAGE is retired, the route has three other consumers.
 
 ### Drawer anatomy (artboard `SlipDrawer`)
 
