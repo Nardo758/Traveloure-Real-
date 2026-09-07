@@ -310,6 +310,95 @@ completion is the provider's word. Every one is an `itinerary_items` row (LD 39)
 a HIRE (an advisor row or an expert request). The brief's earlier "known fact" collapsed the two; rows 2 and 7 were
 right to object.
 
+### 11.5 The resolver, designed
+
+**Name and home.** `resolveBuyAction(row, buyer) → BuyAction`, one pure function in `shared/buy-action.ts`, beside
+the three resolvers it composes and never re-derives: `resolveBookability` (native / deeplink / info-only),
+`resolveContentCTA` (the content-type → button map, already declared "the ONLY place"), and the service
+fundamentals (`needsScheduling`, `isPlaceAnchored`, `isArtifactDelivery`). It adds exactly two things those three
+lack: the listing's **booking mode** (`instant | request | hidden`, the per-listing derivation ruling 74/75 already
+ships on the provider catalog) and the **buyer's state**. It imports no `db`, no `storage`, no router: the server
+computes it once and ships it on the payload, the client renders it and never re-derives (the
+`optimizer-run-authorization` posture, §18 rule 1). A listing carries no CTA of its own (ruling 9).
+
+**Inputs.**
+
+```
+row:   { kind: 'listing' | 'advisor' | 'ready_made' | 'partner',
+         deliveryMethod?: one of the 7,   bookingMode?: 'instant' | 'request' | 'hidden',
+         bookability: 'native' | 'deeplink' | 'info_only',   hasPrice: boolean,
+         hasPublishedAvailability?: boolean,   isLive: boolean }
+buyer: { principal: 'guest' | 'member',
+         plans: 'none' | 'one' | 'many',   chipTripId?: string,   chipPlanIsFinal?: boolean }
+```
+
+**Output.** A descriptor, never a side effect.
+
+```
+BuyAction = {
+  primary:   { kind, label }            // exactly one; kind ∈ add_to_plan | book | request_to_book | plan_with |
+                                        //   buy_ready_made | agent_rail | tracked_view | message | none
+  secondary?: { kind, label }           // at most one (e.g. Add to plan beside Book)
+  ask:       Array<'sign_in' | 'which_plan' | 'slot' | 'party'>   // in order; empty = nothing to ask
+  landing:   { store: 'plan' | 'guest_cart' | 'checkout' | 'booking_request' | 'advisor_request' | 'clone' | 'partner_request' | 'none',
+               timed: boolean,          // the row gets a start time (slot) or is flagged "pick a time"
+               placeAnchored: boolean,  // the row carries a place
+               forksFinal: boolean }    // true when chipPlanIsFinal and the landing is 'plan'
+  refusal?:  { reason }                 // §13: said out loud, never a disabled button with no sentence
+}
+```
+
+**Decision table.** Read top to bottom; the first matching row wins. `ask` is built from the buyer, `landing` from
+the row; the two halves never consult each other, which is what keeps the table small.
+
+| # | Row facts | Buyer | primary | secondary | ask | landing |
+|---|---|---|---|---|---|---|
+| 1 | any, `isLive` false or `bookingMode` hidden | any | `message` "Contact" (if handle) else `none` | — | — | none |
+| 2 | `advisor` | guest | `plan_with` "Plan with {name}" | — | sign_in | — (refusal on press: "Sign in and start a plan to hire") |
+| 3 | `advisor` | member, plans none | `plan_with` | — | which_plan → (New plan) | advisor_request via the planner's `returnTo` |
+| 4 | `advisor` | member, chip set | `plan_with` | `message` | — | advisor_request (carries `tripId`) |
+| 5 | `advisor` | member, plans many, no chip | `plan_with` | `message` | which_plan | advisor_request |
+| 6 | `ready_made` | guest | `buy_ready_made` "Get this trip" | — | sign_in | clone |
+| 7 | `ready_made` | member | `buy_ready_made` | — | — | clone (a new slip, never merged into an existing one) |
+| 8 | `partner`, bookability deeplink, bookable | any | `agent_rail` "Request booking" | — | sign_in if guest | partner_request (§16) |
+| 9 | `partner`, info-only | any | `tracked_view` "View details" | — | — | none |
+| 10 | `listing`, bookability info-only | any | `add_to_plan` "Add to plan" | `message` | sign_in? · which_plan? | plan · timed = needsScheduling · placeAnchored = isPlaceAnchored |
+| 11 | `listing`, `bookingMode` request, or instant with no published availability | any | `request_to_book` "Request to book" | `add_to_plan` | sign_in? · which_plan? · party | booking_request (a `pending` booking, never a charge) |
+| 12 | `listing`, instant, scheduled method, availability published | any | `book` "Book" | `add_to_plan` | sign_in? · which_plan? · slot · party | checkout · timed true · placeAnchored = isPlaceAnchored |
+| 13 | `listing`, instant, artifact or provider-declared method | any | `book` "Book" | `add_to_plan` | sign_in? · which_plan? | checkout · timed false |
+
+`sign_in?` is present when `principal` is guest; `which_plan?` when `plans` is many and no chip, or `plans` is none
+(then the only option is New plan). A guest's `add_to_plan` lands in `guest_cart`, the sanctioned fallback, and the
+descriptor says so. `forksFinal` is true whenever the landing is `plan` and the chip's plan is final; the row is
+added to the forked version and the button copy says "Add to the next version".
+
+**What the buy-side flow then looks like, per surface.** Every card and detail page calls the resolver and draws
+`primary` and `secondary`; pressing `primary` walks `ask` in order as one sheet (sign in → which plan → slot →
+party), then performs the landing. The sheet is ONE component with four optional steps, not four dialogs.
+
+- **Untimed landings** (rows 10/13 with `timed` false) put the row on the plan's implicit event in the "Services
+  without a time" group (ruling 10). The deliverable, when the booking completes, attaches to the booking, and the
+  plan row links to it.
+- **Timed landings with no slot chosen** (row 10 with `timed` true, or a `book` abandoned before the slot) put the
+  row on the plan flagged "pick a time"; the flag is a real rendered state, never a default hour.
+- **`request_to_book`** creates a `pending` booking on the plan's row (`booking-visibility`'s actionable status) and
+  notifies the seller; nothing is charged, and the row reads "requested" until the seller answers.
+- **`plan_with`** is the existing `HireExpertDialog` rail; the resolver only decides whether it may open and with
+  which `tripId`.
+
+**What the resolver refuses to know.** Prices and fees (the checkout derives them, §14), the seller's console
+(§4 decides that, the buyer never sees it), the market or the city (the mismatch guard runs after the landing, on
+the plan), and anything about the AI (the AI proposes onto the plan through its own rail and never through a card).
+
+**Proof.** One pure test file over the table: thirteen rows × the buyer states that can reach them, plus three
+negatives — a listing with a custom CTA field is ignored, a hidden listing never yields a booking verb, and an
+advisor never yields a landing for a guest. The server's payload test asserts the descriptor is present on every
+listing, expert and ready-made read, so a surface that draws its own button has nothing to draw from.
+
+**Migration path.** Rows 12–13 replace `add_to_cart` / `book_service` in `resolveContentCTA`'s output for platform
+listings; the affiliate and curated branches (rows 8–9) pass through unchanged. `resolveContentCTA` stays as the
+content-type half; `resolveBuyAction` wraps it. Nothing is deleted until every card reads the wrapper.
+
 ### 11.2 Findings, verified, dispositioned
 
 | # | Finding (row) | Verified in source | Disposition |
@@ -337,7 +426,7 @@ right to object.
 | **L20-cart-fee-line** | **decision-maker** | no | — | Money lane: reconcile the cart's fee line with §8 / the pricing map before any checkout ships; either the traveler fee (7 % cap $25) or a documented legacy with a sunset. | phase2-fee-gate; check-money-endpoints; the sweep and promotion suites untouched |
 | **L21-extraction-date-anchor** | none | no | — | The extraction prompt carries today's date; a date in the past is asked about, never minted. Folds into L5. | pure test on the extractor's date handling |
 | **L22-door-passes-tripid** | none | no | — | `UpsellSlot`, the storefront "Start a plan", and every other door pass `tripId` / `returnTo` when they hold one (D13, D15). | check-planning-entry required-field list + `--self-test` |
-| **L23-buy-side-resolver** | ruling 9 | no | L18 · L22 | One resolver over `resolveBookability` + `resolveContentCTA` + the fundamentals + buyer state returns the button and the landing rule; the which-plan step; the slot pick at add; untimed items grouped on the implicit event. | pure test over the matrix in 11.1; no listing may carry a custom CTA |
+| **L23-buy-side-resolver** | rulings 9, 10 | no | L18 · L22 | `resolveBuyAction` as designed in 11.5 (`shared/buy-action.ts`), shipped on every listing / expert / ready-made payload; the one ask-sheet (sign in → which plan → slot → party); untimed items grouped on the implicit event; `request_to_book` as a pending booking. | pure test over the 11.5 table + three negatives; payload test: descriptor present on every read |
 
 ### 11.4 Two more rulings this section asks for
 
