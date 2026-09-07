@@ -37,7 +37,7 @@ import {
 // itself stays routed as the thread page, just no longer has its own sidebar entry) and
 // Notifications' unique functions rehome into Inbox's Updates tab + the bell popover (E4).
 // "Experts" is repointed from /chat (an unexamined first-commit artifact) to /experts. Final
-// traveler sidebar (10 entries): Home, My plans, AI planner, Discover, Experts, Bookings,
+// traveler sidebar (10 entries): Home, My plans, Start with AI, Discover, Experts, Bookings,
 // My events, Trip Cart, Inbox, Profile.
 const menuGroups = [
   {
@@ -45,7 +45,8 @@ const menuGroups = [
     items: [
       { title: "Home", href: "/dashboard", icon: Home },
       { title: "My Plans", href: "/my-trips", icon: Calendar },
-      { title: "AI planner", href: "/ai-assistant", icon: Bot },
+      // Ledger `2026-09-07-start-with-ai-door` (brief §9): the label names the DOOR, not the tool.
+      { title: "Start with AI", href: "/ai-assistant", icon: Bot },
     ],
   },
   {
