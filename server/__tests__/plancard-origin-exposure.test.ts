@@ -158,11 +158,26 @@ describe("R4-R7 — origin stays SERVER-STAMPED: read exposure adds no writer", 
       /itemData\.origin\s*=\s*isAdvisor\s*\?/,
       "monolith POST must re-derive origin from the WRITE-gated advisor flag",
     );
-    assert.match(
-      stripComments(tripsRoutes),
-      /const\s+origin\s*=\s*tripRole\s*===\s*["']expert["']/,
-      "the trips.routes.ts create twin must derive origin from the actor's role",
-    );
+    // The twin was DELETED as mount-order-dead (ledger `2026-09-07-shadowed-twins`), so this half
+    // is CONDITIONAL: a create rail that does not exist cannot stamp a wrong origin, and one that
+    // comes back must stamp exactly as the monolith does. Requiring the twin's text outright turned
+    // a correct deletion into a red gate; the invariant is "every create rail derives origin from
+    // the session", not "there are two rails". Resurrection is independently refused by
+    // `scripts/check-trip-route-shadows.cjs`.
+    const twin = stripComments(tripsRoutes);
+    if (/router\.post\(\s*["']\/api\/trips\/:tripId\/itinerary-items["']/.test(twin)) {
+      assert.match(
+        twin,
+        /const\s+origin\s*=\s*tripRole\s*===\s*["']expert["']/,
+        "a trips.routes.ts create twin must derive origin from the actor's role",
+      );
+    } else {
+      assert.doesNotMatch(
+        twin,
+        /origin\s*:\s*(?:req\.body|body)\b/,
+        "with no create twin, trips.routes.ts must not stamp origin from a request body anywhere",
+      );
+    }
   });
 
   it("R7 — the canonical PATCH rail strips origin out of its raw destructure", () => {

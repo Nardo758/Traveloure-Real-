@@ -1057,6 +1057,24 @@ jobs:
       - name: Planning-entry guard
         run: node scripts/check-planning-entry.cjs
 
+  trip-route-shadows:
+    name: trip-route-shadows (ledger 2026-09-07-shadowed-trip-twins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # tripsRoutes mounts LAST, so a method+path registered in both routes.ts and
+      # trips.routes.ts serves the inline copy and the router copy runs never — the class
+      # that once let stale twins win production traffic. The S4 sweep deleted the fourteen
+      # POST mutation twins; this guard pins both halves (no resurrection, no canonical
+      # removal). Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
+      - name: Trip-route-shadows guard predicate self-test
+        run: node scripts/check-trip-route-shadows.cjs --self-test
+      - name: Trip-route-shadows guard
+        run: node scripts/check-trip-route-shadows.cjs
+
   plan-entry-source-fields:
     name: plan-entry-source-fields (Locked Decision 42 D13 — 2026-09-05-doors-source-fields)
     runs-on: ubuntu-latest
