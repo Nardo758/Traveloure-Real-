@@ -22,6 +22,12 @@ interface UpNextHeroProps {
   tripId: string;
   day: PlanCardDay | undefined;
   legs: PlanCardLegData[];
+  /**
+   * `trips.timezone` (Locked Decision 30; ledger `2026-09-07-trip-card-one-page`). The countdown
+   * chip renders ONLY when this is set — brief §7 "New · timezone": otherwise the time and no
+   * countdown. NULL/absent is "never captured", never the device's zone dressed as the plan's.
+   */
+  timezone?: string | null;
 }
 
 function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityName: string }) {
@@ -72,16 +78,17 @@ function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityN
   );
 }
 
-export function UpNextHero({ tripId, day, legs }: UpNextHeroProps) {
+export function UpNextHero({ tripId, day, legs, timezone = null }: UpNextHeroProps) {
   const now = useLiveNow();
   const [visited] = useVisitedActivities(tripId, day);
-  const { isLiveDay, upNextActivity, upNextLeg } = getUpNextInfo(day, legs, now, visited);
+  const { isLiveDay, upNextActivity, upNextLeg } = getUpNextInfo(day, legs, now, visited, timezone);
 
   // §13: no hero on a fully-past or not-yet-started day — only the live day with a real
   // upcoming activity renders anything here.
   if (!isLiveDay || !upNextActivity || !day) return null;
 
-  const countdown = formatCountdown(upNextActivity, day.date, now);
+  // NULL zone ⇒ null: the time line below still renders, the countdown chip does not (LD 30).
+  const countdown = formatCountdown(upNextActivity, day.date, now, timezone);
   const action = resolvePrimaryAction(upNextActivity, upNextLeg);
 
   return (

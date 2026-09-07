@@ -187,3 +187,63 @@ export function calendarDayOf(instant: Date, timezone: string | null | undefined
   const w = wallClockInZone(instant, timezone);
   return `${String(w.y).padStart(4, "0")}-${String(w.mo).padStart(2, "0")}-${String(w.d).padStart(2, "0")}`;
 }
+
+// ── A TIME OF DAY, not just a day (lane L9, ledger `2026-09-07-trip-card-one-page`) ────────────
+//
+// TWO LANES, ONE MODULE, AND THIS IS THE SEAM. L10 (above) needs the moment a plan STARTS — a
+// calendar day, so midnight is the only clock it ever reads. L9 needs the moment an ITEM starts:
+// `itinerary_items.start_time` / `end_time` are WALL-CLOCK "HH:MM" strings (Locked Decision 30
+// keeps them uncoverted), and the Trip Card must decide whether one has passed and whether a
+// countdown may be claimed at all. That is the same zone question one derivative down, so it lives
+// HERE rather than in a second timing module (§18 rule 1) — and it is built on L10's primitives
+// (`isUsableTimeZone`, `calendarParts`, `zonedMidnight`) rather than beside them. Nothing above
+// this line was changed by L9: the start-instant posture, the window and their answers are L10's.
+
+/** "HH:MM" (24h) → minutes since midnight, or NULL for anything that is not that shape. */
+export function parseWallClockMinutes(time: string | null | undefined): number | null {
+  if (!time) return null;
+  const m = String(time).trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Minutes since midnight that `instant` reads as in `timeZone` — the ONE number the correction
+ *  below needs. (L10's `wallClockInZone` returns the full tuple and is module-private; reading the
+ *  single field here rather than widening a reviewed export.) */
+function wallClockMinutesInZone(instant: Date, timeZone: string): number {
+  const w = wallClockInZone(instant, timeZone);
+  return w.h * 60 + w.mi;
+}
+
+/**
+ * The instant at which `date` `time` occurs in `timezone` — the TIME-OF-DAY sibling of
+ * `zonedMidnight`, which it builds on rather than re-deriving an offset.
+ *
+ * NULL when the zone is absent or unusable, when the date is not a calendar day, or when the time
+ * is not "HH:MM". **An absent time is never treated as midnight** — that is a claim the row did
+ * not make (§13); a caller that means midnight passes "00:00".
+ *
+ * DST: midnight-plus-minutes overshoots on a spring-forward day (the offset changes between the
+ * two), so the result is corrected once by the difference between the wall clock it actually
+ * lands on and the one asked for. A day whose exact wall clock does not exist resolves to the
+ * nearest real instant rather than to a fabricated one.
+ */
+export function zonedWallClockToInstant(
+  date: string | Date | null | undefined,
+  time: string | null | undefined,
+  timezone: string | null | undefined,
+): Date | null {
+  if (!isUsableTimeZone(timezone)) return null;
+  const parts = calendarParts(date);
+  const minutes = parseWallClockMinutes(time);
+  if (!parts || minutes == null) return null;
+  const [y, mo, d] = parts;
+  const midnight = zonedMidnight(y, mo, d, timezone);
+  let guess = midnight.getTime() + minutes * 60_000;
+  const landed = wallClockMinutesInZone(new Date(guess), timezone);
+  if (landed !== minutes) guess -= (landed - minutes) * 60_000;
+  return new Date(guess);
+}

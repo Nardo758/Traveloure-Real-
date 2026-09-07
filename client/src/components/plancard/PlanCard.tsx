@@ -26,7 +26,8 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { ConciergeModule } from "./ConciergeModule";
-import { MapControlCenter } from "./MapControlCenter";
+import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
+import { slipAdvisorName } from "@/lib/slip-rail";
 import { UpNextHero } from "./UpNextHero";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
@@ -739,7 +740,7 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal }: PlanCardProps) {
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal, suggestionsHome = "card", onShare }: PlanCardProps) {
   // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
   // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
   // (Up Next / now-line / Live today) is already correct once the right day is showing.
@@ -780,7 +781,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   // CLAUDE.md §18, item 3: the bottom action bar's "Message [expert]" slot needs to know
   // whether an ACCEPTED advisor exists (most trips today don't — audit §3). Same query key
   // trip-details.tsx already fetches, so React Query dedups this into one network call.
-  const { data: advisorData } = useQuery<{ advisor: { status: "pending" | "accepted" | "rejected"; first_name?: string | null } | null }>({
+  const { data: advisorData } = useQuery<{ advisor: { status: "pending" | "accepted" | "rejected"; first_name?: string | null; last_name?: string | null } | null }>({
     queryKey: [`/api/trips/${trip.id}/expert-advisor`],
     enabled: stage === "full" && !embedded,
     staleTime: 60000,
@@ -947,6 +948,16 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const isFinalized = !!plancardData?.trip?.finalizedAt;
   const revising = !embedded && finalVersion != null && !isFinalized;
 
+  // Ledger `2026-09-07-trip-card-one-page` — Locked Decision 30: the plan's ONE zone, off the
+  // plancard DTO (SPREAD only when captured). `null` here means NEVER CAPTURED, and every reader
+  // below (header zone line, Up-next countdown, row states) then stays silent about the zone.
+  const planTimezone: string | null = plancardData?.trip?.timezone ?? null;
+  // The ONE advisor-name reading (`slipAdvisorName`, §18 rule 1) off the owner-gated advisor row
+  // this component already fetches; null ⇒ no advisor line on the header (§13).
+  const advisorName = slipAdvisorName(advisor);
+  // "X of Y located" for the selected day — the map's own predicate (§18 rule 1); null ⇒ no label.
+  const mapLocatedLabel = locatedCountLabel(day?.activities);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -998,6 +1009,10 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           finalDress={finalDress}
           finalVersion={finalVersion}
           revising={revising}
+          timezone={planTimezone}
+          advisorName={advisorName}
+          onShare={onShare}
+          showExports={!isViewer && !embedded}
         />
 
         {lastOptimizedAt && (
@@ -1069,6 +1084,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
         {/* View toggle suppressed in the Workstation embed — the builder has its own Map tab
             (same MapControlCenter), so the card stays in card view there. */}
+        {/* THE VIEW BAR — Plan | Map, the Map label carrying "X of Y located" (ledger
+            `2026-09-07-trip-card-one-page`, brief §7 anatomy). The count is the map's own
+            predicate's answer for the selected day; a day with no stops draws no count. */}
         {!embedded && (
         <div className="px-3 sm:px-5 pt-2 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <Button
@@ -1079,7 +1097,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             data-testid={`btn-card-view-${trip.id}`}
           >
             <LayoutList className="w-3.5 h-3.5 sm:mr-1.5" />
-            <span className="hidden sm:inline">Card View</span>
+            <span className="hidden sm:inline">Plan</span>
           </Button>
           <Button
             onClick={() => setViewMode("map")}
@@ -1089,7 +1107,15 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             data-testid={`btn-map-view-${trip.id}`}
           >
             <MapIcon className="w-3.5 h-3.5 sm:mr-1.5" />
-            <span className="hidden sm:inline">Map View</span>
+            <span className="hidden sm:inline">Map</span>
+            {mapLocatedLabel && (
+              <span
+                className="ml-1.5 font-mono text-[10px] font-normal opacity-80"
+                data-testid={`map-located-count-${trip.id}`}
+              >
+                {mapLocatedLabel}
+              </span>
+            )}
           </Button>
         </div>
         )}
@@ -1144,7 +1170,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               {/* CLAUDE.md §18 item 2 — "Up Next" hero, mobile-only (component self-hides
                   at sm+ and also renders nothing when the selected day isn't
                   live/upcoming — §13). */}
-              {!embedded && <UpNextHero tripId={trip.id} day={day} legs={dayLegs} />}
+              {!embedded && <UpNextHero tripId={trip.id} day={day} legs={dayLegs} timezone={planTimezone} />}
 
               <SectionTabs
                 tripId={trip.id}
@@ -1168,6 +1194,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     day={day}
                     templateConfig={templateConfig}
                     legs={dayLegs}
+                    timezone={planTimezone}
                     isOwner={isOwner}
                     isExpertViewer={isExpertViewer}
                   />
@@ -1251,7 +1278,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 finalized — auto-creates a new final version server-side (reFinalizeIfCurrentlyFinal).
                 Same component the slip mounts pre-final; renders nothing when there are no
                 suggestions. */}
-            {!isViewer && !embedded && stage === "full" && (
+            {/* Ledger `2026-09-07-trip-card-one-page`: when the page's right rail owns this panel
+                (`suggestionsHome="rail"`), the card does not mount it a second time. */}
+            {!isViewer && !embedded && stage === "full" && suggestionsHome === "card" && (
               <div className="px-3 sm:px-5 pt-2">
                 <ExpertSuggestionsPanel tripId={trip.id} />
               </div>
@@ -1302,6 +1331,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             destination={trip.destination}
             shareToken={shareToken}
             advisor={advisor}
+            onShare={onShare}
           />
         )}
       </Card>
