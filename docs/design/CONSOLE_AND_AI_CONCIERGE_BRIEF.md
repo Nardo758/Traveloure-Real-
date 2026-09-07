@@ -1,7 +1,7 @@
 # The AI Concierge on the Slip, and the console around it
 
 **Type:** design brief — draft for ruling. **Date:** 2026-09-07. **audited@f3933df** (`main` at the merge of #823).
-**Canvas of record:** claude.ai artifact `04dfd827` ("AI Concierge on the Slip"), 18 artboards. The artboards are the
+**Canvas of record:** claude.ai artifact `04dfd827` ("AI Concierge on the Slip"), 18 artboards. §11 (booking flows) exists in this file only; the canvas memo predates the walkthrough. The artboards are the
 mock this brief cites; per the wedding-flow preservation precedent they should be committed beside this file
 (`docs/design/console-brief/`) in Wave 0 below, so the rulings cite a mock anyone can open.
 **Standing rules that govern every lane:** CLAUDE.md §13 (honest-or-absent), §14/§15 (money), §18 rule 1 (one
@@ -263,6 +263,89 @@ and the checkout page's move onto the plan projection, which is a gate inside L7
 order. Wave 2: L6 and L10 first, since the doors and Home are what a traveler meets; L7 only after its audit; L9
 before L16 can mount its tab; L12–L14 whenever a builder is free. Wave 3: L15 before L16; L17 waits on LD 44 phase 0
 and is listed so the dependency is visible, not so it is started.
+
+---
+
+## 11 · Booking flows: one resolver, and what the walkthrough found
+
+**Evidence:** `docs/testing/BOOKING_FLOWS_WALKTHROUGH_REPORT_2026-09-07.md` (Claude in Chrome, 18 rows, the dispatch in
+`docs/testing/BOOKING_FLOWS_CHROME_DISPATCH.md`). Every finding below was re-checked against source before it was
+dispositioned; "verified" means the code shows the mechanism, not that the screen was trusted.
+
+### 11.1 The design: three questions, one resolver
+
+A listing never decides its own flow. The button and the landing rule are derived from three facts by ONE resolver,
+which extends the existing `resolveBookability` (native / deeplink / info-only) and `resolveContentCTA` with the
+buyer's state. The service fundamentals already classify every delivery method (`shared/service-fundamentals.ts`:
+place-anchored, scheduled, artifact, provider-declared), and the walkthrough proved that axis is live on the SELL
+side — the create-listing wizard regenerates its own step list from the delivery method (rows 16–17). It is NOT live
+on the BUY side: an in-person tour and a PDF guide add to the cart identically, with no slot asked (rows 5–6).
+
+**Q1 · What kind of thing.** Four, not endless. The expert-versus-provider difference is who sells, not how it is
+bought; what an expert alone offers is the advisor relationship, which has its own rail.
+
+| Kind | Row | Sold by | Flow |
+|---|---|---|---|
+| A listing | `provider_services` | a provider **or** an expert | Add to plan, or Book |
+| An advisor | `trip_expert_advisors` | an expert only | Plan with this person — plan-level, needs a slip (LD 32) |
+| A ready-made plan | `ready_made_trips` | an expert | Buy; the clone lands on a new slip |
+| A partner item | affiliate rail | a partner | Request booking — the agent rail (§16, LD 44) |
+
+**Q2 · How it is fulfilled** decides where the row lands on the slip. Scheduled + place-anchored (in person, hybrid):
+a dated item under a day or event, slot picked at add time, otherwise `in_planning` with a "pick a time" flag and
+never a guessed time. Scheduled, remote (call, video): dated, no place. Artifact (pdf): an untimed item on the
+implicit event; the deliverable attaches to the booking. Provider-declared (async messaging, voice notes): untimed;
+completion is the provider's word. Every one is an `itinerary_items` row (LD 39).
+
+**Q3 · Who is buying.**
+
+| Buyer | Add to plan | Book now | Plan with an expert |
+|---|---|---|---|
+| Owner, plan chip set | Lands on that plan; a final plan auto-forks | Slot pick → checkout; the row is born in checkout | The one picker; the request carries `tripId` |
+| Member with plans, no chip | A **which-plan** step | same, after the step | same, after the step |
+| Member, no plan | Opens the planner; the listing returns as `returnTo` (D15) | same | the planner first; no slip, no hire |
+| Guest | The guest cart (sanctioned until G2) | Stage, sign in at the paid gate, the cart migrates | not possible — no principal |
+
+**Messaging is not hiring.** LD 40 admits a storefront enquiry (`{ handle }`) with no plan; LD 32 requires a slip for
+a HIRE (an advisor row or an expert request). The brief's earlier "known fact" collapsed the two; rows 2 and 7 were
+right to object.
+
+### 11.2 Findings, verified, dispositioned
+
+| # | Finding (row) | Verified in source | Disposition |
+|---|---|---|---|
+| F1 | Opening **Get Expert Help** on `/experiences/:slug` fires "Shared with an expert" with no send step (row 11) | **Real.** `experience-template.tsx:1602` POSTs `/api/expert-requests` when the dialog opens, after minting a slip through `mintTripSlip` (the `2026-09-04-template-inquiry-slip` landing). The lead is routed by lead-routing to whichever expert it picks — which is why none of the three walked accounts saw it (row 18). | **Lane L19** — the open is a read; the send is a click. Same fix for F2. **DB check for Leon:** `expert_requests` rows created 2026-09-07 for the persona accounts, their `assigned_expert_id`, and whether a "New York City Date Night" trip was minted on `persona-kyoto-plus`. |
+| F2 | **Destination Concierge → "Request expert"** submits immediately, no review or payment screen (row 12) | **Real.** `DeliveryOptions.tsx:113` POSTs `/api/expert-requests` on click; the free-lead path needs no PaymentIntent (`booking-actions.ts:47`), and `tripId` is optional — the LD 32(b) hole §6 already names. | **Lane L6** (the page becomes a door) closes it; until then **L19** adds the stop screen. |
+| F3 | Cart "Platform fee" is **25% on top of price** ($30 on $120), not the ruled 7% capped at $25 (row 5) | **Real, and a money finding.** `/api/cart` (`server/routes.ts` ≈7893–7930) adds `price × (1 − expertShare)` — the PROVIDER commission band, `PLATFORM_FEE_RATE = 0.25` last-resort default — to the traveler's total as a fee line. The pricing map's traveler service fee (`traveler:service_fee_pct` 0.07 / cap 2500) has no reader in the cart. | **Money lane, before L7.** The cart rail is the legacy store ruling 4 retires; do not ship a checkout that charges commission to the traveler. Needs the decision-maker: is the cart's line a defect (§8/§14) or a documented legacy? |
+| F4 | The "Your Trip" banner, cart contents and `/services` location filter follow the **browser tab, not the account** (rows 1, 4, 8, 14) | **Real.** `client/src/lib/trip-context.ts:156` keeps the pen in `sessionStorage` under one key, never namespaced by user and not cleared on sign-in/out; the server pen (`PUT /api/trip-context`) is per user. | **Lane L18** — clear the client pen on auth change and key it by user; the server pen is the authority. |
+| F5 | AI Planner defaulted "March 10–14" to **2025** and minted a plan tagged PAST (row 13) | **Real.** The extraction prompt in `trip-context.routes.ts` carries no date anchor; the model guesses the year. | **Lane L21** — pass today's date; a past date is asked about, never minted (§13). Fold into L5. |
+| F6 | The finalized trip's upsell rail sends to `/services` with **no `tripId`** (row 10) | **Real.** `UpsellSlot.tsx:212` navigates with `categoryKey` and `upsellSource` only. | **Lane L22** — the door passes what it holds (D13): `tripId` and the plan's destination. Fork-vs-block on a final plan then becomes testable. |
+| F7 | `tripId` scoping and the **city-mismatch guard work**, but only from "Browse services for this trip"; its `location` param is the stale banner city (row 9) | **Confirmed built** (`2026-09-04-location-mismatch`). The `location` value comes from the client pen (F4). | Fixed by **L18**; the plan chip (L11) makes the scoping visible on every entry. |
+| F8 | No **which-plan** step anywhere; a 19-plan account is never asked (row 8) | Confirmed: no picker exists. | **Lane L23** — the buy-side resolver, the which-plan step, the slot pick at add. |
+| F9 | Storefront **"Start a plan"** opens the planner with stale context and no link to the expert (rows 2, 7) | Confirmed: the storefront door passes no `returnTo` and the pen is F4's. | **L18 + D15** (`returnTo: { kind: 'expert', handle }`); check-planning-entry's required-field list gains the storefront door. |
+| F10 | Bookings rows name **no service, provider or plan**; Trips tab never cross-links (row 15) | Confirmed (§9 Bookings). | **L12**, already scheduled; add the ready-made purchase cross-link. |
+| F11 | Three back-office consoles for what the brief called two roles (rows 16–18) | Expected: the two offering catalogs (§4) and LD 36's planner keys decide the console. Not a fourth BUY-side axis. | No lane. Record in §4's FAQ that the console is a function of the earner's catalog, and that the buyer never sees it. |
+| F12 | Concierge AI tier lands in a **$0 cart** with no $5.99 (row 12.3); "Complete Booking" is offered on a $0 order with a reference-only item (row 14) | Confirmed: the tier hands to `/cart?step=cart`, which does not run the optimizer; the pay gate lives on the slip. | **L6** retires the page; **L7**'s audit must include the $0-order path. |
+| F13 | "Final · v2" plan listed under **In planning** (row 10.1) | Confirmed (§9 My plans). | **L3**. |
+
+### 11.3 New lanes (appended to §10)
+
+| Lane | Needs | Schema | Blocked by | Scope | Guard |
+|---|---|---|---|---|---|
+| **L18-client-pen-scope** | none | no | — | Key the `sessionStorage` pen by user; clear it on sign-in/out; the server pen is the authority; `/services` `location` reads the plan, never the pen. | pure test on the pen module; Playwright: two logins in one tab never share a banner |
+| **L19-request-is-a-click** | none | no | — | `Get Expert Help` and `Request expert` open a review sheet (what is sent, to whom, at what price) and send only on its button; no POST on open. | check-money-endpoints; Playwright: opening the panel creates no `expert_requests` row |
+| **L20-cart-fee-line** | **decision-maker** | no | — | Money lane: reconcile the cart's fee line with §8 / the pricing map before any checkout ships; either the traveler fee (7 % cap $25) or a documented legacy with a sunset. | phase2-fee-gate; check-money-endpoints; the sweep and promotion suites untouched |
+| **L21-extraction-date-anchor** | none | no | — | The extraction prompt carries today's date; a date in the past is asked about, never minted. Folds into L5. | pure test on the extractor's date handling |
+| **L22-door-passes-tripid** | none | no | — | `UpsellSlot`, the storefront "Start a plan", and every other door pass `tripId` / `returnTo` when they hold one (D13, D15). | check-planning-entry required-field list + `--self-test` |
+| **L23-buy-side-resolver** | ruling 9 | no | L18 · L22 | One resolver over `resolveBookability` + `resolveContentCTA` + the fundamentals + buyer state returns the button and the landing rule; the which-plan step; the slot pick at add; untimed items grouped on the implicit event. | pure test over the matrix in 11.1; no listing may carry a custom CTA |
+
+### 11.4 Two more rulings this section asks for
+
+9. **One resolver is the sole author of the buy button and the landing rule.** A listing cannot carry a custom CTA;
+   the resolver reads the row (kind, delivery method, bookability, instant/request) and the buyer (guest, member,
+   plan chip) and nothing else. This is what makes the variation finite.
+10. **Untimed items render as a distinct group on the implicit event**, never hidden and never given a time. An
+    artifact or an async service is on the plan without being on the clock.
 
 ---
 
