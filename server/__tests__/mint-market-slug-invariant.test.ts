@@ -328,8 +328,21 @@ describe("I2 — the AI draft panel likewise", () => {
     assert.doesNotMatch(panel, /adults:\s*travelers/);
   });
 
-  it("the total still rides, and still only when it was stated", () => {
-    assert.match(panel, /travelers\s*\?\s*\{\s*numberOfTravelers:\s*travelers\s*\}/);
+  // SUPERSEDED by ledger `2026-09-07-start-with-ai-door` (Console & AI Concierge brief §9, L5):
+  // the original third pin asserted the mint payload carried the stated total
+  // (`travelers ? { numberOfTravelers: travelers }`). L5 retired the mint outright —
+  // "Continue in the planner" opens the ONE plan modal instead of POSTing a trip — so the
+  // pin is now the STRONGER statement: there is no create payload for a total to ride in.
+  // The party total still reaches the planner through TripContext (plan-modal reads it
+  // directly), which is where the answered basics live now.
+  it("mints NOTHING — L5 made the panel a door, not a create rail", () => {
+    assert.doesNotMatch(panel, /useCreateTrip/, "the panel re-grew its own create rail");
+    assert.doesNotMatch(
+      panel,
+      /apiRequest\(\s*"POST",\s*"\/api\/trips"/,
+      "the panel posts /api/trips again — that mint is retired (2026-09-07-start-with-ai-door)",
+    );
+    assert.match(panel, /usePlanning\(\)/, "the door must open the ONE planner through the ruled opener");
   });
 });
 
