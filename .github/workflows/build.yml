@@ -378,6 +378,14 @@ jobs:
       # updating the enum fails HERE rather than at a traveler's screen.
       - name: Occasion roles-needed pin
         run: npx tsx --test shared/__tests__/roles-needed.test.ts
+      # 2026-09-07-impact-class (lane L24, Console & AI Concierge brief §11.6): `impactClassFor`
+      # necessarily carries a committed mirror of BOTH offering catalogs, because neither table can
+      # be read from a pure module — and an unpinned mirror is a second catalog waiting to drift
+      # (§18 rule 1). E1/E2 pin the 55 expert keys and their tiers to migrations 039/062/065/283 in
+      # both directions; P1 pins the provider half to the SAME taxonomy registry roles-needed R3
+      # reads; N1-N3 hold the §13 line — an unknown key is NULL and never a nearest class.
+      - name: Impact class pin
+        run: npx tsx --test shared/__tests__/impact-class.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
