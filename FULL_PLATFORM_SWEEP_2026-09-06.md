@@ -36,13 +36,13 @@
 
 ### P2 — Test debt & robustness
 
-**F3. journey-handoff.spec.ts asserts the wrong surface**
+**F3. journey-handoff.spec.ts asserts the wrong surface** — ✅ RESOLVED (PR #825)
 - Step 9 navigates to `/trip/:id` (Trip Card) and expects `expert-note-callout-<id>`; per the two-surface model, delivered expert work lives on the slip (`/plans/:id`, testid `slip-expert-note`). Product is correct; the test is wrong
-- Fix: retarget step 9 to `/plans/:id` + `slip-expert-note` (verification script `test-results/verify-slip-note.mjs` proves the correct assertions pass)
+- Resolution (Phase 4, PR #825): step 9 retargeted to `/plans/:id` + `slip-expert-note` filtered by note text (the slip block prepends a "Note from {expertName}" label — SlipView.tsx:514 — so the assertion is CONTAINS). Full suite green, 9/9 steps PASS (7.3s); the §12 pinned negatives still pass.
 
-**F4. `POST /api/provider/services` returns 500 on DB constraint violation**
+**F4. `POST /api/provider/services` returns 500 on DB constraint violation** — ✅ RESOLVED (PR #826)
 - Zod schema (`insertProviderServiceSchema`) accepts `deliveryMethod` values the DB check constraint rejects (allowed: pdf, video, call, in_person, voice_notes, async_messaging, hybrid) — schema/constraint drift; a client-side-invalid value surfaces as 500 instead of 400
-- Fix: align zod enum with the check constraint; map constraint violations to 400
+- Resolution (Phase 4, PR #826): `deliveryMethod: z.enum(deliveryMethodEnum)` added field-level in shared/schema.ts (survives `.partial()` on the PATCH path); POST + PATCH catches map pg `23514` (read through Drizzle's `.cause`, same pattern as admin `offeringWriteError`) to `400 CONSTRAINT_VIOLATION` as defense-in-depth. Verified live: `'virtual'` → 400 with a clear enum message (was 500); canonical `'video'` → 201. The client was never the source — ServiceForm's `toCanonicalDelivery` already maps UI values at the write boundary.
 
 **F5. Local test-env gaps (documented, fixed in dev-local.sh)**
 - Persona suite requires `seed-personas.ts --apply` + `seed-ci-test-users.ts` + `DATABASE_URL` in the test process; J6 needs Stripe Connect env (skipped locally); Amadeus flows blocked-external (dead API)
@@ -53,9 +53,9 @@
 - Admin approval 401s in first supply-expert run — missing ci-admin seed, not a product bug
 - Guest journey step 3 — downstream of F1, not independent
 
-## Proposed remediation order (Phase 4, awaits approval)
+## Phase 4 remediation log (complete — all landed on main)
 
-1. **F1** — provider wizard second-service fix (supply-side blocker)
-2. **F2** — optimizer losing-variant discard (paid contract)
-3. **F3** — retarget handoff test to the slip (keeps the suite honest)
-4. **F4** — schema/constraint alignment + 400 mapping
+1. **F1** — provider wizard second-service: NOT reproducible; final supply-provider run fully green, no code change. Loose end (silent no-POST submit path) documented in the F1 entry.
+2. **F2** — PR #824 (merged `a7269caa7`): J1.3 aligned to adopt-finalize-conform D-4 (variants retained, not discarded). Open product question: no variant discard exists at Finalize Plan either — needs an owner ruling if cleanup is wanted.
+3. **F3** — PR #825 (merged `085710a4e`): handoff step 9 retargeted to the Trip Slip.
+4. **F4** — PR #826 (merged `0c4dbf7a4`): deliveryMethod zod enum + 23514→400 mapping on POST/PATCH /api/provider/services.
