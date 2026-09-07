@@ -210,24 +210,23 @@ test.describe("journey-handoff — traveler grants the Gion expert, expert edits
     });
     await expertCtx.dispose();
 
-    // ── Owner's PlanCard shows the edit + the delivered note (real testids) ─────────────────
-    await page.goto(`${BASE_URL}/trip/${tripId}`);
+    // ── Owner's Trip Slip shows the delivered expert note (two-surface model) ─────────────
+    // Delivered expert work renders on the SLIP (/plans/:id, testid `slip-expert-note`) —
+    // NOT the Trip Card (/trip/:id), which is the snapshot surface carrying the "Not final
+    // yet" guard. The slip block's label line reads "Note from {expertName}" and the note
+    // body is a sibling <p>, so the assertion is CONTAINS, not strict equality.
+    await page.goto(`${BASE_URL}/plans/${tripId}`);
     await page.waitForLoadState("networkidle");
-    await checkpoint(page, "journey-handoff-plancard-before-expand");
-    const callout = page.getByTestId(`expert-note-callout-${itemId}`);
-    const calloutVisible = await callout.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false);
-    if (calloutVisible) {
-      await page.getByTestId(`button-toggle-expert-note-${itemId}`).click();
-    }
-    const noteTextEl = page.getByTestId(`text-expert-note-${itemId}`);
-    const noteVisible = await noteTextEl.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
-    const noteRendered = noteVisible ? await noteTextEl.textContent().catch(() => "") : "";
-    await checkpoint(page, "journey-handoff-plancard-note-expanded");
+    await checkpoint(page, "journey-handoff-slip-before-note");
+    const noteBlock = page.getByTestId("slip-expert-note").filter({ hasText: noteText });
+    const noteVisible = await noteBlock.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false);
+    const noteRendered = noteVisible ? await noteBlock.textContent().catch(() => "") : "";
+    await checkpoint(page, "journey-handoff-slip-note-visible");
     report.record({
-      action: "owner's PlanCard shows the expert's item and the delivered note (expert-note-callout / text-expert-note)",
-      ui: `callout visible=${calloutVisible}, note visible=${noteVisible}, text="${noteRendered?.trim()}"`,
+      action: "owner's Trip Slip shows the delivered expert note (slip-expert-note on /plans/:id)",
+      ui: `note visible=${noteVisible}, text="${noteRendered?.trim()}"`,
       db: `itinerary_items.id=${itemId} expert_note set`,
-      verdict: calloutVisible && noteVisible && noteRendered?.trim() === noteText ? "PASS" : "FAIL",
+      verdict: noteVisible && (noteRendered ?? "").includes(noteText) ? "PASS" : "FAIL",
     });
 
     report.write();
