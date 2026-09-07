@@ -231,7 +231,7 @@ their own security lanes per §14/§15.
 
 | # | Question | Blocks |
 |---|----------|--------|
-| A1 | **Does a door get a third axis?** PR **#849** (L6, `task-concierge-door`) adds one optional finish hook so the concierge tier can own its branch's downstream. Locked Decision 33 says doors differ in two things only. Allow the amendment — or the fallback: the Expert tier opens the generic experts browse and both the hook and the review sheet come out. **#849 is conflict-free and green-validated, HELD UNMERGED.** | L6 |
+| ~~A1~~ | ✅ **ANSWERED (2026-09-07): the amendment stands.** Decision-maker merged **#849** — a door MAY carry one optional `onFinish` hook (grounded in LD 42 D15's existing "a door's context shapes the finish" ruling; the modal's steps, gates, and the default branch rail are untouched). L6 concierge door is on main. | — |
 | A2 | **Where the Trip Card's logistics content lives** — participant RSVP, payments, dietary, budget with category breakdown, alerts, roster, contracts. Currently in an owner-only collapsed drawer, which deviates from the ratified board. | Trip Card lanes |
 | A3 | **The cart's fee line** — it charges the traveler the 25% provider commission as "Platform fee", not the ruled 7% capped at $25. A money decision; **no checkout ships before it.** | Cart lane |
 | A4 | **Four unratified rulings** — one resolver as sole author of the buy button; untimed items as their own group; plan work sold as a listing at checkout; a consult never requiring a plan. | Buy-side resolver, plan-work rail |
