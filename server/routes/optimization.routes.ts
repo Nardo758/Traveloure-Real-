@@ -63,6 +63,13 @@ router.post("/api/optimization-preview", async (req, res) => {
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "items array is required" });
     }
+    // Security-audit finding 15 (2026-09-01): no auth by design, and `items` had no ceiling —
+    // CPU amplification behind only the IP limiter and the 10 MB body cap. Capped at the
+    // platform's own itinerary-list ceiling (MAX_GENERATED_LIST_ITEMS = 100,
+    // utils/generated-itinerary.ts) — no real plan exceeds it.
+    if (items.length > 100) {
+      return res.status(400).json({ error: "items array is too large (max 100)" });
+    }
 
     // The cart's body-shaped ADAPTER: a cart row has no day number and no duration of its own,
     // so both are synthesised here. The SCORING that follows is the shared heuristic
