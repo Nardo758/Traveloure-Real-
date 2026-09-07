@@ -261,15 +261,24 @@ test.describe("Lane 1 Phase 1d — routing contract (server + DB)", () => {
 // available.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 test.describe("Lane 1 Phase 1d — Trip Card routing UI (browser)", () => {
-  test("owner sees routing actions on the dashboard Trip Card; Add to checkout flips the badge and reveals Go to checkout", async ({ page }) => {
+  // REPOINTED, not weakened (ledger `2026-09-07-home-time-axis`): this test drove `/dashboard`
+  // and waited for `card-plan-${tripId}` + `activity-row-${itemId}`. Home no longer mounts a plan
+  // card at all — CLAUDE.md Locked Decision 45 (8) moved the plan card to My plans and the item
+  // rows to the slip — and the selector was ALREADY stale before that: the dashboard's Stage-A
+  // summary mount emits `card-plan-summary-${id}` (PlanCard.tsx), never `card-plan-${id}`. The
+  // INVARIANT is unchanged and is what is asserted here — an owner sees both in_planning edges,
+  // Add to checkout flips the badge, reveals the checkout link and really lands in the cart — on
+  // the surface that now owns item rows, `/plans/:tripId`, whose rows are `slip-item-${id}` and
+  // whose routing controls are the SAME shared `RoutingActions` (ActivitiesSection.tsx), so every
+  // button/badge/link selector below is untouched.
+  test("owner sees routing actions on the plan slip; Add to checkout flips the badge and reveals Go to checkout", async ({ page }) => {
     const email = `e2e-p1d-ui-owner-${uid()}@example.com`;
     await registerUser(page.request, email, "UiOwner", "Traveler");
     const tripId = await createTrip(page.request);
     const itemId = await createItem(page.request, tripId, "Nijo Castle");
 
-    await page.goto(`${BASE_URL}/dashboard`);
-    await page.waitForSelector(`[data-testid="card-plan-${tripId}"]`, { timeout: 30_000 });
-    await page.waitForSelector(`[data-testid="activity-row-${itemId}"]`, { timeout: 15_000 });
+    await page.goto(`${BASE_URL}/plans/${tripId}`);
+    await page.waitForSelector(`[data-testid="slip-item-${itemId}"]`, { timeout: 30_000 });
 
     // Owner sees BOTH edges available from in_planning.
     await expect(page.locator(`[data-testid="button-route-send-expert-${itemId}"]`)).toBeVisible();

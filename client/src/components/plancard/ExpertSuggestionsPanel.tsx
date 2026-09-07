@@ -16,10 +16,11 @@
  * trip that never had an expert). The parent decides only WHERE it mounts.
  */
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, Lightbulb, Loader2, XCircle } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+// The accept/decline mutation lives in ONE hook (ledger `2026-09-07-home-time-axis`) — Home's
+// "Since you were here" offers the same Accept / Decline through it (§18 rule 1).
+import { suggestionsQueryKey, useReviewSuggestion, type TripSuggestion } from "@/hooks/use-review-suggestion";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -30,59 +31,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-interface TripSuggestion {
-  id: string;
-  trip_id: string;
-  expert_id: string;
-  type: string;
-  day_number: number | null;
-  title: string;
-  description: string | null;
-  estimated_cost: string | null;
-  status: "pending" | "approved" | "rejected";
-  rejection_note: string | null;
-  created_at: string;
-  reviewed_at: string | null;
-  expert_first_name: string;
-  expert_last_name: string;
-  expert_profile_image_url: string | null;
-}
-
 export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; className?: string }) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
 
   const { data, isLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
-    queryKey: [`/api/trips/${tripId}/suggestions`],
+    queryKey: suggestionsQueryKey(tripId),
     enabled: !!tripId,
     staleTime: 30_000,
   });
 
-  const reviewSuggestionMutation = useMutation({
-    mutationFn: async ({ suggestionId, status, rejectionNote }: { suggestionId: string; status: "approved" | "rejected"; rejectionNote?: string }) => {
-      const res = await apiRequest("PATCH", `/api/trips/${tripId}/suggestions/${suggestionId}`, { status, rejectionNote });
-      return res.json() as Promise<{ suggestion: { status: string } }>;
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/suggestions`] });
-      if (result?.suggestion?.status === "approved") {
-        // Approval materializes a real itinerary_items row server-side (booking-actions.ts)
-        // and — when the trip is currently finalized — auto-creates a new final version
-        // (reFinalizeIfCurrentlyFinal). Refresh the canonical reads so the new item and the
-        // bumped final version render without a manual reload.
-        queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", tripId] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      }
-      toast({ title: "Suggestion reviewed", description: "Your response has been saved." });
-    },
-    onError: () => {
-      toast({ title: "Could not review suggestion", variant: "destructive" });
-    },
-  });
+  const reviewSuggestionMutation = useReviewSuggestion(tripId);
 
   const suggestions = data?.suggestions ?? [];
   const pendingCount = suggestions.filter((s) => s.status === "pending").length;
