@@ -32,6 +32,8 @@ import { buildAttributedAffiliateUrl } from "../services/affiliate-attribution.s
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
 import { getBuildInfo } from "../services/build-info";
+// L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on the payload.
+import { buildListingBuyAction, resolveBuyerState } from "../services/buy-action-payload";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
 import { nightDatesInclusive } from "../services/availability-materializer.service";
 import { attachRolesNeeded } from "../services/occasion-roles.service";
@@ -2381,6 +2383,30 @@ router.get("/api/services/:id", async (req, res) => {
       ? await storage.getServiceSurchargeTiers(service.id)
       : [];
 
+    // L23 (brief §11.5, ruling 9 — register §A4): the buy button and the landing rule are authored
+    // by ONE resolver and SHIPPED on the payload; the page renders `buyAction` and never re-derives
+    // it (the `optimizer-run-authorization` posture). `isLive` is true by construction — the F2
+    // gate at the top of this handler already refused anything not approved+active. The buyer comes
+    // from the SESSION (§14) and this read stays unauthenticated: no session ⇒ `guest`, which is a
+    // complete answer, not a missing one. The plan CHIP is client state the server does not hold,
+    // so the descriptor carries no chip; a surface holding one calls the same resolver with it.
+    // Threaded through every product-shape branch below like `routePoints`/`categoryKey`.
+    const buyer = await resolveBuyerState(req);
+    const buyActionFor = (deliveryMethod: string | null | undefined) =>
+      buildListingBuyAction(
+        {
+          id: service.id,
+          ownerUserId,
+          bookingMode: (service as any).bookingMode ?? null,
+          deliveryMethod,
+          productShape: service.productShape,
+          price: service.price,
+          isLive: true,
+        },
+        buyer,
+      );
+    const buyAction = await buyActionFor(service.deliveryMethod);
+
     // T-REP (G5 #13): neighborhoods served — same derivation `GET /api/provider/services/:id`
     // (the owner's own edit surface, routes.ts) already uses to pre-populate its multi-select, run
     // here read-only for the public detail. `provider_neighborhood_coverage` is keyed on
@@ -2542,6 +2568,12 @@ router.get("/api/services/:id", async (req, res) => {
         surchargeTiers,
         neighborhoods,
         categoryKey,
+        // L23: the bundle's displayed method is DERIVED fresh above, so the buy action reads that
+        // same method — otherwise `timed`/`placeAnchored` would describe the stale stored column.
+        // One implementation, a second caller; never a second derivation (§18 rule 1).
+        buyAction: derivedDeliveryMethod && derivedDeliveryMethod !== service.deliveryMethod
+          ? await buyActionFor(derivedDeliveryMethod)
+          : buyAction,
       }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
@@ -2571,7 +2603,7 @@ router.get("/api/services/:id", async (req, res) => {
       // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
       // confirmed booking's row exact (mirroring the /deliverable gate's status check).
       const jitteredProperty = applyPropertyLocationPrivacy(service);
-      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey }));
+      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2600,9 +2632,9 @@ router.get("/api/services/:id", async (req, res) => {
         fallbackLat: property?.latitude ?? null,
         fallbackLon: property?.longitude ?? null,
       });
-      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey }));
+      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction }));
     }
-    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey }));
+    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
