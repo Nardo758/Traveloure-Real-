@@ -1465,7 +1465,9 @@ This document captures architectural decisions to maintain consistency across co
     it zone-aware requires moving that constant, which is a deliberate later lane. Two things the
     lane found and did NOT change: the pre-final case renders an honest NOTICE with one action to
     the slip rather than the redirect D8's wording implies (two armed specs assert the notice), and
-    `GET /api/trips/:id/expert-advisor` still returns ONE advisor where D7 rules it returns all.
+    `GET /api/trips/:id/expert-advisor` returned ONE advisor where D7 rules it returns all — now
+    FIXED (ledger `2026-09-07-all-advisors-reader`): it returns every advisor in a §12 read-access
+    status, and `advisor` survives as the named first element.
     **(8) HAS LANDED (lane L10, ledger `2026-09-07-home-time-axis`).** ONE server reader —
     `GET /api/me/upcoming` over the PURE `buildUpcomingRows` (`server/services/upcoming.service.ts`)
     — emits six dated kinds, each naming the column that produced it: an unpaid booking

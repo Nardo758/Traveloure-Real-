@@ -240,10 +240,10 @@ their own security lanes per §14/§15.
 
 | # | Defect |
 |---|--------|
-| B1 | `concierge_requests.tripId` is written straight from the request body with no ownership check — a claimed guest concierge request has no verified link to the plan it produced. |
-| B2 | The expert-advisor reader returns one advisor where D7 rules it returns all. |
+| ~~B1~~ | ✅ **FIXED 2026-09-07** (`2026-09-07-concierge-trip-ownership`, batch 3). Both concierge create paths verify the `tripId` against the session user through the shared `verifyTripOwnership` and REFUSE an unverifiable claim — never dropped silently, never stored unverified. Nothing reads the column today, which is why it survived. |
+| ~~B2~~ | ✅ **FIXED 2026-09-07** (`2026-09-07-all-advisors-reader`, batch 3). The reader returns all of them, gated on the shared read allow-list — which also restored `assigned` advisors, omitted entirely by the old re-typed status pair. `advisor` survives as the named first element. |
 | B3 | Home cannot date every unpaid booking — no booking-date column; the fallback needs a booked slot or a checkout snapshot. Undated ones are omitted rather than invented (§13). |
-| B4 | Six dashboard components now have no importers, and one endpoint has no reader. Recorded as deletion candidates, untouched. |
+| ~~B4~~ | ✅ **DONE 2026-09-07** (`2026-09-07-orphan-sweep`, batch 3). The six importerless components are deleted under §18c (TSC_BASELINE 132 → 131). **The endpoint half was wrong:** `GET /api/trips/mine/advisors` still has a reader (`chat.tsx`), so it is live and was left in place. |
 
 ## C. Wording that overstates the code (brief or ruling vs ground truth)
 
@@ -263,8 +263,8 @@ their own security lanes per §14/§15.
 
 ## E. Lanes not yet built
 
-- **Ready now, no ruling needed:** my-events fold · Discover in the shell · bookings by plan ·
-  inbox context · the extraction date anchor · doors passing the trip id.
+- **Ready now, no ruling needed:** ~~my-events fold~~ · ~~Discover in the shell~~ · ~~bookings by plan~~ ·
+  ~~inbox context~~ · ~~the extraction date anchor~~ · ~~doors passing the trip id~~ — all landed.
 - **Blocked:** the cart lane (its own audit + A3) · conversation trip link (needs a migration) ·
   Ask AI drawer (needs its own design brief) · booking-agent tab (waits on the agent status
   vocabulary) · buy-side resolver and plan-work rail (wait on A4).
@@ -284,7 +284,7 @@ validation set fixed in advance.
 | 2 | Docs, wording corrections C1–C4, register, housekeeping — no agent | this PR |
 | 3 | Batch 1: my-events fold · inbox context · the missing Home browser gate | dispatched |
 | 4 | Batch 2: Discover in the shell · doors pass the trip id · extraction date anchor | queued |
-| 5 | Batch 3: bookings by plan · orphaned-component deletion · all-advisors reader · concierge ownership check | queued |
+| 5 | Batch 3: bookings by plan · orphaned-component deletion · all-advisors reader · concierge ownership check | landed (draft PR) |
 | 6 | Cart lane, after A3's numbers are confirmed | blocked |
 | 7 | Buy-side resolver (ruling 9/10 now ratified); plan-work rail still waits on ruling 11 | partly unblocked |
 
@@ -295,4 +295,5 @@ its own design brief) and the booking-agent tab (waits on a status vocabulary th
 ## F. Housekeeping
 
 - Six agent worktrees remain on disk for merged branches.
-- The type-error baseline still sits at **132** with two pre-existing errors no lane introduced.
+- The type-error baseline sits at **131** (batch 3's §18c deletions removed one; ratchet locked in
+  the same PR).

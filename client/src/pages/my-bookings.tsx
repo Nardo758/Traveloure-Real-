@@ -51,6 +51,13 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
+import {
+  groupBookingsByPlan,
+  planGroupLabel,
+  outstandingBalance,
+  type BookingPlanRef,
+  type PlanBookingGroup,
+} from "@/lib/bookings-by-plan";
 
 interface VisaBookingMetadata {
   passportNationality?: string;
@@ -65,12 +72,35 @@ interface VisaBookingMetadata {
   documentChecklist?: Array<{ label: string; checked: boolean }>;
 }
 
+// L12 (ledger 2026-09-07-bookings-by-plan): the three server-PROJECTED references the row now
+// carries — allowlists derived from the drizzle tables in server/utils/booking-read-scope.ts, never
+// hand-copied literals. Each is nullable because the underlying row can genuinely be gone (§13):
+// the surface renders what it has and says the rest is unavailable, never a placeholder name.
+interface BookingServiceRef {
+  id: string;
+  serviceName?: string | null;
+  serviceType?: string | null;
+  deliveryMethod?: string | null;
+  location?: string | null;
+}
+interface BookingProviderRef {
+  displayName?: string | null;
+  handle?: string | null;
+  profileImageUrl?: string | null;
+}
+
 interface Booking {
   id: string;
   serviceId: string;
   providerId: string;
   contractId: string | null;
   tripId: string | null;
+  service?: BookingServiceRef | null;
+  provider?: BookingProviderRef | null;
+  trip?: BookingPlanRef | null;
+  balanceAmount?: string | null;
+  balancePaid?: boolean | null;
+  balanceDueAt?: string | null;
   bookingDetails: {
     scheduledDate?: string;
     notes?: string;
@@ -418,19 +448,18 @@ export default function MyBookingsPage() {
               )}
             </TabsList>
 
+            {/* L12 (ledger 2026-09-07-bookings-by-plan): every list is GROUPED BY PLAN. The
+                ready-made purchases ride the "All" grouping only — they are purchases, not
+                bookings, so they belong to no booking-status tab. */}
             <TabsContent value="all" className="space-y-4">
-              {(bookings ?? []).map((booking) => (
-                <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
-              ))}
+              <BookingGroups bookings={bookings ?? []} purchases={rmPurchases} onReview={openReviewDialog} />
             </TabsContent>
 
             <TabsContent value="pending" className="space-y-4">
               {pendingBookings.length === 0 ? (
                 <EmptyState message="No pending bookings" />
               ) : (
-                pendingBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
-                ))
+                <BookingGroups bookings={pendingBookings} purchases={[]} onReview={openReviewDialog} />
               )}
             </TabsContent>
 
@@ -438,9 +467,7 @@ export default function MyBookingsPage() {
               {activeBookings.length === 0 ? (
                 <EmptyState message="No active bookings" />
               ) : (
-                activeBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
-                ))
+                <BookingGroups bookings={activeBookings} purchases={[]} onReview={openReviewDialog} />
               )}
             </TabsContent>
 
@@ -448,9 +475,7 @@ export default function MyBookingsPage() {
               {completedBookings.length === 0 ? (
                 <EmptyState message="No completed bookings" />
               ) : (
-                completedBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
-                ))
+                <BookingGroups bookings={completedBookings} purchases={[]} onReview={openReviewDialog} />
               )}
             </TabsContent>
 
@@ -581,6 +606,88 @@ export default function MyBookingsPage() {
   );
 }
 
+interface RmPurchaseRow {
+  id: string;
+  title: string;
+  cloneTripId: string | null;
+}
+
+/**
+ * L12 (ledger 2026-09-07-bookings-by-plan) — the plan grouping. The grouping decision itself is
+ * `groupBookingsByPlan` (client/src/lib/bookings-by-plan.ts, unit-pinned); this renders it.
+ *
+ * §13: the unlinked group is NAMED ("Not linked to a plan"), never silently merged into a nearby
+ * plan; a plan with no dates shows no dates; and a ready-made purchase whose plan carries no
+ * bookings is reported as living on the Trips tab rather than being drawn as a plan header built
+ * out of an id.
+ */
+function BookingGroups({
+  bookings,
+  purchases,
+  onReview,
+}: {
+  bookings: Booking[];
+  purchases: RmPurchaseRow[];
+  onReview: (booking: Booking) => void;
+}) {
+  const { groups, unattachedPurchases } = groupBookingsByPlan(bookings, purchases);
+
+  return (
+    <div className="space-y-6" data-testid="booking-plan-groups">
+      {groups.map((group: PlanBookingGroup<Booking, RmPurchaseRow>) => {
+        const plan = group.plan;
+        const dates =
+          plan?.startDate && plan?.endDate
+            ? `${format(new Date(plan.startDate), "MMM d")} – ${format(new Date(plan.endDate), "MMM d, yyyy")}`
+            : null;
+        return (
+          <section key={group.key} className="space-y-3" data-testid={`plan-group-${group.key}`}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <h3 className="font-semibold truncate" data-testid={`plan-group-title-${group.key}`}>
+                  {planGroupLabel(plan)}
+                </h3>
+                {/* §13: no dates rendered when the plan has none — never a guessed window. */}
+                {dates && <p className="text-xs text-muted-foreground">{dates}</p>}
+              </div>
+              {plan && (
+                <Button variant="outline" size="sm" asChild data-testid={`button-open-plan-${plan.id}`}>
+                  <Link href={`/plans/${plan.id}`}>Open plan</Link>
+                </Button>
+              )}
+            </div>
+
+            {/* F10's cross-link: a ready-made plan bought for THIS plan, named here beside the
+                bookings that share it. */}
+            {group.purchases.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 text-xs text-muted-foreground border border-dashed border-border rounded-lg px-3 py-2"
+                data-testid={`plan-group-purchase-${p.id}`}
+              >
+                <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">Ready-made plan: {p.title}</span>
+              </div>
+            ))}
+
+            {group.bookings.map((booking) => (
+              <BookingCard key={booking.id} booking={booking} onReview={onReview} />
+            ))}
+          </section>
+        );
+      })}
+
+      {unattachedPurchases.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="unattached-purchases-note">
+          {unattachedPurchases.length === 1
+            ? "1 ready-made plan you bought isn't shown here — it's on the Trips tab."
+            : `${unattachedPurchases.length} ready-made plans you bought aren't shown here — they're on the Trips tab.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -659,6 +766,13 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
   const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
+  // L12: the provider's public name, as projected by the server. A blank display name means the
+  // account row is gone (§13) — the card says so rather than rendering an empty "with ".
+  const providerName = booking.provider?.displayName?.trim() || null;
+  // L12: an outstanding balance is NOTED here and PAID on the slip (LD 42 D9). One derivation
+  // (`outstandingBalance`), no amount computed on this surface, and no copy of who-may-pay —
+  // `POST /api/bookings/:id/pay-balance` and `canPayBalance` remain the authorities (§14/§18).
+  const balanceDue = outstandingBalance(booking);
 
   const confirmMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/bookings/${booking.id}/confirm-completion`),
@@ -834,6 +948,34 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
+            {/* L12 (ledger 2026-09-07-bookings-by-plan): the row NAMES what was bought and who
+                delivers it, from the server's allowlist projection. §13 — a service or provider
+                row that no longer exists is said out loud, never filled with a placeholder name
+                and never silently blank. */}
+            <div className="mb-1" data-testid={`booking-identity-${booking.id}`}>
+              <p className="font-semibold text-foreground truncate" data-testid={`text-service-name-${booking.id}`}>
+                {booking.service?.serviceName?.trim() || "This service is no longer listed"}
+              </p>
+              <p className="text-xs text-muted-foreground truncate" data-testid={`text-provider-${booking.id}`}>
+                {providerName ? (
+                  <>
+                    with{" "}
+                    {/* LD 40: an earner is addressed by HANDLE where they have claimed one; no bare
+                        users.id is published on this row, so a handle-less provider is named
+                        without a link rather than linked by id. */}
+                    {booking.provider?.handle ? (
+                      <Link href={`/s/${booking.provider.handle}`} className="hover:underline">
+                        {providerName}
+                      </Link>
+                    ) : (
+                      providerName
+                    )}
+                  </>
+                ) : (
+                  "Provider details unavailable"
+                )}
+              </p>
+            </div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge variant={status.variant} data-testid={`badge-status-${booking.id}`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
@@ -931,6 +1073,29 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                     </div>
                   ))}
                 </dl>
+              </div>
+            )}
+
+            {balanceDue !== null && (
+              <div
+                className="mb-2 flex items-center gap-2 flex-wrap rounded-lg border border-border px-3 py-2 text-xs"
+                data-testid={`balance-due-${booking.id}`}
+              >
+                <DollarSign className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                <span className="text-foreground">
+                  Balance of ${balanceDue.toFixed(2)} outstanding
+                  {/* §13: a missing due date is omitted, never rendered as "due now". */}
+                  {booking.balanceDueAt ? ` — due ${format(new Date(booking.balanceDueAt), "MMM d, yyyy")}` : ""}
+                </span>
+                {booking.trip ? (
+                  <Link
+                    href={`/plans/${booking.trip.id}`}
+                    className="text-primary font-medium hover:underline"
+                    data-testid={`link-pay-balance-${booking.id}`}
+                  >
+                    Pay it on your plan →
+                  </Link>
+                ) : null}
               </div>
             )}
 

@@ -158,6 +158,14 @@ const ALLOWED_ADDITIONS = {
   // row, hosts NO charge (the fee-pay rail stays on `/my-events`), and its per-engagement rows
   // carry template testids the extractor does not see — which is why only the card is listed.
   "slip-rail-coordination": "L8 — the done-for-you engagement on ITS plan, folded off /my-events",
+  // Ledger `2026-09-07-all-advisors-reader` (Locked Decision 42 **D7**). Another LATER ruling's
+  // control, declared here for the reason this list exists. D7 rules that the advisor reader
+  // returns ALL advisors on a plan, "not the first — a reader that silently returns one of many is
+  // a plan quietly hiding a person who can write to it". The Expert card still PORTRAYS one
+  // advisor (the server's own named pick, the most recently assigned); this line names the rest.
+  // It carries NO handler — it is a sentence, not an action — and §13 keeps it silent for a plan
+  // with zero or one advisor rather than stating "1 expert" or "no others".
+  "slip-rail-expert-others": "D7 — the other advisors on this plan, named rather than hidden",
 } as const;
 
 /**

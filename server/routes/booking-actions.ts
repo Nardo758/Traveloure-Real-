@@ -51,7 +51,7 @@ import {
   getTripByShareToken,
   insertSharedTripView,
   getApprovedExperts,
-  getTripExpertAdvisor,
+  listTripExpertAdvisors,
   getExistingAdvisorRecord,
   isExpertApproved,
   getTripDestination,
@@ -660,7 +660,19 @@ router.get('/trip-experts', async (req, res) => {
 
 /**
  * GET /api/trips/:id/expert-advisor
- * Return the assigned expert advisor for a trip (or null).
+ *
+ * RETURNS EVERY ADVISOR ON THE PLAN — Locked Decision 42 **D7**, ledger
+ * `2026-09-07-all-advisors-reader`. It used to answer with ONE row (`LIMIT 1`, newest first), so a
+ * plan with two advisors named only one of them, and the other — who may hold §12 WRITE access —
+ * appeared nowhere the owner could see.
+ *
+ * THE SHAPE IS ADDITIVE, DELIBERATELY. `advisors` is the new, complete list. `advisor` STAYS and
+ * is **the first row of that same list** — the most recently assigned one — because six client
+ * surfaces read that key today and a rename would blank every one of them mid-deploy. It is a
+ * DELIBERATE, NAMED pick rather than a silent `[0]`: it is the advisor most recently put on this
+ * plan, it is the row a single-advisor control should act on, and any surface that wants to state
+ * how many people are on the plan must read `advisors` (§13 — one of many is incomplete, and only
+ * the list can say so).
  */
 router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
@@ -674,17 +686,24 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    const advisorRow = await getTripExpertAdvisor(id);
-    if (!advisorRow) {
-      return res.json({ advisor: null });
-    }
+    const advisorRows = await listTripExpertAdvisors(id);
 
-    const rawResponse = advisorRow.expert_response as string | null;
-    const expertFirstMessage = rawResponse
-      ? (rawResponse.length > 140 ? rawResponse.slice(0, 140) + '…' : rawResponse)
-      : null;
+    // The first-message teaser is per ROW, computed once here rather than at each of the six
+    // client surfaces that render it (§18 rule 1).
+    const advisors = advisorRows.map((row) => {
+      const rawResponse = row.expert_response as string | null;
+      return {
+        ...row,
+        expertFirstMessage: rawResponse
+          ? (rawResponse.length > 140 ? rawResponse.slice(0, 140) + '…' : rawResponse)
+          : null,
+      };
+    });
 
-    res.json({ advisor: { ...advisorRow, expertFirstMessage } });
+    // §13: no advisor in a read-access status ⇒ `advisor: null` and an EMPTY list. An empty list
+    // and "we did not look" are never rendered the same way by any caller, and nothing here
+    // fabricates a placeholder advisor.
+    res.json({ advisors, advisor: advisors[0] ?? null });
   } catch (error: any) {
     console.error('Get trip expert advisor error:', error);
     res.status(500).json({ error: error.message });

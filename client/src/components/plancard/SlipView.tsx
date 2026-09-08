@@ -709,8 +709,11 @@ function SlipItemRow({
  * IT SAYS "THIS PLAN", NOT "THIS EVENT", ON PURPOSE. `trip_expert_advisors` is keyed
  * (trip, expert) and has no event column - this lane did not add one - so the row that exists is
  * a PLAN-level advisor. The sentence never claims an expert belongs to the event. Where several
- * experts are on one plan, `GET /api/trips/:id/expert-advisor` returns the most recent
- * pending/accepted one, so this line is incomplete rather than wrong - recorded in the ledger.
+ * experts are on one plan the reader now returns ALL of them (Locked Decision 42 D7, ledger
+ * `2026-09-07-all-advisors-reader`) and this line DELIBERATELY states the standing of the first —
+ * the most recently assigned — because an event header is one line and a roll-call of advisors
+ * belongs on the rail's Expert card, which names them. The pick is named here rather than taken
+ * silently as `[0]`; the complete list is `advisors` on the same response.
  *
  * §13 — NO ADVISOR ⇒ NOTHING RENDERS. Not a greyed control, not "no expert yet": with the hire
  * button moved, an event header on a plan nobody is advising has nothing true to say here, and
