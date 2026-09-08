@@ -31,6 +31,7 @@ import { logger } from '../infrastructure/logger';
 // slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
 import { deriveClaimedSlotIds } from './checkout-claim.service';
+import { travelerChargeForRow } from './traveler-charge';
 import { getStripeSecretKey } from '../utils/stripe-key';
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
@@ -942,11 +943,20 @@ class StripePaymentService {
     if (!row) throw new Error('Service booking not found');
 
     const totalAmount = parseFloat(row.total_amount || '0');
-    // The clamp ceiling is what the traveler was actually CHARGED (service price + platform fee
-    // + insurance fee), not the bare service price — fee-included refunds (platform-owner ruling
-    // 2026-08-10) must not be silently truncated back to total_amount.
-    const amountCharged =
-      totalAmount + parseFloat(row.platform_fee || '0') + parseFloat(row.insurance_fee || '0');
+    // The clamp ceiling is what the traveler was actually CHARGED — read through the ONE
+    // `travelerChargeForRow` (§18 rule 1, ledger 2026-09-08-cart-fee-line), never re-composed here.
+    // For a row priced under A3 that is price + travel surcharge + the concierge fee: the provider's
+    // commission and the insurance leg were WITHHELD FROM THE PAYOUT and never billed, so refunding
+    // them would hand back money the traveler never paid. For a PRE-A3 row it is byte-identical to
+    // the previous derivation, `total_amount + platform_fee + insurance_fee` (platform-owner ruling
+    // 2026-08-10 — a fee-included refund must not be truncated back to total_amount), because that
+    // is what those rows really were charged.
+    const { amount: amountCharged } = travelerChargeForRow({
+      totalAmount,
+      platformFee: row.platform_fee,
+      insuranceFee: row.insurance_fee,
+      conciergeFeeSnapshot: (row.booking_details as any)?.travelerCharge?.conciergeFee ?? null,
+    });
     // A FULL refund (no override) is the fee-inclusive charged amount — same ruling. Callers
     // wanting the old service-price-only behaviour must pass it explicitly as an override.
     const amount =

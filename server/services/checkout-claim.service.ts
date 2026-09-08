@@ -306,10 +306,16 @@ export async function findPriorClaim(
    *  row (0 when the line was covered). Held in booking_details, NOT total_amount, so the re-drive
    *  must read it here to charge the SAME amount the first attempt would have (§14, no divergence). */
   travelerFeeCharged: string | null;
+  /** Ledger 2026-09-08-cart-fee-line: the part of platform_fee the TRAVELER paid (the concierge
+   *  fee). NULL ⇒ this row was claimed BEFORE that ruling and was charged its whole platform_fee;
+   *  `travelerChargeForRow` reads the two cases apart, so a re-drive of an old claim still charges
+   *  what the first attempt would have (§13 — presence is the discriminator, there is no backfill). */
+  travelerChargeConciergeFee: string | null;
 }>> {
   const rows = await db.execute(sql`
     SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee, deposit_amount, idempotency_key,
-           booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged
+           booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged,
+           booking_details->'travelerCharge'->>'conciergeFee' AS traveler_charge_concierge_fee
     FROM service_bookings
     WHERE traveler_id = ${travelerId}
       AND (idempotency_key = ${idempotencyKey} OR idempotency_key LIKE ${idempotencyKey + "#%"})
@@ -323,6 +329,8 @@ export async function findPriorClaim(
     platformFee: r.platform_fee == null ? null : String(r.platform_fee),
     depositAmount: r.deposit_amount == null ? null : String(r.deposit_amount),
     travelerFeeCharged: r.traveler_fee_charged == null ? null : String(r.traveler_fee_charged),
+    travelerChargeConciergeFee:
+      r.traveler_charge_concierge_fee == null ? null : String(r.traveler_charge_concierge_fee),
   }));
 }
 

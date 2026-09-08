@@ -47,11 +47,14 @@
  *   • Legacy rail: `charge.metadata.bookingId` ↔ `bookings.id`, `bookings.stripe_payment_intent_id`.
  *
  * THE EXPECTED CHARGE AMOUNT is server-derived, never taken from Stripe and never from a client
- * (§14). `POST /api/checkout` charges `subtotal + basePlatformFee + conciergeFee`, and each
- * booking row persists its own share as `total_amount` (the item price) + `platform_fee` (base
- * platform fee + insurance + concierge). So the expected total for a PaymentIntent is exactly
- * `SUM(total_amount + platform_fee)` over its rows — a fact recomputed from the catalog-sourced
- * rows, with no rate literal anywhere in this file (§8).
+ * (§14), through the ONE `travelerChargeForRow` every charge/refund surface now shares (§18 rule 1,
+ * ledger 2026-09-08-cart-fee-line). `POST /api/checkout` charges price + travel surcharge (both in
+ * `total_amount`) + the concierge fee + the traveler service fee; `platform_fee` — the provider's
+ * WITHHELD commission + insurance + concierge — is NOT charged to the traveler and is therefore no
+ * longer expected. A row claimed BEFORE that ruling carries no `travelerCharge` snapshot and IS
+ * still expected the old way (`total_amount + platform_fee`), because that is what it was charged:
+ * reading a historical row the new way would raise a false amount_mismatch on every one of them
+ * (§13). No rate literal anywhere in this file (§8).
  */
 
 import { randomUUID } from "node:crypto";
@@ -62,6 +65,7 @@ import { db } from "../db";
 import { bookings, adminNotifications } from "@shared/schema";
 import type { ReconciliationExceptionKind } from "@shared/schema";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
+import { travelerChargeForRow } from "../services/traveler-charge";
 import { logger } from "../infrastructure/logger";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────────────────────
@@ -195,6 +199,23 @@ interface CartBookingRow {
    *  (those are provider-facing), so the expected-charge derivation must add it back or every
    *  fee-bearing checkout would read as an amount_mismatch. */
   travelerFeeCharged: string | null;
+  /** Ledger 2026-09-08-cart-fee-line: `booking_details.travelerCharge.conciergeFee` — the only part
+   *  of `platform_fee` the traveler is charged. NULL ⇒ a PRE-A3 row, whose charge really did
+   *  include the whole platform_fee; `travelerChargeForRow` reads the two apart, which is what
+   *  keeps this job from manufacturing an amount_mismatch on every historical booking (§13). */
+  travelerChargeConciergeFee: string | null;
+}
+
+/** The expected Stripe amount for ONE row: the traveler's charge (ONE derivation, §18 rule 1)
+ *  plus the traveler service fee, which is held in booking_details rather than in a column. */
+function expectedChargeForRow(r: CartBookingRow): number {
+  return (
+    travelerChargeForRow({
+      totalAmount: r.totalAmount,
+      platformFee: r.platformFee,
+      conciergeFeeSnapshot: r.travelerChargeConciergeFee,
+    }).amount + parseFloat(r.travelerFeeCharged || "0")
+  );
 }
 
 function mapCartRow(r: any): CartBookingRow {
@@ -210,6 +231,8 @@ function mapCartRow(r: any): CartBookingRow {
     hasReconciliationException: Boolean(r.has_recon_exception),
     hasStripeAttempt: Boolean(r.has_stripe_attempt),
     travelerFeeCharged: r.traveler_fee_charged == null ? null : String(r.traveler_fee_charged),
+    travelerChargeConciergeFee:
+      r.traveler_charge_concierge_fee == null ? null : String(r.traveler_charge_concierge_fee),
   };
 }
 
@@ -217,7 +240,8 @@ const CART_COLUMNS = sql`
   id, status, stripe_payment_intent_id, total_amount, platform_fee, idempotency_key,
   traveler_id, created_at, (booking_details ? 'reconciliationException') AS has_recon_exception,
   (COALESCE(booking_details, '{}'::jsonb) ? 'stripeAttemptAt') AS has_stripe_attempt,
-  booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged
+  booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged,
+  booking_details->'travelerCharge'->>'conciergeFee' AS traveler_charge_concierge_fee
 `;
 
 // ── The job ──────────────────────────────────────────────────────────────────────────────────
@@ -491,13 +515,7 @@ async function scanCartRail(args: {
     // A4 — AMOUNT MISMATCH. Expected total is server-derived from the persisted rows (§14).
     const chargeable = linked.filter((r) => !TERMINAL_STATUSES.includes(r.status ?? ""));
     if (chargeable.length > 0) {
-      const expected = chargeable.reduce(
-        // Ruling 2026-09-02: + the traveler service fee actually charged (0 per covered line). It rode
-        // the PaymentIntent but is not in total_amount/platform_fee, so it must be added back here or
-        // a fee-bearing checkout reads as a false amount_mismatch.
-        (sum, r) => sum + parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0") + parseFloat(r.travelerFeeCharged || "0"),
-        0,
-      );
+      const expected = chargeable.reduce((sum, r) => sum + expectedChargeForRow(r), 0);
       const actual = centsToDollars(pi.amount_received || pi.amount);
       const delta = Math.abs(expected - actual);
       if (delta > amountTolerance(chargeable.length)) {
@@ -516,7 +534,7 @@ async function scanCartRail(args: {
             delta: round2(expected - actual),
             note:
               "Stripe's captured amount and the server-derived total of this PaymentIntent's booking " +
-              "rows (SUM(total_amount + platform_fee)) disagree beyond the rounding tolerance.",
+              "rows disagree beyond the rounding tolerance.",
           },
         });
       }
@@ -536,7 +554,7 @@ async function scanCartRail(args: {
         severity: "critical",
         dedupeKey: `cart:booking_confirmed_no_pi:${r.id}`,
         bookingId: r.id,
-        expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0") + parseFloat(r.travelerFeeCharged || "0")),
+        expectedAmount: round2(expectedChargeForRow(r)),
         details: {
           bookingStatus: r.status,
           note:
@@ -627,7 +645,7 @@ async function scanCartRail(args: {
       dedupeKey: `cart:payment_provenance_unverified:${r.id}:${r.stripePaymentIntentId}`,
       bookingId: r.id,
       paymentIntentId: r.stripePaymentIntentId,
-      expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0") + parseFloat(r.travelerFeeCharged || "0")),
+      expectedAmount: round2(expectedChargeForRow(r)),
       currency: pi?.currency ?? null,
       details: {
         bookingStatus: r.status,

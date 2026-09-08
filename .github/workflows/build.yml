@@ -207,6 +207,30 @@ jobs:
       - name: Traveler-fee coverage gate
         run: node scripts/check-traveler-fee-coverage.cjs
 
+  traveler-charge-composition:
+    name: traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      # 2026-09-08-cart-fee-line: `service_bookings.platform_fee` is the provider's WITHHELD share,
+      # and the cart charge added the same number to the traveler's bill — so the platform collected
+      # the commission twice, with the ruled traveler service fee on top; /api/cart and the fee
+      # preview quoted the same line, so the surfaces agreed with each other and all three were
+      # wrong. P1-P12 pin the ONE composition (price + concierge + surcharge + traveler fee) and the
+      # ledger identity: provider earnings and the platform's own revenue are UNCHANGED, only the
+      # second collection disappears; a PRE-A3 row still reads back the way it was actually charged,
+      # because there is no backfill and a re-read the new way would indict every historical booking
+      # (§13). S1-S12 read the shipped source, because a composition is worth what its call sites
+      # are: the charge, the deposit base, the claim's snapshot, /api/cart, the fee preview, the
+      # client summary, the re-drive, all three reconciliation sites, the refund ceiling and the
+      # cancellation basis, plus §15's untouched idempotency key, atomic stamp and pre-flight marker.
+      - name: Traveler-charge composition pin (A3)
+        run: npx tsx --test server/__tests__/traveler-charge-composition.test.ts
+
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest

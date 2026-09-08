@@ -23,6 +23,7 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { travelerChargeForRow } from './traveler-charge';
 
 export type CancellationPolicyType = 'flexible' | 'moderate' | 'strict' | 'non_refundable';
 
@@ -151,6 +152,7 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
   const rows = await db.execute(sql`
     SELECT sb.status, sb.traveler_id, sb.total_amount, sb.platform_fee, sb.insurance_fee,
            sb.booking_details ->> 'scheduledDate' AS scheduled_date,
+           sb.booking_details -> 'travelerCharge' ->> 'conciergeFee' AS traveler_charge_concierge_fee,
            ps.cancellation_policy_type
     FROM service_bookings sb
     LEFT JOIN provider_services ps ON ps.id = sb.service_id
@@ -160,13 +162,19 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
   const row = rows.rows?.[0] as any;
   if (!row) return null;
 
-  // Refund basis is the FULL amount the traveler was charged — service price + platform fee
-  // + insurance fee — per the platform-owner ruling (2026-08-10): the platform fee is refunded
-  // at the same policy percent, never silently retained.
-  const amountPaid =
-    parseFloat(row.total_amount || '0') +
-    parseFloat(row.platform_fee || '0') +
-    parseFloat(row.insurance_fee || '0');
+  // Refund basis is the FULL amount the traveler was charged, read through the ONE
+  // `travelerChargeForRow` (§18 rule 1, ledger 2026-09-08-cart-fee-line) so a quote can never
+  // promise back more than the charge took. A row priced under A3 was charged price + travel
+  // surcharge + concierge — the commission and the insurance were withheld from the PAYOUT, never
+  // billed. A PRE-A3 row keeps the previous basis exactly (`total_amount + platform_fee +
+  // insurance_fee`, platform-owner ruling 2026-08-10: the platform fee is refunded at the same
+  // policy percent, never silently retained), because that is what it was charged.
+  const { amount: amountPaid } = travelerChargeForRow({
+    totalAmount: row.total_amount,
+    platformFee: row.platform_fee,
+    insuranceFee: row.insurance_fee,
+    conciergeFeeSnapshot: row.traveler_charge_concierge_fee ?? null,
+  });
   const quote = computeCancellationRefund({
     policyType: row.cancellation_policy_type,
     totalAmount: amountPaid,
