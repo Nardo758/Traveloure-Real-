@@ -73,6 +73,20 @@ export const TRAVELER_CHARGE_SNAPSHOT_KEY = "travelerCharge";
 
 export type TravelerRowChargeBasis = "a3_snapshot" | "pre_a3_legacy";
 
+/**
+ * WHICH COMPOSITION PRICED A ROW — the ONE reading of the presence-discriminator (§18 rule 1).
+ * Both rails stamp the same key: the cart rail on `service_bookings.booking_details`, the legacy
+ * `bookings` rail on `booking_metadata` (ledger 2026-09-08-legacy-rail-fee). A row without it was
+ * charged under the pre-A3 composition and is read back the way it WAS charged — there is no
+ * backfill and no guess (§13), and what "the way it was charged" means differs per rail, which is
+ * why this answers the ERA and never the amount.
+ */
+export function travelerChargeBasis(
+  conciergeFeeSnapshot: string | number | null | undefined,
+): TravelerRowChargeBasis {
+  return conciergeFeeSnapshot != null ? "a3_snapshot" : "pre_a3_legacy";
+}
+
 export interface TravelerRowChargeFacts {
   /** `service_bookings.total_amount` — price (+ travel surcharge). Provider-facing. */
   totalAmount: string | number | null;
@@ -96,7 +110,7 @@ export interface TravelerRowChargeFacts {
 export function travelerChargeForRow(
   facts: TravelerRowChargeFacts,
 ): { amount: number; basis: TravelerRowChargeBasis } {
-  if (facts.conciergeFeeSnapshot != null) {
+  if (travelerChargeBasis(facts.conciergeFeeSnapshot) === "a3_snapshot") {
     // A3: price (+ surcharge, already in total_amount) + the concierge fee. The commission and the
     // insurance stay where they belong — withheld from the payout, never billed.
     return {

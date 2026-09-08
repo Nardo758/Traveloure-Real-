@@ -3,7 +3,7 @@
  * Handles: Planning → [Visa Intake] → Cart Review → Payment → Confirmation
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, ShoppingCart, CreditCard, CheckCircle, Globe, FileText } from 'lucide-react';
 import StripeCheckout from './StripeCheckout';
 import BookingConfirmation from './BookingConfirmation';
@@ -130,26 +130,22 @@ export default function BookingFlowModal({
   const [confirmedBookings, setConfirmedBookings] = useState<any[]>([]);
   const [paymentIntentId, setPaymentIntentId] = useState('');
 
-  // Concierge fee — fetched from /api/cart when modal opens so BookingConfirmation
-  // can display it as a separate line item.
-  const [conciergeFee, setConciergeFee] = useState(0);
+  // What the SERVER said this checkout costs. `/api/bookings/process-cart` composes it with the
+  // ONE `composeTravelerCharge` (ledger 2026-09-08-legacy-rail-fee) and returns it as
+  // `paymentRequired`, with the traveler service fee inside it reported separately. Nothing on
+  // this screen recomputes either number.
+  const [chargedTotal, setChargedTotal] = useState<number | null>(null);
+  const [serviceFeeTotal, setServiceFeeTotal] = useState(0);
+  const [serverBookings, setServerBookings] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch('/api/cart', { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && typeof data.conciergeFee === 'string') {
-          setConciergeFee(parseFloat(data.conciergeFee) || 0);
-        }
-      })
-      .catch(() => { /* non-blocking — safe fallback to 0 */ });
-  }, [isOpen]);
-
-  // Pricing
+  // Pricing. The subtotal is the sum of the LINE PRICES and is the whole of the service charge:
+  // ledger 2026-09-08-legacy-rail-fee removed the "Platform fee (12%)" line this screen used to
+  // quote, because that fee is the provider's commission — withheld from their payout, never a
+  // line added to the buyer — and the 12% here was a hardcoded rate besides (§8). The traveler
+  // service fee IS charged on top, but it is band-driven, capped and Trip-Pass-suppressible per
+  // booking, so this screen cannot know it before the server prices it: it is NOT guessed here
+  // (§13), it is stated as pending and shown for real on the payment step.
   const subtotal = cartItems.reduce((sum, item) => sum + item.price, 0);
-  const platformFee = subtotal * 0.12;
-  const total = subtotal + platformFee + conciergeFee;
 
   const handleProceedToPayment = async () => {
     setIsLoading(true);
@@ -188,6 +184,10 @@ export default function BookingFlowModal({
 
       setPaymentIntent(data.paymentIntent);
       setBookingIds(data.instantBookings.map((b: any) => b.id));
+      // Server-derived, never recomputed here (§14 posture carried to the display).
+      setServerBookings(data.instantBookings);
+      setChargedTotal(typeof data.paymentRequired === 'number' ? data.paymentRequired : null);
+      setServiceFeeTotal(typeof data.travelerFeeTotal === 'number' ? data.travelerFeeTotal : 0);
       setCurrentStep('payment');
     } catch (err: any) {
       console.error('Process cart error:', err);
@@ -246,18 +246,15 @@ export default function BookingFlowModal({
         await Promise.all(confirmPromises);
       }
 
-      // Distribute the cart-level concierge fee proportionally across items
-      // (one flat fee per booking_concierge item; for simplicity divide equally
-      // among all items when we can't identify individual concierge items here).
-      const perItemConciergeFee = cartItems.length > 0 ? conciergeFee / cartItems.length : 0;
+      // Ledger 2026-09-08-legacy-rail-fee: the confirmation renders the SERVER's own rows —
+      // `serviceAmount` and `totalAmount` as `process-cart` wrote them — instead of re-deriving a
+      // per-item 12% platform fee and a per-item share of a concierge fee this rail never charges.
+      // Falls back to the cart items only when the server rows are unavailable, and then carries no
+      // fee figures at all rather than invented ones (§13).
       setConfirmedBookings(
-        cartItems.map((item) => ({
-          ...item,
+        (serverBookings.length > 0 ? serverBookings : cartItems.map((i) => ({ ...i, serviceAmount: i.price, totalAmount: i.price }))).map((b: any) => ({
+          ...b,
           confirmationCode: `TRV${Math.random().toString(36).substring(2, 12).toUpperCase()}`,
-          serviceAmount: item.price,
-          platformFee: item.price * 0.12,
-          conciergeFee: perItemConciergeFee,
-          totalAmount: item.price * 1.12 + perItemConciergeFee,
         }))
       );
       setCurrentStep('confirmation');
@@ -475,24 +472,14 @@ export default function BookingFlowModal({
                     <span>Subtotal</span>
                     <span>${subtotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-gray-600">
-                    <span>Platform fee (12%)</span>
-                    <span>${platformFee.toFixed(2)}</span>
-                  </div>
-                  {conciergeFee > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>
-                        Destination Concierge booking fee
-                        <span className="block text-[11px] text-muted-foreground">powered by local experts</span>
-                      </span>
-                      <span>${conciergeFee.toFixed(2)}</span>
-                    </div>
-                  )}
                 </div>
                 <div className="pt-4 border-t border-gray-300 flex justify-between items-center">
-                  <span className="text-lg font-semibold text-gray-900">Total</span>
-                  <span className="text-2xl font-bold text-purple-600">${total.toFixed(2)}</span>
+                  <span className="text-lg font-semibold text-gray-900">Services total</span>
+                  <span className="text-2xl font-bold text-purple-600" data-testid="text-review-services-total">${subtotal.toFixed(2)}</span>
                 </div>
+                <p className="mt-2 text-xs text-gray-500" data-testid="text-review-service-fee-note">
+                  A service fee is calculated on the next step and shown before you pay.
+                </p>
               </div>
 
               {error && (
@@ -536,10 +523,10 @@ export default function BookingFlowModal({
             <BookingConfirmation
               bookings={confirmedBookings}
               paymentIntentId={paymentIntentId}
-              totalAmount={total}
+              totalAmount={chargedTotal ?? undefined}
+              serviceFeeTotal={serviceFeeTotal > 0 ? serviceFeeTotal : undefined}
               travelers={tripData.travelers}
               userEmail={userEmail}
-              conciergeFee={conciergeFee > 0 ? conciergeFee : undefined}
               destination={(() => {
                 const dest = tripData.destinations?.[0];
                 return dest?.country || dest?.name || dest?.city || "";

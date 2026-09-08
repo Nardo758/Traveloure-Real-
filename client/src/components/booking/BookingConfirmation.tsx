@@ -15,7 +15,10 @@ interface BookingItem {
   location?: string;
   confirmationCode?: string;
   serviceAmount: number;
-  platformFee: number;
+  /** The provider's WITHHELD commission. Ledger 2026-09-08-legacy-rail-fee: it is NOT part of what
+   *  the traveler paid, so a caller that has no traveler-borne fee to show omits it entirely and
+   *  the line below does not render. Never zero-filled (§13). */
+  platformFee?: number;
   conciergeFee?: number;
   totalAmount: number;
 }
@@ -23,12 +26,17 @@ interface BookingItem {
 interface BookingConfirmationProps {
   bookings: BookingItem[];
   paymentIntentId: string;
-  totalAmount: number;
+  /** What was actually charged, as the SERVER composed it. Undefined ⇒ the caller could not obtain
+   *  it, and the "Total Paid" line is omitted with its reason rather than showing a number this
+   *  screen invented (§13). */
+  totalAmount?: number;
   travelers: number;
   userEmail?: string;
   itineraryId?: string;
   destination?: string;
   conciergeFee?: number;
+  /** Σ traveler service fee inside `totalAmount`, server-resolved. Omitted when none was charged. */
+  serviceFeeTotal?: number;
   onClose: () => void;
 }
 
@@ -41,6 +49,7 @@ export default function BookingConfirmation({
   itineraryId,
   destination,
   conciergeFee,
+  serviceFeeTotal,
   onClose,
 }: BookingConfirmationProps) {
   const [, navigate] = useLocation();
@@ -145,12 +154,18 @@ export default function BookingConfirmation({
             </div>
           ))}
           
-          {bookings.length > 0 && (
+          {bookings.reduce((sum, b) => sum + (b.platformFee ?? 0), 0) > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Platform fee</span>
               <span className="text-gray-900 font-medium">
-                ${bookings.reduce((sum, b) => sum + b.platformFee, 0).toFixed(2)}
+                ${bookings.reduce((sum, b) => sum + (b.platformFee ?? 0), 0).toFixed(2)}
               </span>
+            </div>
+          )}
+          {(serviceFeeTotal ?? 0) > 0 && (
+            <div className="flex justify-between text-sm" data-testid="text-service-fee-confirmation">
+              <span className="text-gray-600">Service fee</span>
+              <span className="text-gray-900 font-medium">${(serviceFeeTotal as number).toFixed(2)}</span>
             </div>
           )}
           {(conciergeFee ?? bookings.reduce((sum, b) => sum + (b.conciergeFee ?? 0), 0)) > 0 && (
@@ -167,12 +182,20 @@ export default function BookingConfirmation({
         </div>
 
         <div className="pt-4 border-t border-gray-300">
-          <div className="flex justify-between items-center">
-            <span className="text-lg font-semibold text-gray-900">Total Paid</span>
-            <span className="text-2xl font-bold text-purple-600">
-              ${totalAmount.toFixed(2)}
-            </span>
-          </div>
+          {typeof totalAmount === 'number' ? (
+            <div className="flex justify-between items-center">
+              <span className="text-lg font-semibold text-gray-900">Total Paid</span>
+              <span className="text-2xl font-bold text-purple-600" data-testid="text-total-paid">
+                ${totalAmount.toFixed(2)}
+              </span>
+            </div>
+          ) : (
+            // §13: no server figure reached this screen, so no total is shown — the receipt is the
+            // record of what was charged. A computed stand-in here would be a claim about money.
+            <p className="text-sm text-gray-600" data-testid="text-total-paid-unavailable">
+              Your receipt shows the exact amount charged.
+            </p>
+          )}
         </div>
 
         <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">

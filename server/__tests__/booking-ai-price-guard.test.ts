@@ -43,6 +43,40 @@ function makeAiItem(overrides: Partial<CartItem> = {}): CartItem {
   };
 }
 
+/**
+ * Is this drizzle `sql` template the fee_bands read? (StringChunks carry the literal SQL.)
+ *
+ * The traveler service fee landed on this rail with ledger 2026-09-02-traveler-fee-applies-everywhere
+ * and resolves from `fee_bands` with NO fallback rate by design (§8) — so a count-ordered mock that
+ * answered it with `{rows: []}` made `processCart` REFUSE every item with "commission band unusable".
+ * These suites are not in CI, so that went unseen. Answering the band read by TEXT rather than by
+ * call order keeps the existing ordinal branches below meaning exactly what they say.
+ */
+function isFeeBandsQuery(q: any): boolean {
+  const parts: string[] = [];
+  const walk = (node: any) => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (node && typeof node === 'object') {
+      if (Array.isArray(node.value) && node.value.every((v: any) => typeof v === 'string')) {
+        parts.push(node.value.join(''));
+        return;
+      }
+      if (Array.isArray(node.queryChunks)) walk(node.queryChunks);
+    }
+  };
+  walk(q?.queryChunks ?? q);
+  return /FROM\s+fee_bands/i.test(parts.join(' '));
+}
+
+/** A percent band with a cap — the shape `readBand` requires (rate 5%, $25 cap). */
+const FEE_BAND_ROW = {
+  id: 'band-traveler-service-fee',
+  band_key: 'traveler_service_fee',
+  rate: 0.05,
+  rate_type: 'percent',
+  max_amount: 25,
+};
+
 // ── monkey-patch bookkeeping ─────────────────────────────────────────────────
 
 type DbExecute   = typeof db.execute;
@@ -181,6 +215,7 @@ describe('BookingService — server estimated_cost overrides client-supplied pri
     //   2. itinerary_items lookup                → row with estimated_cost = SERVER_PRICE
     //   (INSERT happens inside db.transaction, not db.execute directly)
     (db as any).execute = async (_sql: unknown) => {
+      if (isFeeBandsQuery(_sql)) return { rows: [FEE_BAND_ROW] };
       callCount += 1;
       if (callCount === 1) {
         return { rows: [{ id: 'trip-test-456' }] };
@@ -263,7 +298,13 @@ describe('BookingService — server estimated_cost overrides client-supplied pri
     );
   });
 
-  it('total amount reflects server price plus platform fee, not client price', async () => {
+  // REPAIRED, never weakened (ledger 2026-09-08-legacy-rail-fee). This case pinned
+  // `totalAmount === SERVER_PRICE + platformFee`, which encoded the PRE-RULING arithmetic: the
+  // provider's commission is withheld from their payout, so billing it to the buyer collected it
+  // twice. The INVARIANT this gate exists for is unchanged and is asserted harder below — the
+  // charge is derived from the SERVER's price and never from the client's — only the expected
+  // composition moves to the ruled one.
+  it('total amount is the SERVER price alone — the withheld commission is never billed, and the client price never reaches it', async () => {
     const item = makeAiItem({
       id: 'itinerary-item-real',
       tripId: 'trip-test-456',
@@ -278,12 +319,30 @@ describe('BookingService — server estimated_cost overrides client-supplied pri
     );
 
     const booking = result.instantBookings[0];
-    const expectedTotal = SERVER_PRICE + 15;  // SERVER_PRICE + stubbed platformFee
 
     assert.strictEqual(
       booking.totalAmount,
-      expectedTotal,
-      `Expected totalAmount ${expectedTotal} (server price + fee); got ${booking.totalAmount}`
+      SERVER_PRICE,
+      `Expected totalAmount ${SERVER_PRICE} (the server price; the stubbed platform fee of 15 is ` +
+      `WITHHELD from the payout, not added to the buyer's bill); got ${booking.totalAmount}`
+    );
+
+    assert.notStrictEqual(
+      booking.totalAmount,
+      SERVER_PRICE + 15,
+      'totalAmount must NOT re-add the withheld commission (ledger 2026-09-08-legacy-rail-fee)'
+    );
+
+    assert.notStrictEqual(
+      booking.totalAmount,
+      CLIENT_PRICE,
+      'totalAmount must NOT be derived from the untrusted client-supplied price'
+    );
+
+    assert.notStrictEqual(
+      booking.totalAmount,
+      CLIENT_PRICE + 15,
+      'totalAmount must NOT be derived from the untrusted client-supplied price'
     );
   });
 });
@@ -298,6 +357,7 @@ describe('BookingService — falls back to itinerary_variant_items when itinerar
     let callCount = 0;
 
     (db as any).execute = async (_sql: unknown) => {
+      if (isFeeBandsQuery(_sql)) return { rows: [FEE_BAND_ROW] };
       callCount += 1;
       if (callCount === 1) {
         // tripExists
@@ -308,7 +368,14 @@ describe('BookingService — falls back to itinerary_variant_items when itinerar
         return { rows: [] };
       }
       if (callCount === 3) {
-        // itinerary_variant_items — row found
+        // itinerary_variant_items — row found, WITH its catalog link. Ledger
+        // 2026-08-22-booking-price-provenance: an unlinked variant row is REFUSED, because its
+        // stored price is LLM-authored; the linked row's price is then re-derived from the catalog
+        // below. The mock carried no link, so this suite was asserting a refusal path by accident.
+        return { rows: [{ price: String(VARIANT_PRICE), provider_service_id: 'svc-linked-1' }] };
+      }
+      if (callCount === 4) {
+        // provider_services — the CATALOG price, which is what may back a charge (§14).
         return { rows: [{ price: String(VARIANT_PRICE) }] };
       }
       return { rows: [] };
