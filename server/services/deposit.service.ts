@@ -11,7 +11,9 @@
  * take or selects a fee band, so §8/§18's "rate resolves from fee_bands only" does not apply and no
  * fee literal is involved.
  *
- * The deposit is a fraction of the LINE'S FULL CHARGE (price + platform fee), so
+ * The deposit is a fraction of the LINE'S FULL CHARGE TO THE TRAVELER — price, its travel
+ * surcharge and the concierge fee where one applies; the provider's withheld commission left that
+ * sum with ledger 2026-09-08-cart-fee-line (and 2026-09-08-legacy-rail-fee on the legacy rail) —
  *   depositAmount + balanceAmount === lineTotal  (the traveler pays the same total, split in time).
  * `total_amount`/`platform_fee`/`provider_earnings` on the booking stay the FULL values — the split
  * is the PAYMENT SCHEDULE, not a re-split — so completion (D8) and earnings math are untouched.
@@ -45,8 +47,8 @@ export interface DepositPlan {
  * config is incomplete/invalid; or the computed deposit would be ≤ 0 or ≥ the line total (a deposit
  * that is the whole charge is not a deposit — it is a full payment, so it degrades to one honestly).
  *
- * `lineTotal` is the SERVER-DERIVED full charge for the line (price + platform fee). No client value
- * reaches this function.
+ * `lineTotal` is the SERVER-DERIVED full charge for the line to the TRAVELER (see the file header;
+ * it excludes the provider's withheld commission). No client value reaches this function.
  */
 export function resolveDepositPlan(config: DepositConfig, lineTotal: number): DepositPlan | null {
   if (!config?.depositEnabled) return null;

@@ -236,6 +236,38 @@ jobs:
       - name: Traveler-charge composition pin (A3)
         run: npx tsx --test server/__tests__/traveler-charge-composition.test.ts
 
+  legacy-rail-traveler-charge:
+    name: legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)
+    runs-on: ubuntu-latest
+    env:
+      # NO DATABASE IS REACHED. Both suites replace `db.execute` / `db.transaction` before any call
+      # and assert on the SQL they were handed; these two vars exist only because `server/db.ts` and
+      # `server/services/stripe.service.ts` throw at IMPORT time when they are unset.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/unused-no-connection-is-opened
+      STRIPE_SECRET_KEY: sk_test_ci_placeholder_no_call_is_made
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      # 2026-09-08-legacy-rail-fee: `POST /api/bookings/process-cart` charged the traveler
+      # `price + platform_fee` while paying the provider `price − platform_fee` — the same
+      # double-collection the cart rail's A3 lane closed, on the rail it deliberately left alone.
+      # P1-P6 pin the charge (price + the band-driven traveler fee, composed by the SHARED
+      # `composeTravelerCharge`), the two numbers that must NOT move (`platform_fee`,
+      # `provider_payout`), the row identity that only now holds, the A3 presence-discriminator and
+      # the absence of any backfill, and the deposit split.
+      - name: Legacy-rail traveler charge pin
+        run: npx tsx --test server/__tests__/legacy-rail-traveler-charge.test.ts
+      # The §14 price-provenance pin for the same handler. It had been RED since the traveler fee
+      # landed on this rail (its count-ordered mock answered the fee_bands read with no row, so
+      # every item was refused) and RED since the variant-price provenance ruling (its variant row
+      # carried no catalog link) — invisible because the file was in no workflow. Repaired and
+      # wired, never deleted; its total-amount assertion is repaired to the ruled composition.
+      - name: AI-item price provenance pin (§14)
+        run: npx tsx --test server/__tests__/booking-ai-price-guard.test.ts
+
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest

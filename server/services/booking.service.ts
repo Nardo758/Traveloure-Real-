@@ -23,6 +23,10 @@ import { recordLegacyBookingTravelerFeeLedger } from './fee-ledger.service';
 import { resolveTripTimezone } from './trip-timezone';
 import { resolveMarketSlug } from './trend-engine/operating-markets';
 import { drainPendingEventsIntoTrip } from './pending-events.service';
+// Ledger 2026-09-08-legacy-rail-fee (docs/ROADMAP.md §A A3, ratified): the ONE composition of what
+// a traveler is charged, shared with the cart rail. The commission has no parameter on it, so it
+// cannot be passed in — which is the point (§18 rule 1: never a second formula).
+import { composeTravelerCharge, TRAVELER_CHARGE_SNAPSHOT_KEY } from './traveler-charge';
 
 const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -48,7 +52,12 @@ export interface ProcessCartResult {
   instantBookings: any[];
   pendingRequests: any[];
   externalLinks: any[];
+  /** What the traveler is charged NOW, composed by `composeTravelerCharge` (ledger
+   *  2026-09-08-legacy-rail-fee). The provider's withheld commission is NOT a term. */
   paymentRequired: number;
+  /** Σ traveler service fee inside `paymentRequired` (0 when every line is covered). Shipped so a
+   *  quote/confirmation surface displays the server's number and derives no fee of its own. */
+  travelerFeeTotal: number;
   paymentIntent?: any;
   errors: string[];
 }
@@ -231,6 +240,7 @@ class BookingService {
       pendingRequests: [],
       externalLinks: [],
       paymentRequired: 0,
+      travelerFeeTotal: 0,
       paymentIntent: undefined,
       errors: [],
     };
@@ -266,6 +276,7 @@ class BookingService {
         );
         results.instantBookings = instantResult.bookings;
         results.paymentRequired = instantResult.totalAmount;
+        results.travelerFeeTotal = instantResult.travelerFeeTotal;
         results.paymentIntent = instantResult.paymentIntent;
         results.errors.push(...instantResult.errors);
       } catch (error: any) {
@@ -304,6 +315,9 @@ class BookingService {
   ) {
     const bookings: any[] = [];
     let totalAmount = 0;
+    /** Σ traveler service fee ACTUALLY charged across the lines (0 for each covered line). Returned
+     *  so the confirmation surface renders the SERVER's number and computes no fee of its own. */
+    let travelerFeeTotal = 0;
     const errors: string[] = [];
 
     for (const item of cartItems) {
@@ -441,7 +455,12 @@ class BookingService {
 
         if (paymentMethod === 'deposit') {
           depositAmount = await pricingService.calculateDeposit(finalPrice);
-          balanceAmount = finalPrice + feeBreakdown.platformFee - depositAmount;
+          // deposit + balance === the line's traveler charge for the SERVICE. The traveler service
+          // fee is assessed ONCE, at the deposit (ruling 2026-09-02 / D), so it is deliberately not
+          // in this split. `feeBreakdown.platformFee` LEFT this sum with ledger
+          // 2026-09-08-legacy-rail-fee: it is withheld from the provider's payout, so it was never
+          // the buyer's to pay — in one instalment or two.
+          balanceAmount = Math.round((finalPrice - depositAmount) * 100) / 100;
         }
 
         // Create booking in database — wrapped in a transaction so the
@@ -450,7 +469,23 @@ class BookingService {
         // unique index on (expert_id, booking_date, booking_time) will reject
         // the second insert with Postgres error code 23505.
         const bookingTime = item.time || null;
-        const totalAmountValue = finalPrice + feeBreakdown.platformFee;
+        // ── WHAT THE TRAVELER PAYS ON THIS RAIL (ledger 2026-09-08-legacy-rail-fee; §A A3) ──────
+        // VERIFIED ON THIS RAIL'S OWN ARITHMETIC, not copied from the cart rail's conclusion:
+        // `pricingService.calculatePlatformFees` sets `providerDeduction = platformFee` and the
+        // confirm path pays the provider exactly `provider_payout = price − providerDeduction`, so
+        // `platformFee` IS the WITHHELD commission here. Adding it to `total_amount` billed the
+        // buyer for the same commission a second time. It is still resolved, still persisted on
+        // the row, and still the platform's recognised revenue at confirmation — it is simply no
+        // longer charged to the buyer.
+        // The other two withheld/added terms the cart rail carries DO NOT EXIST on this rail, and
+        // that is stated rather than assumed: `calculatePlatformFees` returns the commission alone,
+        // nothing here reads or writes `insurance_fee`, and no concierge fee is resolved anywhere
+        // in this path — so those terms are structurally 0 below, never an unknown zero-filled (§13).
+        // `total_amount` therefore keeps the meaning it has always had on this rail — the service
+        // amount charged to the traveler — and now equals the price alone, exactly as the cart
+        // rail's `service_bookings.total_amount` is price (+ travel surcharge) and excludes the
+        // withheld share. `platform_fee` and `provider_payout` are UNCHANGED.
+        const totalAmountValue = finalPrice;
         const providerPayout = finalPrice - feeBreakdown.providerDeduction;
         // Snapshot the traveler-fee onto THIS item's metadata (locked, like the cart path's
         // booking_details snapshot) so the fee-ledger row written at confirmation records what was
@@ -459,6 +494,17 @@ class BookingService {
         const bookingMetadataJson = JSON.stringify({
           ...(bookingMetadata ?? {}),
           travelerServiceFee: travelerServiceFeeSnapshot,
+          // Ledger 2026-09-08-legacy-rail-fee: the presence-discriminator, same key and same shape
+          // as the cart rail's `booking_details.travelerCharge`, so one key means one thing across
+          // both rails — this row was priced under the A3 composition. On THIS rail the concierge
+          // portion is 0.00 because no concierge fee is resolved on this path at all (see above),
+          // NOT because one was resolved and came out at zero.
+          // There is NO BACKFILL (§13). A row without this key was charged `total_amount` under the
+          // pre-A3 composition, when that column carried price + commission; a row with it was
+          // charged `total_amount` under A3, when it carries the price. The CHARGE read-back is
+          // therefore the same column in both eras — what the discriminator preserves is the other
+          // fact, that `platform_fee` used to ride the buyer's bill and no longer does.
+          [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: '0.00' },
         });
         const expertId: string | null = item.metadata?.expertId ?? null;
 
@@ -501,14 +547,26 @@ class BookingService {
           ...itemWithoutId,
           id: insertedBooking?.id,
           serviceAmount: finalPrice,
-          totalAmount: finalPrice + feeBreakdown.platformFee,
+          totalAmount: totalAmountValue,
+          // The traveler service fee CHARGED on this line (0 when covered), so the confirmation
+          // surface can show the server's own number rather than compute one (§14 posture).
+          travelerServiceFee: feeChargedAmt,
           status: 'pending_payment',
         });
 
-        // Add to payment total. Ruling 2026-09-02 / D: the traveler fee rides the amount charged NOW
+        travelerFeeTotal += feeChargedAmt;
+
+        // Add to payment total through the ONE composition (§18 rule 1) — the same
+        // `composeTravelerCharge` the cart rail charges and quotes with, so the two rails cannot
+        // drift apart again. Ruling 2026-09-02 / D: the traveler fee rides the amount charged NOW
         // (the deposit when depositing, else the full line) and is assessed once — a later balance
-        // payment carries none.
-        totalAmount += (depositAmount || (finalPrice + feeBreakdown.platformFee)) + feeChargedAmt;
+        // payment carries none. `feeBreakdown.platformFee` is deliberately not a term (see above).
+        totalAmount += composeTravelerCharge({
+          subtotal: depositAmount || totalAmountValue,
+          conciergeFee: 0,
+          surchargeTotal: 0,
+          travelerFee: feeChargedAmt,
+        });
       } catch (error: any) {
         // Distinguish slot-taken (23505 unique violation or explicit SLOT_ALREADY_BOOKED)
         // from generic errors so the route layer can return 409 instead of 500.
@@ -538,6 +596,7 @@ class BookingService {
     return {
       bookings,
       totalAmount,
+      travelerFeeTotal,
       paymentIntent,
       errors,
     };
