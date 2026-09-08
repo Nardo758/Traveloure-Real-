@@ -62,6 +62,14 @@ export function OfferingCard({
   bookingMode?: "instant" | "request" | "hidden";
 }) {
   const priceHidden = showPrice === false;
+  // ld23-buy-action-gap: THIS CARD STILL AUTHORS ITS OWN CTA, and that is a recorded gap rather
+  // than a decision. Ruling 9 (lane L23, `2026-09-07-buy-action-resolver`) makes
+  // `resolveBuyAction` (`shared/buy-action.ts`) the SOLE author of a buy button — but that
+  // resolver takes a ROW and a BUYER, and this card holds neither: it is handed a formatted price
+  // STRING (never `hasPrice`), no `bookability`, no `deliveryMethod`/`productShape`, no
+  // `hasPublishedAvailability`, and no buyer at all. Passing a fabricated buyer would make the
+  // descriptor a claim about somebody nobody saw, which `loadStorefront` explicitly refuses to do
+  // for exactly that reason (§13). So today's behaviour is kept VERBATIM and the gap is named.
   const ctaLabel =
     bookingMode === "request" ? "Request to book →"
     : bookingMode === "hidden" ? "Enquire →"

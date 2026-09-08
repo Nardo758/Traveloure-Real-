@@ -123,9 +123,14 @@ jobs:
       # 131 measured 2026-09-07 (ledger `2026-09-07-orphan-sweep`): deleting the six
       # importerless dashboard components under §18c removed one error that lived in
       # one of them. ZERO new type errors in any file batch 3 touched. Locked in, same PR.
+      # 130 measured 2026-09-08 (ledger `2026-09-08-recorded-cleanups`): `GET /api/service-bookings`
+      # hand-composed its provider object and read `provider.profileImage`, which is not a `users`
+      # column — one TS2339 that had shipped as an always-`undefined` key for the route's whole
+      # life. Routing it through the shared `toBookingProvider` allowlist removed the error.
+      # ZERO new type errors in any file batch 4 touched. Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '131'
+          TSC_BASELINE: '130'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -1765,3 +1770,41 @@ jobs:
       # linkage in silence.
       - name: Concierge trip-ownership pins
         run: npx tsx --test server/routes/__tests__/concierge-trip-ownership.test.ts
+
+  batch4-vocabulary-link-cleanup:
+    name: batch4-vocabulary-link-cleanup (LD 44 phase 0 · LD 45 (1) · §18c/§18 rule 1 — 2026-09-08)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: the conversation-link pin imports the drizzle schema so the
+      # column/index/FK DECLARATION can be read off the real table (the deploy-push durability rule
+      # cannot be asserted against a hand-copied list — that is the same failure it exists to catch).
+      - run: npm ci
+      # LD 44 (e) phase 0 — the booking-agent status vocabulary. A2 and A5 are the ones that matter:
+      # `researching`/`purchased_by_api` are server-written, and the human allowlist must not drift
+      # into them. A3 pins that `purchased_by_*` and `confirmed` are never collapsed — "booked" is
+      # said only with a confirmation in hand — and A4 pins that the legacy four stay legal stored
+      # values, because there is no backfill and rewriting one would invent a fact (§13).
+      - name: Booking-agent vocabulary pins
+        run: npx tsx --test shared/__tests__/booking-agent-vocabulary.test.ts
+      # LD 45 (1) — `conversations.trip_id`. B1/B2/B3 assert the DECLARATION, not the migration: an
+      # object the schema layer does not declare is dropped by Replit's publish-time push and never
+      # recreated, because migration 290 is stamped by then. B4 is the §19 negative fixture — under
+      # an `.omit()` denylist a freshly-added column is client-settable BY DEFAULT.
+      - name: Conversation trip-link pins
+        run: npx tsx --test shared/__tests__/conversation-trip-link.test.ts
+      # (The buy-action resolver's own 30 pins live in lane L23's job, which landed on `main` while
+      # this branch was open — this lane deleted its duplicate resolver rather than adding a second
+      # job for it. See the `ld23-buy-action-gap` annotations for what is still un-repointed.)
+      # §18c — `upsellSource` was write-only attribution with no reader; the door pin now asserts its
+      # ABSENCE, so a lane that puts the string back must give it a reader and amend the assertion.
+      - name: Services-browse door pins (upsellSource retired)
+        run: npx tsx --test client/src/lib/__tests__/services-browse-doors.test.ts
+      # Re-run unchanged: this lane deliberately did NOT move the Catalog preview onto the landed
+      # `resolveBuyAction` (see the gap note in that file), so P5's labels must still hold exactly.
+      - name: Catalog preview presentation pins
+        run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts
