@@ -350,8 +350,24 @@ router.post(
         specialRequests
       );
 
-      // Mark the option as "confirmed" so the UI shows the green Confirmed badge immediately
-      await storage.updateTransportBookingOptionStatus(optionId, { bookingStatus: "confirmed" });
+      // §13 (ledger 2026-09-08-transport-confirm-timing) — NOTHING IS STAMPED HERE.
+      // This handler has only created a hosted Stripe Checkout Session: the traveler has not
+      // paid, and may abandon the page or be declined. Stamping `bookingStatus: "confirmed"` here
+      // (which is what this line used to do, for the green badge) claimed a reservation the
+      // platform could not support, and both readers of this column treat that claim as a real
+      // one — `TransportBookingCard` draws the Confirmed badge, and
+      // `traveler-profile.service.ts` counts `booking_status IN ('booked','confirmed')` as a
+      // purchased transport pick.
+      // The option keeps the status it already has (default `available` — "nothing reserved yet",
+      // which is TRUE while the checkout is in flight). No new status value is invented for
+      // "awaiting payment": this column's set is app-enforced ("available", "booked",
+      // "confirmed", "cancelled") and a fifth value would be invisible to both readers anyway.
+      // The promotion to "confirmed" is the PAYMENT's own signal and already exists:
+      // `checkout.session.completed` (metadata.type === "transport_booking") →
+      // `handleStripePaymentSuccess`, which returns early unless `session.payment_status === "paid"`
+      // and then writes the status in ONE statement (§15 — the UPDATE is the transition, there is
+      // no check-then-write on the DB status). No backfill: rows stamped under the old rule keep
+      // their value.
 
       res.json({
         success: true,
