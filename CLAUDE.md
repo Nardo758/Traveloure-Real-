@@ -1389,6 +1389,14 @@ This document captures architectural decisions to maintain consistency across co
     its own ruling. An `affiliate_booking_requests.status` describes a PARTNER purchase and an
     `itinerary_items.routingStatus` describes OUR cart projection (ruling 39) — **never merged,
     never mirrored, never derived from each other**.
+    **ASSIGNMENT IS RULED (2026-09-08, decision-maker; ledger `2026-09-08-assignment-is-claimed`).**
+    This entry recorded that the arbitrary assignment "needs its own ruling". It has one:
+    **auto-assignment is RETIRED and a request is CLAIMED from the pool.** No assignee is stamped
+    at create; the request lands in the existing pooled queue and is claimed by whoever takes it,
+    and any matching only ORDERS that queue. Stamping the first `getExpertUserIds(10)[0]` row
+    created an owner who never agreed to the work and hid the request from everyone else. §13: an
+    unclaimed request says so and is never shown as someone's. Existing assigned rows keep their
+    assignee — no backfill, because a row that was assigned was assigned.
     **BUILD SEQUENCE = ruling 42's build order, WAVE 2b** (namespaced per ruling 37 — never a bare
     "wave 2"), each phase appending its OWN ledger row: **Phase 0** assignment + status vocabulary
     (no schema); **Phase 1** copilot research/prepare (extends the verification module, wires the
