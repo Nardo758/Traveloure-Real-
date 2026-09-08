@@ -394,6 +394,16 @@ jobs:
       # reads; N1-N3 hold the §13 line — an unknown key is NULL and never a nearest class.
       - name: Impact class pin
         run: npx tsx --test shared/__tests__/impact-class.test.ts
+      # 2026-09-07-buy-action-resolver (lane L23, Console & AI Concierge brief §11.5; register §A4
+      # ruling 9): `resolveBuyAction` is the SINGLE author of every buy button and landing rule on
+      # the platform, so a wrong row is a wrong button on every surface at once — and it fails
+      # silently, as a plausible button that lands in the wrong store. T1-T14 pin the table row by
+      # row in the order §11.5 gives; N1-N4 pin the four things it must never do (honour a listing's
+      # own CTA, offer a booking verb on a dark row, land a guest's advisor press, or send a partner
+      # row to a platform checkout — LD 43(c)/§16); S1-S5 pin §13, where an absent fact never
+      # becomes a booking verb and carries its reason instead.
+      - name: Buy-action resolver pin
+        run: npx tsx --test shared/__tests__/buy-action.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
@@ -1763,16 +1773,14 @@ jobs:
       # an `.omit()` denylist a freshly-added column is client-settable BY DEFAULT.
       - name: Conversation trip-link pins
         run: npx tsx --test shared/__tests__/conversation-trip-link.test.ts
-      # §18 rule 1 — ONE reading of `booking_mode`. C5 is the pin that closes the drift: the Catalog
-      # preview's labels must BE the resolver's, so an owner's preview and their live storefront can
-      # never disagree about the same listing.
-      - name: Buy-action resolver pins
-        run: npx tsx --test shared/__tests__/buy-action.test.ts
+      # (The buy-action resolver's own 30 pins live in lane L23's job, which landed on `main` while
+      # this branch was open — this lane deleted its duplicate resolver rather than adding a second
+      # job for it. See the `ld23-buy-action-gap` annotations for what is still un-repointed.)
       # §18c — `upsellSource` was write-only attribution with no reader; the door pin now asserts its
       # ABSENCE, so a lane that puts the string back must give it a reader and amend the assertion.
       - name: Services-browse door pins (upsellSource retired)
         run: npx tsx --test client/src/lib/__tests__/services-browse-doors.test.ts
-      # Unchanged by this lane and re-run because `deriveBookingCta` now delegates: P5 proves the
-      # rendered labels did not move when the authority did.
+      # Re-run unchanged: this lane deliberately did NOT move the Catalog preview onto the landed
+      # `resolveBuyAction` (see the gap note in that file), so P5's labels must still hold exactly.
       - name: Catalog preview presentation pins
         run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts

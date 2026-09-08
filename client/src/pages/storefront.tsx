@@ -50,7 +50,6 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useRoute, Link } from "wouter";
-import { resolveBuyAction } from "@shared/buy-action";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -269,12 +268,25 @@ function StorefrontOfferingCard({
   meta?: string;
 }) {
   const priceHidden = showPrice === false;
-  // §18 rule 1 (ledger `2026-09-08-recorded-cleanups`): the SAME `resolveBuyAction` the shared
-  // OfferingCard and the Catalog preview call — three surfaces, one reading of `bookingMode`, so
-  // an owner's preview and their live storefront can never disagree about the same listing. The
-  // arrow is this card's own presentation; the noun is not.
-  const action = resolveBuyAction(bookingMode, { instantLabel: cta });
-  const ctaLabel = action.kind === "book" ? action.label : `${action.label} →`;
+  // ld23-buy-action-gap: THIS CARD STILL AUTHORS ITS OWN CTA — recorded, not decided. Ruling 9
+  // (lane L23) makes `resolveBuyAction` the SOLE author of a buy button, and the storefront
+  // payload now CARRIES its answer (`loadStorefront` ships `buyAction` per service row). Two
+  // things still block rendering it here, and both are server-side facts this file must not
+  // invent:
+  //   (a) VACATION MODE. `away` is a page-level flag and `buildListingBuyActions` is called with
+  //       `isLive: true` for every service regardless, so the descriptor cannot say "this
+  //       provider is away" — repointing would replace today's honest "View listing →" with
+  //       "Book" on an away storefront, a §13 regression. Widening `ListingBuyRow.isLive` is a
+  //       change to the module that just landed, not this lane's to make.
+  //   (b) THE READY-MADE LANE gets no descriptor at all (only `services` are resolved), so the
+  //       second caller below would still be authoring its own "Preview trip →".
+  // Repointing also moves the rendered label off the literals `playwright/tests/offering-card.
+  // spec.ts:75` asserts, which is a real change to prove and not a byte-identical one. Kept
+  // VERBATIM; the gap is the finding.
+  const ctaLabel =
+    bookingMode === "request" ? "Request to book →"
+    : bookingMode === "hidden" ? "Enquire →"
+    : cta;
   return (
     <Link
       href={href}

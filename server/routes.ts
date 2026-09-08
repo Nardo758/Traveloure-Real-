@@ -27,6 +27,7 @@ import { storage, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
+import { buildListingBuyActions, resolveBuyerState } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9)
 import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
   resolveAiDraftEligibility,
@@ -2779,8 +2780,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // (`getApprovedServicesForExpert`) and from `GET /api/services/:id` — this browse route is the
     // same column on the third public read, and was missed by both. `filterOutAwayOwners` above
     // reads `s.userId` BEFORE this map, so the §16 vacation gate is unaffected.
+    //
+    // L23 (brief §11.5, ruling 9 — register §A4): the buy button and the landing rule are authored
+    // by ONE resolver and shipped on the row, so a card renders `buyAction` instead of deciding for
+    // itself what button a listing gets. Resolved BEFORE the `userId` strip above, because the
+    // booking mode of an unset listing is inherited from its OWNER's account flag — the strip is
+    // about what leaves the server, not about what the server may read. Two batched queries for the
+    // whole response (never per row), and the buyer comes from the SESSION (§14); an unauthenticated
+    // browse is a `guest`, which is a complete answer rather than a missing one.
+    const buyer = await resolveBuyerState(req);
+    const buyActions = await buildListingBuyActions(
+      live.map((s) => ({
+        id: s.id,
+        ownerUserId: s.userId,
+        bookingMode: (s as any).bookingMode ?? null,
+        deliveryMethod: s.deliveryMethod,
+        productShape: (s as any).productShape ?? null,
+        price: s.price,
+        // True by construction: `getAllProviderServices` selects `status='active'`, `approved` was
+        // filtered above, and `filterOutAwayOwners` has already dropped an away owner's rows.
+        isLive: true,
+      })),
+      buyer,
+    );
     res.json(
-      live.map((s) => omitFields(s, ["serviceFile", "joinLink", "userId", "revenueShareRate"] as const)),
+      live.map((s) => ({
+        ...omitFields(s, ["serviceFile", "joinLink", "userId", "revenueShareRate"] as const),
+        buyAction: buyActions.get(s.id),
+      })),
     );
   });
   
