@@ -33,6 +33,9 @@ import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
+// L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on each card.
+import { buildListingBuyActions, resolveBuyerState } from "../services/buy-action-payload";
+import type { BuyActionBuyer } from "@shared/buy-action";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
 // providerServices/readyMadeTrips rows or their approval/status columns.
@@ -551,7 +554,13 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
 // flagged `shownInOriginal` so the client can label it (§13 — never silent, never machine-
 // translated). Omitted (the OG-injection caller, crawlers) ⇒ no overlay, canonical content.
 // Exported for storefront-gems-shared.db.test.ts (ruling 7 proof) — route callers unchanged.
-export async function loadStorefront(handle: string, activeLocale?: string) {
+/**
+ * L23: `buyer` is OPTIONAL and there is deliberately no default. A buy action is a statement about
+ * a specific buyer, so a caller that has no buyer to speak of — the OG shell, the legacy redirects
+ * — gets NO `buyAction` on its rows rather than a guest-shaped one, which would be a claim about
+ * somebody the caller never saw (§13). Only the JSON read the SPA calls resolves a buyer.
+ */
+export async function loadStorefront(handle: string, activeLocale?: string, buyer?: BuyActionBuyer) {
   const normalized = handle.trim().toLowerCase();
   if (!HANDLE_RE.test(normalized)) return null;
 
@@ -634,10 +643,29 @@ export async function loadStorefront(handle: string, activeLocale?: string) {
     .where(eq(serviceProviderForms.userId, owner.id))
     .limit(1);
   const ownerInstantBooking = ownerForm?.instantBooking ?? false;
+  // L23 (brief §11.5, ruling 9 — register §A4): the ONE resolver authors each card's buy button and
+  // its landing rule, computed here and shipped on the row; the storefront draws it and never
+  // decides for itself. `isLive` is true by construction — the select above is already gated on
+  // `approval_status='approved' AND status='active'`. Two batched queries for the whole storefront.
+  const storefrontBuyActions = buyer
+    ? await buildListingBuyActions(
+        services.map((s) => ({
+          id: s.id,
+          ownerUserId: owner.id,
+          bookingMode: s.bookingMode,
+          deliveryMethod: s.deliveryMethod,
+          productShape: s.productShape,
+          price: s.price,
+          isLive: true,
+        })),
+        buyer,
+      )
+    : null;
   let resolvedServices = services.map((s) => ({
     ...s,
     showPrice: s.showPrice ?? true,
     bookingMode: resolveBookingMode(s.bookingMode, ownerInstantBooking),
+    buyAction: storefrontBuyActions?.get(s.id),
     // Set true below only when the viewer's locale differs from the card's source and no
     // approved translation exists — the client renders the honest one-line note (§13).
     shownInOriginal: false,
@@ -902,7 +930,9 @@ async function loadProviderStorefrontDirectory() {
 router.get("/api/storefront/:handle", async (req, res) => {
   try {
     const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
-    const data = await loadStorefront(req.params.handle, rawLocale);
+    // L23: the SPA's own read is the one caller with a real buyer, so it is the one that gets a
+    // buy action on each card. The buyer is the SESSION (§14) — no session is an honest `guest`.
+    const data = await loadStorefront(req.params.handle, rawLocale, await resolveBuyerState(req));
     if (!data) return res.status(404).json({ message: "Storefront not found" });
     return res.json(data);
   } catch (error: any) {
