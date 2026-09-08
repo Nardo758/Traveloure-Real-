@@ -8,7 +8,7 @@ import { db } from "../db";
 import { getTableColumns, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { tripExpertAdvisors } from "@shared/schema";
-import { isTripAdvisor } from "../utils/trip-advisor";
+import { isTripAdvisor, TRIP_ADVISOR_ACCESS_STATUSES } from "../utils/trip-advisor";
 import {
   buildTripAdvisorStatusRankSql,
   type TripAdvisorRowStatus,
@@ -516,7 +516,29 @@ export async function getApprovedExperts(destination?: string): Promise<any[]> {
 
 // ─── Trip Expert Advisor ──────────────────────────────────────────────────────
 
-export async function getTripExpertAdvisor(tripId: string): Promise<any | null> {
+/**
+ * EVERY ADVISOR ON A PLAN — Locked Decision 42 **D7**: "the advisor READER returns ALL advisors on
+ * a plan, not the first — the UNIQUE (trip_id, local_expert_id) index has always permitted
+ * several, the schema has always allowed it, and a reader that silently returns one of many is a
+ * plan quietly hiding a person who can write to it."
+ *
+ * This was `getTripExpertAdvisor`, identical but for `LIMIT 1` and a `rows[0] ?? null`. Two things
+ * change and nothing else:
+ *
+ *  1. NO `LIMIT`. The rows come back newest-first; the caller that needs "the one advisor" for a
+ *     single-advisor control picks the FIRST and says so at the pick site (ledger
+ *     `2026-09-07-all-advisors-reader`), rather than the reader deciding for everyone.
+ *  2. THE STATUS SET IS THE SHARED READ ALLOW-LIST, not a re-typed pair. The literal was
+ *     `('pending','accepted')`, which omits **`assigned`** — an admin-confirmed advisor who holds
+ *     §12 WRITE access (`TRIP_ADVISOR_WRITE_ACCESS_STATUSES`) and was invisible here entirely.
+ *     That is D7's own failure in its sharpest form, so the query now reads
+ *     `TRIP_ADVISOR_ACCESS_STATUSES` (`server/utils/trip-advisor.ts`) — the ONE read allow-list
+ *     every other read surface already gates on (§18 rule 1).
+ *
+ * §13: an empty array means this plan has no advisor in a read-access status. It is never padded,
+ * and a `rejected`/withdrawn row is not resurrected into it.
+ */
+export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
   const result = await db.execute(sql`
     SELECT
       tea.id as advisor_id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
@@ -535,14 +557,14 @@ export async function getTripExpertAdvisor(tripId: string): Promise<any | null> 
     JOIN local_expert_forms lef ON lef.user_id = tea.local_expert_id
     JOIN users u ON u.id = tea.local_expert_id
     LEFT JOIN review_ratings rr ON rr.local_expert_id = tea.local_expert_id
-    WHERE tea.trip_id = ${tripId} AND tea.status IN ('pending', 'accepted')
+    WHERE tea.trip_id = ${tripId}
+      AND tea.status IN (${sql.join(TRIP_ADVISOR_ACCESS_STATUSES.map((s) => sql`${s}`), sql`, `)})
     GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
              lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
              lef.destinations, lef.hourly_rate, u.profile_image_url, u.handle
     ORDER BY tea.assigned_at DESC
-    LIMIT 1
   `);
-  return result.rows?.[0] ?? null;
+  return (result.rows ?? []) as any[];
 }
 
 export async function getExistingAdvisorRecord(tripId: string): Promise<{ id: string; status: string } | null> {

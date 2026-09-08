@@ -54,6 +54,7 @@ import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { projectVendorForDirectory } from "./utils/vendor-read-scope";
 import { toPublicExpert, toPublicExperts } from "./utils/expert-read-scope";
+import { toBookingService, toBookingProvider, toBookingTrip } from "./utils/booking-read-scope";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -5902,17 +5903,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(enrichedBookings);
   });
 
+  // L12 (ledger 2026-09-07-bookings-by-plan), brief §11.2 finding F10: the row used to ship as the
+  // bare `service_bookings` record, so My Bookings could name no service, no provider and no plan.
+  // Each row now carries three PROJECTED references — see server/utils/booking-read-scope.ts for
+  // why they are allowlists checked against the drizzle tables and not object literals.
+  //
+  // §14: the owner is the SESSION user; `travelerId: userId` scopes the whole list, and the trip
+  // lookup below re-checks `trip.userId` rather than trusting the booking's FK.
+  //
+  // BALANCE: nothing here re-derives who may pay one. Every row in this list is the session user's
+  // OWN booking, so `canPayBalance`'s owner branch (server/services/balance-payer.service.ts) holds
+  // by construction; the surface only NOTES an outstanding balance off the row's own
+  // `balanceAmount`/`balancePaid` columns and links to the slip, and
+  // `POST /api/bookings/:id/pay-balance` remains the sole authority on the payment itself
+  // (§18 rule 1 — no second copy of that predicate, §14/§15 untouched by this lane).
   app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ travelerId: userId, status });
-    
-    // Enrich bookings with hasReview flag
+
+    // One lookup per distinct id, not per booking row — several bookings commonly share a plan or
+    // a provider. A row that is absent stays absent: §13, the projector maps it to `null` and the
+    // client says the fact is unavailable rather than inventing a name.
+    const serviceCache = new Map<string, any>();
+    const providerCache = new Map<string, any>();
+    const tripCache = new Map<string, any>();
+    const loadOnce = async <T,>(cache: Map<string, T>, id: string | null | undefined, load: () => Promise<T>) => {
+      if (!id) return null;
+      if (!cache.has(id)) cache.set(id, (await load()) as T);
+      return cache.get(id) ?? null;
+    };
+
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-      const reviews = await storage.getReviewsByBookingId(booking.id);
-      return { ...booking, hasReview: reviews.length > 0 };
+      const [reviews, serviceRow, providerRow, tripRow] = await Promise.all([
+        storage.getReviewsByBookingId(booking.id),
+        loadOnce(serviceCache, booking.serviceId, () => storage.getProviderServiceById(booking.serviceId!)),
+        loadOnce(providerCache, booking.providerId, () => storage.getUser(booking.providerId!)),
+        loadOnce(tripCache, booking.tripId, () => storage.getTrip(booking.tripId!)),
+      ]);
+      // §14 read clause: a plan is named on this response only when it is the SESSION USER'S OWN
+      // plan. A booking whose trip belongs to someone else groups as unlinked rather than
+      // publishing that plan's destination and dates.
+      const ownTrip = tripRow && (tripRow as any).userId === userId ? tripRow : null;
+      return {
+        ...booking,
+        hasReview: reviews.length > 0,
+        service: toBookingService(serviceRow),
+        provider: toBookingProvider(providerRow),
+        trip: toBookingTrip(ownTrip),
+      };
     }));
-    
+
     res.json(enrichedBookings);
   });
 

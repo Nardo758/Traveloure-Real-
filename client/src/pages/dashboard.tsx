@@ -29,16 +29,25 @@ import { greetingSentence } from "@/lib/home-time-axis";
  *                       its collapse into the one modal is LD 42 D11, a later lane) · Start with AI
  *                       (the sidebar's own door, `/ai-assistant`, which L5 made a door).
  *
- * WHAT LEFT THIS PAGE, and where it lives now (ruling 8: no plan card, no counts, no messages):
+ * WHAT LEFT THIS PAGE, and where it lives now (ruling 8: no plan card, no counts, no messages).
+ * The six marked DELETED were carried here as importerless files after L10 moved their
+ * information; ledger `2026-09-07-orphan-sweep` removed them under §18c (no consumer ⇒ delete,
+ * don't keep). This block is the record of where each one's information went — it is kept
+ * precisely because the files are gone and nothing else names them.
  *   PlanCard (summary stage) + the trip-selector chips → My plans (`/my-trips`) and the slip.
  *   PlanSlipStrip (routing counts)                     → the My plans row (L3) and the slip.
- *   TodaysMove (count-derived single move)             → the slip's own status counts / Finish card.
- *   ActionItemsPanel (notification previews)           → Inbox (`/inbox?tab=updates`).
- *   ActiveExpertsPanel                                 → My plans rows and the slip's Expert card.
- *   TopExpertsPanel                                    → Experts (`/experts`).
- *   RecommendedServices                                → Discover / the slip's Build card.
- *   TravelPulsePanel (dark ticker)                     → the home-city block reads the SAME endpoint.
+ *   TodaysMove (count-derived single move)   DELETED   → the slip's own status counts / Finish card.
+ *   ActionItemsPanel (notification previews) DELETED   → Inbox (`/inbox?tab=updates`).
+ *   ActiveExpertsPanel                       DELETED   → My plans rows and the slip's Expert card.
+ *   TopExpertsPanel                          DELETED   → Experts (`/experts`).
+ *   RecommendedServices                      DELETED   → Discover / the slip's Build card.
+ *   TravelPulsePanel (dark ticker)           DELETED   → the home-city block reads the SAME endpoint.
  *   SavedTripsSection / WishlistSection            → Discover (`/destinations`), moved by L11.
+ *
+ * NOT deleted, and the reason: `GET /api/trips/mine/advisors` STAYS. The sweep's brief expected
+ * `ActiveExpertsPanel` to be its only reader; it is not — `client/src/pages/chat.tsx` reads the
+ * same query key to resolve a traveler's active advisors. It is therefore a live endpoint, not a
+ * §18c candidate, and deleting it would have broken chat silently.
  */
 
 interface Notification {

@@ -29,6 +29,7 @@ import { db } from "../db";
 import { adminNotifications, conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages, coordinationStates } from "@shared/schema";
 import { routeConcierge } from "../services/concierge-router.service";
 import { storage } from "../storage";
+import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { chatStorage } from "../replit_integrations/chat/storage";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
@@ -130,6 +131,55 @@ function authorizeConciergeMutation(
   return false;
 }
 
+/**
+ * A `tripId` THAT ARRIVES IN A BODY IS A CLAIM, NOT A FACT — ledger
+ * `2026-09-07-concierge-trip-ownership`; CLAUDE.md §14's identity rule, one table over.
+ *
+ * Both concierge create paths wrote `concierge_requests.trip_id` straight from `req.body` with no
+ * check at all, so a claimed guest request could name any plan on the platform and the row would
+ * carry a linkage nobody verified. That is the same shape §14 forbids for `req.body.userId` on a
+ * money path: the caller chose an identity, and the server stored it.
+ *
+ * ONE HELPER, ONE EXISTING PREDICATE. Ownership is `verifyTripOwnership` (`server/utils/trip-
+ * ownership.ts`) — the shared, fail-closed check every other trip rail already calls (§18 rule 1).
+ * Nothing is re-implemented here; this only decides what an unverifiable claim MEANS.
+ *
+ * §13 — THE THREE ANSWERS ARE DIFFERENT AND ARE KEPT DIFFERENT:
+ *   • No `tripId` at all ⇒ `ok`, value `undefined`. A concierge request that legitimately belongs
+ *     to no plan keeps belonging to none — this lane invents no linkage and mints no trip.
+ *   • A `tripId` the SESSION USER owns ⇒ `ok`, and it is stored.
+ *   • Anything else — a trip that does not exist, one owned by someone else, or one named by a
+ *     caller with NO session at all (a guest cannot own a plan, so nothing about their claim can
+ *     be checked) ⇒ REFUSED. It is never silently dropped and never stored unverified: storing it
+ *     would record a fact nobody established, and dropping it silently would tell the caller their
+ *     plan was linked when it was not.
+ *
+ * The refusal is ONE message for every failing case, deliberately: "exists but is not yours" and
+ * "does not exist" are the same sentence, so the rail cannot be used to probe which trips exist
+ * (the `POST /api/conversations/start` posture, Locked Decision 40).
+ */
+type TripClaim = { ok: true; tripId?: string } | { ok: false };
+
+async function resolveOwnedTripId(
+  tripId: string | undefined,
+  userId: string | null | undefined,
+): Promise<TripClaim> {
+  if (tripId === undefined) return { ok: true };
+  const trimmed = tripId.trim();
+  if (trimmed.length === 0) return { ok: true };
+  if (!userId) return { ok: false };
+  const owns = await verifyTripOwnership(trimmed, userId);
+  return owns ? { ok: true, tripId: trimmed } : { ok: false };
+}
+
+/** The one refusal, so both create paths answer identically. */
+function refuseUnverifiedTrip(res: any) {
+  return res.status(400).json({
+    error: "trip_not_yours",
+    message: "That plan could not be linked to this request.",
+  });
+}
+
 const createRequestSchema = z.object({
   intent: z.string().min(1).max(2000),
   eventType: z.string().max(50).optional(),
@@ -144,13 +194,18 @@ router.post("/api/concierge/requests", async (req, res) => {
     const body = createRequestSchema.parse(req.body);
     const userId = getUserId(req)!;
 
+    // §14 applied to the LINKAGE: the plan is verified against the session user before it is
+    // stored, and refused otherwise — never dropped silently (see `resolveOwnedTripId`).
+    const tripClaim = await resolveOwnedTripId(body.tripId, userId);
+    if (!tripClaim.ok) return refuseUnverifiedTrip(res);
+
     const [row] = await db
       .insert(conciergeRequests)
       .values({
         userId,
         intent: body.intent,
         eventType: body.eventType,
-        tripId: body.tripId,
+        tripId: tripClaim.tripId,
         cartId: body.cartId,
         chosenTier: body.chosenTier,
         status: body.status ?? "draft",
@@ -196,11 +251,16 @@ router.post("/api/concierge/quote", async (req, res) => {
     const body = quoteSchema.parse(req.body);
     const userId = getUserId(req)!;
 
+    // Same verification as the sibling create path, and it runs BEFORE the router call so an
+    // unverifiable plan never reaches the routing decision either.
+    const tripClaim = await resolveOwnedTripId(body.tripId, userId);
+    if (!tripClaim.ok) return refuseUnverifiedTrip(res);
+
     const route = await routeConcierge({
       intent: body.intent,
       destination: body.destination,
       eventType: body.eventType,
-      tripId: body.tripId,
+      tripId: tripClaim.tripId,
       cartId: body.cartId,
     });
 
@@ -210,7 +270,7 @@ router.post("/api/concierge/quote", async (req, res) => {
         userId,
         intent: body.intent,
         eventType: body.eventType,
-        tripId: body.tripId,
+        tripId: tripClaim.tripId,
         cartId: body.cartId,
         status: "quoted",
       })
@@ -332,12 +392,12 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
         if (existing) return existing.id;
 
         // Trip-Canon Lane 2: coordinationStates.tripId deliberately left unset here.
-        // conciergeRequests does carry a tripId column, but it is written straight
-        // from req.body with no ownership verification (out of this lane's scope),
-        // so propagating it into coordination_states would mint an unverified
-        // trip linkage — the exact class of gap this lane closes elsewhere. Leave
-        // null (honest) until conciergeRequests.tripId itself gets an ownership
-        // check of its own.
+        // ITS STATED PRECONDITION IS NOW MET (ledger `2026-09-07-concierge-trip-ownership`):
+        // `concierge_requests.trip_id` is verified against the session user at both create
+        // paths, so it is no longer an unverified claim. PROPAGATING IT IS STILL A SEPARATE
+        // DECISION and is deliberately not taken here — a coordination engagement is the
+        // fee engine's and the coordinator workspace's unit, and giving it a trip changes
+        // what those surfaces address. Left null (honest) until that lane rules on it.
         const state = await storage.createCoordinationState({
           userId: row.userId,
           experienceType: row.eventType || "event",

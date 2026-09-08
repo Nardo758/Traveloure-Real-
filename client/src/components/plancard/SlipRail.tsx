@@ -90,6 +90,7 @@ import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-pl
 import {
   countCheckoutReadyItems,
   slipAdvisorStandingLine,
+  slipOtherAdvisorsLine,
   slipBrowseServicesHref,
   slipBuildAiAction,
   slipCalendarPath,
@@ -680,6 +681,7 @@ function BuildCard({
 function ExpertCard({
   advisor,
   expertState,
+  otherAdvisorsLine,
 }: {
   /**
    * The raw advisor row, for the two DISPLAY facts the rail state deliberately does not carry —
@@ -689,6 +691,11 @@ function ExpertCard({
    */
   advisor: SlipRailAdvisor | null;
   expertState: SlipExpertRailState;
+  /**
+   * D7: the other advisors on this plan, already reduced to ONE sentence by
+   * `slipOtherAdvisorsLine`. Null when there are none — the card then reads exactly as before.
+   */
+  otherAdvisorsLine: string | null;
 }) {
   if (expertState.kind !== "message") return null;
   const storefront = earnerProfilePath({ handle: expertState.handle });
@@ -732,6 +739,15 @@ function ExpertCard({
             href={storefront}
             testId="slip-rail-expert-storefront"
           />
+        )}
+        {/* D7 — every advisor on the plan is named. §13: nothing renders when there is only one. */}
+        {otherAdvisorsLine && (
+          <p
+            className="font-mono text-[10px] leading-snug text-muted-foreground"
+            data-testid="slip-rail-expert-others"
+          >
+            {otherAdvisorsLine}
+          </p>
         )}
         <RailNote testId="slip-rail-expert-message-note">
           Message them from the Build card — it is the one place that conversation opens.
@@ -1236,12 +1252,18 @@ export function SlipRail({
    * only enabled for the owner: the expert viewing this slip IS the advisor and has no need of a
    * card about themself.
    */
-  const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null }>({
+  const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null; advisors?: SlipRailAdvisor[] }>({
     queryKey: [`/api/trips/${tripId}/expert-advisor`],
     enabled: isOwner && !!tripId,
   });
   const advisor = advisorData?.advisor ?? null;
+  // D7 (ledger `2026-09-07-all-advisors-reader`): the reader returns ALL of them. The card
+  // portrays the first — the most recently assigned, which is the server's own named pick — and
+  // `slipOtherAdvisorsLine` names the rest, so a plan with two advisors shows two. An older
+  // server that answers without `advisors` degrades to exactly today's behaviour (§13: an absent
+  // list is "not told", not "there is only one").
   const expertState = slipExpertRailState(advisor);
+  const otherAdvisorsLine = slipOtherAdvisorsLine(advisorData?.advisors);
 
   return (
     /**
@@ -1255,7 +1277,7 @@ export function SlipRail({
      * "Finalize plan" above the plan's own facts.
      */
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="slip-rail">
-      <ExpertCard advisor={advisor} expertState={expertState} />
+      <ExpertCard advisor={advisor} expertState={expertState} otherAdvisorsLine={otherAdvisorsLine} />
       {/* Ledger `2026-09-07-my-events-fold` — renders ONLY when this plan has an engagement, so
           the ruling's order (Expert · Build · Plan · Share · Finish) is unchanged for every plan
           that has none. It sits beside Expert because both answer "who is working on this". */}

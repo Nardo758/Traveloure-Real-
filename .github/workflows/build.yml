@@ -120,9 +120,12 @@ jobs:
       # component has never declared or read — a dead prop carrying that mount's only TS2322.
       # Deleting it removed the error; ZERO new type errors in any file this lane touched.
       # Locked in, same PR.
+      # 131 measured 2026-09-07 (ledger `2026-09-07-orphan-sweep`): deleting the six
+      # importerless dashboard components under §18c removed one error that lived in
+      # one of them. ZERO new type errors in any file batch 3 touched. Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '132'
+          TSC_BASELINE: '131'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -1698,3 +1701,33 @@ jobs:
       # not what it is asked to do — a silently relaxed conservatism rule is the regression.
       - name: Extraction date-anchor pins
         run: npx tsx --test server/__tests__/trip-context-extraction.test.ts
+
+  batch3-bookings-cleanup:
+    name: batch3-bookings-cleanup (L12 · §18c · LD 42 D7 · §14 — 2026-09-07)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # NOT a "Node built-ins only" job: the projection pin imports the server module, which
+      # imports the drizzle schema so its allowlists can be checked against the real tables.
+      - run: npm ci
+      # L12 — bookings grouped by plan, and the row's three references projected through an
+      # allowlist that is checked against the drizzle tables (the third instance of
+      # `2026-09-05-experts-public-projection`). T6 is the one that matters: a hand-copied literal
+      # publishing `users.id` or a rate column would still render perfectly.
+      - name: Bookings-by-plan pins
+        run: npx tsx --test client/src/lib/__tests__/bookings-by-plan.test.ts
+      # LD 42 D7 — the advisor reader returns ALL advisors. A1 pins the absent `LIMIT 1` AND the
+      # shared status allow-list: the old literal omitted `assigned`, an advisor holding §12 WRITE
+      # access, from the response entirely.
+      - name: All-advisors reader pins
+        run: npx tsx --test client/src/lib/__tests__/all-advisors-reader.test.ts
+      # §14's identity rule one table over — a `tripId` in a concierge body is a CLAIM. These are
+      # WIRING pins by design (the resolver reaches the DB through the shared ownership helper):
+      # an edit re-pointing an insert back at `body.tripId` type-checks and stores an unverified
+      # linkage in silence.
+      - name: Concierge trip-ownership pins
+        run: npx tsx --test server/routes/__tests__/concierge-trip-ownership.test.ts

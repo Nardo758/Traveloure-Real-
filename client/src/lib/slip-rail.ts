@@ -255,6 +255,36 @@ export const SLIP_ADVISOR_ADVISING_FALLBACK_NAME = "An expert" as const;
  * Returns `null` when there is NO advisor: that is not a standing, and a caller must render
  * nothing rather than a sentence about an absence.
  */
+/**
+ * THE PEOPLE THE CARD IS NOT ABOUT — Locked Decision 42 **D7**, ledger
+ * `2026-09-07-all-advisors-reader`.
+ *
+ * `GET /api/trips/:id/expert-advisor` now returns EVERY advisor on the plan; `advisor` is the
+ * first (most recently assigned) and is what the Expert card portrays. D7's whole point is that a
+ * plan must not quietly hide the others — several of whom may hold §12 WRITE access — so this
+ * names them in one line beneath that card.
+ *
+ * §13, in both directions:
+ *   • Zero or one advisor ⇒ NULL, and the card renders nothing extra. "1 expert" is not a fact
+ *     worth stating and "no other experts" is a claim nobody asked for.
+ *   • A nameless row is counted but not named — it becomes "1 more expert" rather than being given
+ *     a placeholder name. The COUNT is always the true number of rows after the first, so the
+ *     line can never under-report how many people are on the plan just because one row is thin.
+ */
+export function slipOtherAdvisorsLine(
+  advisors: readonly (SlipRailAdvisor | null | undefined)[] | null | undefined,
+): string | null {
+  const others = (advisors ?? []).slice(1);
+  if (others.length === 0) return null;
+  const named = others.map(slipAdvisorName).filter((n): n is string => !!n);
+  const noun = others.length === 1 ? "expert" : "experts";
+  if (named.length === 0) return `${others.length} more ${noun} on this plan`;
+  if (named.length < others.length) {
+    return `${others.length} more ${noun} on this plan, including ${named.join(", ")}`;
+  }
+  return `Also on this plan: ${named.join(", ")}`;
+}
+
 export function slipAdvisorStandingLine(advisor: SlipRailAdvisor | null | undefined): string | null {
   if (!advisor) return null;
   const name = slipAdvisorName(advisor);
