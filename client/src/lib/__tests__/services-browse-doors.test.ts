@@ -34,7 +34,6 @@ import {
   SERVICES_BROWSE_CATEGORY_PARAM,
   SERVICES_BROWSE_TRIP_PARAM,
   SERVICES_BROWSE_LOCATION_PARAM,
-  SERVICES_BROWSE_UPSELL_SOURCE_PARAM,
 } from "../services-browse";
 import { slipBrowseServicesHref } from "../slip-rail";
 
@@ -45,14 +44,16 @@ test("B1 the builder carries every field, under the names the browse reads", () 
     categoryKey: "florist",
     tripId: "trip-1",
     location: "Kyoto, Japan",
-    upsellSource: "plancard_pretrip",
   });
   const url = new URL(href, "https://example.test");
   assert.equal(url.pathname, "/services");
   assert.equal(url.searchParams.get(SERVICES_BROWSE_CATEGORY_PARAM), "florist");
   assert.equal(url.searchParams.get(SERVICES_BROWSE_TRIP_PARAM), "trip-1");
   assert.equal(url.searchParams.get(SERVICES_BROWSE_LOCATION_PARAM), "Kyoto, Japan");
-  assert.equal(url.searchParams.get(SERVICES_BROWSE_UPSELL_SOURCE_PARAM), "plancard_pretrip");
+  // `upsellSource` was RETIRED under §18c (ledger `2026-09-08-recorded-cleanups`) — it was
+  // write-only attribution with no reader anywhere. Asserted as an ABSENCE, so a lane that puts the
+  // string back has to give it a reader and amend this line rather than quietly re-adding a param.
+  assert.equal(url.searchParams.get("upsellSource"), null);
 });
 
 test("B2 §13 — an absent, blank or non-string field is DROPPED, never sent as a placeholder", () => {

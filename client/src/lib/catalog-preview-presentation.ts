@@ -65,7 +65,15 @@ export interface PreviewCta {
 
 /** `bookingMode` is resolved server-side to a concrete value for an owner's own read
  *  (never null in practice); `?? "instant"` only covers a row this helper is handed before
- *  that resolution lands, mirroring the same default the shared OfferingCard used. */
+ *  that resolution lands, mirroring the same default the shared OfferingCard used.
+ *
+ *  ld23-buy-action-gap: this is a THIRD author of the buy button, and ruling 9 (lane L23) says
+ *  there should be exactly one — `resolveBuyAction` (`shared/buy-action.ts`). It is NOT repointed
+ *  here, for a reason particular to this surface: that resolver answers for a ROW **and a BUYER**,
+ *  and this is the OWNER previewing their OWN card. An owner is not the buyer, the provider
+ *  Catalog read ships no `buyAction`, and inventing a guest buyer to obtain a label would make the
+ *  preview a claim about somebody who is not looking at it — the same reason `loadStorefront`
+ *  refuses to resolve a buy action for a caller with no buyer (§13). Recorded as the finding. */
 export function deriveBookingCta(bookingMode?: "instant" | "request" | "hidden" | null): PreviewCta | null {
   const mode = bookingMode ?? "instant";
   if (mode === "hidden") return null;

@@ -1511,4 +1511,11 @@ export const MIGRATION_FILES = [
   // nothing to fail on. Registered as a REPAIR in `scripts/lib/taxonomy-registry.cjs`
   // (`TAXONOMY_REPAIRS`), which is what keeps it from reading as a second claim on 034's keys.
   "289_reconcile_service_category_keys.sql",
+  // Ledger `2026-09-08-conversation-trip-id` (CLAUDE.md Locked Decision 45 (1); Console & AI
+  // Concierge brief lane L15): `conversations.trip_id` — one additive NULLABLE FK
+  // (`ON DELETE SET NULL`) plus its index, so an AI thread can belong to a plan. NO CHECK and NO
+  // DEFAULT (publish-trap posture), and NO backfill: NULL is the honest "belongs to no plan", which
+  // is the ordinary pre-mint case (§13). Column AND index are declared in `shared/models/chat.ts`
+  // (which `shared/schema.ts` re-exports) in the same commit — the deploy-push durability rule.
+  "290_conversations_trip_id.sql",
 ] as const;

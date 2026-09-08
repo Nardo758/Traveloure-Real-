@@ -6023,7 +6023,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return {
           ...booking,
           service: service && revealJoinLink ? { ...service, joinLink: rawService!.joinLink ?? null } : service,
-          provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
+          // §14's third instance (ledger `2026-09-05-experts-public-projection`, applied here by
+          // `2026-09-08-recorded-cleanups`): the provider object was HAND-COMPOSED, and one of the
+          // four keys it named — `profileImage` — is NOT a `users` column at all (the column is
+          // `profileImageUrl`), so it shipped as `undefined` for this route's whole life. That is
+          // exactly what a hand-copied literal buys: nothing checks it. It now goes through the
+          // SHARED projector (§18 rule 1), whose allowlist is verified against the drizzle table at
+          // module load, so a non-column throws on boot instead of shipping an always-absent key.
+          // Two consequences, both deliberate: the real avatar column is published (this route had
+          // never managed to), and `users.id` is NOT (Locked Decision 40 — an id is internal; the
+          // one client reader of this list uses it only for the service's join link, and My
+          // Bookings already renders providers from `GET /api/my-bookings`, the same projector).
+          // §13: a booking whose provider account is gone stays `null`, never an empty object.
+          provider: toBookingProvider(provider),
         };
       }));
       res.json(enrichedBookings);

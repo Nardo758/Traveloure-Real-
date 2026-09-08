@@ -897,16 +897,31 @@ test.describe('city-feed bento — /discover/location', () => {
   test('12. platform rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
     // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
     // the services surface opens scoped to where the traveller was browsing, not a
-    // bare catalog. It navigates to /services?categoryKey=…&location=<city>&upsellSource=…
+    // bare catalog. It navigates to /services?categoryKey=…&location=<city>.
     // The click also fires the (now-validating) upsell click beacon, mocked in
     // mockBentoEndpoints so it never 400s the test.
     // The platform_provider candidate is rank 1 post-sunset (see test 9).
+    //
+    // THE RULE THIS CASE EXISTS FOR is Locked Decision 42 **D13**: a door passes what it HOLDS,
+    // and only what is TRUE. This assertion set is therefore stated in both directions — the
+    // fields the city feed holds are forwarded, and the fields it does NOT hold are absent, which
+    // is how the browse is told "not known" rather than handed a placeholder (§13).
     await page.getByTestId('btn-book-rec-1').click();
     await expect.poll(() => page.url(), { timeout: 10_000 }).toContain('/services?');
     const url = new URL(page.url());
+    // HELD ⇒ forwarded.
     expect(url.searchParams.get('location')).toBe('Kyoto');
     expect(url.searchParams.get('categoryKey')).toBeTruthy();
-    expect(url.searchParams.get('upsellSource')).toBe('discover_location');
+    // NOT HELD ⇒ absent. This page is a city feed and holds no plan; it never reads one off the
+    // URL and never resolves one, so passing an inferred "probably active" plan would file an add
+    // against a plan the traveller did not choose on this screen (§13, the door's own note).
+    expect(url.searchParams.get('tripId')).toBeNull();
+    // RETIRED ⇒ absent. `upsellSource` was write-only attribution: two doors set it, the one href
+    // builder emitted it, and NOTHING in `client/` or `server/` ever read it, so it was deleted
+    // under §18c (ledger `2026-09-08-recorded-cleanups`). Asserted as an absence rather than
+    // dropped, so a lane that puts the string back has to give it a READER first and amend this
+    // line — the same shape the unit pin takes (`services-browse-doors.test.ts` B1).
+    expect(url.searchParams.get('upsellSource')).toBeNull();
   });
 
   test('13. gem byline + Ask targeting — attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
