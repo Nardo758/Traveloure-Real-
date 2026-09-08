@@ -57,15 +57,13 @@ export const SERVICES_BROWSE_TRIP_PARAM = "tripId" as const;
  */
 export const SERVICES_BROWSE_LOCATION_PARAM = "location" as const;
 
-/**
- * Write-only ATTRIBUTION on the upsell navigations, named so its spelling is stated once.
- *
- * §13, stated rather than tidied: **nothing in `client/` or `server/` reads this param today** —
- * it rides the URL for referrer-level attribution only. It is preserved verbatim (this lane
- * changed no attribution behaviour) and recorded here as a §18c candidate for a lane that owns
- * the upsell rail, not deleted as a side effect of a door fix.
- */
-export const SERVICES_BROWSE_UPSELL_SOURCE_PARAM = "upsellSource" as const;
+// RETIRED (§18c, ledger `2026-09-08-recorded-cleanups`): `SERVICES_BROWSE_UPSELL_SOURCE_PARAM`
+// / `upsellSource` was write-only ATTRIBUTION — two doors set it, the builder emitted it, and
+// NOTHING in `client/` or `server/` ever read it. The door lane that found it preserved it verbatim
+// and recorded it as a §18c candidate rather than deleting it as a side effect; this lane re-proved
+// the absence of a reader and deleted it. A param nobody reads is indistinguishable, on the wire,
+// from one the page silently ignores — which is the exact shape §18c refuses. Reinstating upsell
+// attribution means giving it a READER first (a server-side record), not putting the string back.
 
 /** Trim without inventing: a non-string is not a value. */
 function trimmed(value: unknown): string {
@@ -80,8 +78,6 @@ export interface ServicesBrowseTarget {
   tripId?: string | null;
   /** The city to pre-fill the "where" filter with — the PLAN's own, never a placeholder. */
   location?: string | null;
-  /** Upsell attribution; see the param's own note. */
-  upsellSource?: string | null;
 }
 
 /**
@@ -99,7 +95,6 @@ export function buildServicesBrowseHref(target: ServicesBrowseTarget): string {
     [SERVICES_BROWSE_CATEGORY_PARAM, target.categoryKey],
     [SERVICES_BROWSE_TRIP_PARAM, target.tripId],
     [SERVICES_BROWSE_LOCATION_PARAM, target.location],
-    [SERVICES_BROWSE_UPSELL_SOURCE_PARAM, target.upsellSource],
   ];
   for (const [name, raw] of pairs) {
     const value = trimmed(raw);

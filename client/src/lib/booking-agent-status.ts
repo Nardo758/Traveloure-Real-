@@ -16,10 +16,11 @@
  *   `confirmed` the agent's PATCH — with or WITHOUT a `confirmationRef`
  *   `failed`    the agent's PATCH — which LD 44 names as the bucket that CONFLATES a question
  *               (flagged) with the partner's answer (unavailable)
- * LD 44 phase 0 (the status vocabulary) has NOT landed on `main` at the time of this lane, so no
- * row carries a ruled value yet. This map is the reader's EXPLICIT mapping of the legacy four —
- * "readers map the legacy four explicitly and say so" — and the day phase 0 lands, the ruled
- * values pass through by name.
+ * LD 44 phase 0 landed with ledger `2026-09-08-agent-phase-zero`: the value set and the
+ * human-write allowlist now live in `shared/booking-agent-vocabulary.ts`, which the PATCH rail
+ * enforces. It added NO migration and NO backfill, so rows written before it still carry the
+ * legacy four. This map is the reader's EXPLICIT mapping of those four — "readers map the legacy
+ * four explicitly and say so" — while a ruled value passes through by name.
  *
  * §13 — WHAT IS NOT CLAIMED. `assigned` is NOT rendered as "researching": researching is a copilot
  * verb and the row records a human assignment. `confirmed` without a confirmation reference is
@@ -29,16 +30,19 @@
  * `unknown` key rather than folded into the nearest-looking ruled state.
  */
 
+import {
+  isRuledBookingAgentStatus,
+  type RuledBookingAgentStatus,
+} from "@shared/booking-agent-vocabulary";
+
+/**
+ * The ruled nine come FROM the vocabulary module (`shared/booking-agent-vocabulary.ts`, LD 44
+ * phase 0) rather than being restated here — one value set, two readers (§18 rule 1). The two
+ * `_legacy` stages and `unknown` are this reader's own, because they are reading positions rather
+ * than storable values: nothing ever writes them.
+ */
 export type BookingAgentStage =
-  | "received"
-  | "researching"
-  | "ready_to_buy"
-  | "purchased_by_human"
-  | "purchased_by_traveler"
-  | "purchased_by_api"
-  | "confirmed"
-  | "flagged"
-  | "unavailable"
+  | RuledBookingAgentStatus
   /** Legacy `assigned`: a human agent holds it; no ruled equivalent without inventing a verb. */
   | "assigned_legacy"
   /** Legacy `failed`: flagged OR unavailable, and the row cannot say which. */
@@ -89,17 +93,14 @@ export function readBookingAgentStatus(row: BookingAgentStatusRow): BookingAgent
         : { stage: "purchased_by_human", label: RULED_LABELS.purchased_by_human, ruled: true };
     case "failed":
       return { stage: "failed_legacy", label: "Couldn't be booked", ruled: false };
-    // ── the ruled values, passed through by name once phase 0 writes them ─────────────────────
-    case "received":
-    case "researching":
-    case "ready_to_buy":
-    case "purchased_by_human":
-    case "purchased_by_traveler":
-    case "purchased_by_api":
-    case "flagged":
-    case "unavailable":
-      return { stage: raw, label: RULED_LABELS[raw], ruled: true };
     default:
+      // ── the ruled values, passed through by name once phase 0 writes them ───────────────────
+      // The membership test is the SHARED one, so a value added to the vocabulary is readable here
+      // without a second list to remember (§18 rule 1). `confirmed` never reaches this arm — it is
+      // handled above, where the confirmation reference decides what it means.
+      if (isRuledBookingAgentStatus(raw) && raw !== "confirmed") {
+        return { stage: raw, label: RULED_LABELS[raw], ruled: true };
+      }
       // §13: an unrecognised value is shown as itself, never as the nearest ruled state. An EMPTY
       // status is "unknown" too — a row with no status is not "received".
       return { stage: "unknown", label: raw.length > 0 ? raw : "Status not recorded", ruled: false };

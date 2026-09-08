@@ -5,7 +5,13 @@ import { eq, and, desc } from "drizzle-orm";
 export interface IChatStorage {
   getConversation(id: number, userId?: string): Promise<typeof conversations.$inferSelect | undefined>;
   getAllConversations(userId?: string): Promise<(typeof conversations.$inferSelect)[]>;
-  createConversation(title: string, userId?: string): Promise<typeof conversations.$inferSelect>;
+  /**
+   * `tripId` is the LD 45 (1) plan link (migration 290). It arrives ALREADY RESOLVED — the caller
+   * has run `resolveConversationTripLink` against the session user — so this writer never verifies
+   * ownership itself and never accepts a raw body value. `null`/absent = the conversation belongs
+   * to no plan, which is the ordinary pre-mint case and is never guessed (§13).
+   */
+  createConversation(title: string, userId?: string, tripId?: string | null): Promise<typeof conversations.$inferSelect>;
   renameConversation(id: number, title: string, userId?: string): Promise<typeof conversations.$inferSelect | undefined>;
   deleteConversation(id: number, userId?: string): Promise<void>;
   getMessagesByConversation(conversationId: number): Promise<(typeof messages.$inferSelect)[]>;
@@ -27,8 +33,11 @@ export const chatStorage: IChatStorage = {
     return db.select().from(conversations).orderBy(desc(conversations.createdAt));
   },
 
-  async createConversation(title: string, userId?: string) {
-    const [conversation] = await db.insert(conversations).values({ title, userId }).returning();
+  async createConversation(title: string, userId?: string, tripId?: string | null) {
+    const [conversation] = await db
+      .insert(conversations)
+      .values({ title, userId, tripId: tripId ?? null })
+      .returning();
     return conversation;
   },
 

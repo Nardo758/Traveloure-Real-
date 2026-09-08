@@ -223,8 +223,9 @@ export function UpsellSlot({
    * THE DOOR PASSES THE PLAN IT IS STANDING ON (lane L22, ledger
    * `2026-09-07-doors-pass-tripid`; CLAUDE.md Locked Decision 42 **D13**, Locked Decision 39).
    *
-   * THE DEFECT (brief §11.3 F6/F9). This navigated to `/services?categoryKey=…&upsellSource=…`
-   * and nothing else — while the component was already holding the `tripId` it fetches its own
+   * THE DEFECT (brief §11.3 F6/F9). This navigated to `/services?categoryKey=…` plus a write-only
+   * `upsellSource` (since RETIRED under §18c — ledger `2026-09-08-recorded-cleanups` — because
+   * nothing ever read it) and nothing else — while the component was already holding the `tripId` it fetches its own
    * candidates with. So an upsell explored from a plan arrived at a browse that had never heard of
    * that plan: its Add to plan fell through to the trip-less guest cart, and its "where" filter
    * fell back to the client pen, which may describe a different plan entirely.
@@ -243,7 +244,6 @@ export function UpsellSlot({
         categoryKey: c.categoryKey,
         tripId,
         location: destination,
-        upsellSource: surface,
       }),
     );
   };
