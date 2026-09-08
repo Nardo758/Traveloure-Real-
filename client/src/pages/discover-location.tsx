@@ -6,6 +6,7 @@ import { NAV_LEAF_ICONS } from "@/components/layout";
 // L1 / LD 45 (7): the page's chrome is the console shell for a signed-in
 // traveler, the public Layout for a guest — one chooser, never per-page.
 import { BrowseShell } from "@/components/browse-shell";
+import { buildServicesBrowseHref } from "@/lib/services-browse";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
@@ -1823,10 +1824,22 @@ export default function DiscoverLocationPage() {
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
     // Carry the FEED's city into the services surface as `location` (the param the
-    // /services page filters on — discover.tsx:772). Without it, Book-now dropped
-    // which city the traveller was browsing and landed on an un-scoped catalog.
+    // /services page filters on). Without it, Book-now dropped which city the traveller was
+    // browsing and landed on an un-scoped catalog.
+    //
+    // Built by the ONE `/services` URL builder (lane L22, ledger `2026-09-07-doors-pass-tripid`;
+    // §18 rule 1) — this was the last surface hand-assembling that query string beside the two
+    // names `services-browse.ts` already owned.
+    //
+    // §13 — IT PASSES NO `tripId`, DELIBERATELY. This page is a city feed and holds no plan: it
+    // never reads one off the URL and never resolves one. Passing an inferred "probably active"
+    // plan here would file an add against a plan the traveller did not choose on this screen.
     navigate(
-      `/services?categoryKey=${encodeURIComponent(c.categoryKey)}&location=${encodeURIComponent(city)}&upsellSource=${upsellSurface}`,
+      buildServicesBrowseHref({
+        categoryKey: c.categoryKey,
+        location: city,
+        upsellSource: upsellSurface,
+      }),
     );
   };
 

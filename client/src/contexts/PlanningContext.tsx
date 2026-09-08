@@ -58,6 +58,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { updateTripContext, useTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
+// The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
+import { earnerProfilePath } from "@/lib/earner-address";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
 
@@ -107,6 +109,27 @@ export interface PlanningSource {
    * surface yet; when one is built it passes `authoring: true` here and needs nothing else.
    */
   authoring?: boolean;
+  /**
+   * RETURN-TO CONTEXT (lane L22, ledger `2026-09-07-doors-pass-tripid`; CLAUDE.md Locked
+   * Decision 42 **D15**).
+   *
+   * "A plan started from a listing ends back at that listing." A traveler who starts a plan from
+   * an earner's storefront and finishes with "plan with a local" was dropped into a `/experts`
+   * BROWSE — sent to look for the person whose page they were already standing on. This is the
+   * context the door already holds, so under **D13** it is passed rather than reconstructed.
+   *
+   * IT IS A RETURN ADDRESS AND GRANTS NOTHING. It authorizes no add, no hire and no read; every
+   * downstream gate is unchanged. An expert is addressed the way Locked Decision 40 requires —
+   * **by HANDLE**, never by a bare `users.id` — and the path is resolved by `earnerProfilePath`,
+   * the ONE module that decides where an earner's public page lives (§18 rule 1).
+   *
+   * §13 — A DOOR PASSES ONLY WHAT IS TRUE. A page with no claimed handle in hand passes NOTHING
+   * and the finish behaves exactly as it does today. The `service` kind is declared here because
+   * D15 rules both halves in one sentence and a partial type would invite a second one; **its
+   * finish is NOT built in this lane** and the `local` rail below reads only the `expert` kind, so
+   * a `service` return address is inert rather than silently mishandled.
+   */
+  returnTo?: { kind: "expert"; handle: string } | { kind: "service"; id: string };
   /**
    * THE DOOR'S OWN FINISH (ledger `2026-09-07-concierge-door`, CLAUDE.md Locked Decision 45 (2)).
    *
@@ -285,6 +308,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (branch === "local") {
+        // D15 (lane L22): a plan started FROM an expert ends back at that expert, rather than in
+        // a browse for the person whose page the traveler was already on. Addressed by HANDLE
+        // (Locked Decision 40) through `earnerProfilePath`, the ONE resolver of an earner's
+        // public path — a second `/s/${handle}` written here is the drift class §18 rule 1 names.
+        // §13: only the `expert` kind is read; a door that named nothing, or named a `service`
+        // (whose finish D15 rules but this lane does not build), falls through to exactly the
+        // browse this branch has always shown.
+        if (source?.returnTo?.kind === "expert") {
+          const path = earnerProfilePath({ handle: source.returnTo.handle });
+          if (path) {
+            setLocation(path);
+            return;
+          }
+        }
         const dest = plan.destination || sourceDestination(source);
         setLocation(dest ? `/experts?destination=${encodeURIComponent(dest)}` : "/experts");
         return;

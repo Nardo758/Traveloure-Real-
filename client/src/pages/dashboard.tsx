@@ -5,8 +5,6 @@ import { Loader2, Plus, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
-import { WishlistSection } from "@/components/dashboard/WishlistSection";
 import { WhileYouWereAway } from "@/components/dashboard/WhileYouWereAway";
 import { ComingUp, useUpcoming } from "@/components/dashboard/ComingUp";
 import { HomeCity } from "@/components/dashboard/HomeCity";
@@ -40,7 +38,7 @@ import { greetingSentence } from "@/lib/home-time-axis";
  *   TopExpertsPanel                                    → Experts (`/experts`).
  *   RecommendedServices                                → Discover / the slip's Build card.
  *   TravelPulsePanel (dark ticker)                     → the home-city block reads the SAME endpoint.
- *   SavedTripsSection / WishlistSection STAY for now — saved places move to Discover under L11.
+ *   SavedTripsSection / WishlistSection            → Discover (`/destinations`), moved by L11.
  */
 
 interface Notification {
@@ -141,9 +139,9 @@ export default function Dashboard() {
               <StartTiles onNewPlan={() => setIntakeOpen(true)} />
             </div>
 
-            {/* Saved places stay here until L11 moves them to Discover. */}
-            <SavedTripsSection />
-            <WishlistSection />
+            {/* Saved places LEFT this page with lane L11 (ledger `2026-09-07-discover-in-shell`)
+                — they render on Discover's Destinations surface now. Home owns the TIME AXIS and
+                nothing else (Locked Decision 45 (8)). */}
           </div>
 
           {/* RIGHT rail */}

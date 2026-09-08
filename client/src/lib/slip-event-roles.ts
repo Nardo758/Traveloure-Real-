@@ -107,3 +107,35 @@ export function slipEventRoleChips(
   }
   return chips;
 }
+
+/**
+ * THE SAME QUESTION, ASKED FOR A WHOLE PLAN (lane L11, ledger `2026-09-07-discover-in-shell`).
+ *
+ * Discover's "For your plan" strip asks D6's EVENT-level question across every event the plan
+ * holds at once: a traveler browsing with a `?tripId=` on the URL is shown the disciplines their
+ * plan's occasions actually ask for. It is the SAME derivation, not a second one — the keys are
+ * flattened in the server's own event order and handed to `slipEventRoleChips`, which already owns
+ * the trim, the de-duplication and the href (§18 rule 1). A separate "plan roles" builder beside it
+ * is how one surface would start showing a role the other one hides.
+ *
+ * §13 — every one of: no events, events with NULL `rolesNeeded`, `[]`, and a list of blanks
+ * produces the SAME empty list, and the caller must then render NOTHING. Locked Decision 31 is
+ * explicit that NULL is NOT SET and never "this occasion needs nobody". Nothing here reconstructs a
+ * role from a destination, a title or an occasion slug, and no supply claim is made: a chip names a
+ * DISCIPLINE, and whether anyone is listed in it in this market is the browse's own answer.
+ *
+ * Order is the caller's event order (the server's, `event_date ASC NULLS LAST`) and then the
+ * seeder's within each event — re-sorting would be this surface inventing a priority.
+ */
+export function planRoleChips(
+  events: readonly { rolesNeeded?: readonly string[] | null }[] | null | undefined,
+  tripId?: string | null,
+): SlipEventRoleChip[] {
+  if (!Array.isArray(events)) return [];
+  const flattened: string[] = [];
+  for (const event of events) {
+    const roles = event?.rolesNeeded;
+    if (Array.isArray(roles)) flattened.push(...(roles as string[]));
+  }
+  return slipEventRoleChips(flattened, tripId);
+}

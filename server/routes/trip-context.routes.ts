@@ -22,6 +22,15 @@ import { aiRateLimit } from "../middleware/rateLimiter";
 // destinations service so this route pulls in no database at import time.
 import { MAX_TRIP_DESTINATIONS } from "../services/trip-destinations.pure";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
+// THE PROMPT AND THE PAST-DATE RULE LIVE IN ONE PURE MODULE (lane L21, ledger
+// `2026-09-07-extraction-date-anchor`; brief §11.2 F5). It used to be a module-level constant
+// here with NO reference point for "now", so "March 10-14" came back as 2025 and the panel wrote a
+// plan tagged PAST. The anchor is a fact the server holds; the withhold rule is what keeps the
+// improved guess from being trusted as truth (§13). Both are provable in CI with no model call.
+import {
+  buildExtractionSystemPrompt,
+  withholdPastDates,
+} from "../services/trip-context-extraction";
 
 /**
  * TripContext server persistence (migration 130, Trip-Strip program P2/E2; re-keyed by
@@ -324,18 +333,6 @@ const extractedFieldsSchema = z.object({
 });
 export type ExtractedTripFields = z.infer<typeof extractedFieldsSchema>;
 
-const EXTRACTION_SYSTEM_PROMPT = `You extract trip-planning facts from a travel-planning chat transcript. You are strictly conservative.
-
-Rules:
-- Extract a field ONLY if the traveler (the "user" role) explicitly stated it in their own words.
-- NEVER guess, infer, assume, or fill in a typical/default value. An assistant suggestion the user has not agreed to is NOT established.
-- If a field was not clearly and explicitly stated by the user, its value MUST be null.
-- "eventType" must be null unless one of these exact values clearly applies: ${eventTypeEnum.join(", ")}.
-- "startDate"/"endDate" must be null unless the user gave (or clearly confirmed) an actual calendar date; convert to YYYY-MM-DD. Do not compute a date from a vague phrase like "next month" or "in the summer".
-- "travelers" must be null unless the user stated a specific headcount.
-
-Respond with ONLY a JSON object, no other text, in this exact shape:
-{"destination": string|null, "startDate": string|null, "endDate": string|null, "travelers": number|null, "eventType": string|null}`;
 
 function parseExtractionJson(raw: string): ExtractedTripFields | null {
   try {
@@ -382,11 +379,15 @@ router.post("/api/trip-context/extract", aiRateLimit, isAuthenticated, async (re
       .join("\n\n")
       .slice(0, 12_000); // best-effort cap; extraction degrades gracefully on very long chats
 
+    // ONE reading of the clock for this request (lane L21).
+    const extractionNow = new Date();
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 300,
-      system: EXTRACTION_SYSTEM_PROMPT,
+      // The anchor is resolved ONCE per request and reused by the withhold pass below, so the
+      // prompt and the filter can never disagree about which day "today" was (§18 rule 1).
+      system: buildExtractionSystemPrompt(extractionNow, eventTypeEnum),
       messages: [{ role: "user", content: `Transcript:\n\n${transcript}` }],
     });
 
@@ -414,11 +415,19 @@ router.post("/api/trip-context/extract", aiRateLimit, isAuthenticated, async (re
     }
 
     // Strip nulls so the response only carries fields that were actually established.
-    const fields: Record<string, unknown> = {};
+    const established: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(extracted)) {
-      if (value !== null) fields[key] = value;
+      if (value !== null) established[key] = value;
     }
-    res.json({ fields });
+
+    // A DATE THAT STILL RESOLVES TO THE PAST IS ASKED ABOUT, NEVER KEPT (lane L21, §13). The
+    // anchor makes the model's guess better; it does not make it true, and a plan silently tagged
+    // as being in the past is exactly the failure this endpoint's own conservatism rules exist to
+    // prevent. The withheld value is reported back verbatim so the surface can ASK the traveler —
+    // it is never repaired here, because moving "2025-03-10" to "2026-03-10" would be the server
+    // inventing the year the model already invented, one layer further from anyone who could see.
+    const { fields, withheld } = withholdPastDates(established, extractionNow);
+    res.json(withheld.length > 0 ? { fields, withheld } : { fields });
   } catch (err) {
     console.error("[TripContext] extract failed:", err);
     // Best-effort: a scoring/extraction failure must never block the chat (§13 pattern).

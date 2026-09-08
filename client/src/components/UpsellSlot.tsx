@@ -19,6 +19,8 @@ import { useLocation } from "wouter";
 import { Sparkles, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
+// The `/services` browse URL contract, stated once and imported by both ends (§18 rule 1).
+import { buildServicesBrowseHref } from "@/lib/services-browse";
 
 export type UpsellSurface =
   | "plancard_pretrip"
@@ -52,6 +54,15 @@ export interface SlotResult {
 interface UpsellSlotProps {
   surface: UpsellSurface;
   tripId?: string;
+  /**
+   * The plan's own destination, when the mounting surface holds one (lane L22, ledger
+   * `2026-09-07-doors-pass-tripid`; CLAUDE.md Locked Decision 42 **D13** — a door passes what it
+   * holds). It rides onto the browse's "where" filter so an upsell explored from a plan is not
+   * shown the whole world. **§13: a surface that does not hold a destination passes NOTHING** —
+   * the cart and checkout slots pass neither this nor a `tripId`, and the browse is then told
+   * honestly that neither is known rather than being handed a placeholder.
+   */
+  destination?: string | null;
   contextPayload?: Record<string, unknown>;
   maxItems?: number;
   heading?: string;
@@ -177,6 +188,7 @@ export function useUpsellSlot(
 export function UpsellSlot({
   surface,
   tripId,
+  destination,
   contextPayload,
   maxItems,
   heading,
@@ -207,9 +219,33 @@ export function UpsellSlot({
 
   const label = heading ?? DEFAULT_HEADING[surface];
 
+  /**
+   * THE DOOR PASSES THE PLAN IT IS STANDING ON (lane L22, ledger
+   * `2026-09-07-doors-pass-tripid`; CLAUDE.md Locked Decision 42 **D13**, Locked Decision 39).
+   *
+   * THE DEFECT (brief §11.3 F6/F9). This navigated to `/services?categoryKey=…&upsellSource=…`
+   * and nothing else — while the component was already holding the `tripId` it fetches its own
+   * candidates with. So an upsell explored from a plan arrived at a browse that had never heard of
+   * that plan: its Add to plan fell through to the trip-less guest cart, and its "where" filter
+   * fell back to the client pen, which may describe a different plan entirely.
+   *
+   * The href is built by the ONE builder both ends of this contract import (§18 rule 1) — a second
+   * hand-assembled query string here is how a link starts carrying a param the page ignores, which
+   * renders as a perfectly ordinary unfiltered browse with nothing to give it away.
+   *
+   * §13: `tripId` and `destination` are dropped when absent. The cart and checkout slots hold
+   * neither, and pass neither — an absent param is how the browse is told "not known".
+   */
   const handleExplore = (c: UpsellCandidate) => {
     logClick(c.offeringId);
-    navigate(`/services?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
+    navigate(
+      buildServicesBrowseHref({
+        categoryKey: c.categoryKey,
+        tripId,
+        location: destination,
+        upsellSource: surface,
+      }),
+    );
   };
 
   return (

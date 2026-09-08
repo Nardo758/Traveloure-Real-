@@ -165,11 +165,13 @@ const REQUIRED_SOURCE_FIELDS = [
   },
   {
     file: "client/src/pages/storefront.tsx",
-    require: [],
+    // D15 (lane L22, ledger `2026-09-07-doors-pass-tripid`): the page IS an earner, so a plan
+    // started here carries the return address back to them. Addressed by handle (LD 40).
+    require: ["returnTo"],
     // resolveEarnerLocation prefers the admin-managed NEIGHBOURHOOD assignment and returns
     // "<neighbourhood>, <city>", so earner.location is not reliably a city.
     forbid: ["city", "destination"],
-    why: "earner.location is a neighbourhood as often as a city (§13)",
+    why: "the page IS this earner (D15 return address), and earner.location is a neighbourhood as often as a city (§13)",
   },
   // Ledger `2026-09-07-home-honesty` (L2). Home's TWO create doors — the "New experience" CTA
   // tile and the empty-state "Create Your First Plan" button — both open the ONE IntakePanel.
@@ -350,8 +352,88 @@ function checkEntryShapes(files) {
  * door?" and "does that door pass what it holds?" are two halves of one question, and splitting
  * them would give a surface two places to be listed and one place to be forgotten (§18 rule 1).
  */
+// ── D13, THE OTHER KIND OF DOOR: A BROWSE NAVIGATION ─────────────────────────────────────────
+//
+// Lane L22, ledger `2026-09-07-doors-pass-tripid`; Locked Decision 42 **D13**, Locked Decision 39,
+// §18 rule 1. `REQUIRED_SOURCE_FIELDS` above checks doors into the PLANNING MODAL, and its whole
+// predicate is the `usePlanning()` opener call. A door into the SERVICES BROWSE is the same
+// ruling wearing different punctuation — it hands its context over on a URL instead of in an
+// object — and nothing checked it, which is how `UpsellSlot` navigated to
+// `/services?categoryKey=…&upsellSource=…` while holding the `tripId` it had just fetched its own
+// candidates with. The traveler's Add to plan then fell through to the trip-less guest cart.
+//
+// THE PREDICATE IS STRUCTURAL, and deliberately so: a surface listed here must build that URL
+// through the ONE builder (`buildServicesBrowseHref` in `client/src/lib/services-browse.ts`) and
+// must NOT hand-assemble a `/services?` query string of its own. Checking the builder rather than
+// the individual params is what makes it durable — a param added to the contract is then carried
+// by every listed door at once, and the failure this replaces (a link carrying a param the page
+// spells differently) renders as a perfectly ordinary UNFILTERED browse with nothing to give it
+// away.
+//
+// STATED NEGATIVE SPACE (§18d), and it is the load-bearing half. This CANNOT see whether a door
+// passed the tripId it HELD — only whether it went through the builder that would carry one. A
+// surface that calls the builder with an empty object passes this check. That is the same limit
+// D13 states for the modal list: the guard sees what a door passes, never what the page knows,
+// and a surface absent from this list is UNCHECKED, not exonerated.
+const SERVICES_BROWSE_DOORS = [
+  {
+    file: "client/src/components/UpsellSlot.tsx",
+    why: "the slot already holds the plan's id and destination; its Explore navigation dropped both (F6/F9)",
+  },
+  {
+    file: "client/src/pages/discover-location.tsx",
+    why: "the city feed's Book-now hand-assembled the same query string beside the builder that owns it",
+  },
+  {
+    file: "client/src/lib/slip-rail.ts",
+    why: "'Browse services for this trip' is the door the contract was written for",
+  },
+];
+
+/** A hand-assembled `/services?` query string — the shape the ONE builder exists to replace. */
+const HAND_ASSEMBLED_BROWSE = /["'`]\/services\?[A-Za-z]/;
+
+/**
+ * Comments removed, so PROSE about the retired shape is not read as the shape itself.
+ *
+ * The files this predicate guards DOCUMENT the URL they used to assemble — that is the record of
+ * why the builder exists — and a guard that failed on its own explanation would push the author to
+ * delete the explanation. Blunt on purpose: a `//` inside a string literal is stripped too, which
+ * can only ever make this predicate MISS a violation, never invent one (§18d — it fails open on
+ * its own imprecision, and the pair of `--self-test` fixtures below pins both directions).
+ */
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+function checkServicesBrowseDoors(files) {
+  const errors = [];
+  for (const door of SERVICES_BROWSE_DOORS) {
+    const src = files[door.file];
+    if (src === undefined) {
+      errors.push(`${door.file} is listed in SERVICES_BROWSE_DOORS but does not exist. If it moved, update the list.`);
+      continue;
+    }
+    if (!/\bbuildServicesBrowseHref\s*\(|\bservicesBrowseHref\s*\(/.test(src)) {
+      errors.push(
+        `${door.file} navigates to the services browse without the ONE builder — ${door.why}. ` +
+        `Locked Decision 42 (D13) + §18 rule 1: build the href with buildServicesBrowseHref so the ` +
+        `link and the page cannot disagree about a param name.`,
+      );
+    }
+    if (HAND_ASSEMBLED_BROWSE.test(stripComments(src))) {
+      errors.push(
+        `${door.file} hand-assembles a \`/services?…\` query string — ${door.why}. ` +
+        `A second spelling of that contract renders as an ordinary UNFILTERED browse with no error ` +
+        `to show for it (§18 rule 1). Use buildServicesBrowseHref.`,
+      );
+    }
+  }
+  return errors;
+}
+
 function check(files) {
-  return [...checkEntryShapes(files), ...checkSourceFields(files)];
+  return [...checkEntryShapes(files), ...checkSourceFields(files), ...checkServicesBrowseDoors(files)];
 }
 
 // ── committed self-test fixtures (§18d) ────────────────────────────────────────────────────────
@@ -437,6 +519,9 @@ function selfTest() {
     'onClick={() => openPlanner({ destination, experienceType: eventType })}';
   // Ledger `2026-09-07-concierge-door` (L6): the concierge intent form's door, and its two
   // failure modes — passing nothing, and forwarding the form's fee-vocabulary eventType.
+  // The browse-door predicate is per-file and identical, so one fixture body stands in for every
+  // listed door: `sbd(src)` gives every one of them the same source.
+  const sbd = (src) => Object.fromEntries(SERVICES_BROWSE_DOORS.map((d) => [d.file, src]));
   const CONCIERGE = "client/src/pages/concierge/index.tsx";
   const doorConcierge =
     'const { open: openPlanModal } = usePlanning();\n' +
@@ -460,7 +545,12 @@ function selfTest() {
     // The §13 half: two doors are ruled to pass NO city, and inventing one must fail.
     ["D13 · the ticker passing NO city passes", () => req(TICKER, doorBare).length === 0],
     ["D13 · the ticker passing a city FAILS (§13 — eight markets, no single one)", () => req(TICKER, 'const { open: openPlanning } = usePlanning();\nonClick={() => openPlanning({ city: markets[0].cityName })}').some((e) => e.includes("ruled NOT to pass"))],
-    ["D13 · a bare storefront CTA passes", () => req(STOREFRONT, doorCtaBare).length === 0],
+    // D15 (lane L22, ledger `2026-09-07-doors-pass-tripid`): the storefront IS an earner, so its
+    // door carries the return address. This fixture used to assert the opposite — that a BARE
+    // storefront CTA passed — which was true right up until the ruling gave that door something
+    // to hold, and it is replaced rather than kept beside its successor.
+    ["D15 · the storefront CTA passing a returnTo passes", () => req(STOREFRONT, '<PlanEntryCta source={earner.handle ? { returnTo: { kind: "expert", handle: earner.handle } } : undefined} />').length === 0],
+    ["D15 · a BARE storefront CTA now FAILS — the page IS this earner", () => req(STOREFRONT, doorCtaBare).some((e) => e.includes("does not pass `returnTo`"))],
     ["D13 · the storefront forwarding earner.location as a city FAILS", () => req(STOREFRONT, '<PlanEntryCta source={{ city: earner.location }} />').some((e) => e.includes("ruled NOT to pass"))],
     ["D13 · a surface with a requirement and NO opener at all fails loudly", () => req(DETAILS, "export default function P(){ return <div/>; }").some((e) => e.includes("NO opener call"))],
     ["D13 · a missing required-field file fails loudly", () => checkSourceFields({}).some((e) => e.includes("REQUIRED_SOURCE_FIELDS"))],
@@ -480,6 +570,19 @@ function selfTest() {
     ["D13 · the concierge door passing destination + a resolved slug passes", () => req(CONCIERGE, doorConcierge).length === 0],
     ["D13 · the concierge door passing NOTHING fails", () => req(CONCIERGE, doorConciergeBare).some((e) => e.includes("does not pass `destination`"))],
     ["D13 · the concierge door forwarding the form's eventType as experienceType FAILS", () => req(CONCIERGE, doorConciergeWrongVocab).some((e) => e.includes("ruled NOT to pass"))],
+    // Ledger `2026-09-07-doors-pass-tripid` (L22): a browse door hands its context over on a URL,
+    // and must do it through the ONE builder.
+    ["D13 · a browse door using the builder passes", () => checkServicesBrowseDoors(sbd("navigate(buildServicesBrowseHref({ categoryKey: c.categoryKey, tripId }));")).length === 0],
+    ["D13 · a browse door hand-assembling the URL FAILS", () => checkServicesBrowseDoors(sbd('navigate(`/services?categoryKey=${k}&upsellSource=${s}`);')).some((e) => e.includes("hand-assembles"))],
+    ["D13 · a browse door with NO builder call at all FAILS", () => checkServicesBrowseDoors(sbd("export function X(){ return null; }")).some((e) => e.includes("without the ONE builder"))],
+    ["D13 · the role-chip alias `servicesBrowseHref` also counts as the builder", () => checkServicesBrowseDoors(sbd("const href = servicesBrowseHref(key, tripId);")).length === 0],
+    ["D13 · a missing browse-door file fails loudly", () => checkServicesBrowseDoors({}).some((e) => e.includes("SERVICES_BROWSE_DOORS"))],
+    // The predicate must not fire on an unrelated path that merely starts with /services.
+    ["D13 · a plain `/services` link (no query) is not a hand-assembled browse", () => !HAND_ASSEMBLED_BROWSE.test('href="/services"')],
+    // The two directions of the comment strip: prose about the retired shape must not fail, and a
+    // real navigation on the next line must still be caught.
+    ["D13 · a COMMENT naming the old `/services?…` URL does not fail the door", () => checkServicesBrowseDoors(sbd('// it used to navigate to `/services?categoryKey=x`\nnavigate(buildServicesBrowseHref({ tripId }));')).length === 0],
+    ["D13 · a comment does not MASK a real hand-assembled URL below it", () => checkServicesBrowseDoors(sbd('/* was `/services?categoryKey=x` */\nnavigate(buildServicesBrowseHref({}));\nnavigate("/services?categoryKey=" + k);')).some((e) => e.includes("hand-assembles"))],
   );
 
   let failed = 0;
@@ -501,7 +604,7 @@ function main() {
   const files = {};
   // Both lists — an ENTRY_SURFACES row and a REQUIRED_SOURCE_FIELDS row are independent (a door
   // that is not a browse surface, like the ticker rail, appears only in the second).
-  for (const s of [...ENTRY_SURFACES, ...REQUIRED_SOURCE_FIELDS]) {
+  for (const s of [...ENTRY_SURFACES, ...REQUIRED_SOURCE_FIELDS, ...SERVICES_BROWSE_DOORS]) {
     if (files[s.file] !== undefined) continue;
     const p = path.join(ROOT, s.file);
     if (fs.existsSync(p)) files[s.file] = fs.readFileSync(p, "utf8");
@@ -516,7 +619,7 @@ function main() {
   }
   console.log(
     `planning-entry guard: OK — ${ENTRY_SURFACES.length} browse surfaces each offer a plan entry; ` +
-      `${REQUIRED_SOURCE_FIELDS.length} doors pass what they hold (Locked Decision 42 D13).`,
+      `${REQUIRED_SOURCE_FIELDS.length} doors pass what they hold, ${SERVICES_BROWSE_DOORS.length} browse doors go through the one href builder (Locked Decision 42 D13).`,
   );
 }
 

@@ -81,6 +81,17 @@ import { resolveTargetTripId, serviceDetailHref } from "@/lib/trip-target";
 // slip's D6 role chips are the first — ledger `2026-09-06-role-chips-filter`, §18 rule 1). This
 // page is the READER; a bare literal here is how a link and the page it points at drift apart.
 import { SERVICES_BROWSE_CATEGORY_PARAM } from "@/lib/services-browse";
+// L11 (ledger `2026-09-07-discover-in-shell`): the plan chip + "For your plan" role chips. Both
+// derivations already exist and are CALLED here, never re-implemented (§18 rule 1) —
+// `planRoleChips` is `slipEventRoleChips` asked for a whole plan, and `roleLabel` is the ONE
+// place a `service_categories.category_key` becomes words.
+import { planRoleChips } from "@/lib/slip-event-roles";
+import { roleLabel, type HireRoleCategory } from "@/lib/hire-from-slip";
+import { useTrip } from "@/hooks/use-trips";
+// Saved places, MOVED from Home by the same lane (Locked Decision 45 (8)) — same components, same
+// reads, same empty-state behaviour; only their mount changed.
+import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
+import { WishlistSection } from "@/components/dashboard/WishlistSection";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import type { LucideIcon } from "lucide-react";
 
@@ -784,6 +795,108 @@ function ServiceFiltersPopover({
   );
 }
 
+/**
+ * PLAN CONTEXT ON THE BROWSE (lane L11, ledger `2026-09-07-discover-in-shell`; CLAUDE.md Locked
+ * Decision 45 (7), Locked Decision 42 D6, Locked Decision 31, Locked Decision 39).
+ *
+ * A `?tripId=` on the URL says this browse is FOR THAT PLAN — every Add to plan writes to it
+ * (`POST /api/trips/:tripId/itinerary-items`, the Locked Decision 39 rail) rather than to the
+ * trip-less guest cart. Until this lane nothing on the page SAID so, so a traveler who arrived
+ * from a slip could not tell which plan they were filling. This strip names it, and offers the
+ * disciplines the plan's own occasions ask for.
+ *
+ * WHERE EVERY PART COMES FROM — nothing here is a second copy (§18 rule 1):
+ *  · the PLAN — `useTrip`, the same reader every plan surface uses; no second fetch shape.
+ *  · the ROLE KEYS and their HREFS — `planRoleChips`, which delegates to `slipEventRoleChips`,
+ *    the ONE derivation of D6's event-level role question and of the browse link it opens.
+ *  · the LABEL for a key — `roleLabel`, the ONE place a `category_key` becomes words, shared with
+ *    the slip's chips and the expert picker's.
+ *  · the EVENTS — `GET /api/user-experiences`, which already carries `rolesNeeded` per occasion
+ *    (ledger `2026-09-04-which-event-hint`), filtered to THIS plan. The client resolves no roles
+ *    of its own from a destination, a title or an occasion slug.
+ *
+ * §13 — THE ABSENCES ARE ANSWERS, AND NONE OF THEM IS FILLED IN:
+ *  · no `tripId` ⇒ this renders NOTHING. An ordinary browse is not "a plan you have not chosen".
+ *  · a plan still loading, or one the viewer may not read (`useTrip` answers null on a 404) ⇒
+ *    NOTHING. A chip naming a plan we could not read would be a claim about someone else's plan.
+ *  · `rolesNeeded` NULL / absent / `[]` / all-blank ⇒ the role row DRAWS NOTHING AT ALL — never
+ *    "this occasion needs nobody", which Locked Decision 31 forbids by name, and never a heading
+ *    with no chips under it.
+ *  · a chip names a DISCIPLINE and makes NO SUPPLY CLAIM: whether anyone is listed in that
+ *    category in this market is the browse's own answer on the other side of the link.
+ *
+ * It GRANTS NOTHING. The `tripId` is a handoff the add path already carries, and every gate on the
+ * write rail is unchanged — a plan the caller may not write to is refused there exactly as today.
+ */
+function PlanBrowseContext({ tripId }: { tripId: string }) {
+  const { data: trip } = useTrip(tripId);
+  const { data: allUserExperiences } = useQuery<
+    { tripId?: string | null; rolesNeeded?: string[] | null }[]
+  >({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!tripId,
+    staleTime: 30_000,
+  });
+  const chips = useMemo(
+    () => planRoleChips((allUserExperiences ?? []).filter((e) => e?.tripId === tripId), tripId),
+    [allUserExperiences, tripId],
+  );
+  // Fetched only when there is something to label — the slip's own chips share this cache entry.
+  const { data: categories } = useQuery<HireRoleCategory[]>({
+    queryKey: ["/api/service-categories"],
+    enabled: chips.length > 0,
+    staleTime: 10 * 60_000,
+  });
+
+  // §13: the plan has not resolved (loading, or not readable — `useTrip` answers null on a 404).
+  // Say nothing rather than name a plan we could not read, and never stand the URL's own
+  // `?location=` in for the row as if it were the plan's answer.
+  if (!trip) return null;
+  const planName = (trip.title || "").trim() || trip.destination;
+
+  return (
+    <div
+      className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-3 py-2"
+      data-testid="discover-plan-context"
+    >
+      <span
+        className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)]"
+        style={{ fontFamily: EARN_MONO }}
+      >
+        Adding to
+      </span>
+      <Link
+        href={`/plans/${tripId}`}
+        className="text-[13px] font-semibold text-[color:var(--earn-navy)] hover:underline"
+        data-testid="discover-plan-chip"
+      >
+        {planName}
+      </Link>
+      {/* §13: NULL / absent / empty `roles_needed` ⇒ nothing at all from here down. */}
+      {chips.length > 0 && (
+        <span className="flex flex-wrap items-center gap-1.5" data-testid="discover-plan-roles">
+          <span
+            className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)]"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            For your plan
+          </span>
+          {chips.map((chip) => (
+            <Link
+              key={chip.key}
+              href={chip.href}
+              className="inline-flex items-center rounded-md border border-[color:var(--earn-border)] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[color:var(--earn-ink)] hover:bg-[var(--earn-card)]"
+              data-testid={`discover-plan-role-${chip.key}`}
+            >
+              {roleLabel(chip.key, categories)}
+            </Link>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function DiscoverPage({ surface }: { surface: MarketplaceSurface }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -1404,6 +1517,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                 </div>
               </nav>
             </motion.div>
+            {/* L11: which plan this browse is filling, and the roles its occasions ask for.
+                Renders NOTHING without a `?tripId=` — an ordinary browse is not a plan (§13). */}
+            {expertHandoffTripId && <PlanBrowseContext tripId={expertHandoffTripId} />}
              {/* Two-field search (2026-08-25-two-field-search): "what" filters the results, "where"
                  is the location filter (pre-filled from the trip's destination above). Services adds
                  its legacy price/rating/sort controls through Filters +. Events has no search. */}
@@ -1971,6 +2087,18 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                 {/* On the /destinations SURFACE the masthead is the page header, so
                     suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
                 <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />
+                {/* SAVED PLACES MOVED HERE FROM HOME (lane L11, ledger
+                    `2026-09-07-discover-in-shell`; CLAUDE.md Locked Decision 45 (8) — Home owns
+                    the TIME AXIS and nothing else). Both components are MOVED, not rewritten:
+                    same reads (`/api/saved-items`, `/api/saved-trips`), same mutations, same
+                    markup. Saved places belong beside browse, which is where they are picked up
+                    and where they are used again. §13: each renders NOTHING while loading and
+                    NOTHING when the list is empty — that behaviour is theirs and is untouched, so
+                    an empty shelf is never drawn as "you have saved nothing". */}
+                <div className="mt-8">
+                  <SavedTripsSection />
+                  <WishlistSection />
+                </div>
               </TabsContent>
           </div>
         </section>

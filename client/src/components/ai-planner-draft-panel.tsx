@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,16 +46,41 @@ export function AiPlannerDraftPanel({
   const [context, updateContext] = useTripContext();
   const lastRunTrigger = useRef(0);
 
+  /**
+   * A DATE THE SERVER WITHHELD IS ASKED ABOUT, NOT HIDDEN (lane L21, ledger
+   * `2026-09-07-extraction-date-anchor`; brief §11.2 F5, §13).
+   *
+   * The extractor now carries today's date as an anchor, and withholds any date that STILL comes
+   * back resolving to the past rather than shifting it to a year nobody stated. Withholding alone
+   * would leave the panel silently showing "Not discussed yet" for a date the traveler is sure
+   * they gave — honest about the field and misleading about the conversation. So the reason is
+   * shown, once, and the traveler restates it in the chat. Nothing here repairs or re-guesses.
+   */
+  const [pastDateNote, setPastDateNote] = useState<string | null>(null);
+
   const extract = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", "/api/trip-context/extract", { conversationId: id });
-      return (await res.json()) as { fields: Partial<TripContext> };
+      return (await res.json()) as {
+        fields: Partial<TripContext>;
+        /** Present only when the server took a past-resolving date OUT of `fields`. */
+        withheld?: Array<{ field: string; value: string; reason: string }>;
+      };
     },
     onSuccess: (data) => {
       const fields = data?.fields;
       if (fields && Object.keys(fields).length > 0) {
         updateContext(fields);
       }
+      // §13: the note is REPLACED on every pass, including with null — once the traveler restates
+      // the date and it comes back usable, a stale "that date has passed" line would be a claim
+      // about a conversation that has moved on.
+      const past = (data?.withheld ?? []).filter((w) => w?.reason === "in_the_past");
+      setPastDateNote(
+        past.length > 0
+          ? "A date in that message reads as already past, so it wasn't saved — could you say the year?"
+          : null,
+      );
     },
   });
 
@@ -163,6 +188,14 @@ export function AiPlannerDraftPanel({
           {missingHint && (
             <p className="text-xs text-muted-foreground mt-2 text-center" data-testid="text-continue-plan-hint">
               {missingHint}
+            </p>
+          )}
+          {/* Lane L21: the server WITHHELD a past-resolving date rather than moving it to a year
+              nobody stated. Saying so is the difference between an honest empty field and a
+              conversation the traveler thinks was heard (§13). */}
+          {pastDateNote && (
+            <p className="text-xs text-amber-700 mt-2 text-center" data-testid="text-past-date-note">
+              {pastDateNote}
             </p>
           )}
           {extract.isPending && (
