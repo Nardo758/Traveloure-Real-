@@ -423,7 +423,7 @@ test("R5: provider-owned service routes through the provider-source branch (isPr
   );
 });
 
-test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
+test("R6: fee-preview total equals what checkout charges — price + concierge + traveler fee, and NOT the withheld commission (ledger 2026-09-08-cart-fee-line)", async () => {
   const price = 140;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
   // Service owned by the expert (no concierge offering type on provider path — tests the expert
