@@ -389,6 +389,16 @@ jobs:
       # reads; N1-N3 hold the §13 line — an unknown key is NULL and never a nearest class.
       - name: Impact class pin
         run: npx tsx --test shared/__tests__/impact-class.test.ts
+      # 2026-09-07-buy-action-resolver (lane L23, Console & AI Concierge brief §11.5; register §A4
+      # ruling 9): `resolveBuyAction` is the SINGLE author of every buy button and landing rule on
+      # the platform, so a wrong row is a wrong button on every surface at once — and it fails
+      # silently, as a plausible button that lands in the wrong store. T1-T14 pin the table row by
+      # row in the order §11.5 gives; N1-N4 pin the four things it must never do (honour a listing's
+      # own CTA, offer a booking verb on a dark row, land a guest's advisor press, or send a partner
+      # row to a platform checkout — LD 43(c)/§16); S1-S5 pin §13, where an absent fact never
+      # becomes a booking verb and carries its reason instead.
+      - name: Buy-action resolver pin
+        run: npx tsx --test shared/__tests__/buy-action.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
