@@ -266,7 +266,7 @@ their own security lanes per §14/§15.
 - **Ready now, no ruling needed:** ~~my-events fold~~ · ~~Discover in the shell~~ · ~~bookings by plan~~ ·
   ~~inbox context~~ · ~~the extraction date anchor~~ · ~~doors passing the trip id~~ — all landed.
 - **Blocked:** the cart lane (its own audit + A3) · conversation trip link (needs a migration) ·
-  Ask AI drawer (needs its own design brief) · booking-agent tab (waits on the agent status
+  ~~Ask AI drawer (needs its own design brief)~~ — **brief written 2026-09-08** (`docs/design/ASK_AI_DRAWER_BRIEF.md`), so L16 is blocked only on L15 now · booking-agent tab (waits on the agent status
   vocabulary) · buy-side resolver and plan-work rail (wait on A4).
 
 ## G. The cheapest completion path (agreed 2026-09-07)
