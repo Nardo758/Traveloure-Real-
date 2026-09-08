@@ -234,7 +234,23 @@ their own security lanes per §14/§15.
 | ~~A1~~ | ✅ **ANSWERED (2026-09-07): the amendment stands.** Decision-maker merged **#849** — a door MAY carry one optional `onFinish` hook (grounded in LD 42 D15's existing "a door's context shapes the finish" ruling; the modal's steps, gates, and the default branch rail are untouched). L6 concierge door is on main. | — |
 | ~~A2~~ | ✅ **ANSWERED (2026-09-07): keep the drawer.** The owner-only collapsed drawer on `/trip/:id` stays, and the ratified board is AMENDED to draw it — participant RSVP, payments, dietary, budget with its category breakdown, alerts, roster and contracts are real reads with no other home, and deleting the tab must not delete the data. Recorded as an amendment, not a silent deviation. | — |
 | A3 | ⏳ **DEFAULT ACCEPTED, NUMBERS TO BE RE-CONFIRMED AT THE CHARGE (2026-09-07).** The ruling taken: the cart shows the TRAVELER service fee (7% capped at $25) resolved from `fee_bands`, and the PROVIDER commission is never added on top of the traveler's price. Because this moves money, the cart lane must put the resolved figures in front of the decision-maker BEFORE the line changes — §14 (server-derived amount) and §8 (no rate literal) bind the implementation either way. **No checkout ships before that confirmation.** | Cart lane |
-| ~~A4~~ | ✅ **PART-ANSWERED (2026-09-07).** Rulings **9** (one resolver is the sole author of the buy button and the landing rule) and **10** (untimed items render as their own group on the implicit event, never hidden and never given a time) are **RATIFIED as written** — both describe what the code already does. Rulings **11** (plan work sold as a listing at checkout) and **12** (a consult never requires a plan) are **DEFERRED** until the resolver lane needs them, so nothing is ratified in the abstract. | Buy-side resolver unblocked; plan-work rail still waits on 11 |
+| ~~A4~~ | ✅ **FULLY ANSWERED.** Rulings **9** and **10** ratified 2026-09-07 (they describe what the code already does). Rulings **11** and **12** ratified **2026-09-08**: **11 —** planning-tier work bought at checkout grants the expert access as part of that purchase, writing the advisor row through the EXISTING single author (`upsertTripAdvisorRow`) on authorization, inside the booking's own transaction — one more caller, never a seventh insert site (LD 32's correction). **12 —** a consult may be bought with no plan in existence, **clarified**: a consult is an ordinary service booking that writes NO advisor row, which is what keeps it from colliding with LD 32's "no expert touchpoint without a slip" — buying advice is not gaining write access to a plan. The moment a consult produces plan work it is ruling 11's case and needs the slip. **Unblocks L25 (plan-work rail) and lets the resolver stop falling back on the `plan_work`/`consult` classes.** |
+
+## A-bis. Ratified 2026-09-08 — booking-agent assignment
+
+**Auto-assignment is RETIRED; a request is CLAIMED from the pool.** CLAUDE.md Locked Decision 44
+recorded that the assignment fix "needs its own ruling"; this is it. Today
+`getExpertUserIds(10)[0]` stamps the FIRST expert row on every affiliate booking request, with no
+category and no city match (the comments claiming both were corrected by ledger
+`2026-09-08-agent-phase-zero`, which deliberately left the algorithm alone).
+
+The ruling: **stop stamping an assignee at create.** A request lands in the pooled queue that
+already exists on the expert inbox and is **claimed** by whoever takes it; any matching is used
+only to ORDER that queue, never to bind a person. Auto-assignment creates an owner who never
+agreed to the work and hides the request from everyone else, which is the real failure — and it
+fits LD 44's posture, where a human sees a request only when it is `ready_to_buy` or `flagged`.
+**§13:** an unclaimed request says it is unclaimed; it is never shown as belonging to someone.
+Existing assigned rows keep their assignee (no backfill — a row that was assigned was assigned).
 
 ## B. Defects found and deliberately not fixed
 
