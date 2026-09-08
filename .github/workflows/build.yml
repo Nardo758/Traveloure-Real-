@@ -1840,3 +1840,21 @@ jobs:
       # `resolveBuyAction` (see the gap note in that file), so P5's labels must still hold exactly.
       - name: Catalog preview presentation pins
         run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts
+
+  confirm-honesty:
+    name: confirm-honesty (§13 — 2026-09-08-transport-confirm-timing · 2026-09-08-confirmation-code-is-the-server-s)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # Source pins, no DB and no browser. A-series: the transport book handler stamps NO status —
+      # a Checkout Session is an intent to pay, and the promotion belongs to the payment signal,
+      # which returns early unless `payment_status === "paid"` (a hosted session can complete
+      # UNPAID). B-series: the booking modal renders the SERVER's confirmation code or none, and an
+      # absent code is said out loud rather than filled with a plausible string.
+      - name: Confirm-honesty pins
+        run: npx tsx --test server/__tests__/confirm-honesty.test.ts
