@@ -214,6 +214,7 @@ import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes, tripParticipantCreateSchema } from "./routes/content.routes";
 import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
+import { composeTravelerCharge, travelerChargeForRow } from "./services/traveler-charge";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -6685,11 +6686,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           // Stripe call, its deterministic idempotency key (`refund-sb-<id>-<cents>` — booking id +
           // operation amount, so a retry produces ONE refund, §15) and the atomic status claim.
           const isDepositRefund = capturedDeposit.kind === "deposit_only";
+          // Ledger 2026-09-08-cart-fee-line: the full-refund basis is read through the ONE
+          // `travelerChargeForRow` (§18 rule 1) — a row priced under A3 was never charged the
+          // provider's commission or the insurance leg, so a make-whole refund must not return
+          // them; a PRE-A3 row keeps exactly the previous basis.
           const amountPaid = isDepositRefund
             ? capturedDeposit.amount
-            : parseFloat(booking.totalAmount || "0") +
-              parseFloat((booking as any).platformFee || "0") +
-              parseFloat((booking as any).insuranceFee || "0");
+            : travelerChargeForRow({
+                totalAmount: booking.totalAmount,
+                platformFee: (booking as any).platformFee,
+                insuranceFee: (booking as any).insuranceFee,
+                conciergeFeeSnapshot:
+                  (booking as any).bookingDetails?.travelerCharge?.conciergeFee ?? null,
+              }).amount;
           try {
             const { stripePaymentService } = await import("./services/stripe-payment.service");
             const refundResult = await stripePaymentService.refundServiceBooking(
@@ -8032,7 +8041,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       platformFee: platformFeeTotal.toFixed(2),
       conciergeFee: conciergeFeeTotal.toFixed(2),
       travelSurcharge: surchargeTotal.toFixed(2),
-      total: (subtotal + platformFeeTotal + conciergeFeeTotal + surchargeTotal).toFixed(2),
+      // Ledger 2026-09-08-cart-fee-line (docs/ROADMAP.md §A A3): the SAME composition
+      // /api/checkout charges and /api/cart/fee-preview quotes — the cart no longer adds the
+      // provider's withheld commission (`platformFee`, still returned above as disclosure) to the
+      // buyer's total. §13: `travelerFee` is 0 HERE and only here, because this surface takes no
+      // tripId and therefore cannot know whether a rails link or a Trip Pass covers the fee —
+      // quoting a fee that will be waived is as false as omitting one that will be charged.
+      // /api/cart/fee-preview is the coverage-aware quote and carries the real number.
+      total: composeTravelerCharge({
+        subtotal,
+        conciergeFee: conciergeFeeTotal,
+        surchargeTotal,
+        travelerFee: 0,
+      }).toFixed(2),
       itemCount: items.length,
     });
     } catch (err) {

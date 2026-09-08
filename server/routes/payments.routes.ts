@@ -41,6 +41,11 @@ import {
 // every marketplace booking, computed ONLY by this one band-driven resolver (rate + cap from
 // `fee_bands`, no literals, §8/§14). Per-item (per-booking) with a per-booking $25 cap.
 import { resolveTravelerServiceFee } from "../services/fee-resolution.service";
+import {
+  composeTravelerCharge,
+  travelerChargeForRow,
+  TRAVELER_CHARGE_SNAPSHOT_KEY,
+} from "../services/traveler-charge";
 // Lane 7 (docs/DECISIONS.md ruling 72): deposits / partial payments. Deposit amounts are derived
 // server-side from the listing's OWN opt-in config × the server-side line total (§14/§18) — never
 // from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
@@ -502,7 +507,19 @@ async function authorizeAndPromote(
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
   const surchargeTotal = args.surchargeTotal ?? 0;
   const travelerFeeTotal = args.travelerFeeTotal ?? 0;
-  const fullTotal = subtotal + platformFee + conciergeFee + surchargeTotal + travelerFeeTotal;
+  // ── THE TRAVELER'S TOTAL (ledger 2026-09-08-cart-fee-line; docs/ROADMAP.md §A A3) ────────────
+  // ONE composition, shared with GET /api/cart and GET /api/cart/fee-preview so a quote and the
+  // charge cannot drift apart again. `platformFee` is DELIBERATELY NOT A TERM: it is the provider's
+  // WITHHELD share (commission + insurance + concierge), already deducted from `providerEarnings`,
+  // and adding it here billed the traveler for the same commission a second time. It is still
+  // resolved, still persisted on the row and still DISCLOSED in the response below — it is simply
+  // no longer charged to the buyer.
+  const fullTotal = composeTravelerCharge({
+    subtotal,
+    conciergeFee,
+    surchargeTotal,
+    travelerFee: travelerFeeTotal,
+  });
   // Charge the deposit sum when this is a deposit checkout, else the full total (unchanged).
   const total = args.chargeAmount != null ? args.chargeAmount : fullTotal;
   const isDepositCheckout = args.chargeAmount != null && args.chargeAmount < fullTotal - 0.001;
@@ -659,6 +676,10 @@ async function authorizeAndPromote(
     // B1 (ruling 81): the travel surcharge disclosed as its OWN line, so the traveler sees it before
     // completing payment (the F1 fee-disclosure posture, ruling 80). Server-derived (§14).
     travelSurcharge: surchargeTotal.toFixed(2),
+    // The ruled traveler service fee that ACTUALLY rode this charge (0 per covered line). It was
+    // already inside `total`; disclosing it as its own line is what lets the client's summary add
+    // up to the amount Stripe took (the F1 disclosure posture, ruling 80).
+    travelerFee: travelerFeeTotal.toFixed(2),
     total: total.toFixed(2),
     paymentIntent,
     bookingType: BookingType.EXPERIENCE_CART,
@@ -866,13 +887,30 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             (s, r) => s + parseFloat(r.travelerFeeCharged || "0"),
             0,
           );
+          // Ledger 2026-09-08-cart-fee-line: a non-deposit line's charge is read back through the
+          // ONE `travelerChargeForRow`, so the re-drive charges exactly what the first attempt
+          // would have — including for a row claimed BEFORE this change, which that helper reads
+          // the pre-A3 way from its own absent snapshot rather than re-pricing it (§13/§14).
           const redriveChargeNow = provisional.reduce(
             (s, r) =>
               s +
               (r.depositAmount != null
                 ? parseFloat(r.depositAmount)
-                : parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")) +
+                : travelerChargeForRow({
+                    totalAmount: r.totalAmount,
+                    platformFee: r.platformFee,
+                    conciergeFeeSnapshot: r.travelerChargeConciergeFee,
+                  }).amount) +
               parseFloat(r.travelerFeeCharged || "0"),
+            0,
+          );
+          // The re-drive's own subtotal/concierge terms. `subtotal` is Σ total_amount (each row
+          // already folds its surcharge in, which is why no surchargeTotal is passed); `conciergeFee`
+          // is Σ the row's own snapshot, replacing the old empty-concierge note that only held
+          // while the whole platform_fee rode the charge. `platformFee` is still passed because the
+          // response DISCLOSES it — it is no longer a term of the total.
+          const redriveConciergeFee = provisional.reduce(
+            (s, r) => s + parseFloat(r.travelerChargeConciergeFee || "0"),
             0,
           );
           return await authorizeAndPromote(res, {
@@ -881,7 +919,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             bookings: provisional.map((r) => ({ booking: { id: r.id } })),
             subtotal: provisional.reduce((s, r) => s + parseFloat(r.totalAmount || "0"), 0),
             platformFee: provisional.reduce((s, r) => s + parseFloat(r.platformFee || "0"), 0),
-            conciergeFee: 0, // already folded into each row's stored platformFee
+            conciergeFee: Math.round(redriveConciergeFee * 100) / 100,
             travelerFeeTotal: Math.round(redriveTravelerFeeTotal * 100) / 100,
             ...(redriveAnyDeposit ? { chargeAmount: Math.round(redriveChargeNow * 100) / 100 } : {}),
             redriven: true,
@@ -1497,7 +1535,14 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // reads the listing's OWN deposit config (provider opt-in) — no client value reaches it — and
         // returns null when this listing takes no deposit, in which case the full line is charged now
         // and the deposit/balance columns stay NULL (byte-identical to pre-deposit, §13).
-        const lineFullCharge = price + surchargeAmt + totalPlatformFeeAmt;
+        // Ledger 2026-09-08-cart-fee-line: the line's full charge to the TRAVELER — price, its own
+        // travel surcharge, and the concierge fee where it applies. `totalPlatformFeeAmt` (the
+        // provider's withheld commission + insurance + concierge) used to be the third term, which
+        // is what put the commission on the buyer's bill; the concierge fee is separated out of it
+        // because that one leg IS the traveler's (it is never subtracted from providerEarnings).
+        // This is also the base the deposit split is taken from, so a deposit line's stored
+        // `balance_amount` — the amount §15d's pay-balance charges — drops the commission too.
+        const lineFullCharge = price + surchargeAmt + conciergeFeeAmt;
 
         // ── Traveler service fee for THIS line (ruling 2026-09-02-traveler-fee-applies-everywhere) ──
         // Per-booking, on the line's own base price, from the ONE band-driven resolver (§8/§14): no
@@ -1634,6 +1679,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
                 waived: feeWaived,
                 waiverBasis: feeWaiverBasis,
               },
+              // Ledger 2026-09-08-cart-fee-line: the part of `platform_fee` that the TRAVELER
+              // actually paid — the concierge fee, and nothing else. Its PRESENCE is also how a
+              // later reader knows this row was priced under the A3 composition: the re-drive, the
+              // reconciliation job, the refund path and the cancellation quote all read it through
+              // the ONE `travelerChargeForRow`, and a row without it is read the pre-A3 way rather
+              // than re-derived (§13 — there is no backfill and no guess).
+              [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: conciergeFeeAmt.toFixed(2) },
               // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
               // posture and for the same reason — a line that fell back to the legacy lane must
               // SAY so on the row, or a later reader would infer a D1 charge that never happened
@@ -2246,7 +2298,16 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         travelSurcharge: previewSurcharge,
         // The traveler service fee actually added to the charge (a disclosed line, like travelSurcharge).
         travelerFee: previewTravelerFee,
-        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal + previewSurcharge + previewTravelerFee) * 100) / 100,
+        // Ledger 2026-09-08-cart-fee-line: the SAME `composeTravelerCharge` the charge composes,
+        // so the preview cannot quote a number the checkout will not charge. `platformFeeTotal` is
+        // still resolved and still disclosed above (it is what the provider is paying, and the
+        // effective-rate readers use it) — it is no longer added to the traveler's total.
+        total: composeTravelerCharge({
+          subtotal: previewSubtotal,
+          conciergeFee: previewConciergeFeeTotal,
+          surchargeTotal: previewSurcharge,
+          travelerFee: previewTravelerFee,
+        }),
         itemCount: cartData.filter(i => i.service).length,
         // The Trip Pass waiver — now a REAL reduction (ruling 2026-09-02): billedOnDirectPathToday is
         // true, `wouldHaveBeenAmountTotal` is the fee the pass suppressed, and `label` is the line the

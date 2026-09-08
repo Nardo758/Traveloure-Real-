@@ -691,6 +691,10 @@ export default function CartPage() {
     platformFee: string;
     conciergeFee: string;
     travelSurcharge: string;
+    // Ledger 2026-09-08-cart-fee-line: the ruled traveler service fee that actually rode this
+    // charge (0 per covered line), disclosed by /api/checkout so the shown lines add up to the
+    // amount Stripe took. Older responses omit it — read as absent, never as zero-of-record.
+    travelerFee?: string;
     total: string;
   } | null>(null);
   // FP-4: C3 slot-conflict — which cart item(s) (by serviceId) the last checkout
@@ -977,6 +981,7 @@ export default function CartPage() {
           platformFee: data.platformFee,
           conciergeFee: data.conciergeFee ?? "0",
           travelSurcharge: data.travelSurcharge ?? "0",
+          travelerFee: data.travelerFee,
           total: data.total,
         });
         setCheckoutPaymentIntent(data.paymentIntent);
@@ -1076,12 +1081,19 @@ export default function CartPage() {
   const externalSubtotal = externalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const platformSubtotal = parseFloat(cart?.subtotal || "0");
   const combinedSubtotal = platformSubtotal + externalSubtotal;
-  const platformFee = parseFloat(cart?.platformFee || "0");
+  // `cart.platformFee` is DELIBERATELY NOT read here (ledger 2026-09-08-cart-fee-line): it is the
+  // provider's withheld commission, still returned by the server as disclosure of what the PROVIDER
+  // pays, and it is neither a line on the buyer's summary nor a term of their total.
   const conciergeFee = parseFloat(cart?.conciergeFee || "0");
   // B1 (ruling 81): the server-derived travel surcharge for this cart (0 unless a surcharge listing
   // has a confirmed pickup outside its coverage). Shown as its own line; part of the total.
   const travelSurcharge = parseFloat(cart?.travelSurcharge || "0");
-  const combinedTotal = combinedSubtotal + platformFee + conciergeFee + travelSurcharge;
+  // Ledger 2026-09-08-cart-fee-line (docs/ROADMAP.md §A A3): the traveler pays the price, the
+  // concierge fee where it applies and real surcharges — the provider's commission (`platformFee`)
+  // is a DEDUCTION FROM THE PAYOUT and is never a line added to the buyer, so it is neither shown
+  // nor summed here. The server composes the same three terms (`composeTravelerCharge`), so this
+  // figure and the charge cannot disagree.
+  const combinedTotal = combinedSubtotal + conciergeFee + travelSurcharge;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const exchangeRates = exchangeRatesData?.rates ?? {};
@@ -2208,10 +2220,6 @@ export default function CartPage() {
                         <span className="text-muted-foreground">Subtotal</span>
                         <span data-testid="text-subtotal">{formatPrice(combinedSubtotal)}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Platform fee</span>
-                        <span data-testid="text-platform-fee">{formatPrice(platformFee)}</span>
-                      </div>
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
@@ -2697,10 +2705,6 @@ export default function CartPage() {
                           <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Platform fee</span>
-                        <span>{formatPrice(platformFee)}</span>
-                      </div>
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
@@ -2912,12 +2916,6 @@ export default function CartPage() {
                           <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Platform fee</span>
-                        <span data-testid="text-platform-fee-payment">
-                          {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.platformFee) : platformFee)}
-                        </span>
-                      </div>
                       {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee) > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
@@ -2937,6 +2935,20 @@ export default function CartPage() {
                           </span>
                         </div>
                       )}
+                      {/* Ledger 2026-09-08-cart-fee-line: the ruled traveler service fee that rode
+                          this charge. Rendered ONLY from the checkout response, which knows what was
+                          actually billed (0 on a rails- or Trip-Pass-covered line); the pre-checkout
+                          cart has no coverage answer, so it shows no fee line rather than a guessed
+                          one (§13). */}
+                      {checkoutOrderSnapshot?.travelerFee != null &&
+                        parseFloat(checkoutOrderSnapshot.travelerFee) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Service fee</span>
+                            <span data-testid="text-traveler-fee-payment">
+                              {formatPrice(parseFloat(checkoutOrderSnapshot.travelerFee))}
+                            </span>
+                          </div>
+                        )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>

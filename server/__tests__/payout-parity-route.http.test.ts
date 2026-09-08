@@ -26,8 +26,20 @@
  *        the stamp must equal the provider-source recipe, not the expert default band
  *        (the historical role-string misrouting bug).
  *   R6 — fee-preview for a booking_concierge item: GET /api/cart/fee-preview must return
- *        a total that equals subtotal + platformFeeTotal + conciergeFeeTotal, matching what
- *        POST /api/checkout would charge, so travelers are never surprised at payment.
+ *        a total that equals what POST /api/checkout would charge, so travelers are never
+ *        surprised at payment. **REPAIRED for ledger `2026-09-08-cart-fee-line`
+ *        (docs/ROADMAP.md §A A3): the total is subtotal + conciergeFeeTotal + travelerFee, and
+ *        `platformFeeTotal` is NO LONGER A TERM.** The invariant is unchanged — the preview
+ *        must equal the charge — only the arithmetic it expects moved, and R6 now also asserts
+ *        the WITHHELD terms are ABSENT rather than merely that the sum happens to match.
+ *
+ *        THE ASYMMETRY IS THE WHOLE SUBTLETY, and it is why two fees inside `platform_fee`
+ *        are treated differently. `netExpertEarningsAmt = price × expertShareRate −
+ *        insuranceFeeAmt`, so the base commission AND the insurance leg are both WITHHELD FROM
+ *        THE PROVIDER'S PAYOUT — billing either to the traveler collects it twice, which is
+ *        the defect A3 closes. The concierge facilitation fee is NOT withheld: R3 above pins
+ *        that it "lands in platform_fee, NEVER in provider_earnings", so the platform is paid
+ *        it by the BUYER and it stays a traveler term. Same column, opposite answer.
  *
  * STRIPE CONTRACT (both legs accepted; the stamp happens BEFORE Stripe either way):
  *   • 503 payment_unavailable (CI stub key, ruling 38's declared-unavailable negative
@@ -411,7 +423,7 @@ test("R5: provider-owned service routes through the provider-source branch (isPr
   );
 });
 
-test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
+test("R6: fee-preview total equals what checkout charges — price + concierge + traveler fee, and NOT the withheld commission (ledger 2026-09-08-cart-fee-line)", async () => {
   const price = 140;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
   // Service owned by the expert (no concierge offering type on provider path — tests the expert
@@ -447,7 +459,13 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   const uncappedTravelerFee = price * tfRate;
   const expectedTravelerFee = tfCap !== null && uncappedTravelerFee > tfCap ? tfCap : uncappedTravelerFee;
 
-  const expectedTotal = price + Number(expected.platformFee) + expectedConciergeFee + expectedTravelerFee;
+  // Ledger 2026-09-08-cart-fee-line: the TRAVELER's total. `expected.platformFee` — the base
+  // platform take plus insurance, both WITHHELD from `provider_earnings` — is deliberately NOT a
+  // term. Written out as literal arithmetic rather than through `composeTravelerCharge`: an
+  // expectation that calls the implementation cannot detect the implementation changing.
+  const expectedTotal = price + expectedConciergeFee + expectedTravelerFee;
+  // The PRE-A3 figure, kept as the discriminator below — this is what the route used to charge.
+  const preRulingTotal = price + Number(expected.platformFee) + expectedConciergeFee + expectedTravelerFee;
 
   // Cart the service, then call the preview endpoint.
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
@@ -484,7 +502,23 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   assert.equal(
     preview.total.toFixed(2),
     expectedTotal.toFixed(2),
-    "fee-preview total must equal subtotal + platformFeeTotal + conciergeFeeTotal + travelerFee — matching what checkout would charge",
+    "fee-preview total must equal subtotal + conciergeFeeTotal + travelerFee — matching what checkout would charge (ledger 2026-09-08-cart-fee-line)",
+  );
+  // THE WITHHELD TERMS ARE ABSENT, asserted rather than inferred from a sum that happens to
+  // match. The band must produce a positive platform take or this assertion proves nothing.
+  assert.ok(
+    Number(expected.platformFee) > 0,
+    "the recipe's platform take must be positive, or 'the commission is not in the total' is not discriminable",
+  );
+  assert.notEqual(
+    preview.total.toFixed(2),
+    preRulingTotal.toFixed(2),
+    "fee-preview total still contains the provider's WITHHELD share (commission + insurance) — that is the double collection ledger 2026-09-08-cart-fee-line removes",
+  );
+  const residue = preview.total - preview.subtotal - preview.conciergeFeeTotal - preview.travelerFee;
+  assert.ok(
+    Math.abs(residue) < 0.005,
+    `fee-preview total must decompose EXACTLY into the three traveler-facing terms and nothing else; unexplained residue ${residue.toFixed(4)}`,
   );
 
   // Clean up the cart so subsequent tests start clean.
