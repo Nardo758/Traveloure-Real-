@@ -1838,7 +1838,6 @@ export default function DiscoverLocationPage() {
       buildServicesBrowseHref({
         categoryKey: c.categoryKey,
         location: city,
-        upsellSource: upsellSurface,
       }),
     );
   };

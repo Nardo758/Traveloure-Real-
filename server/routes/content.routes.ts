@@ -21,6 +21,10 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { api } from "@shared/routes";
+import {
+  bookingAgentStatusRefusal,
+  isHumanSettableBookingAgentStatus,
+} from "@shared/booking-agent-vocabulary";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -7539,7 +7543,13 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
       const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
 
-      // Auto-assign to an expert based on category (city match optional, fallback any expert)
+      // ASSIGNMENT IS ARBITRARY, AND SAYING SO IS THE POINT (LD 44 phase 0, ledger
+      // `2026-09-08-agent-phase-zero`). This comment previously claimed "based on category (city
+      // match optional)". It never was: `getExpertUserIds(10)` returns the first ten `role='expert'`
+      // rows in whatever order the table gives them, and this takes `[0]` — no category, no city, no
+      // load, no availability. LD 44 names the arbitrary assignment as a finding that NEEDS ITS OWN
+      // RULING, so phase 0 corrects the description and changes no behaviour (§13: a comment that
+      // describes matching nobody wrote is the same lie as a UI claim).
       const expertIds2 = await getExpertUserIds(10);
       const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
       const status = expertId ? "assigned" : "pending";
@@ -7620,6 +7630,8 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       if (!resolved) {
         return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
       }
+      // Same arbitrary first-expert pick as the rail above, and the same ruled non-fix: LD 44
+      // phase 0 corrects descriptions, not the algorithm (see the note on the sibling create path).
       const expertIds3 = await getExpertUserIds(10);
       const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
       const status = expertId ? "assigned" : "pending";
@@ -7840,6 +7852,18 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       }
       // Self-assign: if setting expertId, use current user
       if (data.expertId === "self") data.expertId = sessionUserId;
+
+      // LD 44 (e) phase 0 (ledger `2026-09-08-agent-phase-zero`): the status VALUE SET is
+      // app-enforced — there is no DB CHECK and no migration (the publish-trap posture) — and this
+      // is the one human write rail, so it is where the allowlist lives. `researching` and
+      // `purchased_by_api` are SERVER-WRITTEN ONLY: a human may not type themselves into a machine
+      // state. The allowlist and its refusal wording are the SHARED ones
+      // (`shared/booking-agent-vocabulary.ts`), never restated here (§18 rule 1). A status the
+      // caller did not send is untouched — this refuses a bad value, it never invents one.
+      if (data.status !== undefined && !isHumanSettableBookingAgentStatus(data.status)) {
+        return res.status(400).json({ message: bookingAgentStatusRefusal(data.status) });
+      }
+
       const prior = await storage.getAffiliateBookingRequestById(id);
       if (!prior) return res.status(404).json({ message: "Request not found" });
 

@@ -12,6 +12,7 @@
  * renders as absence (a caller-side `null`/omission), never a guessed placeholder.
  */
 import { PLACE_ANCHORED_METHODS } from "@shared/service-fundamentals";
+import { resolveBuyAction } from "@shared/buy-action";
 
 // ─── location pin chip (top-left of the photo) ──────────────────────────────────────────
 
@@ -63,14 +64,18 @@ export interface PreviewCta {
   variant: PreviewCtaVariant;
 }
 
-/** `bookingMode` is resolved server-side to a concrete value for an owner's own read
- *  (never null in practice); `?? "instant"` only covers a row this helper is handed before
- *  that resolution lands, mirroring the same default the shared OfferingCard used. */
+/** WHICH action a `bookingMode` names is `resolveBuyAction`'s answer (`shared/buy-action.ts`,
+ *  ledger `2026-09-08-recorded-cleanups`, §18 rule 1) — the same one the live storefront card and
+ *  the shared OfferingCard call, so a listing cannot read one way in an owner's Preview and another
+ *  on their storefront. What stays HERE is the mock's own presentation: solid vs outline, and the
+ *  fact that the preview draws NO button for the enquire case (the mock has no enquiry affordance —
+ *  a listing that hides booking shows none, §13; the storefront card, which does have one, renders
+ *  it from the same resolved action). NULL/undefined ⇒ instant is the resolver's documented
+ *  fallback and is deliberately no longer defaulted a second time here. */
 export function deriveBookingCta(bookingMode?: "instant" | "request" | "hidden" | null): PreviewCta | null {
-  const mode = bookingMode ?? "instant";
-  if (mode === "hidden") return null;
-  if (mode === "request") return { label: "Request to book", variant: "outline" };
-  return { label: "Book", variant: "solid" };
+  const action = resolveBuyAction(bookingMode);
+  if (action.kind === "enquire") return null;
+  return { label: action.label, variant: action.kind === "request" ? "outline" : "solid" };
 }
 
 // ─── price (mock: `.price` / `.price.quote` / `.price.hidden-price`) ────────────────────

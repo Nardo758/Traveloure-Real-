@@ -15,6 +15,7 @@
  */
 import { Link } from "wouter";
 import type { ReactNode } from "react";
+import { resolveBuyAction } from "@shared/buy-action";
 
 // Deterministic gradient fallback for a card with no real image — cycles a small on-brand
 // palette by a hash of the offering id so the same card always gets the same tint.
@@ -62,10 +63,11 @@ export function OfferingCard({
   bookingMode?: "instant" | "request" | "hidden";
 }) {
   const priceHidden = showPrice === false;
-  const ctaLabel =
-    bookingMode === "request" ? "Request to book →"
-    : bookingMode === "hidden" ? "Enquire →"
-    : cta;
+  // §18 rule 1 (ledger `2026-09-08-recorded-cleanups`): what the buy affordance IS comes from the
+  // ONE resolver, `resolveBuyAction` — this card no longer authors its own reading of
+  // `bookingMode`. The arrow is PRESENTATION and stays here; the noun is never this file's.
+  const action = resolveBuyAction(bookingMode, { instantLabel: cta });
+  const ctaLabel = action.kind === "book" ? action.label : `${action.label} →`;
   return (
     <Link
       href={href}

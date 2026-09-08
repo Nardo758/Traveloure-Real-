@@ -50,6 +50,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useRoute, Link } from "wouter";
+import { resolveBuyAction } from "@shared/buy-action";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -268,10 +269,12 @@ function StorefrontOfferingCard({
   meta?: string;
 }) {
   const priceHidden = showPrice === false;
-  const ctaLabel =
-    bookingMode === "request" ? "Request to book →"
-    : bookingMode === "hidden" ? "Enquire →"
-    : cta;
+  // §18 rule 1 (ledger `2026-09-08-recorded-cleanups`): the SAME `resolveBuyAction` the shared
+  // OfferingCard and the Catalog preview call — three surfaces, one reading of `bookingMode`, so
+  // an owner's preview and their live storefront can never disagree about the same listing. The
+  // arrow is this card's own presentation; the noun is not.
+  const action = resolveBuyAction(bookingMode, { instantLabel: cta });
+  const ctaLabel = action.kind === "book" ? action.label : `${action.label} →`;
   return (
     <Link
       href={href}

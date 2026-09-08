@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { chatStorage } from "./storage";
 import { isAuthenticated } from "../auth";
 import { trackAICost, calculateAnthropicCost } from "../../services/ai-cost-tracker";
+import { conversationTripLinkSchema } from "@shared/models/chat";
+import { resolveConversationTripLink } from "../../services/conversation-trip-link.service";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -52,7 +54,32 @@ export function registerChatRoutes(app: Express): void {
     try {
       const { title } = req.body;
       const userId = getUserId(req);
-      const conversation = await chatStorage.createConversation(title || "New Chat", userId);
+
+      // LD 45 (1), migration 290: a conversation MAY belong to a plan. Admission is the pick-based
+      // `.strict()` allowlist (§19) — never the whole body — and admitting the field proves only
+      // that a string arrived, so the PAIRING is then resolved server-side against the SESSION
+      // user (§14; the `resolveItemEventLink` precedent). ABSENT is the ordinary case and means
+      // "belongs to no plan"; that is a finished answer and is never guessed at (§13).
+      const link = conversationTripLinkSchema.safeParse(
+        "tripId" in (req.body ?? {}) ? { tripId: req.body.tripId } : {},
+      );
+      if (!link.success) {
+        return res.status(400).json({ error: "Invalid tripId" });
+      }
+      const resolved = await resolveConversationTripLink(
+        userId,
+        "tripId" in link.data,
+        link.data.tripId,
+      );
+      if (!resolved.ok) {
+        return res.status(400).json({ error: resolved.message });
+      }
+
+      const conversation = await chatStorage.createConversation(
+        title || "New Chat",
+        userId,
+        resolved.action === "set" ? resolved.value : null,
+      );
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
