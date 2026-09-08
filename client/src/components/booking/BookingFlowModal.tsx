@@ -51,6 +51,13 @@ interface BookingFlowModalProps {
 
 type FlowStep = 'visa_intake' | 'review' | 'payment' | 'confirmation';
 
+/** One row of `/api/bookings/bulk-status`. `confirmationCode` is the SERVER's persisted code, and
+ *  is null until the server has issued one — null renders as "still coming", never filled in. */
+interface BulkBookingStatus {
+  status: string;
+  confirmationCode: string | null;
+}
+
 interface VisaIntakeData {
   passportNationality: string;
   destinationCountry: string;
@@ -198,28 +205,50 @@ export default function BookingFlowModal({
   };
 
   /**
+   * One read of the server's own booking rows. `/api/bookings/bulk-status` answers, per id, the
+   * status AND the confirmation code the SERVER generated and persisted
+   * (`bookings.confirmation_code` on the legacy rail, `service_bookings.tracking_number` on the
+   * cart rail) — the same code the confirmation email carries. This screen reads that code and
+   * never mints one of its own (ledger 2026-09-08-confirmation-code-is-the-server-s).
+   * A failed or non-ok read yields NO statuses rather than invented ones (§13).
+   */
+  const fetchBookingStatuses = async (ids: string[]): Promise<Record<string, BulkBookingStatus>> => {
+    try {
+      const res = await fetch('/api/bookings/bulk-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingIds: ids }),
+      });
+      if (!res.ok) return {};
+      const data = await res.json();
+      return (data?.statuses ?? {}) as Record<string, BulkBookingStatus>;
+    } catch {
+      // Ignore network errors — the caller degrades to "no code yet", never to a fabricated one.
+      return {};
+    }
+  };
+
+  /**
    * Poll /api/bookings/bulk-status up to maxAttempts times, waiting delayMs between
    * each attempt, until all bookingIds are confirmed by the webhook.
-   * Returns true if all are confirmed, false if the polling window expired.
+   * Returns whether all are confirmed, plus the last statuses seen — which carry the server's
+   * confirmation codes, so the poll no longer discards the rows it already fetched.
    */
-  const pollForWebhookConfirmation = async (ids: string[], maxAttempts: number = 4, delayMs: number = 1200): Promise<boolean> => {
+  const pollForWebhookConfirmation = async (
+    ids: string[],
+    maxAttempts: number = 4,
+    delayMs: number = 1200,
+  ): Promise<{ confirmed: boolean; statuses: Record<string, BulkBookingStatus> }> => {
+    let statuses: Record<string, BulkBookingStatus> = {};
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise(resolve => setTimeout(resolve, delayMs));
-      try {
-        const res = await fetch('/api/bookings/bulk-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingIds: ids }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.allConfirmed) return true;
-        }
-      } catch {
-        // Ignore network errors during polling — we'll fall back to confirm-payment
+      const seen = await fetchBookingStatuses(ids);
+      if (Object.keys(seen).length > 0) statuses = seen;
+      if (ids.length > 0 && ids.every((id) => seen[id]?.status === 'confirmed')) {
+        return { confirmed: true, statuses: seen };
       }
     }
-    return false;
+    return { confirmed: false, statuses };
   };
 
   const handlePaymentSuccess = async (paymentIntentIdFromStripe: string) => {
@@ -228,11 +257,12 @@ export default function BookingFlowModal({
     try {
       // Primary path: poll for webhook confirmation (up to ~5 seconds total)
       // The Stripe webhook fires server-side and confirms the booking independently.
-      const webhookConfirmed = bookingIds.length > 0
+      const poll = bookingIds.length > 0
         ? await pollForWebhookConfirmation(bookingIds)
-        : false;
+        : { confirmed: false, statuses: {} as Record<string, BulkBookingStatus> };
+      let statuses = poll.statuses;
 
-      if (!webhookConfirmed) {
+      if (!poll.confirmed) {
         // Fallback: webhook hasn't landed yet (local dev, slow delivery, or browser raced ahead).
         // confirm-payment is idempotent — safe to call even if the webhook arrives later.
         console.log('[BookingFlow] Webhook confirmation timed out — using fallback confirm-payment');
@@ -244,6 +274,12 @@ export default function BookingFlowModal({
           })
         );
         await Promise.all(confirmPromises);
+        // Re-read after the fallback: confirm-payment is what persists the confirmation code on
+        // this rail, so the code exists only now. Merged, never replaced — an id the re-read did
+        // not answer keeps whatever the poll already saw.
+        if (bookingIds.length > 0) {
+          statuses = { ...statuses, ...(await fetchBookingStatuses(bookingIds)) };
+        }
       }
 
       // Ledger 2026-09-08-legacy-rail-fee: the confirmation renders the SERVER's own rows —
@@ -251,11 +287,18 @@ export default function BookingFlowModal({
       // per-item 12% platform fee and a per-item share of a concierge fee this rail never charges.
       // Falls back to the cart items only when the server rows are unavailable, and then carries no
       // fee figures at all rather than invented ones (§13).
+      // Ledger 2026-09-08-confirmation-code-is-the-server-s: this screen used to hand every row a
+      // `TRV`-prefixed code invented in the browser with Math.random(). It looked exactly like the
+      // real thing — the server mints its own `TRV` + 10 characters and emails it — so a traveler
+      // could quote the browser's code to support and have it mean nothing. The code shown is now
+      // the SERVER's, read off the bulk-status rows above; a booking whose code the server has not
+      // issued yet carries NONE, and the confirmation screen says it is still coming rather than
+      // filling the space (§13).
       setConfirmedBookings(
-        (serverBookings.length > 0 ? serverBookings : cartItems.map((i) => ({ ...i, serviceAmount: i.price, totalAmount: i.price }))).map((b: any) => ({
-          ...b,
-          confirmationCode: `TRV${Math.random().toString(36).substring(2, 12).toUpperCase()}`,
-        }))
+        (serverBookings.length > 0 ? serverBookings : cartItems.map((i) => ({ ...i, serviceAmount: i.price, totalAmount: i.price }))).map((b: any) => {
+          const serverCode = statuses[b.id]?.confirmationCode ?? null;
+          return { ...b, confirmationCode: serverCode ?? undefined };
+        })
       );
       setCurrentStep('confirmation');
     } catch (err: any) {

@@ -105,11 +105,19 @@ export default function BookingConfirmation({
           <div className="flex items-start justify-between mb-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">{booking.title}</h3>
-              {booking.confirmationCode && (
+              {/* Ledger 2026-09-08-confirmation-code-is-the-server-s: the code rendered here is
+                  the one the SERVER generated and persisted (and emails to the traveler). When it
+                  is absent the server has not issued one yet, and this screen SAYS SO rather than
+                  filling the space with a plausible-looking string (§13). */}
+              {booking.confirmationCode ? (
                 <div className="mt-2 inline-flex items-center gap-2 bg-purple-50 text-purple-800 px-3 py-1 rounded-full text-sm font-mono">
                   <span className="font-semibold">Confirmation:</span>
                   {booking.confirmationCode}
                 </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">
+                  Your confirmation code is still being issued — it will arrive by email.
+                </p>
               )}
             </div>
             <span className="text-lg font-bold text-gray-900">
