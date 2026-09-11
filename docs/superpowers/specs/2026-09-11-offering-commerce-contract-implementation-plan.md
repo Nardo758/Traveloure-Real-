@@ -66,7 +66,7 @@ and the saving is spent on getting the shape right before sellers arrive.
 |---|---|---|---|---|
 | ~~OC-A0~~ | ✅ **LANDED** — register merge + read-only audit script (PR #865) | — | no | — |
 | ~~OC-A1~~ | ✅ **RATIFIED 2026-09-11** — axes and archetypes stand; §4.3 corrected; phasing compressed | — | no | — |
-| **OC-A0b** | **NEW, and first.** Fix the fabricated `false` in `buy-action-payload.ts` so *unknown* survives to the resolver; teach the audit to report the single-owner discount | — | no | ~120k |
+| **OC-A0b** | **NEW, and first.** Record the booking mode's PROVENANCE (the resolved mode is unchanged — see the corrected brief); teach the audit to report the single-owner discount | — | no | ~120k |
 | **OC-A2** | `resolveOfferingCommerceContract` — ONE pure module, **no caller but its own tests** | A0b | **no column** | ~250k |
 | ~~OC-A3~~ | ❌ **DROPPED.** Its job was producing the coverage number; the audit produced it. The refusal reason folds into OC-A4, which is where it is actually read | — | — | ~200k saved |
 | **OC-A4** | Activation validation, **scoped to TRANSITIONS INTO ACTIVE** so the demo corpus keeps working. No coverage gate — coverage is six rows | A2 | no | ~250k |
@@ -114,16 +114,29 @@ constraints they produced are in §0 above; do not restate them in a lane.
 
 Two small things the resolver depends on.
 
-**(a) The fabricated `false`.** `server/services/buy-action-payload.ts` reads the owner's
-`service_provider_forms.instant_booking` into a map, then resolves with
-`resolveBookingMode(row.bookingMode, ownerInstant ?? false)` behind the guard
-`row.bookingMode || row.ownerUserId`. The comment above it states the §13 intent — the flag is left
-absent rather than fabricated — but `ownerUserId` is `provider_services.user_id`, which is
-**NOT NULL**, so for every row sourced from that table the honest-absence branch is unreachable and
-an owner with **no form row at all** is rendered as having chosen `request`. On production that is
-**64 of 67 listings**. The guard must test whether the OWNER FLAG IS KNOWN
-(`ownerInstant !== undefined`), not whether an owner id is present. Behaviour change is confined to
-the previously-unreachable branch; nothing that already resolved changes.
+**(a) The fabricated `false` — CORRECTED 2026-09-11, and the correction is the lane.** The
+DIAGNOSIS below stands; the remedy this brief originally proposed does not, and was replaced before
+build (ledger `2026-09-11-booking-mode-provenance`).
+
+`server/services/buy-action-payload.ts` reads the owner's `service_provider_forms.instant_booking`
+into a map, then resolves with `resolveBookingMode(row.bookingMode, ownerInstant ?? false)` behind
+the guard `row.bookingMode || row.ownerUserId`. The comment above it states the §13 intent — the
+flag is left absent rather than fabricated — but `ownerUserId` is `provider_services.user_id`,
+which is **NOT NULL**, so for every row sourced from that table the honest-absence branch is
+unreachable and an owner with **no form row at all** is rendered as having chosen `request`. On
+production that is **64 of 67 listings**.
+
+**THE RESOLVED MODE IS NOT CHANGED.** Making the guard test whether the OWNER FLAG IS KNOWN would
+leave those 64 rows with `bookingMode: undefined`, and `resolveBuyAction`'s last row gives a
+modeless listing **no booking verb at all** — it would strip the buy button from the entire live
+catalogue. `request` is the safe default (the traveler asks, the seller accepts, and no money moves
+without an acceptance) and is kept. **What was missing is the PROVENANCE**, which is the fact the
+resolver could not state: `resolveBookingModeWithProvenance` (`shared/schema.ts`, delegating to
+`resolveBookingMode` and never re-deciding it) answers `listing_declared` / `account_declared` /
+`platform_default`. It is an INTERNAL fact — an input to OC-A2's `commitmentMode` and to the audit —
+and is deliberately not published on the client-facing buy-action payload. The payload also stops
+coercing a NULL account flag to `false` (all three spellings still resolve to `request`, so no
+output moves) and its misleading comment is corrected.
 
 **May not:** invent an account-level write path (the settings toggle was removed on purpose —
 ledger 90 FP-5 S1 — because it wrote `provider_settings.instant_booking` while every reader reads
@@ -134,8 +147,11 @@ correct and is ruling 75's ONE derivation.
 cluster separately from the remainder, so a coverage number is never silently a statement about
 fixtures (§0 constraint 2). Read-only as before.
 
-**Proof:** a unit test pinning that a known flag resolves as today, and that an UNKNOWN flag no
-longer resolves to `request` — the negative is the point of the lane.
+**Proof:** a unit test pinning that a known flag and a stored mode resolve **exactly as today** (the
+lane changes no output), and that the three provenance values are distinguished — including the
+no-form case that is 64 of 67 production listings. *(This sentence previously read "an UNKNOWN flag
+no longer resolves to `request` — the negative is the point of the lane". That was wrong for the
+reason above and was corrected in the same lane.)*
 
 ### OC-A2 — One read-only resolver
 
@@ -169,6 +185,17 @@ The audit script remains the ops instrument.
 
 A listing **transitioning INTO active** that resolves to no contract is refused with its reason,
 machine-readable and shown to the seller (OC-A3's job, folded in here).
+
+**CORRECTED IN BUILD (2026-09-11, ledger `2026-09-11-offering-activation-validation`): "resolves to
+no contract" is NARROWER than the resolver's own refusal set.** Taken literally it includes
+`catalog_keys_unrecognised`, and CI proved that wrong before it shipped — the F2 publish-gate suite
+creates and publishes a listing with NO CATEGORY AT ALL, which is a normal supported shape, and
+`impactClassFor` also answers nothing for a category row carrying no `category_key` (the taxonomy
+defect migration 289 repairs). Both are facts about OUR tables, not about what the seller stated, so
+refusing would say "choose a category" to someone who did. That reason is therefore **reported
+(`logger.warn`) and counted by the audit, never refused**. The gate BLOCKS on the design's own
+activation enumeration: §15 invariant 12's unknown delivery behaviour, §11's two invalid
+combinations, an off-vocabulary `service_type`, and an archetype no matrix row covers.
 **The scoping to transitions is load-bearing, not a softening:** the 61 demo listings are kept by
 ruling and resolve as "unclassified", so a validator that ran over rows already active would refuse
 the corpus the platform is being tested with. **Historical and already-active rows are unaffected** — §15's own wording: unknown delivery

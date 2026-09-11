@@ -274,6 +274,10 @@ import {
   validateAffirmKeys,
   checkAttestationPublishGate,
 } from "./services/attestation-publish-gate.service";
+// OC-A4 activation validation (ledger `2026-09-11-offering-activation-validation`): a listing may
+// not go LIVE if `resolveOfferingCommerceContract` cannot say how it is sold. Scoped to
+// transitions INTO active — rows already active are untouched by ruling.
+import { checkOfferingActivationGate } from "./services/offering-activation-gate.service";
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
@@ -3721,6 +3725,30 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // OC-A4 ACTIVATION VALIDATION (ledger `2026-09-11-offering-activation-validation`; design
+      // §15's closing rule). A listing born ACTIVE is a transition into active, so the same gate
+      // the PATCH rail runs applies here. There is no stored row yet, so the write's own fields
+      // are the whole shape. The decision belongs to `resolveOfferingCommerceContract` — this is
+      // one more caller, never a second copy of it (§18 rule 1).
+      if (input.status === "active") {
+        const contractGate = await checkOfferingActivationGate({
+          ownerUserId: userId,
+          overrides: {
+            serviceType: (input as any).serviceType,
+            deliveryMethod: (input as any).deliveryMethod,
+            productShape: (input as any).productShape,
+            priceType: (input as any).priceType,
+            bookingMode: (input as any).bookingMode,
+            categoryId: (input as any).categoryId,
+            depositEnabled: (input as any).depositEnabled,
+            meetingPoint: (input as any).meetingPoint,
+          },
+        });
+        if (contractGate) {
+          return res.status(contractGate.status).json(contractGate.body);
+        }
+      }
+
       // D7 (docs/DECISIONS.md ruling 62): the service-logistics capture fields ride this same
       // deliberate write, exactly like `serviceRadius`/`meetingPoint` beside them — they are
       // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
@@ -4009,6 +4037,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
         if (attestGate) {
           return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
+      // OC-A4 ACTIVATION VALIDATION (ledger `2026-09-11-offering-activation-validation`; design
+      // §15's closing rule — "activation of a new unclassifiable listing must fail with a
+      // machine-readable reason"). THE TRANSITION CONDITION IS THE RULING, not a softening: the 61
+      // demo listings are KEPT by `2026-09-11-oc-a1-ratified` and resolve as unclassified, so a
+      // gate that ran on an ordinary edit of an already-active row would refuse the corpus the
+      // platform is being tested with. Same shape as the attestation gate above — the row as it
+      // WILL BE after this save, so the gate cannot be walked past by omitting a field.
+      if (input.status === "active" && ownedService.status !== "active") {
+        const contractGate = await checkOfferingActivationGate({
+          serviceId: req.params.id,
+          ownerUserId: userId,
+          overrides: {
+            ...((input as any).serviceType !== undefined ? { serviceType: (input as any).serviceType } : {}),
+            ...((input as any).deliveryMethod !== undefined ? { deliveryMethod: (input as any).deliveryMethod } : {}),
+            ...((input as any).productShape !== undefined ? { productShape: (input as any).productShape } : {}),
+            ...((input as any).priceType !== undefined ? { priceType: (input as any).priceType } : {}),
+            ...((input as any).bookingMode !== undefined ? { bookingMode: (input as any).bookingMode } : {}),
+            ...((input as any).categoryId !== undefined ? { categoryId: (input as any).categoryId } : {}),
+            ...((input as any).depositEnabled !== undefined ? { depositEnabled: (input as any).depositEnabled } : {}),
+            ...((input as any).meetingPoint !== undefined ? { meetingPoint: (input as any).meetingPoint } : {}),
+          },
+        });
+        if (contractGate) {
+          return res.status(contractGate.status).json(contractGate.body);
         }
       }
 

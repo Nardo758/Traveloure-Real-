@@ -236,6 +236,30 @@ jobs:
       - name: Traveler-charge composition pin (A3)
         run: npx tsx --test server/__tests__/traveler-charge-composition.test.ts
 
+  offering-activation-gate:
+    name: offering-activation-gate (2026-09-11-offering-activation-validation)
+    runs-on: ubuntu-latest
+    env:
+      # NO DATABASE IS REACHED. The suite tests the gate's pure halves (its seller-facing refusal
+      # map) and the STATIC placement of its call sites; this var exists only because
+      # `server/services/offering-activation-gate.service.ts` imports `server/db.ts`, which throws
+      # at IMPORT time when it is unset. Same posture as legacy-rail-traveler-charge below.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/unused-no-connection-is-opened
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      # The transition scoping is the RULING, not a softening: production's 61 demo listings are
+      # KEPT (2026-09-11-oc-a1-ratified) and resolve as unclassified, so a gate that ran on an
+      # ordinary edit of an already-active row would refuse the corpus the platform is being tested
+      # with. T1/T2 pin that from the FILE (comments stripped), never from a literal call count;
+      # T3 pins the single caller module; R1/R2 pin that every refusal the resolver can produce has
+      # a seller-facing sentence naming a fix, with the reason set DERIVED by driving the resolver.
+      - name: Offering activation gate pin
+        run: npx tsx --test server/__tests__/offering-activation-gate.test.ts
+
   legacy-rail-traveler-charge:
     name: legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)
     runs-on: ubuntu-latest
@@ -460,6 +484,27 @@ jobs:
       # becomes a booking verb and carries its reason instead.
       - name: Buy-action resolver pin
         run: npx tsx --test shared/__tests__/buy-action.test.ts
+      # 2026-09-11-booking-mode-provenance (lane OC-A0b, punchlist V-9): `resolveBookingMode` always
+      # answers, and `request` is the right answer for an unset listing — the lane deliberately did
+      # NOT change it. What it added is WHICH of three facts produced that answer, because "the
+      # seller chose request", "the seller's account says no instant booking" and "nobody ever
+      # answered" resolve identically and are different facts (§13; 64 of 67 production listings are
+      # the third). B1-B6 re-pin the resolver's whole truth table, because the lane refactored its
+      # membership test to read `bookingModeEnum`; P1-P6 pin the distinction.
+      - name: Booking-mode provenance pin
+        run: npx tsx --test shared/__tests__/booking-mode-provenance.test.ts
+      # 2026-09-11-offering-commerce-resolver (lane OC-A2): the offering commerce contract is the
+      # FIFTH classifier over `provider_services`, and it has no production caller in its own lane —
+      # so nothing but this suite can say it is wrong, while OC-A4 refuses activations on it, OC-B1
+      # snapshots it and OC-B2 will route checkout through it. A1-A18 walk the §9 matrix one fixture
+      # per archetype; C1-C4 pin the composition (the four existing classifiers are CALLED, the
+      # service fundamentals WIN a disagreement and it surfaces as a finding, slipEffect follows
+      # `impactClassFor`); U1-U7 pin the refusals, including the 61 demo listings resolving as
+      # UNCLASSIFIED rather than as an error; S1-S5 pin seller-declared vs platform-default.
+      # (The suite is pure — it imports no `db` — but it pulls in `shared/schema.ts` and therefore
+      # zod and drizzle, so it belongs in an `npm ci` job and never a Node-built-ins guard job.)
+      - name: Offering commerce contract pin
+        run: npx tsx --test server/__tests__/offering-commerce-contract.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was

@@ -19,33 +19,61 @@
  * NEGATIVE SPACE, stated because a green run means green-within-stated-bounds (§18d):
  *   · It reads `provider_services` ONLY. Expert listings, ready-made plans, affiliate rows and the
  *     legacy `bookings` rail are out of scope and are NOT counted here.
- *   · It measures the CURRENT columns. It does not resolve the proposed commerce archetype, which
- *     does not exist yet — that is Phase 1's resolver, and this script is what tells you whether
- *     Phase 1 can classify the real catalog before you write it.
+ *   · It measures the CURRENT columns, and — since lane OC-A4 — also RESOLVES each row through
+ *     `resolveOfferingCommerceContract`. That section is the activation gate's GO/NO-GO: rows
+ *     already active are untouched by ruling, so a refusal count is NOT a breakage forecast, it is
+ *     what a seller pressing Publish tomorrow would be told. Read it against PRODUCTION before a
+ *     release carries the gate (OPERATING_PROCEDURE §5 step 3's posture).
+ *   · The resolution here supplies only the columns this query reads. It does not join
+ *     `expert_offering_types`, so an expert listing is classified from its category and delivery
+ *     method alone — the same facts the gate itself uses, deliberately (the account-level offering
+ *     key is not this listing's offering, §13).
  *   · "Outside the declared set" is a vocabulary observation, not a defect: `service_type` and
  *     `delivery_method` are app-enforced with no DB CHECK (the publish-trap posture), so a value
  *     outside the enum is structurally possible by design and is exactly what needs deciding.
  *   · It writes NOTHING. No UPDATE, no INSERT, no DDL.
+ *   · The single-owner discount (below) separates the LARGEST owner cluster from the rest. It does
+ *     NOT decide that the cluster is fixture data — that is a human judgement, made once and
+ *     recorded in the ledger; the script only makes the concentration impossible to miss.
+ *
+ * THE SINGLE-OWNER DISCOUNT (lane OC-A0b, plan §0 constraint 2). Production carries 67 active
+ * listings of which 61 belong to ONE demo account, so any unqualified percentage "about the
+ * catalog" is a statement about fixtures. Every count below is therefore reported TWICE — over the
+ * whole population, and over the population MINUS its largest single-owner cluster — so nobody has
+ * to remember to discount it. The owner is identified by a stable hash, never by `users.id`
+ * (Locked Decision 40: a user id is internal and is not published, not even to a console).
  *
  * Run:  DATABASE_URL=<url> npx tsx scripts/audit-offering-classification.ts
  *       add --json for a machine-readable dump.
  */
 import { Pool } from "pg";
 import {
-  resolveBookingMode,
+  resolveBookingModeWithProvenance,
   bookingModeEnum,
+  bookingModeProvenanceEnum,
   serviceTypeEnum,
   deliveryMethodEnum,
 } from "../shared/schema";
+import {
+  resolveOfferingCommerceContract,
+  type OfferingCommerceResolution,
+} from "../server/services/offering-commerce-contract";
 
 const JSON_OUT = process.argv.includes("--json");
 
 type Row = {
+  owner_key: string;
+  owner_role: string | null;
+  category_key: string | null;
+  product_shape: string | null;
+  deposit_enabled: boolean | null;
+  has_meeting_point: boolean;
   service_type: string | null;
   delivery_method: string | null;
   price_type: string | null;
   booking_mode: string | null;
   account_instant_booking: boolean | null;
+  has_provider_form: boolean;
 };
 
 function tally<T extends string | number | symbol>(rows: T[]): Record<string, number> {
@@ -68,13 +96,22 @@ async function main() {
   // The population the contract governs: a seller-specific listing a traveler can actually reach.
   // Catalog vocabulary rows are NOT listings (§22.1) and are not in this table.
   const { rows } = await pool.query<Row>(`
-    SELECT ps.service_type,
+    SELECT md5(ps.user_id) AS owner_key,
+           u.role AS owner_role,
+           sc.category_key,
+           ps.product_shape,
+           ps.deposit_enabled,
+           (coalesce(btrim(ps.meeting_point), '') <> '') AS has_meeting_point,
+           ps.service_type,
            ps.delivery_method,
            ps.price_type,
            ps.booking_mode,
-           spf.instant_booking AS account_instant_booking
+           spf.instant_booking AS account_instant_booking,
+           (spf.user_id IS NOT NULL) AS has_provider_form
       FROM provider_services ps
       LEFT JOIN service_provider_forms spf ON spf.user_id = ps.user_id
+      LEFT JOIN users u ON u.id = ps.user_id
+      LEFT JOIN service_categories sc ON sc.id = ps.category_id
      WHERE ps.status = 'active'
        AND ps.approval_status = 'approved'
   `);
@@ -82,48 +119,110 @@ async function main() {
 
   const total = rows.length;
 
-  // ── Booking mode: the column, then the answer a reader actually gets ───────────────────────────
-  const storedSet = rows.filter((r) => r.booking_mode != null).length;
-  const resolved = rows.map((r) => resolveBookingMode(r.booking_mode, r.account_instant_booking));
-  const resolvedCounts = tally(resolved);
-  // A row whose account row is missing entirely resolves to "request" (the resolver's honest default),
-  // which is a different fact from a provider who chose "request". Counted so it cannot hide.
-  const noAccountRow = rows.filter((r) => r.account_instant_booking == null && r.booking_mode == null).length;
+  // ── The single-owner discount (plan §0 constraint 2) ──────────────────────────────────────────
+  // Which owner is largest is a MEASUREMENT; whether that owner is fixture data is a human
+  // judgement this script does not make (§13). Ties are broken by the hash so the split is
+  // deterministic across runs.
+  const byOwner = tally(rows.map((r) => r.owner_key));
+  const ownerRanking = sortedEntries(byOwner);
+  const largestOwner = ownerRanking[0] ?? null;
+  const remainder = largestOwner ? rows.filter((r) => r.owner_key !== largestOwner[0]) : rows;
 
-  // ── Vocabulary conformance: app-enforced sets, no DB CHECK ────────────────────────────────────
   const declaredServiceTypes = new Set<string>(serviceTypeEnum as readonly string[]);
   const declaredDelivery = new Set<string>(deliveryMethodEnum as readonly string[]);
-  const offVocabType = rows.filter((r) => r.service_type != null && !declaredServiceTypes.has(r.service_type));
-  const offVocabDelivery = rows.filter((r) => r.delivery_method != null && !declaredDelivery.has(r.delivery_method));
-  const missingType = rows.filter((r) => r.service_type == null).length;
-  const missingDelivery = rows.filter((r) => r.delivery_method == null).length;
-  const missingPrice = rows.filter((r) => r.price_type == null).length;
 
-  const combos = tally(
-    rows.map((r) => `${r.service_type ?? "∅"} + ${r.delivery_method ?? "∅"} + ${r.price_type ?? "∅"}`),
-  );
+  /** Every figure this audit reports, over whatever population it is handed. */
+  function summarise(population: Row[]) {
+    const n = population.length;
+    const storedSet = population.filter((r) => r.booking_mode != null).length;
+    // ONE derivation, imported (§18 rule 1): the mode AND where it came from both come from
+    // `resolveBookingModeWithProvenance`. The old hand-rolled "no account row" count was a second
+    // copy of the provenance rule and is retired in favour of the shared one (lane OC-A0b).
+    const resolutions = population.map((r) =>
+      resolveBookingModeWithProvenance(r.booking_mode, r.account_instant_booking),
+    );
+    const offVocabType = population.filter(
+      (r) => r.service_type != null && !declaredServiceTypes.has(r.service_type),
+    );
+    const offVocabDelivery = population.filter(
+      (r) => r.delivery_method != null && !declaredDelivery.has(r.delivery_method),
+    );
+    return {
+      rows: n,
+      bookingMode: {
+        storedOnTheRow: storedSet,
+        unsetOnTheRow: n - storedSet,
+        resolved: tally(resolutions.map((x) => x.mode)),
+        provenance: tally(resolutions.map((x) => x.provenance)),
+        // A row with NO provider form at all is the sharpest case: nobody has ever answered the
+        // instant-booking question for this seller, at any level.
+        noProviderFormRow: population.filter((r) => !r.has_provider_form).length,
+      },
+      vocabulary: {
+        offVocabularyServiceTypeRows: offVocabType.length,
+        offVocabularyServiceTypeValues: sortedEntries(tally(offVocabType.map((r) => r.service_type!))),
+        offVocabularyDeliveryRows: offVocabDelivery.length,
+        offVocabularyDeliveryValues: sortedEntries(tally(offVocabDelivery.map((r) => r.delivery_method!))),
+        rowsMissingServiceType: population.filter((r) => r.service_type == null).length,
+        rowsMissingDeliveryMethod: population.filter((r) => r.delivery_method == null).length,
+        rowsMissingPriceType: population.filter((r) => r.price_type == null).length,
+      },
+      largestCombinations: sortedEntries(
+        tally(
+          population.map(
+            (r) => `${r.service_type ?? "∅"} + ${r.delivery_method ?? "∅"} + ${r.price_type ?? "∅"}`,
+          ),
+        ),
+      ).slice(0, 12),
+      // ── The activation gate's GO/NO-GO (lane OC-A4) ────────────────────────────────────────
+      // `checkOfferingActivationGate` refuses a transition INTO active for a listing the contract
+      // cannot resolve. Rows already active are untouched by ruling, so this does NOT predict a
+      // breakage — it predicts what a seller pressing Publish tomorrow would be told, which is the
+      // number to read BEFORE a release carries the gate (OPERATING_PROCEDURE §5 step 3's posture).
+      // Resolution depends on `service_categories.category_key`, which migration 289 repairs; a
+      // large `catalog_keys_unrecognised` count is that repair not having reached this database.
+      contract: (() => {
+        const resolutions: OfferingCommerceResolution[] = population.map((r) =>
+          resolveOfferingCommerceContract({
+            kind: "listing",
+            sellerClass: r.owner_role === "expert" ? "expert" : "provider",
+            serviceType: r.service_type,
+            deliveryMethod: r.delivery_method,
+            priceType: r.price_type,
+            productShape: r.product_shape,
+            depositEnabled: r.deposit_enabled,
+            hasMeetingPoint: r.has_meeting_point,
+            bookingMode: r.booking_mode,
+            ownerInstantBooking: r.has_provider_form ? r.account_instant_booking : undefined,
+            categoryKey: r.category_key,
+          }),
+        );
+        return {
+          resolves: resolutions.filter((x) => x.resolved).length,
+          refuses: resolutions.filter((x) => !x.resolved).length,
+          archetypes: tally(
+            resolutions.flatMap((x) => (x.resolved ? [x.contract.commerceArchetype] : [])),
+          ),
+          refusalReasons: tally(resolutions.flatMap((x) => (x.resolved ? [] : [x.reason]))),
+        };
+      })(),
+    };
+  }
 
   const report = {
     generatedAt: new Date().toISOString(),
     population: "provider_services, status=active AND approval_status=approved",
     total,
-    bookingMode: {
-      storedOnTheRow: storedSet,
-      unsetOnTheRow: total - storedSet,
-      resolvedByResolveBookingMode: resolvedCounts,
-      unsetAndNoAccountRow: noAccountRow,
+    declaredServiceTypes: [...declaredServiceTypes],
+    declaredDeliveryMethods: [...declaredDelivery],
+    ownership: {
+      distinctOwners: ownerRanking.length,
+      largestOwnerRows: largestOwner ? largestOwner[1] : 0,
+      largestOwnerKey: largestOwner ? largestOwner[0].slice(0, 8) : null,
+      remainderRows: remainder.length,
     },
-    vocabulary: {
-      declaredServiceTypes: [...declaredServiceTypes],
-      offVocabularyServiceTypeRows: offVocabType.length,
-      offVocabularyServiceTypeValues: sortedEntries(tally(offVocabType.map((r) => r.service_type!))),
-      offVocabularyDeliveryRows: offVocabDelivery.length,
-      offVocabularyDeliveryValues: sortedEntries(tally(offVocabDelivery.map((r) => r.delivery_method!))),
-      rowsMissingServiceType: missingType,
-      rowsMissingDeliveryMethod: missingDelivery,
-      rowsMissingPriceType: missingPrice,
-    },
-    largestCombinations: sortedEntries(combos).slice(0, 12),
+    wholeCatalog: summarise(rows),
+    excludingLargestOwner: summarise(remainder),
   };
 
   if (JSON_OUT) {
@@ -131,29 +230,55 @@ async function main() {
     return;
   }
 
-  console.log(`\nOffering classification audit — ${report.generatedAt}`);
-  console.log(`Population: ${report.population}`);
-  console.log(`Active, approved provider listings: ${total}\n`);
-
-  console.log("BOOKING MODE");
-  console.log(`  stored on the row .......... ${storedSet}`);
-  console.log(`  unset on the row ........... ${total - storedSet}   (NULL is the designed default)`);
-  console.log("  resolved, i.e. what a reader actually sees:");
-  for (const m of bookingModeEnum) console.log(`    ${m.padEnd(8)} ${resolvedCounts[m] ?? 0}`);
-  if (noAccountRow) {
-    console.log(`  of the unset rows, ${noAccountRow} have NO provider form row at all —`);
-    console.log(`    they resolve to "request" as the honest default, which is not a provider's choice.`);
+  function print(label: string, sum: ReturnType<typeof summarise>) {
+    console.log(`\n── ${label} — ${sum.rows} listing(s) ──`);
+    console.log("BOOKING MODE");
+    console.log(`  stored on the row .......... ${sum.bookingMode.storedOnTheRow}`);
+    console.log(`  unset on the row ........... ${sum.bookingMode.unsetOnTheRow}   (NULL is the designed default)`);
+    console.log("  resolved, i.e. what a reader actually sees:");
+    for (const m of bookingModeEnum) console.log(`    ${m.padEnd(8)} ${sum.bookingMode.resolved[m] ?? 0}`);
+    console.log("  and WHO said so (listing / account / nobody):");
+    for (const pr of bookingModeProvenanceEnum) {
+      console.log(`    ${pr.padEnd(17)} ${sum.bookingMode.provenance[pr] ?? 0}`);
+    }
+    console.log(`  listings whose owner has NO provider form row at all: ${sum.bookingMode.noProviderFormRow}`);
+    console.log("VOCABULARY (app-enforced, no DB CHECK — an off-set value is possible by design)");
+    console.log(
+      `  service_type outside the declared ${declaredServiceTypes.size}: ${sum.vocabulary.offVocabularyServiceTypeRows} row(s)`,
+    );
+    for (const [v, n] of sum.vocabulary.offVocabularyServiceTypeValues) console.log(`    ${String(n).padStart(4)}  ${v}`);
+    console.log(
+      `  delivery_method outside the declared ${declaredDelivery.size}: ${sum.vocabulary.offVocabularyDeliveryRows} row(s)`,
+    );
+    for (const [v, n] of sum.vocabulary.offVocabularyDeliveryValues) console.log(`    ${String(n).padStart(4)}  ${v}`);
+    console.log(
+      `  missing service_type ${sum.vocabulary.rowsMissingServiceType} · delivery_method ${sum.vocabulary.rowsMissingDeliveryMethod} · price_type ${sum.vocabulary.rowsMissingPriceType}`,
+    );
+    console.log("LARGEST COMBINATIONS (service_type + delivery_method + price_type)");
+    for (const [combo, n] of sum.largestCombinations) console.log(`  ${String(n).padStart(4)}  ${combo}`);
+    console.log("COMMERCE CONTRACT (what a seller pressing Publish tomorrow would be told)");
+    console.log(`  resolves .... ${sum.contract.resolves}`);
+    console.log(`  refuses ..... ${sum.contract.refuses}`);
+    for (const [a, n] of sortedEntries(sum.contract.archetypes)) console.log(`    ${String(n).padStart(4)}  ${a}`);
+    for (const [reason, n] of sortedEntries(sum.contract.refusalReasons)) {
+      console.log(`    ${String(n).padStart(4)}  refused: ${reason}`);
+    }
   }
 
-  console.log("\nVOCABULARY (app-enforced, no DB CHECK — an off-set value is possible by design)");
-  console.log(`  service_type outside the declared ${declaredServiceTypes.size}: ${offVocabType.length} row(s)`);
-  for (const [v, n] of report.vocabulary.offVocabularyServiceTypeValues) console.log(`    ${String(n).padStart(4)}  ${v}`);
-  console.log(`  delivery_method outside the declared ${declaredDelivery.size}: ${offVocabDelivery.length} row(s)`);
-  for (const [v, n] of report.vocabulary.offVocabularyDeliveryValues) console.log(`    ${String(n).padStart(4)}  ${v}`);
-  console.log(`  missing service_type ${missingType} · delivery_method ${missingDelivery} · price_type ${missingPrice}`);
+  console.log(`\nOffering classification audit — ${report.generatedAt}`);
+  console.log(`Population: ${report.population}`);
+  console.log(`Active, approved provider listings: ${total}`);
+  console.log(
+    `Owners: ${report.ownership.distinctOwners} · largest single-owner cluster: ${report.ownership.largestOwnerRows} listing(s)` +
+      `${report.ownership.largestOwnerKey ? ` (owner ${report.ownership.largestOwnerKey}…)` : ""} · remainder: ${report.ownership.remainderRows}`,
+  );
+  console.log(
+    "A percentage over the whole catalog is a statement about the largest cluster unless it is discounted;",
+  );
+  console.log("both populations are therefore printed below. Which cluster is fixture data is a human call.");
 
-  console.log("\nLARGEST COMBINATIONS (service_type + delivery_method + price_type)");
-  for (const [combo, n] of report.largestCombinations) console.log(`  ${String(n).padStart(4)}  ${combo}`);
+  print("WHOLE CATALOG", report.wholeCatalog);
+  print("EXCLUDING THE LARGEST SINGLE OWNER", report.excludingLargestOwner);
   console.log("");
 }
 

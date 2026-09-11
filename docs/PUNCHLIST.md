@@ -57,7 +57,7 @@
 | V-7 | **Any signed-in account can stamp any transport option `confirmed`, with any reference.** `PATCH /api/transport-booking-options/:optionId/status` reads `bookingStatus` and `confirmationRef` straight off `req.body` behind `isAuthenticated` only — no ownership check, no allowlist. That is the §19 denylist shape on a status-and-authorship field, and the status it writes is the one the badge and the traveler-profile reader both treat as a real reservation. **[verified by the confirm-honesty lane]** | small, and it is an access hole |
 | V-8 | **A late paid signal promotes a cancelled transport option.** `handleStripePaymentSuccess`'s promotion is unconditional on the row's current status, so it has no from-state guard (§15's atomic-conditional shape is present for the payment check but not for the status it overwrites). **[verified by the confirm-honesty lane]** | small |
 | V-6 | **The AI-task price is invisible in that panel** — the page filters to percent and flat bands, and `concierge:ai_task` is stored in flat cents. **[verified]** | trivial |
-| V-9 | **Every live listing's booking mode is a fabricated `false`.** `server/services/buy-action-payload.ts` guards on `row.bookingMode || row.ownerUserId`, but `ownerUserId` is `provider_services.user_id` (**NOT NULL**), so the honest-absence branch its own comment describes is unreachable for every row from that table, and an owner with no `service_provider_forms` row resolves to `request` as if they had chosen it. **Measured on production 2026-09-11: 64 of 67 active listings.** The guard must test whether the OWNER FLAG is known, not whether an owner id is present. **[verified]** Owned by lane **OC-A0b**. | small |
+| V-9 | ~~**Every live listing's booking mode is a fabricated `false`.**~~ **CLOSED 2026-09-11 by lane OC-A0b (`2026-09-11-booking-mode-provenance`), and the fix is NOT the one this row proposed.** The diagnosis stands: `server/services/buy-action-payload.ts` guards on `row.bookingMode || row.ownerUserId`, `ownerUserId` is NOT NULL, so the honest-absence branch is unreachable and an owner with no `service_provider_forms` row resolves to `request` as if they had chosen it — **64 of 67 production listings [verified]**. The proposed remedy ("test whether the OWNER FLAG is known") was **wrong**: it would make the mode `undefined` for those 64 rows, and `resolveBuyAction` gives a modeless row no booking verb — i.e. it would strip the buy button from the entire live catalogue. `request` is the safe default (the traveler asks, the seller accepts, nothing is charged without an acceptance) and is deliberately kept. What was actually missing was the PROVENANCE: `resolveBookingModeWithProvenance` (`shared/schema.ts`) now says whether the answer was `listing_declared`, `account_declared` or `platform_default`, the payload stops coercing a NULL flag to `false`, and the misleading comment is corrected. | closed |
 
 ## 3 · Reported by audit, NOT verified here — open the file before acting
 
@@ -71,7 +71,14 @@
 
 ## 4 · Lanes unblocked and ready to build
 
-- **OC-A0b → OC-A2 → OC-A4 → OC-B1** — the offering commerce contract, ratified 2026-09-11 against production
+- **OC-B1 next** — the offering commerce contract. **OC-A0b, OC-A2 and OC-A4 LANDED 2026-09-11** (ledger rows
+  `2026-09-11-booking-mode-provenance`, `-offering-commerce-resolver`, `-offering-activation-validation`).
+  **Before publishing, run
+  `DATABASE_URL=<prod> npx tsx scripts/audit-offering-classification.ts` and read its COMMERCE CONTRACT
+  section.** `catalog_keys_unrecognised` does NOT block a publish (it is our table's gap, not the
+  seller's — reported and counted, never refused); a large count there means migration 289's
+  `service_categories.category_key` repair has not reached the deployment, and every such listing
+  sells without a resolvable contract. Ratified 2026-09-11 against production
   counts. Plan and lane briefs: `docs/superpowers/specs/2026-09-11-offering-commerce-contract-implementation-plan.md`.
   **OC-B2 (checkout authority) is HELD until a real seller catalog exists** — production has six non-demo listings.
 
