@@ -57,6 +57,7 @@
 | V-7 | **Any signed-in account can stamp any transport option `confirmed`, with any reference.** `PATCH /api/transport-booking-options/:optionId/status` reads `bookingStatus` and `confirmationRef` straight off `req.body` behind `isAuthenticated` only — no ownership check, no allowlist. That is the §19 denylist shape on a status-and-authorship field, and the status it writes is the one the badge and the traveler-profile reader both treat as a real reservation. **[verified by the confirm-honesty lane]** | small, and it is an access hole |
 | V-8 | **A late paid signal promotes a cancelled transport option.** `handleStripePaymentSuccess`'s promotion is unconditional on the row's current status, so it has no from-state guard (§15's atomic-conditional shape is present for the payment check but not for the status it overwrites). **[verified by the confirm-honesty lane]** | small |
 | V-6 | **The AI-task price is invisible in that panel** — the page filters to percent and flat bands, and `concierge:ai_task` is stored in flat cents. **[verified]** | trivial |
+| V-9 | **Every live listing's booking mode is a fabricated `false`.** `server/services/buy-action-payload.ts` guards on `row.bookingMode || row.ownerUserId`, but `ownerUserId` is `provider_services.user_id` (**NOT NULL**), so the honest-absence branch its own comment describes is unreachable for every row from that table, and an owner with no `service_provider_forms` row resolves to `request` as if they had chosen it. **Measured on production 2026-09-11: 64 of 67 active listings.** The guard must test whether the OWNER FLAG is known, not whether an owner id is present. **[verified]** Owned by lane **OC-A0b**. | small |
 
 ## 3 · Reported by audit, NOT verified here — open the file before acting
 
@@ -66,8 +67,13 @@
 - **R-4** Ready-made clones receive placeholder dates; bookable services inside them need revalidating once the buyer picks real dates.
 - **R-5** Ready-made delivery, revision requests, service acceptance and booking confirmation need distinct notifications.
 - **R-6** Ready-made refunds intentionally differ from service cancellation (author earnings reversal, platform revenue reversal, and whether the delivered clone survives) — keep them distinct, and write the rule down.
+- **R-7** `provider_services.service_type` carries a **second, category-shaped vocabulary** beside the declared six: `storage.getProviderServices` filters category with `ilike` on it (owner-scoped) and `content-matching.service.ts` does `inArray(serviceType, rule.serviceTypes)` for placement rules. Production's 61 demo listings hold values like `florist` and `av-equipment` for that reason, so **correcting them would break those readers**. Ruled a finding for lane **OC-A2**, not a data cleanup (`2026-09-11-oc-a1-ratified`); the reader inventory is [reported], not exhaustively checked.
 
 ## 4 · Lanes unblocked and ready to build
+
+- **OC-A0b → OC-A2 → OC-A4 → OC-B1** — the offering commerce contract, ratified 2026-09-11 against production
+  counts. Plan and lane briefs: `docs/superpowers/specs/2026-09-11-offering-commerce-contract-implementation-plan.md`.
+  **OC-B2 (checkout authority) is HELD until a real seller catalog exists** — production has six non-demo listings.
 
 - **L25 plan-work rail** — ruling 11 (ratified 2026-09-08): a planning-tier listing bought at checkout writes the advisor row on authorization, inside the booking's transaction, through the existing single author. One more caller, never a new insert site.
 - **Booking-agent claim lane** — ruling `2026-09-08-assignment-is-claimed`: retire auto-assignment, requests are claimed from the pooled queue, matching only orders the queue, existing assignees keep theirs.

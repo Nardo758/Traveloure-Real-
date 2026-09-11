@@ -7,42 +7,71 @@
 >
 > **What this plan is:** a serial lane sequence, each lane one PR and one `docs/DECISIONS.md`
 > row, with the question that gates it and the proof that closes it.
-> **What it is not:** a ratification. The design document proposes a vocabulary; nothing here
-> ratifies it. Lane **A1 is that ratification**, and it is a decision-maker step, not a build.
+> **Revised 2026-09-11** — the vocabulary was ratified against production counts
+> (`2026-09-11-oc-a1-ratified`), which corrected §4.3's judgement and compressed the phasing.
+> §0 carries the measured numbers and the three constraints that bind every lane.
 
 ---
 
-## 0 · The two things that gate everything
+## 0 · Both gates are CLOSED — measured and ratified 2026-09-11
 
-**Phase 0a is LANDED** (PR #865, ledger `2026-09-11-one-decision-register`): the three registers
-are merged into `docs/PUNCHLIST.md` §1, and `scripts/audit-offering-classification.ts` exists.
+**Phase 0a is LANDED** (PR #865, ledger `2026-09-11-one-decision-register`) and **both gates that
+stood above every lane are now closed** (ledger `2026-09-11-oc-a1-ratified`).
 
-Two gates remain before any code changes behaviour:
+**G-measure — done, against PRODUCTION.** The deployment's Neon database, not the workspace's
+`heliumdb`; they are different databases and every count taken before 2026-09-11 was dev data.
 
-| Gate | What it is | Who | Blocks |
-|---|---|---|---|
-| **G-measure** | Run the audit against **production** (`DATABASE_URL=<prod> npx tsx scripts/audit-offering-classification.ts`). §4.3's counts are development data by the document's own framing, and the judgement that enforcing the contract "would deactivate or misclassify most current listings" rests on them. | Decision-maker / Replit | A1, and every lane after |
-| **G-ratify** | Approve the archetype list (§9), the nine axes (§8), and the disposition for the rows the audit reports as unresolvable. | Decision-maker | A2 onward |
+| Measured on production, 2026-09-11 | |
+|---|---|
+| Active + approved `provider_services` | **67** |
+| …of which ONE demo account (2026-01-08, role `user`, no provider form) | **61** |
+| **Real seller listings** | **6** — 3 expert-owned, 3 from a second form-less account |
+| `service_type` outside the declared six | 63 — 61 fixtures, plus `tour` and `transport` |
+| `delivery_method` outside the declared seven | **0** |
+| Rows with a stored `booking_mode` | **0** |
+| Rows resolving to `instant` | **0** — every live listing's mode is a platform default |
 
-Until both are done the plan's only honest state is "measured nothing, ratified nothing".
-**A lane that runs ahead of its gate is building against a vocabulary that may not survive
-contact with the real distribution** — which is the one step that would be expensive to redo.
+**G-ratify — done.** The nine axes and the §9 archetype list stand as written. **§4.3's judgement is
+corrected:** "enforcing the contract would deactivate or misclassify most current listings" is wrong
+— enforcement touches 63 rows, 61 of them fixtures and 2 an expert's mislabels. Nothing real breaks.
+
+**Three standing constraints fall out of the ratification and bind every lane below.**
+
+1. **The 61 demo listings are KEPT** — the platform is not yet exercised end to end and they are the
+   corpus. Their `service_type` is **NOT corrected**: `storage.getProviderServices` matches category
+   with `ilike` on that column and `content-matching.service.ts` does `inArray` on it, so the column
+   already carries a **second, category-shaped vocabulary with real consumers**. That is a finding
+   for OC-A2, not a cleanup. They resolve as **"unclassified"**, and that is an honest answer rather
+   than a defect (§13) — a fixture is not a seller's offering.
+2. **Every coverage number excludes that account explicitly.** With 61 of 67 rows from one owner, an
+   unqualified percentage about "the catalog" is a statement about fixtures. The audit reports the
+   discount itself (OC-A0b), so nobody has to remember.
+3. **`commitmentMode` has zero real signal today.** The contract distinguishes **seller-declared**
+   from **platform-default** from day one, because every live listing is the latter and nothing in
+   the schema records which.
+
+**Owed, ruled but not applied:** `tour` and `transport` (two rows, one expert account) are corrected
+to `experience`. That is a production data change and needs an owner or admin action.
 
 ---
 
 ## 1 · Lane sequence
 
 Serial, one PR at a time. Waves are namespaced (`OC-A1`, never a bare "wave 1").
+**Revised 2026-09-11 by `2026-09-11-oc-a1-ratified`** — the original sequence was insurance against
+breaking a large legacy catalog, and production has six real listings, so the insurance is dropped
+and the saving is spent on getting the shape right before sellers arrive.
 
 | Lane | Ships | Gated on | Schema? | Rough cost |
 |---|---|---|---|---|
 | ~~OC-A0~~ | ✅ **LANDED** — register merge + read-only audit script (PR #865) | — | no | — |
-| **OC-A1** | **Ratification row**, not code: the measured distribution + the approved archetype/axis list + the disposition for unresolvable rows, recorded as a ledger ruling | G-measure | no | decision-maker |
-| **OC-A2** | `resolveOfferingCommerceContract` — ONE pure module, **no caller but its own tests** | G-ratify | **no column** | ~250k |
-| **OC-A3** | Diagnostics: admin read-only visibility of every active listing's resolved contract + unresolvable rows; the audit script re-pointed at the resolver | A2 | no | ~200k |
-| **OC-A4** | Activation validation (§15 invariant 12): a NEWLY activated listing that resolves to no contract is refused with a machine-readable reason. Historical rows stay readable | A3 + coverage measured | no | ~250k |
+| ~~OC-A1~~ | ✅ **RATIFIED 2026-09-11** — axes and archetypes stand; §4.3 corrected; phasing compressed | — | no | — |
+| **OC-A0b** | **NEW, and first.** Fix the fabricated `false` in `buy-action-payload.ts` so *unknown* survives to the resolver; teach the audit to report the single-owner discount | — | no | ~120k |
+| **OC-A2** | `resolveOfferingCommerceContract` — ONE pure module, **no caller but its own tests** | A0b | **no column** | ~250k |
+| ~~OC-A3~~ | ❌ **DROPPED.** Its job was producing the coverage number; the audit produced it. The refusal reason folds into OC-A4, which is where it is actually read | — | — | ~200k saved |
+| **OC-A4** | Activation validation, **scoped to TRANSITIONS INTO ACTIVE** so the demo corpus keeps working. No coverage gate — coverage is six rows | A2 | no | ~250k |
 | **OC-B1** | Contract **snapshot** at commitment on the `service_bookings` rail (§14.1) | A4 | **yes — first schema lane** | ~350k |
-| **OC-B2** | Checkout authority: buy-action, required-context, inventory, price and charge decisions read the contract | B1 | no | ~400k |
+| ⏸ **OC-B2** | **HELD until real sellers exist.** Checkout authority: buy-action, required-context, inventory, price and charge decisions read the contract | B1 **+ a real catalog** | no | ~400k |
 | **OC-B3** | Required-context enforcement per archetype (§18's P1/P2/P3/P6/P8, E4/P4 list) | B2 | no | ~300k |
 | **OC-C1** | Slip projection types; `slipEffect` **derived from** `impactClassFor` | B2 | no | ~300k |
 | **OC-C2** | Link-or-trip-level invariant + the `trip_level_obligation` marker | C1, **D-11** | yes | ~300k |
@@ -51,6 +80,15 @@ Serial, one PR at a time. Waves are namespaced (`OC-A1`, never a bare "wave 1").
 | **OC-D2** | Earnings release aligned with fulfillment | D1, **D-6** | no | ~350k |
 | **OC-D3** | Custody-aware cancellation / refund / reversal | D1, **D-7**, **D-9** | no | ~450k |
 | **OC-D4** | Legacy-rail reconciliation and the "new writes stop" decision (§15A) | D3, **D-12** | no | ~350k |
+
+**Order: A0b → A2 → A4 → B1 → *pause* → B2 → B3 → C/D.**
+
+**Why B2 is held, since it is the counterintuitive one.** Routing checkout through the resolver
+while 91% of the catalog is fixture data means the first evidence that the routing is correct
+arrives from rows nobody sells. B1 still lands before the pause: it is additive, it records what
+happened rather than deciding anything, and it is cheap to have in place before the first real
+booking. **The release condition is a real catalog, not a date** — when non-demo active listings
+exist across several accounts, B2 resumes.
 
 **Not in this sequence, deliberately:** the **P5 custom-quote rail** (blocked on **D-8**; §9.2 says
 do not send quotes through generic checkout until that rail exists) and the **E2/E3 milestone
@@ -67,13 +105,37 @@ are answered.
 
 ## 2 · Lane briefs
 
-### OC-A1 — Ratify the vocabulary against the real distribution
+### ~~OC-A1~~ — Ratified 2026-09-11
 
-Not a build. Produces one `docs/DECISIONS.md` ruling row carrying: the production counts; the
-approved archetype list and nine axes (or the amendments to them); and, for each row shape the
-audit reports as unresolvable, an explicit disposition — **leave readable, refuse on
-re-activation, or amend the vocabulary to admit it**. §13: "we never classified this" is a
-finding, not a gap to fill with the nearest-looking archetype.
+Closed by ledger `2026-09-11-oc-a1-ratified`. Its measured numbers and the three standing
+constraints they produced are in §0 above; do not restate them in a lane.
+
+### OC-A0b — Let *unknown* survive, and make the audit discount its own fixtures
+
+Two small things the resolver depends on.
+
+**(a) The fabricated `false`.** `server/services/buy-action-payload.ts` reads the owner's
+`service_provider_forms.instant_booking` into a map, then resolves with
+`resolveBookingMode(row.bookingMode, ownerInstant ?? false)` behind the guard
+`row.bookingMode || row.ownerUserId`. The comment above it states the §13 intent — the flag is left
+absent rather than fabricated — but `ownerUserId` is `provider_services.user_id`, which is
+**NOT NULL**, so for every row sourced from that table the honest-absence branch is unreachable and
+an owner with **no form row at all** is rendered as having chosen `request`. On production that is
+**64 of 67 listings**. The guard must test whether the OWNER FLAG IS KNOWN
+(`ownerInstant !== undefined`), not whether an owner id is present. Behaviour change is confined to
+the previously-unreachable branch; nothing that already resolved changes.
+
+**May not:** invent an account-level write path (the settings toggle was removed on purpose —
+ledger 90 FP-5 S1 — because it wrote `provider_settings.instant_booking` while every reader reads
+the form's twin); add a second resolution site; or change `resolveBookingMode` itself, which is
+correct and is ruling 75's ONE derivation.
+
+**(b) The discount.** `scripts/audit-offering-classification.ts` reports the largest single-owner
+cluster separately from the remainder, so a coverage number is never silently a statement about
+fixtures (§0 constraint 2). Read-only as before.
+
+**Proof:** a unit test pinning that a known flag resolves as today, and that an UNKNOWN flag no
+longer resolves to `request` — the negative is the point of the lane.
 
 ### OC-A2 — One read-only resolver
 
@@ -95,21 +157,21 @@ An unresolvable listing returns a **machine-readable reason**, never a default a
 **Proof:** a pure unit suite over fixture rows — one per archetype in §9, plus the contradictory
 and not-purchasable cases — wired into `build.yml` in a job that runs `npm ci`.
 
-### OC-A3 — Diagnostics and admin visibility
+### ~~OC-A3~~ — DROPPED 2026-09-11
 
-An admin-only read (under §2's blanket `requireAdmin` guard) listing every active listing with its
-resolved contract, and separately every listing that resolves to none with its reason. The audit
-script stops measuring raw columns and measures the **resolver's** output, so coverage is a number
-before anything enforces it (§17 Phase 1.3: "do not change checkout behavior until classification
-coverage is measured").
-
-**May not:** change any traveler-facing surface; publish `users.id` (LD 40); add a filter to a
-guard's allowlist instead of putting the route under `/api/admin/*`.
+Its purpose was to produce the classification-coverage number before anything enforced. The Phase 0a
+audit produced it against production, and the answer is six real listings. An admin list of
+unresolvable listings over a catalog that size is a page nobody opens. **The refusal reason it would
+have surfaced folds into OC-A4**, which is where it is actually read — by the seller being refused.
+The audit script remains the ops instrument.
 
 ### OC-A4 — Activation validation
 
-A listing being **newly activated** that resolves to no contract is refused with its reason.
-**Historical and already-active rows are unaffected** — §15's own wording: unknown delivery
+A listing **transitioning INTO active** that resolves to no contract is refused with its reason,
+machine-readable and shown to the seller (OC-A3's job, folded in here).
+**The scoping to transitions is load-bearing, not a softening:** the 61 demo listings are kept by
+ruling and resolve as "unclassified", so a validator that ran over rows already active would refuse
+the corpus the platform is being tested with. **Historical and already-active rows are unaffected** — §15's own wording: unknown delivery
 behaviour stays readable for historical rows. No backfill; no silent deactivation of anything
 already live.
 
