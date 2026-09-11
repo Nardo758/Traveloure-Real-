@@ -19,9 +19,15 @@
  * NEGATIVE SPACE, stated because a green run means green-within-stated-bounds (§18d):
  *   · It reads `provider_services` ONLY. Expert listings, ready-made plans, affiliate rows and the
  *     legacy `bookings` rail are out of scope and are NOT counted here.
- *   · It measures the CURRENT columns. It does not resolve the proposed commerce archetype, which
- *     does not exist yet — that is Phase 1's resolver, and this script is what tells you whether
- *     Phase 1 can classify the real catalog before you write it.
+ *   · It measures the CURRENT columns, and — since lane OC-A4 — also RESOLVES each row through
+ *     `resolveOfferingCommerceContract`. That section is the activation gate's GO/NO-GO: rows
+ *     already active are untouched by ruling, so a refusal count is NOT a breakage forecast, it is
+ *     what a seller pressing Publish tomorrow would be told. Read it against PRODUCTION before a
+ *     release carries the gate (OPERATING_PROCEDURE §5 step 3's posture).
+ *   · The resolution here supplies only the columns this query reads. It does not join
+ *     `expert_offering_types`, so an expert listing is classified from its category and delivery
+ *     method alone — the same facts the gate itself uses, deliberately (the account-level offering
+ *     key is not this listing's offering, §13).
  *   · "Outside the declared set" is a vocabulary observation, not a defect: `service_type` and
  *     `delivery_method` are app-enforced with no DB CHECK (the publish-trap posture), so a value
  *     outside the enum is structurally possible by design and is exactly what needs deciding.
@@ -48,11 +54,20 @@ import {
   serviceTypeEnum,
   deliveryMethodEnum,
 } from "../shared/schema";
+import {
+  resolveOfferingCommerceContract,
+  type OfferingCommerceResolution,
+} from "../server/services/offering-commerce-contract";
 
 const JSON_OUT = process.argv.includes("--json");
 
 type Row = {
   owner_key: string;
+  owner_role: string | null;
+  category_key: string | null;
+  product_shape: string | null;
+  deposit_enabled: boolean | null;
+  has_meeting_point: boolean;
   service_type: string | null;
   delivery_method: string | null;
   price_type: string | null;
@@ -82,6 +97,11 @@ async function main() {
   // Catalog vocabulary rows are NOT listings (§22.1) and are not in this table.
   const { rows } = await pool.query<Row>(`
     SELECT md5(ps.user_id) AS owner_key,
+           u.role AS owner_role,
+           sc.category_key,
+           ps.product_shape,
+           ps.deposit_enabled,
+           (coalesce(btrim(ps.meeting_point), '') <> '') AS has_meeting_point,
            ps.service_type,
            ps.delivery_method,
            ps.price_type,
@@ -90,6 +110,8 @@ async function main() {
            (spf.user_id IS NOT NULL) AS has_provider_form
       FROM provider_services ps
       LEFT JOIN service_provider_forms spf ON spf.user_id = ps.user_id
+      LEFT JOIN users u ON u.id = ps.user_id
+      LEFT JOIN service_categories sc ON sc.id = ps.category_id
      WHERE ps.status = 'active'
        AND ps.approval_status = 'approved'
   `);
@@ -152,6 +174,38 @@ async function main() {
           ),
         ),
       ).slice(0, 12),
+      // ── The activation gate's GO/NO-GO (lane OC-A4) ────────────────────────────────────────
+      // `checkOfferingActivationGate` refuses a transition INTO active for a listing the contract
+      // cannot resolve. Rows already active are untouched by ruling, so this does NOT predict a
+      // breakage — it predicts what a seller pressing Publish tomorrow would be told, which is the
+      // number to read BEFORE a release carries the gate (OPERATING_PROCEDURE §5 step 3's posture).
+      // Resolution depends on `service_categories.category_key`, which migration 289 repairs; a
+      // large `catalog_keys_unrecognised` count is that repair not having reached this database.
+      contract: (() => {
+        const resolutions: OfferingCommerceResolution[] = population.map((r) =>
+          resolveOfferingCommerceContract({
+            kind: "listing",
+            sellerClass: r.owner_role === "expert" ? "expert" : "provider",
+            serviceType: r.service_type,
+            deliveryMethod: r.delivery_method,
+            priceType: r.price_type,
+            productShape: r.product_shape,
+            depositEnabled: r.deposit_enabled,
+            hasMeetingPoint: r.has_meeting_point,
+            bookingMode: r.booking_mode,
+            ownerInstantBooking: r.has_provider_form ? r.account_instant_booking : undefined,
+            categoryKey: r.category_key,
+          }),
+        );
+        return {
+          resolves: resolutions.filter((x) => x.resolved).length,
+          refuses: resolutions.filter((x) => !x.resolved).length,
+          archetypes: tally(
+            resolutions.flatMap((x) => (x.resolved ? [x.contract.commerceArchetype] : [])),
+          ),
+          refusalReasons: tally(resolutions.flatMap((x) => (x.resolved ? [] : [x.reason]))),
+        };
+      })(),
     };
   }
 
@@ -202,6 +256,13 @@ async function main() {
     );
     console.log("LARGEST COMBINATIONS (service_type + delivery_method + price_type)");
     for (const [combo, n] of sum.largestCombinations) console.log(`  ${String(n).padStart(4)}  ${combo}`);
+    console.log("COMMERCE CONTRACT (what a seller pressing Publish tomorrow would be told)");
+    console.log(`  resolves .... ${sum.contract.resolves}`);
+    console.log(`  refuses ..... ${sum.contract.refuses}`);
+    for (const [a, n] of sortedEntries(sum.contract.archetypes)) console.log(`    ${String(n).padStart(4)}  ${a}`);
+    for (const [reason, n] of sortedEntries(sum.contract.refusalReasons)) {
+      console.log(`    ${String(n).padStart(4)}  refused: ${reason}`);
+    }
   }
 
   console.log(`\nOffering classification audit — ${report.generatedAt}`);

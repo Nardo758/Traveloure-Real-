@@ -236,6 +236,30 @@ jobs:
       - name: Traveler-charge composition pin (A3)
         run: npx tsx --test server/__tests__/traveler-charge-composition.test.ts
 
+  offering-activation-gate:
+    name: offering-activation-gate (2026-09-11-offering-activation-validation)
+    runs-on: ubuntu-latest
+    env:
+      # NO DATABASE IS REACHED. The suite tests the gate's pure halves (its seller-facing refusal
+      # map) and the STATIC placement of its call sites; this var exists only because
+      # `server/services/offering-activation-gate.service.ts` imports `server/db.ts`, which throws
+      # at IMPORT time when it is unset. Same posture as legacy-rail-traveler-charge below.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/unused-no-connection-is-opened
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      # The transition scoping is the RULING, not a softening: production's 61 demo listings are
+      # KEPT (2026-09-11-oc-a1-ratified) and resolve as unclassified, so a gate that ran on an
+      # ordinary edit of an already-active row would refuse the corpus the platform is being tested
+      # with. T1/T2 pin that from the FILE (comments stripped), never from a literal call count;
+      # T3 pins the single caller module; R1/R2 pin that every refusal the resolver can produce has
+      # a seller-facing sentence naming a fix, with the reason set DERIVED by driving the resolver.
+      - name: Offering activation gate pin
+        run: npx tsx --test server/__tests__/offering-activation-gate.test.ts
+
   legacy-rail-traveler-charge:
     name: legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)
     runs-on: ubuntu-latest
