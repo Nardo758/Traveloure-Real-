@@ -132,6 +132,17 @@ Representative provider categories include:
 
 ### 4.3 Development-data classification snapshot
 
+> **Amendment (2026-09-11) — SUPERSEDED BY A PRODUCTION MEASUREMENT; the numbers below are the
+> DEV database and the judgement drawn from them is WRONG.** Ledger `2026-09-11-oc-a1-ratified`:
+> production carries **67** active+approved provider listings, **61 of them one demo account**,
+> leaving **6 real seller listings**; `delivery_method` is 100% in-vocabulary; **0** rows store a
+> `booking_mode` and **0** resolve to `instant`. The 215 counted here are a different database
+> (`heliumdb`) with its own data — not a superset of production. **So "immediately enforcing the
+> proposed contract would deactivate or misclassify most current listings" does not hold:**
+> enforcement touches 63 rows, 61 of them fixtures and 2 an expert's mislabels. The phasing built
+> on that sentence is compressed accordingly — see the implementation plan's §0 and §1.
+> The text below is kept as the record of what was measured on 2026-09-08 and where.
+
 **Observed on 2026-09-08; development database only:**
 
 - All 55 committed Expert offering types are active: advisory 12, planning 11, coordination 12, live support 6, specialized 14.
