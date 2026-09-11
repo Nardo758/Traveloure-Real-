@@ -23,12 +23,27 @@
 
 ## 1 · Decisions still needed (nobody can build these without an answer)
 
+> **THIS IS THE ONE DECISION REGISTER (merged 2026-09-11).** It supersedes the two lists that asked the
+> same questions elsewhere: `docs/ROADMAP.md` §A (the Console & AI Concierge open register) and §19 of
+> `docs/superpowers/specs/2026-09-08-offering-commerce-trip-slip-contract-design.md` (the offering
+> commerce contract). Both now point here. Two registers guarantee one gets answered and the other
+> quietly does not — D-1 and D-2 below were each asked twice already, in different words.
+> Each row names where it came from and what it blocks.
+
 | # | Question | Recommendation |
 |---|---|---|
 | D-1 | **Is a purchased ready-made trip a finished plan or an editable template?** Today the clone is an ordinary `draft` with placeholder dates and no final snapshot **[verified]** (`ready-made-purchase.service.ts:108`), while the buyer was sold "a ready-made trip". | Deliver **both**: write a final snapshot at purchase so the buyer receives a finished Trip Card, and let them reopen it to edit. Otherwise the copy must stop implying a finished product. |
 | D-2 | **What is the included consultation?** It is stored as an entitlement on `ready_made_purchases`, not a `service_bookings` row, so it inherits no scheduling, acceptance, cancellation or refund machinery **[reported]**. | Decide it is **one asynchronous revision** and say exactly that everywhere, or make it a real schedulable booking. The wording and the storage must agree. |
 | D-3 | **Should a single checkout mix a ready-made trip with services?** It cannot today: ready-made has its own PaymentIntent and table **[reported]**. | Keep them separate (a digital product and a reservation are different fulfilment), and make the separation **visible** so nothing implies the ready-made price includes the services inside it. |
 | D-4 | **Must a bookable itinerary item reference a real provider service?** An item without one renders as reference-only and adds nothing to the total **[reported]** (`cart.tsx`). | Yes — make it an explicit authoring contract for ready-made authors, and label every item as included / recommended / bookable separately / external. |
+| D-5 | **When is Expert planning work charged for a LARGE engagement?** Ruling 11 (2026-09-08) answered the ordinary case — a planning-tier listing is charged at checkout and the purchase grants advisor access on authorization. Milestone billing for a multi-week engagement has no rail and no ruling. *(from the commerce contract §19.1)* | Do not build milestone billing until an engagement rail exists; until then a large engagement is sold as a listing like any other, or not at all. |
+| D-6 | **Which Expert outputs require traveler acceptance before completion and earnings release, and what revision allowance comes with a planning artifact?** *(commerce contract §19.2–3)* | Acceptance for artifacts (a plan, a brief, edited media); seller-declared for sessions and live support. One revision included, stated on the listing, so "accepted" is never a silent timeout in the seller's favour. |
+| D-7 | **Who may declare completion for physical-action and coordination work, and how are reimbursable expenses quoted, approved, evidenced and refunded?** *(commerce contract §19.4–5)* | Seller declares, traveler has a stated window to dispute. Expenses are quoted and approved BEFORE they are incurred or they are not reimbursable — never reconciled after the fact against a receipt nobody agreed to. |
+| D-8 | **Can custom quotes require deposits, and how long does a quote stay valid?** *(commerce contract §19.6)* | Yes to deposits, with an explicit expiry on every quote. An expired quote is re-quoted, never silently honoured or silently refused. |
+| D-9 | **What happens when one bundle component fails after others are delivered?** *(commerce contract §19.7)* | Partial completion is its own state; refund the failed component and say so, rather than completing the parent or reversing the whole bundle. |
+| D-10 | **Which external partners can provide confirmation, change and cancellation callbacks, and what minimum evidence lets an external booking appear as confirmed?** *(commerce contract §19.8–9)* | Until a partner provides a callback, an external booking never reaches "confirmed" on our surfaces — it stays requested with the partner named. No partner today provides one. |
+| D-11 | **Is a trip-level obligation with no item link a supported product pattern or a migration exception?** *(commerce contract §19.10)* | Migration exception, marked and audited, so it cannot quietly become the normal shape. |
+| D-12 | **Which booking rail becomes canonical, and when do new writes to the legacy rail stop?** *(commerce contract §19.11–12, and the legacy rail's own fee fix on 2026-09-08 touched both)* | `service_bookings` is canonical. The legacy rail needs a dated "no new writes" decision before anything is made read-only; historical reads and refunds survive retirement. |
 
 ## 2 · Verified defects, ready to fix
 

@@ -717,6 +717,13 @@ Required-context tests must distinguish Trip dates from service fulfillment fact
 
 ## 19. Product and policy decisions still required
 
+> **Amendment (2026-09-11) — SUPERSEDED AS A REGISTER; the one register is `docs/PUNCHLIST.md` §1.**
+> Every question below has been carried there as rows **D-5 … D-12**, each naming this section as its
+> source and carrying a recommendation. The text below is kept as this document's own reasoning, but
+> **an answer is recorded in the punchlist, not here**, and a NEW question goes there too. Two
+> registers asking the same thing guarantee one gets answered and the other quietly does not —
+> D-1 and D-2 there had each already been asked twice, in different words.
+
 The document recommends a structure but does not invent these business decisions:
 
 1. When should Expert advisory and planning fees be charged: before assignment, after acceptance, or by
