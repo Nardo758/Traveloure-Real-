@@ -34,16 +34,27 @@
  *     expert's ACCOUNT-level role, not this listing's offering, and filing every one of their
  *     listings under it would be a claim the row does not make (§13).
  *
- * KNOWN COUPLING, RECORDED RATHER THAN WORKED AROUND. A listing resolves only if `impactClassFor`
- * recognises its `service_categories.category_key`. Production carried that column on almost no
- * category row until migration 289's repair (CLAUDE.md ruling 31's amendment), so this gate's
- * behaviour on the deployment depends on 289 having been applied. Run
- * `scripts/audit-offering-classification.ts` against production BEFORE publishing: it now reports
- * how many ACTIVE listings resolve and why the rest do not, which is the go/no-go.
+ * THE GATE REFUSES ON A NARROWER SET THAN THE RESOLVER REFUSES ON, AND THAT IS THE FINDING THIS
+ * LANE MADE. The plan's OC-A4 brief reads "a listing transitioning INTO active that resolves to no
+ * contract is refused". Taken literally that includes `catalog_keys_unrecognised` — and a listing
+ * with NO CATEGORY AT ALL is a normal, supported shape on this platform (the F2 publish-gate suite
+ * creates and publishes exactly that), while `impactClassFor` also returns nothing for a listing
+ * whose category row carries no `category_key`, which is the taxonomy defect ruling 31's amendment
+ * describes and migration 289 repairs. Both are facts about OUR tables, not about what the seller
+ * stated, and refusing a seller for them would say "choose a category" to someone who did.
+ *
+ * So `catalog_keys_unrecognised` is REPORTED, NEVER REFUSED: it is `logger.warn`ed with the
+ * listing id so the gap is observable rather than silent (the §18d posture — a standing exemption
+ * that is never re-read becomes a baseline), and `scripts/audit-offering-classification.ts` counts
+ * it against any database. What the gate DOES refuse is the design's own activation enumeration:
+ * §15 invariant 12's unknown delivery behaviour, §11's two invalid combinations, and a
+ * `service_type` outside the declared vocabulary. Those are all facts the seller stated and can
+ * change. `GATE_REFUSING_REASONS` below is that set, written down once.
  */
 import { eq } from "drizzle-orm";
 
 import { db } from "../db";
+import { logger } from "../infrastructure/logger";
 import { providerServices, serviceCategories, serviceProviderForms, users } from "@shared/schema";
 import {
   resolveOfferingCommerceContract,
@@ -94,6 +105,25 @@ const REFUSAL_MESSAGE: Readonly<Record<UnresolvableReason, string>> = {
   artifact_delivery_with_meeting_point:
     "A downloadable listing can't also require a meeting point. Remove the meeting point, or change the delivery method.",
 };
+
+/**
+ * THE REASONS THAT BLOCK A PUBLISH, written down once (see the header for why this is narrower
+ * than the resolver's own refusal set). Every member is a fact the SELLER stated on the listing and
+ * can change; the one non-member — `catalog_keys_unrecognised` — is a fact about the catalog.
+ */
+const GATE_REFUSING_REASONS: ReadonlySet<UnresolvableReason> = new Set<UnresolvableReason>([
+  // §15 invariant 12: no listing may use unknown delivery behaviour once it is newly activated.
+  "delivery_shape_unclassifiable",
+  // §11's two activation-time invalid combinations.
+  "instant_commitment_with_custom_quote",
+  "artifact_delivery_with_meeting_point",
+  // A value the seller typed that no behavioural reading covers. Existing rows are untouched —
+  // only a NEW transition into active is judged.
+  "service_type_outside_declared_vocabulary",
+  // Unreachable today, and refusing is the right answer for the day a shape lands that no
+  // archetype covers: publishing a listing nothing can sell is worse than refusing it.
+  "archetype_unresolvable",
+]);
 
 /**
  * Assemble the shape the listing will HAVE after this write — the live row overlaid with the
@@ -203,6 +233,21 @@ export async function checkOfferingActivationGate(opts: {
   const input = await resolveActivationInput(opts);
   const resolution = resolveOfferingCommerceContract(input);
   if (resolution.resolved) return null;
+
+  // A reason the seller cannot act on does not block them (see the header). It is reported, so the
+  // gap stays visible; the audit script is where it is counted.
+  if (!GATE_REFUSING_REASONS.has(resolution.reason)) {
+    logger.warn(
+      {
+        serviceId: opts.serviceId ?? null,
+        reason: resolution.reason,
+        detail: resolution.detail,
+      },
+      "[offering-contract] activation allowed with an unresolvable contract",
+    );
+    return null;
+  }
+
   return {
     // 422, matching the VERIFICATION_REQUIRED gate on the same rail: the request is well-formed
     // and the listing is the seller's own — what fails is a rule about its content.
@@ -219,3 +264,6 @@ export async function checkOfferingActivationGate(opts: {
 
 /** Exported for the pin: every refusal reason the resolver can return has a seller-facing sentence. */
 export const ACTIVATION_REFUSAL_MESSAGES = REFUSAL_MESSAGE;
+
+/** Exported for the pin: which of those reasons actually BLOCK a publish, and which only report. */
+export const ACTIVATION_BLOCKING_REASONS = GATE_REFUSING_REASONS;

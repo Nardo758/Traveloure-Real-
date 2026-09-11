@@ -185,6 +185,17 @@ The audit script remains the ops instrument.
 
 A listing **transitioning INTO active** that resolves to no contract is refused with its reason,
 machine-readable and shown to the seller (OC-A3's job, folded in here).
+
+**CORRECTED IN BUILD (2026-09-11, ledger `2026-09-11-offering-activation-validation`): "resolves to
+no contract" is NARROWER than the resolver's own refusal set.** Taken literally it includes
+`catalog_keys_unrecognised`, and CI proved that wrong before it shipped — the F2 publish-gate suite
+creates and publishes a listing with NO CATEGORY AT ALL, which is a normal supported shape, and
+`impactClassFor` also answers nothing for a category row carrying no `category_key` (the taxonomy
+defect migration 289 repairs). Both are facts about OUR tables, not about what the seller stated, so
+refusing would say "choose a category" to someone who did. That reason is therefore **reported
+(`logger.warn`) and counted by the audit, never refused**. The gate BLOCKS on the design's own
+activation enumeration: §15 invariant 12's unknown delivery behaviour, §11's two invalid
+combinations, an off-vocabulary `service_type`, and an archetype no matrix row covers.
 **The scoping to transitions is load-bearing, not a softening:** the 61 demo listings are kept by
 ruling and resolve as "unclassified", so a validator that ran over rows already active would refuse
 the corpus the platform is being tested with. **Historical and already-active rows are unaffected** — §15's own wording: unknown delivery

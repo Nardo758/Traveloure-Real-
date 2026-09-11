@@ -73,10 +73,12 @@
 
 - **OC-B1 next** — the offering commerce contract. **OC-A0b, OC-A2 and OC-A4 LANDED 2026-09-11** (ledger rows
   `2026-09-11-booking-mode-provenance`, `-offering-commerce-resolver`, `-offering-activation-validation`).
-  **Before publishing a release that carries OC-A4's activation gate, run
+  **Before publishing, run
   `DATABASE_URL=<prod> npx tsx scripts/audit-offering-classification.ts` and read its COMMERCE CONTRACT
-  section:** resolution needs `service_categories.category_key`, which migration 289 repairs, and a large
-  `catalog_keys_unrecognised` count means that repair has not reached the deployment. Ratified 2026-09-11 against production
+  section.** `catalog_keys_unrecognised` does NOT block a publish (it is our table's gap, not the
+  seller's — reported and counted, never refused); a large count there means migration 289's
+  `service_categories.category_key` repair has not reached the deployment, and every such listing
+  sells without a resolvable contract. Ratified 2026-09-11 against production
   counts. Plan and lane briefs: `docs/superpowers/specs/2026-09-11-offering-commerce-contract-implementation-plan.md`.
   **OC-B2 (checkout authority) is HELD until a real seller catalog exists** — production has six non-demo listings.
 

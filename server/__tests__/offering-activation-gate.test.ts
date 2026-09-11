@@ -31,7 +31,10 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { ACTIVATION_REFUSAL_MESSAGES } from "../services/offering-activation-gate.service";
+import {
+  ACTIVATION_BLOCKING_REASONS,
+  ACTIVATION_REFUSAL_MESSAGES,
+} from "../services/offering-activation-gate.service";
 import {
   resolveOfferingCommerceContract,
   type OfferingCommerceInput,
@@ -106,6 +109,48 @@ test("R2 · the message map carries no sentence for a refusal the resolver canno
   for (const reason of observed) assert.ok(declared.includes(reason), `undeclared refusal: ${reason}`);
   const extra = declared.filter((d) => !observed.includes(d as UnresolvableReason));
   assert.deepEqual(extra, ["archetype_unresolvable"], `unexpected unreachable refusal(s): ${extra.join(", ")}`);
+});
+
+test("B1 · a listing with NO CATEGORY does not block a publish — that is our table's gap, not the seller's", () => {
+  // The F2 publish-gate suite creates and publishes a listing with no category at all, and
+  // `impactClassFor` also answers nothing for a category row that carries no `category_key` (the
+  // taxonomy defect migration 289 repairs). Both are facts about OUR tables. Refusing would tell a
+  // seller to "choose a category" when they either did, or were never asked for one.
+  const r = resolveOfferingCommerceContract(listing({ categoryKey: null }));
+  assert.equal(r.resolved, false);
+  if (r.resolved) throw new Error("unreachable");
+  assert.equal(r.reason, "catalog_keys_unrecognised");
+  assert.equal(
+    ACTIVATION_BLOCKING_REASONS.has(r.reason),
+    false,
+    "catalog_keys_unrecognised must be reported, never refused",
+  );
+  // It still has a sentence, so the day it becomes blocking it is not a blank refusal.
+  assert.ok(ACTIVATION_REFUSAL_MESSAGES[r.reason]);
+});
+
+test("B2 · every BLOCKING reason is a fact the seller stated on the listing and can change", () => {
+  // Each of these is produced by a fixture whose only unusual field is one the seller controls.
+  const blocking: [UnresolvableReason, OfferingCommerceInput][] = [
+    ["delivery_shape_unclassifiable", listing({ deliveryMethod: null, productShape: null })],
+    ["service_type_outside_declared_vocabulary", listing({ serviceType: "florist" })],
+    ["instant_commitment_with_custom_quote", listing({ priceType: "custom_quote", bookingMode: "instant" })],
+    [
+      "artifact_delivery_with_meeting_point",
+      listing({ deliveryMethod: "pdf", categoryKey: "custom_other", hasMeetingPoint: true }),
+    ],
+  ];
+  for (const [reason, input] of blocking) {
+    const r = resolveOfferingCommerceContract(input);
+    assert.equal(r.resolved, false);
+    if (r.resolved) throw new Error("unreachable");
+    assert.equal(r.reason, reason);
+    assert.ok(ACTIVATION_BLOCKING_REASONS.has(reason), `${reason} should block a publish`);
+  }
+  // And the split is total: every reason is either blocking or declared in the message map.
+  for (const reason of ACTIVATION_BLOCKING_REASONS) {
+    assert.ok(ACTIVATION_REFUSAL_MESSAGES[reason], `blocking reason ${reason} has no sentence`);
+  }
 });
 
 test("T1 · every activation-gate call site sits behind an `active` guard", () => {
