@@ -619,6 +619,12 @@ This table must gain an approved “new writes stop” date before any legacy ra
 
 ## 17. Recommended implementation order
 
+> **Amendment (2026-09-11) — the lane-by-lane plan that implements this order lives in
+> `docs/superpowers/specs/2026-09-11-offering-commerce-contract-implementation-plan.md`.**
+> It names each lane, the register row that gates it, whether it touches schema, and the proof
+> that closes it. Phase 0a is LANDED; Phase 0 is the two gates at the top of that plan, and
+> nothing below changes behaviour until both are done.
+
 ### Phase 0a — Merge the two decision registers, and re-run the counts against production
 
 **Added 2026-09-11.** Two things must happen before Phase 0's ratification, and neither is code.
