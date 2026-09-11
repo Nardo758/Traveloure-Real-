@@ -469,6 +469,18 @@ jobs:
       # membership test to read `bookingModeEnum`; P1-P6 pin the distinction.
       - name: Booking-mode provenance pin
         run: npx tsx --test shared/__tests__/booking-mode-provenance.test.ts
+      # 2026-09-11-offering-commerce-resolver (lane OC-A2): the offering commerce contract is the
+      # FIFTH classifier over `provider_services`, and it has no production caller in its own lane —
+      # so nothing but this suite can say it is wrong, while OC-A4 refuses activations on it, OC-B1
+      # snapshots it and OC-B2 will route checkout through it. A1-A18 walk the §9 matrix one fixture
+      # per archetype; C1-C4 pin the composition (the four existing classifiers are CALLED, the
+      # service fundamentals WIN a disagreement and it surfaces as a finding, slipEffect follows
+      # `impactClassFor`); U1-U7 pin the refusals, including the 61 demo listings resolving as
+      # UNCLASSIFIED rather than as an error; S1-S5 pin seller-declared vs platform-default.
+      # (The suite is pure — it imports no `db` — but it pulls in `shared/schema.ts` and therefore
+      # zod and drizzle, so it belongs in an `npm ci` job and never a Node-built-ins guard job.)
+      - name: Offering commerce contract pin
+        run: npx tsx --test server/__tests__/offering-commerce-contract.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was
