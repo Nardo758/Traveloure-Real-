@@ -21,6 +21,18 @@
  * this module actually queried; a caller that cannot supply the ids gets `undefined`, and the
  * resolver's own last row then offers no booking verb rather than guessing one.
  *
+ * WHAT THE BOOKING MODE DOES **NOT** SAY, corrected by lane OC-A0b (punchlist V-9, ledger
+ * `2026-09-11-booking-mode-provenance`). Every `provider_services` row carries a NOT NULL
+ * `user_id`, so the "no owner, so no honest resolution" branch below is UNREACHABLE for a listing
+ * and the mode is always concrete. That is CORRECT and is deliberately left alone: `request` is
+ * the safe answer (the traveler asks, the seller accepts, nothing is charged without an
+ * acceptance), and resolving to "no verb" instead would strip the buy button from the entire live
+ * catalogue — on production, 64 of 67 active listings have no `service_provider_forms` row at all.
+ * What was wrong was the SILENCE: nothing recorded that the answer was the platform's rather than
+ * the seller's. `resolveBookingModeWithProvenance` (shared/schema.ts) now carries that fact for
+ * the readers that need it (the offering-commerce contract, the classification audit). It is
+ * INTERNAL and is deliberately not added to `BuyAction`, which is a client-facing payload.
+ *
  * BATCHED BY CONSTRUCTION. Two queries per response, not two per row: one `IN (...)` over the
  * owners' `service_provider_forms.instant_booking`, one `IN (...)` over the listings' future
  * `vendor_availability_slots`. An empty id set runs neither.
@@ -94,10 +106,12 @@ function hasPrice(price: string | number | null | undefined): boolean {
 /**
  * Resolve the buy action for a batch of platform listings.
  *
- * Returns a map keyed by listing id. A row whose owner is unknown still resolves — its stored
- * `booking_mode` wins where it has one, and where it does not the account flag is genuinely
- * unknown, so `resolveBookingMode` is not called with a fabricated `false` (§13); the mode stays
- * absent and the resolver's last row offers no booking verb.
+ * Returns a map keyed by listing id. A `provider_services` row ALWAYS has an owner, so the mode is
+ * always concrete: the stored `booking_mode` wins where it has one, and otherwise ruling 75's ONE
+ * derivation answers from the owner's account flag — falling back to `request` when that flag is
+ * unknown, which is the safe default and is what the live catalogue already resolves to. The
+ * `undefined` branch below survives for a caller that genuinely holds neither fact (no row on this
+ * table can reach it); see the file header for why that is not a bug to "fix" (OC-A0b / V-9).
  */
 export async function buildListingBuyActions(
   rows: ListingBuyRow[],
@@ -110,13 +124,17 @@ export async function buildListingBuyActions(
   const ownerIds = Array.from(
     new Set(rows.map((r) => r.ownerUserId).filter((id): id is string => !!id)),
   );
-  const instantByOwner = new Map<string, boolean>();
+  const instantByOwner = new Map<string, boolean | null>();
   if (ownerIds.length > 0) {
     const forms = await db
       .select({ userId: serviceProviderForms.userId, instantBooking: serviceProviderForms.instantBooking })
       .from(serviceProviderForms)
       .where(inArray(serviceProviderForms.userId, ownerIds));
-    for (const f of forms) instantByOwner.set(f.userId, f.instantBooking ?? false);
+    // UNCOERCED (OC-A0b): a NULL `instant_booking` is "the seller never answered", which is a
+    // different fact from `false` ("the seller said no"). Both resolve to `request`, so nothing
+    // downstream changes — but the provenance reader can only tell them apart if the NULL survives
+    // the map (§13).
+    for (const f of forms) instantByOwner.set(f.userId, f.instantBooking ?? null);
   }
 
   // ── Published calendars, one query for every listing in the batch. ────────────────────────
@@ -140,11 +158,12 @@ export async function buildListingBuyActions(
   for (const row of rows) {
     const ownerInstant = row.ownerUserId ? instantByOwner.get(row.ownerUserId) : undefined;
     // The stored value wins outright; an UNSET mode is resolved from the account flag by
-    // ruling 75's ONE derivation site. With no owner and no stored value there is nothing
-    // honest to resolve from, so the mode is left absent (§13).
+    // ruling 75's ONE derivation site. The flag is passed through UNCOERCED — `undefined`, `null`
+    // and `false` all resolve to `request`, so the OUTPUT is exactly what it has always been,
+    // while the provenance reader keeps the distinction the old `?? false` destroyed.
     const bookingMode: BuyBookingMode | undefined =
       row.bookingMode || row.ownerUserId
-        ? (resolveBookingMode(row.bookingMode, ownerInstant ?? false) as BuyBookingMode)
+        ? (resolveBookingMode(row.bookingMode, ownerInstant) as BuyBookingMode)
         : undefined;
     out.set(
       row.id,

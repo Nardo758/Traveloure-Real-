@@ -460,6 +460,15 @@ jobs:
       # becomes a booking verb and carries its reason instead.
       - name: Buy-action resolver pin
         run: npx tsx --test shared/__tests__/buy-action.test.ts
+      # 2026-09-11-booking-mode-provenance (lane OC-A0b, punchlist V-9): `resolveBookingMode` always
+      # answers, and `request` is the right answer for an unset listing — the lane deliberately did
+      # NOT change it. What it added is WHICH of three facts produced that answer, because "the
+      # seller chose request", "the seller's account says no instant booking" and "nobody ever
+      # answered" resolve identically and are different facts (§13; 64 of 67 production listings are
+      # the third). B1-B6 re-pin the resolver's whole truth table, because the lane refactored its
+      # membership test to read `bookingModeEnum`; P1-P6 pin the distinction.
+      - name: Booking-mode provenance pin
+        run: npx tsx --test shared/__tests__/booking-mode-provenance.test.ts
       # 2026-09-04-event-order: `which-event.ts` rule 5 puts ordering in the SERVER's hands so a
       # plan's events have ONE order rather than one per surface — which is only true if the server
       # has one answer. It did not: the slip's DTO was chronological while /api/user-experiences was

@@ -854,8 +854,63 @@ export function resolveBookingMode(
   stored: string | null | undefined,
   accountInstantBooking: boolean | null | undefined,
 ): BookingMode {
-  if (stored === "instant" || stored === "request" || stored === "hidden") return stored;
+  if (isDeclaredBookingMode(stored)) return stored;
   return accountInstantBooking ? "instant" : "request";
+}
+
+/**
+ * The membership test the resolver and its provenance sibling BOTH use, derived from
+ * `bookingModeEnum` rather than restating its three literals (§18 rule 1 — the value set has one
+ * home). `resolveBookingMode`'s OUTPUT is byte-for-byte what it always was; only the spelling of
+ * the test moved, so the ONE derivation ruling 75 established is unchanged.
+ */
+function isDeclaredBookingMode(stored: string | null | undefined): stored is BookingMode {
+  return !!stored && (bookingModeEnum as readonly string[]).includes(stored);
+}
+
+// ── WHERE THE MODE CAME FROM (lane OC-A0b, ledger `2026-09-11-booking-mode-provenance`) ──────
+// `resolveBookingMode` always answers, which is right — `request` is the safe default (the
+// traveler asks, the seller accepts, and no money moves without an acceptance), and it is what
+// every live listing already resolves to. What the code could not say is WHICH OF THREE FACTS
+// produced that answer, and they are different facts (§13):
+//   listing_declared — the listing's own `booking_mode` column carried a value; the seller chose
+//                      it for this listing.
+//   account_declared — the column is unset and the OWNER'S `service_provider_forms.instant_booking`
+//                      is a real boolean; the seller chose it once, for the account.
+//   platform_default — the column is unset AND no account flag is known (no provider form row at
+//                      all, or the flag itself is NULL). Nobody chose anything; the platform's
+//                      safe default answered. Measured on PRODUCTION 2026-09-11: 64 of 67 active
+//                      listings (ledger `2026-09-11-oc-a1-ratified`).
+// It is an INTERNAL fact — an input to the offering-commerce contract (`commitmentMode` must
+// distinguish seller-declared from platform-default from day one) and to the classification
+// audit. It is deliberately NOT published on the buy-action payload, which is client-facing.
+export const bookingModeProvenanceEnum = [
+  "listing_declared",
+  "account_declared",
+  "platform_default",
+] as const;
+export type BookingModeProvenance = (typeof bookingModeProvenanceEnum)[number];
+
+/**
+ * The resolved mode PLUS where it came from. Delegates the mode to `resolveBookingMode` and never
+ * re-decides it — a second resolution site is the derivation-drift class §18 rule 1 names.
+ *
+ * `accountInstantBooking` must be passed through UNCOERCED: `undefined`/`null` mean "no flag
+ * known" and `false` means "the seller said no". All three resolve to `request`, so coercing the
+ * first two to `false` changes no output — it destroys the only signal that says nobody answered.
+ */
+export function resolveBookingModeWithProvenance(
+  stored: string | null | undefined,
+  accountInstantBooking: boolean | null | undefined,
+): { mode: BookingMode; provenance: BookingModeProvenance } {
+  const mode = resolveBookingMode(stored, accountInstantBooking);
+  if (isDeclaredBookingMode(stored)) return { mode, provenance: "listing_declared" };
+  return {
+    mode,
+    provenance: accountInstantBooking === null || accountInstantBooking === undefined
+      ? "platform_default"
+      : "account_declared",
+  };
 }
 
 export const providerServices = pgTable("provider_services", {
