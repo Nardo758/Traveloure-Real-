@@ -4,6 +4,11 @@
 **Date:** 2026-09-08  
 **Scope:** Expert offerings, native service-provider offerings, adjacent marketplace products, checkout treatment, fulfillment, and Trip Slip projection  
 **Evidence baseline:** `origin/main` at `f8eb853fe`, supplemented by existing repository audits and current schema, route, service, and client traces  
+**Amended 2026-09-11** against `origin/main` at `59b34c757`. The corrections are marked **Amendment**
+in place and change five things: the `booking_mode` finding (§4.3, §11), the retired expert-template
+lane (§4.1, §15A, §21), the resolver's relationship to the four classifiers that already exist (§14),
+the schema rules any new stored field must follow in this repo (§14), and two open questions that were
+ratified on 2026-09-08 (§19). Everything else stands as written and was checked against the code.  
 
 ---
 
@@ -66,7 +71,16 @@ The Trip Slip is the traveler-facing plan and obligation record assembled by the
 
 ### 4.1 Expert offering taxonomy
 
-**Observed:** `expert_offering_types` is the canonical Expert vocabulary. It is separate from provider offerings, legacy `expertServiceOfferings`, and the purchasable `expertTemplates` marketplace product.
+**Observed:** `expert_offering_types` is the canonical Expert vocabulary. It is separate from provider offerings and from the legacy `expertServiceOfferings` catalog.
+
+> **Amendment (2026-09-11).** This paragraph originally named "the purchasable `expertTemplates`
+> marketplace product" as a third thing the Expert vocabulary is separate from. **That lane is FULLY
+> RETIRED** — seller side 2026-07-27, consumer side ledger `2026-09-03-expert-templates-consumer-sunset`
+> (gate was production purchase counts; the decision-maker confirmed zero purchases ever). No surface,
+> feed, purchase path or admin queue remains; the `expert_templates` / `template_purchases` /
+> `template_reviews` tables are kept as historical rows only. **`ready_made_trips` is the single store
+> lane**, and it is the one this contract's T1 archetype governs. Treating the retired lane as a live
+> product would give T1 two custody stories.
 
 The five Expert tiers and current keys are:
 
@@ -134,7 +148,17 @@ Representative provider categories include:
 
 This snapshot confirms the design problem is present in live development data, not only in type definitions:
 
-1. `booking_mode` cannot currently serve as a universal commitment authority.
+1. **Amended (2026-09-11) — `booking_mode` is ALREADY resolver-authoritative, and the null column is
+   its designed default, not a gap.** `provider_services.booking_mode` is nullable by ruling (`shared/schema.ts`,
+   the `showPrice`/`bookingMode` block: "NULL = unset ⇒ resolved at read time from the account
+   `service_provider_forms.instantBooking` by `resolveBookingMode`"), and `resolveBookingMode`
+   (`shared/schema.ts`) is that resolver. So "214 of 215 rows carry no value" is a true COLUMN fact and
+   the wrong conclusion: the commitment authority is the resolver, which is exactly the shape this
+   document asks for everywhere else. **The finding that survives is narrower and still worth acting
+   on:** any consumer that reads the column directly instead of calling `resolveBookingMode` sees
+   nothing, so the canonical contract must name the RESOLVER as the authority and forbid a direct column
+   read. Phase 0's dry run must resolve before it classifies, or it will report ~214 healthy listings as
+   ambiguous and the migration risk in point 4 will be overstated.
 2. `service_type` is functioning partly as free vocabulary/category data rather than a closed behavioral discriminator.
 3. “Planning” spans live remote, asynchronous artifact, and in-person fulfillment.
 4. A resolver must begin in audit mode and preserve legacy read compatibility; immediately enforcing the proposed contract would deactivate or misclassify most current listings.
@@ -348,7 +372,7 @@ Existing provider fields should be treated as inputs to validation, not independ
 | Category/offering type | Discovery, qualification, risk, and default suggestions |
 | Service type | Value proposition; may suggest but must not determine checkout |
 | Delivery method | Strong fulfillment constraint |
-| Booking mode | Commitment mode within the allowed archetype |
+| Booking mode | Commitment mode within the allowed archetype — **read through `resolveBookingMode`, never off the column** (amended 2026-09-11; a null column is "unset", and the resolver answers from the account's instant-booking flag) |
 | Price type | Price-authority and quote behavior constraint |
 | Availability/slot data | Evidence for native inventory authority |
 | Property/room data | Evidence for stay archetype |
@@ -472,6 +496,37 @@ OfferingCommerceContract
 
 This may initially be a resolver over existing columns rather than a new table. The important requirement is that one function returns one validated contract and every commerce surface consumes it.
 
+> **Amendment (2026-09-11) — THIS IS THE FIFTH CLASSIFIER, AND ITS RELATIONSHIP TO THE OTHER FOUR MUST
+> BE STATED BEFORE PHASE 1.** Four server-side resolvers already decide behaviour over these same rows:
+> **`resolveBuyAction`** (`shared/buy-action.ts`) — ratified 2026-09-08 as **ruling 9, the SOLE AUTHOR
+> of the buy button and the landing rule**, so a listing carries no CTA of its own; **`impactClassFor`**
+> (`shared/impact-class.ts`) — what a listing does to a plan, derived and never stored; **`resolveContentCTA`**
+> (`shared/content-cta.ts`); and the delivery **service fundamentals** (`shared/service-fundamentals.ts`).
+> A fifth resolver that re-derives from columns instead of composing these is precisely the
+> derivation-drift CLAUDE.md §18 rule 1 forbids, and it is how one surface starts refusing a purchase
+> another surface offers.
+>
+> **The composition this document adopts:**
+> 1. `resolveOfferingCommerceContract` is the **input**, not the button. It composes the four above and
+>    re-derives none of them.
+> 2. **`resolveBuyAction` remains the sole author of the buy button and the landing rule** (ruling 9,
+>    unweakened). It consumes the contract; the contract never draws a CTA.
+> 3. `impactClassFor` stays the answer to "what does this do to the plan", and `slipEffect` is DERIVED
+>    from it rather than being a second opinion about the same row.
+> 4. `fulfillmentMode` must reconcile with the service fundamentals' existing delivery shapes rather
+>    than restating them. Where the two disagree, the fundamentals win and the disagreement is a finding.
+>
+> **AND THE SCHEMA RULES BIND ANY STORED FIELD THIS CONTRACT ADDS** — the contract snapshot, the
+> `trip_level_obligation` marker (§15), the external-record fields (§12.4) and quote records (P5). In
+> this repository that means: **additive and nullable; NO DB CHECK** (the value sets are app-enforced —
+> a CHECK over a new enum is the publish-time drizzle-push failure the Coordination Prevention rules
+> warn about, and it has bitten repeatedly); **declared in `shared/schema.ts`**, or the deploy push
+> drops the object and the stamped migration never recreates it; registered in
+> `server/migrations/migration-files.ts`; and **no backfill that invents an answer** — an unclassified
+> legacy row is "never classified", which is a fact, not a gap to fill with a nearest-looking archetype
+> (§13). The instinct above to start as a resolver over existing columns is therefore the rule, not
+> merely an option: **Phase 1 adds no column at all.**
+
 ### 14.1 Contract snapshots
 
 At commitment time, the booking/request/purchase must snapshot behavior-changing terms:
@@ -534,7 +589,8 @@ Unknown delivery behavior remains readable for historical rows, but activation o
 | `service_bookings` | Canonical native service payment/booking state | Future custody-aware service-booking refund path | Live booking overlay; link or explicit trip-level marker | Allowed through contract resolver |
 | Legacy `bookings` | Legacy cart/payment/refund state | Existing legacy refund path, using the booking's own payment reference | Compatibility projection with legacy provenance | No new archetypes; set a retirement decision before disabling writes |
 | `expert_requests` | Expert request/assignment/payment fields vary by route | Future Expert engagement refund policy | Current trip-bound request/advisor facts; future work/support projection | Allowed only after explicit Expert archetype mapping |
-| Template/ready-made purchase | Purchase and clone state | Product-specific future refund policy | New buyer-owned trip with planning-content provenance | Allowed through plan-clone contract |
+| Ready-made purchase (`ready_made_trips`) | Purchase and clone state | Product-specific future refund policy | New buyer-owned trip with planning-content provenance | Allowed through plan-clone contract |
+| ~~Template purchase (`expert_templates`)~~ | **RETIRED** (amended 2026-09-11) — ledger `2026-09-03-expert-templates-consumer-sunset`; historical rows only, no live surface or purchase path | Not applicable — zero purchases ever | None | **None: no new writes, and it is not a rail to migrate** |
 | Optimization | Comparison/payment/generation state | Traveloure product policy | Alternatives plus adoption state | Allowed through plan-modification contract |
 | Affiliate/external | Partner records and reconciliation | External partner for traveler funds; Traveloure for commission correction | External record only with evidence | Allowed only as external custody |
 
@@ -562,6 +618,21 @@ This table must gain an approved “new writes stop” date before any legacy ra
 ---
 
 ## 17. Recommended implementation order
+
+### Phase 0a — Merge the two decision registers, and re-run the counts against production
+
+**Added 2026-09-11.** Two things must happen before Phase 0's ratification, and neither is code.
+
+1. **One decision register, not two.** §19's twelve questions overlap the open register in
+   `docs/ROADMAP.md` §A and the punchlist in `docs/PUNCHLIST.md` — ready-made delivered as a finished
+   plan or an editable template, what the included consultation actually is, and whether one checkout may
+   mix a ready-made plan with services are the same questions asked twice. Two registers guarantee one
+   gets answered and the other quietly does not.
+2. **Re-run §4.3's counts against production.** That snapshot is DEVELOPMENT data by its own framing,
+   and it could not be reproduced in a later session (no database in that environment). The judgement
+   that "immediately enforcing the proposed contract would deactivate or misclassify most current
+   listings" rests on those numbers, and it should rest on the real distribution — resolved through
+   `resolveBookingMode` per the §4.3 amendment, not read off the column.
 
 ### Phase 0 — Ratify vocabulary and inventory
 
@@ -648,7 +719,16 @@ Required-context tests must distinguish Trip dates from service fulfillment fact
 
 The document recommends a structure but does not invent these business decisions:
 
-1. When should Expert advisory and planning fees be charged: before assignment, after acceptance, or by milestone?
+1. When should Expert advisory and planning fees be charged: before assignment, after acceptance, or by
+   milestone? **Partly ANSWERED 2026-09-08 (amended 2026-09-11), and this contract must not re-open it:**
+   ruling 11 (ledger `2026-09-08-rulings-11-12`) rules that **plan work sold as a listing is charged AT
+   CHECKOUT, and the purchase itself grants the Expert access** — the `trip_expert_advisors` row is
+   written ON AUTHORIZATION, inside the booking's own transaction, through the existing single author
+   `upsertTripAdvisorRow` (one more caller, never a new insert site). Ruling 12 rules that **a consult
+   never requires a plan** and, in its ratified clarification, that **a consult writes NO advisor row** —
+   which is what keeps it from colliding with the rule that no expert touchpoint exists without a slip.
+   What remains open is only the MILESTONE case for large planning engagements (E2/E3), which still has
+   no rail.
 2. Which Expert outputs require traveler acceptance before completion and earnings release?
 3. What revision allowance belongs to planning artifacts?
 4. Who may declare completion for physical-action and coordination work?
@@ -705,7 +785,13 @@ Primary current-code anchors:
 - `client/src/lib/trip-slip.ts` — trip mint preconditions and client Trip Slip entry behavior.
 - `server/services/ready-made-purchase.service.ts` — paid plan cloning.
 - `server/routes/booking-actions.ts` — booking acceptance/action lifecycle.
-- `shared/schema.ts` Expert template and template-purchase sections — ready-made marketplace custody.
+- `server/services/ready-made-purchase.service.ts` — ready-made custody and the buyer-owned clone (the
+  single store lane). **Amended 2026-09-11:** this line previously cited the `expert_templates` /
+  `template_purchases` sections as "ready-made marketplace custody"; that lane is retired and holds
+  historical rows only.
+- `shared/impact-class.ts` — what a listing does to a plan (`impactClassFor`), derived and never stored.
+- `shared/content-cta.ts` — the content-type → button map.
+- `shared/schema.ts` `resolveBookingMode` — the booking-mode authority the null column defers to.
 
 Existing audit and policy evidence:
 
