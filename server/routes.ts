@@ -279,6 +279,10 @@ import {
 // not go LIVE if `resolveOfferingCommerceContract` cannot say how it is sold. Scoped to
 // transitions INTO active — rows already active are untouched by ruling.
 import { checkOfferingActivationGate } from "./services/offering-activation-gate.service";
+// Migration 292 / ledger `2026-09-12-listing-names-its-expert-offering`: the ONE admission of
+// `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
+// two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
+import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
@@ -3606,6 +3610,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // they reach the database, emails, or AI prompts (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
 
+      // ── THE LISTING NAMES ITS OWN EXPERT OFFERING (migration 292, ledger
+      // `2026-09-12-listing-names-its-expert-offering`; punchlist D-13/V-12) ──────────────────
+      // §19: `insertProviderServiceSchema` OMITS `expertOfferingTypeKey`, because under an
+      // `.omit()` denylist a freshly-added column is client-settable BY DEFAULT and nobody edits
+      // an omit list for a column that did not exist when it was written. It is re-admitted here,
+      // deliberately and by name, through the pick-based `providerServiceExpertOfferingSchema`.
+      // ONE implementation, two callers — the PATCH rail below is the other (§18 rule 1).
+      // NO ROLE GATE (decision-maker, explicitly): any owner may name any key the expert catalog
+      // carries. It says WHAT IS SOLD, never WHO THE SELLER IS — not a credential, grants nothing.
+      const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation, {
+        expertOfferingTypeIdInBody: (input as any).expertOfferingTypeId,
+      });
+      if (expertOfferingAdmission.refusal) {
+        return res
+          .status(expertOfferingAdmission.refusal.status)
+          .json(expertOfferingAdmission.refusal.body);
+      }
+      const expertOfferingPatch = expertOfferingAdmission.present
+        ? { expertOfferingTypeKey: expertOfferingAdmission.key }
+        : {};
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -3735,6 +3760,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const contractGate = await checkOfferingActivationGate({
           ownerUserId: userId,
           overrides: {
+            // Migration 292: the offering the seller just named is part of the shape being judged,
+            // so the gate resolves the contract this listing will actually have.
+            ...expertOfferingPatch,
             serviceType: (input as any).serviceType,
             deliveryMethod: (input as any).deliveryMethod,
             productShape: (input as any).productShape,
@@ -3764,7 +3792,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, userId });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -3920,6 +3948,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
 
+      // THE LISTING NAMES ITS OWN EXPERT OFFERING — the UPDATE half (migration 292, ledger
+      // `2026-09-12-listing-names-its-expert-offering`). Same ONE admission the create rail runs
+      // (§18 rule 1), and the update path is checked as hard as the insert (§18 rule 2). An
+      // explicit `null` is a CLEAR — back to unclassified, which is an honest state (§13) — and an
+      // ABSENT key leaves the column untouched, so an unrelated edit never wipes it.
+      const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation, {
+        expertOfferingTypeIdInBody: (input as any).expertOfferingTypeId,
+      });
+      if (expertOfferingAdmission.refusal) {
+        return res
+          .status(expertOfferingAdmission.refusal.status)
+          .json(expertOfferingAdmission.refusal.body);
+      }
+      const expertOfferingPatch = expertOfferingAdmission.present
+        ? { expertOfferingTypeKey: expertOfferingAdmission.key }
+        : {};
+
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
         const effMethod = (input as any).deliveryMethod ?? ownedService.deliveryMethod;
@@ -4053,6 +4098,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           serviceId: req.params.id,
           ownerUserId: userId,
           overrides: {
+            // Migration 292: overlay the offering this write names, absent ⇒ the stored one stands.
+            ...expertOfferingPatch,
             ...((input as any).serviceType !== undefined ? { serviceType: (input as any).serviceType } : {}),
             ...((input as any).deliveryMethod !== undefined ? { deliveryMethod: (input as any).deliveryMethod } : {}),
             ...((input as any).productShape !== undefined ? { productShape: (input as any).productShape } : {}),
@@ -4097,7 +4144,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatchUpd = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: Object.prototype.hasOwnProperty.call(input, "neighborhood"),
       });
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd };
+      // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
+      // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
+      // APPROVED listing it is staged for review rather than applied to the live row.
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are

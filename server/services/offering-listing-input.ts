@@ -34,6 +34,14 @@ import type { OfferingListingInput } from "./offering-commerce-contract";
  * write; `null` = being cleared. Same convention as `resolveAttestationShape`.
  */
 export interface OfferingListingOverrides {
+  /**
+   * `provider_services.expert_offering_type_key` (migration 292, ledger
+   * `2026-09-12-listing-names-its-expert-offering`). Named for the COLUMN; it is supplied to the
+   * contract as `offeringTypeKey`, which is already documented there as
+   * `expert_offering_types.offering_type_key` — one fact, spelled for the table it sits on and for
+   * the catalog it points at.
+   */
+  expertOfferingTypeKey?: string | null;
   serviceType?: string | null;
   deliveryMethod?: string | null;
   productShape?: string | null;
@@ -69,12 +77,14 @@ export async function loadOfferingListingInput(opts: {
   let categoryId: string | null = null;
   let depositEnabled: boolean | null = null;
   let meetingPoint: string | null = null;
+  let expertOfferingTypeKey: string | null = null;
   let ownerUserId: string | null = opts.ownerUserId ?? null;
 
   if (opts.serviceId) {
     const [row] = await db
       .select({
         userId: providerServices.userId,
+        expertOfferingTypeKey: providerServices.expertOfferingTypeKey,
         serviceType: providerServices.serviceType,
         deliveryMethod: providerServices.deliveryMethod,
         productShape: providerServices.productShape,
@@ -95,6 +105,7 @@ export async function loadOfferingListingInput(opts: {
     categoryId = row?.categoryId ?? null;
     depositEnabled = row?.depositEnabled ?? null;
     meetingPoint = row?.meetingPoint ?? null;
+    expertOfferingTypeKey = row?.expertOfferingTypeKey ?? null;
     ownerUserId = ownerUserId ?? row?.userId ?? null;
   }
 
@@ -107,6 +118,7 @@ export async function loadOfferingListingInput(opts: {
   if (o.categoryId !== undefined) categoryId = o.categoryId;
   if (o.depositEnabled !== undefined) depositEnabled = o.depositEnabled;
   if (o.meetingPoint !== undefined) meetingPoint = o.meetingPoint;
+  if (o.expertOfferingTypeKey !== undefined) expertOfferingTypeKey = o.expertOfferingTypeKey;
 
   let categoryKey: string | null = null;
   if (categoryId) {
@@ -140,6 +152,13 @@ export async function loadOfferingListingInput(opts: {
     priceType,
     bookingMode,
     ownerInstantBooking: form ? form.instantBooking ?? null : undefined,
+    // The LISTING's own expert-offering key (migration 292). Until it existed, this field was
+    // never populated from a row at all, so every expert archetype whose impact class comes from
+    // the expert catalog — E2/E3/E4/E6 — resolved `catalog_keys_unrecognised` off a real listing
+    // and published live and unclassifiable (punchlist V-12). It is deliberately NOT the OWNER's
+    // `local_expert_forms.offering_type_key`: that is an ACCOUNT-level role, and filing a listing
+    // under it is a claim the row does not make (§13, and the gate's own header).
+    offeringTypeKey: expertOfferingTypeKey,
     categoryKey,
     depositEnabled,
     hasMeetingPoint: !!(meetingPoint ?? "").toString().trim(),

@@ -13,10 +13,15 @@
  * classifies THAT, a booking commits through the spine's own objects, and OC-B1's
  * `offering_contract_snapshot` is read off the committed row.
  *
- * THE RESULT IS A REPORT, NOT A GREEN TICK. Four of the thirteen have NO working path and the
- * suite asserts the break rather than hiding it — see `listingRow` on each fixture and B2/B3/B4/B6
- * below. A test that made them pass would have to weaken a gate or invent a column; neither is
- * done here.
+ * THE RESULT IS A REPORT, NOT A GREEN TICK. When this suite landed, FOUR of the thirteen —
+ * E2/E3/E4/E6 — had NO working path, and it asserted the break rather than hiding it: the impact
+ * class for an expert archetype comes from `expert_offering_types`, and no `provider_services`
+ * column named one, so those listings published live and unclassifiable with the refusal recorded
+ * in their contract snapshot (punchlist V-12). The note said a test that made them pass would have
+ * to weaken a gate or invent a column. **Neither happened: the column was RATIFIED and built**
+ * (migration 292, ledger `2026-09-12-listing-names-its-expert-offering`), so the four now walk the
+ * same chain as the other nine and `listingRow` is where a future break would be asserted. No gate
+ * moved, and P5 is still refused by ruling (N1 below).
  *
  * WHAT THIS SUITE CHANGES ABOUT CHECKOUT: NOTHING. It commits bookings through the same objects
  * `POST /api/bookings` uses — `createBookingRequestSchema` (the §19 allowlist) and
@@ -173,6 +178,12 @@ async function createFixtureListing(fx: ArchetypeFixture): Promise<{
     meetingPoint: fx.row.meetingPoint ?? null,
     price: fx.row.price,
     categoryId,
+    // Migration 292 (ledger `2026-09-12-listing-names-its-expert-offering`): the LISTING's own
+    // expert offering. `insertProviderServiceSchema` OMITS it (§19) and the two
+    // `/api/provider/services` rails re-admit it through the pick-based allowlist; this suite
+    // writes it the way those rails do — one field on the create, from the fixture's own
+    // `offeringTypeKey`, so the row and the pure input state the same thing.
+    expertOfferingTypeKey: fx.offeringTypeKey,
   } as any);
   createdServiceIds.push(service.id);
   await db.execute(
@@ -354,11 +365,15 @@ for (const fx of ARCHETYPE_FIXTURES) {
     const serviceId = serviceIdFor.get(fx.archetype)!;
     const input = await loadOfferingListingInput({ serviceId });
     assert.ok(input, "the loader must describe a row that exists");
-    // THE COLUMN THAT IS NOT THERE: no listing can carry an expert offering key, whoever owns it.
+    // THE COLUMN THAT NOW EXISTS (migration 292). The assertion is REPAIRED to the invariant, not
+    // deleted: what it guards is that the key the loader reports is the LISTING's own
+    // `expert_offering_type_key` — never the owner's account-level
+    // `local_expert_forms.offering_type_key`, which OC-A4 refuses to file a listing under (§13).
+    // A provider fixture names none, and NULL there is the honest "the seller never said".
     assert.equal(
       input!.offeringTypeKey ?? null,
-      null,
-      "`provider_services` has no `offering_type_key` column — if this ever fails, the rail grew one",
+      fx.offeringTypeKey,
+      "the loader reports the LISTING's own expert offering key, and nothing else's",
     );
     assert.equal(input!.sellerClass, fx.ownerRole, "seller class comes from the OWNER's role");
 
@@ -465,12 +480,14 @@ test("N1 · P5 is NOT sellable through generic checkout — the spine charges a 
 });
 
 test("N2 · the catch-all category MISCLASSIFIES an expert's physical action as a provider's P1", () => {
-  // The only category key an expert can honestly pick for a listing the provider catalog does not
-  // describe is the `custom_other` catch-all. `impactClassFor`'s rule 3 then reads the DELIVERY
-  // METHOD: place-anchored ⇒ `on_ground` ⇒ the provider branch ⇒ P1. So an E6 authored through the
-  // only route a listing row offers is sold as a scheduled place service, with P1's required
-  // context and P1's completion rule. That is worse than the refusal B asserts for the others,
-  // because it looks like an answer.
+  // WHY THIS STILL STANDS AFTER MIGRATION 292. The column gives an expert a way to SAY what they
+  // sell; it does not make them say it, and every listing authored before it exists carries NULL
+  // (there is no backfill — §13). A listing with no expert key falls back to the only category key
+  // an expert can honestly pick, the `custom_other` catch-all, and `impactClassFor`'s rule 3 then
+  // reads the DELIVERY METHOD: place-anchored ⇒ `on_ground` ⇒ the provider branch ⇒ P1. So an E6
+  // that names no offering is sold as a scheduled place service, with P1's required context and
+  // P1's completion rule — worse than a refusal, because it looks like an answer. That is the
+  // cost of an unset key, and it is exactly what the authoring control exists to prevent.
   const e6 = ARCHETYPE_FIXTURES.find((f) => f.archetype === "E6")!;
   const asListingRow = { ...contractInputFor(e6), offeringTypeKey: null, categoryKey: "custom_other" };
   const r = resolveOfferingCommerceContract(asListingRow);

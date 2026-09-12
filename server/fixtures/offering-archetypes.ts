@@ -28,15 +28,19 @@
  * (`offering-commerce-contract.test.ts`) already pins. Copying them here would be a second
  * statement of the same decision, drifting the day one of those maps moves.
  *
- * THE FINDING THIS MODULE MAKES, and it is the reason `offeringTypeKey` is a field of its own:
- * **`provider_services` has NO `offering_type_key` column.** `expert_offering_types` is reachable
- * only from `local_expert_forms.offering_type_key` — the expert's ACCOUNT-level role, which the
- * OC-A4 gate deliberately refuses to file their listings under (§13: it is a claim the row does
- * not make) — so `loadOfferingListingInput` never populates that field from a listing. Every
- * expert archetype whose impact class comes from the expert catalog is therefore UNREACHABLE from
- * a listing row, and each fixture records that as `listingRow`, with the outcome the DB path
- * actually produces. The fixtures are correct; the rail is incomplete, and the suite reports it
- * rather than papering over it.
+ * THE FINDING THIS MODULE MADE, AND THE RULING THAT CLOSED IT. When these fixtures landed,
+ * `provider_services` had NO expert offering key: `expert_offering_types` was reachable only from
+ * `local_expert_forms.offering_type_key` — the expert's ACCOUNT-level role, which the OC-A4 gate
+ * deliberately refuses to file their listings under (§13: it is a claim the row does not make) —
+ * so `loadOfferingListingInput` could never populate that field from a listing, and E2/E3/E4/E6
+ * resolved `catalog_keys_unrecognised` off a real row. That is warn-not-block, so those listings
+ * published live and bookable with the refusal recorded in their OC-B1 contract snapshot and the
+ * seller never told (punchlist V-12). Four of the thirteen fixtures asserted the break.
+ * **Migration 292 (ledger `2026-09-12-listing-names-its-expert-offering`) gives the LISTING its
+ * own key** — `provider_services.expert_offering_type_key`, the third FK of migration 107's shape
+ * — so `offeringTypeKey` below is now a REAL COLUMN on the row each fixture creates, written from
+ * the same field the pure input uses, and all thirteen walk the whole rail. `listingRow` survives
+ * as the record of that: it is where a future break would be asserted rather than hidden.
  *
  * NEGATIVE SPACE (§18d). These are the facts a CONTRACT reads. A fixture says nothing about
  * whether the listing is discoverable, priced sensibly, has availability, or would pass any other
@@ -117,9 +121,12 @@ export interface ArchetypeFixture {
   ownerRole: "expert" | "provider";
   row: ArchetypeFixtureRow;
   /**
-   * `expert_offering_types.offering_type_key`. NO `provider_services` column holds this, so it can
-   * be supplied to the resolver directly and NEVER arrives from a listing row — which is exactly
-   * what `listingRow` records below.
+   * `expert_offering_types.offering_type_key` — and, since migration 292, the value written to
+   * `provider_services.expert_offering_type_key` on the row this fixture creates. ONE field, used
+   * by both `contractInputFor` (the pure input) and the listing create, so the fixture's claim
+   * "correctly authored" and the row's own content cannot drift apart.
+   * NULL for every provider archetype: a provider listing states a `service_categories.category_key`
+   * and never a blended vocabulary (§4).
    */
   offeringTypeKey: string | null;
   expect: ArchetypeFixtureExpectation;
@@ -134,28 +141,19 @@ export interface ArchetypeFixture {
   genericCheckout: "bookable" | "refused_by_ruling";
 }
 
-/**
- * The reason every expert fixture but E1 carries `listingRow.reachable === false`, written once.
- * `catalog_keys_unrecognised` is not a blocking activation reason (OC-A4's own finding), so these
- * listings PUBLISH — they simply have no contract, which is the worse of the two outcomes: live
- * and unclassifiable rather than refused with a sentence the seller can act on.
- */
-const NO_EXPERT_KEY_ON_A_LISTING =
-  "the impact class comes from `expert_offering_types`, and `provider_services` carries no " +
-  "`offering_type_key` column; `loadOfferingListingInput` therefore reads only the category key, " +
-  "which no expert offering has. The listing still activates — `catalog_keys_unrecognised` does " +
-  "not block — so it goes live with no resolvable contract at all.";
-
 export const ARCHETYPE_FIXTURES: readonly ArchetypeFixture[] = [
   // ── Expert-led (§9.1) ───────────────────────────────────────────────────────────────────────
   {
     archetype: "E1",
     sells: "an advisory session — AMA, reality check, second opinion",
     ownerRole: "expert",
-    // THE ONLY EXPERT ARCHETYPE A LISTING ROW CAN REACH, and it reaches it by accident rather than
-    // by expression: `custom_other` is the "Something else / not listed" catch-all, and
-    // `impactClassFor`'s rule 3 gives a non-place-anchored catch-all row `consult`. The seller did
-    // not say "advisory session"; the catch-all rule said it for them.
+    // THE ONE ARCHETYPE A LISTING ROW COULD REACH BEFORE MIGRATION 292 — and it reached it by
+    // accident rather than by expression: `custom_other` is the "Something else / not listed"
+    // catch-all, and `impactClassFor`'s rule 3 gives a non-place-anchored catch-all row `consult`.
+    // The seller did not say "advisory session"; the catch-all rule said it for them. The row now
+    // carries `ask_me_anything` in its own column and reaches E1 BY EXPRESSION, through rule 2 —
+    // the same answer, now for the seller's own stated reason. The category key STAYS: it is what
+    // the catch-all route looked like, and N2 below still proves what that route does to an E6.
     row: {
       serviceType: "consultation",
       deliveryMethod: "video",
@@ -205,7 +203,7 @@ export const ARCHETYPE_FIXTURES: readonly ArchetypeFixture[] = [
       slipEffect: "modify_plan",
       findings: [],
     },
-    listingRow: { reachable: false, reason: "catalog_keys_unrecognised", note: NO_EXPERT_KEY_ON_A_LISTING },
+    listingRow: { reachable: true },
     genericCheckout: "bookable",
   },
   {
@@ -232,7 +230,7 @@ export const ARCHETYPE_FIXTURES: readonly ArchetypeFixture[] = [
       slipEffect: "attach_support",
       findings: [],
     },
-    listingRow: { reachable: false, reason: "catalog_keys_unrecognised", note: NO_EXPERT_KEY_ON_A_LISTING },
+    listingRow: { reachable: true },
     genericCheckout: "bookable",
   },
   {
@@ -262,7 +260,7 @@ export const ARCHETYPE_FIXTURES: readonly ArchetypeFixture[] = [
       slipEffect: "attach_support",
       findings: ["completion_rule_disagrees_with_archetype"],
     },
-    listingRow: { reachable: false, reason: "catalog_keys_unrecognised", note: NO_EXPERT_KEY_ON_A_LISTING },
+    listingRow: { reachable: true },
     genericCheckout: "bookable",
   },
   {
@@ -290,7 +288,7 @@ export const ARCHETYPE_FIXTURES: readonly ArchetypeFixture[] = [
       slipEffect: "attach_support",
       findings: [],
     },
-    listingRow: { reachable: false, reason: "catalog_keys_unrecognised", note: NO_EXPERT_KEY_ON_A_LISTING },
+    listingRow: { reachable: true },
     genericCheckout: "bookable",
   },
 
@@ -572,8 +570,12 @@ export function activationOverridesFor(
   categoryId: string | null;
   depositEnabled: boolean;
   meetingPoint: string | null;
+  expertOfferingTypeKey: string | null;
 } {
   return {
+    // Migration 292: the create rail hands the gate the offering the seller just named, so the
+    // gate judges the contract the listing will actually have.
+    expertOfferingTypeKey: fx.offeringTypeKey,
     serviceType: fx.row.serviceType,
     deliveryMethod: fx.row.deliveryMethod,
     productShape: fx.row.productShape ?? null,

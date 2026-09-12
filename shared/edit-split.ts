@@ -21,7 +21,13 @@
 /** Fields that re-enter review on an approved listing (staged into pending_changes). */
 export const IDENTITY_EDIT_FIELDS = [
   "serviceName", "categoryId", "subcategoryId",
-  "serviceOfferingTypeId", "expertOfferingTypeId", "offeringTypeKey",
+  // `expertOfferingTypeKey` is migration 292's column (ledger
+  // `2026-09-12-listing-names-its-expert-offering`) — what the listing SELLS, which §23 names
+  // under "category/offering" as an identity edit: changing it changes the archetype a buyer is
+  // committing to, so on an APPROVED listing it re-enters review beside the two ids rather than
+  // moving the live row. (`offeringTypeKey` beside it is the /earn URL param spelling; neither it
+  // nor `expertOfferingTypeId`/`serviceOfferingTypeId` is removed here.)
+  "serviceOfferingTypeId", "expertOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
   "deliveryMethod", "productShape",
 ] as const;
 
@@ -36,7 +42,10 @@ export type IdentityEditField = (typeof IDENTITY_EDIT_FIELDS)[number];
 export const IDENTITY_EDIT_LANE: { fields: IdentityEditField[]; label: string }[] = [
   { fields: ["serviceName"], label: "Listing name" },
   {
-    fields: ["categoryId", "subcategoryId", "serviceOfferingTypeId", "expertOfferingTypeId", "offeringTypeKey"],
+    fields: [
+      "categoryId", "subcategoryId", "serviceOfferingTypeId",
+      "expertOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
+    ],
     label: "Category and offering",
   },
   { fields: ["deliveryMethod"], label: "Delivery method" },

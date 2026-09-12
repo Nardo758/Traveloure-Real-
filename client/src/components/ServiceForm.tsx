@@ -44,6 +44,10 @@ import { isPlaceAnchored, needsScheduling, SESSION_END_METHODS } from "@shared/s
 // lane list — this module is the one the PATCH handler itself imports (§18 rule 1: delegates,
 // never re-implements). Do not restate these lists inline.
 import { IDENTITY_EDIT_LANE, SAFE_EDIT_LANE_LABELS } from "@shared/edit-split";
+// Migration 292 (ledger `2026-09-12-listing-names-its-expert-offering`): the ONE impact-class
+// lookup, read so the offering picker can SHOW the precedence it already rules rather than the
+// form restating it (§18 rule 1).
+import { impactClassFor, impactClassLabel } from "@shared/impact-class";
 // D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
 // server re-runs on the write, so what this wizard renders and what the API will accept cannot
 // drift. The client calls it only to draw the card — it never decides what it may affirm.
@@ -170,6 +174,17 @@ interface ServiceFormData {
   deliveryMethod: "in-person" | "video-call" | "hybrid" | "pdf" | "call" | "voice_notes" | "async_messaging";
   // Expert-specific: tier + approval workflow
   expertOfferingTypeId: string;
+  /**
+   * `provider_services.expert_offering_type_key` (migration 292, ledger
+   * `2026-09-12-listing-names-its-expert-offering`) — WHAT THIS LISTING SELLS, from the expert
+   * catalog. "" = the seller has not said, which is an honest state and is never pre-filled with
+   * a "sensible" default (§13: a guessed offering type is the fabricated answer the no-backfill
+   * rule refuses one layer down). Written together with `expertOfferingTypeId` from the ONE row
+   * the seller picks — the key is what the offering catalogs are read by (`impactClassFor`), the
+   * id is the older migration-057 link. NOT a credential: choosing one says what is sold, never
+   * who the seller is, and it confers no verified status (LD 27 is untouched).
+   */
+  expertOfferingTypeKey: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
   // Provider-specific: which /earn service_offering_types row this listing IS
   // (migration 148 FK). "" = unlinked (legacy row, or not yet picked).
@@ -351,6 +366,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     duration: "",
     deliveryMethod: "in-person",
     expertOfferingTypeId: "",
+    expertOfferingTypeKey: "",
     approvalStatus: "draft",
     serviceOfferingTypeId: "",
     revisionsIncluded: 0,
@@ -463,6 +479,9 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     duration: s.deliveryTimeframe || s.duration || "",
     deliveryMethod: fromCanonicalDelivery(s.deliveryMethod),
     expertOfferingTypeId: s.expertOfferingTypeId || "",
+    // Migration 292: reopen showing the offering the row actually states. NULL stays "" — the
+    // seller has not said, and the form must not pick one for them (§13).
+    expertOfferingTypeKey: s.expertOfferingTypeKey || "",
     approvalStatus: s.approvalStatus || "draft",
     serviceOfferingTypeId: s.serviceOfferingTypeId || "",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
@@ -708,10 +727,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     queryKey: ["/api/service-categories"],
   });
 
-  // Expert 5-tier offering types catalog
+  // Expert 5-tier offering types catalog. Fetched for BOTH roles since migration 292 (ledger
+  // `2026-09-12-listing-names-its-expert-offering`): a listing names its own expert offering and
+  // there is NO ROLE GATE on that — any owner may pick any key the catalog carries, because
+  // filing a listing under its owner's role is the inference OC-A4 refuses, and it cuts both ways.
+  // Read LIVE and never restated in code (LD 36's precedent: the role picker "reads the same rows
+  // live and restates no names"), so a row seeded later needs no client edit.
   const { data: expertOfferingTypes = [] } = useQuery<ExpertOfferingType[]>({
     queryKey: ["/api/expert/offering-types"],
-    enabled: role === "expert",
     staleTime: 5 * 60_000,
   });
 
@@ -1055,7 +1078,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     const match = expertOfferingTypes.find((t) => t.offeringTypeKey === raw);
     if (match) {
       offeringTypeKeyPreSelected.current = true;
-      setFormData((prev) => ({ ...prev, expertOfferingTypeId: match.id }));
+      // Migration 292: the same ONE selection writes both columns (see the picker below). A key
+      // the catalog does not carry pre-selects NOTHING — the /earn link is not an authority on
+      // what offerings exist, and a guessed one is worse than an unanswered one (§13).
+      setFormData((prev) => ({
+        ...prev,
+        expertOfferingTypeId: match.id,
+        expertOfferingTypeKey: match.offeringTypeKey,
+      }));
     }
   }, [expertOfferingTypes, isEditMode, role]);
 
@@ -1339,7 +1369,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           throw new Error("Pick an offering from the /earn catalog before publishing — it links this listing to what you signed up to provide. Save as draft to finish later.");
         }
         if (role === "expert" && !formData.expertOfferingTypeId) {
-          throw new Error("Select a service tier before submitting for approval. Save as draft to finish later.");
+          throw new Error("Pick what you sell — the offering from the expert catalog — before submitting for approval. Save as draft to finish later.");
         }
       }
 
@@ -1525,6 +1555,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         payload.locationPoint = formData.locationPoint;
       }
 
+      // ── THE LISTING'S OWN EXPERT OFFERING (migration 292) ───────────────────────────────────
+      // Sent on BOTH role branches, because there is no role gate on this column: any owner may
+      // name any key the expert catalog carries. `null` is an explicit CLEAR — the server's
+      // allowlist keeps "absent" and "null" as different facts, and this rail always states one
+      // of them so a cleared offering actually persists. The id goes with it, from the same
+      // picked row, so the two columns can never state different offerings.
+      payload.expertOfferingTypeKey = formData.expertOfferingTypeKey || null;
+      if (formData.expertOfferingTypeId) {
+        payload.expertOfferingTypeId = formData.expertOfferingTypeId;
+      }
+
       // Role-specific fields
       if (role === "provider") {
         payload.includesExpertNotes = formData.includesExpertNotes;
@@ -1534,10 +1575,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           payload.serviceOfferingTypeId = formData.serviceOfferingTypeId;
         }
       } else {
-        // Expert: send tier FK + approvalStatus for workflow
-        if (formData.expertOfferingTypeId) {
-          payload.expertOfferingTypeId = formData.expertOfferingTypeId;
-        }
+        // Expert: approvalStatus for workflow. (The tier FK moved up beside the offering KEY —
+        // one selection writes both, on either role branch.)
         if (submitAction === "draft") {
           payload.approvalStatus = "draft";
           payload.status = "draft";
@@ -2957,7 +2996,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               Once selected, the offering moves to the card header; the pre-pick field remains
               unchanged so the first step still has a clear picker entry point. ── */}
           <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start space-y-6 lg:space-y-0">
-            {/* Offering — compact, provider-only (experts pick a Service Tier below instead). */}
+            {/* Offering — the PROVIDER catalog (`service_offering_types`), provider-only. The
+                EXPERT catalog's "What you sell" picker is below and renders for everyone (§4: two
+                parallel catalogs, never merged — a listing states a key from one of them, and
+                `impactClassFor` already rules which wins if both are present). */}
             {role === "provider" && !selectedProviderOffering ? (
               <div>
                 <Label>What are you offering? *</Label>
@@ -3119,7 +3161,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               still has its start window, party size and pin exactly as they were. ── */}
           {/* Delivery Method */}
           {(() => {
-            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
+            // The tier's `delivery_formats` NEW-selection guardrail is EXPERT-ONLY, and stays so
+            // after migration 292 opened the offering picker to every owner: a provider who names
+            // an expert offering is saying what they sell, not adopting that row's delivery
+            // vocabulary, and narrowing their method tiles would be a behaviour this lane was not
+            // asked to change. `impactClassFor` reads the key regardless — G2 of the impact-class
+            // header already records that a coordination row's provider-shaped `deliveryFormats`
+            // are harmless there.
+            const selectedTier = role === "expert"
+              ? expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId)
+              : undefined;
             const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
               ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
               : null;
@@ -3443,25 +3494,69 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
           </div>{/* /mock row2 pair */}
 
-          {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
-              lib/earn-roles.ts defines one (local_expert / travel_expert); otherwise
-              shows the full unpartitioned catalog (see visibleExpertOfferingTypes). */}
-          {role === "expert" && (
-            <div>
-              <Label>Service Tier *</Label>
-              {expertOfferingTypes.length === 0 ? (
-                <p className="text-xs text-muted-foreground mt-2">Loading tiers…</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                  {visibleExpertOfferingTypes.map((tier) => (
+          {/* ── EXPERT OFFERING PICKER — what this listing SELLS, from the expert catalog ──────
+              Migration 292 / ledger `2026-09-12-listing-names-its-expert-offering` (punchlist
+              D-13 answered, V-12 closed). The choice writes BOTH `expertOfferingTypeKey` (the key
+              the offering catalogs are read by, and therefore the one `impactClassFor` needs) and
+              the older migration-057 `expertOfferingTypeId`, from the ONE row picked here.
+
+              NO ROLE GATE — the decision-maker ruled it directly. This used to render only for
+              `role === "expert"`; hiding it from a provider would reinstate in the presentation
+              layer the gate that was refused in the admission layer, and OC-A4's refusal to file a
+              listing under its owner's role cuts both ways. It stays REQUIRED for experts and
+              OPTIONAL for everyone else — that asterisk is the pre-existing required set
+              (`service-form-required.ts`, `applicable: role === "expert"`), not a new gate.
+
+              §13 ON THE EMPTY STATE: nothing is pre-selected, and clicking the selected tile
+              CLEARS it. Unset means the seller has not said — a guessed offering type is exactly
+              the fabricated answer the no-backfill rule refuses one layer down.
+
+              IT IS NOT A CREDENTIAL: it says what is sold, never who the seller is. Choosing
+              `wedding_planner` claims to sell wedding planning and claims no verified status;
+              LD 27's verification machinery is untouched and unrelated.
+
+              The list is partitioned by the signed-in user's EXPERT role where lib/earn-roles.ts
+              defines one (local_expert / travel_expert); every other viewer, providers included,
+              sees the full unpartitioned catalog (see visibleExpertOfferingTypes). */}
+          {/* The testid says whether this listing MUST name an offering — the expert required set
+              (`service-form-required.ts`, `applicable: role === "expert"`), unchanged by this
+              lane. It exists so an automated flow can fill the field it is obliged to fill
+              without answering an OPTIONAL question on a provider's behalf. */}
+          <div data-testid={role === "expert" ? "expert-offering-required" : "expert-offering-optional"}>
+            <Label>
+              What you sell{role === "expert" ? " *" : ""}{" "}
+              <span className="text-muted-foreground font-normal">
+                {role === "expert" ? "(from the expert catalog)" : "(optional — expert catalog)"}
+              </span>
+            </Label>
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-expert-offering-help">
+              {role === "expert"
+                ? "Pick the offering this listing is. It's how we say what buying it adds to a traveler's plan."
+                : "If this listing is expert work — planning, coordination, live support — name it here. Leave it unset if a category already describes it."}
+            </p>
+            {expertOfferingTypes.length === 0 ? (
+              <p className="text-xs text-muted-foreground mt-2">Loading offerings…</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                {visibleExpertOfferingTypes.map((tier) => {
+                  const selected = formData.expertOfferingTypeKey === tier.offeringTypeKey;
+                  return (
                     <button
                       key={tier.id}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() => {
-                        set("expertOfferingTypeId", tier.id);
+                        // Toggle: re-clicking the chosen one returns the listing to "not said",
+                        // which must stay reachable (§13). Both columns move together — one
+                        // selection, never two half-stated answers.
+                        setFormData((prev) => ({
+                          ...prev,
+                          expertOfferingTypeId: selected ? "" : tier.id,
+                          expertOfferingTypeKey: selected ? "" : tier.offeringTypeKey,
+                        }));
                       }}
                       className={`text-left p-3 rounded-lg border-2 transition-colors ${
-                        formData.expertOfferingTypeId === tier.id
+                        selected
                           ? "border-primary bg-primary/5"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
@@ -3472,11 +3567,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                         <p className="text-xs text-gray-500 mt-0.5">{tier.tagline}</p>
                       )}
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+            {/* THE PRECEDENCE IS SHOWN, NEVER RESTATED. `impactClassFor` already rules that an
+                expert key wins over a provider category (§18 rule 1 — this reads that ONE lookup
+                and spells nothing itself), so a seller who sets both sees the answer rather than
+                being left to wonder which one counted. NULL ⇒ no line at all: an unclassified
+                listing renders no eyebrow, never an empty one (§13). */}
+            {(() => {
+              const label = impactClassLabel(
+                impactClassFor({
+                  offeringTypeKey: formData.expertOfferingTypeKey || null,
+                  categoryKey: categories.find((c) => c.id === formData.categoryId)?.categoryKey ?? null,
+                  deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+                }),
+              );
+              return label ? (
+                <p className="text-xs text-muted-foreground mt-2" data-testid="text-impact-class">
+                  Sold as <b className="text-foreground">{label}</b> — what buying this adds to a
+                  traveler's plan.
+                </p>
+              ) : null;
+            })()}
+          </div>
 
           {/* ── THE BASICS FAST PATH, STATED (mock ②) ────────────────────────────────────────
               Nothing below this screen is required to keep your work: Save Draft is reachable

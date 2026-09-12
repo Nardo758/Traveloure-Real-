@@ -173,7 +173,7 @@ function buildRequiredItems(input: ServiceFormRequiredInput): RequiredItem[] {
     {
       id: "tier",
       section: "identity",
-      label: "Service tier",
+      label: "What you sell (expert offering)",
       applicable: input.role === "expert" && !input.isEditMode,
       done: !!input.expertOfferingTypeId,
     },

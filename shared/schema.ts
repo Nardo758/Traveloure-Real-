@@ -1231,6 +1231,34 @@ export const providerServices = pgTable("provider_services", {
 
   // Expert 5-tier connection (FK managed at DB level by migration 057)
   expertOfferingTypeId: uuid("expert_offering_type_id"),
+  // THE LISTING'S OWN EXPERT OFFERING, BY KEY (migration 292, ledger
+  // `2026-09-12-listing-names-its-expert-offering`; punchlist D-13 answered, V-12 closed). The
+  // THIRD FK of migration 107's shape — → `expert_offering_types.offering_type_key`, ON DELETE
+  // SET NULL — so a LISTING says what it sells instead of the platform inferring it from the
+  // owner's ACCOUNT role (which OC-A4 rightly refuses to do). `impactClassFor` reads the expert
+  // catalog BY KEY and this is that key; it already rules the precedence (expert key first,
+  // provider category second) and no second precedence rule exists anywhere.
+  // NOT a merge of the two catalogs (§4) and not a new service table (the FAQ): a listing carries
+  // an expert key or a `service_categories.category_key`, never a blended vocabulary.
+  // IT IS THE KEY, NOT THE ID, AND THAT IS THE POINT: `expertOfferingTypeId` above is a
+  // migration-057 uuid link that the offering CATALOGS cannot be read by, so it could never
+  // answer `impactClassFor`. The authoring surface writes BOTH from the one row the seller
+  // picked; the ledger row records that the two columns' long-term relationship is unruled.
+  // Additive NULLABLE, NO DEFAULT and NO DB CHECK — THE FK IS THE VALUE-SET CONSTRAINT, which is
+  // the publish-trap posture on purpose. NULL = the seller never said (§13): every reader falls
+  // back to the category key explicitly and NEVER to a nearest-looking offering, and there is no
+  // backfill.
+  // NEVER ADMITTED BY THE GENERIC BODY (§19): `.omit()`'d from insertProviderServiceSchema below
+  // and re-admitted by the pick-based `providerServiceExpertOfferingSchema`, because under a
+  // denylist a freshly-added column is client-settable BY DEFAULT.
+  // IT SAYS WHAT IS SOLD, NEVER WHO THE SELLER IS. It is not a credential and grants nothing:
+  // Locked Decision 27's verification machinery (`expert_neighborhoods`, `verified_at`) is
+  // untouched, and a listing keyed `wedding_planner` claims to sell wedding planning and claims
+  // NO verified status. There is deliberately NO ROLE GATE on the write — any owner may name any
+  // key the catalog carries, because filing a listing under its owner's role is the inference
+  // OC-A4 refuses, and it cuts both ways.
+  expertOfferingTypeKey: varchar("expert_offering_type_key", { length: 100 })
+    .references(() => expertOfferingTypes.offeringTypeKey, { onDelete: "set null" }),
   // Migration 148 (§17): the provider-side offering linkage — which /earn service_offering_types
   // row this listing IS. Nullable; NULL = created before the offering-first form (identity never
   // captured) — never fabricate a backfill.
@@ -2548,7 +2576,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here
@@ -2964,6 +2992,37 @@ export type ServiceSubcategory = typeof serviceSubcategories.$inferSelect;
 export type InsertServiceSubcategory = z.infer<typeof insertServiceSubcategorySchema>;
 export type ProviderService = typeof providerServices.$inferSelect;
 export type InsertProviderService = z.infer<typeof insertProviderServiceSchema>;
+/**
+ * ALLOWLIST (§19 / the LD 29 `itineraryItemEventLinkSchema` shape, migration 292) — the ONLY way a
+ * request body may reach `provider_services.expert_offering_type_key`, the listing's statement of
+ * WHICH EXPERT OFFERING it is (ledger `2026-09-12-listing-names-its-expert-offering`).
+ *
+ * PICK-BASED ON PURPOSE. `insertProviderServiceSchema` is an `.omit()` denylist, and §19 is the
+ * standing rule that a freshly-added column is client-settable BY DEFAULT under one — nobody edits
+ * an omit list for a column that did not exist when it was written. So the column is omitted there
+ * and re-admitted HERE, deliberately, by name, and a future privileged column on this table is
+ * unreachable through this schema until someone picks it too.
+ *
+ * NULLABLE ON PURPOSE, and the two absent states are DIFFERENT and must stay so:
+ *   · the key is ABSENT ⇒ the caller is not talking about the offering; leave the column alone.
+ *   · the key is `null` ⇒ the seller is CLEARING it; the listing goes back to unclassified, which
+ *     is an honest state and never a nearest-looking guess (§13).
+ * That is why the rails read `"expertOfferingTypeKey" in body` and why this is `.nullish()`.
+ *
+ * ACCEPTING THE KEY IS NOT INVENTING ONE. The VALUE SET is the FK on the column — the catalog
+ * table is the authority on which offerings exist, so no enum is restated here (a restated list is
+ * the drift class §18 rule 1 names, and it would go stale the day a row is seeded). The rails ask
+ * the catalog itself so a stale key is a sentence rather than a 500; see
+ * `server/services/expert-offering-key.service.ts`.
+ *
+ * THERE IS NO ROLE GATE, deliberately: any owner may name any key the expert catalog carries.
+ * Naming an offering type says WHAT IS SOLD, never WHO THE SELLER IS — it is not a credential and
+ * grants nothing (LD 27's verification machinery is untouched).
+ */
+export const providerServiceExpertOfferingSchema = createInsertSchema(providerServices)
+  .pick({ expertOfferingTypeKey: true })
+  .partial()
+  .extend({ expertOfferingTypeKey: z.string().min(1).max(100).nullish() });
 export type BundleComponent = typeof bundleComponents.$inferSelect;
 export type FAQ = typeof faqs.$inferSelect;
 export type InsertFAQ = z.infer<typeof insertFaqSchema>;

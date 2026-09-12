@@ -1172,9 +1172,11 @@ jobs:
       # archetype — create the `provider_services` row, judge it with the OC-A4 gate, read it back
       # through `loadOfferingListingInput`, classify THAT, commit a booking through
       # `createBookingRequestSchema` + `storage.createServiceBooking`, and read OC-B1's
-      # `offering_contract_snapshot` off the committed row. FOUR OF THE THIRTEEN HAVE NO WORKING
-      # PATH and the suite asserts the break rather than hiding it, so this job going green means
-      # "the four are still broken in exactly the way we recorded", not "all thirteen work".
+      # `offering_contract_snapshot` off the committed row. When it landed, FOUR OF THE THIRTEEN
+      # had no working path and the suite asserted the break; migration 292 (ledger
+      # `2026-09-12-listing-names-its-expert-offering`) gave a LISTING its own expert offering key,
+      # so E2/E3/E4/E6 now walk the same chain as the other nine. Green means all thirteen resolve
+      # off a real row — P5 excepted, still refused by ruling (§9.2, negative N1).
       # Changes no checkout behaviour: it pins the CURRENT birth invariants as OC-B2's baseline.
       - name: Archetype fixtures — creation → activation → contract → booking → snapshot
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/offering-archetype-fixtures.db.test.ts
