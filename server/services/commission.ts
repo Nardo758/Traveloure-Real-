@@ -35,6 +35,7 @@ import {
   EXPERT_STANDARD_BAND,
   EXPERIENCE_CART_BAND_KEY,
   TIP_HANDLING_BAND,
+  declaredFallbackValue,
 } from "./fee-band-requirements";
 export { CONCIERGE_BOOKING_FEE_BAND_KEY, EXPERIENCE_CART_BAND_KEY } from "./fee-band-requirements";
 
@@ -46,7 +47,13 @@ export const AI_PLATFORM_FEE = 1.00; // fee-literal-ok: structural invariant doc
 // fee-literal-ok (both): documented fallbacks used ONLY when the admin-editable `affiliate_standard`
 // band (migration 143) is absent/inactive/non-percent — resolveCommissionRates Tier 2 reads the band
 // FIRST and returns these only on that failure. Same §8 safe-failure posture as coordination_floor.
-export const AFFILIATE_PLATFORM_FEE = 0.70; // fee-literal-ok: see the three-line note above
+// The PLATFORM take is what `affiliate_standard.default_rate` expresses, so its documented
+// fallback default is declared once beside that band in `fee-band-requirements.ts` and read
+// here (ledger `2026-09-12-fee-band-admin-gaps`): /admin/fee-bands names this exact number
+// when it tells an operator what deactivating the band would do (§18 rule 1). Value unchanged.
+export const AFFILIATE_PLATFORM_FEE = declaredFallbackValue(AFFILIATE_STANDARD_BAND);
+// The expert complement stays STATED rather than computed as `1 - AFFILIATE_PLATFORM_FEE`:
+// that subtraction is 0.30000000000000004 in IEEE-754, and a rounding artefact is not a rate.
 export const AFFILIATE_EXPERT_SHARE = 0.30; // fee-literal-ok: see the three-line note above
 
 /**

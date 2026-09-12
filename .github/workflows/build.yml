@@ -162,6 +162,32 @@ jobs:
       - name: Client-trusted amount/identity/rate guard
         run: node scripts/check-money-endpoints.cjs
 
+  fee-band-admin-guards:
+    name: fee-band-admin-guards (2026-09-12-fee-band-admin-gaps — V-4/V-5/V-6)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # NPM CI is required: the suite imports `server/services/fee-band-admin.service.ts`, which
+      # pulls in zod. It reaches NO database — every module under test is deliberately DB-free, and
+      # the handler/page pins read source text — so no DATABASE_URL is set here.
+      - run: npm ci
+      # V-5's guard is only as good as the required-vs-fallback split it reads, so D5 DERIVES the
+      # direction that goes stale (every band read through a fail-loud accessor with a statically
+      # visible key must be declared required) from the server file SET with comments stripped —
+      # never a literal call-site count. Its stated negative space is asserted, not merely written
+      # down: a band key that arrives from a database column is invisible to it, and the pin fails
+      # if no such dynamic read exists, so it can never quietly over-claim its coverage.
+      # D1-D4 pin the ruling itself (no fallback ⇒ refused; a fallback ⇒ allowed and NAMED, with
+      # the value; undeclared ⇒ allowed and NOTHING claimed). D6/D6b pin the rate_type value set to
+      # migration 258's own CHECK and that the page hard-filters no type out of the list. V-4a-c pin
+      # the cap through read, patch and refusal. §8/§8b pin that every documented fallback default
+      # has ONE home and that no resolved fee moved.
+      - name: Fee-band admin guards (V-4 cap, V-5 deactivation ruling, V-6 visibility)
+        run: npx tsx --test server/__tests__/fee-band-admin-guards.test.ts
+
   item-removed-logging-guard:
     name: item-removed-logging-guard (R15 removal-signal coverage)
     runs-on: ubuntu-latest

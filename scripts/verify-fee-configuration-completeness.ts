@@ -51,14 +51,33 @@ function addRequirement(
   // A dynamic category reference is strict even if the same key was listed as
   // fallback-backed elsewhere. The database is actively asking the resolver to
   // use this key, so absence/inactivity must fail the gate.
+  const required = existing.required || requirement.required;
   requirements.set(requirement.bandKey, {
     ...existing,
-    required: existing.required || requirement.required,
+    required,
     expectedType: existing.expectedType,
     owner: `${existing.owner}; ${requirement.owner}`,
     requiresMaxAmount: existing.requiresMaxAmount || requirement.requiresMaxAmount,
+    // Keep the merged row's `fallback` agreeing with its `required` (the manifest's own
+    // invariant, pinned by fee-band-admin-guards D3): a promotion to strict means the database
+    // is asking a fail-loud resolver for this key, whatever the static entry said.
+    fallback: required && existing.fallback.kind !== "none"
+      ? { kind: "none", reader: requirement.owner }
+      : existing.fallback,
   });
 }
+
+/**
+ * A band the DATABASE points a fail-loud resolver at. `resolveCommissionRates` throws on a
+ * missing or non-percent category band, so these are strict by the same rule the manifest uses.
+ */
+const categoryRequirement = (bandKey: string, owner: string): FeeBandRequirement => ({
+  bandKey,
+  expectedType: "percent",
+  required: true,
+  owner,
+  fallback: { kind: "none", reader: "resolveCommissionRates category branch (commission)" },
+});
 
 function collectStaticRequirements(): Map<string, FeeBandRequirement> {
   const requirements = new Map<string, FeeBandRequirement>();
@@ -66,12 +85,7 @@ function collectStaticRequirements(): Map<string, FeeBandRequirement> {
     addRequirement(requirements, requirement);
   }
   for (const bandKey of COMMISSION_CATEGORY_BAND_KEYS) {
-    addRequirement(requirements, {
-      bandKey,
-      expectedType: "percent",
-      required: true,
-      owner: "commission category resolver",
-    });
+    addRequirement(requirements, categoryRequirement(bandKey, "commission category resolver"));
   }
   return requirements;
 }
@@ -83,12 +97,7 @@ function collectCategoryRequirements(
 ): void {
   for (const category of categories) {
     if (SEMANTIC_LEGACY_CATEGORIES.has(category)) continue;
-    addRequirement(requirements, {
-      bandKey: category,
-      expectedType: "percent",
-      required: true,
-      owner,
-    });
+    addRequirement(requirements, categoryRequirement(category, owner));
   }
 }
 

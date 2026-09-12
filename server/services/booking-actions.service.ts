@@ -14,6 +14,15 @@ import {
   type TripAdvisorRowStatus,
 } from "../utils/trip-advisor-status";
 import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
+import {
+  EXPERT_REVIEW_EXPERT_SHARE_BAND,
+  EXPERT_REVIEW_FLAT_BAND,
+  EXPERT_REVIEW_BOOK_FLAT_BAND,
+  EXPERT_REVIEW_BOOK_PERCENT_BAND,
+  FULL_CONCIERGE_FLAT_BAND,
+  FULL_CONCIERGE_PERCENT_BAND,
+  declaredFallbackValue,
+} from "./fee-band-requirements";
 
 // ─── Expert Requests ──────────────────────────────────────────────────────────
 
@@ -80,7 +89,8 @@ export async function completeExpertRequest(
 /**
  * R6 — split a paid expert-review fee at completion. The capture-time platform_revenue row
  * (recorded 100%-platform, sourceId = the verified PaymentIntent) is atomically re-split:
- * expert gets the `expert_review_expert_share` band rate (default 0.75, admin-editable), the
+ * expert gets the `expert_review_expert_share` band rate (admin-editable; its documented fallback
+ * default is declared beside the band in fee-band-requirements.ts), the
  * platform keeps the remainder. The conditional UPDATE (expert_id IS NULL) is BOTH the
  * idempotency guard and the concurrency claim (§15): only the first completion re-splits and
  * credits; a duplicate matches 0 rows and does nothing. The expert earning is born `held` on
@@ -91,7 +101,7 @@ async function creditExpertReviewSplit(
   expertUserId: string,
   paymentIntentId: string,
 ): Promise<void> {
-  const expertShareRate = await bandRateOr(0.75, "expert_review_expert_share", "percent"); // fee-literal-ok: fallback default
+  const expertShareRate = await bandRateOrDeclaredFallback(EXPERT_REVIEW_EXPERT_SHARE_BAND, "percent");
   if (!(expertShareRate > 0)) return; // admin set the split to 0 → fee stays 100% platform
 
   const claim = await db.execute(sql`
@@ -222,21 +232,24 @@ export async function getVariantOwnerAndCost(
 // totalCost, resolved here and never from the request body.
 // Migration 137: the live rates are admin-editable fee_bands rows; these constants survive ONLY
 // as the safe-failure fallback when a band is absent/invalid (the coordination-floor posture, §8).
-const EXPERT_REVIEW_TIERS: Record<
-  string,
-  { base: number; pct: number; flatBand: string; pctBand: string | null }
-> = {
-  review:          { base: 50,  pct: 0,    flatBand: "expert_review_flat",      pctBand: null },                        // fee-literal-ok: fallback default
-  review_and_book: { base: 50,  pct: 0.05, flatBand: "expert_review_book_flat", pctBand: "expert_review_book_percent" }, // fee-literal-ok: fallback default
-  full_concierge:  { base: 100, pct: 0.08, flatBand: "full_concierge_flat",     pctBand: "full_concierge_percent" },     // fee-literal-ok: fallback default
+// The tier table now carries only the BAND KEYS. Each band's documented fallback default is
+// declared once beside it in `fee-band-requirements.ts` (ledger `2026-09-12-fee-band-admin-gaps`),
+// so the amount this resolver charges when a row is gone is the amount /admin/fee-bands names
+// before an operator deactivates it (§18 rule 1). Every value is unchanged: expert_review_flat
+// and expert_review_book_flat still fall back to the same flat base, the two percent bands to
+// the same fractions, and `review` still has no percent component at all.
+const EXPERT_REVIEW_TIERS: Record<string, { flatBand: string; pctBand: string | null }> = {
+  review:          { flatBand: EXPERT_REVIEW_FLAT_BAND,      pctBand: null },
+  review_and_book: { flatBand: EXPERT_REVIEW_BOOK_FLAT_BAND, pctBand: EXPERT_REVIEW_BOOK_PERCENT_BAND },
+  full_concierge:  { flatBand: FULL_CONCIERGE_FLAT_BAND,     pctBand: FULL_CONCIERGE_PERCENT_BAND },
 };
 
-async function bandRateOr(fallback: number, bandKey: string, expectType: "flat" | "percent"): Promise<number> {
+async function bandRateOrDeclaredFallback(bandKey: string, expectType: "flat" | "percent"): Promise<number> {
   const { getBand } = await import("./commission");
   const band = await getBand(bandKey);
   // Wrong rate_type or non-positive → the band is misconfigured; charge the documented default
   // rather than a wrong amount (a fee's safe failure mode — same as the coordination floor).
-  if (!band || band.rateType !== expectType || !(band.rate > 0)) return fallback;
+  if (!band || band.rateType !== expectType || !(band.rate > 0)) return declaredFallbackValue(bandKey);
   return band.rate;
 }
 
@@ -244,8 +257,8 @@ export async function resolveExpertReviewAmount(serviceType: string, variantTota
   const tier = EXPERT_REVIEW_TIERS[serviceType];
   if (!tier) return null;
   const cost = Number.isFinite(variantTotalCost) && variantTotalCost > 0 ? variantTotalCost : 0;
-  const base = await bandRateOr(tier.base, tier.flatBand, "flat");
-  const pct = tier.pctBand ? await bandRateOr(tier.pct, tier.pctBand, "percent") : 0;
+  const base = await bandRateOrDeclaredFallback(tier.flatBand, "flat");
+  const pct = tier.pctBand ? await bandRateOrDeclaredFallback(tier.pctBand, "percent") : 0;
   return Math.round((base + cost * pct) * 100) / 100;
 }
 

@@ -28,19 +28,40 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, Save, Settings2, Layers, DollarSign, Activity } from "lucide-react";
+import {
+  FEE_BAND_RATE_TYPES,
+  FEE_BAND_RATE_TYPE_DISPLAY,
+  isKnownFeeBandRateType,
+  type FeeBandRateType,
+} from "@shared/fee-band-display";
+
+interface FeeBandDeactivation {
+  allowed: boolean;
+  declared: boolean;
+  reason: "required_no_fallback" | "fallback_declared" | "not_declared";
+  consequence: string;
+  owner: string | null;
+}
 
 interface FeeBand {
   id: string;
   band_key: string;
-  rate_type: "percent" | "flat";
+  /** Five values since migration 258 — see shared/fee-band-display.ts. NOT narrowed to two here:
+   *  the old `"percent" | "flat"` type is what let the page silently drop three of them (V-6). */
+  rate_type: string;
   default_rate: number;
   min_rate: number | null;
   max_rate: number | null;
+  /** V-4: the DOLLAR cap the resolver applies. NOT max_rate, which bounds the rate. */
+  max_amount: number | null;
   display_name: string | null;
   description: string | null;
   is_active: boolean;
   updated_by: string | null;
   updated_at: string | null;
+  /** V-5: the server's own ruling on switching this band off. Read, never restated here. */
+  deactivation: FeeBandDeactivation;
+  maxAmountClear: { allowed: boolean; refusal: string | null };
 }
 
 interface PlatformSetting {
@@ -55,16 +76,33 @@ function BandRow({ band }: { band: FeeBand }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [defaultRate, setDefaultRate] = useState(String(band.default_rate));
+  // V-4: "" means NO CAP (NULL), which is a different fact from a cap of 0 and is stored as such.
+  const [maxAmount, setMaxAmount] = useState(band.max_amount === null ? "" : String(band.max_amount));
   const [isActive, setIsActive] = useState(band.is_active);
 
+  const display = FEE_BAND_RATE_TYPE_DISPLAY[band.rate_type as FeeBandRateType] ?? null;
   const isPercent = band.rate_type === "percent";
+  // The cap applies where a resolver CLAMPS a computed amount, which today is the percent path.
+  // It is also shown for any band that already carries one, so an existing cap is never editable
+  // nowhere — the V-4 failure mode, one column over.
+  const showsCap = isPercent || band.max_amount !== null;
+  const parsedCap = maxAmount.trim() === "" ? null : Number(maxAmount);
+  const capChanged = parsedCap !== band.max_amount;
+  // The server refuses this deactivation (no fallback behind the band) — say so before the click.
+  const deactivationBlocked = band.is_active && !band.deactivation.allowed;
+  const pendingDeactivation = band.is_active && !isActive;
+
   const dirty =
     parseFloat(defaultRate) !== band.default_rate ||
+    (showsCap && capChanged) ||
     isActive !== band.is_active;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const body = { defaultRate: parseFloat(defaultRate), isActive };
+      const body: Record<string, unknown> = { defaultRate: parseFloat(defaultRate), isActive };
+      // Only send the cap when it CHANGED: an omitted field means "leave unchanged", and sending
+      // an unchanged null would ask the server to clear a cap the operator never touched.
+      if (showsCap && capChanged) body.maxAmount = parsedCap;
       return apiRequest("PATCH", `/api/admin/fee-bands/${band.band_key}`, body);
     },
     onSuccess: () => {
@@ -79,15 +117,17 @@ function BandRow({ band }: { band: FeeBand }) {
       });
       // Revert UI to server state on failure.
       setDefaultRate(String(band.default_rate));
+      setMaxAmount(band.max_amount === null ? "" : String(band.max_amount));
       setIsActive(band.is_active);
     },
   });
 
   return (
     <div
-      className="border border-gray-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+      className="border border-gray-200 rounded-lg p-4 space-y-3"
       data-testid={`fee-band-row-${band.band_key}`}
     >
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{band.band_key}</code>
@@ -95,6 +135,11 @@ function BandRow({ band }: { band: FeeBand }) {
             {band.rate_type}
           </Badge>
           {!band.is_active && <Badge variant="outline" className="text-[10px] text-gray-500">inactive</Badge>}
+          {deactivationBlocked && (
+            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300" data-testid={`fee-band-locked-${band.band_key}`}>
+              required
+            </Badge>
+          )}
         </div>
         {band.display_name && (
           <p className="text-sm font-medium text-gray-900">{band.display_name}</p>
@@ -104,20 +149,20 @@ function BandRow({ band }: { band: FeeBand }) {
         )}
         {(band.min_rate !== null || band.max_rate !== null) && (
           <p className="text-[10px] text-gray-500 mt-1">
-            Bounds: {band.min_rate ?? "—"} … {band.max_rate ?? "—"}
+            Rate bounds: {band.min_rate ?? "—"} … {band.max_rate ?? "—"}
           </p>
         )}
       </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
         <div className="flex items-center gap-1">
           <Label htmlFor={`rate-${band.band_key}`} className="text-xs text-gray-600">
-            {isPercent ? "Rate" : "USD"}
+            {display?.inputLabel ?? "Value"}
           </Label>
           <Input
             id={`rate-${band.band_key}`}
             type="number"
-            step={isPercent ? "0.0001" : "0.01"}
+            step={display?.step ?? "0.01"}
             value={defaultRate}
             onChange={(e) => setDefaultRate(e.target.value)}
             className="w-24 text-sm"
@@ -125,10 +170,30 @@ function BandRow({ band }: { band: FeeBand }) {
           />
         </div>
 
+        {showsCap && (
+          <div className="flex items-center gap-1">
+            <Label htmlFor={`cap-${band.band_key}`} className="text-xs text-gray-600">
+              Cap $
+            </Label>
+            <Input
+              id={`cap-${band.band_key}`}
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="uncapped"
+              value={maxAmount}
+              onChange={(e) => setMaxAmount(e.target.value)}
+              className="w-24 text-sm"
+              data-testid={`fee-band-cap-${band.band_key}`}
+            />
+          </div>
+        )}
+
         <div className="flex items-center gap-1">
           <Switch
             id={`active-${band.band_key}`}
             checked={isActive}
+            disabled={deactivationBlocked}
             onCheckedChange={setIsActive}
             data-testid={`fee-band-active-${band.band_key}`}
           />
@@ -147,6 +212,17 @@ function BandRow({ band }: { band: FeeBand }) {
           {saveMutation.isPending ? "Saving…" : "Save"}
         </Button>
       </div>
+      </div>
+
+      {/* V-5 — the consequence, stated by the SERVER and only rendered here. A band that cannot be
+          switched off says so with its reason permanently visible; a band that can says what takes
+          over the moment the operator flips the switch, before they press Save. */}
+      {(deactivationBlocked || pendingDeactivation) && (
+        <div className="border border-amber-300 bg-amber-50 rounded-md p-2.5 flex items-start gap-2" data-testid={`fee-band-consequence-${band.band_key}`}>
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-900">{band.deactivation.consequence}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -309,8 +385,21 @@ export default function FeeBandsAdminPage() {
     );
   }
 
-  const percentBands = (bands ?? []).filter((b) => b.rate_type === "percent");
-  const flatBands = (bands ?? []).filter((b) => b.rate_type === "flat");
+  // V-6 — EVERY band renders. The page used to keep two hand-written filters (percent, flat), so
+  // the three rate_types migration 258 added — `flat_cents`, `count`, `rule` — appeared NOWHERE,
+  // and `concierge:ai_task`, a price the platform charges, was invisible and uneditable. Groups
+  // are built from the shared value set (pinned to the DB CHECK), and any row whose rate_type this
+  // build does not recognise still renders, in its own honestly-labelled group (§13) — never
+  // dropped, which is the exact failure being fixed.
+  const allBands = bands ?? [];
+  const knownGroups = FEE_BAND_RATE_TYPES.map((rateType) => ({
+    rateType: rateType as string,
+    display: FEE_BAND_RATE_TYPE_DISPLAY[rateType],
+    rows: allBands.filter((b) => b.rate_type === rateType),
+  })).filter((g) => g.rows.length > 0);
+  const unknownRateTypes = Array.from(
+    new Set(allBands.filter((b) => !isKnownFeeBandRateType(b.rate_type)).map((b) => b.rate_type)),
+  );
 
   return (
     <AdminLayout title="Fee Bands">
@@ -322,9 +411,11 @@ export default function FeeBandsAdminPage() {
           Fee Bands
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Live source of truth for the resolver. Percent bands store the platform
-          take as a fraction (0.25 = 25 %). Flat bands store USD. Edits are
-          audit-logged and take effect within 60 s.
+          Live source of truth for the resolver. Each group below says what its stored number
+          means — the unit differs by rate type. "Cap $" is the DOLLAR ceiling the resolver applies
+          to a computed amount; blank means uncapped, which is a different setting from a cap of 0.
+          A band a charge path cannot survive without cannot be switched off here, and one that can
+          says what takes over. Edits are audit-logged and take effect within 60 s.
         </p>
       </div>
 
@@ -343,33 +434,42 @@ export default function FeeBandsAdminPage() {
         </CardContent>
       </Card>
 
-      {/* Percent bands */}
-      <Card className="border-gray-200" data-testid="card-percent-bands">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Activity className="w-4 h-4" />
-            Percent bands ({percentBands.length})
-          </CardTitle>
-          <p className="text-xs text-gray-500">Platform take as a fraction. expert_standard = 0.25 means platform keeps 25 %.</p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {percentBands.map((b) => <BandRow key={b.band_key} band={b} />)}
-        </CardContent>
-      </Card>
+      {/* One card per rate_type the platform actually holds rows for. */}
+      {knownGroups.map((group) => (
+        <Card className="border-gray-200" key={group.rateType} data-testid={`card-${group.rateType}-bands`}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              {group.rateType === "percent" ? <Activity className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
+              {group.display.groupLabel} ({group.rows.length})
+            </CardTitle>
+            <p className="text-xs text-gray-500">{group.display.unitNote}</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {group.rows.map((b) => <BandRow key={b.band_key} band={b} />)}
+          </CardContent>
+        </Card>
+      ))}
 
-      {/* Flat bands */}
-      <Card className="border-gray-200" data-testid="card-flat-bands">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <DollarSign className="w-4 h-4" />
-            Flat USD bands ({flatBands.length})
-          </CardTitle>
-          <p className="text-xs text-gray-500">Stored as dollars. 49.99 = $49.99.</p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {flatBands.map((b) => <BandRow key={b.band_key} band={b} />)}
-        </CardContent>
-      </Card>
+      {/* A rate_type this build has no label for. It is still SHOWN — the whole point of V-6 is
+          that a band the page cannot categorise must not vanish from it. */}
+      {unknownRateTypes.map((rateType) => (
+        <Card className="border-amber-300" key={`unknown-${rateType}`} data-testid={`card-unknown-bands-${rateType}`}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              Unrecognised rate type: <code className="font-mono text-sm">{rateType}</code>
+            </CardTitle>
+            <p className="text-xs text-amber-800">
+              This build has no unit label for <code>{rateType}</code>, so nothing is claimed about what the
+              stored number means. The rows are shown anyway — add the type to
+              <code> shared/fee-band-display.ts</code> to label them.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {allBands.filter((b) => b.rate_type === rateType).map((b) => <BandRow key={b.band_key} band={b} />)}
+          </CardContent>
+        </Card>
+      ))}
 
       {/* 3.5 Item 3 — demand suppression floors (R27). NOT fees — small-sample thresholds, keyed by
           WHO reads the figure. Read-only: config-set, moved only by the decision-maker in code. */}
