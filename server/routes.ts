@@ -283,6 +283,9 @@ import { checkOfferingActivationGate } from "./services/offering-activation-gate
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
+// The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
+// cart quote below; it decides only which lines are concierge lines, never a rate or an amount.
+import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
@@ -3619,9 +3622,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // ONE implementation, two callers — the PATCH rail below is the other (§18 rule 1).
       // NO ROLE GATE (decision-maker, explicitly): any owner may name any key the expert catalog
       // carries. It says WHAT IS SOLD, never WHO THE SELLER IS — not a credential, grants nothing.
-      const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation, {
-        expertOfferingTypeIdInBody: (input as any).expertOfferingTypeId,
-      });
+      // THE KEY IS THE ONLY OFFERING THIS RAIL WRITES (ledger `2026-09-12-offering-key-is-canonical`):
+      // the legacy `expertOfferingTypeId` is `.omit()`ed from the generic body too, so no rail can
+      // set it and the two columns cannot be made to disagree by a write from here on. The
+      // same-body contradiction check went with it — a contradiction it could catch can no longer
+      // be authored.
+      const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation);
       if (expertOfferingAdmission.refusal) {
         return res
           .status(expertOfferingAdmission.refusal.status)
@@ -3953,9 +3959,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // (§18 rule 1), and the update path is checked as hard as the insert (§18 rule 2). An
       // explicit `null` is a CLEAR — back to unclassified, which is an honest state (§13) — and an
       // ABSENT key leaves the column untouched, so an unrelated edit never wipes it.
-      const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation, {
-        expertOfferingTypeIdInBody: (input as any).expertOfferingTypeId,
-      });
+      const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation);
       if (expertOfferingAdmission.refusal) {
         return res
           .status(expertOfferingAdmission.refusal.status)
@@ -8095,19 +8099,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // branch, the insurance leg, and the booking_concierge facilitation fee that /api/checkout
     // charges — so a cart with those items quoted LOWER than the eventual charge. Mirror all
     // three legs so the quoted fee never diverges from the charged fee (R3 disclosure posture).
-    const cartOfferingTypeIds = Array.from(new Set(
-      items.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
-    ));
-    const cartOfferingKeyMap = new Map<string, string>();
-    if (cartOfferingTypeIds.length > 0) {
-      const typeRows = await storage.getExpertOfferingTypeKeysByIds(cartOfferingTypeIds);
-      for (const row of typeRows) cartOfferingKeyMap.set(row.id, row.key);
-    }
-    const cartHasConcierge = items.some(i =>
-      i.service?.expertOfferingTypeId
-        ? cartOfferingKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
-        : false,
+    // Which lines sell `booking_concierge` — the SAME resolver /api/checkout and the fee preview
+    // call (ledger `2026-09-12-offering-key-is-canonical`), so this quote cannot classify a cart
+    // one way and the charge another. Reads the listing's own `expert_offering_type_key`
+    // (migration 292); the legacy `expert_offering_type_id` is its fallback for a row the backfill
+    // has not reached, so no answer moves. No rate and no amount is decided there.
+    const cartConciergeLines = await resolveBookingConciergeItems(
+      items.map(i => i.service ?? null),
+      ids => storage.getExpertOfferingTypeKeysByIds(ids),
     );
+    const cartHasConcierge = cartConciergeLines.hasAny;
     const cartConciergeRate = cartHasConcierge ? await getConciergeBookingRate() : 0;
 
     let subtotal = 0;
@@ -8162,9 +8163,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare) + calcInsuranceFee(price, rates, feeCategory);
-      const isConciergeItem = item.service?.expertOfferingTypeId
-        ? cartOfferingKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
-        : false;
+      const isConciergeItem = cartConciergeLines.isBookingConcierge(item.service);
       if (isConciergeItem) conciergeFeeTotal += price * cartConciergeRate;
       const sc = cartSurcharges.get(item.id);
       if (sc?.eligible) surchargeTotal += sc.amount;

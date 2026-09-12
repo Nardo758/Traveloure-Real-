@@ -77,7 +77,13 @@ export interface ServiceFormRequiredInput {
   /** FP-1 / A1: the category is empty BECAUSE the chosen offering resolves to none. */
   offeringCategoryUnresolved: boolean;
   serviceOfferingTypeId: string;
-  expertOfferingTypeId: string;
+  /**
+   * The listing's own expert offering, BY KEY (`provider_services.expert_offering_type_key`,
+   * migration 292). The key is canonical and the legacy migration-057 uuid is dropped in lane 2
+   * (ledger `2026-09-12-offering-key-is-canonical`), so the checklist reads the same column the
+   * form writes — a checklist keyed on a column nothing writes would tick for nobody.
+   */
+  expertOfferingTypeKey: string;
   /** in-person / hybrid — the same predicate that renders the Meeting Location card. */
   needsMeetingPoint: boolean;
   meetingPoint: string;
@@ -175,7 +181,7 @@ function buildRequiredItems(input: ServiceFormRequiredInput): RequiredItem[] {
       section: "identity",
       label: "What you sell (expert offering)",
       applicable: input.role === "expert" && !input.isEditMode,
-      done: !!input.expertOfferingTypeId,
+      done: !!input.expertOfferingTypeKey,
     },
     {
       id: "price",

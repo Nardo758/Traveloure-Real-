@@ -25,10 +25,11 @@
  *     owner may name any key the expert catalog carries. Naming an offering type says WHAT IS
  *     SOLD, never WHO THE SELLER IS — it is not a credential, it grants nothing, and LD 27's
  *     verification machinery is untouched by it.
- *   · **It checks THIS BODY only.** The id/key pair check below compares the two fields of the
- *     request in front of it. A PATCH that names only the key, against a row whose legacy
- *     `expert_offering_type_id` points elsewhere, leaves that stored disagreement alone — the two
- *     columns' long-term relationship is unruled and recorded in the ledger row, not decided here.
+ *   · **A STORED DISAGREEMENT IS NOT REPAIRED HERE.** A PATCH naming the key, against a row whose
+ *     legacy `expert_offering_type_id` points elsewhere, leaves that older column exactly as it
+ *     found it. The relationship between the two is now RULED — the key is canonical, the id is
+ *     dropped in lane 2 (ledger `2026-09-12-offering-key-is-canonical`) — and migration 293 copies
+ *     the id onto an EMPTY key only, so this rail neither creates a disagreement nor resolves one.
  */
 import { eq } from "drizzle-orm";
 
@@ -57,13 +58,16 @@ const ABSENT: ExpertOfferingKeyAdmission = { present: false, key: null, refusal:
  * key, which means "this write is not about the offering" (the `itineraryItemEventLinkSchema`
  * convention, LD 29).
  *
- * `expertOfferingTypeIdInBody` lets a create/update that names BOTH halves of the same choice be
- * refused when they disagree — the authoring surface writes both from the one row the seller
- * picked, so a body in which they differ is not a state any UI produces.
+ * THE SAME-BODY CONTRADICTION CHECK IS GONE, and its subject with it (ledger
+ * `2026-09-12-offering-key-is-canonical`). It compared a body's `expertOfferingTypeKey` against the
+ * legacy `expertOfferingTypeId` beside it and refused a body naming two different offerings. That
+ * body can no longer be authored: the key is CANONICAL and the id is read-only legacy — omitted
+ * from `insertProviderServiceSchema`, written by no rail and by no surface — so there is no second
+ * half for a body to contradict. A pin that passes because its subject no longer exists is worse
+ * than no pin (the `2026-09-12-delete-dead-transport-status` posture), and so is a refusal.
  */
 export async function admitExpertOfferingTypeKey(
   body: unknown,
-  opts: { expertOfferingTypeIdInBody?: unknown } = {},
 ): Promise<ExpertOfferingKeyAdmission> {
   if (!body || typeof body !== "object") return ABSENT;
   if (!Object.prototype.hasOwnProperty.call(body, "expertOfferingTypeKey")) return ABSENT;
@@ -103,23 +107,6 @@ export async function admitExpertOfferingTypeKey(
         body: {
           message:
             "That offering type isn't in the catalog any more. Pick one from the list, or leave it unset.",
-          code: "UNKNOWN_EXPERT_OFFERING_TYPE",
-          offeringTypeKey: key,
-        },
-      },
-    };
-  }
-
-  const idInBody = opts.expertOfferingTypeIdInBody;
-  if (typeof idInBody === "string" && idInBody.length > 0 && idInBody !== row.id) {
-    return {
-      present: true,
-      key: null,
-      refusal: {
-        status: 400,
-        body: {
-          message:
-            "This listing names two different expert offerings. Pick one offering and save again.",
           code: "UNKNOWN_EXPERT_OFFERING_TYPE",
           offeringTypeKey: key,
         },

@@ -26,7 +26,9 @@ export const IDENTITY_EDIT_FIELDS = [
   // under "category/offering" as an identity edit: changing it changes the archetype a buyer is
   // committing to, so on an APPROVED listing it re-enters review beside the two ids rather than
   // moving the live row. (`offeringTypeKey` beside it is the /earn URL param spelling; neither it
-  // nor `expertOfferingTypeId`/`serviceOfferingTypeId` is removed here.)
+  // nor `expertOfferingTypeId`/`serviceOfferingTypeId` is removed here — `expertOfferingTypeId` is
+  // now unwritable by any rail (ledger `2026-09-12-offering-key-is-canonical` omits it from the
+  // body schema), so its entry is inert rather than wrong, and it leaves with the column in lane 2.)
   "serviceOfferingTypeId", "expertOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
   "deliveryMethod", "productShape",
 ] as const;

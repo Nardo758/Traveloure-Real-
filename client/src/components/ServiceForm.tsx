@@ -173,16 +173,16 @@ interface ServiceFormData {
   duration: string;
   deliveryMethod: "in-person" | "video-call" | "hybrid" | "pdf" | "call" | "voice_notes" | "async_messaging";
   // Expert-specific: tier + approval workflow
-  expertOfferingTypeId: string;
   /**
    * `provider_services.expert_offering_type_key` (migration 292, ledger
    * `2026-09-12-listing-names-its-expert-offering`) — WHAT THIS LISTING SELLS, from the expert
    * catalog. "" = the seller has not said, which is an honest state and is never pre-filled with
    * a "sensible" default (§13: a guessed offering type is the fabricated answer the no-backfill
-   * rule refuses one layer down). Written together with `expertOfferingTypeId` from the ONE row
-   * the seller picks — the key is what the offering catalogs are read by (`impactClassFor`), the
-   * id is the older migration-057 link. NOT a credential: choosing one says what is sold, never
-   * who the seller is, and it confers no verified status (LD 27 is untouched).
+   * rule refuses one layer down). It is the ONLY offering this form holds or sends: the decision-
+   * maker ruled the key CANONICAL and the older migration-057 `expertOfferingTypeId` DROPPED
+   * (ledger `2026-09-12-offering-key-is-canonical`), because the offering catalogs are read BY KEY
+   * and two columns for one fact are free to disagree. NOT a credential: choosing one says what is
+   * sold, never who the seller is, and it confers no verified status (LD 27 is untouched).
    */
   expertOfferingTypeKey: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
@@ -365,7 +365,6 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     guestMax: 0,
     duration: "",
     deliveryMethod: "in-person",
-    expertOfferingTypeId: "",
     expertOfferingTypeKey: "",
     approvalStatus: "draft",
     serviceOfferingTypeId: "",
@@ -478,9 +477,10 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     guestMax,
     duration: s.deliveryTimeframe || s.duration || "",
     deliveryMethod: fromCanonicalDelivery(s.deliveryMethod),
-    expertOfferingTypeId: s.expertOfferingTypeId || "",
     // Migration 292: reopen showing the offering the row actually states. NULL stays "" — the
-    // seller has not said, and the form must not pick one for them (§13).
+    // seller has not said, and the form must not pick one for them (§13). The legacy
+    // `expertOfferingTypeId` is deliberately NOT read back: the key is the canonical answer and
+    // the only one this form can write (ledger `2026-09-12-offering-key-is-canonical`).
     expertOfferingTypeKey: s.expertOfferingTypeKey || "",
     approvalStatus: s.approvalStatus || "draft",
     serviceOfferingTypeId: s.serviceOfferingTypeId || "",
@@ -896,7 +896,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       formData.description?.trim() ||
       formData.basePrice > 0 ||
       formData.serviceOfferingTypeId ||
-      formData.expertOfferingTypeId,
+      formData.expertOfferingTypeKey,
     );
     if (!dirty) return;
     const t = setTimeout(() => {
@@ -1078,12 +1078,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     const match = expertOfferingTypes.find((t) => t.offeringTypeKey === raw);
     if (match) {
       offeringTypeKeyPreSelected.current = true;
-      // Migration 292: the same ONE selection writes both columns (see the picker below). A key
-      // the catalog does not carry pre-selects NOTHING — the /earn link is not an authority on
-      // what offerings exist, and a guessed one is worse than an unanswered one (§13).
+      // A key the catalog does not carry pre-selects NOTHING — the /earn link is not an authority
+      // on what offerings exist, and a guessed one is worse than an unanswered one (§13).
       setFormData((prev) => ({
         ...prev,
-        expertOfferingTypeId: match.id,
         expertOfferingTypeKey: match.offeringTypeKey,
       }));
     }
@@ -1368,7 +1366,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         if (role === "provider" && !formData.serviceOfferingTypeId) {
           throw new Error("Pick an offering from the /earn catalog before publishing — it links this listing to what you signed up to provide. Save as draft to finish later.");
         }
-        if (role === "expert" && !formData.expertOfferingTypeId) {
+        if (role === "expert" && !formData.expertOfferingTypeKey) {
           throw new Error("Pick what you sell — the offering from the expert catalog — before submitting for approval. Save as draft to finish later.");
         }
       }
@@ -1559,12 +1557,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // Sent on BOTH role branches, because there is no role gate on this column: any owner may
       // name any key the expert catalog carries. `null` is an explicit CLEAR — the server's
       // allowlist keeps "absent" and "null" as different facts, and this rail always states one
-      // of them so a cleared offering actually persists. The id goes with it, from the same
-      // picked row, so the two columns can never state different offerings.
+      // of them so a cleared offering actually persists. THE KEY IS THE ONLY OFFERING SENT: the
+      // legacy `expertOfferingTypeId` is canonical no longer and is not writable on either rail
+      // (ledger `2026-09-12-offering-key-is-canonical`), so this form cannot put the two columns
+      // into disagreement.
       payload.expertOfferingTypeKey = formData.expertOfferingTypeKey || null;
-      if (formData.expertOfferingTypeId) {
-        payload.expertOfferingTypeId = formData.expertOfferingTypeId;
-      }
 
       // Role-specific fields
       if (role === "provider") {
@@ -1992,7 +1989,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     categoryId: formData.categoryId,
     offeringCategoryUnresolved,
     serviceOfferingTypeId: formData.serviceOfferingTypeId,
-    expertOfferingTypeId: formData.expertOfferingTypeId,
+    expertOfferingTypeKey: formData.expertOfferingTypeKey,
     needsMeetingPoint,
     meetingPoint: formData.meetingPoint,
     deliveryMethod: formData.deliveryMethod,
@@ -3169,7 +3166,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             // header already records that a coordination row's provider-shaped `deliveryFormats`
             // are harmless there.
             const selectedTier = role === "expert"
-              ? expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId)
+              ? expertOfferingTypes.find((t) => t.offeringTypeKey === formData.expertOfferingTypeKey)
               : undefined;
             const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
               ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
@@ -3496,9 +3493,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
           {/* ── EXPERT OFFERING PICKER — what this listing SELLS, from the expert catalog ──────
               Migration 292 / ledger `2026-09-12-listing-names-its-expert-offering` (punchlist
-              D-13 answered, V-12 closed). The choice writes BOTH `expertOfferingTypeKey` (the key
-              the offering catalogs are read by, and therefore the one `impactClassFor` needs) and
-              the older migration-057 `expertOfferingTypeId`, from the ONE row picked here.
+              D-13 answered, V-12 closed). The choice writes `expertOfferingTypeKey` — the key the
+              offering catalogs are read by, and therefore the one `impactClassFor` needs. It is
+              the ONLY offering column this form writes: ledger `2026-09-12-offering-key-is-canonical`
+              made the key canonical and the older migration-057 `expertOfferingTypeId` a dropped
+              legacy, so one selection can no longer state two different offerings.
 
               NO ROLE GATE — the decision-maker ruled it directly. This used to render only for
               `role === "expert"`; hiding it from a provider would reinstate in the presentation
@@ -3547,11 +3546,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       aria-pressed={selected}
                       onClick={() => {
                         // Toggle: re-clicking the chosen one returns the listing to "not said",
-                        // which must stay reachable (§13). Both columns move together — one
-                        // selection, never two half-stated answers.
+                        // which must stay reachable (§13). ONE column moves, because there is now
+                        // one canonical column.
                         setFormData((prev) => ({
                           ...prev,
-                          expertOfferingTypeId: selected ? "" : tier.id,
                           expertOfferingTypeKey: selected ? "" : tier.offeringTypeKey,
                         }));
                       }}
@@ -5046,7 +5044,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("submit")}
-                disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeKey)}
                 title={
                   expertVerificationGateBlocked
                     ? "Submitting for review is fine while unverified — but it can't go live until your identity is verified in your Expert Status page"

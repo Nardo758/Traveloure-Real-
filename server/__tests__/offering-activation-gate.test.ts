@@ -45,6 +45,9 @@ import {
   insertProviderServiceSchema,
   providerServiceExpertOfferingSchema,
 } from "@shared/schema";
+// Ledger `2026-09-12-offering-key-is-canonical` — K5–K8 below. The predicate reaches no database:
+// its id→key lookup is injected, so the pins drive it with a stub catalog.
+import { resolveBookingConciergeItems } from "../services/booking-concierge.service";
 
 // ESM scope: no `__dirname`. `process.cwd()` is the repo root under `npx tsx --test`, which is how
 // every guard in `scripts/` already resolves its paths.
@@ -297,4 +300,152 @@ test("K4 · BOTH `/api/provider/services` write rails admit the key, through ONE
   };
   walk(path.join(REPO_ROOT, "server"));
   assert.deepEqual(parsers.sort(), []);
+});
+
+// ── K5–K8 · THE KEY IS CANONICAL; THE LEGACY UUID IS FROZEN AND ON ITS WAY OUT ────────────────
+// Ledger `2026-09-12-offering-key-is-canonical` (lane 1 of two; migration 293 backfills, lane 2
+// drops `provider_services.expert_offering_type_id`). These pins live beside K1–K4 because they
+// are the same subject one step on: K1/K2 proved only the KEY is admissible, and these prove the
+// legacy id is admissible NOWHERE, that the money path's concierge decision has ONE home, and
+// that the answer for a row carrying both identifiers is unchanged.
+//
+// NEGATIVE SPACE (§18d): K5–K8 reach no database. They say nothing about what production rows
+// hold — lane 2's punchlist entry carries the read-only production check — and nothing about the
+// FEE itself, which is a `fee_bands` rate this predicate never touches (§8).
+
+test("K5 · the legacy `expertOfferingTypeId` is admissible on NO rail (so the two columns cannot be made to disagree)", () => {
+  const parsed = insertProviderServiceSchema.parse({
+    serviceName: "K5",
+    expertOfferingTypeId: "00000000-0000-0000-0000-000000000001",
+  } as Record<string, unknown>) as Record<string, unknown>;
+  assert.ok(
+    !("expertOfferingTypeId" in parsed),
+    "`insertProviderServiceSchema` must OMIT the legacy uuid — the key is canonical and a second writable column is free to disagree with it (§18 rule 1)",
+  );
+  // And the allowlist that re-admits the KEY still admits nothing else (K2's shape, from the other
+  // direction): naming the legacy column there would reopen the hole this ruling closes.
+  const admitted = providerServiceExpertOfferingSchema.parse({
+    expertOfferingTypeKey: "booking_concierge",
+    expertOfferingTypeId: "00000000-0000-0000-0000-000000000001",
+  } as Record<string, unknown>) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(admitted), ["expertOfferingTypeKey"]);
+});
+
+test("K6 · the `booking_concierge` literal has exactly ONE home under server/, and it is the fee-band concern constant", () => {
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === "node_modules" || entry === "__tests__" || entry === "migrations") continue;
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (entry.endsWith(".ts")) {
+        if (/["']booking_concierge["']/.test(stripComments(readFileSync(full, "utf8")))) {
+          files.push(path.relative(REPO_ROOT, full));
+        }
+      }
+    }
+  };
+  walk(path.join(REPO_ROOT, "server"));
+  // DERIVED FROM THE FILE SET, comments stripped — never a call-site count. Six inline copies of
+  // this comparison lived across three route blocks before the lane; each one was a place the
+  // quote and the charge could drift apart about the same cart.
+  assert.deepEqual(
+    files.sort(),
+    [path.join("server", "services", "commission.ts")],
+    "every concierge decision reads CONCIERGE_BOOKING_CONCERN through the one resolver; a second spelling of the literal is a second decision",
+  );
+});
+
+test("K7 · ONE reader of the legacy uuid remains, it is the resolver's fallback, and it is marked for lane 2", () => {
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === "node_modules" || entry === "__tests__" || entry === "migrations") continue;
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (entry.endsWith(".ts")) {
+        if (/expertOfferingTypeId/.test(stripComments(readFileSync(full, "utf8")))) {
+          files.push(path.relative(REPO_ROOT, full));
+        }
+      }
+    }
+  };
+  walk(path.join(REPO_ROOT, "server"));
+  const resolver = path.join("server", "services", "booking-concierge.service.ts");
+  assert.deepEqual(
+    files.sort(),
+    [resolver],
+    "the legacy uuid is read in one place only — the fallback for a database migration 293 has not reached",
+  );
+  // The marker is what lane 2 greps for. A fallback nobody can find is a fallback nobody removes.
+  const src = readFileSync(path.join(REPO_ROOT, resolver), "utf8");
+  assert.ok(
+    src.includes("lane2-removal-target"),
+    "the fallback arm must carry the grep-able lane-2 marker",
+  );
+});
+
+test("K8 · the predicate: the KEY answers, and a row carrying BOTH identifiers answers exactly as it did before", async () => {
+  const CONCIERGE_ID = "id-concierge";
+  const OTHER_ID = "id-other";
+  const catalog = [
+    { id: CONCIERGE_ID, key: "booking_concierge" },
+    { id: OTHER_ID, key: "wedding_planner" },
+  ];
+  let lookups = 0;
+  const lookup = async (ids: string[]) => {
+    lookups += 1;
+    return catalog.filter((r) => ids.includes(r.id));
+  };
+
+  // (a) The identity the ruling turns on: for every row where the key and the legacy id name the
+  //     SAME offering — which is exactly what migration 293 produces — the key-first answer equals
+  //     the legacy-only answer. Driven off the catalog, never a hand-copied expectation.
+  for (const row of catalog) {
+    const legacyOnly = await resolveBookingConciergeItems([{ expertOfferingTypeId: row.id }], lookup);
+    const both = await resolveBookingConciergeItems(
+      [{ expertOfferingTypeId: row.id, expertOfferingTypeKey: row.key }],
+      lookup,
+    );
+    const keyOnly = await resolveBookingConciergeItems([{ expertOfferingTypeKey: row.key }], lookup);
+    const answer = legacyOnly.isBookingConcierge({ expertOfferingTypeId: row.id });
+    assert.equal(answer, row.key === "booking_concierge");
+    assert.equal(both.isBookingConcierge({ expertOfferingTypeId: row.id, expertOfferingTypeKey: row.key }), answer);
+    assert.equal(keyOnly.isBookingConcierge({ expertOfferingTypeKey: row.key }), answer);
+  }
+
+  // (b) A row that states NO key and carries no id is not a concierge line, and neither is an
+  //     absent listing — §13: an unclassified listing is never read as one thing or the other.
+  const none = await resolveBookingConciergeItems([null, {}, { expertOfferingTypeKey: null }], lookup);
+  assert.equal(none.hasAny, false);
+  assert.equal(none.isBookingConcierge(null), false);
+
+  // (c) The key is CANONICAL where the two disagree — the one input class whose answer differs
+  //     from the pre-lane code, stated here rather than left to be discovered.
+  const disagreeing = await resolveBookingConciergeItems(
+    [{ expertOfferingTypeId: CONCIERGE_ID, expertOfferingTypeKey: "wedding_planner" }],
+    lookup,
+  );
+  assert.equal(
+    disagreeing.isBookingConcierge({ expertOfferingTypeId: CONCIERGE_ID, expertOfferingTypeKey: "wedding_planner" }),
+    false,
+  );
+
+  // (d) hasAny is the same predicate over the same set — the strict fee-band loader turns on it,
+  //     so it can never disagree with the per-line answers the loops read.
+  const mixed = await resolveBookingConciergeItems(
+    [null, { expertOfferingTypeKey: "wedding_planner" }, { expertOfferingTypeId: CONCIERGE_ID }],
+    lookup,
+  );
+  assert.equal(mixed.hasAny, true);
+
+  // (e) A fully migrated cart issues NO id lookup at all: the fallback is for rows the backfill has
+  //     not reached, not a second rail every checkout pays for.
+  const before = lookups;
+  const migrated = await resolveBookingConciergeItems(
+    [{ expertOfferingTypeKey: "booking_concierge" }, { expertOfferingTypeKey: "wedding_planner" }],
+    lookup,
+  );
+  assert.equal(migrated.hasAny, true);
+  assert.equal(lookups, before, "a cart whose listings all state a key must not query the legacy catalog");
 });
