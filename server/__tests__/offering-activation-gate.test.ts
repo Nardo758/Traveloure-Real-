@@ -40,6 +40,11 @@ import {
   type OfferingCommerceInput,
   type UnresolvableReason,
 } from "../services/offering-commerce-contract";
+// Migration 292 (ledger `2026-09-12-listing-names-its-expert-offering`) — K1/K2 below.
+import {
+  insertProviderServiceSchema,
+  providerServiceExpertOfferingSchema,
+} from "@shared/schema";
 
 // ESM scope: no `__dirname`. `process.cwd()` is the repo root under `npx tsx --test`, which is how
 // every guard in `scripts/` already resolves its paths.
@@ -203,4 +208,93 @@ test("T3 · the gate has ONE caller module — a second one is a second placemen
   };
   walk(path.join(REPO_ROOT, "server"));
   assert.deepEqual(callers.sort(), ["server/routes.ts"]);
+});
+
+// ── K · THE LISTING'S OWN EXPERT OFFERING KEY ─────────────────────────────────────────────────
+// Migration 292, ledger `2026-09-12-listing-names-its-expert-offering` (punchlist D-13 answered,
+// V-12 closed). These pins live beside the gate's because the gate is the surface whose answer
+// changes once the column is populated: E2/E3/E4/E6 stop resolving `catalog_keys_unrecognised`.
+//
+// NEGATIVE SPACE (§18d): K1–K4 prove ADMISSION and PLACEMENT. They reach no database, so they say
+// nothing about what a stored row resolves to — `offering-archetype-fixtures.db.test.ts` walks
+// that chain — and nothing about whether any surface lets a seller SET the key.
+
+test("K1 · the generic listing body cannot set the expert offering key (§19 — a denylist grants by default)", () => {
+  const parsed = insertProviderServiceSchema.parse({
+    serviceName: "K1",
+    expertOfferingTypeKey: "wedding_planner",
+  } as Record<string, unknown>) as Record<string, unknown>;
+  assert.ok(
+    !("expertOfferingTypeKey" in parsed),
+    "`insertProviderServiceSchema` must OMIT the column — under an `.omit()` denylist a freshly-added column is client-settable BY DEFAULT",
+  );
+});
+
+test("K2 · the pick-based allowlist admits exactly that one field, nullable, and nothing else", () => {
+  const admitted = providerServiceExpertOfferingSchema.parse({
+    expertOfferingTypeKey: "wedding_planner",
+    // Privileged neighbours riding along on the same body: a pick-based schema drops them, which
+    // is the whole reason §19 requires this shape rather than another omit list.
+    revenueShareRate: "1.00",
+    approvalStatus: "approved",
+  } as Record<string, unknown>) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(admitted), ["expertOfferingTypeKey"]);
+  assert.equal(admitted.expertOfferingTypeKey, "wedding_planner");
+
+  // An explicit CLEAR and an ABSENT key are different facts and must stay so (§13).
+  const cleared = providerServiceExpertOfferingSchema.parse({
+    expertOfferingTypeKey: null,
+  }) as Record<string, unknown>;
+  assert.equal(cleared.expertOfferingTypeKey, null);
+  const absent = providerServiceExpertOfferingSchema.parse({}) as Record<string, unknown>;
+  assert.equal(absent.expertOfferingTypeKey, undefined);
+
+  // NO ENUM IS RESTATED: the value set is the FK on the column, so a key seeded by a later
+  // migration needs no edit here. Shape only — the catalog answers the rest.
+  assert.ok(providerServiceExpertOfferingSchema.safeParse({ expertOfferingTypeKey: "not_a_real_key" }).success);
+  assert.ok(!providerServiceExpertOfferingSchema.safeParse({ expertOfferingTypeKey: "" }).success);
+});
+
+test("K3 · the ONE listing→contract assembly reads the column off the row", () => {
+  const src = stripComments(
+    readFileSync(path.join(REPO_ROOT, "server", "services", "offering-listing-input.ts"), "utf8"),
+  );
+  assert.ok(
+    /expertOfferingTypeKey:\s*providerServices\.expertOfferingTypeKey/.test(src),
+    "`loadOfferingListingInput` must SELECT the column — without it E2/E3/E4/E6 stay unclassifiable",
+  );
+  assert.ok(
+    /offeringTypeKey:\s*expertOfferingTypeKey/.test(src),
+    "and hand it to the contract as `offeringTypeKey` — the field `impactClassFor` reads",
+  );
+});
+
+test("K4 · BOTH `/api/provider/services` write rails admit the key, through ONE implementation", () => {
+  const routes = stripComments(readFileSync(path.join(REPO_ROOT, "server", "routes.ts"), "utf8"));
+  const calls = routes.match(/admitExpertOfferingTypeKey\s*\(/g) ?? [];
+  assert.equal(
+    calls.length,
+    2,
+    "create and update are checked as hard as each other (§18 rule 2) — derived from the file, never a literal count",
+  );
+
+  // ONE implementation: no `.ts` under `server/` outside the admission module may parse the
+  // allowlist itself. A second parse is a second place the decision has to be remembered.
+  const parsers: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === "node_modules" || entry === "__tests__") continue;
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (entry.endsWith(".ts")) {
+        const rel = path.relative(REPO_ROOT, full);
+        if (rel.endsWith("expert-offering-key.service.ts")) continue;
+        if (/providerServiceExpertOfferingSchema/.test(stripComments(readFileSync(full, "utf8")))) {
+          parsers.push(rel);
+        }
+      }
+    }
+  };
+  walk(path.join(REPO_ROOT, "server"));
+  assert.deepEqual(parsers.sort(), []);
 });

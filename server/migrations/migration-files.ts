@@ -1528,4 +1528,15 @@ export const MIGRATION_FILES = [
   // lane. Nothing reads it to make a decision — B1 records, B2 decides — so no checkout behaviour,
   // idempotency key or claim transition moves.
   "291_service_bookings_offering_contract_snapshot.sql",
+  // Ledger `2026-09-12-listing-names-its-expert-offering` (punchlist D-13 answered, V-12 closed;
+  // CLAUDE.md Locked Decision 4 and the FAQ): `provider_services.expert_offering_type_key` — the
+  // THIRD FK of migration 107's shape, → `expert_offering_types(offering_type_key)`,
+  // ON DELETE SET NULL, so a LISTING can name its own expert offering instead of the platform
+  // inferring it from the owner's account role. Additive NULLABLE, NO DEFAULT and NO CHECK (the
+  // publish-trap posture — the FK IS the value-set constraint, deliberately), declared in
+  // `shared/schema.ts` in the same commit (deploy-push durability rule), no index (nothing reads
+  // it by value), and NO backfill: an existing expert listing stays unclassified, which is true,
+  // rather than assigned a key nobody chose (§13). Not a merge of the two catalogs and not a new
+  // service table — one pointer, aimed at exactly one catalog.
+  "292_provider_services_expert_offering_type_key.sql",
 ] as const;

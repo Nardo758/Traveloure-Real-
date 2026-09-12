@@ -189,18 +189,26 @@ async function pickOfferingOrCategory(page: Page, searchTerm: string): Promise<b
 }
 
 /**
- * Expert-only "Service Tier *" picker (client/src/components/ServiceForm.tsx, the
- * `role === "expert"` tile grid, `option-tier-${offeringTypeKey}`) — a SEPARATE required field
- * from `#category`/the offering picker above: it sets `formData.expertOfferingTypeId`, which
- * gates `button-submit-service` directly on a fresh create
+ * The "What you sell" picker, WHERE IT IS REQUIRED (client/src/components/ServiceForm.tsx, the
+ * `expert-offering-required` tile grid, `option-tier-${offeringTypeKey}`) — a SEPARATE required
+ * field from `#category`/the offering picker above: it sets `formData.expertOfferingTypeId`,
+ * which gates `button-submit-service` directly on a fresh create
  * (`disabled={... || (!isEditMode && !formData.expertOfferingTypeId)}`). Missing this was the
  * root cause of the submit button staying disabled — driveServiceFormToSubmit filled name,
  * description and category, but never this tile grid, so expertOfferingTypeId stayed "" and the
  * button could never enable no matter how long the caller waited on it.
- * No-op (returns false) for a provider create, where this block does not render at all.
+ *
+ * SCOPED TO `expert-offering-required`, DELIBERATELY. Since migration 292 (ledger
+ * `2026-09-12-listing-names-its-expert-offering`) the same picker ALSO renders for a provider —
+ * there is no role gate on naming what you sell — but it is OPTIONAL there, and an unset offering
+ * is an honest "the seller has not said" (§13). A helper that clicked it anyway would answer an
+ * optional question on the persona's behalf and change what the created listing claims to be.
+ * No-op (returns false) for a provider create, exactly as before.
  */
 async function pickExpertTierIfPresent(page: Page): Promise<boolean> {
-  const firstTier = page.locator('[data-testid^="option-tier-"]').first();
+  const firstTier = page
+    .locator('[data-testid="expert-offering-required"] [data-testid^="option-tier-"]')
+    .first();
   // The tiles render after the /api/expert/offering-types fetch resolves. Locator.isVisible()
   // does NOT wait (its `timeout` option is deprecated/ignored — Playwright checks the CURRENT
   // DOM state only), so a genuine bounded wait needs waitFor(), not isVisible({timeout}) — the

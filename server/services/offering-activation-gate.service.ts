@@ -32,7 +32,11 @@
  *   · It reads the OWNER's role to set `sellerClass`, and deliberately does NOT feed
  *     `local_expert_forms.offering_type_key` in as the listing's offering key: that key is the
  *     expert's ACCOUNT-level role, not this listing's offering, and filing every one of their
- *     listings under it would be a claim the row does not make (§13).
+ *     listings under it would be a claim the row does not make (§13). Since migration 292 the
+ *     listing states its OWN offering — `provider_services.expert_offering_type_key`, read by
+ *     `loadOfferingListingInput` and overridable by the write in flight exactly like every other
+ *     field here (ledger `2026-09-12-listing-names-its-expert-offering`). That closes the gap
+ *     without weakening this bullet: the row's answer is used, the account's never is.
  *
  * THE GATE REFUSES ON A NARROWER SET THAN THE RESOLVER REFUSES ON, AND THAT IS THE FINDING THIS
  * LANE MADE. The plan's OC-A4 brief reads "a listing transitioning INTO active that resolves to no
