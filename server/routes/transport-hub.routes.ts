@@ -5,16 +5,12 @@
  * - GET /api/itinerary/:tripId/transport-hub - Fetch hub data
  * - POST /api/transport-booking-options/:optionId/book - Book platform option
  * - POST /api/transport-booking-options/:optionId/click - Track affiliate click
- * - PATCH /api/transport-booking-options/:optionId/status - Traveller self-report (owner-gated)
  */
 
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import { db } from "../db";
-import { and, eq, isNull, ne, or } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions } from "../services/transport-booking-options.service";
@@ -58,73 +54,14 @@ async function authorizeTransportScope(
   // comparison resolved, the param can only have been meant as a trip id.
   //
   // `requireWriteAccess` (Locked Decision 12 — "a PENDING advisor may not write") is passed
-  // through unchanged for the READ surfaces (absent ⇒ today's behaviour, byte-identical for
-  // every pre-existing caller) and set by the self-report PATCH below, which is a MUTATION.
+  // through to `authorizeTripLogistics` unchanged. ABSENT is today's behaviour for every READ
+  // surface here, byte-identical. No caller in this file sets it since the self-report PATCH was
+  // deleted (ledger `2026-09-12-delete-dead-transport-status`), and the passthrough is KEPT
+  // deliberately: it is the general capability any MUTATION on a transport scope must use, and
+  // removing it would mean the next such rail re-derives the LD 12 decision instead of passing a
+  // flag (§18 rule 1). Pin C10 keeps it exercised.
   return authorizeTripLogistics(comparison?.tripId ?? fallbackTripId, userId, route, options);
 }
-
-/**
- * Resolves the OWNING SCOPE of a transport booking option (V-7, ledger
- * `2026-09-12-transport-status-self-report-gate`).
- *
- * `transport_booking_options` carries no owner column. A row belongs to a traveller only
- * transitively: `variant_id` directly, or `transport_leg_id` → the leg's variant. The variant's
- * comparison is what `authorizeTransportScope` already knows how to authorize, so the option's
- * gate is the SAME decision as the hub's — one predicate, one more caller (§18 rule 1), rather
- * than a second "may this person touch this transport row?" test.
- *
- * §13 — A ROW WITH NEITHER LINK HAS NO PROVABLE OWNER, and `null` says exactly that. It is NOT
- * "anyone may write it": the caller maps a null scope to the same ONE 404 an unowned row gets,
- * because we cannot show that anybody owns it. (The `seed/test-variant` fixture row is precisely
- * this shape — legId and variantId both NULL.)
- */
-async function resolveOptionScope(
-  option: { variantId?: string | null; transportLegId?: string | null },
-): Promise<{ userId?: string | null; tripId?: string | null } | null> {
-  let variantId = option.variantId ?? null;
-  if (!variantId && option.transportLegId) {
-    const leg = await storage.getTransportLegById(option.transportLegId);
-    variantId = leg?.variantId ?? null;
-  }
-  if (!variantId) return null;
-
-  const variant = await storage.getItineraryVariantById(variantId);
-  if (!variant) return null;
-
-  return ((await storage.getItineraryComparison(variant.comparisonId)) as any) ?? null;
-}
-
-/**
- * §19 — THE SELF-REPORT BODY IS AN ALLOWLIST, AND `confirmed` IS NOT IN IT.
- *
- * The field set is PICKED off the table's own insert schema (so it is mechanically true: a column
- * added to `transport_booking_options` later is unreachable here until someone names it), the
- * value set is re-stated as an explicit enum because the column is free text with no DB CHECK, and
- * `.strict()` REFUSES an unknown key rather than silently stripping it (the LD 34 posture).
- *
- * WHY `confirmed` IS ABSENT, and it is the whole point of this schema. `booking_status` is read by
- * two surfaces that treat `confirmed` as a REAL reservation — `TransportBookingCard` draws the
- * green Confirmed badge, and `traveler-profile.service.ts` counts `booking_status IN
- * ('booked','confirmed')` as a purchased transport pick. On the platform rail that value is written
- * by ONE author, the payment's own signal (`handleStripePaymentSuccess`, gated on
- * `payment_status === "paid"` — ledger `2026-09-08-transport-confirm-timing`). A traveller saying
- * "I booked this on the partner's site" is a DIFFERENT FACT from the platform holding the payment
- * (LD 44 (e): a named actor's purchase attempt and a confirmation in hand are never collapsed), so
- * the self-report rail can say `booked` and can never say `confirmed`. That is the LD 44 (e) rule
- * one table over: a human may not type themselves into a machine state.
- */
-const TRAVELER_SELF_REPORT_STATUSES = ["available", "booked", "cancelled"] as const;
-
-const transportStatusSelfReportSchema = createInsertSchema(transportBookingOptions)
-  .pick({ bookingStatus: true, confirmationRef: true })
-  .extend({
-    bookingStatus: z.enum(TRAVELER_SELF_REPORT_STATUSES),
-    // A partner's reference is free text, so only a length bound is claimed — no format is
-    // asserted on a partner's behalf. `null` is how a traveller CLEARS one they mistyped;
-    // omitting the key leaves whatever is on the row untouched (absent ≠ empty, §13).
-    confirmationRef: z.string().trim().min(1).max(120).nullable().optional(),
-  })
-  .strict();
 
 /**
  * GET /api/itinerary/:tripId/transport-hub
@@ -514,147 +451,6 @@ router.post(
     } catch (error) {
       console.error("Error tracking affiliate click:", error);
       res.status(500).json({ error: "Failed to track click" });
-    }
-  }
-);
-
-/**
- * PATCH /api/transport-booking-options/:optionId/status
- *
- * The traveller's SELF-REPORT rail for an external/affiliate transport booking: "I booked this on
- * the partner's site", with the partner's own reference if they have one.
- *
- * V-7 (ledger `2026-09-12-transport-status-self-report-gate`) — WHAT THIS USED TO BE.
- * The handler read `bookingStatus` and `confirmationRef` straight off `req.body` behind
- * `isAuthenticated` and nothing else: no ownership check, no allowlist, no value set. ANY signed-in
- * account could stamp ANY transport option `confirmed` with ANY reference, on any traveller's plan,
- * and both readers of that column treat `confirmed` as a real reservation (`TransportBookingCard`'s
- * green badge; `traveler-profile.service.ts`'s purchased-pick count). That is the §19 denylist shape
- * on a status-and-authorship field — the class §14 states for identity and §18 for a rate.
- *
- * FOUR RULES, and none of them is optional:
- *
- *  1. **THE ACTOR IS THE SESSION AND THE ROW IS RESOLVED SERVER-SIDE (§14).** The option is looked
- *     up, its owning scope derived through `resolveOptionScope`, and that scope authorized by the
- *     SAME `authorizeTransportScope` the hub read uses — with `requireWriteAccess`, because this is
- *     a mutation and Locked Decision 12 says a PENDING advisor may not write. Nothing is taken from
- *     the caller but the option id and the two allowlisted fields.
- *  2. **ONE 404 COVERS "no such thing" AND "not yours"** (Locked Decision 40's
- *     `POST /api/conversations/start` posture). Absent row, unownable row (no leg and no variant —
- *     §13: we cannot show anybody owns it, which is not the same as everybody owning it), missing
- *     variant/comparison and a refused authorization all answer the SAME sentence, so the rail
- *     cannot be used to probe which options exist or whose they are. A 403 here would be the probe.
- *  3. **THE BODY IS AN ALLOWLIST AND CANNOT SAY `confirmed`** — see
- *     `transportStatusSelfReportSchema` above for why that value belongs to the payment alone.
- *  4. **A PLATFORM OPTION IS NOT SELF-REPORTABLE AT ALL.** Its status follows the money (ledger
- *     `2026-09-08-transport-confirm-timing`), so letting its owner hand-write `booked` on a checkout
- *     they abandoned would reopen exactly the defect that lane closed, through a second door. The
- *     refusal is a 400 rather than a 404 because by this point the caller has already been shown the
- *     row is theirs — there is nothing left to probe.
- *
- * §15 SHAPE, ON A NON-MONEY WRITE. The UPDATE carries its own from-state guard
- * (`booking_status IS NULL OR booking_status <> 'confirmed'`) so the statement IS the guard: a
- * self-report can never overwrite a payment-written confirmation, with no check-then-write window.
- * Today that is belt-and-braces — rule 4 already refuses the only rail that writes `confirmed` — and
- * it is kept because a second writer of that value is exactly what a later lane might add.
- *
- * §13 IN THE RESPONSE: the reply reports the values that were PERSISTED (the UPDATE's own
- * `returning()`), never an echo of what the caller sent.
- */
-router.patch(
-  "/api/transport-booking-options/:optionId/status",
-  isAuthenticated,
-  async (req, res) => {
-    // "No such thing" and "not yours" are the same sentence — see rule 2 above.
-    const notFound = () => res.status(404).json({ error: "Booking option not found" });
-
-    try {
-      const { optionId } = req.params;
-      const userId = getUserId(req);
-
-      const parsed = transportStatusSelfReportSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({
-          error: "Invalid booking status update",
-          details: parsed.error.issues.map((i) => ({
-            path: i.path.join("."),
-            message: i.message,
-          })),
-        });
-      }
-      const { bookingStatus, confirmationRef } = parsed.data;
-
-      const option = await storage.getTransportBookingOptionById(optionId);
-      if (!option) return notFound();
-
-      const scope = await resolveOptionScope(option);
-      if (!scope) return notFound();
-
-      const denied = await authorizeTransportScope(
-        scope,
-        scope.tripId ?? "",
-        userId,
-        "PATCH /api/transport-booking-options/:optionId/status",
-        { requireWriteAccess: true },
-      );
-      if (denied) {
-        // Unauthenticated is not a probe, so 401 stays 401; every AUTHORIZATION refusal collapses
-        // into the same 404 an absent row gets.
-        if (denied.status === 401) return res.status(401).json({ message: denied.message });
-        return notFound();
-      }
-
-      if (option.bookingType === "platform") {
-        return res.status(400).json({
-          error:
-            "A platform transport booking's status follows its payment and cannot be self-reported",
-        });
-      }
-
-      // §15 shape: the from-state guard is IN the statement, not a pre-check.
-      const [updated] = await db
-        .update(transportBookingOptions)
-        .set({
-          bookingStatus,
-          // An omitted key leaves the stored reference alone; an explicit `null` clears it.
-          ...(confirmationRef !== undefined ? { confirmationRef } : {}),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(transportBookingOptions.id, optionId),
-            // `booking_status` is nullable (column default "available"), and in SQL
-            // `NULL <> 'confirmed'` is NULL rather than TRUE — so an un-stamped row has to be
-            // admitted explicitly or a bare `ne` would silently refuse every one of them.
-            or(
-              isNull(transportBookingOptions.bookingStatus),
-              ne(transportBookingOptions.bookingStatus, "confirmed"),
-            ),
-          ),
-        )
-        .returning({
-          id: transportBookingOptions.id,
-          bookingStatus: transportBookingOptions.bookingStatus,
-          confirmationRef: transportBookingOptions.confirmationRef,
-        });
-
-      if (!updated) {
-        // The row was resolved and authorized a moment ago, so the only thing the guard can have
-        // refused is a payment-written `confirmed` (§13: say which fact stopped the write).
-        return res.status(409).json({
-          error: "This option is confirmed by its payment and cannot be changed by a self-report",
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Booking status updated",
-        bookingStatus: updated.bookingStatus,
-        confirmationRef: updated.confirmationRef ?? null,
-      });
-    } catch (error) {
-      console.error("Error updating booking status:", error);
-      res.status(500).json({ error: "Failed to update booking status" });
     }
   }
 );
