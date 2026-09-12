@@ -18,6 +18,11 @@ import { JOB_CADENCE } from "./internal.routes";
 import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
+import {
+  feeBandDeactivationRuling,
+  feeBandMaxAmountClearRuling,
+  feeBandPatchBodySchema,
+} from "../services/fee-band-admin.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -6876,20 +6881,34 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           CAST(default_rate AS FLOAT) AS default_rate,
           CAST(min_rate AS FLOAT)     AS min_rate,
           CAST(max_rate AS FLOAT)     AS max_rate,
+          -- V-4: the DOLLAR cap the resolver applies (the $25 on the 7% traveler service fee).
+          -- Distinct from max_rate, which bounds the RATE. It was neither selected nor patchable,
+          -- so the one number an operator most needs to see on a capped band was invisible.
+          CAST(max_amount AS FLOAT)   AS max_amount,
           display_name, description, is_active, updated_by, updated_at
         FROM fee_bands
         ORDER BY rate_type ASC, band_key ASC
       `);
-      res.json(result.rows ?? []);
+      // V-5: every row carries its deactivation ruling, so the operator is told what switching a
+      // band off would do BEFORE they try it — not after a refusal. The ruling is READ from the
+      // resolver manifest (§18 rule 1); this route restates no list of its own.
+      const rows = (result.rows ?? []).map((row: any) => ({
+        ...row,
+        deactivation: feeBandDeactivationRuling(String(row.band_key)),
+        maxAmountClear: feeBandMaxAmountClearRuling(String(row.band_key)),
+      }));
+      res.json(rows);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
   // PATCH /api/admin/fee-bands/:bandKey — update one band.
-  // Editable fields: default_rate, min_rate, max_rate, display_name, description, is_active.
+  // Editable fields: the `feeBandPatchBodySchema` ALLOWLIST (§19) — default_rate, min_rate,
+  // max_rate, max_amount, display_name, description, is_active, and nothing else.
   // band_key and rate_type are immutable post-seed (they identify the band).
-  // Validates default_rate falls within min/max if set.
+  // Validates default_rate falls within min/max if set, and refuses a deactivation that would
+  // break a fail-loud charge path (V-5).
   router.patch("/api/admin/fee-bands/:bandKey", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -6899,12 +6918,25 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       const bandKey = String(req.params.bandKey || "").trim();
       if (!bandKey) return res.status(400).json({ error: "Invalid bandKey" });
 
-      const { defaultRate, minRate, maxRate, displayName, description, isActive } = req.body;
+      // §19: a PICK-SHAPED ALLOWLIST, not a destructure. The handler used to read `req.body`
+      // field by field, which is the denylist shape — adding `max_amount` to it would have made
+      // the next privileged column on `fee_bands` client-settable by default. `.strict()` refuses
+      // an unknown key outright rather than silently dropping it, and present-but-invalid values
+      // (a non-numeric rate, a negative cap) are 400s, never a fallback to the stored value.
+      // money-derive-ok: §18 rule 4 — this IS the privileged-by-design admin band editor, the one
+      // surface where a rate may legitimately arrive in a request body. It sits behind §2's
+      // blanket requireAdmin guard and the admin-role check above.
+      const parsedBody = feeBandPatchBodySchema.safeParse(req.body ?? {});
+      if (!parsedBody.success) {
+        return res.status(400).json({ error: "Invalid body", errors: parsedBody.error.errors });
+      }
+      const { defaultRate, minRate, maxRate, maxAmount, displayName, description, isActive } = parsedBody.data;
 
       // Fetch current row for audit + validation context.
       const current = await db.execute(sql`
         SELECT band_key, CAST(default_rate AS FLOAT) AS default_rate,
-               CAST(min_rate AS FLOAT) AS min_rate, CAST(max_rate AS FLOAT) AS max_rate, is_active
+               CAST(min_rate AS FLOAT) AS min_rate, CAST(max_rate AS FLOAT) AS max_rate,
+               CAST(max_amount AS FLOAT) AS max_amount, is_active
         FROM fee_bands WHERE band_key = ${bandKey} LIMIT 1
       `);
       if (!current.rows || current.rows.length === 0) {
@@ -6912,24 +6944,51 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
       const before = current.rows[0] as any;
 
-      // Reject present-but-invalid rate fields outright. Previously a non-numeric
-      // defaultRate (e.g. "abc") silently fell back to the stored value and returned
-      // 200 ok — a false "saved" that dropped the admin's intended change. Omitting a
-      // field still means "leave unchanged"; only present values must be finite numbers.
-      if (defaultRate !== undefined && (typeof defaultRate !== "number" || !Number.isFinite(defaultRate))) {
-        return res.status(400).json({ error: "defaultRate must be a finite number", received: defaultRate });
+      // ── V-5: is this edit a DEACTIVATION, and may this band be deactivated? ───────────────
+      // Only an actual transition true → false is a deactivation; re-sending `isActive:false`
+      // for an already-inactive band changes nothing and is not refused.
+      const isDeactivation = isActive === false && before.is_active === true;
+      if (isDeactivation) {
+        const ruling = feeBandDeactivationRuling(bandKey);
+        if (!ruling.allowed) {
+          // A REFUSED deactivation is audit-logged under its own action, so the log distinguishes
+          // it from a successful edit — an attempt to switch off a live charge path is itself the
+          // event worth keeping.
+          await insertAccessAuditLog({
+            actorId: userId,
+            actorRole: user.role,
+            action: "fee_band_deactivation_refused",
+            resourceType: "fee_band",
+            resourceId: bandKey,
+            metadata: { reason: ruling.reason, owner: ruling.owner, consequence: ruling.consequence },
+            ipAddress: req.ip ?? null,
+            userAgent: req.get("user-agent") ?? null,
+          }).catch(err => console.error("[fee-bands] audit log failed (non-fatal):", err));
+          return res.status(409).json({
+            error: "Band cannot be deactivated",
+            bandKey,
+            reason: ruling.reason,
+            consequence: ruling.consequence,
+            owner: ruling.owner,
+          });
+        }
       }
-      if (minRate !== undefined && minRate !== null && (typeof minRate !== "number" || !Number.isFinite(minRate))) {
-        return res.status(400).json({ error: "minRate must be a finite number or null", received: minRate });
-      }
-      if (maxRate !== undefined && maxRate !== null && (typeof maxRate !== "number" || !Number.isFinite(maxRate))) {
-        return res.status(400).json({ error: "maxRate must be a finite number or null", received: maxRate });
+
+      // ── V-4: the dollar cap. A band whose reader REQUIRES a cap may not have it cleared. ──
+      if (maxAmount === null && before.max_amount !== null) {
+        const capRuling = feeBandMaxAmountClearRuling(bandKey);
+        if (!capRuling.allowed) {
+          return res.status(409).json({ error: "Cap cannot be cleared", bandKey, consequence: capRuling.refusal });
+        }
       }
 
       // Apply min/max validation against the proposed (or unchanged) default_rate.
       const nextDefault = defaultRate !== undefined ? defaultRate : Number(before.default_rate);
       const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : minRate);
       const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : maxRate);
+      const nextMaxAmount = maxAmount === undefined
+        ? (before.max_amount === null ? null : Number(before.max_amount))
+        : maxAmount;
       if (nextMin !== null && nextDefault < nextMin) {
         return res.status(400).json({ error: "default_rate below min_rate", nextDefault, nextMin });
       }
@@ -6943,6 +7002,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           default_rate = ${nextDefault},
           min_rate     = ${nextMin},
           max_rate     = ${nextMax},
+          max_amount   = ${nextMaxAmount},
           display_name = COALESCE(${displayName ?? null}, display_name),
           description  = COALESCE(${description ?? null}, description),
           is_active    = COALESCE(${isActive ?? null}, is_active),
@@ -6959,14 +7019,23 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         resourceType: "fee_band",
         resourceId: bandKey,
         metadata: {
-          before: { default_rate: before.default_rate, is_active: before.is_active },
-          after: { default_rate: nextDefault, is_active: isActive ?? before.is_active },
+          before: { default_rate: before.default_rate, max_amount: before.max_amount, is_active: before.is_active },
+          after: { default_rate: nextDefault, max_amount: nextMaxAmount, is_active: isActive ?? before.is_active },
+          deactivated: isDeactivation,
         },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
       }).catch(err => console.error("[fee-bands] audit log failed (non-fatal):", err));
 
-      res.json({ ok: true, bandKey, defaultRate: nextDefault });
+      res.json({
+        ok: true,
+        bandKey,
+        defaultRate: nextDefault,
+        maxAmount: nextMaxAmount,
+        // §13: when the operator HAS switched a band off, the response says what now takes over.
+        // Silence here would leave a successful deactivation indistinguishable from a rate edit.
+        ...(isDeactivation ? { deactivated: true, consequence: feeBandDeactivationRuling(bandKey).consequence } : {}),
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

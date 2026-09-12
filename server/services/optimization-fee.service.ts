@@ -20,6 +20,7 @@ import { logger } from "../infrastructure/logger";
 import {
   COORDINATION_FLOOR_BAND,
   COORDINATION_PERCENT_BAND,
+  declaredFallbackValue,
 } from "./fee-band-requirements";
 
 // 3.0.1b: Fail-loud resolver. If the DB is missing both the event-type row AND
@@ -161,10 +162,15 @@ export async function getFee(
  * `resolveCoordinationFee` reads them via getFeeBandByKey and FALLS BACK to these
  * constants when a row is absent — so a fresh/unseeded DB behaves identically and
  * the fee floor can never break on a missing row (a fee-floor's safe failure mode).
- * The constants below are the documented fallback default (fee-literal-ok: comment).
+ * The documented fallback defaults are declared in `fee-band-requirements.ts` and READ below.
  */
-const DEFAULT_COORDINATION_FLOOR_CENTS = 499_00; // $499  fee-literal-ok: comment (fallback default)
-const DEFAULT_COORDINATION_PERCENT = 0.08; // 8%           fee-literal-ok: comment (fallback default)
+// The two documented fallback defaults now live in the fee-band contract module beside the
+// bands they back (`RESOLVER_FEE_BAND_REQUIREMENTS`, ledger `2026-09-12-fee-band-admin-gaps`),
+// so the number this resolver charges when a row is gone is the SAME number the admin panel
+// tells an operator it will charge before they deactivate the band (§18 rule 1). Values are
+// unchanged: the floor is still stated in dollars and converted here, exactly as before.
+const DEFAULT_COORDINATION_FLOOR_CENTS = Math.round(declaredFallbackValue(COORDINATION_FLOOR_BAND) * 100);
+const DEFAULT_COORDINATION_PERCENT = declaredFallbackValue(COORDINATION_PERCENT_BAND);
 
 export interface ResolvedCoordinationFee {
   feeCents: number;
