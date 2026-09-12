@@ -96,8 +96,18 @@ export async function resolveBuyerState(req: Request): Promise<BuyActionBuyer> {
   };
 }
 
-/** A positive published price. A price of NULL or 0 is NOT a price (§13/§14 — none is invented). */
-function hasPrice(price: string | number | null | undefined): boolean {
+/**
+ * A positive published price. A price of NULL or 0 is NOT a price (§13/§14 — none is invented).
+ *
+ * EXPORTED as of ledger `2026-09-12-booking-birth-holes` (punchlist V-11). It is the ONE
+ * translation of a `provider_services.price` column into the `hasPrice` fact `resolveBuyAction`
+ * decides on, and `POST /api/bookings` now consults THIS rather than restating it — the route's
+ * own `Number(service.price) || 0` rendered a NULL price as "free", which is the exact claim
+ * `resolveBuyAction` row 11 refuses to make (a priceless listing can only ever be REQUESTED,
+ * never charged). A second reading of the column is the drift class §18 rule 1 names, and it is
+ * how a button says "Request to book" while the rail behind it commits a $0.00 purchase.
+ */
+export function hasPublishedPrice(price: string | number | null | undefined): boolean {
   if (price === null || price === undefined) return false;
   const n = typeof price === "number" ? price : Number(price);
   return Number.isFinite(n) && n > 0;
@@ -174,7 +184,7 @@ export async function buildListingBuyActions(
           deliveryMethod: row.deliveryMethod ?? null,
           productShape: row.productShape ?? null,
           bookingMode,
-          hasPrice: hasPrice(row.price),
+          hasPrice: hasPublishedPrice(row.price),
           hasPublishedAvailability: published.has(row.id),
           isLive: row.isLive,
         },

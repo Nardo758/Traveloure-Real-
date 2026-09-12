@@ -135,6 +135,7 @@ import {
   bundleComponents,
   vendorContracts,
 } from "@shared/schema";
+import { stripServerAuthoredBookingDetails } from "@shared/booking-details-admission";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
@@ -3093,6 +3094,40 @@ export class DatabaseStorage implements IStorage {
         '[PS15] createServiceBookingAtomic: DROPPED a caller-supplied stripePaymentIntentId — ' +
         'this field is written only by stampAuthorization (ruling 41/46).',
       );
+    }
+
+    // ── V-10 layer 2 (ledger `2026-09-12-booking-birth-holes`) ────────────────────────────────
+    // The SERVER-AUTHORED keys inside `booking_details` / `booking_metadata` — chief among them
+    // `travelerCharge`, the era discriminator the refund ceiling, the cancellation quote and the
+    // checkout re-drive all branch on. Layer 1 is the strip on `createBookingRequestSchema`; this
+    // layer covers every caller of THIS writer, including one that bypasses the schema with
+    // `as any`.
+    //
+    // WHY HERE AND DELIBERATELY NOT IN `createServiceBooking` (the stated negative space):
+    // `createServiceBooking` is the CHECKOUT CLAIM's own writer, and the claim COMPOSES
+    // `travelerCharge` server-side and passes it through that function on every real purchase
+    // (`payments.routes.ts`). A blind strip there would erase a genuine money fact from every
+    // checkout row and silently re-read the whole platform as pre-A3 — so the strip is placed on
+    // the writer the CLIENT-facing birth rail uses (`POST /api/bookings`, its only caller), and
+    // the client body is stopped at layer 1 before it can reach the other one.
+    const strippedDetails = stripServerAuthoredBookingDetails((safeBooking as any).bookingDetails);
+    const strippedMetadata = stripServerAuthoredBookingDetails((safeBooking as any).bookingMetadata);
+    const plantedKeys = [...strippedDetails.stripped, ...strippedMetadata.stripped];
+    if (plantedKeys.length > 0) {
+      // Ops-visible, never silent: reaching here means a caller tried to author a fact only the
+      // server may state. The KEYS are logged, never their values.
+      console.error(
+        '[V-10] createServiceBookingAtomic: DROPPED caller-supplied server-authored booking-detail ' +
+        `keys (${plantedKeys.join(', ')}) — these are written only by the checkout spine.`,
+      );
+    }
+    // Assigned only where the caller actually supplied the field, so an absent jsonb stays absent
+    // and the column keeps its own DB default (§13 — a strip must not turn "not given" into "{}").
+    if ((safeBooking as any).bookingDetails !== undefined) {
+      (safeBooking as any).bookingDetails = strippedDetails.value;
+    }
+    if ((safeBooking as any).bookingMetadata !== undefined) {
+      (safeBooking as any).bookingMetadata = strippedMetadata.value;
     }
 
     const trackingNumber = await this.generateTrackingNumber('TRV');

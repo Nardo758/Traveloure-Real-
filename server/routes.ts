@@ -27,7 +27,8 @@ import { storage, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
-import { buildListingBuyActions, resolveBuyerState } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9)
+import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9)
+import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
   resolveAiDraftEligibility,
@@ -6565,6 +6566,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const service = await storage.getProviderServiceById(input.serviceId);
       if (!service || service.status !== "active") {
         return res.status(404).json({ message: "Service not found or not available" });
+      }
+
+      // ── V-11 (ledger `2026-09-12-booking-birth-holes`): NO PRICE IS NOT A PRICE OF ZERO ───────
+      // §14 was already satisfied below — the amount comes from the catalog, not the body — but
+      // `Number(service.price) || 0` turned a NULL price into `0.00`, i.e. into "free", which is a
+      // claim the listing never made (§13). Every custom-quote listing carries NULL by design
+      // (`priceAuthority: server_quote`), so that expression was the whole of §9.2's "do not send
+      // a quote through generic checkout": a rule with no enforcement behind it.
+      //
+      // THE RULE IS NOT RE-DECIDED HERE. `resolveBuyAction` is the sole author of the buy/landing
+      // rule (ruling 9) and its row 11 already says a priceless listing can only ever be
+      // REQUESTED, never charged — and its `no_published_price` is the vocabulary this refusal
+      // answers in, so a surface can say WHY out loud rather than re-deriving the condition. The
+      // fact itself comes from the ONE translation of the price column, `hasPublishedPrice`
+      // (§18 rule 1) — the same predicate that produced the button the traveler pressed.
+      //
+      // WHY A REFUSAL RATHER THAN A ROW WITH NO AMOUNT: `service_bookings.total_amount` is NOT
+      // NULL, so "not quoted yet" is not a state this table can hold. Committing the row anyway
+      // would make the platform state a price nobody set; refusing states the truth and leaves the
+      // quote rail (which does not exist yet) to be built deliberately.
+      //
+      // A PRICED LISTING IS UNTOUCHED: everything below this gate runs exactly as before, and for
+      // any listing that passes it `Number(service.price) || 0` is `Number(service.price)`.
+      if (!hasPublishedPrice(service.price)) {
+        const reason: BuyRefusalReason = "no_published_price";
+        return res.status(400).json({
+          message:
+            "This listing publishes no price, so it cannot be booked through this rail. A custom-quote listing is requested and quoted before anything is committed.",
+          reason,
+        });
       }
 
       // §14: the amount comes from the server-side catalog record, never from req.body.

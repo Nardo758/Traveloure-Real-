@@ -1179,6 +1179,59 @@ jobs:
       - name: Archetype fixtures — creation → activation → contract → booking → snapshot
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/offering-archetype-fixtures.db.test.ts
 
+
+  booking-birth-provenance:
+    name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # THE BIRTH SIDE of ruling 41's clause, which the promotion suite's N17c can never reach: a
+      # row born already carrying its own PaymentIntent runs no promotion code, so no promotion
+      # assertion fires — it simply looks authorized to every consumer keyed on that column. B1–B3
+      # prove the field is unreachable at birth in all three layers, B4/B5 prove the rows already on
+      # disk surface as `payment_provenance_unverified` drift (and that a spine-written row does
+      # NOT), B6 is `#PS18`'s committed omit-vs-pick fixture.
+      #
+      # B7–B9 (ledger 2026-09-12-booking-birth-holes) close the two holes the same handler still
+      # had. B7: the pick-based allowlist stops at the COLUMN, so `booking_details.travelerCharge` —
+      # the era discriminator the refund ceiling, the cancellation quote and the checkout re-drive
+      # branch on — was plantable at birth without touching a money column; stripped at the schema
+      # and in `createServiceBookingAtomic`. B8 is the discriminating half and the reason the strip
+      # is NOT in `createServiceBooking`: the checkout claim composes that key server-side through
+      # that writer on every real purchase. B9: a listing with no published price is REFUSED rather
+      # than committed at `0.00` (`resolveBuyAction` row 11 — a priceless listing can only ever be
+      # REQUESTED). Ruling 46's suite had no CI job of its own until this lane; it does now.
+      - name: Booking-birth provenance (B1–B9)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-birth-provenance.db.test.ts
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
     runs-on: ubuntu-latest
@@ -1948,7 +2001,7 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts
 
   confirm-honesty:
-    name: confirm-honesty (§13 — 2026-09-08-transport-confirm-timing · 2026-09-08-confirmation-code-is-the-server-s)
+    name: confirm-honesty (§13 — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1961,6 +2014,11 @@ jobs:
       # a Checkout Session is an intent to pay, and the promotion belongs to the payment signal,
       # which returns early unless `payment_status === "paid"` (a hosted session can complete
       # UNPAID). B-series: the booking modal renders the SERVER's confirmation code or none, and an
-      # absent code is said out loud rather than filled with a plausible string.
+      # absent code is said out loud rather than filled with a plausible string. C-series
+      # (2026-09-12-transport-status-self-report-gate, punchlist V-7/V-8): the traveller self-report
+      # PATCH resolves and authorizes the row server-side, parses a pick-based allowlist whose value
+      # set omits `confirmed`, and answers ONE 404 for absent/unowned alike; and both webhook
+      # promotions carry a from-state guard IN the statement, so a late paid signal never
+      # resurrects a cancelled booking or option.
       - name: Confirm-honesty pins
         run: npx tsx --test server/__tests__/confirm-honesty.test.ts

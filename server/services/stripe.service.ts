@@ -21,7 +21,7 @@ import Stripe from "stripe";
 import { db } from "../db";
 import { transportBookingOptions, serviceBookings } from "@shared/schema";
 import { users } from "@shared/models/auth";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { getStripeSecretKey } from "../utils/stripe-key";
 // Ruling 2026-09-02-traveler-fee-applies-everywhere (path 4 — platform transport is merchant-of-record,
 // so the traveler service fee applies). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
@@ -220,7 +220,52 @@ export async function createTransportBookingCheckout(
 }
 
 /**
+ * THE STATES A TRANSPORT PROMOTION MAY LEAVE (V-8, ledger
+ * `2026-09-12-transport-status-self-report-gate`).
+ *
+ * Written down ONCE, beside the one statement that reads each, because the whole point of §15's
+ * atomic conditional is that the FROM-state list and the UPDATE are the same expression — a list
+ * restated somewhere else is a second answer to "may this be promoted?" (§18 rule 1).
+ *
+ * `service_bookings`: the transport rail births its row `pending` (see
+ * `createTransportBookingCheckout` above) and this promotion moves it to `confirmed`.
+ * `payment_pending` is DELIBERATELY ABSENT — that state with a NULL PaymentIntent is the cart
+ * checkout's unauthorized claim and belongs to `checkout-claim.service.ts`, which §18b keeps as its
+ * SOLE author; admitting it here would make this a second writer of someone else's transition.
+ *
+ * `transport_booking_options`: `available` is the column default ("nothing reserved yet", true while
+ * a checkout is in flight — ledger `2026-09-08-transport-confirm-timing`) and `booked` is the
+ * traveller's own self-report. NULL is admitted separately in the statement, because in SQL a NULL
+ * column matches neither an `IN` list nor a `<>`. `cancelled` and `confirmed` are both absent, for
+ * different reasons: a CANCELLED option must never be resurrected by a late paid signal (the V-8
+ * defect), and a `confirmed` one has already been promoted, so a replay is a no-op rather than a
+ * second flip.
+ */
+const TRANSPORT_BOOKING_PROMOTABLE_FROM = ["pending"] as const;
+const TRANSPORT_OPTION_PROMOTABLE_FROM = ["available", "booked"] as const;
+
+/**
  * Handles Stripe webhook for payment completion
+ *
+ * V-8 (ledger `2026-09-12-transport-status-self-report-gate`) — A LATE PAID SIGNAL NO LONGER
+ * PROMOTES A CANCELLED ROW. Both writes below used to be unconditional on the row's CURRENT state:
+ * §15's atomic conditional was present for the PAYMENT check (`payment_status !== "paid"`) and
+ * absent for the STATUS this handler overwrites. A `checkout.session.completed` that arrived after
+ * the traveller cancelled — a delayed delivery, a webhook replay, a reconciliation re-drive — flipped
+ * a cancelled booking and a cancelled transport option back to `confirmed`, and the green badge came
+ * back on a reservation nobody holds.
+ *
+ * Each write is now ONE statement carrying its own from-state list: the UPDATE **is** the guard, and
+ * a pre-check would only be the error message (§15). A refused promotion is LOGGED rather than
+ * silently swallowed — money has moved and the row says otherwise, which is a human's problem, and
+ * this handler DETECTS rather than repairs (§17's posture: a detector that also repairs is another
+ * unreviewed writer on the money path).
+ *
+ * §13 — THE FEE LEDGER FOLLOWS THE BOOKING, NOT THE SIGNAL. The traveler-service-fee row is written
+ * only when the booking IS confirmed — promoted by this call, or already confirmed by an earlier
+ * delivery (the writer is idempotent per booking id, so a replay that lost its first ledger write
+ * still gets one). A booking this handler REFUSED to promote gets no fee event: recording a fee
+ * against a cancelled reservation would be the money-side of the same claim.
  */
 export async function handleStripePaymentSuccess(sessionId: string): Promise<void> {
   try {
@@ -238,36 +283,95 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
       return;
     }
 
-    // Update booking status to confirmed
-    await db
+    // ── The booking row: atomic conditional, never a check-then-write (§15) ──────────────────────
+    const [promotedBooking] = await db
       .update(serviceBookings as any)
       .set({
         status: "confirmed",
         confirmationCode: session.id,
       })
-      .where(eq(serviceBookings.id as any, bookingId));
+      .where(
+        and(
+          eq(serviceBookings.id as any, bookingId),
+          inArray(serviceBookings.status as any, [...TRANSPORT_BOOKING_PROMOTABLE_FROM]),
+        ),
+      )
+      .returning({ id: serviceBookings.id } as any);
 
-    // Update transport booking option status
-    await db
+    let bookingIsConfirmed = !!promotedBooking;
+    if (!promotedBooking) {
+      // Zero rows means one of three things, and they are different facts (§13): the row is gone,
+      // it was promoted by an earlier delivery (idempotent replay), or it has moved somewhere this
+      // promotion may not leave — a cancellation a late signal must not undo.
+      const [current] = await db
+        .select({ status: serviceBookings.status })
+        .from(serviceBookings)
+        .where(eq(serviceBookings.id as any, bookingId))
+        .limit(1);
+      bookingIsConfirmed = current?.status === "confirmed";
+      if (!current) {
+        console.error(`[transport] paid session ${sessionId} names booking=${bookingId}, which does not exist`);
+      } else if (!bookingIsConfirmed) {
+        console.error(
+          `[transport] REFUSED to promote booking=${bookingId} from status="${current.status}" ` +
+            `on paid session ${sessionId} — a late payment signal does not resurrect a booking that ` +
+            `left the promotable set; needs a human.`,
+        );
+      }
+    }
+
+    // ── The transport option: same shape, its own from-state list ────────────────────────────────
+    const [promotedOption] = await db
       .update(transportBookingOptions)
       .set({
         bookingStatus: "confirmed",
         bookingId: parseInt(bookingId.split("-")[1]) || undefined,
       })
-      .where(eq(transportBookingOptions.id, optionId));
+      .where(
+        and(
+          eq(transportBookingOptions.id, optionId),
+          // NULL is the un-stamped row and has to be admitted explicitly — `NULL IN (…)` is NULL,
+          // not TRUE, so a bare `inArray` would silently refuse every option nobody has touched.
+          or(
+            isNull(transportBookingOptions.bookingStatus),
+            inArray(transportBookingOptions.bookingStatus, [...TRANSPORT_OPTION_PROMOTABLE_FROM]),
+          ),
+        ),
+      )
+      .returning({ id: transportBookingOptions.id, bookingStatus: transportBookingOptions.bookingStatus });
+
+    if (!promotedOption) {
+      const [currentOption] = await db
+        .select({ bookingStatus: transportBookingOptions.bookingStatus })
+        .from(transportBookingOptions)
+        .where(eq(transportBookingOptions.id, optionId))
+        .limit(1);
+      if (!currentOption) {
+        console.error(`[transport] paid session ${sessionId} names option=${optionId}, which does not exist`);
+      } else if (currentOption.bookingStatus !== "confirmed") {
+        console.error(
+          `[transport] REFUSED to promote option=${optionId} from booking_status=` +
+            `"${currentOption.bookingStatus}" on paid session ${sessionId} — a cancelled option is ` +
+            `never resurrected by a late signal; needs a human.`,
+        );
+      }
+    }
 
     // Ruling 2026-09-02 (path 4): record the traveler service fee event for this transport booking —
     // idempotent per booking id, best-effort (payment is confirmed; a recording failure is logged,
     // never re-throws). The row is a service_bookings row, so the shared writer reads its snapshot.
-    try {
-      const stripePaymentRef =
-        typeof session.payment_intent === "string" ? session.payment_intent : null;
-      await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], stripePaymentRef, actor: "transport_confirm" });
-    } catch (ledgerErr: any) {
-      console.error(`[transport] traveler-fee ledger write failed for booking=${bookingId} (payment CONFIRMED):`, ledgerErr?.message ?? ledgerErr);
-    }
+    // Gated on the BOOKING being confirmed — see the header note on §13.
+    if (bookingIsConfirmed) {
+      try {
+        const stripePaymentRef =
+          typeof session.payment_intent === "string" ? session.payment_intent : null;
+        await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], stripePaymentRef, actor: "transport_confirm" });
+      } catch (ledgerErr: any) {
+        console.error(`[transport] traveler-fee ledger write failed for booking=${bookingId} (payment CONFIRMED):`, ledgerErr?.message ?? ledgerErr);
+      }
 
-    console.log("Booking confirmed:", { bookingId, optionId });
+      console.log("Booking confirmed:", { bookingId, optionId });
+    }
   } catch (error) {
     console.error("Error handling Stripe payment:", error);
     throw error;

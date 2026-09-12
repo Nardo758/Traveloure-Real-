@@ -26,6 +26,20 @@
  * schema-posture follow-up (`#PS18`): the same fake privileged column, reachable under `.omit()` and
  * unreachable under `.pick()`.
  *
+ * ── B7–B9, THE TWO HOLES THE SAME HANDLER STILL HAD (punchlist V-10/V-11; ledger
+ * `2026-09-12-booking-birth-holes`) ──────────────────────────────────────────────────────────────
+ * B6 pins the route's allowlist at five keys — and two of those five are FREE-FORM jsonb, so the
+ * allowlist stops at the COLUMN boundary. **B7** is V-10: a body planting
+ * `bookingDetails.travelerCharge` (the era discriminator the refund ceiling, the cancellation quote
+ * and the checkout re-drive all branch on) and its server-authored family, stripped at the schema
+ * (layer 1) and in `createServiceBookingAtomic` (layer 2). **B8** is the discriminating half, and
+ * it is the reason the strip is NOT in `createServiceBooking`: that writer belongs to the checkout
+ * claim, which COMPOSES `travelerCharge` server-side on every real purchase, and a blanket strip
+ * would erase a genuine money fact from every checkout row while passing B7 perfectly. **B9** is
+ * V-11: a listing that publishes no price no longer books at `0.00` — `resolveBuyAction` row 11
+ * already rules that a priceless listing can only ever be REQUESTED, and the rail now consults the
+ * ONE price predicate rather than rendering NULL as "free".
+ *
  * NO FEE LITERALS (§8): B3's expected split is computed from a `fee_bands` row SELECTed at assertion
  * time via the same `resolveServiceOwnerShareRate` the route delegates to.
  *
@@ -37,6 +51,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 // STRIPE TEST MODE ONLY, and never actually called: the drift job's Stripe half is injected below
 // and no assertion here touches the network. Same posture as the promotion and console-sigma
 // suites — a live key is refused, not merely left unused.
@@ -50,7 +66,16 @@ import { pgTable, varchar, decimal } from "drizzle-orm/pg-core";
 import { db } from "../db";
 import { storage } from "../storage";
 import { insertServiceBookingSchema, createBookingRequestSchema } from "@shared/schema";
+import {
+  SERVER_AUTHORED_BOOKING_DETAIL_KEYS,
+  TRAVELER_CHARGE_SNAPSHOT_KEY,
+  stripServerAuthoredBookingDetails,
+} from "@shared/booking-details-admission";
+import type { BuyRefusalReason } from "@shared/buy-action";
 import { resolveServiceOwnerShareRate } from "../services/commission";
+import { hasPublishedPrice } from "../services/buy-action-payload";
+import { BALANCE_PAYER_DETAIL_KEY } from "../services/checkout-claim.service";
+import { travelerChargeBasis } from "../services/traveler-charge";
 import { runStripeReconciliation, type StripeReader } from "../jobs/stripeReconciliation";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -97,7 +122,7 @@ async function assertDisposableDb(): Promise<void> {
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────────────────────
 
-async function makeService(price = "100.00"): Promise<string> {
+async function makeService(price: string | null = "100.00"): Promise<string> {
   const id = `bbp-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
     INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status)
@@ -107,21 +132,39 @@ async function makeService(price = "100.00"): Promise<string> {
   return id;
 }
 
+/** What the rail answers instead of committing a row it cannot price (V-11). Carries the
+ *  resolver's OWN vocabulary, so a rename of `BuyRefusalReason` fails to compile here. */
+class RailRefusal extends Error {
+  constructor(readonly reason: BuyRefusalReason) {
+    super(`rail refused: ${reason}`);
+  }
+}
+
 /** Reproduces EXACTLY what `POST /api/bookings` does with a body: the exported allowlist schema the
- *  route parses with, then the storage writer the route calls, with the same server-derived
- *  amount/identity. Nothing here is a reconstruction of the route's logic — both halves are the
- *  route's own objects, imported. */
+ *  route parses with, the price gate it applies, and the storage writer it calls, with the same
+ *  server-derived amount/identity. Nothing here is a reconstruction of the route's logic — every
+ *  half is the route's own object, imported.
+ *
+ *  The writer is `createServiceBookingAtomic`, which is what the route actually calls (and its only
+ *  caller) — corrected here by the V-10 lane, because that is where layer 2 of the booking-detail
+ *  strip lives. `createServiceBooking` is the CHECKOUT CLAIM's writer and is deliberately not
+ *  stripped; B8 is the assertion that keeps it that way. */
 async function postBooking(body: Record<string, unknown>): Promise<string> {
   const input = createBookingRequestSchema.parse(body);
   const service = await storage.getProviderServiceById(input.serviceId!);
   assert.ok(service, "fixture service must exist");
+  // V-11: the route's OWN gate, its own imported predicate — the ONE translation of the price
+  // column into `resolveBuyAction`'s `hasPrice` fact. Placed here, above the amount derivation,
+  // exactly as the handler places it, so this helper cannot drift into proving a rail that no
+  // longer exists. (`B9` pins the handler itself against the same predicate.)
+  if (!hasPublishedPrice(service!.price)) throw new RailRefusal("no_published_price");
   const totalAmount = Number(service!.price) || 0;
   const ownerShareRate = await resolveServiceOwnerShareRate({
     ownerUserId: service!.userId ?? null,
     ownerIsProvider: true, // the fixture owner is a service_provider (seeded below)
     feeCategory: null,
   });
-  const booking = await storage.createServiceBooking({
+  const booking = await storage.createServiceBookingAtomic({
     ...input,
     travelerId: ids.traveler,
     providerId: service!.userId,
@@ -140,7 +183,7 @@ async function postBooking(body: Record<string, unknown>): Promise<string> {
 async function readBooking(id: string): Promise<any> {
   const r = await db.execute(sql`
     SELECT status, stripe_payment_intent_id, total_amount, platform_fee, provider_earnings,
-           idempotency_key, slot_id, confirmed_at,
+           idempotency_key, slot_id, confirmed_at, booking_details, booking_metadata,
            (COALESCE(booking_details, '{}'::jsonb) ? 'stripeAttemptAt') AS has_attempt
     FROM service_bookings WHERE id = ${id}
   `);
@@ -518,4 +561,249 @@ test("B6: the omit-vs-pick class — a NEW privileged column is reachable under 
     ["bookingDetails", "bookingMetadata", "contractId", "serviceId", "tripId"],
     "POST /api/bookings' body allowlist — extend deliberately, never by adding a column elsewhere",
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// B7–B8 — V-10: THE ALLOWLIST STOPS AT THE COLUMN, so the jsonb gets its own strip
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("B7: a body planting server-authored booking-detail keys — travelerCharge and its family never reach the row", async () => {
+  const serviceId = await makeService();
+
+  // `bookingDetails` and `bookingMetadata` ARE in the route's allowlist (they are the traveler's
+  // own notes), so the pick that closed PS15 says nothing about what is inside them. The hostile
+  // body below is the V-10 move: no money COLUMN is touched — every value lands inside a jsonb the
+  // allowlist admits — and `travelerCharge`'s mere PRESENCE flips the row to `a3_snapshot`, which
+  // moves its refund ceiling (stripe-payment.service.ts), its cancellation quote
+  // (cancellation-policy.service.ts) and what a checkout re-drive charges (checkout-claim.service.ts).
+  const bookingId = await postBooking({
+    serviceId,
+    tripId: ids.trip,
+    bookingDetails: {
+      notes: "legitimate field",
+      // The era discriminator. A concierge fee nobody resolved, on a row nobody charged.
+      [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "999.00" },
+      // The §15b pre-flight marker — planting it would forge exactly the provenance §19b's
+      // `payment_provenance_unverified` classification exists to test (B4/B5 above).
+      stripeAttemptAt: new Date().toISOString(),
+      stripeIdempotencyKey: `pi-${RUN}-forged`,
+      // The rest of the family, each one a fact only a server path may state.
+      travelerServiceFee: { charged: "0.00" },
+      claimedSlotIds: ["some-slot"],
+      reconciliationException: { note: "forged" },
+      railsAttribution: { lane: "forged" },
+      directRateResolution: { shareRate: "1.0000" },
+      [BALANCE_PAYER_DETAIL_KEY]: ids.provider,
+      completion: { rule: "forged", actor: ids.traveler },
+      itineraryItemId: "some-item",
+    },
+    bookingMetadata: {
+      visaType: "legitimate field",
+      [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "999.00" },
+    },
+  });
+
+  const row = await readBooking(bookingId);
+  const details = (row.booking_details ?? {}) as Record<string, unknown>;
+  const metadata = (row.booking_metadata ?? {}) as Record<string, unknown>;
+
+  for (const key of SERVER_AUTHORED_BOOKING_DETAIL_KEYS) {
+    assert.equal(key in details, false, `booking_details must not carry a client-supplied '${key}'`);
+    assert.equal(key in metadata, false, `booking_metadata must not carry a client-supplied '${key}'`);
+  }
+
+  // THE STRIP IS NOT A REJECTION (the PS15 posture): the legitimate half of the body still lands,
+  // so no real client is broken by the fix.
+  assert.equal(details.notes, "legitimate field", "the traveler's own fields are untouched");
+  assert.equal(metadata.visaType, "legitimate field");
+
+  // AND THE READER'S ANSWER IS THE HONEST ONE. `travelerChargeBasis` reads the key's presence and
+  // nothing else, so a stripped row reads back as the era it actually is: nothing priced it under
+  // the A3 composition, because nothing priced it at all.
+  assert.equal(
+    travelerChargeBasis((details as any)[TRAVELER_CHARGE_SNAPSHOT_KEY]?.conciergeFee ?? null),
+    "pre_a3_legacy",
+    "a born row carries no A3 snapshot — the discriminator is the checkout claim's to write",
+  );
+
+  // LAYER 2, ASSERTED ON ITS OWN: a caller that bypasses the schema with `as any` — the case a
+  // type-level strip cannot reach (ruling 42's placement rationale, B2's shape one column over).
+  const direct = await storage.createServiceBookingAtomic({
+    serviceId,
+    travelerId: ids.traveler,
+    providerId: ids.provider,
+    tripId: ids.trip,
+    totalAmount: "100.00",
+    bookingDetails: { notes: "n", [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "999.00" } },
+  } as any);
+  createdBookingIds.push(direct.id);
+  const directRow = await readBooking(direct.id);
+  assert.equal(
+    TRAVELER_CHARGE_SNAPSHOT_KEY in ((directRow.booking_details ?? {}) as Record<string, unknown>),
+    false,
+    "storage strips it regardless of how the caller got here (layer 2)",
+  );
+  assert.equal((directRow.booking_details as any).notes, "n", "and the rest of the object survives");
+
+  // LAYER 1, ASSERTED INDEPENDENTLY OF THE DATABASE: the admission schema alone already strips,
+  // so a caller that never reaches storage is covered too.
+  const parsed = createBookingRequestSchema.parse({
+    serviceId,
+    bookingDetails: { notes: "n", [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "1.00" } },
+  });
+  assert.deepEqual(parsed.bookingDetails, { notes: "n" }, "layer 1 (createBookingRequestSchema)");
+
+  // THE SET ITSELF, pinned. Widening or narrowing it is a decision someone makes on purpose — and
+  // the two keys that carry their own declared constants must be MEMBERS, so renaming either
+  // spelling fails here rather than quietly leaving the key admissible under its new name.
+  assert.deepEqual(
+    [...SERVER_AUTHORED_BOOKING_DETAIL_KEYS],
+    [
+      "travelerCharge",
+      "travelerServiceFee",
+      "stripeAttemptAt",
+      "stripeIdempotencyKey",
+      "claimedSlotIds",
+      "reconciliationException",
+      "railsAttribution",
+      "directRateResolution",
+      "balancePaidByUserId",
+      "completion",
+      "itineraryItemId",
+    ],
+    "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
+  );
+  assert.ok(
+    (SERVER_AUTHORED_BOOKING_DETAIL_KEYS as readonly string[]).includes(TRAVELER_CHARGE_SNAPSHOT_KEY),
+  );
+  assert.ok(
+    (SERVER_AUTHORED_BOOKING_DETAIL_KEYS as readonly string[]).includes(BALANCE_PAYER_DETAIL_KEY),
+  );
+
+  // STATED NEGATIVE SPACE, asserted rather than only written down: the strip is TOP-LEVEL, because
+  // every reader of these keys reads them at the top level. A nested copy survives — and is inert.
+  const nested = stripServerAuthoredBookingDetails({
+    notes: { [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "1.00" } },
+  });
+  assert.deepEqual(nested.stripped, [], "a nested key is not scrubbed — matching the readers, not exceeding them");
+});
+
+test("B8: THE DISCRIMINATING HALF — the checkout claim's own writer still records a SERVER-COMPOSED travelerCharge", async () => {
+  const serviceId = await makeService();
+
+  // Without this assertion a blanket strip would pass B7 just as well — and would erase the A3 era
+  // discriminator from every real purchase, silently re-reading the whole platform as pre-A3 and
+  // changing every refund ceiling and every re-drive. The claim spine composes `travelerCharge`
+  // server-side and passes it through `storage.createServiceBooking` (payments.routes.ts), which is
+  // why the V-10 strip is placed on `createServiceBookingAtomic` — the writer the CLIENT-facing
+  // birth rail uses, and its only caller — with the client body stopped at layer 1 before it can
+  // reach the other one.
+  const booking = await storage.createServiceBooking({
+    serviceId,
+    travelerId: ids.traveler,
+    providerId: ids.provider,
+    tripId: ids.trip,
+    totalAmount: "100.00",
+    bookingDetails: {
+      notes: "server-composed claim row",
+      [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "12.00" },
+    },
+  } as any);
+  createdBookingIds.push(booking.id);
+
+  const row = await readBooking(booking.id);
+  const details = (row.booking_details ?? {}) as any;
+  assert.deepEqual(
+    details[TRAVELER_CHARGE_SNAPSHOT_KEY],
+    { conciergeFee: "12.00" },
+    "a checkout-composed snapshot must SURVIVE — this is the fact the refund and the re-drive read",
+  );
+  assert.equal(
+    travelerChargeBasis(details[TRAVELER_CHARGE_SNAPSHOT_KEY]?.conciergeFee ?? null),
+    "a3_snapshot",
+    "and it still reads back as the A3 era it was priced under",
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// B9 — V-11: a listing with no price is REQUESTED, never committed at 0.00
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("B9: a listing that publishes no price does not produce a booking at all — and a priced one is unchanged", async () => {
+  // `resolveBuyAction` row 11 already rules that a priceless listing can only ever be REQUESTED,
+  // never charged (§14 — the resolver invents no price). The rail read the same column through
+  // `Number(service.price) || 0` and rendered "no price stated" as "free" (§13), which is the only
+  // thing §9.2's "do not send a quote through generic checkout" had standing behind it.
+  const pricelessId = await makeService(null);
+  await assert.rejects(
+    () => postBooking({ serviceId: pricelessId, tripId: ids.trip, bookingDetails: { notes: "quote me" } }),
+    (err: unknown) => err instanceof RailRefusal && err.reason === "no_published_price",
+    "a NULL price is refused in the resolver's own vocabulary, not committed at 0.00",
+  );
+  const created = await db.execute(sql`
+    SELECT count(*)::int AS n FROM service_bookings WHERE service_id = ${pricelessId}
+  `);
+  assert.equal((created.rows[0] as any).n, 0, "and NO row exists — a refusal is not a $0 purchase");
+
+  // A ZERO price is the same fact wearing a number: nobody published a price of nothing.
+  const zeroId = await makeService("0.00");
+  await assert.rejects(
+    () => postBooking({ serviceId: zeroId, tripId: ids.trip, bookingDetails: {} }),
+    (err: unknown) => err instanceof RailRefusal && err.reason === "no_published_price",
+  );
+
+  // THE PREDICATE, directly — the ONE translation both the button and the rail read.
+  assert.equal(hasPublishedPrice(null), false);
+  assert.equal(hasPublishedPrice(undefined), false);
+  assert.equal(hasPublishedPrice("0.00"), false);
+  assert.equal(hasPublishedPrice(""), false);
+  assert.equal(hasPublishedPrice("not a number"), false);
+  assert.equal(hasPublishedPrice("250.00"), true);
+  assert.equal(hasPublishedPrice(250), true);
+
+  // A PRICED LISTING IS BYTE-IDENTICAL: it passes the gate, and the amount below it is the same
+  // catalog-derived number it has always been (§14). B3 asserts the full birth invariants.
+  const pricedId = await makeService("250.00");
+  const bookingId = await postBooking({ serviceId: pricedId, tripId: ids.trip, bookingDetails: { notes: "n" } });
+  const row = await readBooking(bookingId);
+  assert.equal(row.total_amount, "250.00");
+  assert.equal(row.status, "pending");
+  assert.equal(row.stripe_payment_intent_id, null);
+
+  // THE RAIL IS PINNED TO THE PREDICATE, over the file SET rather than by a call-site count: any
+  // server route or service that derives a booking amount from a listing price with the
+  // `|| 0` fallback must also consult `hasPublishedPrice`, or the fallback is once again free to
+  // state a price nobody set. Comments stripped, so a mention in prose cannot satisfy it.
+  const roots = ["server/routes.ts", "server/routes", "server/services"];
+  const files: string[] = [];
+  for (const root of roots) {
+    const abs = path.join(process.cwd(), root);
+    if (!fs.existsSync(abs)) continue;
+    if (fs.statSync(abs).isFile()) files.push(root);
+    else {
+      for (const f of fs.readdirSync(abs)) {
+        if (f.endsWith(".ts")) files.push(path.join(root, f));
+      }
+    }
+  }
+  assert.ok(files.length > 20, `expected the route/service file set, found ${files.length}`);
+  const zeroFallback = /Number\(\s*service!?\.price\s*\)\s*\|\|\s*0/;
+  const derivers = files.filter((rel) => {
+    const src = fs
+      .readFileSync(path.join(process.cwd(), rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    return zeroFallback.test(src);
+  });
+  assert.ok(derivers.length > 0, "the amount derivation this pin guards has moved — repair the pin, do not delete it");
+  for (const rel of derivers) {
+    const src = fs
+      .readFileSync(path.join(process.cwd(), rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    assert.ok(
+      src.includes("hasPublishedPrice"),
+      `${rel} prices a booking off a listing price with a || 0 fallback and never consults hasPublishedPrice (V-11)`,
+    );
+  }
 });
