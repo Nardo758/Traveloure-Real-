@@ -2001,7 +2001,7 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts
 
   confirm-honesty:
-    name: confirm-honesty (§13 — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate)
+    name: confirm-honesty (§13/§18c — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate · delete-dead-transport-status)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -2015,10 +2015,12 @@ jobs:
       # which returns early unless `payment_status === "paid"` (a hosted session can complete
       # UNPAID). B-series: the booking modal renders the SERVER's confirmation code or none, and an
       # absent code is said out loud rather than filled with a plausible string. C-series
-      # (2026-09-12-transport-status-self-report-gate, punchlist V-7/V-8): the traveller self-report
-      # PATCH resolves and authorizes the row server-side, parses a pick-based allowlist whose value
-      # set omits `confirmed`, and answers ONE 404 for absent/unowned alike; and both webhook
-      # promotions carry a from-state guard IN the statement, so a late paid signal never
-      # resurrects a cancelled booking or option.
+      # (2026-09-12-transport-status-self-report-gate, punchlist V-7/V-8): both webhook promotions
+      # carry a from-state guard IN the statement, so a late paid signal never resurrects a
+      # cancelled booking or option (C6-C8). C9/C10 are 2026-09-12-delete-dead-transport-status:
+      # the self-report PATCH had zero callers, so §18c deleted it and the orphaned ungated storage
+      # writer with it — C9 asserts neither comes back (file-SET scan, comments stripped), and C10
+      # keeps the deliberately-retained requireWriteAccess passthrough (LD 12) exercised. C1-C5
+      # pinned the gate's shape and went with their subject.
       - name: Confirm-honesty pins
         run: npx tsx --test server/__tests__/confirm-honesty.test.ts
