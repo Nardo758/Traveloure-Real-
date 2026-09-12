@@ -1948,7 +1948,7 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts
 
   confirm-honesty:
-    name: confirm-honesty (§13 — 2026-09-08-transport-confirm-timing · 2026-09-08-confirmation-code-is-the-server-s)
+    name: confirm-honesty (§13 — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1961,6 +1961,11 @@ jobs:
       # a Checkout Session is an intent to pay, and the promotion belongs to the payment signal,
       # which returns early unless `payment_status === "paid"` (a hosted session can complete
       # UNPAID). B-series: the booking modal renders the SERVER's confirmation code or none, and an
-      # absent code is said out loud rather than filled with a plausible string.
+      # absent code is said out loud rather than filled with a plausible string. C-series
+      # (2026-09-12-transport-status-self-report-gate, punchlist V-7/V-8): the traveller self-report
+      # PATCH resolves and authorizes the row server-side, parses a pick-based allowlist whose value
+      # set omits `confirmed`, and answers ONE 404 for absent/unowned alike; and both webhook
+      # promotions carry a from-state guard IN the statement, so a late paid signal never
+      # resurrects a cancelled booking or option.
       - name: Confirm-honesty pins
         run: npx tsx --test server/__tests__/confirm-honesty.test.ts
