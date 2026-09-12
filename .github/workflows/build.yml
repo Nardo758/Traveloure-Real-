@@ -1132,6 +1132,53 @@ jobs:
       - name: Migration 289 category_key repair
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/category-key-repair.db.test.ts
 
+  archetype-fixtures:
+    name: archetype-fixtures (ledger 2026-09-12-archetype-fixtures)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # `2026-09-11-oc-a1-ratified` ratified the archetype vocabulary WITHOUT being able to check
+      # that the platform can sell each one: the resolver had no production caller, and the pure
+      # suite proves only that a hand-built INPUT classifies. This walks the whole rail per
+      # archetype — create the `provider_services` row, judge it with the OC-A4 gate, read it back
+      # through `loadOfferingListingInput`, classify THAT, commit a booking through
+      # `createBookingRequestSchema` + `storage.createServiceBooking`, and read OC-B1's
+      # `offering_contract_snapshot` off the committed row. FOUR OF THE THIRTEEN HAVE NO WORKING
+      # PATH and the suite asserts the break rather than hiding it, so this job going green means
+      # "the four are still broken in exactly the way we recorded", not "all thirteen work".
+      # Changes no checkout behaviour: it pins the CURRENT birth invariants as OC-B2's baseline.
+      - name: Archetype fixtures — creation → activation → contract → booking → snapshot
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/offering-archetype-fixtures.db.test.ts
+
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
     runs-on: ubuntu-latest
